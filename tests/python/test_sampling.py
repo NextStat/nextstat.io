@@ -4,6 +4,7 @@ Requires: maturin develop (or pip install -e .) to build the _core extension.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -108,8 +109,12 @@ class TestSampleReproducibility:
 class TestSampleQualityGates:
     """Basic quality: R-hat, divergence rate, POI mean."""
 
+    pytestmark = pytest.mark.slow
+
     @pytest.fixture()
     def result(self):
+        if os.environ.get("NS_RUN_SLOW") != "1":
+            pytest.skip("Set NS_RUN_SLOW=1 to run slow sampling quality gates.")
         model = _make_model()
         return nextstat.sample(
             model, n_chains=2, n_warmup=200, n_samples=200, seed=42,

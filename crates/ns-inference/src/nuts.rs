@@ -345,8 +345,17 @@ pub fn sample_nuts(
     let dim = posterior.dim();
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-    // Initialize at model init values
-    let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+    // Initialize near the posterior mode (MLE) for stability and multi-chain consistency.
+    //
+    // This improves convergence of short warmup runs (e.g. CI quality gates) and
+    // mirrors the common HEP workflow where MLE is readily available.
+    let theta_init: Vec<f64> = {
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        match mle.fit_minimum(model) {
+            Ok(r) if r.converged => r.parameters,
+            _ => model.parameters().iter().map(|p| p.init).collect(),
+        }
+    };
     let z_init = posterior.to_unconstrained(&theta_init);
 
     let inv_mass = vec![1.0; dim];
