@@ -337,6 +337,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_rank_normalized_rhat_well_mixed() {
+        // Two IID chains: rank-normalized R-hat should be close to 1.
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+        let normal = Normal::new(0.0, 1.0).unwrap();
+
+        let mut rng1 = rand::rngs::StdRng::seed_from_u64(1);
+        let chain1: Vec<f64> = (0..500).map(|_| normal.sample(&mut rng1)).collect();
+        let mut rng2 = rand::rngs::StdRng::seed_from_u64(2);
+        let chain2: Vec<f64> = (0..500).map(|_| normal.sample(&mut rng2)).collect();
+
+        let rhat = r_hat_rank_normalized_folded(&vec![chain1, chain2]);
+        assert!(
+            rhat < 1.05,
+            "Rank-normalized folded R-hat for IID chains should be ~1: {}",
+            rhat
+        );
+    }
+
+    #[test]
+    fn test_rank_normalized_rhat_diverged_chains() {
+        // Two chains at different means: rank-normalized folded R-hat should be >> 1.
+        let chain1: Vec<f64> = (0..200).map(|i| i as f64 * 0.01).collect();
+        let chain2: Vec<f64> = (0..200).map(|i| 10.0 + i as f64 * 0.01).collect();
+        let rhat = r_hat_rank_normalized_folded(&vec![chain1, chain2]);
+        assert!(rhat > 1.5, "R-hat for diverged chains should be >> 1: {}", rhat);
+    }
+
+    #[test]
     fn test_r_hat_well_mixed() {
         // Well-mixed chains from same distribution -> R-hat should be close to 1
         use rand::SeedableRng;
