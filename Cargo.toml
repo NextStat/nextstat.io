@@ -44,7 +44,7 @@ argmin = "0.11"
 argmin-math = { version = "0.5", features = ["ndarray_latest"] }
 
 # SIMD (CPU - Priority P0)
-wide = "0.7"
+wide = "1.1"
 
 # Parallelism (CPU - Priority P0)
 rayon = "1.11"
