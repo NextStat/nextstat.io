@@ -868,6 +868,7 @@ dependencies = [
  "ndarray 0.17.2",
  "ns-compute",
  "ns-core",
+ "ns-prob",
  "ns-translate",
  "rand 0.9.2",
  "rand_distr 0.5.1",
