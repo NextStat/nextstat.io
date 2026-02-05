@@ -3,7 +3,7 @@ use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn bin_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_ns-cli"))
+    PathBuf::from(env!("CARGO_BIN_EXE_nextstat"))
 }
 
 fn repo_root() -> PathBuf {

@@ -9,6 +9,10 @@ use std::path::PathBuf;
 #[command(about = "NextStat - High-performance statistical fitting")]
 #[command(version)]
 struct Cli {
+    /// Log verbosity level (trace, debug, info, warn, error)
+    #[arg(long, global = true, default_value = "warn")]
+    log_level: tracing::Level,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -206,9 +210,12 @@ enum VizCommands {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
-
     let cli = Cli::parse();
+
+    tracing_subscriber::fmt()
+        .with_max_level(cli.log_level)
+        .with_target(false)
+        .init();
 
     match cli.command {
         Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads),
@@ -279,6 +286,7 @@ fn cmd_fit(input: &PathBuf, output: Option<&PathBuf>, threads: usize) -> Result<
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
     let result = mle.fit(&model)?;
+    tracing::info!(nll = result.nll, converged = result.converged, "fit complete");
 
     let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
 
@@ -303,9 +311,15 @@ fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::His
         let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
     }
 
+    tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
     let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
-    Ok(ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?)
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
+    tracing::info!(
+        parameters = model.parameters().len(),
+        "workspace loaded"
+    );
+    Ok(model)
 }
 
 fn write_json(output: Option<&PathBuf>, value: serde_json::Value) -> Result<()> {
@@ -328,6 +342,7 @@ fn cmd_hypotest(
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
     let r = ctx.hypotest_qtilde(&mle, mu)?;
+    tracing::debug!(mu_test = r.mu_test, cls = r.cls, mu_hat = r.mu_hat, "hypotest result");
 
     let output_json = serde_json::json!({
         "mu_test": r.mu_test,

@@ -1,8 +1,11 @@
 //! MCMC diagnostics: split R-hat, bulk ESS, tail ESS.
 //!
-//! Note: this implementation is intentionally lightweight. It computes split R-hat
-//! and a simple autocorrelation-based ESS estimate. It does not (yet) implement
-//! the full rank-normalized + folded diagnostics described by Vehtari et al. (2021).
+//! This module implements:
+//! - Split R-hat (Gelman et al.)
+//! - Rank-normalized + folded split R-hat (Vehtari et al. 2021) for robustness
+//! - Bulk ESS and tail ESS (lightweight approximations)
+
+use statrs::distribution::{ContinuousCDF, Normal};
 
 /// Diagnostics for a multi-chain NUTS run.
 #[derive(Debug, Clone)]
@@ -72,6 +75,128 @@ pub fn r_hat(chains: &[&[f64]]) -> f64 {
     let var_hat_plus = (n - 1.0) / n * w + b / n;
 
     (var_hat_plus / w).sqrt()
+}
+
+fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return f64::NAN;
+    }
+    let q = q.clamp(0.0, 1.0);
+    let n = sorted.len() as f64;
+    let pos = q * (n - 1.0);
+    let i0 = pos.floor() as usize;
+    let i1 = pos.ceil() as usize;
+    if i0 == i1 {
+        return sorted[i0];
+    }
+    let f = pos - i0 as f64;
+    sorted[i0] * (1.0 - f) + sorted[i1] * f
+}
+
+fn median_all(chains: &[Vec<f64>]) -> f64 {
+    let mut all: Vec<f64> = chains.iter().flat_map(|c| c.iter().copied()).collect();
+    all.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+    all.get(all.len() / 2).copied().unwrap_or(f64::NAN)
+}
+
+fn rank_normalize(chains: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let normal = Normal::new(0.0, 1.0).expect("Normal(0,1) should be valid");
+    let total: usize = chains.iter().map(|c| c.len()).sum();
+    if total == 0 {
+        return chains.to_vec();
+    }
+
+    let mut out: Vec<Vec<f64>> = chains.iter().map(|c| vec![0.0; c.len()]).collect();
+
+    // Flatten draws with back-references.
+    let mut flat: Vec<(f64, usize, usize)> = Vec::with_capacity(total);
+    for (ci, chain) in chains.iter().enumerate() {
+        for (ti, &x) in chain.iter().enumerate() {
+            flat.push((x, ci, ti));
+        }
+    }
+
+    // Sort by value; NaNs go to the end.
+    flat.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Greater));
+
+    // Assign average ranks for ties (1-based ranks).
+    let n = flat.len();
+    let mut i = 0usize;
+    while i < n {
+        let mut j = i + 1;
+        while j < n && flat[j].0 == flat[i].0 {
+            j += 1;
+        }
+
+        let rank_lo = i as f64 + 1.0;
+        let rank_hi = j as f64;
+        let rank = 0.5 * (rank_lo + rank_hi);
+
+        // Convert rank to normal quantile. Use (rank - 0.5)/N to avoid 0/1.
+        let mut p = (rank - 0.5) / n as f64;
+        p = p.clamp(1e-12, 1.0 - 1e-12);
+        let z = normal.inverse_cdf(p);
+
+        for k in i..j {
+            let (_x, ci, ti) = flat[k];
+            out[ci][ti] = z;
+        }
+
+        i = j;
+    }
+
+    out
+}
+
+fn r_hat_rank_normalized_folded(chains: &[Vec<f64>]) -> f64 {
+    if chains.is_empty() || chains.iter().any(|c| c.len() < 4) {
+        return f64::NAN;
+    }
+
+    let z = rank_normalize(chains);
+    let z_refs: Vec<&[f64]> = z.iter().map(|c| c.as_slice()).collect();
+    let r_rank = r_hat(&z_refs);
+
+    let med = median_all(chains);
+    let folded: Vec<Vec<f64>> =
+        chains.iter().map(|c| c.iter().map(|&x| (x - med).abs()).collect()).collect();
+    let z_fold = rank_normalize(&folded);
+    let zf_refs: Vec<&[f64]> = z_fold.iter().map(|c| c.as_slice()).collect();
+    let r_fold = r_hat(&zf_refs);
+
+    r_rank.max(r_fold)
+}
+
+fn ess_bulk_rank_normalized(chains: &[Vec<f64>]) -> f64 {
+    let z = rank_normalize(chains);
+    let z_refs: Vec<&[f64]> = z.iter().map(|c| c.as_slice()).collect();
+    ess_bulk(&z_refs)
+}
+
+fn ess_tail_quantile_indicators(chains: &[Vec<f64>]) -> f64 {
+    let total: usize = chains.iter().map(|c| c.len()).sum();
+    if total == 0 {
+        return 0.0;
+    }
+
+    let mut all: Vec<f64> = chains.iter().flat_map(|c| c.iter().copied()).collect();
+    all.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+    let q05 = quantile_sorted(&all, 0.05);
+    let q95 = quantile_sorted(&all, 0.95);
+
+    let lower: Vec<Vec<f64>> = chains
+        .iter()
+        .map(|c| c.iter().map(|&x| if x <= q05 { 1.0 } else { 0.0 }).collect())
+        .collect();
+    let upper: Vec<Vec<f64>> = chains
+        .iter()
+        .map(|c| c.iter().map(|&x| if x >= q95 { 1.0 } else { 0.0 }).collect())
+        .collect();
+
+    let lower_refs: Vec<&[f64]> = lower.iter().map(|c| c.as_slice()).collect();
+    let upper_refs: Vec<&[f64]> = upper.iter().map(|c| c.as_slice()).collect();
+
+    ess_bulk(&lower_refs).min(ess_bulk(&upper_refs))
 }
 
 /// Compute effective sample size (ESS) via initial monotone sequence estimator.
@@ -176,11 +301,9 @@ pub fn compute_diagnostics(result: &crate::chain::SamplerResult) -> DiagnosticsR
 
     for p in 0..n_params {
         let chain_draws: Vec<Vec<f64>> = result.param_draws(p);
-        let chain_refs: Vec<&[f64]> = chain_draws.iter().map(|c| c.as_slice()).collect();
-
-        r_hat_vals.push(r_hat(&chain_refs));
-        ess_bulk_vals.push(ess_bulk(&chain_refs));
-        ess_tail_vals.push(ess_tail(&chain_refs));
+        r_hat_vals.push(r_hat_rank_normalized_folded(&chain_draws));
+        ess_bulk_vals.push(ess_bulk_rank_normalized(&chain_draws));
+        ess_tail_vals.push(ess_tail_quantile_indicators(&chain_draws));
     }
 
     // Divergence and max treedepth rates

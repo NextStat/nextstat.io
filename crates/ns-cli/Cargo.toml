@@ -11,6 +11,10 @@ keywords.workspace = true
 categories.workspace = true
 description = "Command-line interface for NextStat"
 
+[[bin]]
+name = "nextstat"
+path = "src/main.rs"
+
 [dependencies]
 ns-core = { path = "../ns-core" }
 ns-compute = { path = "../ns-compute" }
@@ -19,8 +23,8 @@ ns-translate = { path = "../ns-translate" }
 ns-viz = { path = "../ns-viz" }
 anyhow.workspace = true
 clap.workspace = true
-log.workspace = true
-env_logger.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 rayon.workspace = true
 serde_json.workspace = true
 
