@@ -25,6 +25,17 @@ class HistFactoryModel:
     def poi_index(self) -> Optional[int]: ...
 
 
+class GaussianMeanModel:
+    def __init__(self, y: List[float], sigma: float) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class FitResult:
     parameters: List[float]
     uncertainties: List[float]
@@ -102,7 +113,7 @@ def upper_limits_root(
 
 
 def sample(
-    model: HistFactoryModel,
+    model: Union[HistFactoryModel, GaussianMeanModel],
     *,
     n_chains: int = ...,
     n_warmup: int = ...,
