@@ -368,7 +368,7 @@ fn upper_limits_root(
 
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
-#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, data=None))]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.5, data=None))]
 fn sample(
     py: Python<'_>,
     model: &PyHistFactoryModel,
@@ -378,6 +378,7 @@ fn sample(
     seed: u64,
     max_treedepth: usize,
     target_accept: f64,
+    init_jitter: f64,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
     let sample_model = if let Some(obs_main) = data {
@@ -389,7 +390,7 @@ fn sample(
         model.inner.clone()
     };
 
-    let config = NutsConfig { max_treedepth, target_accept };
+    let config = NutsConfig { max_treedepth, target_accept, init_jitter };
 
     // Release GIL during Rayon-parallel sampling.
     let result = py
@@ -414,10 +415,12 @@ fn sample(
     let diverging: Vec<Vec<bool>> = result.chains.iter().map(|c| c.divergences.clone()).collect();
     let tree_depth: Vec<Vec<usize>> = result.chains.iter().map(|c| c.tree_depths.clone()).collect();
     let accept_prob: Vec<Vec<f64>> = result.chains.iter().map(|c| c.accept_probs.clone()).collect();
+    let energy: Vec<Vec<f64>> = result.chains.iter().map(|c| c.energies.clone()).collect();
     let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
     sample_stats.set_item("diverging", diverging)?;
     sample_stats.set_item("tree_depth", tree_depth)?;
     sample_stats.set_item("accept_prob", accept_prob)?;
+    sample_stats.set_item("energy", energy)?;
     sample_stats.set_item("step_size", step_sizes)?;
 
     // Build "diagnostics" dict
@@ -436,6 +439,7 @@ fn sample(
     diagnostics_dict.set_item("ess_tail", ess_tail_dict)?;
     diagnostics_dict.set_item("divergence_rate", diag.divergence_rate)?;
     diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
+    diagnostics_dict.set_item("ebfmi", diag.ebfmi.clone())?;
 
     // Assemble top-level dict
     let out = PyDict::new(py);

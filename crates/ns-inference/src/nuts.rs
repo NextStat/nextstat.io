@@ -16,11 +16,15 @@ pub struct NutsConfig {
     pub max_treedepth: usize,
     /// Target acceptance probability (default 0.8).
     pub target_accept: f64,
+    /// Stddev of random jitter added to the initial unconstrained position.
+    ///
+    /// This helps avoid identical initial states across chains.
+    pub init_jitter: f64,
 }
 
 impl Default for NutsConfig {
     fn default() -> Self {
-        Self { max_treedepth: 10, target_accept: 0.8 }
+        Self { max_treedepth: 10, target_accept: 0.8, init_jitter: 0.5 }
     }
 }
 
@@ -32,6 +36,7 @@ pub(crate) struct NutsTransition {
     pub depth: usize,
     pub divergent: bool,
     pub accept_prob: f64,
+    pub energy: f64,
     #[allow(dead_code)]
     pub n_leapfrog: usize,
 }
@@ -324,6 +329,7 @@ pub(crate) fn nuts_transition(
         depth,
         divergent: tree.divergent,
         accept_prob,
+        energy: h0,
         n_leapfrog: tree.n_leapfrog,
     })
 }
@@ -357,6 +363,13 @@ pub fn sample_nuts(
         }
     };
     let z_init = posterior.to_unconstrained(&theta_init);
+    let z_init: Vec<f64> = if config.init_jitter > 0.0 {
+        use rand_distr::{Distribution, Normal};
+        let normal = Normal::new(0.0, config.init_jitter).unwrap();
+        z_init.iter().map(|&z| z + normal.sample(&mut rng)).collect()
+    } else {
+        z_init
+    };
 
     let inv_mass = vec![1.0; dim];
     let init_eps = find_reasonable_step_size(&posterior, &z_init, &inv_mass);
@@ -394,6 +407,7 @@ pub fn sample_nuts(
     let mut divergences = Vec::with_capacity(n_samples);
     let mut tree_depths = Vec::with_capacity(n_samples);
     let mut accept_probs = Vec::with_capacity(n_samples);
+    let mut energies = Vec::with_capacity(n_samples);
 
     for _ in 0..n_samples {
         let transition = nuts_transition(
@@ -413,6 +427,7 @@ pub fn sample_nuts(
         divergences.push(transition.divergent);
         tree_depths.push(transition.depth);
         accept_probs.push(transition.accept_prob);
+        energies.push(transition.energy);
     }
 
     let mass_diag: Vec<f64> = final_inv_mass.iter().map(|&m| 1.0 / m).collect();
@@ -423,6 +438,7 @@ pub fn sample_nuts(
         divergences,
         tree_depths,
         accept_probs,
+        energies,
         max_treedepth: config.max_treedepth,
         step_size: final_eps,
         mass_diag,
@@ -492,7 +508,7 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8 };
+        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5 };
         let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
 
         assert_eq!(chain.draws_constrained.len(), 50);
@@ -500,6 +516,7 @@ mod tests {
         assert_eq!(chain.divergences.len(), 50);
         assert_eq!(chain.tree_depths.len(), 50);
         assert_eq!(chain.accept_probs.len(), 50);
+        assert_eq!(chain.energies.len(), 50);
 
         // Divergence rate should be low
         let n_div: usize = chain.divergences.iter().filter(|&&d| d).count();
@@ -522,13 +539,92 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8 };
+        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0 };
         let chain1 = sample_nuts(&model, 50, 20, 123, config.clone()).unwrap();
         let chain2 = sample_nuts(&model, 50, 20, 123, config).unwrap();
 
         assert_eq!(
             chain1.draws_constrained, chain2.draws_constrained,
             "Same seed should produce identical draws"
+        );
+        assert_eq!(chain1.energies, chain2.energies, "Energy series should be deterministic");
+    }
+
+    /// Quality gate: full pipeline must produce well-converged samples on the
+    /// simple workspace.  This validates R-hat, ESS, divergence rate, E-BFMI,
+    /// and posterior mean proximity to MLE.
+    #[test]
+    #[ignore] // slow (~10s); run with `cargo test -- --ignored`
+    fn test_nuts_quality_gate() {
+        use crate::chain::sample_nuts_multichain;
+        use crate::diagnostics::compute_diagnostics;
+
+        let ws = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+
+        let config = NutsConfig { max_treedepth: 10, target_accept: 0.8, init_jitter: 0.5 };
+        let result =
+            sample_nuts_multichain(&model, 4, 200, 200, 42, config).unwrap();
+
+        let diag = compute_diagnostics(&result);
+
+        // R-hat < 1.05 for all parameters
+        for (i, &rhat) in diag.r_hat.iter().enumerate() {
+            assert!(
+                rhat < 1.05,
+                "R-hat for param {} = {} (should be < 1.05)",
+                result.param_names[i],
+                rhat,
+            );
+        }
+
+        // Bulk ESS > 100 for all parameters
+        for (i, &ess) in diag.ess_bulk.iter().enumerate() {
+            assert!(
+                ess > 100.0,
+                "Bulk ESS for param {} = {} (should be > 100)",
+                result.param_names[i],
+                ess,
+            );
+        }
+
+        // Divergence rate < 10%
+        assert!(
+            diag.divergence_rate < 0.10,
+            "Divergence rate = {} (should be < 0.10)",
+            diag.divergence_rate,
+        );
+
+        // E-BFMI > 0.2 for all chains
+        for (i, &bfmi) in diag.ebfmi.iter().enumerate() {
+            assert!(
+                bfmi > 0.2,
+                "E-BFMI for chain {} = {} (should be > 0.2)",
+                i,
+                bfmi,
+            );
+        }
+
+        // POI posterior mean within 2σ of MLE
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let fit = mle.fit_minimum(&model).expect("MLE should converge");
+        let poi_mle = fit.parameters[0];
+        let poi_mean = result.param_mean(0);
+        let poi_draws: Vec<f64> =
+            result.param_draws(0).into_iter().flat_map(|c| c.into_iter()).collect();
+        let n = poi_draws.len() as f64;
+        let poi_var: f64 =
+            poi_draws.iter().map(|&x| (x - poi_mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let poi_se = (poi_var / n).sqrt();
+
+        let delta = (poi_mean - poi_mle).abs();
+        assert!(
+            delta < 2.0 * poi_se + 0.05,
+            "POI mean {} too far from MLE {} (delta={}, 2*SE={})",
+            poi_mean,
+            poi_mle,
+            delta,
+            2.0 * poi_se,
         );
     }
 }

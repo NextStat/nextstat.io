@@ -20,6 +20,8 @@ pub struct DiagnosticsResult {
     pub divergence_rate: f64,
     /// Fraction of transitions hitting max treedepth.
     pub max_treedepth_rate: f64,
+    /// E-BFMI per chain (energy Bayesian fraction of missing information).
+    pub ebfmi: Vec<f64>,
 }
 
 /// Compute split R-hat for one parameter across multiple chains.
@@ -323,18 +325,56 @@ pub fn compute_diagnostics(result: &crate::chain::SamplerResult) -> DiagnosticsR
     let max_treedepth_rate =
         if total_samples > 0 { n_max_depth as f64 / total_samples as f64 } else { 0.0 };
 
+    let ebfmi: Vec<f64> = result.chains.iter().map(|c| ebfmi(&c.energies)).collect();
+
     DiagnosticsResult {
         r_hat: r_hat_vals,
         ess_bulk: ess_bulk_vals,
         ess_tail: ess_tail_vals,
         divergence_rate,
         max_treedepth_rate,
+        ebfmi,
     }
+}
+
+/// Compute E-BFMI (energy Bayesian fraction of missing information) for one chain.
+///
+/// Definition (Stan): mean((E_t - E_{t-1})^2) / var(E_t).
+pub fn ebfmi(energies: &[f64]) -> f64 {
+    let n = energies.len();
+    if n < 4 {
+        return f64::NAN;
+    }
+    let mean: f64 = energies.iter().sum::<f64>() / n as f64;
+    let var: f64 = energies.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0);
+    if var < 1e-30 {
+        return f64::NAN;
+    }
+
+    let mut msd = 0.0;
+    for i in 1..n {
+        let d = energies[i] - energies[i - 1];
+        msd += d * d;
+    }
+    msd /= n as f64 - 1.0;
+    msd / var
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_ebfmi_iid_energy_is_large() {
+        // IID energy sequence should yield E-BFMI close to 2 (difference variance ~ 2*var).
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(123);
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let energies: Vec<f64> = (0..1000).map(|_| normal.sample(&mut rng)).collect();
+        let v = ebfmi(&energies);
+        assert!(v.is_finite() && v > 0.5, "E-BFMI for IID should be comfortably > 0: {}", v);
+    }
 
     #[test]
     fn test_rank_normalized_rhat_well_mixed() {

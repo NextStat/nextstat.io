@@ -17,6 +17,8 @@ pub struct Chain {
     pub tree_depths: Vec<usize>,
     /// Acceptance probability per draw.
     pub accept_probs: Vec<f64>,
+    /// Hamiltonian energy per draw (after momentum resampling at start of transition).
+    pub energies: Vec<f64>,
     /// Configured maximum tree depth for this chain (for diagnostics).
     pub max_treedepth: usize,
     /// Final adapted step size.
@@ -106,7 +108,8 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8 };
+        // No jitter so identical seeds produce identical chains.
+        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0 };
         let r1 = sample_nuts_multichain(&model, 2, 50, 20, 42, config.clone()).unwrap();
         let r2 = sample_nuts_multichain(&model, 2, 50, 20, 42, config).unwrap();
 
@@ -123,7 +126,7 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8 };
+        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5 };
         let result = sample_nuts_multichain(&model, 2, 100, 50, 42, config).unwrap();
 
         assert_eq!(result.chains.len(), 2);
@@ -134,5 +137,9 @@ mod tests {
         // POI mean should be reasonable
         let poi_mean = result.param_mean(0);
         assert!(poi_mean > 0.0 && poi_mean < 3.0, "POI mean should be reasonable: {}", poi_mean);
+
+        for c in &result.chains {
+            assert_eq!(c.energies.len(), 50);
+        }
     }
 }

@@ -65,9 +65,11 @@ class TestSampleAPIShape:
         assert "diverging" in stats
         assert "tree_depth" in stats
         assert "accept_prob" in stats
+        assert "energy" in stats
         assert "step_size" in stats
         assert len(stats["diverging"]) == n_chains
         assert len(stats["diverging"][0]) == n_samples
+        assert len(stats["energy"][0]) == n_samples
         assert len(stats["step_size"]) == n_chains
 
     def test_diagnostics_keys(self):
@@ -79,6 +81,7 @@ class TestSampleAPIShape:
         assert "ess_tail" in diag
         assert "divergence_rate" in diag
         assert "max_treedepth_rate" in diag
+        assert "ebfmi" in diag
         # r_hat should be a dict keyed by param name
         for name in result["param_names"]:
             assert name in diag["r_hat"]

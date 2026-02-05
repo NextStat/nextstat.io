@@ -63,6 +63,7 @@ def sample(
     seed: int = 42,
     max_treedepth: int = 10,
     target_accept: float = 0.8,
+    init_jitter: float = 0.0,
     data: Optional[list[float]] = None,
     return_idata: bool = True,
 ):
@@ -82,6 +83,7 @@ def sample(
         seed=seed,
         max_treedepth=max_treedepth,
         target_accept=target_accept,
+        init_jitter=init_jitter,
         data=data,
     )
 
@@ -95,4 +97,3 @@ __all__ = [
     "sample",
     "to_inferencedata",
 ]
-
