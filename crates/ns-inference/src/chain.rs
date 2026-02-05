@@ -2,7 +2,7 @@
 
 use crate::nuts::{NutsConfig, sample_nuts};
 use ns_core::Result;
-use ns_translate::pyhf::HistFactoryModel;
+use ns_core::traits::LogDensityModel;
 
 /// Raw MCMC chain from one NUTS run.
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ impl SamplerResult {
 ///
 /// Each chain gets seed `seed + chain_id`.
 pub fn sample_nuts_multichain(
-    model: &HistFactoryModel,
+    model: &(impl LogDensityModel + Sync),
     n_chains: usize,
     n_warmup: usize,
     n_samples: usize,
@@ -88,7 +88,7 @@ pub fn sample_nuts_multichain(
 
     let chains: Vec<Chain> = chains.into_iter().collect::<Result<Vec<_>>>()?;
 
-    let param_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
+    let param_names: Vec<String> = model.parameter_names();
 
     Ok(SamplerResult { chains, param_names, n_warmup, n_samples, diagnostics: None })
 }
@@ -97,6 +97,7 @@ pub fn sample_nuts_multichain(
 mod tests {
     use super::*;
     use ns_translate::pyhf::Workspace;
+    use ns_translate::pyhf::HistFactoryModel;
 
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");
