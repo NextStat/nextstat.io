@@ -803,6 +803,7 @@ dependencies = [
  "ns-core",
  "ns-inference",
  "ns-translate",
+ "ns-viz",
  "rayon",
  "serde_json",
 ]
@@ -895,7 +896,11 @@ dependencies = [
 name = "ns-viz"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "ns-core",
+ "ns-inference",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

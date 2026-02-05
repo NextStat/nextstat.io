@@ -134,8 +134,75 @@ enum Commands {
         threads: usize,
     },
 
+    /// Visualization artifacts (plot-friendly JSON)
+    Viz {
+        #[command(subcommand)]
+        command: VizCommands,
+    },
+
     /// Print version information
     Version,
+}
+
+#[derive(Subcommand)]
+enum VizCommands {
+    /// Profile likelihood curve artifact (q_mu vs mu)
+    Profile {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Scan start (mu)
+        #[arg(long, default_value = "0.0")]
+        start: f64,
+
+        /// Scan stop (mu)
+        #[arg(long, default_value = "5.0")]
+        stop: f64,
+
+        /// Number of points (inclusive)
+        #[arg(long, default_value = "21")]
+        points: usize,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// CLs curve artifact with Brazil bands (observed + expected)
+    Cls {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Target CLs level (alpha), typically 0.05
+        #[arg(long, default_value = "0.05")]
+        alpha: f64,
+
+        /// Scan start (mu)
+        #[arg(long, default_value = "0.0")]
+        scan_start: f64,
+
+        /// Scan stop (mu)
+        #[arg(long, default_value = "5.0")]
+        scan_stop: f64,
+
+        /// Number of scan points (inclusive)
+        #[arg(long, default_value = "201")]
+        scan_points: usize,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
 }
 
 fn main() -> Result<()> {
@@ -178,6 +245,28 @@ fn main() -> Result<()> {
         Commands::Scan { input, start, stop, points, output, threads } => {
             cmd_scan(&input, start, stop, points, output.as_ref(), threads)
         }
+        Commands::Viz { command } => match command {
+            VizCommands::Profile { input, start, stop, points, output, threads } => {
+                cmd_viz_profile(&input, start, stop, points, output.as_ref(), threads)
+            }
+            VizCommands::Cls {
+                input,
+                alpha,
+                scan_start,
+                scan_stop,
+                scan_points,
+                output,
+                threads,
+            } => cmd_viz_cls(
+                &input,
+                alpha,
+                scan_start,
+                scan_stop,
+                scan_points,
+                output.as_ref(),
+                threads,
+            ),
+        },
         Commands::Version => {
             println!("nextstat {}", ns_core::VERSION);
             Ok(())
@@ -363,4 +452,53 @@ fn cmd_scan(
     });
 
     write_json(output, output_json)
+}
+
+fn cmd_viz_profile(
+    input: &PathBuf,
+    start: f64,
+    stop: f64,
+    points: usize,
+    output: Option<&PathBuf>,
+    threads: usize,
+) -> Result<()> {
+    if points < 2 {
+        anyhow::bail!("points must be >= 2");
+    }
+    let model = load_model(input, threads)?;
+    let mle = ns_inference::MaximumLikelihoodEstimator::new();
+
+    let step = (stop - start) / (points as f64 - 1.0);
+    let mu_values: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
+    let scan = ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?;
+    let artifact: ns_viz::ProfileCurveArtifact = scan.into();
+
+    write_json(output, serde_json::to_value(artifact)?)
+}
+
+fn cmd_viz_cls(
+    input: &PathBuf,
+    alpha: f64,
+    scan_start: f64,
+    scan_stop: f64,
+    scan_points: usize,
+    output: Option<&PathBuf>,
+    threads: usize,
+) -> Result<()> {
+    if scan_points < 2 {
+        anyhow::bail!("scan_points must be >= 2");
+    }
+    if !(scan_stop > scan_start) {
+        anyhow::bail!("scan_stop must be > scan_start");
+    }
+
+    let model = load_model(input, threads)?;
+    let mle = ns_inference::MaximumLikelihoodEstimator::new();
+    let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
+
+    let step = (scan_stop - scan_start) / (scan_points as f64 - 1.0);
+    let scan: Vec<f64> = (0..scan_points).map(|i| scan_start + step * i as f64).collect();
+
+    let artifact = ns_viz::ClsCurveArtifact::from_scan(&ctx, &mle, alpha, &scan)?;
+    write_json(output, serde_json::to_value(artifact)?)
 }

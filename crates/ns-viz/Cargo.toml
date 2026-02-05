@@ -13,6 +13,10 @@ description = "Visualization utilities for NextStat"
 
 [dependencies]
 ns-core = { path = "../ns-core" }
+ns-inference = { path = "../ns-inference" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+approx.workspace = true

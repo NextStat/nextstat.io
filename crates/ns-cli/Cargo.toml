@@ -16,6 +16,7 @@ ns-core = { path = "../ns-core" }
 ns-compute = { path = "../ns-compute" }
 ns-inference = { path = "../ns-inference" }
 ns-translate = { path = "../ns-translate" }
+ns-viz = { path = "../ns-viz" }
 anyhow.workspace = true
 clap.workspace = true
 log.workspace = true

@@ -1,13 +1,18 @@
 //! # ns-viz
 //!
-//! Visualization utilities for NextStat.
+//! Visualization data artifacts for NextStat.
 //!
-//! Will be implemented in Phase 3.
+//! This crate is intentionally dependency-light and focuses on emitting
+//! plot-friendly JSON structures (arrays instead of nested objects).
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-/// Placeholder for visualization functionality
-pub fn placeholder() {
-    // Will be implemented in Phase 3
-}
+/// CLs curve artifacts (observed + Brazil bands).
+pub mod cls;
+
+/// Profile likelihood artifacts (q_mu curves).
+pub mod profile;
+
+pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
+pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};

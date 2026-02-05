@@ -8,6 +8,11 @@ use crate::MaximumLikelihoodEstimator;
 use ns_core::{Error, Result};
 use ns_translate::pyhf::HistFactoryModel;
 
+/// Canonical expected-set ordering in `-muhat/sigma` space.
+///
+/// Matches pyhf: `n_sigma = [2, 1, 0, -1, -2]`.
+pub const NSIGMA_ORDER: [f64; 5] = [2.0, 1.0, 0.0, -1.0, -2.0];
+
 fn poi_index(model: &HistFactoryModel) -> Result<usize> {
     model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
@@ -16,6 +21,19 @@ fn normal_cdf(x: f64) -> f64 {
     // Use erfc for better numerical behavior in the tails:
     // Φ(x) = 0.5 * erfc(-x / sqrt(2))
     0.5 * statrs::function::erf::erfc(-x / std::f64::consts::SQRT_2)
+}
+
+/// Compute the expected CLs "Brazil band" for a given Asimov `sqrt(q_mu,A)`.
+///
+/// Output ordering is `NSIGMA_ORDER` in `-muhat/sigma` space (pyhf-compatible).
+pub fn expected_cls_band_from_sqrtq_a(sqrtq_a: f64) -> [f64; 5] {
+    let mut out = [0.0; 5];
+    for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {
+        let clsb = normal_cdf(-(t + sqrtq_a));
+        let clb = normal_cdf(-t);
+        out[i] = clsb / clb;
+    }
+    out
 }
 
 /// Result of an asymptotic `hypotest` at a single tested POI value.
@@ -198,17 +216,6 @@ impl AsymptoticCLsContext {
         })
     }
 
-    fn expected_cls_band_from_sqrtq_a(&self, sqrtq_a: f64) -> [f64; 5] {
-        let mut out = [0.0; 5];
-        let nsigmas = [2.0, 1.0, 0.0, -1.0, -2.0];
-        for (i, t) in nsigmas.into_iter().enumerate() {
-            let clsb = normal_cdf(-(t + sqrtq_a));
-            let clb = normal_cdf(-t);
-            out[i] = clsb / clb;
-        }
-        out
-    }
-
     /// Compute observed CLs and expected CLs band (Brazil band) for a single `mu_test`.
     pub fn hypotest_qtilde_expected_set(
         &self,
@@ -216,7 +223,7 @@ impl AsymptoticCLsContext {
         mu_test: f64,
     ) -> Result<HypotestExpectedSet> {
         let r = self.hypotest_qtilde(mle, mu_test)?;
-        let expected = self.expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt());
+        let expected = expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt());
         Ok(HypotestExpectedSet { observed: r.cls, expected })
     }
 
@@ -242,7 +249,7 @@ impl AsymptoticCLsContext {
         for &mu in scan {
             let r = self.hypotest_qtilde(mle, mu)?;
             observed_cls.push(r.cls);
-            expected_cls.push(self.expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt()));
+            expected_cls.push(expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt()));
         }
 
         fn interp_limit(alpha: f64, xs: &[f64], ys: &[f64]) -> Result<f64> {
@@ -379,7 +386,7 @@ impl AsymptoticCLsContext {
             self.poi,
             mu_test,
         )?;
-        let band = self.expected_cls_band_from_sqrtq_a(q_mu_a.sqrt());
+        let band = expected_cls_band_from_sqrtq_a(q_mu_a.sqrt());
         Ok(band[expected_idx])
     }
 
