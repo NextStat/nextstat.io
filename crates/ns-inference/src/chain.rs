@@ -109,7 +109,12 @@ mod tests {
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
         // No jitter so identical seeds produce identical chains.
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0 };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
         let r1 = sample_nuts_multichain(&model, 2, 50, 20, 42, config.clone()).unwrap();
         let r2 = sample_nuts_multichain(&model, 2, 50, 20, 42, config).unwrap();
 
@@ -126,7 +131,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5 };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let result = sample_nuts_multichain(&model, 2, 100, 50, 42, config).unwrap();
 
         assert_eq!(result.chains.len(), 2);

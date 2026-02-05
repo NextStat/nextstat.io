@@ -560,7 +560,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
 
         assert_eq!(chain.draws_constrained.len(), 50);
@@ -591,7 +596,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
         let chain1 = sample_nuts(&model, 50, 20, 123, config.clone()).unwrap();
         let chain2 = sample_nuts(&model, 50, 20, 123, config).unwrap();
 
@@ -614,7 +624,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 10, target_accept: 0.8, init_jitter: 0.5, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 10,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let result = sample_nuts_multichain(&model, 4, 500, 500, 42, config).unwrap();
 
         let diag = compute_diagnostics(&result);
@@ -648,12 +663,7 @@ mod tests {
 
         // E-BFMI > 0.2 for all chains
         for (i, &bfmi) in diag.ebfmi.iter().enumerate() {
-            assert!(
-                bfmi > 0.2,
-                "E-BFMI for chain {} = {} (should be > 0.2)",
-                i,
-                bfmi,
-            );
+            assert!(bfmi > 0.2, "E-BFMI for chain {} = {} (should be > 0.2)", i, bfmi,);
         }
 
         // POI posterior mean should be positive and in a reasonable range.
@@ -662,10 +672,6 @@ mod tests {
         // Jacobian prior from the sigmoid transform, so we only check that the
         // mean is in (0, 5) - broadly consistent with the signal strength.
         let poi_mean = result.param_mean(0);
-        assert!(
-            poi_mean > 0.0 && poi_mean < 5.0,
-            "POI posterior mean out of range: {}",
-            poi_mean,
-        );
+        assert!(poi_mean > 0.0 && poi_mean < 5.0, "POI posterior mean out of range: {}", poi_mean,);
     }
 }

@@ -78,6 +78,66 @@ print("Best-fit POI:", result.bestfit[poi_idx])
 print("Uncertainty:", result.uncertainties[poi_idx])
 ```
 
+### Bayesian (NUTS) + ArviZ
+
+Install optional deps:
+
+```bash
+pip install "nextstat[bayes]"
+```
+
+Run sampling and get an ArviZ `InferenceData`:
+
+```python
+import json
+from pathlib import Path
+
+import nextstat
+
+workspace = json.loads(Path("workspace.json").read_text())
+model = nextstat.from_pyhf(json.dumps(workspace))
+
+idata = nextstat.bayes.sample(
+    model,
+    n_chains=2,
+    n_warmup=500,
+    n_samples=1000,
+    seed=42,
+    target_accept=0.8,
+)
+
+print(idata)
+```
+
+### Viz (CLs Brazil bands, profile scans)
+
+Install optional deps:
+
+```bash
+pip install "nextstat[viz]"
+```
+
+Compute artifacts and plot (matplotlib):
+
+```python
+import json
+import numpy as np
+from pathlib import Path
+
+import nextstat
+
+workspace = json.loads(Path("workspace.json").read_text())
+model = nextstat.from_pyhf(json.dumps(workspace))
+
+scan = np.linspace(0.0, 5.0, 101)
+cls_art = nextstat.viz.cls_curve(model, scan, alpha=0.05)
+nextstat.viz.plot_cls_curve(cls_art, title="CLs Brazil band")
+
+mu = [0.0, 0.5, 1.0, 2.0]
+prof_art = nextstat.viz.profile_curve(model, mu)
+nextstat.viz.plot_profile_curve(prof_art, title="Profile likelihood scan")
+```
+
 ### CLI
 
 ```bash

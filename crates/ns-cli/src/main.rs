@@ -212,10 +212,7 @@ enum VizCommands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_max_level(cli.log_level)
-        .with_target(false)
-        .init();
+    tracing_subscriber::fmt().with_max_level(cli.log_level).with_target(false).init();
 
     match cli.command {
         Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads),
@@ -315,10 +312,7 @@ fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::His
     let json = std::fs::read_to_string(input)?;
     let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
     let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
-    tracing::info!(
-        parameters = model.parameters().len(),
-        "workspace loaded"
-    );
+    tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok(model)
 }
 

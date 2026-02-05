@@ -64,6 +64,7 @@ def sample(
     max_treedepth: int = 10,
     target_accept: float = 0.8,
     init_jitter: float = 0.0,
+    init_jitter_rel: float | None = None,
     data: Optional[list[float]] = None,
     return_idata: bool = True,
 ):
@@ -84,6 +85,7 @@ def sample(
         max_treedepth=max_treedepth,
         target_accept=target_accept,
         init_jitter=init_jitter,
+        init_jitter_rel=init_jitter_rel,
         data=data,
     )
 
