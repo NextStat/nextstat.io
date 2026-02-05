@@ -3,6 +3,7 @@
 use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizerConfig};
 use nalgebra::DMatrix;
 use ns_core::{FitResult, Result};
+use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_translate::pyhf::HistFactoryModel;
 
 /// Maximum Likelihood Estimator
@@ -23,14 +24,14 @@ impl MaximumLikelihoodEstimator {
         Self { config }
     }
 
-    /// Fit a HistFactory model to data
+    /// Fit any [`LogDensityModel`] by minimizing negative log-likelihood.
     ///
     /// # Arguments
     /// * `model` - Statistical model to fit
     ///
     /// # Returns
     /// FitResult with best-fit parameters, uncertainties, covariance, and fit quality
-    pub fn fit(&self, model: &HistFactoryModel) -> Result<FitResult> {
+    pub fn fit<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
         let result = self.fit_minimum(model)?;
 
         // Compute full Hessian and covariance matrix
@@ -80,25 +81,24 @@ impl MaximumLikelihoodEstimator {
     /// (profile likelihood scans, hypotest/limits).
     pub fn fit_minimum(
         &self,
-        model: &HistFactoryModel,
+        model: &impl LogDensityModel,
     ) -> Result<crate::optimizer::OptimizationResult> {
-        let initial_params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let bounds: Vec<(f64, f64)> = model.parameters().iter().map(|p| p.bounds).collect();
+        let initial_params: Vec<f64> = model.parameter_init();
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        let prepared = model.prepared();
 
-        let prepared = model.prepare();
-
-        struct ModelObjective<'a> {
-            prepared: ns_translate::pyhf::PreparedModel<'a>,
-            model: &'a HistFactoryModel,
+        struct ModelObjective<'a, M: LogDensityModel + ?Sized, P: PreparedNll> {
+            prepared: P,
+            model: &'a M,
         }
 
-        impl<'a> ObjectiveFunction for ModelObjective<'a> {
+        impl<M: LogDensityModel + ?Sized, P: PreparedNll> ObjectiveFunction for ModelObjective<'_, M, P> {
             fn eval(&self, params: &[f64]) -> Result<f64> {
                 self.prepared.nll(params)
             }
 
             fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
-                self.model.gradient_reverse(params)
+                self.model.grad_nll(params)
             }
         }
 
@@ -114,11 +114,11 @@ impl MaximumLikelihoodEstimator {
     /// Cost: N+1 gradient evaluations (each O(1) via reverse-mode AD).
     fn compute_hessian(
         &self,
-        model: &HistFactoryModel,
+        model: &impl LogDensityModel,
         best_params: &[f64],
     ) -> Result<DMatrix<f64>> {
         let n = best_params.len();
-        let grad_center = model.gradient_reverse(best_params)?;
+        let grad_center = model.grad_nll(best_params)?;
 
         let mut hessian = DMatrix::zeros(n, n);
 
@@ -127,7 +127,7 @@ impl MaximumLikelihoodEstimator {
 
             let mut params_plus = best_params.to_vec();
             params_plus[j] += eps;
-            let grad_plus = model.gradient_reverse(&params_plus)?;
+            let grad_plus = model.grad_nll(&params_plus)?;
 
             for i in 0..n {
                 hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
