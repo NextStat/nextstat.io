@@ -1,0 +1,26 @@
+[package]
+name = "ns-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Command-line interface for NextStat"
+
+[dependencies]
+ns-core = { path = "../ns-core" }
+ns-compute = { path = "../ns-compute" }
+ns-inference = { path = "../ns-inference" }
+ns-translate = { path = "../ns-translate" }
+anyhow.workspace = true
+clap.workspace = true
+log.workspace = true
+env_logger.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]

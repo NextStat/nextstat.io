@@ -1,0 +1,52 @@
+[build-system]
+requires = ["maturin>=1.11,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "nextstat"
+version = "0.1.0"
+description = "High-performance statistical fitting for High Energy Physics"
+readme = "../../README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later OR LicenseRef-Commercial" }
+authors = [
+    { name = "NextStat Contributors" }
+]
+keywords = ["statistics", "physics", "hep", "fitting", "likelihood"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.19",
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.15",
+]
+validation = [
+    "numpy>=2.0",
+    "pyhf>=0.7.6",
+]
+bayes = [
+    "arviz>=0.23.4",
+    "emcee>=3.1.6",
+]
+
+[project.urls]
+Homepage = "https://nextstat.io"
+Repository = "https://github.com/nextstat/nextstat"
+Documentation = "https://docs.nextstat.io"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "nextstat._core"

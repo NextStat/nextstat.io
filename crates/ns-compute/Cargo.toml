@@ -1,0 +1,41 @@
+[package]
+name = "ns-compute"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Compute backends (CPU/Metal/CUDA) for NextStat"
+
+[dependencies]
+ns-core = { path = "../ns-core" }
+thiserror.workspace = true
+log.workspace = true
+
+# CPU parallelism (Priority P0)
+rayon.workspace = true
+ndarray.workspace = true
+
+# SIMD
+wide.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+proptest.workspace = true
+env_logger.workspace = true
+criterion.workspace = true
+statrs.workspace = true
+
+[[bench]]
+name = "simd_benchmark"
+harness = false
+
+[features]
+default = ["cpu"]
+cpu = []
+metal = []  # Phase 2C - Optional
+cuda = []   # Phase 2C - Optional

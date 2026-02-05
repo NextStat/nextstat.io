@@ -1,0 +1,130 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock should be committed (workspace contains binaries/bindings)
+
+# Local toolchains / caches (keep in repo dir for sandboxed runs)
+.cargo-home/
+.rustup/
+.pip-cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# IntelliJ
+*.iml
+.idea/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# Vim
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Benchmarks
+criterion/
+*.bench
+
+# Documentation
+target/doc/
+_build/
+.doctrees/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# IDE settings
+.settings/
+.project
+.classpath
+.factorypath
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+
+# Debug artifacts
+*.dSYM/
+*.pdb
+
+# Maturin
+*.whl

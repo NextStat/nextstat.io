@@ -1,0 +1,397 @@
+//! Asymptotic CLs hypothesis tests (frequentist).
+//!
+//! This follows the pyhf `infer.hypotest(..., calctype="asymptotics", test_stat="qtilde")`
+//! implementation, matching the test statistic transformation used in
+//! `pyhf.infer.calculators.AsymptoticCalculator` (pyhf 0.7.x).
+
+use crate::MaximumLikelihoodEstimator;
+use ns_core::{Error, Result};
+use ns_translate::pyhf::HistFactoryModel;
+
+fn poi_index(model: &HistFactoryModel) -> Result<usize> {
+    model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
+}
+
+fn normal_cdf(x: f64) -> f64 {
+    // Use erfc for better numerical behavior in the tails:
+    // Φ(x) = 0.5 * erfc(-x / sqrt(2))
+    0.5 * statrs::function::erf::erfc(-x / std::f64::consts::SQRT_2)
+}
+
+/// Result of an asymptotic `hypotest` at a single tested POI value.
+#[derive(Debug, Clone)]
+pub struct HypotestResult {
+    /// Tested POI value.
+    pub mu_test: f64,
+    /// Observed CLs value.
+    pub cls: f64,
+    /// Observed CLs+b value.
+    pub clsb: f64,
+    /// Observed CLb value.
+    pub clb: f64,
+    /// The test statistic in `-muhat/sigma` space (pyhf `AsymptoticCalculator.teststatistic`).
+    pub teststat: f64,
+    /// Observed `q_mu`/`qtilde_mu` value.
+    pub q_mu: f64,
+    /// Asimov `q_mu,A` value.
+    pub q_mu_a: f64,
+    /// Unconditional best-fit POI on observed data.
+    pub mu_hat: f64,
+}
+
+/// Observed and expected CLs values (Brazil band) for a fixed tested POI.
+///
+/// The expected ordering matches pyhf: `n_sigma = [2, 1, 0, -1, -2]` in the
+/// `-muhat/sigma` space (see `pyhf.infer.calculators.AsymptoticCalculator.expected_pvalues`).
+#[derive(Debug, Clone)]
+pub struct HypotestExpectedSet {
+    /// Observed CLs.
+    pub observed: f64,
+    /// Expected CLs at `n_sigma = [2, 1, 0, -1, -2]`.
+    pub expected: [f64; 5],
+}
+
+fn qmu_like_with_free(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    free_nll: f64,
+    mu_hat: f64,
+    poi: usize,
+    mu_test: f64,
+) -> Result<(f64, f64, u64, bool)> {
+    let fixed_model = model.with_fixed_param(poi, mu_test);
+    let fixed = mle.fit_minimum(&fixed_model)?;
+    if !fixed.converged {
+        return Err(Error::Validation(format!(
+            "Fixed fit did not converge for mu_test={}: {}",
+            mu_test, fixed.message
+        )));
+    }
+
+    let llr = 2.0 * (fixed.fval - free_nll);
+    let mut q = llr.max(0.0);
+    if mu_hat > mu_test {
+        q = 0.0;
+    }
+    Ok((q, fixed.fval, fixed.n_iter, fixed.converged))
+}
+
+/// Context for repeated asymptotic CLs evaluations (caches free fits and Asimov model).
+#[derive(Debug, Clone)]
+pub struct AsymptoticCLsContext {
+    poi: usize,
+    data_model: HistFactoryModel,
+    asimov_model: HistFactoryModel,
+    free_data_nll: f64,
+    free_data_mu_hat: f64,
+    free_asimov_nll: f64,
+    free_asimov_mu_hat: f64,
+}
+
+impl AsymptoticCLsContext {
+    /// Build an asymptotic calculator context for `test_stat="qtilde"`.
+    ///
+    /// - Free fit to observed data is cached.
+    /// - Asimov dataset is built with `asimov_mu = 0.0` (pyhf behavior for qtilde).
+    /// - Free fit to the Asimov dataset is cached.
+    pub fn new(mle: &MaximumLikelihoodEstimator, model: &HistFactoryModel) -> Result<Self> {
+        let poi = poi_index(model)?;
+
+        let free_data = mle.fit_minimum(model)?;
+        if !free_data.converged {
+            return Err(Error::Validation(format!(
+                "Free fit on observed data did not converge: {}",
+                free_data.message
+            )));
+        }
+        let free_data_nll = free_data.fval;
+        let free_data_mu_hat = free_data.parameters[poi];
+
+        // Asimov: fit nuisances with POI fixed at 0.0, then set observed main to expected.
+        let asimov_mu = 0.0;
+        let fixed0 = mle.fit_minimum(&model.with_fixed_param(poi, asimov_mu))?;
+        if !fixed0.converged {
+            return Err(Error::Validation(format!(
+                "Fit for Asimov nuisances (mu=0) did not converge: {}",
+                fixed0.message
+            )));
+        }
+        let expected_main = model.expected_data(&fixed0.parameters)?;
+        let asimov_model = model
+            .with_observed_main(&expected_main)?
+            .with_constraint_centers(&fixed0.parameters)?
+            .with_shapesys_aux_observed_from_params(&fixed0.parameters)?;
+
+        let free_asimov = mle.fit_minimum(&asimov_model)?;
+        if !free_asimov.converged {
+            return Err(Error::Validation(format!(
+                "Free fit on Asimov data did not converge: {}",
+                free_asimov.message
+            )));
+        }
+        let free_asimov_nll = free_asimov.fval;
+        let free_asimov_mu_hat = free_asimov.parameters[poi];
+
+        Ok(Self {
+            poi,
+            data_model: model.clone(),
+            asimov_model,
+            free_data_nll,
+            free_data_mu_hat,
+            free_asimov_nll,
+            free_asimov_mu_hat,
+        })
+    }
+
+    /// Evaluate asymptotic `hypotest` with `test_stat="qtilde"` and `calc_base_dist="normal"`.
+    pub fn hypotest_qtilde(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        mu_test: f64,
+    ) -> Result<HypotestResult> {
+        // Observed q_mu
+        let (q_mu, _nll_mu, _n_iter_mu, _conv_mu) = qmu_like_with_free(
+            mle,
+            &self.data_model,
+            self.free_data_nll,
+            self.free_data_mu_hat,
+            self.poi,
+            mu_test,
+        )?;
+
+        // Asimov q_mu,A
+        let (q_mu_a, _nll_mu_a, _n_iter_mu_a, _conv_mu_a) = qmu_like_with_free(
+            mle,
+            &self.asimov_model,
+            self.free_asimov_nll,
+            self.free_asimov_mu_hat,
+            self.poi,
+            mu_test,
+        )?;
+
+        let sqrtq = q_mu.sqrt();
+        let sqrtq_a = q_mu_a.sqrt();
+
+        // Match pyhf's AsymptoticCalculator transformation for qtilde.
+        let teststat = if sqrtq <= sqrtq_a {
+            sqrtq - sqrtq_a
+        } else {
+            let denom = 2.0 * sqrtq_a.max(1e-16);
+            (q_mu - q_mu_a) / denom
+        };
+
+        // Distributions in -muhat/sigma space:
+        // sb: shift = -sqrtq_a, b: shift = 0, and right-tail pvalues as normal_cdf(-(...)).
+        let clsb = normal_cdf(-(teststat + sqrtq_a));
+        let clb = normal_cdf(-teststat);
+        let cls = clsb / clb;
+
+        Ok(HypotestResult {
+            mu_test,
+            cls,
+            clsb,
+            clb,
+            teststat,
+            q_mu,
+            q_mu_a,
+            mu_hat: self.free_data_mu_hat,
+        })
+    }
+
+    fn expected_cls_band_from_sqrtq_a(&self, sqrtq_a: f64) -> [f64; 5] {
+        let mut out = [0.0; 5];
+        let nsigmas = [2.0, 1.0, 0.0, -1.0, -2.0];
+        for (i, t) in nsigmas.into_iter().enumerate() {
+            let clsb = normal_cdf(-(t + sqrtq_a));
+            let clb = normal_cdf(-t);
+            out[i] = clsb / clb;
+        }
+        out
+    }
+
+    /// Compute observed CLs and expected CLs band (Brazil band) for a single `mu_test`.
+    pub fn hypotest_qtilde_expected_set(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        mu_test: f64,
+    ) -> Result<HypotestExpectedSet> {
+        let r = self.hypotest_qtilde(mle, mu_test)?;
+        let expected = self.expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt());
+        Ok(HypotestExpectedSet { observed: r.cls, expected })
+    }
+
+    /// Compute observed and expected upper limits from a linear scan + interpolation.
+    ///
+    /// Mirrors `pyhf.infer.intervals.upper_limits.upper_limit(..., scan=..., test_stat="qtilde")`.
+    pub fn upper_limits_qtilde_linear_scan(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        alpha: f64,
+        scan: &[f64],
+    ) -> Result<(f64, [f64; 5])> {
+        if scan.len() < 2 {
+            return Err(Error::Validation("scan must have at least 2 points".to_string()));
+        }
+        if !(0.0 < alpha && alpha < 1.0) {
+            return Err(Error::Validation(format!("alpha must be in (0,1), got {}", alpha)));
+        }
+
+        let mut observed_cls: Vec<f64> = Vec::with_capacity(scan.len());
+        let mut expected_cls: Vec<[f64; 5]> = Vec::with_capacity(scan.len());
+
+        for &mu in scan {
+            let r = self.hypotest_qtilde(mle, mu)?;
+            observed_cls.push(r.cls);
+            expected_cls.push(self.expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt()));
+        }
+
+        fn interp_limit(alpha: f64, xs: &[f64], ys: &[f64]) -> Result<f64> {
+            // Match `numpy.interp(alpha, ys[::-1], xs[::-1])` used by pyhf.
+            if xs.len() != ys.len() {
+                return Err(Error::Validation("interp input length mismatch".to_string()));
+            }
+            let n = xs.len();
+            if n < 2 {
+                return Err(Error::Validation("interp requires >=2 points".to_string()));
+            }
+
+            let mut xp: Vec<f64> = ys.to_vec();
+            xp.reverse();
+            let mut fp: Vec<f64> = xs.to_vec();
+            fp.reverse();
+
+            // numpy.interp clamps outside the xp range.
+            if alpha <= xp[0] {
+                return Ok(fp[0]);
+            }
+            if alpha >= xp[n - 1] {
+                return Ok(fp[n - 1]);
+            }
+
+            // Find i s.t. xp[i] <= alpha < xp[i+1]
+            let pos = xp.partition_point(|v| *v <= alpha);
+            if pos == 0 {
+                return Ok(fp[0]);
+            }
+            if pos >= n {
+                return Ok(fp[n - 1]);
+            }
+            let i = pos - 1;
+
+            let x0 = xp[i];
+            let x1 = xp[i + 1];
+            let y0 = fp[i];
+            let y1 = fp[i + 1];
+            if (x1 - x0).abs() < 1e-18 {
+                return Ok(y0);
+            }
+            let t = (alpha - x0) / (x1 - x0);
+            Ok(y0 + t * (y1 - y0))
+        }
+
+        let obs_limit = interp_limit(alpha, scan, &observed_cls)?;
+        let mut exp_limits = [0.0; 5];
+        for j in 0..5 {
+            let band: Vec<f64> = expected_cls.iter().map(|v| v[j]).collect();
+            exp_limits[j] = interp_limit(alpha, scan, &band)?;
+        }
+
+        Ok((obs_limit, exp_limits))
+    }
+
+    /// Find an observed upper limit `mu_up` such that `CLs(mu_up) = alpha` via bisection.
+    ///
+    /// This is the Phase 3 baseline: observed limit only (no expected bands yet).
+    pub fn upper_limit_qtilde(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        alpha: f64,
+        mut lo: f64,
+        mut hi: f64,
+        rtol: f64,
+        max_iter: usize,
+    ) -> Result<f64> {
+        if !(0.0 < alpha && alpha < 1.0) {
+            return Err(Error::Validation(format!("alpha must be in (0,1), got {}", alpha)));
+        }
+        if lo < 0.0 {
+            lo = 0.0;
+        }
+        if hi <= lo {
+            return Err(Error::Validation(format!("Invalid bracket: lo={} hi={}", lo, hi)));
+        }
+
+        let cls_lo = self.hypotest_qtilde(mle, lo)?.cls;
+        if cls_lo < alpha {
+            return Err(Error::Validation(format!(
+                "Lower bracket does not satisfy CLs(lo) >= alpha: CLs({})={} < {}",
+                lo, cls_lo, alpha
+            )));
+        }
+
+        let mut cls_hi = self.hypotest_qtilde(mle, hi)?.cls;
+        let mut expand = 0;
+        while cls_hi > alpha && expand < 50 {
+            hi *= 2.0;
+            cls_hi = self.hypotest_qtilde(mle, hi)?.cls;
+            expand += 1;
+        }
+        if cls_hi > alpha {
+            return Err(Error::Validation(format!(
+                "Failed to bracket limit: CLs(hi)={} still > alpha={} after expansions",
+                cls_hi, alpha
+            )));
+        }
+
+        for _ in 0..max_iter {
+            let mid = 0.5 * (lo + hi);
+            let cls_mid = self.hypotest_qtilde(mle, mid)?.cls;
+            if cls_mid > alpha {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+
+            let denom = hi.abs().max(1.0);
+            if ((hi - lo).abs() / denom) < rtol {
+                break;
+            }
+        }
+
+        Ok(0.5 * (lo + hi))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ns_translate::pyhf::Workspace;
+
+    fn load_simple_workspace() -> Workspace {
+        let json = include_str!("../../../tests/fixtures/simple_workspace.json");
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn test_hypotest_qtilde_matches_pyhf_golden_simple() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let mle = MaximumLikelihoodEstimator::new();
+        let ctx = AsymptoticCLsContext::new(&mle, &model).unwrap();
+
+        // Golden values from pyhf 0.7.6:
+        // pyhf.infer.hypotest(mu, data, model, test_stat="qtilde", calctype="asymptotics")
+        let cases = [
+            (0.0, 1.0),
+            (0.5, 0.6972458106165782),
+            (1.0, 0.40567153849506016),
+            (2.0, 0.06802288789117743),
+        ];
+
+        for (mu, expected_cls) in cases {
+            let r = ctx.hypotest_qtilde(&mle, mu).unwrap();
+            let diff = (r.cls - expected_cls).abs();
+            assert!(diff < 5e-6, "mu={} cls={} expected={} diff={}", mu, r.cls, expected_cls, diff);
+        }
+    }
+}

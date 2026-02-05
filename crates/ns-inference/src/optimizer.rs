@@ -1,0 +1,313 @@
+//! Optimization algorithms
+//!
+//! This module provides wrappers around argmin optimizers with a clean interface.
+
+use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::solver::linesearch::MoreThuenteLineSearch;
+use argmin::solver::quasinewton::LBFGS;
+use ns_core::Result;
+use std::fmt;
+
+/// Configuration for L-BFGS-B optimizer
+#[derive(Debug, Clone)]
+pub struct OptimizerConfig {
+    /// Maximum number of iterations
+    pub max_iter: u64,
+    /// Convergence tolerance for gradient norm
+    pub tol: f64,
+    /// Number of corrections to approximate inverse Hessian
+    pub m: usize,
+}
+
+impl Default for OptimizerConfig {
+    fn default() -> Self {
+        Self { max_iter: 1000, tol: 1e-6, m: 10 }
+    }
+}
+
+/// Result of optimization
+#[derive(Debug, Clone)]
+pub struct OptimizationResult {
+    /// Best-fit parameters
+    pub parameters: Vec<f64>,
+    /// Function value at minimum
+    pub fval: f64,
+    /// Number of iterations
+    pub n_iter: u64,
+    /// Convergence status
+    pub converged: bool,
+    /// Termination message
+    pub message: String,
+}
+
+impl fmt::Display for OptimizationResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "OptimizationResult(fval={:.6}, n_iter={}, converged={})",
+            self.fval, self.n_iter, self.converged
+        )
+    }
+}
+
+/// Objective function trait for optimization
+pub trait ObjectiveFunction: Send + Sync {
+    /// Evaluate function at given parameters
+    fn eval(&self, params: &[f64]) -> Result<f64>;
+
+    /// Compute gradient at given parameters (numerical if not overridden)
+    fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+        // Default: central differences with adaptive step size
+        let n = params.len();
+        let mut grad = vec![0.0; n];
+
+        for i in 0..n {
+            // Adaptive step size: eps = sqrt(machine_epsilon) * max(|x_i|, 1)
+            let eps = 1e-8 * params[i].abs().max(1.0);
+
+            // Forward step
+            let mut params_plus = params.to_vec();
+            params_plus[i] += eps;
+            let f_plus = self.eval(&params_plus)?;
+
+            // Backward step
+            let mut params_minus = params.to_vec();
+            params_minus[i] -= eps;
+            let f_minus = self.eval(&params_minus)?;
+
+            // Central difference
+            grad[i] = (f_plus - f_minus) / (2.0 * eps);
+        }
+
+        Ok(grad)
+    }
+}
+
+/// Wrapper to make ObjectiveFunction compatible with argmin
+struct ArgminProblem<'a> {
+    objective: &'a dyn ObjectiveFunction,
+    bounds: &'a [(f64, f64)],
+}
+
+fn clamp_params(params: &[f64], bounds: &[(f64, f64)]) -> Vec<f64> {
+    params.iter().zip(bounds.iter()).map(|(&v, &(lo, hi))| v.clamp(lo, hi)).collect()
+}
+
+impl<'a> CostFunction for ArgminProblem<'a> {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, params: &Self::Param) -> std::result::Result<Self::Output, argmin::core::Error> {
+        let clamped = clamp_params(params, self.bounds);
+        self.objective.eval(&clamped).map_err(|e| argmin::core::Error::msg(e.to_string()))
+    }
+}
+
+impl<'a> Gradient for ArgminProblem<'a> {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+
+    fn gradient(
+        &self,
+        params: &Self::Param,
+    ) -> std::result::Result<Self::Gradient, argmin::core::Error> {
+        let clamped = clamp_params(params, self.bounds);
+        let mut g = self
+            .objective
+            .gradient(&clamped)
+            .map_err(|e| argmin::core::Error::msg(e.to_string()))?;
+
+        // Projected-gradient heuristic: if we are at a bound and the gradient would push further
+        // outside, zero that component. This matches the Phase 1 plan (“bounds via clamp”) and
+        // prevents the line-search from repeatedly stepping into flat clamped regions.
+        const EPS: f64 = 1e-12;
+        for (i, (&x, &(lo, hi))) in clamped.iter().zip(self.bounds.iter()).enumerate() {
+            if x <= lo + EPS && g[i] > 0.0 {
+                g[i] = 0.0;
+            }
+            if x >= hi - EPS && g[i] < 0.0 {
+                g[i] = 0.0;
+            }
+        }
+
+        Ok(g)
+    }
+}
+
+/// L-BFGS-B optimizer with box constraints
+pub struct LbfgsbOptimizer {
+    config: OptimizerConfig,
+}
+
+impl LbfgsbOptimizer {
+    /// Create new L-BFGS-B optimizer with given configuration
+    pub fn new(config: OptimizerConfig) -> Self {
+        Self { config }
+    }
+
+    /// Minimize objective function with bounds
+    ///
+    /// # Arguments
+    /// * `objective` - Objective function to minimize
+    /// * `init_params` - Initial parameter values
+    /// * `bounds` - Parameter bounds as (lower, upper) for each parameter
+    ///
+    /// # Returns
+    /// Optimization result with best-fit parameters
+    pub fn minimize(
+        &self,
+        objective: &dyn ObjectiveFunction,
+        init_params: &[f64],
+        bounds: &[(f64, f64)],
+    ) -> Result<OptimizationResult> {
+        if init_params.len() != bounds.len() {
+            return Err(ns_core::Error::Validation(format!(
+                "Parameter and bounds length mismatch: {} != {}",
+                init_params.len(),
+                bounds.len()
+            )));
+        }
+
+        let init_clamped = clamp_params(init_params, bounds);
+
+        // Create argmin problem
+        let problem = ArgminProblem { objective, bounds };
+
+        // Create L-BFGS solver with line search
+        let linesearch = MoreThuenteLineSearch::new();
+        let solver = LBFGS::new(linesearch, self.config.m);
+
+        // Create executor
+        let res = Executor::new(problem, solver)
+            .configure(|state| {
+                state.param(init_clamped).max_iters(self.config.max_iter).target_cost(0.0)
+            })
+            .run()
+            .map_err(|e| ns_core::Error::Validation(format!("Optimization failed: {}", e)))?;
+
+        // Extract results
+        let state = res.state();
+        let best_params_unclamped = state
+            .get_best_param()
+            .ok_or_else(|| ns_core::Error::Validation("No best parameters found".to_string()))?
+            .clone();
+        let best_params = clamp_params(&best_params_unclamped, bounds);
+        let fval = state.get_best_cost();
+        let n_iter = state.get_iter();
+
+        // Check convergence
+        let converged = state.terminated();
+        let message = format!("{:?}", state.get_termination_status());
+
+        Ok(OptimizationResult { parameters: best_params, fval, n_iter, converged, message })
+    }
+}
+
+impl Default for LbfgsbOptimizer {
+    fn default() -> Self {
+        Self::new(OptimizerConfig::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    // Simple test function: f(x, y) = (x - 2)^2 + (y - 3)^2
+    // Minimum at (2, 3) with f = 0
+    struct QuadraticFunction;
+
+    impl ObjectiveFunction for QuadraticFunction {
+        fn eval(&self, params: &[f64]) -> Result<f64> {
+            let x = params[0];
+            let y = params[1];
+            Ok((x - 2.0).powi(2) + (y - 3.0).powi(2))
+        }
+
+        fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+            let x = params[0];
+            let y = params[1];
+            Ok(vec![2.0 * (x - 2.0), 2.0 * (y - 3.0)])
+        }
+    }
+
+    #[test]
+    fn test_optimizer_quadratic() {
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10 };
+
+        let optimizer = LbfgsbOptimizer::new(config);
+        let objective = QuadraticFunction;
+
+        let init = vec![0.0, 0.0];
+        let bounds = vec![(-10.0, 10.0), (-10.0, 10.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+
+        println!("{}", result);
+
+        // Check convergence
+        assert!(result.converged, "Optimizer should converge");
+
+        // Check parameters
+        assert_relative_eq!(result.parameters[0], 2.0, epsilon = 1e-4);
+        assert_relative_eq!(result.parameters[1], 3.0, epsilon = 1e-4);
+
+        // Check function value
+        assert_relative_eq!(result.fval, 0.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_optimizer_with_bounds() {
+        let optimizer = LbfgsbOptimizer::default();
+        let objective = QuadraticFunction;
+
+        // Constrain to x in [3, 5], y in [1, 2]
+        // Optimal within bounds: x=3, y=2
+        let init = vec![4.0, 1.5];
+        let bounds = vec![(3.0, 5.0), (1.0, 2.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+
+        println!("{}", result);
+
+        // Should find constrained optimum
+        assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-4);
+        assert_relative_eq!(result.parameters[1], 2.0, epsilon = 1e-4);
+    }
+
+    // Rosenbrock function: f(x,y) = (a-x)^2 + b(y-x^2)^2
+    // Minimum at (a, a^2) with f = 0
+    // Common test: a=1, b=100, min at (1, 1)
+    struct RosenbrockFunction;
+
+    impl ObjectiveFunction for RosenbrockFunction {
+        fn eval(&self, params: &[f64]) -> Result<f64> {
+            let x = params[0];
+            let y = params[1];
+            let a = 1.0;
+            let b = 100.0;
+            Ok((a - x).powi(2) + b * (y - x.powi(2)).powi(2))
+        }
+    }
+
+    #[test]
+    fn test_optimizer_rosenbrock() {
+        let config = OptimizerConfig { max_iter: 1000, tol: 1e-6, m: 10 };
+
+        let optimizer = LbfgsbOptimizer::new(config);
+        let objective = RosenbrockFunction;
+
+        let init = vec![0.0, 0.0];
+        let bounds = vec![(-10.0, 10.0), (-10.0, 10.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+
+        println!("Rosenbrock: {}", result);
+
+        // Rosenbrock is challenging, accept looser tolerance
+        assert_relative_eq!(result.parameters[0], 1.0, epsilon = 1e-3);
+        assert_relative_eq!(result.parameters[1], 1.0, epsilon = 1e-3);
+        assert!(result.fval < 1e-4);
+    }
+}

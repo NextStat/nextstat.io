@@ -1,0 +1,91 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ns-core",
+    "crates/ns-compute",
+    "crates/ns-ad",
+    "crates/ns-inference",
+    "crates/ns-translate",
+    "crates/ns-viz",
+    "crates/ns-cli",
+    "bindings/ns-py",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+authors = ["NextStat Contributors"]
+license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+repository = "https://github.com/nextstat/nextstat"
+homepage = "https://nextstat.io"
+keywords = ["statistics", "physics", "hep", "fitting", "likelihood"]
+categories = ["science", "mathematics"]
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "2.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml_ng = "0.10"
+log = "0.4"
+env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1.0", features = ["full"] }
+
+# Numerical computing
+ndarray = { version = "0.17", features = ["serde"] }
+nalgebra = "0.34"
+num-traits = "0.2"
+statrs = "0.18"
+argmin = "0.11"
+argmin-math = { version = "0.5", features = ["ndarray_latest"] }
+
+# SIMD (CPU - Priority P0)
+wide = "0.7"
+
+# Parallelism (CPU - Priority P0)
+rayon = "1.11"
+
+# Testing
+approx = "0.5"
+proptest = "1.10"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# MCMC / sampling (Phase 3, optional)
+rand = "0.9"
+rand_distr = "0.5"
+
+# Python bindings
+pyo3 = { version = "0.28", features = ["extension-module"] }
+numpy = "0.27"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# Autodiff (Phase 2B)
+# autodiff dependencies will be added later
+
+# GPU backends (Phase 2C - Optional)
+# Metal/CUDA dependencies will be feature-gated
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = false  # Keep symbols for debugging
+
+[profile.bench]
+inherits = "release"
+lto = "fat"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+# Cargo configuration
+[workspace.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -1,0 +1,36 @@
+[package]
+name = "ns-translate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Format translators (pyhf JSON, HistFactory XML, ROOT) for NextStat"
+
+[dependencies]
+ns-core = { path = "../ns-core" }
+ns-ad = { path = "../ns-ad" }
+ns-compute = { path = "../ns-compute" }
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+log.workspace = true
+rayon.workspace = true
+statrs.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+criterion.workspace = true
+proptest.workspace = true
+
+[[bench]]
+name = "nll_benchmark"
+harness = false
+
+[[bench]]
+name = "model_benchmark"
+harness = false
