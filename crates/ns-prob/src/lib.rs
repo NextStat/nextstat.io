@@ -6,4 +6,4 @@
 //! - small numeric helpers (stable log/exp/sigmoid primitives)
 
 pub mod math;
-
+pub mod normal;
