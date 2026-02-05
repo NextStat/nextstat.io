@@ -156,3 +156,30 @@ plt.tight_layout()
 plt.show()
 ```
 
+## Python Surface (nextstat.infer)
+
+The Python API mirrors the CLI at a high level.
+
+```python
+import json
+from pathlib import Path
+
+import nextstat
+from nextstat import infer
+
+workspace = json.loads(Path("tests/fixtures/simple_workspace.json").read_text())
+model = nextstat.from_pyhf(json.dumps(workspace))
+
+# Observed asymptotic CLs (qtilde) at a tested mu
+r = infer.hypotest(1.0, model)
+print("cls(mu=1):", r["cls"])
+
+# Observed upper limit (default alpha=0.05)
+ul = infer.upper_limit(model, alpha=0.05)
+print("mu_up:", ul["mu_up"])
+
+# Profile likelihood scan q(mu)
+scan = infer.profile_scan(model, start=0.0, stop=2.0, points=21)
+print("mu_hat:", scan["mu_hat"])
+print("first point:", scan["points"][0])
+```

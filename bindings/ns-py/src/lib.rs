@@ -7,9 +7,13 @@ use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
 
 // Re-export types from core crates
+use ns_inference::chain::sample_nuts_multichain;
+use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
+use ns_inference::nuts::NutsConfig;
 use ns_inference::{hypotest::AsymptoticCLsContext as RustCLsCtx, profile_likelihood as pl};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
+use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
 /// Python wrapper for HistFactoryModel
 #[pyclass(name = "HistFactoryModel")]
@@ -362,6 +366,189 @@ fn upper_limits_root(
     Ok((obs, exp.to_vec()))
 }
 
+/// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
+#[pyfunction]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, data=None))]
+fn sample(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+    seed: u64,
+    max_treedepth: usize,
+    target_accept: f64,
+    data: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let sample_model = if let Some(obs_main) = data {
+        model
+            .inner
+            .with_observed_main(&obs_main)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    } else {
+        model.inner.clone()
+    };
+
+    let config = NutsConfig { max_treedepth, target_accept };
+
+    // Release GIL during Rayon-parallel sampling.
+    let result = py.detach(|| {
+        sample_nuts_multichain(&sample_model, n_chains, n_warmup, n_samples, seed, config)
+    })
+    .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
+
+    let diag = compute_diagnostics(&result);
+    let param_names = &result.param_names;
+    let n_params = param_names.len();
+
+    // Build "posterior" dict: {param_name: [[chain0_draws], [chain1_draws], ...]}
+    let posterior = PyDict::new(py);
+    for (p, name) in param_names.iter().enumerate() {
+        let chains_draws: Vec<Vec<f64>> = result.param_draws(p);
+        posterior.set_item(name, chains_draws)?;
+    }
+
+    // Build "sample_stats" dict
+    let sample_stats = PyDict::new(py);
+    let diverging: Vec<Vec<bool>> =
+        result.chains.iter().map(|c| c.divergences.clone()).collect();
+    let tree_depth: Vec<Vec<usize>> =
+        result.chains.iter().map(|c| c.tree_depths.clone()).collect();
+    let accept_prob: Vec<Vec<f64>> =
+        result.chains.iter().map(|c| c.accept_probs.clone()).collect();
+    let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
+    sample_stats.set_item("diverging", diverging)?;
+    sample_stats.set_item("tree_depth", tree_depth)?;
+    sample_stats.set_item("accept_prob", accept_prob)?;
+    sample_stats.set_item("step_size", step_sizes)?;
+
+    // Build "diagnostics" dict
+    let diagnostics_dict = PyDict::new(py);
+
+    let r_hat_dict = PyDict::new(py);
+    let ess_bulk_dict = PyDict::new(py);
+    let ess_tail_dict = PyDict::new(py);
+    for p in 0..n_params {
+        r_hat_dict.set_item(&param_names[p], diag.r_hat[p])?;
+        ess_bulk_dict.set_item(&param_names[p], diag.ess_bulk[p])?;
+        ess_tail_dict.set_item(&param_names[p], diag.ess_tail[p])?;
+    }
+    diagnostics_dict.set_item("r_hat", r_hat_dict)?;
+    diagnostics_dict.set_item("ess_bulk", ess_bulk_dict)?;
+    diagnostics_dict.set_item("ess_tail", ess_tail_dict)?;
+    diagnostics_dict.set_item("divergence_rate", diag.divergence_rate)?;
+    diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
+
+    // Assemble top-level dict
+    let out = PyDict::new(py);
+    out.set_item("posterior", posterior)?;
+    out.set_item("sample_stats", sample_stats)?;
+    out.set_item("diagnostics", diagnostics_dict)?;
+    out.set_item("param_names", param_names)?;
+    out.set_item("n_chains", n_chains)?;
+    out.set_item("n_warmup", n_warmup)?;
+    out.set_item("n_samples", n_samples)?;
+
+    Ok(out.into_any().unbind())
+}
+
+/// Plot-friendly CLs curve + Brazil band artifact over a scan grid.
+#[pyfunction]
+#[pyo3(signature = (model, scan, *, alpha=0.05, data=None))]
+fn cls_curve(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    scan: Vec<f64>,
+    alpha: f64,
+    data: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    if scan.len() < 2 {
+        return Err(PyValueError::new_err("scan must have at least 2 points"));
+    }
+
+    let mle = RustMLE::new();
+    let fit_model = if let Some(obs_main) = data {
+        model
+            .inner
+            .with_observed_main(&obs_main)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    } else {
+        model.inner.clone()
+    };
+
+    let ctx = RustCLsCtx::new(&mle, &fit_model)
+        .map_err(|e| PyValueError::new_err(format!("Failed to build asymptotic context: {}", e)))?;
+    let art = ClsCurveArtifact::from_scan(&ctx, &mle, alpha, &scan)
+        .map_err(|e| PyValueError::new_err(format!("CLs curve failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("alpha", art.alpha)?;
+    out.set_item("nsigma_order", art.nsigma_order.to_vec())?;
+    out.set_item("obs_limit", art.obs_limit)?;
+    out.set_item("exp_limits", art.exp_limits.to_vec())?;
+
+    let points: Vec<Py<PyAny>> = art
+        .points
+        .iter()
+        .map(|p| {
+            let d = PyDict::new(py);
+            d.set_item("mu", p.mu).unwrap();
+            d.set_item("cls", p.cls).unwrap();
+            d.set_item("expected", p.expected.to_vec()).unwrap();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("points", PyList::new(py, points)?)?;
+
+    Ok(out.into_any().unbind())
+}
+
+/// Plot-friendly profile likelihood scan artifact.
+#[pyfunction]
+#[pyo3(signature = (model, mu_values, *, data=None))]
+fn profile_curve(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    mu_values: Vec<f64>,
+    data: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let mle = RustMLE::new();
+    let fit_model = if let Some(obs_main) = data {
+        model
+            .inner
+            .with_observed_main(&obs_main)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    } else {
+        model.inner.clone()
+    };
+
+    let scan = pl::scan(&mle, &fit_model, &mu_values)
+        .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?;
+    let art: ProfileCurveArtifact = scan.into();
+
+    let out = PyDict::new(py);
+    out.set_item("poi_index", art.poi_index)?;
+    out.set_item("mu_hat", art.mu_hat)?;
+    out.set_item("nll_hat", art.nll_hat)?;
+
+    let points: Vec<Py<PyAny>> = art
+        .points
+        .iter()
+        .map(|p| {
+            let d = PyDict::new(py);
+            d.set_item("mu", p.mu).unwrap();
+            d.set_item("q_mu", p.q_mu).unwrap();
+            d.set_item("nll_mu", p.nll_mu).unwrap();
+            d.set_item("converged", p.converged).unwrap();
+            d.set_item("n_iter", p.n_iter).unwrap();
+            d.into_any().unbind()
+        })
+        .collect();
+    out.set_item("points", PyList::new(py, points)?)?;
+
+    Ok(out.into_any().unbind())
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -375,6 +562,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits_root, m)?)?;
+    m.add_function(wrap_pyfunction!(sample, m)?)?;
+    m.add_function(wrap_pyfunction!(cls_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(profile_curve, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;

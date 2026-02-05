@@ -78,3 +78,54 @@ def upper_limit(
     max_iter: int = ...,
     data: Optional[List[float]] = ...,
 ) -> float: ...
+
+
+def upper_limits(
+    model: HistFactoryModel,
+    scan: List[float],
+    *,
+    alpha: float = ...,
+    data: Optional[List[float]] = ...,
+) -> Tuple[float, List[float]]: ...
+
+
+def upper_limits_root(
+    model: HistFactoryModel,
+    *,
+    alpha: float = ...,
+    lo: float = ...,
+    hi: Optional[float] = ...,
+    rtol: float = ...,
+    max_iter: int = ...,
+    data: Optional[List[float]] = ...,
+) -> Tuple[float, List[float]]: ...
+
+
+def sample(
+    model: HistFactoryModel,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    target_accept: float = ...,
+    data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...
+
+
+def cls_curve(
+    model: HistFactoryModel,
+    scan: List[float],
+    *,
+    alpha: float = ...,
+    data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...
+
+
+def profile_curve(
+    model: HistFactoryModel,
+    mu_values: List[float],
+    *,
+    data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...

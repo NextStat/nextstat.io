@@ -26,6 +26,7 @@ ns-core = { path = "../../crates/ns-core" }
 ns-compute = { path = "../../crates/ns-compute" }
 ns-inference = { path = "../../crates/ns-inference" }
 ns-translate = { path = "../../crates/ns-translate" }
+ns-viz = { path = "../../crates/ns-viz" }
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }
 

@@ -870,6 +870,7 @@ dependencies = [
  "ns-core",
  "ns-inference",
  "ns-translate",
+ "ns-viz",
  "pyo3",
  "serde_json",
 ]
