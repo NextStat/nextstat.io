@@ -39,6 +39,9 @@ pub mod profile_likelihood;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
+#[cfg(test)]
+mod universal_tests;
+
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};

@@ -22,6 +22,13 @@ pub struct PreparedModelRef<'a, M: LogDensityModel + ?Sized> {
     model: &'a M,
 }
 
+impl<'a, M: LogDensityModel + ?Sized> PreparedModelRef<'a, M> {
+    /// Create a new prepared wrapper that forwards `nll` to the model.
+    pub fn new(model: &'a M) -> Self {
+        Self { model }
+    }
+}
+
 impl<'a, M: LogDensityModel + ?Sized> PreparedNll for PreparedModelRef<'a, M> {
     fn nll(&self, params: &[f64]) -> Result<f64> {
         self.model.nll(params)
