@@ -81,27 +81,23 @@ fn build_leaf(
     integrator: &LeapfrogIntegrator<'_, '_>,
     state: &HmcState,
     direction: i32,
+    log_u: f64,
     h0: f64,
     inv_mass: &[f64],
 ) -> Result<NutsTree> {
     let mut new_state = state.clone();
-    // Take one step in the given direction (negate momentum for backward)
-    if direction < 0 {
-        for p in &mut new_state.p {
-            *p = -*p;
-        }
-    }
-    integrator.step(&mut new_state)?;
-    if direction < 0 {
-        for p in &mut new_state.p {
-            *p = -*p;
-        }
-    }
+
+    // Integrate forward/backward by taking a step with +/- eps.
+    integrator.step_dir(&mut new_state, direction)?;
 
     let h = new_state.hamiltonian(inv_mass);
     let energy_error = h - h0;
     let divergent = energy_error.abs() > DIVERGENCE_THRESHOLD;
-    let log_weight = -energy_error; // log(accept_prob) = h0 - h
+    // Slice: keep only states with log_u <= log p(q,p) where log p = -H.
+    // Use weights relative to the start point: log_weight = -(H - H0) = -energy_error.
+    let logp = -h;
+    let in_slice = log_u <= logp;
+    let log_weight = if in_slice { -energy_error } else { f64::NEG_INFINITY };
 
     let accept_prob = (-energy_error).exp().min(1.0);
 
@@ -130,16 +126,18 @@ fn build_tree(
     state: &HmcState,
     depth: usize,
     direction: i32,
+    log_u: f64,
     h0: f64,
     inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> Result<NutsTree> {
     if depth == 0 {
-        return build_leaf(integrator, state, direction, h0, inv_mass);
+        return build_leaf(integrator, state, direction, log_u, h0, inv_mass);
     }
 
     // Build first half-tree
-    let mut inner = build_tree(integrator, state, depth - 1, direction, h0, inv_mass, rng)?;
+    let mut inner =
+        build_tree(integrator, state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
 
     if inner.divergent || inner.turning {
         return Ok(inner);
@@ -163,7 +161,8 @@ fn build_tree(
     };
 
     // Recompute potential for the edge state
-    let outer = build_tree(integrator, &edge_state, depth - 1, direction, h0, inv_mass, rng)?;
+    let outer =
+        build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
 
     // Merge trees
     let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
@@ -197,7 +196,7 @@ fn build_tree(
     // Check U-turn on full tree
     let dq: Vec<f64> =
         inner.q_right.iter().zip(inner.q_left.iter()).map(|(&r, &l)| r - l).collect();
-    inner.turning = is_turning(&dq, &inner.p_left, &inner.p_right, inv_mass);
+    inner.turning = inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, inv_mass);
 
     inner.depth = depth;
     Ok(inner)
@@ -224,6 +223,9 @@ pub(crate) fn nuts_transition(
     }
 
     let h0 = state.hamiltonian(inv_mass);
+    // Slice variable: log(u) where u ~ Uniform(0, exp(-H0)).
+    // Equivalent: log_u = ln(rand()) - H0.
+    let log_u: f64 = rng.random::<f64>().ln() - h0;
 
     // Initialize tree with current point
     let mut tree = NutsTree {
@@ -267,12 +269,8 @@ pub(crate) fn nuts_transition(
             }
         };
 
-        let subtree = build_tree(integrator, &edge_state, depth, direction, h0, inv_mass, rng)?;
-
-        if subtree.divergent {
-            tree.divergent = true;
-            break;
-        }
+        let subtree =
+            build_tree(integrator, &edge_state, depth, direction, log_u, h0, inv_mass, rng)?;
 
         // Multinomial merge: accept subtree proposal with probability
         // exp(subtree.log_sum_weight - new_log_sum_weight)
@@ -288,6 +286,8 @@ pub(crate) fn nuts_transition(
         tree.log_sum_weight = new_log_sum_weight;
         tree.n_leapfrog += subtree.n_leapfrog;
         tree.sum_accept_prob += subtree.sum_accept_prob;
+        tree.divergent = tree.divergent || subtree.divergent;
+        tree.turning = tree.turning || subtree.turning;
 
         // Update tree edges
         if direction > 0 {
@@ -304,6 +304,10 @@ pub(crate) fn nuts_transition(
         let dq: Vec<f64> =
             tree.q_right.iter().zip(tree.q_left.iter()).map(|(&r, &l)| r - l).collect();
         if is_turning(&dq, &tree.p_left, &tree.p_right, inv_mass) {
+            tree.turning = true;
+            break;
+        }
+        if tree.divergent || tree.turning {
             break;
         }
 
@@ -410,6 +414,7 @@ pub fn sample_nuts(
         divergences,
         tree_depths,
         accept_probs,
+        max_treedepth: config.max_treedepth,
         step_size: final_eps,
         mass_diag,
     })

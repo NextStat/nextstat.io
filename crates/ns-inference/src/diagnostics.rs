@@ -1,6 +1,8 @@
 //! MCMC diagnostics: split R-hat, bulk ESS, tail ESS.
 //!
-//! Implements the Vehtari et al. (2021) rank-normalized diagnostics.
+//! Note: this implementation is intentionally lightweight. It computes split R-hat
+//! and a simple autocorrelation-based ESS estimate. It does not (yet) implement
+//! the full rank-normalized + folded diagnostics described by Vehtari et al. (2021).
 
 /// Diagnostics for a multi-chain NUTS run.
 #[derive(Debug, Clone)]
@@ -188,19 +190,12 @@ pub fn compute_diagnostics(result: &crate::chain::SamplerResult) -> DiagnosticsR
     let divergence_rate =
         if total_samples > 0 { n_divergent as f64 / total_samples as f64 } else { 0.0 };
 
-    let max_depth = result
-        .chains
-        .first()
-        .and_then(|c| c.tree_depths.first())
-        .map(|_| {
-            result.chains.iter().flat_map(|c| c.tree_depths.iter()).copied().max().unwrap_or(0)
-        })
-        .unwrap_or(10);
+    // Rate of transitions that hit the configured maximum treedepth.
     let n_max_depth: usize = result
         .chains
         .iter()
-        .flat_map(|c| c.tree_depths.iter())
-        .filter(|&&d| d >= max_depth)
+        .flat_map(|c| c.tree_depths.iter().map(move |&d| (d, c.max_treedepth)))
+        .filter(|(d, max_d)| *d >= *max_d)
         .count();
     let max_treedepth_rate =
         if total_samples > 0 { n_max_depth as f64 / total_samples as f64 } else { 0.0 };

@@ -17,6 +17,8 @@ pub struct Chain {
     pub tree_depths: Vec<usize>,
     /// Acceptance probability per draw.
     pub accept_probs: Vec<f64>,
+    /// Configured maximum tree depth for this chain (for diagnostics).
+    pub max_treedepth: usize,
     /// Final adapted step size.
     pub step_size: f64,
     /// Final adapted mass matrix diagonal.

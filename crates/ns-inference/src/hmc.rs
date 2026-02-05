@@ -78,7 +78,11 @@ impl<'a, 'b> LeapfrogIntegrator<'a, 'b> {
     ///
     /// Returns `Err` if gradient evaluation fails (e.g., NaN parameters).
     pub fn step(&self, state: &mut HmcState) -> Result<()> {
-        let eps = self.step_size;
+        self.step_with_eps(state, self.step_size)
+    }
+
+    /// Single leapfrog step with explicit step size (used for backward integration in NUTS).
+    pub fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
         let n = state.q.len();
 
         // Half-step momentum
@@ -105,6 +109,12 @@ impl<'a, 'b> LeapfrogIntegrator<'a, 'b> {
         }
 
         Ok(())
+    }
+
+    /// Take one leapfrog step in the given direction (`+1` forward, `-1` backward).
+    pub fn step_dir(&self, state: &mut HmcState, direction: i32) -> Result<()> {
+        debug_assert!(direction == 1 || direction == -1);
+        self.step_with_eps(state, self.step_size * (direction as f64))
     }
 
     /// Full trajectory: `n_steps` leapfrog steps.
