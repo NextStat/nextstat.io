@@ -392,10 +392,11 @@ fn sample(
     let config = NutsConfig { max_treedepth, target_accept };
 
     // Release GIL during Rayon-parallel sampling.
-    let result = py.detach(|| {
-        sample_nuts_multichain(&sample_model, n_chains, n_warmup, n_samples, seed, config)
-    })
-    .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
+    let result = py
+        .detach(|| {
+            sample_nuts_multichain(&sample_model, n_chains, n_warmup, n_samples, seed, config)
+        })
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
 
     let diag = compute_diagnostics(&result);
     let param_names = &result.param_names;
@@ -410,12 +411,9 @@ fn sample(
 
     // Build "sample_stats" dict
     let sample_stats = PyDict::new(py);
-    let diverging: Vec<Vec<bool>> =
-        result.chains.iter().map(|c| c.divergences.clone()).collect();
-    let tree_depth: Vec<Vec<usize>> =
-        result.chains.iter().map(|c| c.tree_depths.clone()).collect();
-    let accept_prob: Vec<Vec<f64>> =
-        result.chains.iter().map(|c| c.accept_probs.clone()).collect();
+    let diverging: Vec<Vec<bool>> = result.chains.iter().map(|c| c.divergences.clone()).collect();
+    let tree_depth: Vec<Vec<usize>> = result.chains.iter().map(|c| c.tree_depths.clone()).collect();
+    let accept_prob: Vec<Vec<f64>> = result.chains.iter().map(|c| c.accept_probs.clone()).collect();
     let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
     sample_stats.set_item("diverging", diverging)?;
     sample_stats.set_item("tree_depth", tree_depth)?;

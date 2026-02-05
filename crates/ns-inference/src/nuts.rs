@@ -136,8 +136,7 @@ fn build_tree(
     }
 
     // Build first half-tree
-    let mut inner =
-        build_tree(integrator, state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
+    let mut inner = build_tree(integrator, state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
 
     if inner.divergent || inner.turning {
         return Ok(inner);
@@ -196,7 +195,8 @@ fn build_tree(
     // Check U-turn on full tree
     let dq: Vec<f64> =
         inner.q_right.iter().zip(inner.q_left.iter()).map(|(&r, &l)| r - l).collect();
-    inner.turning = inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, inv_mass);
+    inner.turning =
+        inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, inv_mass);
 
     inner.depth = depth;
     Ok(inner)

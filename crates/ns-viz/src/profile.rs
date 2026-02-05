@@ -49,4 +49,3 @@ impl From<ProfileLikelihoodScan> for ProfileCurveArtifact {
         }
     }
 }
-

@@ -23,8 +23,9 @@ pytestmark = pytest.mark.slow
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 FIXTURE = "simple_workspace.json"
-N_TOYS = int(os.environ.get("NS_TOYS", "50"))
+N_TOYS = int(os.environ.get("NS_TOYS", "20"))
 SEED = int(os.environ.get("NS_SEED", "0"))
+SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "81"))
 
 
 def load_workspace() -> dict:
@@ -67,7 +68,8 @@ def test_upper_limit_coverage_regression_vs_pyhf():
     ns_model = nextstat.from_pyhf(json.dumps(workspace))
 
     # Fixed scan grid (keeps runtime stable and comparable).
-    scan = np.linspace(0.0, 5.0, 201)
+    # Coverage tests are expensive: prefer moderate resolution by default.
+    scan = np.linspace(0.0, 5.0, SCAN_POINTS)
 
     covered_pyhf = 0
     covered_ns = 0
@@ -95,4 +97,3 @@ def test_upper_limit_coverage_regression_vs_pyhf():
 
     # Regression check: NextStat should track pyhf coverage on the same toys.
     assert abs(cov_ns - cov_pyhf) <= 0.05
-

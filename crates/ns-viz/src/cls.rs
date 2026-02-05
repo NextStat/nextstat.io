@@ -59,12 +59,6 @@ impl ClsCurveArtifact {
 
         let (obs_limit, exp_limits) = ctx.upper_limits_qtilde_linear_scan(mle, alpha, scan)?;
 
-        Ok(Self {
-            alpha,
-            nsigma_order: NSIGMA_ORDER,
-            points,
-            obs_limit,
-            exp_limits,
-        })
+        Ok(Self { alpha, nsigma_order: NSIGMA_ORDER, points, obs_limit, exp_limits })
     }
 }

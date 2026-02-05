@@ -90,10 +90,7 @@ fn viz_cls_contract() {
     assert_eq!(points.len(), 51);
     let first = points[0].as_object().expect("point should be object");
     assert!(first.get("cls").and_then(|x| x.as_f64()).unwrap().is_finite());
-    let expected = first
-        .get("expected")
-        .and_then(|x| x.as_array())
-        .expect("point.expected should be array");
+    let expected =
+        first.get("expected").and_then(|x| x.as_array()).expect("point.expected should be array");
     assert_eq!(expected.len(), 5);
 }
-
