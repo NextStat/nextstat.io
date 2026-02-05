@@ -368,7 +368,7 @@ fn upper_limits_root(
 
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
-#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.5, data=None))]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, data=None))]
 fn sample(
     py: Python<'_>,
     model: &PyHistFactoryModel,
