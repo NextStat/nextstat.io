@@ -1,0 +1,59 @@
+name: Slow Regressions
+
+on:
+  workflow_dispatch:
+    inputs:
+      toys:
+        description: "Number of toys (slow tests)"
+        required: false
+        default: "50"
+      scan_points:
+        description: "Scan points for coverage test"
+        required: false
+        default: "81"
+  schedule:
+    # Weekly (Monday 02:00 UTC)
+    - cron: "0 2 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  slow:
+    name: Slow regressions (ubuntu, py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package
+        working-directory: bindings/ns-py
+        run: pip install target/wheels/*.whl
+
+      - name: Run slow tests
+        env:
+          NS_RUN_SLOW: "1"
+          NS_TOYS: ${{ inputs.toys || '50' }}
+          NS_SEED: "0"
+          NS_SCAN_POINTS: ${{ inputs.scan_points || '81' }}
+        run: |
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6"
+          pytest -q -m slow tests/python

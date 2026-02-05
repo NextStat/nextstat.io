@@ -1,6 +1,6 @@
 # NextStat Model Specification: HistFactory Probability Densities and Modifiers
 
-**Version:** 0.1.0 (Draft)
+**Version:** 0.2.0 (Draft)
 **Authors:** NextStat Contributors
 **Date:** February 2026
 
@@ -8,105 +8,113 @@
 
 ## Abstract
 
-This document provides the mathematical specification of the probability model implemented in NextStat. The model follows the HistFactory framework [1] as realized in the pyhf JSON workspace format [2, 3]. We define the full likelihood function, all supported modifier types with their interpolation formulas, constraint terms, and the construction of expected event rates. This specification serves as the reference for the implementation in `ns-translate` and the validation against pyhf.
+This document provides the mathematical specification of the probability model implemented in NextStat. The model follows the HistFactory framework [1] as realized in the pyhf JSON workspace format [2, 3]. We define the full likelihood function, all supported modifier types with their interpolation formulas, constraint terms, and the construction of expected event rates. This specification serves as the canonical reference for the implementation in `ns-translate` and the validation against pyhf.
 
 ---
 
 ## 1. Introduction
 
-NextStat implements HistFactory-style binned likelihood models as specified in [1] and realized in the pyhf JSON format [2]. The probability model describes the expected number of events in bins of histograms across one or more analysis channels, parameterized by a signal strength parameter $\mu$ and nuisance parameters $\boldsymbol{\theta}$ encoding systematic uncertainties.
+NextStat implements HistFactory-style binned likelihood models as specified in [1] and realized in the pyhf JSON format [2]. The probability model describes the expected number of events in bins of histograms across one or more analysis channels, parameterized by a signal strength parameter $\mu$ and nuisance parameters $\boldsymbol{\alpha}$, $\boldsymbol{\gamma}$ encoding systematic uncertainties.
 
 This document defines:
 
-- The structure of the full likelihood (Section 2)
+- The likelihood template and index conventions (Section 2)
 - The construction of expected event rates from nominal templates and modifiers (Section 3)
 - Each modifier type with its mathematical formula (Section 4)
-- Interpolation schemes (Section 5)
-- Constraint terms (Section 6)
+- All interpolation schemes with their properties (Section 5)
+- Constraint terms with consistent Bayesian and frequentist interpretations (Section 6)
 - The complete likelihood formula (Section 7)
 - Asimov dataset construction (Section 8)
+- The pyhf JSON workspace format (Section 9)
 
-All formulas are consistent with the pyhf implementation (NumPy backend) and validated by the deterministic parity test suite.
+All formulas are consistent with the pyhf implementation (NumPy backend, InterpCode=4 for normalization, piecewise linear for shape) and validated by the deterministic parity test suite.
 
-## 2. Probability Model Structure
+## 2. The Likelihood Template
 
-### 2.1 Channels and Bins
+### 2.1 Index Conventions
 
-A HistFactory model consists of a set of *channels* $\{c_1, c_2, \ldots\}$, each containing a histogram with $B_c$ bins. The bins across all channels are concatenated into a single vector of length $N = \sum_c B_c$.
+Following [1], we use the following mnemonic index conventions:
 
-For each bin $i$, we observe $n_i$ events and predict $\lambda_i(\mu, \boldsymbol{\theta})$ expected events.
+- $b \in \text{bins}$
+- $c \in \text{channels}$
+- $s \in \text{samples}$
+- $p \in \text{parameters}$
 
-### 2.2 Samples
+A **channel** is a region of the data defined by a corresponding event selection; channels have disjoint event selections. A **sample** is a set of scattering processes that can be added together incoherently.
 
-Each channel contains one or more *samples* (signal, background components). The expected count in bin $i$ is the sum over all samples $s$ in the channel containing bin $i$:
+### 2.2 Parameter Subsets
 
-$$\lambda_i(\mu, \boldsymbol{\theta}) = \sum_{s \in \text{channel}(i)} \lambda_{s,i}(\mu, \boldsymbol{\theta})$$
+We define the following subsets of parameters:
 
-### 2.3 Parameters
+- $\mathbb{N} = \{\phi_p\}$: unconstrained normalization factors (NormFactor)
+- $\mathbb{S} = \{\alpha_p\}$: parameters associated with systematic uncertainties that have external constraints (OverallSys and HistoSys)
+- $\boldsymbol{\Gamma} = \{\gamma_{cb}\}$: bin-by-bin uncertainties with constraints (StatError, ShapeSys — but *not* those associated with unconstrained ShapeFactor)
 
-The model parameters $\boldsymbol{\phi} = (\mu, \boldsymbol{\theta})$ comprise:
+### 2.3 The Template
 
-- **Parameters of interest (POI):** typically the signal strength $\mu$.
-- **Nuisance parameters:** systematic uncertainty parameters $\boldsymbol{\theta}$, which may be constrained (with associated auxiliary measurements) or unconstrained.
+The parametrized probability density function is of the form:
 
-Each parameter has:
+$$\mathcal{P}(n_{cb}, a_p \mid \phi_p, \alpha_p, \gamma_b) = \prod_{c \in \text{channels}} \prod_{b \in \text{bins}} \text{Pois}(n_{cb} \mid \nu_{cb}) \cdot G(L_0 \mid \lambda, \Delta_L) \cdot \prod_{p \in \mathbb{S}+\boldsymbol{\Gamma}} f_p(a_p \mid \alpha_p)$$
 
-| Attribute | Description |
-|-----------|-------------|
-| Name | Unique identifier |
-| Initial value | Starting point for optimization |
-| Bounds | $(a, b)$ box constraints |
-| Constrained | Whether an auxiliary constraint term exists |
-| Constraint center $\theta_0$ | Central value of the constraint |
-| Constraint width $\sigma$ | Width of the constraint |
+where $f_p(a_p \mid \alpha_p)$ is a constraint term describing an auxiliary measurement $a_p$ that constrains the nuisance parameter $\alpha_p$.
 
-### 2.4 Likelihood Factorization
+### 2.4 Expected Event Rate
 
-The full likelihood factorizes into three components:
+The expected (mean) number of events in a given bin is:
 
-$$\mathcal{L}(\mu, \boldsymbol{\theta}) = \underbrace{\mathcal{L}_\text{main}(\mu, \boldsymbol{\theta})}_{\text{Poisson bins}} \times \underbrace{\mathcal{L}_\text{aux}^\text{Poisson}(\boldsymbol{\theta})}_{\text{ShapeSys}} \times \underbrace{\mathcal{L}_\text{aux}^\text{Gauss}(\boldsymbol{\theta})}_{\text{Gaussian constraints}}$$
+$$\nu_{cb}(\phi_p, \alpha_p, \gamma_b) = \lambda_{cs} \; \gamma_{cb} \; \phi_{cs}(\boldsymbol{\alpha}) \; \eta_{cs}(\boldsymbol{\alpha}) \; \sigma_{csb}(\boldsymbol{\alpha})$$
+
+where:
+
+- $\lambda_{cs}$: luminosity parameter for a given channel and sample. For samples with luminosity uncertainty (`NormalizeByTheory=True`), this is a common luminosity parameter. For data-driven samples, $\lambda_{cs} = L_0$ (fixed).
+- $\gamma_{cb}$: bin-by-bin scale factor for statistical uncertainties (StatError, ShapeSys) and data-driven shape extrapolations (ShapeFactor). For statistical errors, $\gamma_{cb}$ is shared across all samples in the channel.
+- $\phi_{cs}$: product of unconstrained normalization factors for a given sample within a given channel, typically including the POI:
+
+$$\phi_{cs} = \prod_{p \in \mathbb{N}_c} \phi_p$$
+
+- $\eta_{cs}(\boldsymbol{\alpha})$: parametrized normalization uncertainties (OverallSys) for a given sample within a given channel (a factor around 1).
+- $\sigma_{csb}(\boldsymbol{\alpha})$: parametrized histogram (the nominal histogram modified by HistoSys) for a given sample within a given channel.
+
+### 2.5 Building Blocks
+
+The conceptual building blocks of the HistFactory model are organized as follows (cf. Table 1 of [1]):
+
+|  | Constrained | Unconstrained |
+|--|------------|---------------|
+| **Normalization Variation** | OverallSys ($\eta_{cs}$) | NormFactor ($\phi_p$) |
+| **Coherent Shape Variation** | HistoSys ($\sigma_{csb}$) | — |
+| **Bin-by-bin Variation** | ShapeSys & StatError ($\gamma_{cb}$) | ShapeFactor ($\gamma_{csb}$) |
 
 ## 3. Expected Event Rates
 
 ### 3.1 Rate Construction
 
-For each sample $s$ in a channel, the expected count in bin $i$ is computed from the nominal template $\nu_{s,i}$ by applying modifiers:
+For each sample $s$ in a channel $c$, the expected count in bin $b$ is computed from the nominal template $\nu^0_{csb}$ by applying modifiers:
 
-$$\lambda_{s,i}(\boldsymbol{\phi}) = \left(\nu_{s,i} + \Delta_{s,i}^\text{add}(\boldsymbol{\phi})\right) \times \prod_{m \in \text{mult}} \kappa_{m,s,i}(\boldsymbol{\phi})$$
+$$\nu_{cb} = \sum_{s \in \text{samples}_c} \lambda_{cs} \; \gamma_{cb} \; \phi_{cs} \; \eta_{cs}(\boldsymbol{\alpha}) \; \sigma_{csb}(\boldsymbol{\alpha})$$
 
-where:
+In the pyhf JSON realization, the implementation applies modifiers sequentially:
 
-- $\nu_{s,i}$ is the nominal (unmodified) expected count from the sample template.
-- $\Delta_{s,i}^\text{add}$ is the sum of additive modifier contributions (HistoSys).
-- $\kappa_{m,s,i}$ is the multiplicative factor from modifier $m$.
+1. Start with the nominal rate $\nu^0_{csb}$.
+2. Apply multiplicative modifiers: NormFactor, NormSys, ShapeSys, StatError, ShapeFactor, Lumi.
+3. Apply additive modifiers: HistoSys (as a delta to the parametrized histogram $\sigma_{csb}$).
+4. Sum over all samples in the channel.
 
-### 3.2 Modifier Application Order
-
-Modifiers are applied in the order they appear in the pyhf workspace specification. The implementation processes all modifiers for each sample in a single pass:
-
-1. Start with nominal rate $\nu_{s,i}$.
-2. Apply multiplicative modifiers (NormFactor, NormSys, ShapeSys, StatError, ShapeFactor, Lumi) as factors.
-3. Apply additive modifiers (HistoSys) as increments.
-
-### 3.3 Rate Clamping
+### 3.2 Rate Clamping
 
 To prevent numerical issues (division by zero, logarithm of non-positive values), expected rates are clamped:
 
-$$\lambda_i \gets \max(\lambda_i, \epsilon), \quad \epsilon = 10^{-10}$$
+$$\nu_{cb} \gets \max(\nu_{cb}, \epsilon), \quad \epsilon = 10^{-10}$$
 
 ## 4. Modifier Types
 
-### 4.1 NormFactor
+### 4.1 NormFactor (Unconstrained Normalization)
 
 **Purpose:** Free-floating overall normalization of a sample. Typically used for the POI.
 
-**Parameters:** One parameter $\mu$.
+**Parameters:** One parameter $\phi_p$ contributing to $\phi_{cs} = \prod_p \phi_p$.
 
-**Effect:** Multiplicative on all bins of the sample:
-
-$$\kappa_{s,i} = \mu$$
-
-**Properties:**
+**Effect:** Multiplicative on all bins of the sample.
 
 | Attribute | Value |
 |-----------|-------|
@@ -114,119 +122,125 @@ $$\kappa_{s,i} = \mu$$
 | Bounds | $(0, 10)$ |
 | Constrained | No |
 
-### 4.2 NormSys
+### 4.2 OverallSys / NormSys (Constrained Normalization)
 
-**Purpose:** Log-normal systematic uncertainty on sample normalization. Encodes the effect of a systematic source that scales all bins of a sample up or down.
+**Purpose:** Systematic uncertainty on sample normalization. The effect of a systematic source (e.g., jet energy scale) on the overall normalization of a given sample.
 
-**Parameters:** One parameter $\alpha$ (standard deviations from nominal).
+**Parameters:** One parameter $\alpha_p$ per systematic source.
 
-**Input data:** Per-modifier up/down scale factors $(h, l)$ (e.g., $h = 1.05$, $l = 0.95$ for a 5% uncertainty).
+**Input data:** Per-modifier up/down scale factors $(\eta^+_{ps}, \eta^-_{ps})$ representing the effect when $\alpha_p = +1$ and $\alpha_p = -1$ respectively. The nominal value is $\eta^0_{ps} = 1$.
 
-**Effect:** Multiplicative on all bins:
+**Note:** The distinction between the sign of the source $\alpha$ and the effect $\eta$ allows for anti-correlated systematics: $\eta^+ > 1$ does not necessarily follow from $\alpha = +1$.
 
-$$\kappa_{s,i} = f_\text{code4}(\alpha; h, l)$$
+**Effect:** The net normalization factor for sample $s$ is:
 
-where $f_\text{code4}$ is the pyhf "code 4" interpolation (see Section 5.1).
+$$\eta_s(\boldsymbol{\alpha}) = \prod_{p \in \text{Syst}} I(\alpha_p; 1, \eta^+_{ps}, \eta^-_{ps})$$
 
-**Properties:**
-
-| Attribute | Value |
-|-----------|-------|
-| Initial | $0.0$ |
-| Bounds | $(-5, 5)$ |
-| Constrained | Yes (Gaussian) |
-| $\theta_0$ | $0.0$ |
-| $\sigma$ | $1.0$ |
-
-### 4.3 HistoSys
-
-**Purpose:** Shape (bin-by-bin) systematic uncertainty. Encodes the effect of a systematic source that deforms the histogram shape.
-
-**Parameters:** One parameter $\alpha$.
-
-**Input data:** Per-bin up and down templates $h_i^\text{data}$, $l_i^\text{data}$.
-
-**Effect:** Additive per bin:
-
-$$\Delta_{s,i} = f_\text{code4p}(\alpha; l_i^\text{data}, \nu_{s,i}, h_i^\text{data})$$
-
-where $f_\text{code4p}$ is the pyhf "code 4p" piecewise interpolation (see Section 5.2).
-
-**Properties:**
+where $I$ is the interpolation function (see Section 5). NextStat uses InterpCode=4 (polynomial interpolation, exponential extrapolation), matching the pyhf default.
 
 | Attribute | Value |
 |-----------|-------|
 | Initial | $0.0$ |
 | Bounds | $(-5, 5)$ |
 | Constrained | Yes (Gaussian) |
-| $\theta_0$ | $0.0$ |
-| $\sigma$ | $1.0$ |
+| $\alpha^0_p$ | $0.0$ |
+| $\sigma_p$ | $1.0$ |
+
+### 4.3 HistoSys (Constrained Shape Variation)
+
+**Purpose:** Bin-by-bin systematic uncertainty. Encodes the effect of a systematic source on the shape and normalization of a histogram.
+
+**Parameters:** One parameter $\alpha_p$ (shared with other HistoSys/OverallSys for the same source).
+
+**Input data:** Per-bin variational histograms $\sigma^+_{psb}$ and $\sigma^-_{psb}$ representing the effect when $\alpha_p = +1$ and $\alpha_p = -1$ respectively. The nominal histogram is $\sigma^0_{sb}$.
+
+**Effect:** The parametrized histogram is:
+
+$$\sigma_{sb}(\boldsymbol{\alpha}) = \sigma^0_{sb} + \sum_{p \in \text{Syst}} I_\text{shape}(\alpha_p; \sigma^0_{sb}, \sigma^+_{psb}, \sigma^-_{psb})$$
+
+where $I_\text{shape}$ is the shape interpolation function (piecewise linear by default; see Section 5).
+
+| Attribute | Value |
+|-----------|-------|
+| Initial | $0.0$ |
+| Bounds | $(-5, 5)$ |
+| Constrained | Yes (Gaussian) |
+| $\alpha^0_p$ | $0.0$ |
+| $\sigma_p$ | $1.0$ |
 
 ### 4.4 ShapeSys (Barlow-Beeston)
 
-**Purpose:** Per-bin multiplicative modifier with Poisson auxiliary constraint. Models statistical uncertainty in background estimates from control regions or simulation.
+**Purpose:** Per-bin multiplicative modifier with Poisson auxiliary constraint. Models statistical uncertainty from Monte Carlo simulation when the histograms are sparsely populated [4].
 
-**Parameters:** One parameter $\gamma_i$ per bin (vector-valued modifier).
+**Parameters:** One parameter $\gamma_b$ per bin.
 
-**Input data:** Per-bin uncertainties $\sigma_i$.
+**Input data:** Per-bin uncertainties $\delta_b$.
 
 **Effect:** Multiplicative per bin:
 
-$$\kappa_{s,i} = \gamma_i$$
+$$\nu_b \to \nu_b(\boldsymbol{\alpha}) + \gamma_b \; \nu^\text{MC}_b(\boldsymbol{\alpha})$$
 
-**Auxiliary construction:** For each bin, a pseudo-count is computed:
+The factor $\gamma_b$ reflects that the true rate may differ from the MC estimate $\nu^\text{MC}_b$ by some amount.
 
-$$\tau_i = \left(\frac{\nu_{s,i}}{\sigma_i}\right)^2$$
+**Auxiliary construction.** If the total statistical uncertainty is $\delta_b$, then the pseudo-count is:
 
-The auxiliary constraint is Poisson (see Section 6.2).
+$$\tau_b = \left(\frac{\nu^\text{MC}_b}{\delta_b}\right)^2$$
 
-**Properties (per bin):**
+Treating the MC estimate as an auxiliary measurement, the constraint is:
+
+$$\text{Pois}(n^\text{aux}_b \mid \gamma_b \tau_b)$$
+
+where $n^\text{aux}_b = \tau_b$ in nominal data mode and $n^\text{aux}_b = \hat\gamma_b \tau_b$ in Asimov mode.
+
+**Analytic conditional MLE.** Following [1] (Eq. 10–13), the conditional maximum likelihood estimate $\hat{\hat{\gamma}}_b(\boldsymbol{\alpha})$ can be solved analytically:
+
+$$\hat{\hat{\gamma}}_b(\boldsymbol{\alpha}) = \frac{-B + \sqrt{B^2 - 4AC}}{2A}$$
+
+with:
+
+$$A = (\nu^\text{MC}_b)^2 + \tau_b \nu^\text{MC}_b$$
+
+$$B = \nu_b \tau_b + \nu_b \nu^\text{MC}_b - n_b \nu^\text{MC}_b - n^\text{aux}_b \nu^\text{MC}_b$$
+
+$$C = -n^\text{aux}_b \nu_b$$
+
+This analytic solution can be used to speed up fits by eliminating the $\gamma_b$ parameters from the numerical minimization.
 
 | Attribute | Value |
 |-----------|-------|
 | Initial | $1.0$ |
 | Bounds | $(10^{-10}, 10)$ |
-| Constrained | No (Poisson auxiliary instead) |
+| Constrained | Poisson auxiliary |
 
-### 4.5 StatError
+### 4.5 StatError (Gaussian-Constrained MC Statistical Uncertainty)
 
-**Purpose:** Per-bin multiplicative modifier with Gaussian constraint. Models the MC statistical uncertainty, aggregated across all samples that declare StatError in a channel.
+**Purpose:** Per-bin multiplicative modifier with Gaussian constraint. A lighter-weight alternative to the full Barlow-Beeston treatment, where one nuisance parameter per bin is associated with the total MC estimate across all samples.
 
-**Parameters:** One parameter $\gamma_i$ per bin, shared across all samples in the channel that have a StatError modifier.
+**Parameters:** One parameter $\gamma_b$ per bin, shared across all samples in the channel that declare StatError.
 
-**Input data:** Per-sample, per-bin absolute uncertainties $\sigma_{s,i}$.
+**Input data:** Per-sample, per-bin absolute uncertainties $\delta_{s,b}$.
 
-**Effect:** Multiplicative per bin:
+**Effect:** Multiplicative per bin: $\nu_{b} \to \gamma_b \cdot \nu_{b}$
 
-$$\kappa_{s,i} = \gamma_i$$
+**Aggregation.** When multiple samples declare StatError, the relative uncertainty is:
 
-**Aggregation:** When multiple samples in a channel declare StatError, the relative uncertainty is computed as:
-
-$$\sigma_i^\text{rel} = \frac{\sqrt{\sum_s \sigma_{s,i}^2}}{\sum_s \nu_{s,i}}$$
-
-where the sums are over all samples in the channel with StatError.
-
-**Properties (per bin):**
+$$\sigma_b^\text{rel} = \frac{\sqrt{\sum_s \delta_{s,b}^2}}{\sum_s \nu^0_{s,b}}$$
 
 | Attribute | Value |
 |-----------|-------|
 | Initial | $1.0$ |
 | Bounds | $(10^{-10}, 10)$ |
 | Constrained | Yes (Gaussian) |
-| $\theta_0$ | $1.0$ |
-| $\sigma$ | $\sigma_i^\text{rel}$ (computed) |
+| $\gamma^0_b$ | $1.0$ |
+| $\sigma_b$ | $\sigma_b^\text{rel}$ (computed) |
 
-### 4.6 ShapeFactor
+### 4.6 ShapeFactor (Unconstrained Shape)
 
-**Purpose:** Free-floating per-bin normalization. Used when the shape of a background component is determined entirely by data (no MC template).
+**Purpose:** Free-floating per-bin normalization, unconstrained. Used when each bin's content is parametrized individually (e.g., data-driven shape extrapolation).
 
-**Parameters:** One parameter $\gamma_i$ per bin.
+**Parameters:** One parameter $\gamma_{csb}$ per bin per sample.
 
-**Effect:** Multiplicative per bin:
-
-$$\kappa_{s,i} = \gamma_i$$
-
-**Properties (per bin):**
+**Effect:** Multiplicative per bin.
 
 | Attribute | Value |
 |-----------|-------|
@@ -234,61 +248,101 @@ $$\kappa_{s,i} = \gamma_i$$
 | Bounds | $(0, 10)$ |
 | Constrained | No |
 
-### 4.7 Lumi
+### 4.7 Lumi (Luminosity Uncertainty)
 
-**Purpose:** Luminosity uncertainty. Scales all bins of all samples uniformly.
+**Purpose:** Common normalization uncertainty from luminosity measurement, applied to all theory-normalized samples.
 
-**Parameters:** One shared parameter $\theta_\text{lumi}$.
+**Parameters:** One shared parameter $\lambda$.
 
-**Input data:** Relative luminosity uncertainty $\delta_L$ (e.g., $0.02$ for 2%).
-
-**Effect:** Multiplicative on all bins:
-
-$$\kappa_{s,i} = \theta_\text{lumi}$$
-
-**Properties:**
+**Constraint:** $G(L_0 \mid \lambda, \Delta_L)$ where $L_0$ is the measured luminosity and $\Delta_L$ is the relative uncertainty.
 
 | Attribute | Value |
 |-----------|-------|
 | Initial | $1.0$ |
 | Bounds | $(0, 10)$ |
 | Constrained | Yes (Gaussian) |
-| $\theta_0$ | $1.0$ |
-| $\sigma$ | $\delta_L$ |
+| $\lambda^0$ | $1.0$ |
+| $\sigma$ | $\Delta_L$ (relative luminosity uncertainty) |
 
 ### 4.8 Modifier Summary
 
-| Modifier | Scope | Type | Parameters | Constrained |
-|----------|-------|------|------------|-------------|
-| NormFactor | Sample-wide | Multiplicative | 1 | No |
-| NormSys | Sample-wide | Multiplicative | 1 | Yes (Gaussian) |
-| HistoSys | Per-bin | Additive | 1 | Yes (Gaussian) |
-| ShapeSys | Per-bin | Multiplicative | $B$ | Poisson auxiliary |
-| StatError | Per-bin | Multiplicative | $B$ | Yes (Gaussian) |
-| ShapeFactor | Per-bin | Multiplicative | $B$ | No |
-| Lumi | Sample-wide | Multiplicative | 1 | Yes (Gaussian) |
+| Modifier | HistFactory Name | Scope | Type | Parameters | Constrained |
+|----------|-----------------|-------|------|------------|-------------|
+| NormFactor | `NormFactor` | Sample-wide | Multiplicative | 1 | No |
+| NormSys | `OverallSys` | Sample-wide | Multiplicative | 1 | Yes (Gaussian) |
+| HistoSys | `HistoSys` | Per-bin | Additive | 1 | Yes (Gaussian) |
+| ShapeSys | `ShapeSys` | Per-bin | Multiplicative | $B$ | Poisson auxiliary |
+| StatError | `StatError` | Per-bin | Multiplicative | $B$ | Yes (Gaussian) |
+| ShapeFactor | `ShapeFactor` | Per-bin | Multiplicative | $B$ | No |
+| Lumi | (measurement) | All samples | Multiplicative | 1 | Yes (Gaussian) |
 
-## 5. Interpolation Codes
+## 5. Interpolation & Extrapolation
 
-### 5.1 Code 4: Exponential Interpolation (NormSys)
+The treatment of systematic uncertainties requires defining interpolation algorithms to produce continuous functions $\eta_s(\boldsymbol{\alpha})$ and $\sigma_{sb}(\boldsymbol{\alpha})$ from the discrete $\pm 1\sigma$ variations. Following [1], we parametrize $\alpha_p$ such that $\alpha_p = 0$ is the nominal value and $\alpha_p = \pm 1$ are the "$\pm 1\sigma$ variations."
 
-The pyhf "code 4" interpolation smoothly connects logarithmic (exponential) behavior at $|\alpha| \geq 1$ with a degree-6 polynomial for $|\alpha| < 1$.
+Four interpolation strategies are available. NextStat implements all four for completeness, with defaults matching pyhf.
 
-**Given:** up-factor $h$ and down-factor $l$ (e.g., $h = 1.05$, $l = 0.95$).
+### 5.1 Piecewise Linear (InterpCode=0)
 
-**For $|\alpha| \geq 1$** (exponential regime):
+**Normalization:**
 
-$$f_\text{code4}(\alpha) = \begin{cases} h^{|\alpha|} = \exp(|\alpha| \ln h) & \text{if } \alpha \geq 1 \\ l^{|\alpha|} = \exp(|\alpha| \ln l) & \text{if } \alpha \leq -1 \end{cases}$$
+$$\eta_s(\boldsymbol{\alpha}) = 1 + \sum_{p \in \text{Syst}} I_\text{lin.}(\alpha_p; 1, \eta^+_{sp}, \eta^-_{sp})$$
 
-**For $|\alpha| < 1$** (polynomial regime):
+**Shape:**
 
-$$f_\text{code4}(\alpha) = 1 + \sum_{j=1}^{6} a_j \alpha^j$$
+$$\sigma_{sb}(\boldsymbol{\alpha}) = \sigma^0_{sb} + \sum_{p \in \text{Syst}} I_\text{lin.}(\alpha_p; \sigma^0_{sb}, \sigma^+_{psb}, \sigma^-_{psb})$$
 
-The coefficients $\mathbf{a} = (a_1, \ldots, a_6)$ are determined by matching the function value and first two derivatives at $\alpha = \pm 1$. They are computed as:
+with:
+
+$$I_\text{lin.}(\alpha; I^0, I^+, I^-) = \begin{cases} \alpha(I^+ - I^0) & \alpha \geq 0 \\ \alpha(I^0 - I^-) & \alpha < 0 \end{cases}$$
+
+**Pros:** Most straightforward interpolation.
+
+**Cons:** (1) Discontinuous first derivative (kink) at $\alpha = 0$, causing difficulties for gradient-based minimizers like Minuit/L-BFGS. (2) Can extrapolate to negative values (e.g., if $\eta^- = 0.5$, then $\eta(\alpha) < 0$ when $\alpha < -2$).
+
+**Default for:** $\sigma_{sb}(\boldsymbol{\alpha})$ (HistoSys) in pyhf.
+
+### 5.2 Piecewise Exponential (InterpCode=1)
+
+**Normalization:**
+
+$$\eta_s(\boldsymbol{\alpha}) = \prod_{p \in \text{Syst}} I_\text{exp.}(\alpha_p; 1, \eta^+_{sp}, \eta^-_{sp})$$
+
+with:
+
+$$I_\text{exp.}(\alpha; I^0, I^+, I^-) = \begin{cases} (I^+/I^0)^\alpha & \alpha \geq 0 \\ (I^-/I^0)^{-\alpha} & \alpha < 0 \end{cases}$$
+
+**Pros:** (1) Ensures $\eta(\alpha) \geq 0$. (2) For small uncertainties, agrees with linear interpolation near $\alpha \sim 0$.
+
+**Cons:** (1) Discontinuous first derivative at $\alpha = 0$. (2) For large uncertainties, develops asymmetric behavior even when $\eta^+ - 1 = 1 - \eta^-$.
+
+**Note:** When paired with a Gaussian constraint on $\alpha$, this is equivalent to linear interpolation with a log-normal constraint in $\ln(\alpha)$.
+
+**Default for:** $\eta_s(\boldsymbol{\alpha})$ (OverallSys) in ROOT HistFactory.
+
+### 5.3 Quadratic Interpolation + Linear Extrapolation (InterpCode=2)
+
+$$I_\text{quad.|lin.}(\alpha; I^0, I^+, I^-) = \begin{cases} (b + 2a)(\alpha - 1) & \alpha > 1 \\ a\alpha^2 + b\alpha & |\alpha| \leq 1 \\ (b - 2a)(\alpha + 1) & \alpha < -1 \end{cases}$$
+
+with:
+
+$$a = \tfrac{1}{2}(I^+ + I^-) - I^0, \qquad b = \tfrac{1}{2}(I^+ - I^-)$$
+
+**Pros:** Avoids the kink at $\alpha = 0$ (continuous first derivative).
+
+**Cons:** (1) When both up and down variations have the same sign of effect relative to nominal, can produce intermediate values with the opposite sign. (2) Can extrapolate to negative values.
+
+### 5.4 Polynomial Interpolation + Exponential Extrapolation (InterpCode=4)
+
+This is the strategy used by pyhf and NextStat as the default for normalization uncertainties (OverallSys).
+
+$$I_\text{poly|exp.}(\alpha; I^0, I^+, I^-, \alpha_0) = \begin{cases} (I^+/I^0)^\alpha & \alpha \geq \alpha_0 \\ 1 + \sum_{i=1}^{6} a_i \alpha^i & |\alpha| < \alpha_0 \\ (I^-/I^0)^{-\alpha} & \alpha \leq -\alpha_0 \end{cases}$$
+
+where $\alpha_0 = 1$ (default) and the coefficients $a_i$ are fixed by matching the function value, first derivative, and second derivative at $\alpha = \pm \alpha_0$:
 
 $$\mathbf{a} = A^{-1} \mathbf{b}$$
 
-where $\mathbf{b} = (h - 1,\; l - 1,\; h\ln h,\; -l\ln l,\; h(\ln h)^2,\; l(\ln l)^2)^T$ and $A^{-1}$ is the fixed $6 \times 6$ matrix:
+with $\mathbf{b} = (h - 1,\; l - 1,\; h\ln h,\; -l\ln l,\; h(\ln h)^2,\; l(\ln l)^2)^T$ where $h = I^+/I^0$ and $l = I^-/I^0$, and $A^{-1}$ is the fixed $6 \times 6$ matrix:
 
 $$A^{-1} = \begin{pmatrix}
  \frac{1}{2} &  -\frac{1}{2} &  \frac{1}{2} &  \frac{1}{2} & -\frac{1}{8} & -\frac{1}{8} \\
@@ -299,82 +353,117 @@ $$A^{-1} = \begin{pmatrix}
  1            &  1             & -\frac{3}{4} & -\frac{3}{4} &  \frac{1}{8} &  \frac{1}{8}
 \end{pmatrix}$$
 
-**Properties:** $f_\text{code4}(0) = 1$, $f_\text{code4}(1) = h$, $f_\text{code4}(-1) = l$, and the function and its first two derivatives are continuous everywhere.
+**Pros:** (1) Avoids the kink at $\alpha = 0$ (continuous first and second derivatives). (2) Ensures $\eta(\alpha) \geq 0$.
 
-### 5.2 Code 4p: Piecewise Polynomial Interpolation (HistoSys)
+**Default for:** $\eta_s(\boldsymbol{\alpha})$ (OverallSys) in pyhf and NextStat.
 
-The pyhf "code 4p" interpolation for histogram shape variations uses a piecewise function that is cubic for $|\alpha| \leq 1$ and linear for $|\alpha| > 1$.
+### 5.5 Code 4p: Piecewise Polynomial Shape Interpolation (HistoSys)
 
-**Given:** per-bin values from the down template $l_i$, nominal $\nu_i$, and up template $h_i$.
+For histogram shape variations, pyhf uses a piecewise function that is polynomial for $|\alpha| \leq 1$ and linear for $|\alpha| > 1$.
 
-**Derived quantities:**
+**Derived quantities per bin:**
 
-$$S_i = \frac{1}{2}(h_i - l_i) \quad \text{(symmetric slope)}$$
+$$S_b = \tfrac{1}{2}(\sigma^+_{b} - \sigma^-_{b}) \quad \text{(symmetric slope)}$$
 
-$$A_i = \frac{1}{16}(h_i - 2\nu_i + l_i) \quad \text{(asymmetry)}$$
+$$A_b = \tfrac{1}{16}(\sigma^+_{b} - 2\sigma^0_{b} + \sigma^-_{b}) \quad \text{(asymmetry)}$$
 
-**For $|\alpha| \leq 1$** (polynomial regime):
+**Interpolation:**
 
-$$\Delta_i(\alpha) = S_i \cdot \alpha + A_i \cdot (3\alpha^2 - 10) \cdot \alpha^2 \cdot \frac{1}{(\text{normalization})}$$
+$$\Delta_b(\alpha) = \begin{cases} (\sigma^+_b - \sigma^0_b) \cdot \alpha & \alpha > 1 \\ S_b \cdot \alpha + A_b \cdot p(\alpha) & |\alpha| \leq 1 \\ (\sigma^0_b - \sigma^-_b) \cdot \alpha & \alpha < -1 \end{cases}$$
 
-More precisely, following the pyhf implementation:
+where $p(\alpha) = 24\alpha^4 - 40\alpha^2 + 15$ is a polynomial satisfying $p(0) = 15 A_b$, $p(\pm 1) = -1$, with continuous first derivative at $\alpha = \pm 1$.
 
-$$\Delta_i(\alpha) = S_i \cdot \alpha + A_i \cdot p(\alpha)$$
+**Properties:** $\Delta_b(0) = 0$, $\Delta_b(1) = \sigma^+_b - \sigma^0_b$, $\Delta_b(-1) = -(\sigma^0_b - \sigma^-_b)$.
 
-where $p(\alpha) = 24\alpha^4 - 40\alpha^2 + 15$ (ensuring $p(\pm 1) = \pm 1$, $p(0) = 0$, and smooth transitions).
+### 5.6 Interpolation Defaults Summary
 
-**For $\alpha > 1$** (linear extrapolation):
+| Modifier | InterpCode | Accumulation | Default in pyhf |
+|----------|-----------|--------------|----------------|
+| OverallSys ($\eta$) | 4 (poly+exp) | Multiplicative | Yes |
+| HistoSys ($\sigma$) | 0 (piecewise linear) | Additive | Yes |
 
-$$\Delta_i(\alpha) = (h_i - \nu_i) \cdot \alpha$$
-
-**For $\alpha < -1$** (linear extrapolation):
-
-$$\Delta_i(\alpha) = (\nu_i - l_i) \cdot \alpha$$
-
-**Properties:** $\Delta_i(0) = 0$, $\Delta_i(1) = h_i - \nu_i$, $\Delta_i(-1) = -(\ \nu_i - l_i)$, continuous with continuous first derivative.
+NextStat matches these defaults exactly for pyhf parity.
 
 ## 6. Constraint Terms
 
-### 6.1 Gaussian Constraints
+### 6.1 Consistent Bayesian and Frequentist Modeling
 
-For a constrained parameter $\theta$ with constraint center $\theta_0$ and width $\sigma$:
+Following [1], we distinguish between the *source* of uncertainty ($\alpha_p$) and its *effect* on rates and shapes ($\eta$, $\sigma$). The "$\pm 1\sigma$ variations" $\eta^\pm_{ps}$ and $\sigma^\pm_{psb}$ describe the effect when the source is at $\alpha_p = \pm 1$.
 
-$$-\ln\mathcal{L}_\text{Gauss}(\theta) = \frac{1}{2}\left(\frac{\theta - \theta_0}{\sigma}\right)^2 + \ln\sigma + \frac{1}{2}\ln 2\pi$$
+In the frequentist framework, the auxiliary measurement $a_p$ constrains the nuisance parameter $\alpha_p$ via a constraint term $f_p(a_p \mid \alpha_p)$. In the Bayesian framework, this same term can be paired with a prior $\pi_0(\alpha_p)$ to form a posterior.
 
-This corresponds to the auxiliary measurement $\theta_0 \sim \mathcal{N}(\theta, \sigma)$.
+The table below summarizes consistent treatments (cf. Table 4 of [1]):
 
-**Applies to:** NormSys, HistoSys, StatError, Lumi.
+| PDF | Likelihood $\propto$ | Prior $\pi_0$ | Posterior $\pi$ |
+|-----|---------------------|---------------|-----------------|
+| $G(a_p \mid \alpha_p, \sigma_p)$ | $G(\alpha_p \mid a_p, \sigma_p)$ | $\pi_0(\alpha_p) \propto \text{const}$ | $G(\alpha_p \mid a_p, \sigma_p)$ |
+| $\text{Pois}(n_p \mid \tau_p \beta_p)$ | $P_\Gamma(\beta_p \mid A=\tau_p, B=1+n_p)$ | $\pi_0(\beta_p) \propto \text{const}$ | $P_\Gamma(\beta_p \mid A=\tau_p, B=1+n_p)$ |
+| $P_\text{LN}(n_p \mid \beta_p, \sigma_p)$ | $\beta_p \cdot P_\text{LN}(\beta_p \mid n_p, \sigma_p)$ | $\pi_0(\beta_p) \propto \text{const}$ | $P_\text{LN}(\beta_p \mid n_p, \sigma_p)$ |
+| $P_\text{LN}(n_p \mid \beta_p, \sigma_p)$ | $\beta_p \cdot P_\text{LN}(\beta_p \mid n_p, \sigma_p)$ | $\pi_0(\beta_p) \propto 1/\beta_p$ | $P_\text{LN}(\beta_p \mid n_p, \sigma_p)$ |
 
-**Constant terms.** The terms $\ln\sigma + \frac{1}{2}\ln 2\pi$ are independent of $\theta$ and do not affect the fit. However, they are included for absolute NLL parity with pyhf and are precomputed in the `constraint_const` cache.
+### 6.2 Gaussian Constraint
 
-### 6.2 Poisson Auxiliary Constraints (ShapeSys / Barlow-Beeston)
+The Gaussian constraint is a good approximation when the maximum likelihood estimate of $\alpha_p$ from the auxiliary measurement has a Gaussian distribution. The global observable $a_p$ can be identified with this MLE estimate.
 
-For each ShapeSys bin with parameter $\gamma_i$ and pseudo-count $\tau_i$:
+$$G(a_p \mid \alpha_p, \sigma_p) = \frac{1}{\sqrt{2\pi\sigma_p^2}} \exp\left[-\frac{(a_p - \alpha_p)^2}{2\sigma_p^2}\right]$$
 
-**Auxiliary expected count:**
+with $\sigma_p = 1$ by default.
 
-$$\lambda_i^\text{aux} = \gamma_i \cdot \tau_i$$
+**NLL contribution:**
 
-**Auxiliary observed count:**
+$$-\ln\mathcal{L}_\text{Gauss}(\alpha_p) = \frac{1}{2}\left(\frac{a_p - \alpha_p}{\sigma_p}\right)^2 + \ln\sigma_p + \frac{1}{2}\ln 2\pi$$
 
-- Data mode: $n_i^\text{aux} = \tau_i$
-- Asimov mode: $n_i^\text{aux} = \hat{\gamma}_i \cdot \tau_i$ (where $\hat{\gamma}_i$ is the fitted value)
+**Constant terms.** The terms $\ln\sigma_p + \frac{1}{2}\ln 2\pi$ are independent of $\alpha_p$ and do not affect the fit. However, they are included for absolute NLL parity with pyhf and are precomputed in the `constraint_const` cache.
 
-**Constraint contribution:**
+**Note:** If $\alpha_p$ represents a shifted and rescaled version of a bounded physical parameter, the Gaussian can attribute positive probability to unphysical regions.
 
-$$-\ln\mathcal{L}_\text{Pois,aux}(\gamma_i) = \gamma_i \tau_i - n_i^\text{aux} \ln(\gamma_i \tau_i) + \ln\Gamma(n_i^\text{aux} + 1)$$
+**Applies to:** OverallSys, HistoSys, StatError, Lumi.
 
-### 6.3 Constraint Summary
+### 6.3 Poisson ("Gamma") Constraint
 
-| Modifier | Constraint Type | $\theta_0$ | $\sigma$ |
-|----------|----------------|------------|----------|
-| NormSys | Gaussian | $0.0$ | $1.0$ |
-| HistoSys | Gaussian | $0.0$ | $1.0$ |
-| StatError | Gaussian | $1.0$ | $\sigma_i^\text{rel}$ (computed) |
-| Lumi | Gaussian | $1.0$ | $\delta_L$ (specified) |
-| ShapeSys | Poisson | — | — |
-| NormFactor | None | — | — |
-| ShapeFactor | None | — | — |
+When the auxiliary measurement is based on counting events (e.g., a Poisson process), a Poisson distribution more accurately describes the constraint. The truncated Gaussian can lead to undercoverage (overly optimistic) results, making this practically relevant.
+
+For the Poisson constraint, we reparametrize to $\beta_p > 0$ centered around 1. The nominal rate is factored out into a constant $\tau_p$ and the mean of the Poisson is $\tau_p \beta_p$:
+
+$$\text{Pois}(n_p \mid \tau_p \beta_p) = \frac{(\tau_p \beta_p)^{n_p} e^{-\tau_p \beta_p}}{n_p!}$$
+
+The nominal auxiliary measurement is:
+
+$$n^0_p = \tau_p = (1/\sigma_p^\text{rel})^2$$
+
+The relationship between $\alpha$ (used for the response of systematics) and $\beta$ is:
+
+$$\alpha_p(\beta_p) = \sqrt{\tau_p} \; (\beta_p - 1)$$
+
+satisfying $\alpha(\beta = 1) = 0$ and $\alpha(\beta = 1 \pm \tau_p^{-1/2}) = \pm 1$.
+
+**NLL contribution:**
+
+$$-\ln\mathcal{L}_\text{Pois}(\gamma_b) = \gamma_b \tau_b - n^\text{aux}_b \ln(\gamma_b \tau_b) + \ln\Gamma(n^\text{aux}_b + 1)$$
+
+**Applies to:** ShapeSys (Barlow-Beeston bins).
+
+### 6.4 Log-Normal Constraint
+
+The log-normal distribution represents a random variable whose logarithm follows a normal distribution. It is appropriate when the value is a random proportion of the previous observation, or when the parameter must be strictly positive.
+
+$$P_\text{LN}(n_p \mid \beta_p, \kappa_p) = \frac{1}{\sqrt{2\pi}\ln\kappa_p} \frac{1}{n_p} \exp\left[-\frac{\ln(n_p/\beta_p)^2}{2(\ln\kappa_p)^2}\right]$$
+
+where $\kappa_p = 1 + \sigma_p^\text{rel}$.
+
+**Note:** The log-normal constraint is not currently the default in NextStat or pyhf but is available in the HistFactory framework. Support is planned for future releases.
+
+### 6.5 Constraint Summary
+
+| Modifier | Constraint Type | Center | Width | Global Observable |
+|----------|----------------|--------|-------|-------------------|
+| OverallSys | Gaussian | $\alpha^0_p = 0$ | $\sigma_p = 1$ | `nom_alpha_<name>` |
+| HistoSys | Gaussian | $\alpha^0_p = 0$ | $\sigma_p = 1$ | `nom_alpha_<name>` |
+| StatError | Gaussian | $\gamma^0_b = 1$ | $\sigma_b^\text{rel}$ (computed) | `nom_gamma_stat_<ch>_bin_<b>` |
+| Lumi | Gaussian | $\lambda^0 = 1$ | $\Delta_L$ | `nominalLumi` |
+| ShapeSys | Poisson | — | — | `nom_gamma_<name>_bin_<b>` |
+| NormFactor | None | — | — | — |
+| ShapeFactor | None | — | — | — |
 
 ## 7. Full Likelihood
 
@@ -382,43 +471,40 @@ $$-\ln\mathcal{L}_\text{Pois,aux}(\gamma_i) = \gamma_i \tau_i - n_i^\text{aux} \
 
 Combining all terms, the full NLL is:
 
-$$\text{nll}(\boldsymbol{\phi}) = \underbrace{\sum_{i=1}^{N}\left[\lambda_i(\boldsymbol{\phi}) - n_i \ln\lambda_i(\boldsymbol{\phi}) + \ln\Gamma(n_i + 1)\right]}_{\text{main Poisson terms}} + \underbrace{\sum_{k \in \text{ShapeSys}} \left[\gamma_k \tau_k - n_k^\text{aux} \ln(\gamma_k \tau_k) + \ln\Gamma(n_k^\text{aux} + 1)\right]}_{\text{Poisson auxiliary (Barlow-Beeston)}} + \underbrace{\sum_{j \in \text{Gauss}} \left[\frac{1}{2}\left(\frac{\theta_j - \theta_{0,j}}{\sigma_j}\right)^2 + \ln\sigma_j + \frac{1}{2}\ln 2\pi\right]}_{\text{Gaussian constraints}}$$
+$$\text{nll}(\boldsymbol{\phi}) = \underbrace{\sum_{c} \sum_{b} \left[\nu_{cb} - n_{cb} \ln\nu_{cb} + \ln\Gamma(n_{cb} + 1)\right]}_{\text{main Poisson terms}}$$
+
+$$+ \underbrace{\sum_{k \in \text{ShapeSys}} \left[\gamma_k \tau_k - n_k^\text{aux} \ln(\gamma_k \tau_k) + \ln\Gamma(n_k^\text{aux} + 1)\right]}_{\text{Poisson auxiliary (Barlow-Beeston)}}$$
+
+$$+ \underbrace{\sum_{j \in \text{Gauss}} \left[\frac{1}{2}\left(\frac{\theta_j - \theta_{0,j}}{\sigma_j}\right)^2 + \ln\sigma_j + \frac{1}{2}\ln 2\pi\right]}_{\text{Gaussian constraints}}$$
 
 ### 7.2 Canonical Quantities
 
 For compatibility with pyhf:
 
-$$\text{logpdf}(\boldsymbol{\phi}) = -\text{nll}(\boldsymbol{\phi})$$
+- $\text{logpdf}(\boldsymbol{\phi}) = -\text{nll}(\boldsymbol{\phi})$
+- $\text{twice\_nll}(\boldsymbol{\phi}) = 2 \cdot \text{nll}(\boldsymbol{\phi}) = -2 \cdot \text{logpdf}(\boldsymbol{\phi})$
 
-$$\text{twice\_nll}(\boldsymbol{\phi}) = 2 \cdot \text{nll}(\boldsymbol{\phi}) = -2 \cdot \text{logpdf}(\boldsymbol{\phi})$$
+### 7.3 Implementation Optimizations
 
-### 7.3 Sparse Optimization
+**Sparse bins.** When $n_{cb} = 0$, the term $-n_{cb} \ln\nu_{cb} = 0$ regardless of $\nu_{cb}$. The implementation uses an observation mask to skip these terms.
 
-When $n_i = 0$, the term $-n_i \ln\lambda_i = 0$ regardless of $\lambda_i$. The implementation uses an observation mask to skip these terms, reducing computation for histograms with many empty bins.
+**Precomputed constants.** The Gaussian constraint constant $\sum_j [\ln\sigma_j + \frac{1}{2}\ln 2\pi]$ and the log-factorials $\ln\Gamma(n_{cb} + 1)$ are precomputed once and cached in `PreparedModel`.
 
-### 7.4 SIMD Evaluation
-
-The main Poisson NLL sum is evaluated using `f64x4` SIMD lanes (4 bins per vector operation). Operations: multiply, subtract, add, reduce. The natural logarithm is extracted to scalar `f64::ln()` for bit-exact accuracy ($\texttt{wide::f64x4::ln()}$ has $\sim$1000 ULP error).
+**SIMD evaluation.** The main Poisson NLL sum is evaluated using `f64x4` SIMD lanes. The natural logarithm is extracted to scalar `f64::ln()` for bit-exact accuracy (`wide::f64x4::ln()` has $\sim$1000 ULP error).
 
 ## 8. Asimov Dataset Construction
 
-The Asimov dataset [4] provides the expected data under a given hypothesis, used for computing expected test statistics and the Brazil band.
+The Asimov dataset [5] provides the expected data under a given hypothesis, used for computing expected test statistics and the Brazil band.
 
 ### 8.1 Background-Only Asimov ($\mu = 0$)
 
 1. **Conditional fit:** Minimize NLL with $\mu$ fixed to $0$, obtaining fitted nuisance parameters $\hat{\boldsymbol{\theta}}_0$.
 
-2. **Expected main data:** Evaluate the model at $(\mu = 0, \hat{\boldsymbol{\theta}}_0)$:
+2. **Expected main data:** $n_{cb}^\text{Asimov} = \nu_{cb}(0, \hat{\boldsymbol{\theta}}_0)$
 
-$$n_i^\text{Asimov} = \lambda_i(0, \hat{\boldsymbol{\theta}}_0)$$
+3. **Expected auxiliary data (Gaussian):** $a_p^\text{Asimov} = \hat\alpha_p$
 
-3. **Expected auxiliary data (Gaussian):** Replace constraint centers with fitted values:
-
-$$\theta_{0,j}^\text{Asimov} = \hat{\theta}_{0,j}$$
-
-4. **Expected auxiliary data (Poisson/ShapeSys):** Replace auxiliary observations:
-
-$$n_k^{\text{aux, Asimov}} = \hat{\gamma}_k \cdot \tau_k$$
+4. **Expected auxiliary data (Poisson/ShapeSys):** $n_k^{\text{aux, Asimov}} = \hat\gamma_k \cdot \tau_k$
 
 ### 8.2 Properties
 
@@ -426,34 +512,59 @@ The Asimov dataset has the property that the MLE on it returns the parameters us
 
 ## 9. pyhf JSON Workspace Format
 
-NextStat reads the pyhf JSON workspace format. A workspace contains:
+### 9.1 Schema Overview
+
+NextStat reads the pyhf JSON workspace format. A workspace contains four top-level keys:
+
+| Key | Content |
+|-----|---------|
+| `channels` | Array of channels, each with named samples and modifiers |
+| `observations` | Observed bin counts per channel |
+| `measurements` | Analysis configuration (POI, parameter overrides, luminosity) |
+| `version` | Schema version (`"1.0.0"`) |
+
+### 9.2 Example Workspace
 
 ```json
 {
   "channels": [
     {
-      "name": "SR",
+      "name": "channel1",
       "samples": [
         {
           "name": "signal",
-          "data": [10.0, 5.0],
+          "data": [12.0, 11.0],
           "modifiers": [
-            {"name": "mu", "type": "normfactor", "data": null}
+            {"name": "mu", "type": "normfactor", "data": null},
+            {"name": "syst1", "type": "normsys",
+             "data": {"hi": 1.05, "lo": 0.95}}
           ]
         },
         {
-          "name": "background",
-          "data": [50.0, 40.0],
+          "name": "background1",
+          "data": [50.0, 52.0],
           "modifiers": [
-            {"name": "bkg_norm", "type": "normsys",
-             "data": {"hi": 1.1, "lo": 0.9}}
+            {"name": "syst2", "type": "normsys",
+             "data": {"hi": 1.07, "lo": 0.93}},
+            {"name": "syst3", "type": "normsys",
+             "data": {"hi": 1.03, "lo": 0.95}}
+          ]
+        },
+        {
+          "name": "background2",
+          "data": [33.0, 25.0],
+          "modifiers": [
+            {"name": "syst3", "type": "normsys",
+             "data": {"hi": 0.97, "lo": 1.02}},
+            {"name": "bkg2_stat", "type": "staterror",
+             "data": [5.0, 4.0]}
           ]
         }
       ]
     }
   ],
   "observations": [
-    {"name": "SR", "data": [55.0, 48.0]}
+    {"name": "channel1", "data": [55.0, 48.0]}
   ],
   "measurements": [
     {
@@ -468,12 +579,27 @@ NextStat reads the pyhf JSON workspace format. A workspace contains:
 }
 ```
 
-The translation from JSON to the internal `HistFactoryModel` is handled by `ns-translate`, which:
+This example corresponds to the standard HistFactory example (cf. Section 5.1 of [1]):
 
-1. Parses the JSON via `serde`.
-2. Resolves channel-sample-modifier relationships.
-3. Precomputes interpolation coefficients, $\tau$ values, and constraint constants.
-4. Constructs the `PreparedModel` with cached data for efficient evaluation.
+| Syst | Signal | Background1 | Background2 |
+|------|--------|-------------|-------------|
+| syst1 | $\eta^+ = 1.05$, $\eta^- = 0.95$ | — | — |
+| syst2 | — | $\eta^+ = 1.07$, $\eta^- = 0.93$ | — |
+| syst3 | — | $\eta^+ = 1.03$, $\eta^- = 0.95$ | $\eta^+ = 0.97$, $\eta^- = 1.02$ |
+
+Note that `syst3` affects both backgrounds, with opposite signs of effect (anti-correlated).
+
+### 9.3 Translation to Internal Model
+
+The translation from JSON to the internal `HistFactoryModel` is handled by `ns-translate`:
+
+1. Parse the JSON via `serde`.
+2. Resolve channel-sample-modifier relationships.
+3. Identify shared parameters across samples and channels.
+4. Precompute Code 4 interpolation coefficients ($a_1, \ldots, a_6$) for each NormSys modifier.
+5. Precompute $\tau_b$ values for ShapeSys modifiers.
+6. Precompute Gaussian constraint constant $\sum_j [\ln\sigma_j + \frac{1}{2}\ln 2\pi]$.
+7. Construct the `PreparedModel` with flattened data, log-factorials, and observation mask.
 
 ## References
 
@@ -483,4 +609,6 @@ The translation from JSON to the internal `HistFactoryModel` is handled by `ns-t
 
 [3] ATLAS Collaboration, "Reproducing searches for new physics with the ATLAS experiment through publication of full statistical likelihoods," ATL-PHYS-PUB-2019-029, 2019.
 
-[4] G. Cowan, K. Cranmer, E. Gross, O. Vitells, "Asymptotic formulae for likelihood-based tests of new physics," Eur. Phys. J. C71, 1554, 2011; erratum ibid. C73, 2501, 2013.
+[4] R. Barlow, C. Beeston, "Fitting using finite Monte Carlo samples," Comp. Phys. Comm. 77, 219–228, 1993.
+
+[5] G. Cowan, K. Cranmer, E. Gross, O. Vitells, "Asymptotic formulae for likelihood-based tests of new physics," Eur. Phys. J. C71, 1554, 2011; erratum ibid. C73, 2501, 2013.

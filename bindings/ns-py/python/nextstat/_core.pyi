@@ -111,6 +111,7 @@ def sample(
     max_treedepth: int = ...,
     target_accept: float = ...,
     init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
     data: Optional[List[float]] = ...,
 ) -> Dict[str, Any]: ...
 

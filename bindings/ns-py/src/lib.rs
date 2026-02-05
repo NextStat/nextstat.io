@@ -368,7 +368,7 @@ fn upper_limits_root(
 
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
-#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.5, data=None))]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, data=None))]
 fn sample(
     py: Python<'_>,
     model: &PyHistFactoryModel,
@@ -379,6 +379,7 @@ fn sample(
     max_treedepth: usize,
     target_accept: f64,
     init_jitter: f64,
+    init_jitter_rel: Option<f64>,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
     let sample_model = if let Some(obs_main) = data {
@@ -390,7 +391,13 @@ fn sample(
         model.inner.clone()
     };
 
-    let config = NutsConfig { max_treedepth, target_accept, init_jitter };
+    let config = NutsConfig {
+        max_treedepth,
+        target_accept,
+        init_jitter,
+        init_jitter_rel,
+        ..Default::default()
+    };
 
     // Release GIL during Rayon-parallel sampling.
     let result = py

@@ -2,7 +2,7 @@
 
 use crate::nuts::{NutsConfig, sample_nuts};
 use ns_core::Result;
-use ns_translate::pyhf::HistFactoryModel;
+use ns_core::traits::LogDensityModel;
 
 /// Raw MCMC chain from one NUTS run.
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ impl SamplerResult {
 ///
 /// Each chain gets seed `seed + chain_id`.
 pub fn sample_nuts_multichain(
-    model: &HistFactoryModel,
+    model: &(impl LogDensityModel + Sync),
     n_chains: usize,
     n_warmup: usize,
     n_samples: usize,
@@ -88,7 +88,7 @@ pub fn sample_nuts_multichain(
 
     let chains: Vec<Chain> = chains.into_iter().collect::<Result<Vec<_>>>()?;
 
-    let param_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
+    let param_names: Vec<String> = model.parameter_names();
 
     Ok(SamplerResult { chains, param_names, n_warmup, n_samples, diagnostics: None })
 }
@@ -97,6 +97,7 @@ pub fn sample_nuts_multichain(
 mod tests {
     use super::*;
     use ns_translate::pyhf::Workspace;
+    use ns_translate::pyhf::HistFactoryModel;
 
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");
@@ -109,7 +110,12 @@ mod tests {
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
         // No jitter so identical seeds produce identical chains.
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0 };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
         let r1 = sample_nuts_multichain(&model, 2, 50, 20, 42, config.clone()).unwrap();
         let r2 = sample_nuts_multichain(&model, 2, 50, 20, 42, config).unwrap();
 
@@ -126,7 +132,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5 };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let result = sample_nuts_multichain(&model, 2, 100, 50, 42, config).unwrap();
 
         assert_eq!(result.chains.len(), 2);

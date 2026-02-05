@@ -4,6 +4,7 @@ members = [
     "crates/ns-core",
     "crates/ns-compute",
     "crates/ns-ad",
+    "crates/ns-prob",
     "crates/ns-inference",
     "crates/ns-translate",
     "crates/ns-viz",

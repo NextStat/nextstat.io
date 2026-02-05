@@ -8,7 +8,7 @@
 
 use crate::transforms::ParameterTransform;
 use ns_core::Result;
-use ns_translate::pyhf::HistFactoryModel;
+use ns_core::traits::LogDensityModel;
 
 /// Prior distribution for a single parameter.
 #[derive(Debug, Clone)]
@@ -28,35 +28,35 @@ pub enum Prior {
 ///
 /// - `logpdf(theta) = -model.nll(theta) + sum(prior_logpdf)`
 /// - `logpdf_unconstrained(z) = logpdf(transform(z)) + log|J(z)|`
-pub struct Posterior<'a> {
-    model: &'a HistFactoryModel,
+pub struct Posterior<'a, M: LogDensityModel + ?Sized> {
+    model: &'a M,
     transform: ParameterTransform,
     priors: Vec<Prior>,
 }
 
-impl<'a> Posterior<'a> {
+impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
     /// Create a new posterior with flat priors (relying on model's built-in constraints).
-    pub fn new(model: &'a HistFactoryModel) -> Self {
-        let bounds: Vec<(f64, f64)> = model.parameters().iter().map(|p| p.bounds).collect();
+    pub fn new(model: &'a M) -> Self {
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
         let transform = ParameterTransform::from_bounds(&bounds);
-        let priors = vec![Prior::Flat; model.n_params()];
+        let priors = vec![Prior::Flat; model.dim()];
         Self { model, transform, priors }
     }
 
-    /// Set priors (one per parameter). Length must match `model.n_params()`.
+    /// Set priors (one per parameter). Length must match `model.dim()`.
     pub fn with_priors(mut self, priors: Vec<Prior>) -> Self {
-        assert_eq!(priors.len(), self.model.n_params());
+        assert_eq!(priors.len(), self.model.dim());
         self.priors = priors;
         self
     }
 
     /// Number of parameters.
     pub fn dim(&self) -> usize {
-        self.model.n_params()
+        self.model.dim()
     }
 
     /// Reference to the underlying model.
-    pub fn model(&self) -> &HistFactoryModel {
+    pub fn model(&self) -> &M {
         self.model
     }
 
@@ -85,7 +85,7 @@ impl<'a> Posterior<'a> {
 
     /// Gradient of log-posterior in constrained space.
     pub fn grad(&self, theta: &[f64]) -> Result<Vec<f64>> {
-        let mut g = self.model.gradient_reverse(theta)?;
+        let mut g = self.model.grad_nll(theta)?;
 
         // grad(logpdf) = -grad(nll) + grad(prior)
         for gi in g.iter_mut() {
@@ -146,6 +146,7 @@ impl<'a> Posterior<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ns_translate::pyhf::HistFactoryModel;
     use ns_translate::pyhf::Workspace;
 
     fn load_simple_workspace() -> Workspace {

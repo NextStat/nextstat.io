@@ -1,6 +1,6 @@
-# NextStat: High-Performance HistFactory Inference in Rust
+# NextStat: High-Performance Statistical Inference for Binned Likelihood Models
 
-**Version:** 0.1.0 (Draft)
+**Version:** 0.2.0 (Draft)
 **Authors:** NextStat Contributors
 **Date:** February 2026
 
@@ -8,66 +8,32 @@
 
 ## Abstract
 
-We present NextStat, an open-source statistical inference toolkit for High Energy Physics (HEP) implemented in Rust with Python bindings. NextStat provides a high-performance engine for HistFactory-style binned likelihood analyses, supporting maximum likelihood estimation, profile likelihood scans, asymptotic CLs hypothesis tests, and Bayesian posterior sampling via NUTS/HMC. The toolkit ingests pyhf JSON workspaces and maintains strict numerical parity with pyhf in a deterministic CPU reference mode, while exploiting SIMD vectorization and thread-level parallelism for performance-critical workflows. We describe the motivation, software architecture, inference algorithms, validation methodology, and performance characteristics of the toolkit.
+We present NextStat, an open-source statistical inference toolkit implemented in Rust with Python bindings. NextStat provides a high-performance engine for binned likelihood analyses based on the HistFactory probability model, supporting maximum likelihood estimation (MLE), profile likelihood scans, asymptotic CLs hypothesis tests, and Bayesian posterior sampling via the No-U-Turn Sampler (NUTS). The toolkit ingests the pyhf JSON workspace format and maintains strict numerical parity with pyhf in a deterministic reference mode, while exploiting SIMD vectorization and thread-level parallelism for performance-critical workflows. We describe the software architecture, inference algorithms, automatic differentiation system, validation methodology, and performance characteristics.
 
 ---
 
 ## 1. Introduction
 
-Modern particle physics analyses at the LHC rely on parameterized binned likelihood models to extract physics results from data. The HistFactory framework [1] provides a widely-used specification for such models, combining Poisson counting statistics with systematic uncertainty modifiers. The pyhf project [2] implements HistFactory likelihoods in pure Python, enabling software-independent reproducibility of ATLAS and CMS results [3].
+Binned likelihood models are a workhorse of statistical inference in the physical sciences. In high-energy physics (HEP), the HistFactory specification [1] provides a widely used template for such models, combining Poisson counting statistics with systematic uncertainty modifiers. Binned likelihoods also arise in astrophysics, nuclear physics, and other domains where histogrammed data is compared against parameterized predictions.
 
-While pyhf provides an accessible and well-validated reference implementation, many analysis workflows are computationally demanding:
+The pyhf project [2] provides a pure-Python implementation of HistFactory likelihoods and defines a JSON schema for declarative model specification. This format has been adopted for publishing full statistical likelihoods on public repositories [3], enabling independent reinterpretation studies. Other tools in this space include the original RooFit/RooStats framework [4, 5] in C++/ROOT, and stanhf [6] which transpiles HistFactory models into the Stan probabilistic programming language [7].
+
+While these tools serve the community well, certain workflows remain computationally demanding:
 
 - **Toy ensembles** for bias, pull, and coverage studies require $O(10^3$–$10^5)$ repeated fits.
 - **Profile likelihood scans** evaluate the likelihood at $O(10^2)$ grid points, each requiring a constrained minimization.
-- **Upper limit searches** combine profile scans with root-finding over a signal strength grid.
-- **Bayesian posterior sampling** via MCMC methods requires $O(10^4$–$10^6)$ gradient evaluations.
+- **Upper limit searches** combine profile scans with root-finding over a signal strength parameter.
+- **Bayesian posterior sampling** via MCMC requires $O(10^4$–$10^6)$ gradient evaluations.
 
-NextStat addresses these computational challenges by implementing the core inference algorithms in Rust, leveraging:
+NextStat addresses these by implementing inference algorithms in Rust, leveraging compile-time optimization, SIMD vectorization, and thread-level parallelism. The toolkit exposes three interfaces: a Rust library, a Python package (via PyO3), and a command-line interface (CLI). All three share a common numerical core and produce identical results.
 
-- **Zero-cost abstractions** and compile-time optimization for tight inner loops.
-- **SIMD vectorization** (via the `wide` crate) for batch Poisson NLL evaluation.
-- **Thread-level parallelism** (via Rayon) for independent chain sampling and toy generation.
-- **Automatic differentiation** (forward and reverse mode) for gradient-based optimization and sampling.
+The companion model specification [8] documents the mathematical details. This paper focuses on the software itself: architecture (Section 2), quickstart usage (Section 3), inference algorithms (Section 4), automatic differentiation (Section 5), performance (Section 6), validation (Section 7), and outlook (Section 8).
 
-The toolkit exposes three user interfaces: a Rust library, a Python package (via PyO3/maturin), and a command-line interface (CLI). All three share a common core and produce identical numerical results.
+## 2. Software Architecture
 
-This paper is structured as follows. Section 2 provides background on HistFactory and pyhf. Section 3 describes the software architecture. Section 4 details the inference algorithms. Section 5 demonstrates usage through examples. Section 6 presents the validation methodology and results. Section 7 discusses performance. Section 8 concludes with an outlook.
+### 2.1 Crate Structure
 
-## 2. Background
-
-### 2.1 HistFactory
-
-The HistFactory framework [1] specifies parameterized probability models for binned analyses. A model consists of one or more *channels* (histogram regions), each containing multiple *samples* (signal and background contributions). The expected event count in each bin is a function of *parameters of interest* (POI, typically a signal strength $\mu$) and *nuisance parameters* ($\boldsymbol{\theta}$) encoding systematic uncertainties.
-
-The full likelihood factorizes into Poisson terms for the observed bin counts and constraint terms for the nuisance parameters:
-
-$$\mathcal{L}(\mu, \boldsymbol{\theta}) = \prod_{c \in \text{channels}} \prod_{b \in \text{bins}} \text{Pois}(n_{cb} \mid \lambda_{cb}(\mu, \boldsymbol{\theta})) \times \prod_{j} C_j(\theta_j)$$
-
-where $C_j$ represents Gaussian or Poisson auxiliary constraints on nuisance parameters (see the companion model specification [4] for details).
-
-### 2.2 pyhf and the JSON Workspace Format
-
-The pyhf project [2] provides a pure-Python implementation of HistFactory likelihoods, independent of the ROOT framework [5]. Crucially, pyhf defines a JSON schema for *workspaces* that declaratively describe the full model: channels, samples, modifiers, and their associated data.
-
-The ATLAS collaboration has adopted pyhf JSON as a format for publishing full statistical likelihoods [3], enabling independent reinterpretation of search results. NextStat uses pyhf JSON as its primary input format, ensuring compatibility with this growing ecosystem of published likelihoods.
-
-### 2.3 Related Work
-
-Several tools address similar needs in the HEP statistics ecosystem:
-
-- **RooFit/RooStats** [6]: The original C++/ROOT implementation of HistFactory. Tightly integrated with ROOT; not easily used outside that ecosystem.
-- **pyhf** [2]: Pure-Python reference implementation. Supports multiple backends (NumPy, JAX, PyTorch). Widely adopted for published likelihoods.
-- **stanhf** [7]: Converts HistFactory models to the Stan probabilistic programming language, enabling Bayesian inference with Stan's NUTS sampler.
-- **cabiern** [8]: Rust-based gradient computation for HistFactory models.
-
-NextStat occupies a complementary niche: a self-contained Rust engine that covers both frequentist and Bayesian workflows, while maintaining strict parity with pyhf for validation.
-
-## 3. Software Architecture
-
-### 3.1 Crate Structure
-
-NextStat is organized as a Rust workspace with seven crates, following a layered architecture with dependency inversion:
+NextStat is organized as a Rust workspace (edition 2024, MSRV 1.93) with eight crates following a layered architecture:
 
 ```
 User Layer        ns-cli          ns-py (PyO3)       ns-viz
@@ -81,193 +47,149 @@ Compute Layer        ns-compute          /
 Core Layer                ns-core
 ```
 
-| Crate | Purpose |
-|-------|---------|
-| `ns-core` | Shared types, traits (`ComputeBackend`, `Model`), error types |
-| `ns-compute` | CPU backend with SIMD kernels; optional Metal/CUDA backends |
-| `ns-ad` | Forward-mode (Dual) and reverse-mode (Tape) automatic differentiation |
-| `ns-translate` | pyhf JSON parsing and `HistFactoryModel` construction |
-| `ns-inference` | MLE, profile likelihood, CLs hypothesis tests, NUTS/HMC sampling |
-| `ns-viz` | Plot-friendly JSON artifacts (CLs curves, profile scans) |
-| `ns-cli` | Command-line interface |
-| `ns-py` | Python bindings via PyO3 and maturin |
+| Crate | Lines | Purpose |
+|-------|-------|---------|
+| `ns-core` | 197 | Shared traits (`LogDensityModel`, `PreparedNll`), types, error handling |
+| `ns-compute` | 524 | SIMD-accelerated Poisson NLL kernels; CPU/Metal/CUDA dispatch |
+| `ns-ad` | 998 | Forward-mode (Dual) and reverse-mode (Tape) automatic differentiation |
+| `ns-translate` | 1,000+ | pyhf JSON parsing, `HistFactoryModel` construction, modifier algebra |
+| `ns-inference` | 2,958 | L-BFGS-B optimization, profile likelihood, CLs, NUTS/HMC sampling |
+| `ns-viz` | — | Plot-friendly JSON artifacts (CLs curves, profile scans) |
+| `ns-cli` | 513 | Command-line interface via `clap` |
+| `ns-py` | 600+ | Python bindings via PyO3 and maturin |
 
-### 3.2 Design Principles
+Key external dependencies: `argmin` (L-BFGS-B optimizer), `ndarray`/`nalgebra` (linear algebra), `wide` (4-wide SIMD), `rayon` (data parallelism), `statrs` (distributions), `rand`/`rand_distr` (RNG).
 
-**Trait-based abstraction.** Inference algorithms depend on abstract traits (`ComputeBackend` for NLL/gradient evaluation, `Model` for parameter metadata), not concrete implementations. This allows backends to evolve independently—adding GPU support does not require changing inference code.
+### 2.2 Core Traits
 
-**Deterministic reference path.** A single-threaded CPU path with stable summation order serves as the ground truth for validation. All parity tests with pyhf execute against this path.
+The `LogDensityModel` trait abstracts over concrete model implementations, enabling inference algorithms to work with any model type:
 
-**Separation of translation and inference.** Model construction from pyhf JSON (`ns-translate`) is cleanly separated from inference algorithms (`ns-inference`). This enables future support for additional model formats (HistFactory XML, custom specifications) without modifying inference code.
+```rust
+pub trait LogDensityModel: Send + Sync {
+    type Prepared<'a>: PreparedNll + 'a;
 
-### 3.3 PreparedModel
+    fn dim(&self) -> usize;
+    fn parameter_names(&self) -> Vec<String>;
+    fn parameter_bounds(&self) -> Vec<(f64, f64)>;
+    fn parameter_init(&self) -> Vec<f64>;
+    fn nll(&self, params: &[f64]) -> Result<f64>;
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>>;
+    fn prepared(&self) -> Self::Prepared<'_>;
+}
+```
 
-The `PreparedModel` struct in `ns-translate` caches precomputed quantities for efficient repeated evaluation:
+The `prepared()` method returns a cached evaluator (`PreparedNll`) that amortizes setup cost over thousands of evaluations — critical for profile scans, toy ensembles, and MCMC chains.
 
-- Flattened observed data across all channels
-- Precomputed $\ln\Gamma(n+1)$ terms (log-factorials)
-- Observation mask for sparse bins ($n = 0$)
-- Constant offset from Gaussian constraints ($\sum_j [\ln\sigma_j + \frac{1}{2}\ln 2\pi]$)
-- Code4 interpolation coefficients for NormSys modifiers
-- Barlow-Beeston $\tau$ values for ShapeSys modifiers
+### 2.3 PreparedModel
 
-This caching strategy amortizes setup cost over thousands of NLL evaluations, which is critical for profile scans, toy ensembles, and MCMC sampling.
+The `PreparedModel` struct caches precomputed quantities for the HistFactory likelihood:
 
-## 4. Inference Algorithms
+| Cached quantity | Purpose |
+|----------------|---------|
+| Flattened observed data | Single contiguous array across all channels |
+| $\ln\Gamma(n+1)$ terms | Log-factorials for Poisson NLL |
+| Observation mask | Sparse bin optimization ($n = 0$ bins) |
+| Constraint constant | $\sum_j [\ln\sigma_j + \frac{1}{2}\ln 2\pi]$ for Gaussian constraints |
+| Code 4 coefficients | 6th-order polynomial interpolation for NormSys |
+| Barlow–Beeston $\tau$ values | Effective sample sizes for ShapeSys |
 
-### 4.1 Maximum Likelihood Estimation
+### 2.4 Design Principles
 
-NextStat performs MLE using the L-BFGS-B algorithm (via the `argmin` crate), which supports box constraints on parameters. The optimizer minimizes the negative log-likelihood $\text{nll}(\boldsymbol{\theta}) = -\log\mathcal{L}(\boldsymbol{\theta})$ subject to parameter bounds.
+**Trait-based abstraction.** Inference algorithms depend on `LogDensityModel`, not on `HistFactoryModel` directly. Adding GPU backends or alternative model formats does not require changes to inference code.
 
-The fit output includes:
+**Deterministic reference path.** A single-threaded CPU path with stable summation order produces bit-reproducible results. All parity tests against pyhf execute in this mode.
 
-- **Best-fit parameters** $\hat{\boldsymbol{\theta}}$
-- **NLL at minimum** $\text{nll}(\hat{\boldsymbol{\theta}})$
-- **Hessian-based covariance** $\hat{\Sigma} = H^{-1}$ where $H_{ij} = \partial^2 \text{nll} / \partial\theta_i \partial\theta_j \big|_{\hat{\boldsymbol{\theta}}}$
-- **Parameter uncertainties** $\hat{\sigma}_i = \sqrt{\hat{\Sigma}_{ii}}$
+**Separation of concerns.** Model construction (`ns-translate`) is cleanly separated from inference (`ns-inference`), which in turn is separated from AD (`ns-ad`) and compute kernels (`ns-compute`).
 
-A fast path (`fit_minimum`) skips the Hessian computation for use cases that only need the best-fit point (profile scans, toy fits).
+**Generic scalar type.** The NLL function `nll_generic<T: Scalar>` works with `f64` (plain evaluation), `Dual` (forward-mode AD), and `Tape` variables (reverse-mode AD) without code duplication.
 
-### 4.2 Profile Likelihood Scan
+## 3. Quickstart
 
-For a parameter of interest $\mu$, the profile likelihood ratio is:
+### 3.1 Installation
 
-$$q_\mu = 2 \left[ \text{nll}(\mu, \hat{\hat{\boldsymbol{\theta}}}) - \text{nll}(\hat{\mu}, \hat{\boldsymbol{\theta}}) \right]$$
+**Python** (via PyPI):
+```bash
+pip install nextstat
+```
 
-where $(\hat{\mu}, \hat{\boldsymbol{\theta}})$ is the global MLE and $\hat{\hat{\boldsymbol{\theta}}}$ denotes the profiled nuisance parameters at fixed $\mu$. NextStat evaluates $q_\mu$ over a user-specified grid with the following procedure:
+**Rust** (add to `Cargo.toml`):
+```toml
+[dependencies]
+ns-inference = { git = "https://github.com/nextstat/nextstat" }
+ns-translate = { git = "https://github.com/nextstat/nextstat" }
+```
 
-1. Perform the unconditional (free) fit to obtain $(\hat{\mu}, \hat{\boldsymbol{\theta}})$ and $\text{nll}_\text{free}$.
-2. For each grid point $\mu_i$: fix the POI and minimize over nuisance parameters.
-3. Compute $q_{\mu_i} = \max(0, 2(\text{nll}_{\mu_i} - \text{nll}_\text{free}))$.
+**CLI** (from source):
+```bash
+git clone https://github.com/nextstat/nextstat
+cd nextstat
+cargo install --path crates/ns-cli
+```
 
-The clipping $q_\mu \geq 0$ enforces the physical boundary: the conditional fit cannot be better than the unconditional one.
+### 3.2 Basic Workflow
 
-### 4.3 Asymptotic CLs Hypothesis Test
-
-NextStat implements asymptotic CLs calculations following Cowan et al. [9] with the $\tilde{q}_\mu$ test statistic, consistent with pyhf's `calctype="asymptotics"` and `test_stat="qtilde"`.
-
-**Asimov dataset construction.** The expected dataset under the background-only hypothesis ($\mu = 0$) is constructed by:
-
-1. Performing a conditional fit at $\mu = 0$.
-2. Computing expected bin counts at the fitted nuisance parameter values.
-3. Replacing observed data and constraint auxdata with these expected values.
-
-**Test statistic.** The transformed test statistic $t_\mu$ is computed from the observed $q_\mu$ and the Asimov $q_{\mu,A}$:
-
-$$t_\mu = \begin{cases} \sqrt{q_\mu} - \sqrt{q_{\mu,A}} & \text{if } \sqrt{q_\mu} \leq \sqrt{q_{\mu,A}} \\ \frac{q_\mu - q_{\mu,A}}{2\sqrt{q_{\mu,A}}} & \text{if } \sqrt{q_\mu} > \sqrt{q_{\mu,A}} \end{cases}$$
-
-**CLs.** The CLs value at signal strength $\mu$ is:
-
-$$\text{CLs}(\mu) = \frac{\text{CL}_{s+b}}{\text{CL}_b} = \frac{\Phi(-(t_\mu + \sqrt{q_{\mu,A}}))}{\Phi(-t_\mu)}$$
-
-where $\Phi$ is the standard normal CDF.
-
-**Expected CLs band.** Expected CLs values under the background-only hypothesis are computed by shifting the test statistic by $n\sigma$ ($n \in \{-2, -1, 0, +1, +2\}$):
-
-$$\text{CLs}^\text{exp}(n\sigma) = \frac{\Phi(-(n + \sqrt{q_{\mu,A}}))}{\Phi(-n)}$$
-
-**Upper limit.** The observed upper limit $\mu_\text{up}$ satisfies $\text{CLs}(\mu_\text{up}) = \alpha$ (typically $\alpha = 0.05$). NextStat finds this via linear scan with interpolation or bisection root-finding.
-
-### 4.4 Bayesian Posterior Sampling (NUTS/HMC)
-
-NextStat implements a No-U-Turn Sampler (NUTS) [10] in Rust for Bayesian posterior inference. The implementation follows Stan's variant [11]:
-
-**Posterior.** The log-posterior density is:
-
-$$\log p(\boldsymbol{\theta} \mid \text{data}) = \log\mathcal{L}(\text{data} \mid \boldsymbol{\theta}) + \log\pi(\boldsymbol{\theta}) + \text{const}$$
-
-To avoid double-counting, constraints already included in $\log\mathcal{L}$ are not repeated in the prior $\pi$.
-
-**Unconstrained parameterization.** For bounded parameters, NextStat samples in an unconstrained space $\mathbf{z} \in \mathbb{R}^n$ with bijective transforms:
-
-| Bounds | Transform | Jacobian |
-|--------|-----------|----------|
-| $(-\infty, +\infty)$ | $\theta = z$ (identity) | $0$ |
-| $(a, +\infty)$ | $\theta = a + e^z$ | $z$ |
-| $(a, b)$ | $\theta = a + (b-a)\sigma(z)$ | $\log(b-a) + z - 2\log(1+e^z)$ |
-
-The log-determinant of the Jacobian is added to the log-posterior.
-
-**Leapfrog integrator.** Symplectic integration of Hamilton's equations with potential $U = -\log p$ and kinetic energy $K = \frac{1}{2}\mathbf{p}^T M^{-1} \mathbf{p}$.
-
-**Tree building.** Multinomial NUTS builds a balanced binary tree by doubling, selecting proposals via multinomial weighting. Tree expansion stops when a U-turn is detected or when the maximum tree depth is reached. Slice variable semantics enforce $\log u = \log U - H_0$ where $H_0$ is the initial Hamiltonian. Divergent transitions ($|\Delta H| > 1000$) are flagged.
-
-**Adaptation.** During warmup:
-
-- Step size is adapted via dual averaging (target acceptance rate 0.8).
-- Diagonal mass matrix is estimated via Welford online variance.
-
-**Diagnostics.** Per-chain and cross-chain diagnostics include:
-
-- Split $\hat{R}$ (potential scale reduction factor)
-- Effective sample size (ESS), bulk and tail
-- Divergence count and rate
-- Tree depth saturation rate
-
-### 4.5 Automatic Differentiation
-
-NextStat provides two AD modes in the `ns-ad` crate:
-
-- **Forward mode** (Dual numbers): efficient when the number of parameters is small ($d \lesssim 20$). Each function evaluation simultaneously computes the value and one directional derivative.
-- **Reverse mode** (Tape): efficient for large parameter spaces. Records operations on a computational tape and computes the full gradient in a single backward pass.
-
-The `Scalar` trait unifies `f64`, `Dual`, and `Tape` types, allowing the NLL function `nll_generic<T: Scalar>` to be used for both evaluation and differentiation without code duplication.
-
-## 5. Usage Examples
-
-### 5.1 Command-Line Interface
+Given a JSON workspace file (e.g., downloaded from a public repository or created manually):
 
 ```bash
-# MLE fit
+# MLE fit — best-fit parameters and uncertainties
 nextstat fit --input workspace.json
 
-# Asymptotic CLs hypothesis test
+# Asymptotic CLs hypothesis test at mu=1
 nextstat hypotest --input workspace.json --mu 1.0 --expected-set
 
-# Upper limit (scan + interpolation)
+# Upper limit (95% CL)
 nextstat upper-limit --input workspace.json --alpha 0.05 \
     --scan-start 0.0 --scan-stop 5.0 --scan-points 201
 
 # Profile likelihood scan
 nextstat scan --input workspace.json --start 0.0 --stop 2.0 --points 21
 
-# Plot-friendly CLs curve artifact
+# Plot-ready CLs curve (Brazil band)
 nextstat viz cls --input workspace.json --alpha 0.05 \
     --scan-start 0.0 --scan-stop 5.0 --scan-points 201
 ```
 
-### 5.2 Python API
+All commands accept `--threads N` to control parallelism (N=1 for deterministic mode).
+
+### 3.3 Python API
 
 ```python
-import json
+import json, nextstat
 from pathlib import Path
-import nextstat
-from nextstat import infer
 
-# Load pyhf workspace
+# Load workspace
 ws = json.loads(Path("workspace.json").read_text())
 model = nextstat.from_pyhf(json.dumps(ws))
 
+# Inspect model
+print(f"Parameters: {model.parameter_names()}")
+print(f"Dimensions: {model.n_params()}")
+print(f"POI index:  {model.poi_index()}")
+
 # MLE fit
 fit = nextstat.fit(model)
-print(f"bestfit: {fit.bestfit}")
-print(f"uncertainties: {fit.uncertainties}")
+print(f"Best-fit:       {fit.bestfit}")
+print(f"Uncertainties:  {fit.uncertainties}")
+print(f"NLL:            {fit.nll}")
+print(f"Converged:      {fit.converged}")
 
-# CLs hypothesis test
-result = infer.hypotest(1.0, model)
+# Hypothesis test
+result = nextstat.infer.hypotest(1.0, model)
 print(f"CLs(mu=1): {result['cls']}")
 
 # Upper limit
-limit = infer.upper_limit(model, alpha=0.05)
+limit = nextstat.infer.upper_limit(model, alpha=0.05)
 print(f"mu_up: {limit['mu_up']}")
 
-# NUTS posterior sampling
-config = nextstat.NutsConfig(num_warmup=500, num_samples=1000, seed=42)
-sampler = nextstat.Sampler(model, config)
-chains = sampler.sample(num_chains=4)
+# Profile scan
+scan = nextstat.infer.profile_scan(model, mu_values=[0.0, 0.5, 1.0, 1.5, 2.0])
+
+# Bayesian posterior sampling (NUTS)
+chains = nextstat.sample_nuts(model, n_chains=4,
+                               n_warmup=500, n_samples=1000, seed=42)
 ```
 
-### 5.3 Rust Library
+### 3.4 Rust Library
 
 ```rust
 use ns_translate::pyhf::Workspace;
@@ -280,93 +202,301 @@ let model = workspace.to_model()?;
 let mle = MaximumLikelihoodEstimator::default();
 let result = mle.fit(&model)?;
 
-println!("bestfit: {:?}", result.parameters);
-println!("nll: {}", result.nll);
+println!("Best-fit:  {:?}", result.parameters);
+println!("NLL:       {}", result.nll);
+println!("Converged: {}", result.converged);
 ```
 
-## 6. Validation
+## 4. Inference Algorithms
 
-### 6.1 Parity with pyhf (Deterministic Mode)
+### 4.1 Maximum Likelihood Estimation
+
+NextStat performs MLE via the L-BFGS-B algorithm (through the `argmin` crate [9]), which supports box constraints on parameters. The optimizer minimizes the twice negative log-likelihood $2\,\text{nll}(\boldsymbol{\theta})$ subject to parameter bounds.
+
+**Optimizer configuration:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_iter` | 1000 | Maximum iterations |
+| `tol` | $10^{-6}$ | Gradient norm tolerance |
+| `m` | 10 | L-BFGS history depth (corrections to approximate inverse Hessian) |
+
+The fit output includes best-fit parameters $\hat{\boldsymbol{\theta}}$, NLL at minimum, Hessian-based covariance $\hat{\Sigma} = H^{-1}$ (via Cholesky or LU decomposition of the numerical Hessian), parameter uncertainties $\hat{\sigma}_i = \sqrt{\hat{\Sigma}_{ii}}$, convergence flag, and evaluation count.
+
+**Gradients** are computed via forward-mode AD (see Section 5). A numerical gradient fallback using central differences with adaptive step size is available.
+
+**Fast path.** The `fit_minimum()` variant skips Hessian computation, returning only the best-fit point and NLL. This is used internally by profile scans and toy fits where uncertainties are not needed.
+
+### 4.2 Profile Likelihood Scan
+
+For a parameter of interest $\mu$, the profile likelihood ratio test statistic is:
+
+$$q_\mu = 2 \left[ \text{nll}(\mu, \hat{\hat{\boldsymbol{\theta}}}) - \text{nll}(\hat{\mu}, \hat{\boldsymbol{\theta}}) \right]$$
+
+where $(\hat{\mu}, \hat{\boldsymbol{\theta}})$ is the global MLE and $\hat{\hat{\boldsymbol{\theta}}}$ denotes the profiled nuisance parameters at fixed $\mu$. The procedure:
+
+1. Perform the unconditional (free) fit to obtain $(\hat{\mu}, \hat{\boldsymbol{\theta}})$ and $\text{nll}_\text{free}$.
+2. For each grid point $\mu_i$: fix the POI, minimize over nuisance parameters using `fit_minimum()`.
+3. Compute $q_{\mu_i} = \max(0,\ 2(\text{nll}_{\mu_i} - \text{nll}_\text{free}))$.
+
+The non-negativity constraint enforces the physical requirement that the conditional fit cannot be better than the unconditional one.
+
+### 4.3 Asymptotic CLs Hypothesis Test
+
+NextStat implements asymptotic CLs using the $\tilde{q}_\mu$ test statistic following the framework of Cowan et al. [10].
+
+**Asimov dataset.** The expected dataset under the background-only hypothesis ($\mu = 0$) is constructed by performing a conditional fit at $\mu = 0$ and computing expected bin counts at the fitted nuisance parameter values.
+
+**Test statistic.** The transformed test statistic $t_\mu$ is:
+
+$$t_\mu = \begin{cases} \sqrt{q_\mu} - \sqrt{q_{\mu,A}} & \text{if } \sqrt{q_\mu} \leq \sqrt{q_{\mu,A}} \\ \dfrac{q_\mu - q_{\mu,A}}{2\sqrt{q_{\mu,A}}} & \text{otherwise} \end{cases}$$
+
+where $q_{\mu,A}$ is the test statistic evaluated on the Asimov dataset.
+
+**CLs value:**
+
+$$\text{CLs}(\mu) = \frac{\text{CL}_{s+b}}{\text{CL}_b} = \frac{\Phi(-(t_\mu + \sqrt{q_{\mu,A}}))}{\Phi(-t_\mu)}$$
+
+**Expected CLs band.** Under the background-only hypothesis, the expected CLs at $n\sigma$ is:
+
+$$\text{CLs}^\text{exp}(n\sigma) = \frac{\Phi(-(n + \sqrt{q_{\mu,A}}))}{\Phi(-n)}$$
+
+for $n \in \{-2, -1, 0, +1, +2\}$ (the Brazil band).
+
+**Upper limit.** The observed upper limit $\mu_\text{up}$ satisfies $\text{CLs}(\mu_\text{up}) = \alpha$ (typically $\alpha = 0.05$). Two root-finding strategies are available: linear scan with interpolation and bisection with configurable tolerance.
+
+### 4.4 Bayesian Posterior Sampling (NUTS/HMC)
+
+NextStat includes a No-U-Turn Sampler (NUTS) [11] implemented in Rust, following the multinomial variant described in [7].
+
+**Log-posterior:**
+
+$$\log p(\boldsymbol{\theta} \mid \text{data}) = \log\mathcal{L}(\text{data} \mid \boldsymbol{\theta}) + \log\pi(\boldsymbol{\theta}) + \text{const}$$
+
+Constraint terms already included in $\log\mathcal{L}$ are not repeated in the prior $\pi$ to avoid double-counting.
+
+**Unconstrained parameterization.** For bounded parameters, NextStat samples in an unconstrained space $\mathbf{z} \in \mathbb{R}^n$ with bijective transforms and their log-Jacobian corrections:
+
+| Bounds | Transform | Log-Jacobian |
+|--------|-----------|--------------|
+| $(-\infty, +\infty)$ | $\theta = z$ (identity) | $0$ |
+| $(a, +\infty)$ | $\theta = a + e^z$ | $z$ |
+| $(a, b)$ | $\theta = a + (b-a)\sigma(z)$ | $\log(b-a) + z - 2\log(1+e^z)$ |
+
+where $\sigma(z) = 1/(1 + e^{-z})$ is the logistic function.
+
+**Leapfrog integrator.** Symplectic integration of Hamilton's equations with half-steps:
+
+$$\mathbf{p}_{1/2} = \mathbf{p}_0 - \frac{\varepsilon}{2}\nabla_\mathbf{z} U(\mathbf{z}_0), \quad
+\mathbf{z}_1 = \mathbf{z}_0 + \varepsilon\, M^{-1}\mathbf{p}_{1/2}, \quad
+\mathbf{p}_1 = \mathbf{p}_{1/2} - \frac{\varepsilon}{2}\nabla_\mathbf{z} U(\mathbf{z}_1)$$
+
+where $U = -\log p$ is the potential energy and $M$ is the mass matrix.
+
+**Tree building.** Multinomial NUTS builds a balanced binary tree by recursive doubling. Expansion stops when a U-turn is detected ($\langle \Delta\mathbf{z}, \mathbf{p}\rangle < 0$) or the maximum tree depth (default 10) is reached. Proposals are selected via multinomial weighting. Divergent transitions ($|\Delta H| > 1000$) are flagged.
+
+**Adaptation.** During warmup, step size is adapted via dual averaging (target acceptance rate 0.8), and a diagonal mass matrix is estimated via Welford online variance. A windowed adaptation schedule divides warmup into slow, fast, and final-tuning phases.
+
+**NUTS configuration:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_treedepth` | 10 | Maximum tree depth |
+| `target_accept` | 0.8 | Target acceptance probability |
+| `init_jitter` | 0.0 | Jitter in unconstrained space |
+| `num_warmup` | 500 | Warmup iterations |
+| `num_samples` | 1000 | Post-warmup samples |
+
+**Multi-chain sampling** runs chains in parallel via Rayon with deterministic seeding: `chain_seed = base_seed + chain_id`.
+
+**Diagnostics:**
+
+| Diagnostic | Threshold | Description |
+|------------|-----------|-------------|
+| Split $\hat{R}$ | $< 1.01$ | Potential scale reduction factor |
+| ESS bulk | $\geq 100$ per chain | Effective sample size (bulk) |
+| ESS tail | $\geq 100$ per chain | Effective sample size (tail) |
+| E-BFMI | $> 0.3$ | Energy Bayesian fraction of missing information |
+| Divergence rate | $< 1\%$ | Fraction of divergent transitions |
+
+## 5. Automatic Differentiation
+
+The `ns-ad` crate provides two AD modes unified under a `Scalar` trait.
+
+### 5.1 Forward Mode (Dual Numbers)
+
+The `Dual` struct carries a value and its derivative simultaneously:
+
+```rust
+pub struct Dual {
+    pub val: f64,
+    pub dot: f64,
+}
+```
+
+All elementary operations (`+`, `−`, `×`, `÷`, `ln`, `exp`, `sqrt`, `pow`, `abs`, `max`, `clamp`) implement the chain rule. To compute $\partial\,\text{nll}/\partial\theta_i$, one evaluates the NLL with $\theta_i$ seeded as `Dual { val: θ_i, dot: 1.0 }` and all other parameters seeded with `dot: 0.0`. The full gradient requires $d$ evaluations for $d$ parameters.
+
+**Cost:** $O(d)$ function evaluations. Memory: $O(1)$ additional per evaluation (no tape).
+
+**Best for:** Models with $d \lesssim 30$ parameters, where the overhead of tape recording is not justified.
+
+### 5.2 Reverse Mode (Tape)
+
+The `Tape` struct records a computation DAG in the forward pass:
+
+```rust
+pub struct Tape {
+    nodes: Vec<Node>,
+    adjoints: Vec<f64>,
+}
+pub struct Var(usize);  // Handle to a tape node
+```
+
+A single backward sweep computes $\nabla_{\boldsymbol{\theta}}\,\text{nll}$ by propagating adjoints from the output to all input variables.
+
+**Cost:** 1 forward pass + 1 backward pass, independent of $d$. Memory: $O(N)$ where $N$ is the number of operations recorded.
+
+**Best for:** Models with $d > 100$ parameters.
+
+### 5.3 Generic Scalar Trait
+
+The `Scalar` trait unifies `f64`, `Dual`, and `Tape::Var`:
+
+```rust
+pub trait Scalar: Copy + Add + Sub + Mul + Div + Neg {
+    fn from_f64(v: f64) -> Self;
+    fn ln(self) -> Self;
+    fn exp(self) -> Self;
+    fn powf(self, p: Self) -> Self;
+    fn max(self, other: Self) -> Self;
+    // ...
+}
+```
+
+The NLL function `nll_generic<T: Scalar>` is written once and works for plain evaluation, forward AD, and reverse AD. This design eliminates code duplication between the evaluation and differentiation codepaths.
+
+## 6. Performance
+
+### 6.1 SIMD Vectorization
+
+The Poisson NLL inner loop in `ns-compute` processes four bins simultaneously using `f64x4` SIMD operations (via the `wide` crate [12]):
+
+```
+nll_i = exp_i - obs_i · ln(exp_i) + ln(obs_i!)
+```
+
+The kernel uses a branchless mask to skip $\ln$ computation when all four lanes have $\text{obs} = 0$. This is important for sparse histograms common in tail regions.
+
+**Precision.** The `wide::f64x4::ln()` function exhibits approximately 1000 ULP error relative to scalar `f64::ln()`. NextStat instead extracts each lane to scalar, computes `f64::ln()`, and repacks into the SIMD register. This preserves bit-exact agreement with the scalar reference path while still benefiting from SIMD for all arithmetic operations.
+
+**Dispatch.** The SIMD backend auto-detects AVX2 (x86_64) or NEON (aarch64) at compile time and falls back to scalar when neither is available.
+
+### 6.2 Thread-Level Parallelism
+
+Rayon [13] provides work-stealing parallelism for:
+
+| Workflow | Parallelization |
+|----------|----------------|
+| Toy ensembles | Each toy (generate + fit) is independent |
+| Multi-chain NUTS | Each chain runs independently |
+| Profile scans | Each grid point (conditional fit) is independent |
+
+Thread count is controlled via `--threads` (CLI) or `rayon::ThreadPoolBuilder`.
+
+### 6.3 Compiler Optimizations
+
+The release profile enables aggressive optimization:
+
+```toml
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+```
+
+Benchmarks use `lto = "fat"` for maximum cross-crate inlining.
+
+### 6.4 Benchmark Infrastructure
+
+Performance is measured using Criterion [14] (Rust micro-benchmarking framework) with the following suites:
+
+| Suite | Measures |
+|-------|----------|
+| `simd_benchmark` | Poisson NLL: scalar vs SIMD at 4, 100, 1K, 10K bins |
+| `poisson_nll_full` | NLL throughput with sparse/dense histograms |
+| `mle_benchmark` | End-to-end fit time (simple + complex workspaces) |
+| `ad_benchmark` | Forward vs reverse AD cost scaling with parameter count |
+
+## 7. Validation
+
+### 7.1 Parity Contract with pyhf
 
 NextStat's deterministic CPU path is validated against pyhf (NumPy backend) on a suite of test workspaces. The parity contract specifies:
 
-| Quantity | Tolerance |
-|----------|-----------|
-| `twice_nll` | $\text{rtol} = 10^{-6}$, $\text{atol} = 10^{-8}$ |
-| Best-fit parameters | $\text{atol} = 2 \times 10^{-4}$ |
-| Uncertainties | $\text{atol} = 5 \times 10^{-4}$ |
+| Quantity | Relative tol. | Absolute tol. |
+|----------|---------------|---------------|
+| `twice_nll(θ)` | $10^{-6}$ | $10^{-8}$ |
+| Best-fit parameters | — | $2 \times 10^{-4}$ |
+| Uncertainties | — | $5 \times 10^{-4}$ |
 
-Tests compare values parameter-by-parameter by name, not by index, to catch ordering mismatches.
+Parameters are compared **by name** (not by index) to catch ordering mismatches between implementations.
 
-### 6.2 Test Statistics and CLs
+### 7.2 Test Fixtures
 
-Golden-point tests compare $q_\mu$, $\tilde{q}_\mu$, CLs values, and upper limits at selected signal strength points against pyhf output. These tests cover:
+| Fixture | Channels | Bins | Samples | Modifiers | Parameters |
+|---------|----------|------|---------|-----------|------------|
+| `simple_workspace.json` | 1 | 2 | 2 | 3 | 3 |
+| `complex_workspace.json` | 2 | 8 | 5 | 12 | 18 |
 
-- Zero-signal and non-zero-signal hypotheses
-- Observed and expected (Brazil band) CLs values
-- Upper limits via scan+interpolation and bisection
+Parity tests are evaluated at nominal parameters, random perturbations, and parameter boundaries.
 
-### 6.3 Bias, Pull, and Coverage
+### 7.3 Test Statistics and CLs
 
-Toy ensembles ($N_\text{toys} = 200$) verify statistical quality:
+Golden-point tests compare $q_\mu$, $\tilde{q}_\mu$, observed/expected CLs values, and upper limits at selected signal strength points.
 
-- **Bias**: $\text{bias}(\hat{\theta}) = E[\hat{\theta}] - \theta_\text{true}$
-- **Pull mean/std**: $(E[\text{pull}], \text{std}(\text{pull})) \approx (0, 1)$
-- **Coverage**: fraction of intervals containing $\theta_\text{true}$
+### 7.4 Statistical Quality (Toy Ensembles)
 
-Tolerances for NextStat vs pyhf comparison:
+Toy ensembles ($N_\text{toys} = 200$ for smoke tests, $\geq 5000$ for certification) verify that no systematic bias is introduced:
 
 | Metric | Tolerance |
 |--------|-----------|
-| $|\Delta\text{mean(pull)}|$ | $\leq 0.05$ |
-| $|\Delta\text{std(pull)}|$ | $\leq 0.05$ |
-| $|\Delta\text{coverage}_{1\sigma}|$ | $\leq 0.03$ |
+| $|\Delta\,\text{mean(pull)}|$ | $\leq 0.05$ |
+| $|\Delta\,\text{std(pull)}|$ | $\leq 0.05$ |
+| $|\Delta\,\text{coverage}_{1\sigma}|$ | $\leq 0.03$ |
 
-### 6.4 Bayesian Diagnostics
+### 7.5 Bayesian Diagnostics
 
-NUTS sampler quality is monitored via:
+NUTS sampler quality is validated on toy distributions (Normal, MVN):
 
-- $\hat{R} < 1.01$ on toy problems (Normal, MVN, banana)
-- Divergence rate $< 1\%$
-- ESS per parameter baseline for regression tracking
+- MAP with flat prior agrees with MLE within frequentist tolerances
+- $\hat{R} < 1.01$, divergence rate $< 1\%$, adequate ESS
 
-## 7. Performance
+### 7.6 Running Tests
 
-### 7.1 SIMD Vectorization
+```bash
+# Rust unit and integration tests (excludes ns-py)
+cargo test -p ns-core -p ns-ad -p ns-compute -p ns-translate -p ns-inference
 
-The Poisson NLL inner loop processes four bins simultaneously using `f64x4` SIMD lanes (via the `wide` crate). Arithmetic operations (addition, subtraction, multiplication, reduction) use SIMD natively. The natural logarithm is evaluated lane-by-lane with scalar `f64::ln()` to maintain bit-exact precision (`wide::f64x4::ln()` exhibits $\sim$1000 ULP error).
+# Release-mode tests (required for toy ensembles)
+cargo test -p ns-inference --release -- test_fit_toys
 
-### 7.2 Thread-Level Parallelism
-
-Rayon provides data parallelism for:
-
-- Independent MCMC chain sampling
-- Toy ensemble generation and fitting
-- Profile scan grid evaluation (each $\mu$ point fitted independently)
-
-### 7.3 Benchmark Strategy
-
-Performance is measured with Criterion (Rust) and timed comparisons against pyhf. Key metrics:
-
-- NLL evaluation throughput (evaluations/second)
-- End-to-end MLE fit time
-- Profile scan wall time for $N$ grid points
-- NUTS effective samples per second
-
-Benchmarks pin CPU frequency scaling and report medians over multiple runs.
+# Python parity tests
+pytest tests/python/
+```
 
 ## 8. Summary and Outlook
 
-NextStat provides a high-performance, multi-frontend inference engine for HistFactory-style binned likelihoods. Key contributions include:
+NextStat provides a high-performance, multi-frontend inference engine for binned likelihood models. Key characteristics:
 
-- **Numerical parity** with pyhf in deterministic mode, validated by a comprehensive test suite.
-- **Performance** via SIMD vectorization and thread-level parallelism.
-- **Unified frequentist and Bayesian** inference in a single toolkit.
-- **Three access modes** (Rust, Python, CLI) sharing a common numerical core.
+- **Numerical parity** with pyhf in deterministic mode, validated across likelihood evaluation, MLE, CLs, and toy ensemble statistics.
+- **Performance** via SIMD vectorization (f64x4) and Rayon-based parallelism.
+- **Unified inference** — both frequentist (MLE, profile, CLs) and Bayesian (NUTS/HMC) in one toolkit.
+- **Three access modes** (Rust library, Python package, CLI) sharing a common numerical core.
+- **Composable AD** — forward and reverse mode via a generic `Scalar` trait, enabling gradient-based optimization and sampling without code duplication.
 
-Future development includes GPU backends (Metal, CUDA), expanded model format support (HistFactory XML), rank-normalized MCMC diagnostics, and comprehensive benchmark publications.
+**Future work** includes GPU backends (Metal, CUDA), expanded input format support, full mass matrix adaptation for NUTS, rank-normalized MCMC diagnostics, and published benchmark comparisons.
 
-NextStat is open-source under AGPL-3.0-or-later with optional commercial licensing. The source code is available at [https://github.com/nextstat](https://github.com/nextstat).
+NextStat is open-source under AGPL-3.0-or-later with optional commercial licensing. Source code: [https://github.com/nextstat/nextstat](https://github.com/nextstat/nextstat). Documentation: [https://nextstat.io](https://nextstat.io).
 
 ## References
 
@@ -376,18 +506,24 @@ NextStat is open-source under AGPL-3.0-or-later with optional commercial licensi
 
 [3] ATLAS Collaboration, "Reproducing searches for new physics with the ATLAS experiment through publication of full statistical likelihoods," ATL-PHYS-PUB-2019-029, 2019.
 
-[4] NextStat Contributors, "NextStat Model Specification: HistFactory Probability Densities and Modifiers," docs/papers/model-specification.md, 2026.
+[4] R. Brun, F. Rademakers, "ROOT — An object oriented data analysis framework," Nucl. Instrum. Meth. A389, 81–86, 1997.
 
-[5] R. Brun, F. Rademakers, "ROOT — An object oriented data analysis framework," Nucl. Instrum. Meth. A389, 81–86, 1997.
+[5] W. Verkerke, D. Kirkby, "The RooFit toolkit for data modeling," arXiv:physics/0306116, 2003.
 
-[6] W. Verkerke, D. Kirkby, "The RooFit toolkit for data modeling," arXiv:physics/0306116, 2003.
+[6] A. Fowlie, "stanhf: HistFactory models in the probabilistic programming language Stan," arXiv:2503.22188, 2025.
 
-[7] A. Fowlie, "stanhf: HistFactory models in the probabilistic programming language Stan," arXiv:2503.22188, 2025.
+[7] B. Carpenter et al., "Stan: A Probabilistic Programming Language," J. Stat. Softw. 76(1), 2017.
 
-[8] L. Heinrich, "cabiern: Rust-based HistFactory gradient computation," GitHub, 2023.
+[8] NextStat Contributors, "NextStat Model Specification: HistFactory Probability Densities and Modifiers," docs/papers/model-specification.md, 2026.
 
-[9] G. Cowan, K. Cranmer, E. Gross, O. Vitells, "Asymptotic formulae for likelihood-based tests of new physics," Eur. Phys. J. C71, 1554, 2011.
+[9] S. Knopp, "argmin: A pure Rust optimization framework," https://argmin-rs.org, 2024.
 
-[10] M. D. Hoffman, A. Gelman, "The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo," JMLR 15, 1593–1623, 2014.
+[10] G. Cowan, K. Cranmer, E. Gross, O. Vitells, "Asymptotic formulae for likelihood-based tests of new physics," Eur. Phys. J. C71, 1554, 2011; Erratum ibid. C73, 2501, 2013.
 
-[11] B. Carpenter et al., "Stan: A Probabilistic Programming Language," J. Stat. Softw. 76(1), 2017.
+[11] M. D. Hoffman, A. Gelman, "The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo," JMLR 15, 1593–1623, 2014.
+
+[12] Lokathor, "wide: SIMD-compatible data types," https://crates.io/crates/wide, 2024.
+
+[13] J. Stone, N. Matsakis, "Rayon: A data parallelism library for Rust," https://crates.io/crates/rayon, 2024.
+
+[14] Brook Heisler, "Criterion.rs: Statistics-driven micro-benchmarking," https://crates.io/crates/criterion, 2024.

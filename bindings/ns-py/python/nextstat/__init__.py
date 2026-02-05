@@ -38,6 +38,9 @@ except ImportError:  # pragma: no cover
 from . import bayes as bayes  # noqa: E402
 from . import viz as viz  # noqa: E402
 
+# Back-compat alias: make the sampler intent explicit without breaking `sample`.
+sample_nuts = sample
+
 # Aliases used throughout docs/plans.
 PyModel = HistFactoryModel
 PyFitResult = FitResult
@@ -47,6 +50,7 @@ __all__ = [
     "fit",
     "hypotest",
     "sample",
+    "sample_nuts",
     "bayes",
     "viz",
     "HistFactoryModel",

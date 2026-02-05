@@ -106,6 +106,41 @@ class TestSampleReproducibility:
 
 
 # ---------------------------------------------------------------------------
+# Non-slow CI gates
+# ---------------------------------------------------------------------------
+
+class TestSampleNonSlowGates:
+    """Non-flaky, non-slow sanity checks for CI."""
+
+    def test_basic_diagnostics_are_finite(self):
+        model = _make_model()
+        result = nextstat.sample(
+            model,
+            n_chains=2,
+            n_warmup=100,
+            n_samples=80,
+            seed=123,
+            init_jitter_rel=0.10,
+        )
+        diag = result["diagnostics"]
+
+        assert 0.0 <= diag["divergence_rate"] <= 1.0
+        assert 0.0 <= diag["max_treedepth_rate"] <= 1.0
+
+        # R-hat/ESS can be imperfect for short runs, but must be finite.
+        for v in diag["r_hat"].values():
+            assert v == v and v > 0.0  # not NaN
+        for v in diag["ess_bulk"].values():
+            assert v == v and v > 0.0
+        for v in diag["ess_tail"].values():
+            assert v == v and v > 0.0
+
+        # E-BFMI is per-chain; should be finite for real energy traces.
+        for bfmi in diag["ebfmi"]:
+            assert bfmi == bfmi and bfmi > 0.0
+
+
+# ---------------------------------------------------------------------------
 # Quality gates
 # ---------------------------------------------------------------------------
 
@@ -191,3 +226,23 @@ class TestSampleConfig:
         # With high target_accept, step size should be smaller → higher mean accept
         mean_accept = sum(result["sample_stats"]["accept_prob"][0]) / 50
         assert mean_accept > 0.5, f"Mean accept prob too low: {mean_accept}"
+
+    def test_init_jitter_rel_smoke(self):
+        model = _make_model()
+        result = nextstat.sample(
+            model, n_chains=2, n_warmup=50, n_samples=30, seed=1, init_jitter_rel=0.10
+        )
+        assert isinstance(result, dict)
+
+    def test_init_jitter_mutual_exclusive(self):
+        model = _make_model()
+        with pytest.raises(ValueError):
+            nextstat.sample(
+                model,
+                n_chains=1,
+                n_warmup=10,
+                n_samples=10,
+                seed=1,
+                init_jitter=0.1,
+                init_jitter_rel=0.10,
+            )

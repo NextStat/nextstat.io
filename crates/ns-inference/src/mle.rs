@@ -2,6 +2,7 @@
 
 use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizerConfig};
 use nalgebra::DMatrix;
+use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_core::{FitResult, Result};
 use ns_translate::pyhf::HistFactoryModel;
 
@@ -23,14 +24,14 @@ impl MaximumLikelihoodEstimator {
         Self { config }
     }
 
-    /// Fit a HistFactory model to data
+    /// Fit any [`LogDensityModel`] by minimizing negative log-likelihood.
     ///
     /// # Arguments
     /// * `model` - Statistical model to fit
     ///
     /// # Returns
     /// FitResult with best-fit parameters, uncertainties, covariance, and fit quality
-    pub fn fit(&self, model: &HistFactoryModel) -> Result<FitResult> {
+    pub fn fit<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
         let result = self.fit_minimum(model)?;
 
         // Compute full Hessian and covariance matrix
@@ -80,25 +81,24 @@ impl MaximumLikelihoodEstimator {
     /// (profile likelihood scans, hypotest/limits).
     pub fn fit_minimum(
         &self,
-        model: &HistFactoryModel,
+        model: &impl LogDensityModel,
     ) -> Result<crate::optimizer::OptimizationResult> {
-        let initial_params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let bounds: Vec<(f64, f64)> = model.parameters().iter().map(|p| p.bounds).collect();
+        let initial_params: Vec<f64> = model.parameter_init();
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        let prepared = model.prepared();
 
-        let prepared = model.prepare();
-
-        struct ModelObjective<'a> {
-            prepared: ns_translate::pyhf::PreparedModel<'a>,
-            model: &'a HistFactoryModel,
+        struct ModelObjective<'a, M: LogDensityModel + ?Sized, P: PreparedNll> {
+            prepared: P,
+            model: &'a M,
         }
 
-        impl<'a> ObjectiveFunction for ModelObjective<'a> {
+        impl<M: LogDensityModel + ?Sized, P: PreparedNll> ObjectiveFunction for ModelObjective<'_, M, P> {
             fn eval(&self, params: &[f64]) -> Result<f64> {
                 self.prepared.nll(params)
             }
 
             fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
-                self.model.gradient_reverse(params)
+                self.model.grad_nll(params)
             }
         }
 
@@ -114,11 +114,11 @@ impl MaximumLikelihoodEstimator {
     /// Cost: N+1 gradient evaluations (each O(1) via reverse-mode AD).
     fn compute_hessian(
         &self,
-        model: &HistFactoryModel,
+        model: &impl LogDensityModel,
         best_params: &[f64],
     ) -> Result<DMatrix<f64>> {
         let n = best_params.len();
-        let grad_center = model.gradient_reverse(best_params)?;
+        let grad_center = model.grad_nll(best_params)?;
 
         let mut hessian = DMatrix::zeros(n, n);
 
@@ -127,7 +127,7 @@ impl MaximumLikelihoodEstimator {
 
             let mut params_plus = best_params.to_vec();
             params_plus[j] += eps;
-            let grad_plus = model.gradient_reverse(&params_plus)?;
+            let grad_plus = model.grad_nll(&params_plus)?;
 
             for i in 0..n {
                 hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
@@ -617,6 +617,85 @@ mod tests {
                 _ => panic!("Toy results should be deterministically Ok/Err for a fixed seed"),
             }
         }
+    }
+
+    #[test]
+    #[ignore = "slow (~30s release); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
+    fn test_fit_toys_pull_distribution() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let poi_idx = model.poi_index().expect("POI index should exist");
+        let mu_true = 1.0;
+
+        // Generate at POI = mu_true, nuisances at suggested init
+        let mut truth: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+        truth[poi_idx] = mu_true;
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let n_toys = 200;
+        let seed = 42u64;
+        let results = mle.fit_toys(&model, &truth, n_toys, seed);
+
+        // Collect pulls from converged toys
+        let mut pulls = Vec::new();
+        let mut n_converged = 0usize;
+        let mut n_covered = 0usize;
+
+        for r in &results {
+            if let Ok(fit) = r {
+                if !fit.converged {
+                    continue;
+                }
+                n_converged += 1;
+                let mu_hat = fit.parameters[poi_idx];
+                let sigma_mu = fit.uncertainties[poi_idx];
+                if sigma_mu <= 0.0 || !sigma_mu.is_finite() {
+                    continue;
+                }
+                let pull = (mu_hat - mu_true) / sigma_mu;
+                pulls.push(pull);
+                if pull.abs() <= 1.0 {
+                    n_covered += 1;
+                }
+            }
+        }
+
+        let n = pulls.len() as f64;
+        assert!(n >= 100.0, "Need at least 100 converged toys, got {}", n as usize);
+
+        let mean: f64 = pulls.iter().sum::<f64>() / n;
+        let var: f64 = pulls.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std = var.sqrt();
+        let coverage = n_covered as f64 / pulls.len() as f64;
+
+        // Print JSON summary for CI capture
+        println!(
+            "{{\"test\":\"pull_distribution\",\"n_toys\":{},\"n_converged\":{},\"n_pulls\":{},\
+             \"pull_mean\":{:.4},\"pull_std\":{:.4},\"coverage_1sigma\":{:.4}}}",
+            n_toys,
+            n_converged,
+            pulls.len(),
+            mean,
+            std,
+            coverage
+        );
+
+        assert!(
+            mean.abs() < 0.15,
+            "Pull mean should be near 0: {:.4}",
+            mean
+        );
+        assert!(
+            (std - 1.0).abs() < 0.15,
+            "Pull std should be near 1: {:.4}",
+            std
+        );
+        assert!(
+            (coverage - 0.68).abs() < 0.08,
+            "1σ coverage should be near 68%: {:.4}",
+            coverage
+        );
     }
 
     #[test]

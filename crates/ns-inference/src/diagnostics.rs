@@ -389,11 +389,7 @@ mod tests {
         let chain2: Vec<f64> = (0..500).map(|_| normal.sample(&mut rng2)).collect();
 
         let rhat = r_hat_rank_normalized_folded(&vec![chain1, chain2]);
-        assert!(
-            rhat < 1.05,
-            "Rank-normalized folded R-hat for IID chains should be ~1: {}",
-            rhat
-        );
+        assert!(rhat < 1.05, "Rank-normalized folded R-hat for IID chains should be ~1: {}", rhat);
     }
 
     #[test]

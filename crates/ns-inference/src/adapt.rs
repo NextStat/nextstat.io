@@ -242,7 +242,7 @@ fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
 /// Doubles or halves `eps` until the acceptance probability crosses 0.5.
 /// Follows Stan's algorithm (Hoffman & Gelman 2014, Algorithm 4).
 pub fn find_reasonable_step_size(
-    posterior: &crate::posterior::Posterior<'_>,
+    posterior: &crate::posterior::Posterior<'_, impl ns_core::traits::LogDensityModel + ?Sized>,
     q: &[f64],
     inv_mass_diag: &[f64],
 ) -> f64 {

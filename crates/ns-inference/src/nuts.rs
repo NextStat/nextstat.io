@@ -7,6 +7,7 @@ use crate::adapt::{WindowedAdaptation, find_reasonable_step_size};
 use crate::hmc::{HmcState, LeapfrogIntegrator};
 use crate::posterior::Posterior;
 use ns_core::Result;
+use ns_core::traits::LogDensityModel;
 use rand::Rng;
 
 /// NUTS sampler configuration.
@@ -90,8 +91,8 @@ fn log_sum_exp(a: f64, b: f64) -> f64 {
 }
 
 /// Build a single-node tree (one leapfrog step).
-fn build_leaf(
-    integrator: &LeapfrogIntegrator<'_, '_>,
+fn build_leaf<M: LogDensityModel + ?Sized>(
+    integrator: &LeapfrogIntegrator<'_, '_, M>,
     state: &HmcState,
     direction: i32,
     log_u: f64,
@@ -134,8 +135,8 @@ fn build_leaf(
 }
 
 /// Recursively build a balanced binary tree of depth `depth`.
-fn build_tree(
-    integrator: &LeapfrogIntegrator<'_, '_>,
+fn build_tree<M: LogDensityModel + ?Sized>(
+    integrator: &LeapfrogIntegrator<'_, '_, M>,
     state: &HmcState,
     depth: usize,
     direction: i32,
@@ -216,8 +217,8 @@ fn build_tree(
 }
 
 /// Run one NUTS transition from the given state.
-pub(crate) fn nuts_transition(
-    integrator: &LeapfrogIntegrator<'_, '_>,
+pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
+    integrator: &LeapfrogIntegrator<'_, '_, M>,
     current: &HmcState,
     max_treedepth: usize,
     inv_mass: &[f64],
@@ -342,12 +343,12 @@ pub(crate) fn nuts_transition(
     })
 }
 
-/// Run NUTS sampling on a HistFactory model.
+/// Run NUTS sampling on any [`LogDensityModel`].
 ///
 /// Returns raw chain data: draws in unconstrained and constrained space,
 /// plus diagnostics (divergences, tree depths, acceptance probabilities).
-pub fn sample_nuts(
-    model: &ns_translate::pyhf::HistFactoryModel,
+pub fn sample_nuts<M: LogDensityModel>(
+    model: &M,
     n_warmup: usize,
     n_samples: usize,
     seed: u64,
@@ -367,7 +368,7 @@ pub fn sample_nuts(
         let mle = crate::mle::MaximumLikelihoodEstimator::new();
         match mle.fit_minimum(model) {
             Ok(r) if r.converged => r.parameters,
-            _ => model.parameters().iter().map(|p| p.init).collect(),
+            _ => model.parameter_init(),
         }
     };
     let z_init = posterior.to_unconstrained(&theta_init);
@@ -380,7 +381,7 @@ pub fn sample_nuts(
     let z_init: Vec<f64> = if let Some(frac) = config.init_jitter_rel.filter(|&f| f > 0.0) {
         use rand_distr::{Distribution, Normal};
 
-        let bounds: Vec<(f64, f64)> = model.parameters().iter().map(|p| p.bounds).collect();
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
         let jac = posterior.transform().jacobian_diag(&z_init);
 
         let mut out = Vec::with_capacity(dim);
@@ -560,7 +561,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.5, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
 
         assert_eq!(chain.draws_constrained.len(), 50);
@@ -591,7 +597,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 8, target_accept: 0.8, init_jitter: 0.0, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
         let chain1 = sample_nuts(&model, 50, 20, 123, config.clone()).unwrap();
         let chain2 = sample_nuts(&model, 50, 20, 123, config).unwrap();
 
@@ -614,7 +625,12 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        let config = NutsConfig { max_treedepth: 10, target_accept: 0.8, init_jitter: 0.5, init_jitter_rel: None };
+        let config = NutsConfig {
+            max_treedepth: 10,
+            target_accept: 0.8,
+            init_jitter: 0.5,
+            init_jitter_rel: None,
+        };
         let result = sample_nuts_multichain(&model, 4, 500, 500, 42, config).unwrap();
 
         let diag = compute_diagnostics(&result);
@@ -648,12 +664,7 @@ mod tests {
 
         // E-BFMI > 0.2 for all chains
         for (i, &bfmi) in diag.ebfmi.iter().enumerate() {
-            assert!(
-                bfmi > 0.2,
-                "E-BFMI for chain {} = {} (should be > 0.2)",
-                i,
-                bfmi,
-            );
+            assert!(bfmi > 0.2, "E-BFMI for chain {} = {} (should be > 0.2)", i, bfmi,);
         }
 
         // POI posterior mean should be positive and in a reasonable range.
@@ -662,10 +673,6 @@ mod tests {
         // Jacobian prior from the sigmoid transform, so we only check that the
         // mean is in (0, 5) - broadly consistent with the signal strength.
         let poi_mean = result.param_mean(0);
-        assert!(
-            poi_mean > 0.0 && poi_mean < 5.0,
-            "POI posterior mean out of range: {}",
-            poi_mean,
-        );
+        assert!(poi_mean > 0.0 && poi_mean < 5.0, "POI posterior mean out of range: {}", poi_mean,);
     }
 }

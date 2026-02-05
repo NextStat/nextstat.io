@@ -6,6 +6,7 @@
 
 use crate::posterior::Posterior;
 use ns_core::Result;
+use ns_core::traits::LogDensityModel;
 
 /// HMC phase-space state: position + momentum + cached potential/gradient.
 #[derive(Debug, Clone)]
@@ -33,15 +34,15 @@ impl HmcState {
 }
 
 /// Leapfrog integrator for HMC.
-pub struct LeapfrogIntegrator<'a, 'b> {
-    posterior: &'a Posterior<'b>,
+pub struct LeapfrogIntegrator<'a, 'b, M: LogDensityModel + ?Sized> {
+    posterior: &'a Posterior<'b, M>,
     step_size: f64,
     inv_mass_diag: Vec<f64>,
 }
 
-impl<'a, 'b> LeapfrogIntegrator<'a, 'b> {
+impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
     /// Create a new leapfrog integrator.
-    pub fn new(posterior: &'a Posterior<'b>, step_size: f64, inv_mass_diag: Vec<f64>) -> Self {
+    pub fn new(posterior: &'a Posterior<'b, M>, step_size: f64, inv_mass_diag: Vec<f64>) -> Self {
         Self { posterior, step_size, inv_mass_diag }
     }
 
@@ -127,15 +128,15 @@ impl<'a, 'b> LeapfrogIntegrator<'a, 'b> {
 }
 
 /// Static HMC sampler (fixed trajectory length). Used for validation.
-pub struct StaticHmcSampler<'a, 'b> {
-    integrator: LeapfrogIntegrator<'a, 'b>,
+pub struct StaticHmcSampler<'a, 'b, M: LogDensityModel + ?Sized> {
+    integrator: LeapfrogIntegrator<'a, 'b, M>,
     n_steps: usize,
 }
 
-impl<'a, 'b> StaticHmcSampler<'a, 'b> {
+impl<'a, 'b, M: LogDensityModel + ?Sized> StaticHmcSampler<'a, 'b, M> {
     /// Create a new static HMC sampler.
     pub fn new(
-        posterior: &'a Posterior<'b>,
+        posterior: &'a Posterior<'b, M>,
         step_size: f64,
         n_steps: usize,
         inv_mass_diag: Vec<f64>,
