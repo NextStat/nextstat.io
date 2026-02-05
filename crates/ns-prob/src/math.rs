@@ -39,7 +39,8 @@ mod tests {
 
     #[test]
     fn test_log1pexp_matches_naive_moderate_values() {
-        for x in [-10.0, -2.0, -0.1, 0.0, 0.1, 2.0, 10.0] {
+        let xs: [f64; 7] = [-10.0, -2.0, -0.1, 0.0, 0.1, 2.0, 10.0];
+        for x in xs {
             let naive = (1.0 + x.exp()).ln();
             let stable = log1pexp(x);
             assert!((naive - stable).abs() < 1e-12, "x={}: {} vs {}", x, naive, stable);
@@ -48,7 +49,8 @@ mod tests {
 
     #[test]
     fn test_log1pexp_is_finite_extremes() {
-        for x in [-1e6, -100.0, 100.0, 1e6] {
+        let xs: [f64; 4] = [-1e6, -100.0, 100.0, 1e6];
+        for x in xs {
             let y = log1pexp(x);
             assert!(y.is_finite(), "x={} produced {}", x, y);
         }
@@ -57,7 +59,8 @@ mod tests {
 
     #[test]
     fn test_sigmoid_bounds_and_symmetry() {
-        for x in [-50.0, -10.0, -1.0, 0.0, 1.0, 10.0, 50.0] {
+        let xs: [f64; 7] = [-50.0, -10.0, -1.0, 0.0, 1.0, 10.0, 50.0];
+        for x in xs {
             let s = sigmoid(x);
             assert!(s >= 0.0 && s <= 1.0, "sigmoid({})={}", x, s);
             let t = sigmoid(-x);
@@ -67,11 +70,11 @@ mod tests {
 
     #[test]
     fn test_log_sigmoid_matches_naive_moderate_values() {
-        for x in [-10.0, -2.0, -0.1, 0.0, 0.1, 2.0, 10.0] {
+        let xs: [f64; 7] = [-10.0, -2.0, -0.1, 0.0, 0.1, 2.0, 10.0];
+        for x in xs {
             let naive = sigmoid(x).ln();
             let stable = log_sigmoid(x);
             assert!((naive - stable).abs() < 1e-12, "x={}: {} vs {}", x, naive, stable);
         }
     }
 }
-

@@ -783,73 +783,93 @@ impl HistFactoryModel {
             let mut channel_expected: Vec<T> = vec![T::from_f64(0.0); n_bins];
 
             for sample in &channel.samples {
-                let mut sample_expected: Vec<T> =
+                // Match pyhf combination semantics:
+                // - "addition" modifiers (e.g. histosys) produce deltas in nominal space
+                // - "multiplication" modifiers produce factors (scalar or per-bin)
+                // - expected = (nominal + sum(deltas)) * product(factors)
+                let sample_nominal: Vec<T> =
                     sample.nominal.iter().map(|&v| T::from_f64(v)).collect();
+                let mut sample_deltas: Vec<T> = vec![T::from_f64(0.0); sample_nominal.len()];
+                let mut sample_factors: Vec<T> = vec![T::from_f64(1.0); sample_nominal.len()];
 
                 for modifier in &sample.modifiers {
                     match modifier {
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = params[*param_idx];
-                            for val in &mut sample_expected {
-                                *val = *val * norm;
+                            for fac in &mut sample_factors {
+                                *fac = *fac * norm;
                             }
                         }
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma_val = params[gamma_idx];
-                                    sample_expected[bin_idx] = sample_expected[bin_idx] * gamma_val;
+                                    sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
                             let alpha = params[*param_idx];
                             let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
-                            for val in &mut sample_expected {
-                                *val = *val * factor;
+                            for fac in &mut sample_factors {
+                                *fac = *fac * factor;
                             }
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
                             let alpha = params[*param_idx];
-                            for (bin_idx, val) in sample_expected.iter_mut().enumerate() {
-                                let nom = *val;
-                                let hi = T::from_f64(
-                                    hi_template.get(bin_idx).copied().unwrap_or(nom.value()),
-                                );
-                                let lo = T::from_f64(
-                                    lo_template.get(bin_idx).copied().unwrap_or(nom.value()),
-                                );
+                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                let nom = sample_nominal
+                                    .get(bin_idx)
+                                    .copied()
+                                    .unwrap_or(T::from_f64(0.0));
+                                let nom_val = nom.value();
+                                let hi =
+                                    T::from_f64(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                let lo =
+                                    T::from_f64(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
                                 let delta = histosys_code4p_delta(alpha, lo, nom, hi);
-                                *val = nom + delta;
+                                *delta_slot = *delta_slot + delta;
                             }
                         }
                         ModelModifier::StatError { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma_val = params[gamma_idx];
-                                    sample_expected[bin_idx] = sample_expected[bin_idx] * gamma_val;
+                                    sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
                         }
                         ModelModifier::ShapeFactor { param_indices } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma_val = params[gamma_idx];
-                                    sample_expected[bin_idx] = sample_expected[bin_idx] * gamma_val;
+                                    sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
                         }
                         ModelModifier::Lumi { param_idx } => {
                             let lumi = params[*param_idx];
-                            for val in &mut sample_expected {
-                                *val = *val * lumi;
+                            for fac in &mut sample_factors {
+                                *fac = *fac * lumi;
                             }
                         }
                     }
                 }
 
-                for (bin_idx, &val) in sample_expected.iter().enumerate() {
-                    channel_expected[bin_idx] = channel_expected[bin_idx] + val;
+                for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
+                    let nom = sample_nominal
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(T::from_f64(0.0));
+                    let delta = sample_deltas
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(T::from_f64(0.0));
+                    let fac = sample_factors
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(T::from_f64(1.0));
+                    *ch_val = *ch_val + (nom + delta) * fac;
                 }
             }
 
@@ -1047,37 +1067,44 @@ impl HistFactoryModel {
             let mut channel_expected: Vec<Var> = (0..n_bins).map(|_| tape.constant(0.0)).collect();
 
             for sample in &channel.samples {
-                let mut sample_expected: Vec<Var> =
+                // Match pyhf: (nominal + sum(deltas)) * product(factors).
+                let sample_nominal: Vec<Var> =
                     sample.nominal.iter().map(|&v| tape.constant(v)).collect();
+                let mut sample_deltas: Vec<Var> =
+                    (0..sample_nominal.len()).map(|_| tape.constant(0.0)).collect();
+                let mut sample_factors: Vec<Var> =
+                    (0..sample_nominal.len()).map(|_| tape.constant(1.0)).collect();
 
                 for modifier in &sample.modifiers {
                     match modifier {
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = params[*param_idx];
-                            for val in &mut sample_expected {
-                                *val = tape.mul(*val, norm);
+                            for fac in &mut sample_factors {
+                                *fac = tape.mul(*fac, norm);
                             }
                         }
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_expected[bin_idx] =
-                                        tape.mul(sample_expected[bin_idx], gamma);
+                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
                             let alpha = params[*param_idx];
                             let factor = normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor);
-                            for val in &mut sample_expected {
-                                *val = tape.mul(*val, factor);
+                            for fac in &mut sample_factors {
+                                *fac = tape.mul(*fac, factor);
                             }
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
                             let alpha = params[*param_idx];
-                            for (bin_idx, val) in sample_expected.iter_mut().enumerate() {
-                                let nom = *val;
+                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                let nom = sample_nominal
+                                    .get(bin_idx)
+                                    .copied()
+                                    .unwrap_or(tape.constant(0.0));
                                 let nom_val = tape.val(nom);
                                 let hi_val = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
                                 let lo_val = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
@@ -1085,38 +1112,50 @@ impl HistFactoryModel {
                                 let hi = tape.constant(hi_val);
                                 let lo = tape.constant(lo_val);
                                 let delta = histosys_code4p_delta_on_tape(tape, alpha, lo, nom, hi);
-                                *val = tape.add(nom, delta);
+                                *delta_slot = tape.add(*delta_slot, delta);
                             }
                         }
                         ModelModifier::StatError { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_expected[bin_idx] =
-                                        tape.mul(sample_expected[bin_idx], gamma);
+                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
                         ModelModifier::ShapeFactor { param_indices } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
-                                if bin_idx < sample_expected.len() {
+                                if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_expected[bin_idx] =
-                                        tape.mul(sample_expected[bin_idx], gamma);
+                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
                         ModelModifier::Lumi { param_idx } => {
                             let lumi = params[*param_idx];
-                            for val in &mut sample_expected {
-                                *val = tape.mul(*val, lumi);
+                            for fac in &mut sample_factors {
+                                *fac = tape.mul(*fac, lumi);
                             }
                         }
                     }
                 }
 
-                for (bin_idx, &val) in sample_expected.iter().enumerate() {
-                    channel_expected[bin_idx] = tape.add(channel_expected[bin_idx], val);
+                for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
+                    let nom = sample_nominal
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(tape.constant(0.0));
+                    let delta = sample_deltas
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(tape.constant(0.0));
+                    let fac = sample_factors
+                        .get(bin_idx)
+                        .copied()
+                        .unwrap_or(tape.constant(1.0));
+                    let sum = tape.add(nom, delta);
+                    let val = tape.mul(sum, fac);
+                    *ch_val = tape.add(*ch_val, val);
                 }
             }
 

@@ -620,6 +620,85 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "slow (~30s release); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
+    fn test_fit_toys_pull_distribution() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let poi_idx = model.poi_index().expect("POI index should exist");
+        let mu_true = 1.0;
+
+        // Generate at POI = mu_true, nuisances at suggested init
+        let mut truth: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+        truth[poi_idx] = mu_true;
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let n_toys = 200;
+        let seed = 42u64;
+        let results = mle.fit_toys(&model, &truth, n_toys, seed);
+
+        // Collect pulls from converged toys
+        let mut pulls = Vec::new();
+        let mut n_converged = 0usize;
+        let mut n_covered = 0usize;
+
+        for r in &results {
+            if let Ok(fit) = r {
+                if !fit.converged {
+                    continue;
+                }
+                n_converged += 1;
+                let mu_hat = fit.parameters[poi_idx];
+                let sigma_mu = fit.uncertainties[poi_idx];
+                if sigma_mu <= 0.0 || !sigma_mu.is_finite() {
+                    continue;
+                }
+                let pull = (mu_hat - mu_true) / sigma_mu;
+                pulls.push(pull);
+                if pull.abs() <= 1.0 {
+                    n_covered += 1;
+                }
+            }
+        }
+
+        let n = pulls.len() as f64;
+        assert!(n >= 100.0, "Need at least 100 converged toys, got {}", n as usize);
+
+        let mean: f64 = pulls.iter().sum::<f64>() / n;
+        let var: f64 = pulls.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std = var.sqrt();
+        let coverage = n_covered as f64 / pulls.len() as f64;
+
+        // Print JSON summary for CI capture
+        println!(
+            "{{\"test\":\"pull_distribution\",\"n_toys\":{},\"n_converged\":{},\"n_pulls\":{},\
+             \"pull_mean\":{:.4},\"pull_std\":{:.4},\"coverage_1sigma\":{:.4}}}",
+            n_toys,
+            n_converged,
+            pulls.len(),
+            mean,
+            std,
+            coverage
+        );
+
+        assert!(
+            mean.abs() < 0.15,
+            "Pull mean should be near 0: {:.4}",
+            mean
+        );
+        assert!(
+            (std - 1.0).abs() < 0.15,
+            "Pull std should be near 1: {:.4}",
+            std
+        );
+        assert!(
+            (coverage - 0.68).abs() < 0.08,
+            "1σ coverage should be near 68%: {:.4}",
+            coverage
+        );
+    }
+
+    #[test]
     fn test_ranking() {
         let workspace = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&workspace).unwrap();
