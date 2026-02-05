@@ -1,0 +1,199 @@
+"""Generated pyhf workspaces: parity checks vs pyhf reference.
+
+Goal: expand coverage beyond the static JSON fixtures by validating NextStat on
+synthetic workspaces with larger bin counts and additional modifier patterns.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import pyhf
+import pytest
+
+import nextstat
+
+
+def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
+    ws = pyhf.Workspace(workspace)
+    model = ws.model(
+        measurement_name=measurement_name,
+        modifier_settings={
+            "normsys": {"interpcode": "code4"},
+            "histosys": {"interpcode": "code4p"},
+        },
+    )
+    data = ws.data(model)
+    return model, data
+
+
+def _pyhf_nll(model, data, params) -> float:
+    # pyhf returns twice_nll (=-2 log L). NextStat returns NLL (=-log L).
+    return float(pyhf.infer.mle.twice_nll(params, data, model).item()) / 2.0
+
+
+def _map_params_by_name(src_names, src_params, dst_names, dst_init):
+    dst_index = {name: i for i, name in enumerate(dst_names)}
+    out = list(dst_init)
+    for name, value in zip(src_names, src_params):
+        if name not in dst_index:
+            raise AssertionError(f"Destination missing parameter '{name}'")
+        out[dst_index[name]] = float(value)
+    return out
+
+
+def _shift_params(params, bounds, shift: float = 0.123) -> list[float]:
+    out: list[float] = []
+    for x, (lo, hi) in zip(params, bounds):
+        lo_f = float("-inf") if lo is None else float(lo)
+        hi_f = float("inf") if hi is None else float(hi)
+        y = float(x) + shift
+        if y < lo_f:
+            y = lo_f
+        if y > hi_f:
+            y = hi_f
+        out.append(y)
+    return out
+
+
+def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str):
+    pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
+    pyhf_init = list(pyhf_model.config.suggested_init())
+    pyhf_bounds = list(pyhf_model.config.suggested_bounds())
+
+    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+    ns_names = ns_model.parameter_names()
+    ns_init = ns_model.suggested_init()
+
+    # Parameter sets should match (order may differ).
+    assert set(ns_names) == set(pyhf_model.config.par_names)
+
+    # 1) Nominal suggested init
+    pyhf_val = _pyhf_nll(pyhf_model, pyhf_data, pyhf_init)
+    ns_params = _map_params_by_name(
+        pyhf_model.config.par_names,
+        pyhf_init,
+        ns_names,
+        ns_init,
+    )
+    ns_val = float(ns_model.nll(ns_params))
+    assert ns_val == pytest.approx(pyhf_val, rel=0.0, abs=1e-10)
+
+    # 2) Shifted vector (exercises non-trivial nuisance values)
+    pyhf_shift = _shift_params(pyhf_init, pyhf_bounds, shift=0.123)
+    pyhf_val_shift = _pyhf_nll(pyhf_model, pyhf_data, pyhf_shift)
+    ns_params_shift = _map_params_by_name(
+        pyhf_model.config.par_names,
+        pyhf_shift,
+        ns_names,
+        ns_init,
+    )
+    ns_val_shift = float(ns_model.nll(ns_params_shift))
+    assert ns_val_shift == pytest.approx(pyhf_val_shift, rel=0.0, abs=1e-10)
+
+    # 3) POI variations when present
+    poi_idx = pyhf_model.config.poi_index
+    for poi in [0.0, 2.0]:
+        if poi_idx is None:
+            break
+        pyhf_var = list(pyhf_init)
+        pyhf_var[poi_idx] = poi
+        pyhf_val_var = _pyhf_nll(pyhf_model, pyhf_data, pyhf_var)
+        ns_params_var = _map_params_by_name(
+            pyhf_model.config.par_names,
+            pyhf_var,
+            ns_names,
+            ns_init,
+        )
+        ns_val_var = float(ns_model.nll(ns_params_var))
+        assert ns_val_var == pytest.approx(pyhf_val_var, rel=0.0, abs=1e-10)
+
+
+def _make_workspace_shapefactor(n_bins: int) -> dict[str, Any]:
+    signal = {
+        "name": "signal",
+        "data": [5.0] * n_bins,
+        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
+    }
+    background = {
+        "name": "background",
+        "data": [50.0] * n_bins,
+        "modifiers": [{"name": "sf", "type": "shapefactor", "data": None}],
+    }
+    return {
+        "channels": [{"name": "c", "samples": [signal, background]}],
+        "observations": [{"name": "c", "data": [55.0] * n_bins}],
+        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
+        "version": "1.0.0",
+    }
+
+
+def _make_workspace_histo_normsys(n_bins: int) -> dict[str, Any]:
+    # Deterministic per-bin shape variation around nominal:
+    # hi/lo templates stay positive and are not symmetric by construction.
+    nominal = [100.0 + 0.5 * i for i in range(n_bins)]
+    hi = [x * (1.10 + 0.01 * ((i % 7) - 3)) for i, x in enumerate(nominal)]
+    lo = [x * (0.90 - 0.005 * ((i % 5) - 2)) for i, x in enumerate(nominal)]
+    stat = [max(1.0, 0.20 * (x**0.5)) for x in nominal]
+
+    signal = {
+        "name": "signal",
+        "data": [10.0] * n_bins,
+        "modifiers": [
+            {"name": "mu", "type": "normfactor", "data": None},
+            {"name": "lumi", "type": "lumi", "data": None},
+        ],
+    }
+    background = {
+        "name": "background",
+        "data": nominal,
+        "modifiers": [
+            {"name": "lumi", "type": "lumi", "data": None},
+            {"name": "bkg_norm", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}},
+            {
+                "name": "bkg_shape",
+                "type": "histosys",
+                "data": {"hi_data": hi, "lo_data": lo},
+            },
+            {"name": "staterror_c", "type": "staterror", "data": stat},
+        ],
+    }
+
+    # Observations at nominal (mu=1, nuisances at their centers).
+    observations = [float(s + b) for s, b in zip(signal["data"], background["data"])]
+
+    return {
+        "channels": [{"name": "c", "samples": [signal, background]}],
+        "observations": [{"name": "c", "data": observations}],
+        "measurements": [
+            {
+                "name": "m",
+                "config": {
+                    "poi": "mu",
+                    "parameters": [
+                        {
+                            "name": "lumi",
+                            "inits": [1.0],
+                            "bounds": [[0.9, 1.1]],
+                            "auxdata": [1.0],
+                            "sigmas": [0.02],
+                        }
+                    ],
+                },
+            }
+        ],
+        "version": "1.0.0",
+    }
+
+
+@pytest.mark.parametrize(
+    ("workspace", "measurement_name"),
+    [
+        (_make_workspace_shapefactor(4), "m"),
+        (_make_workspace_histo_normsys(8), "m"),
+    ],
+)
+def test_generated_workspaces_nll_parity(workspace, measurement_name):
+    _assert_nll_parity(workspace, measurement_name)
+
