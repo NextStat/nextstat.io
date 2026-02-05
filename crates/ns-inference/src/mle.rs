@@ -2,8 +2,8 @@
 
 use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizerConfig};
 use nalgebra::DMatrix;
-use ns_core::{FitResult, Result};
 use ns_core::traits::{LogDensityModel, PreparedNll};
+use ns_core::{FitResult, Result};
 use ns_translate::pyhf::HistFactoryModel;
 
 /// Maximum Likelihood Estimator
