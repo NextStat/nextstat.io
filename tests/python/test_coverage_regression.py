@@ -3,7 +3,7 @@
 This is an opt-in slow test that compares NextStat vs pyhf coverage for a simple model.
 
 Run with:
-  NS_RUN_SLOW=1 NS_TOYS=50 NS_SEED=0 pytest -v -m slow tests/python/test_coverage_regression.py
+  NS_RUN_SLOW=1 NS_TOYS=20 NS_SEED=0 NS_SCAN_POINTS=81 pytest -v -m slow tests/python/test_coverage_regression.py
 """
 
 from __future__ import annotations
