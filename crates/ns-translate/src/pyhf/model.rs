@@ -5,6 +5,7 @@
 use super::schema::*;
 use ns_ad::scalar::Scalar;
 use ns_core::Result;
+use ns_core::traits::{LogDensityModel, PreparedNll};
 use statrs::function::gamma::ln_gamma;
 use std::collections::HashMap;
 
@@ -1283,6 +1284,47 @@ impl PreparedModel<'_> {
     #[inline]
     fn ln_factorial_static(n: f64) -> f64 {
         ln_gamma(n + 1.0)
+    }
+}
+
+impl PreparedNll for PreparedModel<'_> {
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        PreparedModel::nll(self, params)
+    }
+}
+
+impl LogDensityModel for HistFactoryModel {
+    type Prepared<'a>
+        = PreparedModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.parameters().iter().map(|p| p.name.clone()).collect()
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        self.parameters().iter().map(|p| p.bounds).collect()
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        self.parameters().iter().map(|p| p.init).collect()
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        HistFactoryModel::nll(self, params)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        HistFactoryModel::gradient_reverse(self, params)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        self.prepare()
     }
 }
 
