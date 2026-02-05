@@ -323,6 +323,45 @@ fn upper_limits(
     Ok((obs, exp.to_vec()))
 }
 
+/// Observed and expected upper limits via bisection root-finding (pyhf scan=None analogue).
+#[pyfunction]
+#[pyo3(signature = (model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None))]
+fn upper_limits_root(
+    model: &PyHistFactoryModel,
+    alpha: f64,
+    lo: f64,
+    hi: Option<f64>,
+    rtol: f64,
+    max_iter: usize,
+    data: Option<Vec<f64>>,
+) -> PyResult<(f64, Vec<f64>)> {
+    let mle = RustMLE::new();
+    let fit_model = if let Some(obs_main) = data {
+        model
+            .inner
+            .with_observed_main(&obs_main)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    } else {
+        model.inner.clone()
+    };
+
+    let ctx = RustCLsCtx::new(&mle, &fit_model)
+        .map_err(|e| PyValueError::new_err(format!("Failed to build asymptotic context: {}", e)))?;
+
+    let hi0 = hi.unwrap_or_else(|| {
+        fit_model
+            .poi_index()
+            .and_then(|idx| fit_model.parameters().get(idx).map(|p| p.bounds.1))
+            .unwrap_or(10.0)
+    });
+
+    let (obs, exp) = ctx
+        .upper_limits_qtilde_bisection(&mle, alpha, lo, hi0, rtol, max_iter)
+        .map_err(|e| PyValueError::new_err(format!("Upper limits root failed: {}", e)))?;
+
+    Ok((obs, exp.to_vec()))
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -335,6 +374,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
+    m.add_function(wrap_pyfunction!(upper_limits_root, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;

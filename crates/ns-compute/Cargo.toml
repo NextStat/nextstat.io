@@ -34,6 +34,10 @@ statrs.workspace = true
 name = "simd_benchmark"
 harness = false
 
+[[bench]]
+name = "poisson_nll_full"
+harness = false
+
 [features]
 default = ["cpu"]
 cpu = []

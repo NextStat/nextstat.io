@@ -104,3 +104,29 @@ def test_upper_limits_linear_scan_simple_parity():
         # amplify into small differences in mu at the crossing. Additionally, NextStat and pyhf
         # use different optimizers/minimizers, so Asimov fits can differ at the 1e-6 level.
         assert abs(float(a) - float(b)) < 5e-5
+
+
+def test_upper_limits_rootfind_simple_parity():
+    workspace = load_fixture("simple_workspace.json")
+    model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
+
+    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+
+    pyhf_obs, pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
+        data,
+        model,
+        scan=None,
+        level=0.05,
+        rtol=1e-4,
+        test_stat="qtilde",
+        calctype="asymptotics",
+    )
+
+    ns_obs, ns_exp = ns_infer.upper_limits_root(
+        ns_model, alpha=0.05, lo=0.0, hi=5.0, rtol=1e-4, max_iter=80
+    )
+
+    assert abs(float(ns_obs) - float(pyhf_obs)) < 5e-4
+    assert len(ns_exp) == 5
+    for a, b in zip(ns_exp, pyhf_exp):
+        assert abs(float(a) - float(b)) < 5e-4

@@ -1,134 +1,132 @@
-# NextStat — Business Strategy Analysis (Draft)
+# NextStat - Business Strategy Analysis (Draft)
 
-> Status: **DRAFT** (strategy memo, not a commitment).  
-> Audience: founders/maintainers, early design decisions, planning inputs.  
-> Goal: зафиксировать **почему** план устроен именно так (P0 correctness + CPU-first), и какие бизнес-риски это закрывает.
-
----
+Status: draft (strategy memo, not a commitment).  
+Audience: founders/maintainers; early design decisions; planning input.  
+Goal: document why the plan is shaped as it is (P0 correctness + CPU-first), and which business risks this mitigates.
 
 ## 1) Executive Summary
 
-NextStat выигрывает не “GPU-ускорением”, а **контрактом корректности + удобной архитектурой**:
+NextStat should win primarily through a correctness contract and a maintainable architecture, not through "GPU-first" positioning:
 
-- **Parity-first:** результаты совпадают с pyhf/TRExFitter в детерминированном CPU-режиме.
-- **CPU-first:** 80% реальных запусков в науке — это кластеры/батч с CPU.
-- **Open-core:** OSS ядро закрывает научные нужды, Pro закрывает compliance/аудит/enterprise.
+- Parity-first: deterministic CPU mode matches pyhf/TRExFitter outputs within the Phase 1 contract.
+- CPU-first: a large fraction of real scientific workloads run on CPU clusters and batch systems.
+- Open-core: OSS covers scientific workflows, Pro covers compliance/audit/enterprise value.
 
-Рекомендация по фокусу на первые 6–9 месяцев:
-1) pyhf parity + удобный CLI/Python API,  
-2) CPU parallelism + AD (градиенты/Гессиан),  
-3) только потом — GPU как ускоритель.
+Recommended focus for the first 6-9 months:
 
----
+1. pyhf parity + a usable CLI/Python API
+2. CPU parallelism + AD (gradients/Hessian)
+3. GPU as an optional accelerator later
 
-## 2) Target Segments (первичный приоритет)
+## 2) Target Segments (initial priority)
 
-### 2.1 HEP / Scientific computing (Primary wedge)
+### 2.1 HEP / scientific computing (primary wedge)
 
-**Почему:** понятный рынок ранних адоптеров, сильный pain (время fits, сложность toolchain), наличие “золотого” референса (pyhf) для валидации.
+Why: clear early-adopter market, strong pain (fit time + complex toolchains), and a high-quality reference implementation (pyhf) for validation.
 
-**Value props:**
-- Быстрее fits (CPU параллельность + AD).
-- Детальная валидация (parity suite).
-- Лёгкая установка (pip + wheels) и “без ROOT” по умолчанию.
+Value props:
 
-### 2.2 Finance / Model Risk (Secondary)
+- faster fits (CPU parallelism + AD),
+- explicit validation (parity suite),
+- easier installation (pip + wheels) and "no ROOT by default".
 
-**Почему:** платёжеспособность + требования к reproducibility/аудиту.
+### 2.2 Finance / model risk (secondary)
 
-**Value props (Pro):**
-- Audit trail, model registry, governance.
-- Reproducible runs, signed artifacts, approvals.
+Why: higher willingness to pay and strong requirements for reproducibility and auditability.
 
-### 2.3 Med / 21 CFR Part 11 (Later)
+Value props (Pro):
 
-**Почему:** высокая стоимость compliance и продаж; не запускать это без уже работающего ядра.
+- audit trail, model registry, governance,
+- reproducible runs, signed artifacts, approvals.
 
----
+### 2.3 Medical / 21 CFR Part 11 (later)
 
-## 3) Monetization (Open-core)
+Why: high compliance and sales cost; do not pursue before the core is stable and widely validated.
+
+## 3) Monetization (open-core)
 
 ### 3.1 OSS (AGPL)
 
-Цель OSS: стать **best-in-class engine** и стандартом интерфейса.
+Goal: become a best-in-class inference engine and a standard interface layer.
 
-В OSS остаются:
-- core likelihood engine + inference (fit/scan/ranking базово),
-- парсеры/трансляторы (pyhf JSON, HistFactory XML import),
-- CLI/Python API,
-- CPU performance path (Rayon/SIMD) и deterministic reference.
+Keep in OSS:
+
+- core likelihood engine + inference (fit/scan/ranking baseline),
+- parsers/translators (pyhf JSON, HistFactory XML import),
+- CLI and Python API,
+- CPU performance path (Rayon/SIMD) and a deterministic reference mode.
 
 ### 3.2 Pro (Commercial)
 
-Pro продаёт:
-- **Audit & compliance**: 21 CFR Part 11 audit trail, e-signatures, validation pack.
-- **Scale**: distributed execution orchestration (K8s/Ray) + job management UX.
-- **Hub/Dashboard**: model registry, RBAC, collaboration.
-- Support/SLA + consulting.
+Pro sells:
 
-> Важно: границы OSS/Pro должны быть описаны в `docs/legal/open-core-boundaries.md` (и подтверждены юристом).
+- Audit and compliance: 21 CFR Part 11 audit trail, e-signatures, validation packs
+- Scale: distributed orchestration (K8s/Ray) + job management UX
+- Hub/Dashboard: model registry, RBAC, collaboration
+- Support/SLA and services
 
----
+The OSS/Pro boundary should be defined in `docs/legal/open-core-boundaries.md` and reviewed by counsel.
 
-## 4) Packaging & Pricing (рабочие гипотезы)
+## 4) Packaging and Pricing (working hypotheses)
 
-- OSS: бесплатно, но AGPL (даёт “коммерческий рычаг”).
-- Pro: годовая подписка на команду/организацию + поддержка.
-- Enterprise: отдельный контракт (SLA, on-prem, compliance bundle).
+- OSS: free under AGPL (creates commercial leverage)
+- Pro: annual subscription per team/org plus support
+- Enterprise: custom contract (SLA, on-prem, compliance bundle)
 
-**Value metric (кандидаты):**
-- число “projects/models” в registry,
-- число “runs”/“fit-hours” в orchestration,
-- количество пользователей/Seats (наименее точно).
+Candidate value metrics:
 
----
+- number of projects/models in the registry,
+- number of runs/fit-hours orchestrated,
+- seats (often the noisiest proxy).
 
-## 5) Timeline Guidance (привязка к планам)
+## 5) Timeline Guidance (aligned with plans)
 
-### Months 0–4 (Phase 0–1)
+### Months 0-4 (Phase 0-1)
 
-Цель: “First working fit” + parity на небольших моделях.
+Goal: first working fit plus parity on small models.
 
-Критично:
-- determinism + numeric contract (`docs/plans/standards.md`),
-- валидаторы и fixtures,
-- минимальный CLI/Python API.
+Critical:
 
-### Months 4–9 (Phase 2)
+- determinism and numeric contract (`docs/plans/standards.md`),
+- validators and fixtures,
+- minimal CLI/Python API.
 
-Цель: сделать продукт **полезным на реальных моделях** (50–200 NP).
+### Months 4-9 (Phase 2)
 
-Критично:
-- AD (градиенты/HVP) → стабильные uncertainties/ranking,
+Goal: make the product useful on real models (50-200 nuisance parameters).
+
+Critical:
+
+- AD (gradients/HVP) for stable uncertainties/ranking,
 - CPU parallelism + batching,
-- GPU — опционально (в первую очередь для dev laptops и специальных workload).
+- GPU optional and non-blocking.
 
-### Months 9–15 (Phase 3)
+### Months 9-15 (Phase 3)
 
-Цель: production readiness (документация, визуализации, валидация, стабильные релизы).
+Goal: production readiness (documentation, visualization, validation, stable releases).
 
----
+## 6) Key Risks and Mitigations
 
-## 6) Key Risks & Mitigations
+### 6.1 Parity drift (math diverges from pyhf)
 
-### 6.1 “Parity drift” (математика расходится с pyhf)
-- Митигация: единый `standards.md` + golden tests + deterministic mode.
+Mitigation: a single `standards.md`, golden tests, deterministic mode as the baseline contract.
 
-### 6.2 Over-engineering (GPU раньше времени)
-- Митигация: GPU как Phase 2C (optional), не блокирует core.
+### 6.2 Over-engineering (GPU too early)
 
-### 6.3 Legal ambiguity (AGPL + Commercial)
-- Митигация: open-core boundaries doc + counsel review + contribution policy (DCO/CLA) до внешних контрибов.
+Mitigation: GPU as an optional phase; never block the core.
 
-### 6.4 Adoption friction (сложная установка)
-- Митигация: wheels, минимальные зависимости, быстрый “hello fit”, готовые примеры.
+### 6.3 Legal ambiguity (AGPL + commercial)
 
----
+Mitigation: explicit boundaries + counsel review + contribution policy (DCO/CLA) before external contributions scale.
 
-## 7) Decisions Needed (чтобы планы исполнялись)
+### 6.4 Adoption friction (hard installation)
 
-1) Contribution policy: DCO vs CLA (и почему).
-2) Repo layout: single repo + private pro modules vs split repos.
-3) Release policy: какие артефакты публикуются под AGPL и в каком виде.
-4) Minimum supported platforms: Linux x86_64 + macOS arm64 (на старте).
+Mitigation: wheels, minimal dependencies, fast "hello fit" path, examples.
+
+## 7) Decisions Needed (to keep the plan executable)
+
+1. Contribution policy: DCO vs CLA.
+2. Repo layout: split OSS and Pro repos vs single repo + private modules.
+3. Release policy: which artifacts are published under AGPL and in what form.
+4. Minimum supported platforms: Linux x86_64 + macOS arm64 (initially).
 

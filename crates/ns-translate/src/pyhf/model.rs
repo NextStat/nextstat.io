@@ -1130,7 +1130,8 @@ impl HistFactoryModel {
 ///
 /// Caches observed data, `lgamma(obs+1)`, observation masks, and Gaussian
 /// constraint constants. Uses SIMD-accelerated Poisson NLL accumulation
-/// via [`ns_compute::simd::poisson_nll_simd`].
+/// via [`ns_compute::simd::poisson_nll_simd`], with a sparse scalar fast-path
+/// that skips `ln(exp)` when `obs == 0`.
 ///
 /// Created via [`HistFactoryModel::prepare`]. The generic AD path
 /// ([`HistFactoryModel::nll_generic`]) is unchanged.
@@ -1142,6 +1143,8 @@ pub struct PreparedModel<'a> {
     ln_factorials: Vec<f64>,
     /// `1.0` if obs > 0, else `0.0` per main bin.
     obs_mask: Vec<f64>,
+    /// Whether any main-bin observation is zero (enables sparse Poisson fast-path).
+    has_zero_obs: bool,
     /// Sum of Gaussian constraint normalization constants:
     /// `Σ [ln(σ) + 0.5·ln(2π)]` over all constrained parameters.
     constraint_const: f64,
@@ -1167,6 +1170,7 @@ impl HistFactoryModel {
         }
 
         let n_main_bins = observed_flat.len();
+        let has_zero_obs = obs_mask.iter().any(|&m| m == 0.0);
 
         // Pre-compute Gaussian constraint normalization constant
         let half_ln_2pi = 0.5 * (2.0 * std::f64::consts::PI).ln();
@@ -1187,6 +1191,7 @@ impl HistFactoryModel {
             observed_flat,
             ln_factorials,
             obs_mask,
+            has_zero_obs,
             constraint_const,
             n_main_bins,
         }
@@ -1198,7 +1203,7 @@ impl PreparedModel<'_> {
     ///
     /// Equivalent to [`HistFactoryModel::nll`] but faster for f64 evaluation.
     pub fn nll(&self, params: &[f64]) -> Result<f64> {
-        use ns_compute::simd::poisson_nll_simd;
+        use ns_compute::simd::{poisson_nll_scalar_sparse, poisson_nll_simd};
 
         // 1. Compute expected data (scalar — modifier application is branchy)
         let mut expected = self.model.expected_data(params)?;
@@ -1214,8 +1219,18 @@ impl PreparedModel<'_> {
         debug_assert_eq!(expected.len(), self.n_main_bins);
 
         // 3. SIMD Poisson NLL for main bins
-        let mut nll =
-            poisson_nll_simd(&expected, &self.observed_flat, &self.ln_factorials, &self.obs_mask);
+        let mut nll = if self.has_zero_obs {
+            // For sparse observations, scalar is often faster because it can skip `ln(exp)`
+            // lane-by-lane, while SIMD would still compute `ln()` for mixed chunks.
+            poisson_nll_scalar_sparse(
+                &expected,
+                &self.observed_flat,
+                &self.ln_factorials,
+                &self.obs_mask,
+            )
+        } else {
+            poisson_nll_simd(&expected, &self.observed_flat, &self.ln_factorials, &self.obs_mask)
+        };
 
         // 4. Barlow-Beeston auxiliary constraints (scalar — same as generic path)
         for channel in &self.model.channels {

@@ -1,265 +1,261 @@
 # NextStat Governance
 
-> Документ описывает процесс управления проектом NextStat, роли участников и процедуры принятия решений.
+This document describes how the NextStat project is governed: roles, responsibilities, and decision-making processes.
 
-## Принципы
+## Principles
 
-1. **Открытость** — все решения принимаются публично в Issues и PR
-2. **Меритократия** — влияние основано на качестве и количестве вклада
-3. **Консенсус** — стремимся к согласию, но имеем процедуру разрешения конфликтов
-4. **Инклюзивность** — приветствуем участников с любым уровнем опыта
+1. Openness: decisions are made in public via issues and pull requests
+2. Merit: influence is based on quality and consistency of contributions
+3. Consensus: we aim for agreement, with escalation paths when needed
+4. Inclusivity: contributors of all experience levels are welcome
 
-## Роли
+## Roles
 
 ### Contributor
 
-Любой человек, внесший хотя бы один PR.
+Anyone who has contributed at least one pull request (merged or not).
 
-**Права:**
-- Создавать Issues
-- Отправлять Pull Requests
-- Комментировать Issues и PR
-- Участвовать в обсуждениях
+Rights:
 
-**Обязанности:**
-- Следовать [Code of Conduct](#code-of-conduct)
-- Подписывать коммиты DCO (см. [DCO.md](DCO.md))
-- Следовать [CONTRIBUTING.md](CONTRIBUTING.md)
+- Open issues
+- Submit pull requests
+- Comment and participate in discussions
+
+Responsibilities:
+
+- Follow the Code of Conduct
+- Sign commits with DCO (see `DCO.md`)
+- Follow `CONTRIBUTING.md`
 
 ### Committer
 
-Contributor, продемонстрировавший постоянный высококачественный вклад.
+A contributor who has demonstrated consistent, high-quality contributions.
 
-**Критерии:**
-- Минимум 10 merged PR
-- Активность в течение последних 3 месяцев
-- Понимание архитектуры проекта
-- Одобрение минимум 2 Maintainers
+Criteria (guidelines):
 
-**Права:**
-- Все права Contributor
-- Review и approve PR других участников
-- Триаж Issues (assign, label, milestone)
-- Участие в техническом голосовании
+- At least 10 merged PRs
+- Active within the last 3 months
+- Working knowledge of the architecture and codebase
+- Endorsed by at least 2 maintainers
 
-**Обязанности:**
-- Review PR (стремиться к < 48 часов для первого feedback)
-- Участие в release процессе
-- Поддержка новых contributors
+Rights:
 
-**Назначение:**
-1. Maintainer создает Issue с предложением
-2. Голосование Maintainers (72 часа)
-3. Требуется минимум 2 "за" и нет "против"
+- All contributor rights
+- Review and approve PRs
+- Help triage issues (labels, assignment, milestones)
+- Participate in technical votes
+
+Responsibilities:
+
+- Provide timely reviews (aim for first feedback within 48 hours)
+- Help with releases
+- Support new contributors
+
+Appointment process:
+
+1. A maintainer opens an issue proposing a candidate
+2. Maintainers discuss for up to 72 hours
+3. At least 2 votes in favor and no votes against
 
 ### Maintainer
 
-Ключевые участники проекта с полными правами.
+Core project members with merge rights and release responsibility.
 
-**Критерии:**
-- Committer минимум 6 месяцев
-- Глубокое понимание всей кодовой базы
-- Демонстрация лидерских качеств
-- Одобрение большинства текущих Maintainers
+Criteria (guidelines):
 
-**Права:**
-- Все права Committer
-- Merge Pull Requests
-- Управление релизами
-- Управление ролями (назначение Committers)
-- Финальное решение в технических спорах
+- Committer for at least 6 months
+- Deep understanding of the codebase and roadmap
+- Demonstrated ownership and leadership
+- Approved by a majority of existing maintainers
 
-**Обязанности:**
-- Обеспечение качества кода
-- Поддержка долгосрочного видения проекта
-- Менторинг Committers и Contributors
-- Участие в стратегическом планировании
+Rights:
 
-**Текущие Maintainers:**
+- All committer rights
+- Merge pull requests
+- Manage releases
+- Manage roles (appoint committers)
+- Final decision in technical disputes (subject to escalation rules below)
+
+Responsibilities:
+
+- Ensure overall code quality
+- Maintain long-term direction
+- Mentor committers and contributors
+- Participate in planning
+
+Current maintainers:
+
 - @andresvlc (Project Lead)
 
-**Назначение:**
-1. Любой Maintainer может предложить кандидата
-2. Обсуждение среди Maintainers (1 неделя)
-3. Голосование (требуется 2/3 голосов "за")
+Appointment process:
+
+1. A maintainer proposes a candidate
+2. Maintainers discuss for 1 week
+3. Vote passes with 2/3 majority
 
 ### Project Lead
 
-Основатель проекта, финальная инстанция в сложных вопросах.
+Project founder / final escalation point for hard conflicts.
 
-**Права:**
-- Все права Maintainer
-- Финальное решение в конфликтах
-- Изменение governance процесса
+Rights:
 
-**Обязанности:**
-- Долгосрочное видение проекта
-- Разрешение блокирующих конфликтов
-- Представление проекта во внешнем мире
+- All maintainer rights
+- Final resolution in conflicts
+- Can change governance process (through RFC process)
 
-**Текущий Project Lead:** @andresvlc
+Responsibilities:
 
-## Процесс принятия решений
+- Long-term vision and strategy
+- Resolve blocking conflicts
+- Represent the project externally
 
-### Типы решений
+Current Project Lead: @andresvlc
 
-#### 1. Повседневные (Day-to-day)
+## Decision-Making
 
-**Примеры:** Bug fixes, документация, мелкие улучшения
+### Day-to-day changes
 
-**Процесс:**
-1. Contributor создает PR
-2. Минимум 1 Committer/Maintainer делает review
-3. После approve PR может быть merged
+Examples: bug fixes, documentation updates, small improvements.
 
-**Требования:**
-- Все тесты проходят
-- DCO sign-off на всех коммитах
-- Следование coding standards
+Process:
 
-#### 2. Значительные (Significant)
+1. A contributor opens a PR
+2. At least 1 committer or maintainer reviews
+3. After approval, a maintainer merges
 
-**Примеры:** Новые возможности, рефакторинг модулей, изменения API
+Requirements:
 
-**Процесс:**
-1. Создать Issue для обсуждения перед реализацией
-2. Обсуждение (минимум 48 часов)
-3. Если есть консенсус → создать PR
-4. Review минимум 2 Committers/Maintainers
-5. Merge после approve
+- Tests pass
+- DCO sign-off on all commits
+- Coding standards followed
 
-#### 3. Критические (Critical)
+### Significant changes
 
-**Примеры:** Архитектурные изменения, breaking changes, изменение лицензии
+Examples: new features, module refactors, API changes.
 
-**Процесс:**
-1. Создать RFC (Request for Comments) в `docs/rfcs/`
-2. Публичное обсуждение (минимум 2 недели)
-3. Голосование Maintainers (требуется 2/3 "за")
-4. Реализация только после одобрения
+Process:
 
-**Формат RFC:**
+1. Open an issue to discuss before implementation
+2. Discussion for at least 48 hours
+3. If consensus forms, implement and open a PR
+4. At least 2 committer/maintainer reviews
+5. Merge after approval
+
+### Critical changes
+
+Examples: architectural changes, breaking changes, licensing changes.
+
+Process:
+
+1. Create an RFC in `docs/rfcs/` (folder may be added as the RFC process matures)
+2. Public discussion for at least 2 weeks
+3. Maintainer vote passes with 2/3 majority
+4. Implementation only after approval
+
+RFC format (template):
+
 ```markdown
-# RFC-0001: Title (Template)
+# RFC-0001: Title
 
 ## Summary
-Brief description
+Brief description.
 
 ## Motivation
-Why we need this
+Why this is needed.
 
 ## Detailed Design
-Technical details
+Technical details.
 
 ## Drawbacks
-Known issues
+Known tradeoffs.
 
 ## Alternatives
-What else was considered
+Other options considered.
 
 ## Unresolved Questions
-Open questions
+Open questions.
 ```
 
-### Разрешение конфликтов
+## Conflict Resolution
 
-1. **Обсуждение** — попытка достичь консенсуса в Issue/PR
-2. **Escalation** — если консенсус не достигнут, escalate к Maintainers
-3. **Голосование** — Maintainers голосуют (простое большинство)
-4. **Финальное решение** — Project Lead разрешает блокирующие конфликты
+1. Discuss in the issue/PR and try to reach consensus
+2. Escalate to maintainers if needed
+3. Maintainer vote (simple majority)
+4. Project Lead resolves blocking conflicts if still unresolved
 
-## Процесс Review
+## Review Process
 
-### Для Reviewers
+For reviewers, verify:
 
-**Что проверять:**
-- [ ] Тесты проходят и покрывают новый код
-- [ ] Код следует style guide (rustfmt, clippy)
-- [ ] DCO sign-off на всех коммитах
-- [ ] Документация обновлена (если нужно)
-- [ ] Нет breaking changes без RFC
-- [ ] Производительность не ухудшилась
-- [ ] Безопасность (нет SQL injection, XSS, etc.)
+- Tests cover changes and pass in CI
+- Code follows rustfmt/clippy and style guides
+- DCO sign-off on all commits
+- Docs updated when behavior changes
+- No breaking changes without an RFC (when applicable)
+- Performance is not regressed without justification
+- Security risks are not introduced
 
-**Тон review:**
-- Конструктивный и дружелюбный
-- Объясняйте "почему", не только "что"
-- Признавайте хорошую работу
+Timeline targets:
 
-**Timeline:**
-- Первый feedback: < 48 часов
-- Полный review: < 1 неделя
-
-### Для Authors
-
-**После получения review:**
-1. Ответить на все комментарии
-2. Внести изменения или объяснить почему нет
-3. Запросить re-review
-4. Быть терпеливым и уважительным
+- First feedback within 48 hours
+- Full review within 1 week for non-critical PRs
 
 ## Release Process
 
-### Версионирование
+Versioning: Semantic Versioning 2.0.0
 
-Следуем [Semantic Versioning 2.0.0](https://semver.org/):
+- MAJOR (X.0.0): breaking changes
+- MINOR (0.X.0): new backward-compatible features
+- PATCH (0.0.X): bug fixes
 
-- **MAJOR** (X.0.0) — breaking changes
-- **MINOR** (0.X.0) — новые возможности (backward compatible)
-- **PATCH** (0.0.X) — bug fixes
+Release cadence (guidelines):
 
-### Release Schedule
+- Patch releases as needed
+- Minor releases every 6-8 weeks
+- Major releases when required
 
-- **Patch releases** — по мере необходимости (critical bugs)
-- **Minor releases** — каждые 6-8 недель
-- **Major releases** — когда необходимо (breaking changes накопились)
+Procedure (high-level):
 
-### Release Procedure
-
-1. Maintainer создает Issue "Release vX.Y.Z"
+1. Open an issue "Release vX.Y.Z"
 2. Prepare:
-   - Update CHANGELOG.md
-   - Update version in Cargo.toml
+   - Update `CHANGELOG.md`
+   - Update versions in Cargo/Python packaging
    - Run full test suite
-   - Build documentation
-3. Create release branch: `release/vX.Y.Z`
-4. Tag: `git tag -s vX.Y.Z`
-5. Push tag → triggers CI/CD → publish to crates.io and PyPI
-6. Create GitHub Release with notes
-7. Announce on community channels
+   - Build docs
+3. Create release branch `release/vX.Y.Z`
+4. Tag `vX.Y.Z`
+5. Publish artifacts (crates.io / PyPI)
+6. Create GitHub Release notes
 
-## Изменение Governance
+## Changes to Governance
 
-Этот документ может быть изменен через RFC процесс:
+This document may be changed via an RFC-like process:
 
-1. Создать RFC с предложением изменений
-2. Публичное обсуждение (минимум 4 недели)
-3. Голосование всех Maintainers (требуется 3/4 "за")
-4. Project Lead имеет veto право
+1. Open a proposal issue (or RFC if the RFC folder exists)
+2. Public discussion for at least 4 weeks
+3. Maintainer vote passes with 3/4 majority
+4. Project Lead has veto power for governance changes
 
 ## Code of Conduct
 
-Мы стремимся создать дружелюбное сообщество:
+We want a friendly, productive community:
 
-- **Будьте уважительны** к другим участникам
-- **Будьте конструктивны** в критике
-- **Будьте терпеливы** с новичками
-- **Не допускается** harassment, discrimination, trolling
+- Be respectful
+- Be constructive in criticism
+- Be patient with newcomers
+- No harassment, discrimination, or trolling
 
-Нарушения могут привести к:
+Violations may result in:
+
 1. Warning
-2. Temporary ban (1-4 недели)
+2. Temporary ban (1-4 weeks)
 3. Permanent ban
 
-Сообщать о нарушениях: conduct@nextstat.io
+Report issues to: conduct@nextstat.io
 
-## Контакты
+## Contacts
 
-- **General:** dev@nextstat.io
-- **Governance вопросы:** governance@nextstat.io
-- **Code of Conduct:** conduct@nextstat.io
-- **Private (Maintainers):** maintainers@nextstat.io
+- General: dev@nextstat.io
+- Governance: governance@nextstat.io
+- Code of Conduct: conduct@nextstat.io
 
----
-
-*Последнее обновление: 2026-02-05*

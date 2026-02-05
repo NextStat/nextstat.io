@@ -108,7 +108,12 @@ fn bench_model_eval_paths(c: &mut Criterion) {
 fn bench_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("translate_scaling");
     // Keep this moderate so `cargo bench -- --quick` stays fast.
-    for n_bins in [2usize, 16, 64, 256, 1024] {
+    let big = std::env::var("NS_BENCH_BIG").ok().as_deref() == Some("1");
+    let mut sizes: Vec<usize> = vec![2, 16, 64, 256, 1024];
+    if big {
+        sizes.extend_from_slice(&[4096, 10_000, 65_536]);
+    }
+    for n_bins in sizes {
         let ws = make_synthetic_workspace(n_bins);
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
         let params = vec![1.0; model.n_params()];

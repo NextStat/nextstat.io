@@ -19,9 +19,24 @@ fn ln_f64x4(v: f64x4) -> f64x4 {
     f64x4::from([arr[0].ln(), arr[1].ln(), arr[2].ln(), arr[3].ln()])
 }
 
+#[inline(always)]
+fn poisson_nll_bin_scalar_branchless(exp: f64, obs: f64, ln_factorial: f64, mask: f64) -> f64 {
+    exp + mask * (ln_factorial - obs * exp.ln())
+}
+
+#[inline(always)]
+fn poisson_nll_bin_scalar_skip_zeros(exp: f64, obs: f64, ln_factorial: f64, mask: f64) -> f64 {
+    if mask == 0.0 {
+        exp
+    } else {
+        // Keep arithmetic order consistent with the branchless formula.
+        exp + (ln_factorial - obs * exp.ln())
+    }
+}
+
 /// Compute Poisson negative log-likelihood using SIMD.
 ///
-/// Uses branchless formula:
+/// Uses formula:
 ///   `nll_i = exp_i + mask_i * (ln_factorial_i - obs_i * ln(exp_i))`
 ///
 /// When `mask_i = 0` (obs == 0): `nll_i = exp_i` (correct Poisson term).
@@ -75,9 +90,68 @@ pub fn poisson_nll_simd(
     // Scalar remainder
     let start = chunks * 4;
     for i in start..start + remainder {
-        total += poisson_nll_bin_scalar(expected[i], observed[i], ln_factorials[i], obs_mask[i]);
+        total += poisson_nll_bin_scalar_branchless(
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
+        );
     }
 
+    total
+}
+
+/// Compute Poisson NLL with a sparse fast-path for bins where `obs == 0`.
+///
+/// Same math as [`poisson_nll_simd`], but avoids calling `ln(exp)` when `mask == 0`.
+/// In SIMD, it skips `ln()` for a whole 4-lane chunk when all masks are zero.
+pub fn poisson_nll_simd_sparse(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    if !use_simd() {
+        return poisson_nll_scalar_sparse(expected, observed, ln_factorials, obs_mask);
+    }
+
+    let chunks = n / 4;
+    let remainder = n % 4;
+
+    let mut acc = f64x4::ZERO;
+    for i in 0..chunks {
+        let offset = i * 4;
+        let exp = f64x4::from(&expected[offset..offset + 4]);
+        let obs = f64x4::from(&observed[offset..offset + 4]);
+        let lnf = f64x4::from(&ln_factorials[offset..offset + 4]);
+        let mask = f64x4::from(&obs_mask[offset..offset + 4]);
+
+        let mask_arr: [f64; 4] = mask.into();
+        if mask_arr[0] == 0.0 && mask_arr[1] == 0.0 && mask_arr[2] == 0.0 && mask_arr[3] == 0.0 {
+            acc += exp;
+        } else {
+            let ln_exp = ln_f64x4(exp);
+            let obs_ln_exp = obs * ln_exp;
+            let bracket = lnf - obs_ln_exp;
+            acc += exp + mask * bracket;
+        }
+    }
+
+    let mut total: f64 = acc.reduce_add();
+    let start = chunks * 4;
+    for i in start..start + remainder {
+        total += poisson_nll_bin_scalar_skip_zeros(
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
+        );
+    }
     total
 }
 
@@ -95,15 +169,38 @@ pub fn poisson_nll_scalar(
 
     let mut total = 0.0;
     for i in 0..n {
-        total += poisson_nll_bin_scalar(expected[i], observed[i], ln_factorials[i], obs_mask[i]);
+        total += poisson_nll_bin_scalar_branchless(
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
+        );
     }
     total
 }
 
-/// Single-bin Poisson NLL (branchless scalar).
-#[inline(always)]
-fn poisson_nll_bin_scalar(exp: f64, obs: f64, ln_factorial: f64, mask: f64) -> f64 {
-    exp + mask * (ln_factorial - obs * exp.ln())
+/// Scalar Poisson NLL optimized for sparse observations (`obs==0`).
+pub fn poisson_nll_scalar_sparse(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    let mut total = 0.0;
+    for i in 0..n {
+        total += poisson_nll_bin_scalar_skip_zeros(
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
+        );
+    }
+    total
 }
 
 /// SIMD scalar multiplication: `data[i] *= factor` for all i.
@@ -221,6 +318,18 @@ mod tests {
             let simd_result = poisson_nll_simd(&exp, &obs, &lnf, &mask);
             let scalar_result = poisson_nll_scalar(&exp, &obs, &lnf, &mask);
             assert_relative_eq!(simd_result, scalar_result, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_poisson_nll_simd_sparse_matches_dense_and_scalar() {
+        for n in [1, 2, 3, 4, 5, 7, 8, 15, 16, 100, 1000] {
+            let (exp, obs, lnf, mask) = make_test_data(n);
+            let dense_simd = poisson_nll_simd(&exp, &obs, &lnf, &mask);
+            let sparse_simd = poisson_nll_simd_sparse(&exp, &obs, &lnf, &mask);
+            let sparse_scalar = poisson_nll_scalar_sparse(&exp, &obs, &lnf, &mask);
+            assert_relative_eq!(sparse_simd, sparse_scalar, epsilon = 1e-10);
+            assert_relative_eq!(sparse_simd, dense_simd, epsilon = 1e-10);
         }
     }
 

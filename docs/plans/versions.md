@@ -2,26 +2,21 @@
 
 Validated: **2026-02-05**
 
-Цель: держать планы “исполняемыми” на актуальных версиях toolchain/зависимостей.  
-Если вы обновляете версии — обновляйте **сразу** в `phase-0-infrastructure.md` (source of truth для bootstrapping) и синхронизируйте Master Plan.
-
----
+Goal: keep plans executable on current toolchain and dependency versions. If you update versions, update them in Phase 0 bootstrap docs and keep the master plan in sync.
 
 ## Languages / Toolchain
 
-- **Rust toolchain:** `1.93.0` (stable)
-- **Rust edition:** `2024`
-- **Python:** `>=3.11` (минимум), рекомендуется тестировать на latest stable (на dev-машине сейчас `python3 --version` = `3.14.x`)
+- Rust toolchain: `1.93.0` (stable)
+- Rust edition: `2024`
+- Python: `>=3.11` (minimum). Recommended: test against the latest stable Python as well.
 
----
+## Rust workspace dependencies (minimums)
 
-## Rust workspace dependencies (минимумы)
-
-Source of truth: `Cargo.toml` → `[workspace.dependencies]` (планы должны быть синхронизированы с репо)
+Source of truth: `Cargo.toml` -> `[workspace.dependencies]` (plans must stay in sync with the repo)
 
 - `ndarray = "0.17"`
 - `num-traits = "0.2"`
-- `approx = "0.5"` (latest stable `0.5.x`; `0.6` на crates.io ещё RC)
+- `approx = "0.5"`
 - `statrs = "0.18"`
 - `rayon = "1.11"`
 - `nalgebra = "0.34"`
@@ -29,7 +24,7 @@ Source of truth: `Cargo.toml` → `[workspace.dependencies]` (планы дол�
 - `argmin-math = { version = "0.5", features = ["ndarray_latest"] }`
 - `serde = "1"`
 - `serde_json = "1"`
-- `serde_yaml_ng = "0.10"` (вместо `serde_yaml` — он помечен deprecated на crates.io)
+- `serde_yaml_ng = "0.10"` (prefer this over `serde_yaml` due to deprecation status)
 - `tokio = "1"`
 - `clap = "4.5"`
 - `pyo3 = "0.28"`
@@ -38,18 +33,18 @@ Source of truth: `Cargo.toml` → `[workspace.dependencies]` (планы дол�
 - `criterion = "0.8"`
 - `tracing = "0.1"`
 - `tracing-subscriber = "0.3"`
+- `wide = "1.1"` (SIMD)
 - `rand = "0.9"` (Phase 3 NUTS/HMC)
 - `rand_distr = "0.5"` (Phase 3 NUTS/HMC)
 
 GPU-related (Phase 2C):
+
 - `metal = "0.33"`
-- `cudarc = "0.19"` (+ CUDA feature strategy в `docs/plans/phase-2c-gpu-backends.md`)
+- `cudarc = "0.19"` (see feature strategy in `docs/plans/phase-2c-gpu-backends.md`)
 
----
+## Python tooling / validation deps (minimums)
 
-## Python tooling / validation deps (минимумы)
-
-Source of truth: `bindings/ns-py/pyproject.toml` (планы должны быть синхронизированы с репо)
+Source of truth: `bindings/ns-py/pyproject.toml` (plans must stay in sync with the repo)
 
 - `numpy>=2.0`
 - `pytest>=9.0`
@@ -60,10 +55,9 @@ Source of truth: `bindings/ns-py/pyproject.toml` (планы должны быт
 - `pyhf>=0.7.6` (validation extra)
 
 Bayesian (Phase 3, optional extras):
+
 - `arviz>=0.23.4`
 - `emcee>=3.1.6`
-
----
 
 ## CI / Automation pins
 
@@ -81,21 +75,17 @@ Source of truth: `.github/workflows/*.yml`
 - `PyO3/maturin-action@v1`
 - `softprops/action-gh-release@v2`
 
----
-
-## Pre-commit hooks pins
+## Pre-commit hook pins
 
 Source of truth: `.pre-commit-config.yaml`
 
-- `astral-sh/ruff-pre-commit` → `rev: v0.15.0`
-- `pre-commit/pre-commit-hooks` → `rev: v6.0.0`
-- `compilerla/conventional-pre-commit` → `rev: v4.3.0`
+- `astral-sh/ruff-pre-commit` -> `rev: v0.15.0`
+- `pre-commit/pre-commit-hooks` -> `rev: v6.0.0`
+- `compilerla/conventional-pre-commit` -> `rev: v4.3.0`
 
----
+## How to re-validate
 
-## How to re-validate (операционно)
-
-- Rust crates: обновлять через Dependabot + периодически сверять через crates.io (`max_version`).
-- Python deps: Dependabot (pip) + `pip-audit`.
-- Pre-commit: `pre-commit autoupdate` (и фиксировать `rev:` в PR).
+- Rust crates: Dependabot + periodic checks against crates.io
+- Python deps: Dependabot (pip) + `pip-audit`
+- Pre-commit: `pre-commit autoupdate` (pin `rev:` in PRs)
 - Quick snapshot (crates/PyPI/actions): `python3 scripts/versions_audit.py`

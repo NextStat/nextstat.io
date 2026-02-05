@@ -24,7 +24,7 @@ Git Commit: unknown
 - Total: 7
 
 Overall Health Score: 88/100  
-Top risks: отсутствие security automation (CodeQL/secret scanning) + отсутствие release pipeline → сложно безопасно и предсказуемо публиковать артефакты.
+Top risks: missing security automation (CodeQL/secret scanning) plus missing release pipeline, which makes it hard to publish artifacts safely and reproducibly.
 
 ---
 
@@ -36,31 +36,31 @@ None found in the audited scope after syncing toolchain/deps and making CI lint/
 
 ## Major Issues
 
-### [Security] Нет CodeQL / secret scanning workflows в репозитории
+### [Security] No CodeQL / secret scanning workflows in the repository
 - File: `.github/workflows/`
-- Evidence: присутствуют только `rust-tests.yml` и `python-tests.yml`; отсутствуют `codeql.yml`/secret scan workflow.
-- Impact: нет автоматического SAST/secret scanning в PR/`main`; выше риск пропустить уязвимость или случайно закоммитить секрет.
+- Evidence: only `rust-tests.yml` and `python-tests.yml` exist; `codeql.yml` / secret scan workflow is missing.
+- Impact: no automated SAST/secret scanning in PRs/`main`; higher risk of missing vulnerabilities or accidentally committing secrets.
 - Fix:
-  - Добавить `codeql.yml` (инициализация + анализ для Rust/Python).
-  - Добавить secret scanning job (например gitleaks action) или включить GitHub Advanced Security/secret scanning на уровне репо.
+  - Add `codeql.yml` (init + analysis for Rust/Python).
+  - Add a secret scanning job (e.g. gitleaks action) or enable GitHub Advanced Security/secret scanning at the repo level.
 - Confidence: high
 
-### [Release] Нет release pipeline для wheels / binaries / crates
+### [Release] No release pipeline for wheels / binaries / crates
 - File: `.github/workflows/`
-- Evidence: отсутствует `release.yml`/tag-based pipeline (сборка wheels для Linux/macOS/Windows, публикация GitHub Release).
-- Impact: публикации будут ручными и нерепродуцируемыми; выше риск “сломать” дистрибутивы, особенно для Python bindings.
+- Evidence: missing `release.yml` / tag-based pipeline (build wheels for Linux/macOS/Windows, publish GitHub Release).
+- Impact: releases will be manual and non-reproducible; higher risk of breaking distributions, especially Python bindings.
 - Fix:
-  - Добавить `release.yml` (workflow_dispatch + tag push), сборка wheels через maturin и публикация в Release artifacts.
-  - Зафиксировать policy: что именно публикуем как OSS vs Pro (см. `docs/legal/open-core-boundaries.md`).
+  - Add `release.yml` (workflow_dispatch + tag push), build wheels via maturin and publish as Release artifacts.
+  - Lock a policy: what exactly is published as OSS vs Pro (see `docs/legal/open-core-boundaries.md`).
 - Confidence: high
 
-### [Compliance] Нет `THIRD_PARTY_LICENSES` и генерации third‑party license report
+### [Compliance] Missing `THIRD_PARTY_LICENSES` and a third-party license report generator
 - File: `NOTICE`
-- Evidence: `NOTICE` предполагает наличие списка third-party лицензий, но в репо нет `THIRD_PARTY_LICENSES` и генератора.
-- Impact: юридическая/OSS‑гигиена слабее; может блокировать enterprise adoption.
+- Evidence: `NOTICE` implies a third-party license list exists, but `THIRD_PARTY_LICENSES` and a generator are missing.
+- Impact: weaker legal/OSS hygiene; can block enterprise adoption.
 - Fix:
-  - Добавить генерацию через `cargo-about`/`cargo-deny` (Rust) и аналог для Python (если появятся runtime deps).
-  - Зафиксировать как часть релизного чеклиста.
+  - Add generation via `cargo-about`/`cargo-deny` (Rust) and a Python equivalent (if runtime deps appear).
+  - Make it part of the release checklist.
 - Confidence: medium
 
 ---
@@ -70,29 +70,29 @@ None found in the audited scope after syncing toolchain/deps and making CI lint/
 ### [Governance] RFC template placeholder
 - File: `GOVERNANCE.md:143`
 - Evidence: `RFC-XXX: Title`.
-- Impact: косметика/неясность для внешних контрибьюторов.
-- Fix: заменить на реальный пример RFC или вынести в отдельный шаблон в `docs/`/`.github/`.
+- Impact: cosmetic/unclear for external contributors.
+- Fix: replace with a real RFC example or move to a standalone template in `docs/`/`.github/`.
 - Confidence: high
 
-### [Docs] Нужен единый “source of truth” для CI/versions
+### [Docs] Need a single "source of truth" for CI/versions
 - File: `docs/plans/versions.md`
-- Evidence: baseline уже есть, но важно удерживать синхронизацию планов и реальных файлов (`Cargo.toml`, workflows).
-- Impact: риск дрейфа (планы устаревают быстрее кода).
-- Fix: удерживать `docs/plans/versions.md` как навигацию + использовать `scripts/versions_audit.py` в ревью.
+- Evidence: a baseline exists, but it is important to keep plans and real files (`Cargo.toml`, workflows) in sync.
+- Impact: drift risk (plans become stale faster than code).
+- Fix: keep `docs/plans/versions.md` as navigation + use `scripts/versions_audit.py` in review.
 - Confidence: high
 
-### [Python] Mypy/ruff config пока минимальный
+### [Python] Mypy/ruff config is minimal
 - File: `bindings/ns-py/pyproject.toml`
-- Evidence: отсутствуют настройки `tool.ruff`/`tool.mypy`.
-- Impact: по мере роста Python surface area качество будет зависеть от дефолтов.
-- Fix: добавить минимальный config (line-length, target-version, basic lint set) когда появятся python модули beyond stubs.
+- Evidence: missing `tool.ruff`/`tool.mypy` settings.
+- Impact: as Python surface area grows, quality will depend on defaults.
+- Fix: add a minimal config (line-length, target-version, basic lint set) when Python modules beyond stubs appear.
 - Confidence: medium
 
-### [Tooling] rust-toolchain pinned → требуются инструкции для локальной установки
+### [Tooling] rust-toolchain pinned; local install instructions required
 - File: `rust-toolchain.toml`
-- Evidence: toolchain pinned на `1.93.0`.
-- Impact: новые контрибьюторы без rustup/без нужного toolchain получат ошибки.
-- Fix: в `README.md`/`CONTRIBUTING.md` добавить короткий блок “Install Rust via rustup; toolchain auto-pins”.
+- Evidence: toolchain pinned to `1.93.0`.
+- Impact: new contributors without rustup / the pinned toolchain will hit errors.
+- Fix: add a short block in `README.md`/`CONTRIBUTING.md`: "Install Rust via rustup; toolchain auto-pins".
 - Confidence: medium
 
 ---
@@ -112,8 +112,8 @@ None found in the audited scope after syncing toolchain/deps and making CI lint/
 
 ## Unverified Areas
 
-- Реальная публикация wheels (Linux/Windows) не проверялась локально.
-- Не проверялась корректность и полнота `LICENSE-COMMERCIAL` с юристом (draft quality).
+- Real wheel publishing (Linux/Windows) was not verified locally.
+- `LICENSE-COMMERCIAL` correctness/completeness was not reviewed by counsel (draft quality).
 
 ---
 
@@ -123,12 +123,12 @@ None found in the audited scope after syncing toolchain/deps and making CI lint/
 - `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`
 - `.github/workflows/rust-tests.yml`, `.github/workflows/python-tests.yml`
 - `bindings/ns-py/*`
-- `crates/ns-translate/src/pyhf/*` (для CI/clippy pass)
+- `crates/ns-translate/src/pyhf/*` (for CI/clippy pass)
 
 ---
 
 ## Recommendations
 
-1. Priority 1: добавить `codeql.yml` + secret scanning workflow.
-2. Priority 2: добавить `release.yml` для сборки wheels (maturin) и release artifacts.
-3. Priority 3: внедрить генерацию `THIRD_PARTY_LICENSES` и включить в релизный чеклист.
+1. Priority 1: add `codeql.yml` + secret scanning workflow.
+2. Priority 2: add `release.yml` for building wheels (maturin) and release artifacts.
+3. Priority 3: implement `THIRD_PARTY_LICENSES` generation and include it in the release checklist.

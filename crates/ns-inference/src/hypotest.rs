@@ -360,6 +360,106 @@ impl AsymptoticCLsContext {
 
         Ok(0.5 * (lo + hi))
     }
+
+    fn cls_expected_at(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        mu_test: f64,
+        expected_idx: usize,
+    ) -> Result<f64> {
+        if expected_idx >= 5 {
+            return Err(Error::Validation(format!("expected_idx out of range: {}", expected_idx)));
+        }
+
+        let (q_mu_a, _nll_mu_a, _n_iter_mu_a, _conv_mu_a) = qmu_like_with_free(
+            mle,
+            &self.asimov_model,
+            self.free_asimov_nll,
+            self.free_asimov_mu_hat,
+            self.poi,
+            mu_test,
+        )?;
+        let band = self.expected_cls_band_from_sqrtq_a(q_mu_a.sqrt());
+        Ok(band[expected_idx])
+    }
+
+    fn bisection_limit<F: Fn(f64) -> Result<f64>>(
+        alpha: f64,
+        mut lo: f64,
+        mut hi: f64,
+        rtol: f64,
+        max_iter: usize,
+        f: F,
+    ) -> Result<f64> {
+        if lo < 0.0 {
+            lo = 0.0;
+        }
+        if hi <= lo {
+            return Err(Error::Validation(format!("Invalid bracket: lo={} hi={}", lo, hi)));
+        }
+
+        let flo = f(lo)? - alpha;
+        if flo < 0.0 {
+            return Err(Error::Validation(format!(
+                "Lower bracket does not satisfy f(lo) >= alpha: f({})={} < {}",
+                lo,
+                flo + alpha,
+                alpha
+            )));
+        }
+
+        let mut fhi = f(hi)? - alpha;
+        let mut expand = 0usize;
+        while fhi > 0.0 && expand < 50 {
+            hi *= 2.0;
+            fhi = f(hi)? - alpha;
+            expand += 1;
+        }
+        if fhi > 0.0 {
+            return Err(Error::Validation("Failed to bracket limit after expansions".to_string()));
+        }
+
+        for _ in 0..max_iter {
+            let mid = 0.5 * (lo + hi);
+            let fmid = f(mid)? - alpha;
+            if fmid > 0.0 {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+
+            let denom = hi.abs().max(1.0);
+            if ((hi - lo).abs() / denom) < rtol {
+                break;
+            }
+        }
+
+        Ok(0.5 * (lo + hi))
+    }
+
+    /// Compute observed and expected upper limits using bisection root-finding.
+    ///
+    /// This mirrors `pyhf.infer.intervals.upper_limits.upper_limit(..., scan=None)` behavior
+    /// (root-finding for observed and each expected band), though NextStat uses bisection.
+    pub fn upper_limits_qtilde_bisection(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        alpha: f64,
+        lo: f64,
+        hi: f64,
+        rtol: f64,
+        max_iter: usize,
+    ) -> Result<(f64, [f64; 5])> {
+        let obs = self.upper_limit_qtilde(mle, alpha, lo, hi, rtol, max_iter)?;
+
+        let mut exp = [0.0; 5];
+        for idx in 0..5 {
+            let f = |mu: f64| self.cls_expected_at(mle, mu, idx);
+            exp[idx] = Self::bisection_limit(alpha, lo, hi, rtol, max_iter, f)?;
+        }
+
+        Ok((obs, exp))
+    }
 }
 
 #[cfg(test)]

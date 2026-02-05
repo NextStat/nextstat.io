@@ -1,42 +1,42 @@
-# Фаза II-B: Autodiff & Optimizers (P0)
+# Phase II-B: Autodiff & Optimizers (P0)
 
-> См. `docs/plans/standards.md` для каноничных определений `twice_nll`, допусков, precision policy и детерминизма.
+> See `docs/plans/standards.md` for canonical definitions (`twice_nll`), tolerances, precision policy, and determinism requirements.
 
-**Goal:** Ускорить и стабилизировать fitting за счёт аналитических градиентов/Гессиана, убрать зависимость от численных производных и подготовить базу для GPU.
+**Goal:** accelerate and stabilize fitting by introducing analytic gradients (and selected second-order information), removing reliance on finite differences, and preparing the core for future GPU gradient paths.
 
-**Duration:** Недели 13-20 (может идти параллельно с Phase II-A; перед Phase II-C для GPU градиентов)
+**Duration:** Weeks 13-20 (may run in parallel with Phase II-A; should land before Phase II-C to unblock GPU gradient support).
 
-**Architecture:** AD как отдельный слой, который подключается к `Model::gradient()` и оптимизаторам в `ns-inference`, не ломая “чистую архитектуру”.
+**Architecture:** AD is a separate layer that plugs into `Model::gradient()` and the optimizers in `ns-inference`, without breaking clean-architecture boundaries.
 
-**Tech Stack:** Rust, nalgebra (линейная алгебра), собственный AD (forward + reverse), optional JAX for golden reference.
-
----
-
-## Почему Phase II-B обязателен
-
-- **Скорость:** численный градиент = O(N) вызовов NLL на итерацию, что убивает fits при 50–200 NP.
-- **Стабильность:** численные производные чувствительны к step-size, шуму и редукциям (Rayon/GPU).
-- **Качество uncertainties:** корректный Hessian/curvature критичен для pulls/constraints/ranking.
+**Tech Stack:** Rust, nalgebra (linear algebra), in-house AD (forward + reverse), optional JAX as a golden reference.
 
 ---
 
-## Содержание
+## Why Phase II-B is mandatory
 
-- [Sprint 2B.1: Forward-mode AD (минимальный базис)](#sprint-2b1-forward-mode-ad-минимальный-базис-недели-13-14)
-- [Sprint 2B.2: Reverse-mode AD (основной путь)](#sprint-2b2-reverse-mode-ad-основной-путь-недели-15-17)
-- [Sprint 2B.3: Hessian / HVP / uncertainties](#sprint-2b3-hessian--hvp--uncertainties-недели-18-19)
-- [Sprint 2B.4: Gradient-based optimizers](#sprint-2b4-gradient-based-optimizers-недели-19-20)
+- **Speed:** finite-difference gradients cost `O(N)` NLL evaluations per iteration, which becomes prohibitive at 50-200 nuisance parameters.
+- **Stability:** finite differences are sensitive to step size, noise, and reduction order (Rayon/GPU).
+- **Uncertainty quality:** reliable curvature/Hessian information matters for pulls, constraints behavior, and ranking.
 
 ---
 
-## Sprint 2B.1: Forward-mode AD (минимальный базис) (Недели 13-14)
+## Contents
+
+- [Sprint 2B.1: Forward-mode AD (minimal base)](#sprint-2b1-forward-mode-ad-minimal-base-weeks-13-14)
+- [Sprint 2B.2: Reverse-mode AD (main path)](#sprint-2b2-reverse-mode-ad-main-path-weeks-15-17)
+- [Sprint 2B.3: Hessian / HVP / uncertainties](#sprint-2b3-hessian--hvp--uncertainties-weeks-18-19)
+- [Sprint 2B.4: Gradient-based optimizers](#sprint-2b4-gradient-based-optimizers-weeks-19-20)
+
+---
+
+## Sprint 2B.1: Forward-mode AD (minimal base) (Weeks 13-14)
 
 ### Epic 2B.1.1: Dual numbers
 
-#### Task 2B.1.1.1: Dual scalar (1D) + тесты
+#### Task 2B.1.1.1: Dual scalar (1D) + tests
 
 **Priority:** P0  
-**Effort:** 4-6 часов  
+**Effort:** 4-6 hours  
 **Dependencies:** Phase 1 complete
 
 **Files:**
@@ -170,14 +170,14 @@ mod dual_tests;
 
 ---
 
-## Sprint 2B.2: Reverse-mode AD (основной путь) (Недели 15-17)
+## Sprint 2B.2: Reverse-mode AD (main path) (Weeks 15-17)
 
 ### Epic 2B.2.1: Tape-based reverse AD
 
 #### Task 2B.2.1.1: Tape + Var + backward()
 
 **Priority:** P0  
-**Effort:** 12-18 часов  
+**Effort:** 12-18 hours  
 **Dependencies:** Sprint 2B.1
 
 **Files:**
@@ -185,8 +185,8 @@ mod dual_tests;
 - Test: `crates/ns-ad/src/tape_tests.rs`
 
 **Acceptance Criteria:**
-- [ ] Градиенты для композиции (`ln`, `exp`, `+`, `*`) совпадают с finite-diff (rtol 1e-7)
-- [ ] Нет аллокаций в hot-loop (предварительные буферы/arena)
+- [ ] Gradients for compositions (`ln`, `exp`, `+`, `*`) match finite differences (rtol 1e-7)
+- [ ] No allocations in the hot loop (preallocated buffers / arena)
 
 **Implementation sketch (minimal API):**
 
@@ -291,61 +291,61 @@ impl Tape {
 }
 ```
 
-> На этом этапе это “минимальный” reverse-AD. Полный AD для HistFactory потребует:
-> - support для `powf`, `max`, piecewise функций (и политики дифференцируемости),
-> - эффективного хранения и переиспользования tape на batch-evaluation,
-> - опций `deterministic=true` (см. standards).
+> At this point this is a "minimal" reverse-mode AD sketch. Full AD support for HistFactory will require:
+> - support for `powf`, `max`, piecewise functions (and a differentiability policy),
+> - efficient tape reuse for batch evaluation,
+> - explicit `deterministic=true` options (see standards).
 
 ---
 
-## Sprint 2B.3: Hessian / HVP / uncertainties (Недели 18-19)
+## Sprint 2B.3: Hessian / HVP / uncertainties (Weeks 18-19)
 
 ### Epic 2B.3.1: Second-order information
 
 #### Task 2B.3.1.1: Hessian-vector products (HVP)
 
 **Priority:** P0  
-**Effort:** 8-12 часов  
+**Effort:** 8-12 hours  
 **Dependencies:** Sprint 2B.2
 
 **Acceptance Criteria:**
-- [ ] HVP совпадает с finite-diff градиента (rtol 1e-6)
-- [ ] Uncertainties по curvature стабильнее численного Hessian из Phase 1
+- [ ] HVP matches finite-difference gradients (rtol 1e-6)
+- [ ] Curvature-based uncertainties are more stable than the Phase 1 numeric Hessian
 
-**Note:** Полный Hessian O(N²) дорог. Для uncertainties и профилей часто достаточно:
-- diagonal / block-diagonal approximations,
-- HVP + CG (solve `H x = b` без явного `H`).
+**Note:** a full Hessian is `O(N^2)` and can be expensive. For uncertainties and profile workflows, it is often sufficient to use:
+- diagonal or block-diagonal approximations,
+- HVP + CG (solve `H x = b` without explicitly forming `H`).
 
 ---
 
-## Sprint 2B.4: Gradient-based optimizers (Недели 19-20)
+## Sprint 2B.4: Gradient-based optimizers (Weeks 19-20)
 
 ### Epic 2B.4.1: Optimizer upgrade path
 
 #### Task 2B.4.1.1: L-BFGS (+ projection) using `Model::gradient`
 
 **Priority:** P0  
-**Effort:** 8-12 часов  
+**Effort:** 8-12 hours  
 **Dependencies:** Sprint 2B.2
 
 **Files:**
-- Modify: `crates/ns-core/src/model.rs` (использовать `gradient()` если доступен)
+- Modify: `crates/ns-core/src/model.rs` (use `gradient()` when available)
 - Modify: `crates/ns-inference/src/mle.rs`
 
 **Acceptance Criteria:**
-- [ ] При наличии `Model::gradient`, `mle_fit` использует градиентный solver
-- [ ] При отсутствии градиента — fallback на Phase 1 minimizer
-- [ ] Parity по bestfit сохраняется (см. `tests/python/test_pyhf_validation.py`)
+- [ ] When `Model::gradient` is available, `mle_fit` uses a gradient-based solver
+- [ ] When gradients are not available, fall back to the Phase 1 minimizer
+- [ ] Best-fit parity is preserved (see `tests/python/test_pyhf_validation.py`)
 
 ---
 
-## Критерии завершения
+## Completion criteria
 
 ### Exit Criteria
 
-Phase 2B завершена когда:
+Phase 2B is complete when:
 
-1. [ ] `Model::gradient` реализован для HistFactoryModel (CPU) и проходит сравнение с finite-diff
-2. [ ] Градиенты совпадают с JAX (optional golden reference) на simple/complex fixtures
-3. [ ] MLE fit использует градиенты и ускоряется на N>50 параметрах
-4. [ ] Uncertainties/ranking используют HVP/Hessian policy, а не полный O(N²) там, где не нужно
+1. [ ] `Model::gradient` is implemented for `HistFactoryModel` (CPU) and matches finite differences
+2. [ ] Gradients match JAX (optional golden reference) on simple/complex fixtures
+3. [ ] MLE fits use gradients and speed up for `N > 50` parameters
+4. [ ] Uncertainties and ranking use an HVP/Hessian policy (not full `O(N^2)` where avoidable)

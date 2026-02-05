@@ -40,6 +40,10 @@ enum Commands {
         #[arg(long)]
         mu: f64,
 
+        /// Also return the expected CLs set (Brazil band).
+        #[arg(long)]
+        expected_set: bool,
+
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -58,6 +62,13 @@ enum Commands {
         /// Target CLs level (alpha), typically 0.05
         #[arg(long, default_value = "0.05")]
         alpha: f64,
+
+        /// Also compute expected (Brazil band) limits.
+        ///
+        /// In scan-mode this is always available; in bisection-mode this enables
+        /// root-finding for the 5 expected curves.
+        #[arg(long)]
+        expected: bool,
 
         /// Use scan mode: scan start (mu). Requires `--scan-stop` and `--scan-points`.
         #[arg(long, requires_all = ["scan_stop", "scan_points"])]
@@ -134,12 +145,13 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads),
-        Commands::Hypotest { input, mu, output, threads } => {
-            cmd_hypotest(&input, mu, output.as_ref(), threads)
+        Commands::Hypotest { input, mu, expected_set, output, threads } => {
+            cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads)
         }
         Commands::UpperLimit {
             input,
             alpha,
+            expected,
             scan_start,
             scan_stop,
             scan_points,
@@ -152,6 +164,7 @@ fn main() -> Result<()> {
         } => cmd_upper_limit(
             &input,
             alpha,
+            expected,
             scan_start,
             scan_stop,
             scan_points,
@@ -215,7 +228,13 @@ fn write_json(output: Option<&PathBuf>, value: serde_json::Value) -> Result<()> 
     Ok(())
 }
 
-fn cmd_hypotest(input: &PathBuf, mu: f64, output: Option<&PathBuf>, threads: usize) -> Result<()> {
+fn cmd_hypotest(
+    input: &PathBuf,
+    mu: f64,
+    expected_set: bool,
+    output: Option<&PathBuf>,
+    threads: usize,
+) -> Result<()> {
     let model = load_model(input, threads)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
@@ -230,6 +249,15 @@ fn cmd_hypotest(input: &PathBuf, mu: f64, output: Option<&PathBuf>, threads: usi
         "q_mu": r.q_mu,
         "q_mu_a": r.q_mu_a,
         "mu_hat": r.mu_hat,
+        "expected_set": if expected_set {
+            let s = ctx.hypotest_qtilde_expected_set(&mle, mu)?;
+            serde_json::json!({
+                "nsigma_order": [2, 1, 0, -1, -2],
+                "cls": s.expected,
+            })
+        } else {
+            serde_json::Value::Null
+        },
     });
 
     write_json(output, output_json)
@@ -238,6 +266,7 @@ fn cmd_hypotest(input: &PathBuf, mu: f64, output: Option<&PathBuf>, threads: usi
 fn cmd_upper_limit(
     input: &PathBuf,
     alpha: f64,
+    expected: bool,
     scan_start: Option<f64>,
     scan_stop: Option<f64>,
     scan_points: Option<usize>,
@@ -259,40 +288,45 @@ fn cmd_upper_limit(
             .unwrap_or(10.0)
     });
 
-    let output_json =
-        if let (Some(start), Some(stop), Some(points)) = (scan_start, scan_stop, scan_points) {
-            if points < 2 {
-                anyhow::bail!("scan_points must be >= 2");
-            }
-            if !(stop > start) {
-                anyhow::bail!("scan_stop must be > scan_start");
-            }
+    let output_json = if let (Some(start), Some(stop), Some(points)) =
+        (scan_start, scan_stop, scan_points)
+    {
+        if points < 2 {
+            anyhow::bail!("scan_points must be >= 2");
+        }
+        if !(stop > start) {
+            anyhow::bail!("scan_stop must be > scan_start");
+        }
 
-            let step = (stop - start) / (points as f64 - 1.0);
-            let scan: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
+        let step = (stop - start) / (points as f64 - 1.0);
+        let scan: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
 
-            let (obs, exp) = ctx.upper_limits_qtilde_linear_scan(&mle, alpha, &scan)?;
-            serde_json::json!({
-                "mode": "scan",
-                "alpha": alpha,
-                "obs_limit": obs,
-                "mu_up": obs,
-                "exp_limits": exp,
-                "scan": { "start": start, "stop": stop, "points": points },
-            })
+        let (obs, exp) = ctx.upper_limits_qtilde_linear_scan(&mle, alpha, &scan)?;
+        serde_json::json!({
+            "mode": "scan",
+            "alpha": alpha,
+            "obs_limit": obs,
+            "mu_up": obs,
+            "exp_limits": exp,
+            "scan": { "start": start, "stop": stop, "points": points },
+        })
+    } else {
+        let (obs, exp_limits) = if expected {
+            ctx.upper_limits_qtilde_bisection(&mle, alpha, lo, poi_hi, rtol, max_iter)?
         } else {
-            let obs = ctx.upper_limit_qtilde(&mle, alpha, lo, poi_hi, rtol, max_iter)?;
-            serde_json::json!({
-                "mode": "bisection",
-                "alpha": alpha,
-                "obs_limit": obs,
-                "mu_up": obs,
-                "exp_limits": serde_json::Value::Null,
-                "bracket": { "lo": lo, "hi": poi_hi },
-                "rtol": rtol,
-                "max_iter": max_iter,
-            })
+            (ctx.upper_limit_qtilde(&mle, alpha, lo, poi_hi, rtol, max_iter)?, [0.0; 5])
         };
+        serde_json::json!({
+            "mode": "bisection",
+            "alpha": alpha,
+            "obs_limit": obs,
+            "mu_up": obs,
+            "exp_limits": if expected { serde_json::json!(exp_limits) } else { serde_json::Value::Null },
+            "bracket": { "lo": lo, "hi": poi_hi },
+            "rtol": rtol,
+            "max_iter": max_iter,
+        })
+    };
 
     write_json(output, output_json)
 }

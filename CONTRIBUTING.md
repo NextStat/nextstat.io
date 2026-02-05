@@ -1,392 +1,203 @@
-# Руководство по вкладу в NextStat
+# Contributing to NextStat
 
-Спасибо за интерес к NextStat! Мы рады любому вкладу — от исправления опечаток до новых возможностей.
+Thanks for your interest in NextStat. We welcome all contributions, from typo fixes to new features.
 
-## Оглавление
+## Table of Contents
 
-- [Кодекс поведения](#кодекс-поведения)
-- [С чего начать](#с-чего-начать)
-- [Процесс разработки](#процесс-разработки)
-- [Требования к коду](#требования-к-коду)
-- [Процесс pull request](#процесс-pull-request)
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Workflow](#development-workflow)
+- [Coding Standards](#coding-standards)
+- [Pull Request Process](#pull-request-process)
 - [DCO Sign-off](#dco-sign-off)
-- [Тестирование](#тестирование)
-- [Документация](#документация)
+- [Testing](#testing)
+- [Documentation](#documentation)
 
-## Кодекс поведения
+## Code of Conduct
 
-Мы стремимся создать открытое и дружелюбное сообщество. Пожалуйста, будьте уважительны к другим участникам.
+We aim to build an open and welcoming community. Please be respectful and constructive in all discussions.
 
-## С чего начать
+## Getting Started
 
-### Найти задачу
+### Find Something to Work On
 
-1. Посмотрите [Issues](https://github.com/nextstat/nextstat/issues) с метками `good first issue` или `help wanted`
-2. Прочитайте [docs/plans/README.md](docs/plans/README.md) для понимания архитектуры
-3. Если у вас есть идея — сначала создайте Issue для обсуждения
+1. Browse GitHub issues labeled `good first issue` or `help wanted`
+2. Read `docs/plans/README.md` for architectural context
+3. If you have a new idea, open an issue first to discuss scope and approach
 
-### Настройка окружения
+### Environment Setup
 
 ```bash
-# 1. Fork репозитория на GitHub
-# 2. Клонировать ваш fork
+# 1. Fork the repository on GitHub
+# 2. Clone your fork
 git clone https://github.com/your-username/nextstat.git
 cd nextstat
 
-# 3. Добавить upstream remote
+# 3. Add upstream remote
 git remote add upstream https://github.com/nextstat/nextstat.git
 
-# 4. Установить зависимости
+# 4. Build and run tests
 cargo build --workspace
-cargo test --workspace
+cargo test --workspace --all-features
 
-# 5. Установить pre-commit hooks (опционально)
-# Будет добавлено в Phase 0
+# 5. (Optional) install pre-commit hooks
+# Planned in Phase 0
 ```
 
-## Процесс разработки
+## Development Workflow
 
-### 1. Создать ветку
+### 1. Create a Branch
 
 ```bash
 git checkout -b feature/your-feature-name
 ```
 
-**Naming convention:**
-- `feature/` — новая функциональность
-- `bugfix/` — исправление бага
-- `docs/` — изменения в документации
-- `refactor/` — рефакторинг без изменения API
+Branch naming convention:
 
-### 2. Следовать TDD (Test-Driven Development)
+- `feature/` - new functionality
+- `bugfix/` - bug fix
+- `docs/` - documentation-only changes
+- `refactor/` - refactoring without API changes
 
-**Обязательно для всех изменений в коде:**
+### 2. Follow TDD (Test-Driven Development)
 
-1. **Написать failing test**
+Required for code changes:
+
+1. Write a failing test
    ```bash
-   # Добавить тест в соответствующий файл
-   cargo test --package ns-core --test your_test -- --nocapture
-   # Должен FAIL
+   cargo test -p ns-core test_name -- --nocapture
+   # should FAIL
    ```
-
-2. **Реализовать минимальный код**
-   ```rust
-   // Написать минимальную реализацию
-   ```
-
-3. **Запустить тест снова**
+2. Implement the minimal fix
+3. Run the test again
    ```bash
-   cargo test --package ns-core --test your_test
-   # Должен PASS
+   cargo test -p ns-core test_name
+   # should PASS
    ```
-
-4. **Refactor (если нужно)**
+4. Refactor if needed
    ```bash
-   cargo test --workspace  # Все тесты должны проходить
+   cargo test --workspace --all-features
    ```
-
-5. **Commit с DCO sign-off**
+5. Commit with DCO sign-off
    ```bash
    git add .
    git commit -s -m "feat(ns-core): add new functionality"
    ```
 
-### 3. Coding Standards
+## Coding Standards
 
-#### Rust
+### Rust
 
-- **Style:** Используйте `cargo fmt` перед коммитом
-- **Linting:** Исправьте все предупреждения `cargo clippy`
-- **Documentation:** Все public API должны иметь docstrings
-- **Tests:** Покрытие ≥ 80% для новых модулей
-- **Error handling:** Используйте `Result<T, Error>`, избегайте `panic!`
+- Style: run `cargo fmt` before committing
+- Linting: fix all `cargo clippy` warnings (CI treats warnings as errors)
+- Documentation: public APIs must have doc comments
+- Tests: add coverage for new functionality (aim for 80%+ for new modules)
+- Error handling: prefer `Result<T, Error>`, avoid `panic!` in library code
 
-```rust
-/// Compute negative log-likelihood
-///
-/// # Arguments
-///
-/// * `params` - Parameter values
-///
-/// # Returns
-///
-/// Negative log-likelihood value
-///
-/// # Errors
-///
-/// Returns error if computation fails
-pub fn nll(&self, params: &[f64]) -> Result<f64> {
-    // Implementation
-}
-```
+### Python
 
-#### Python
+- Style: PEP 8, format with `ruff format` (CI checks formatting)
+- Type hints: required for public functions
+- Keep public surface area stable and tested (API contracts + parity tests)
 
-- **Style:** PEP 8, используйте `black` для форматирования
-- **Type hints:** Обязательны для всех функций
-- **Docstrings:** Google style
+## Pull Request Process
 
-```python
-def fit(self, initial_params: list[float]) -> FitResult:
-    """Perform maximum likelihood fit.
+### 1. Before Opening a PR
 
-    Args:
-        initial_params: Initial parameter values.
+- [ ] Tests pass: `cargo test --workspace --all-features`
+- [ ] No clippy warnings: `cargo clippy --workspace --all-features -- -D warnings`
+- [ ] Code is formatted: `cargo fmt --check`
+- [ ] All commits include DCO sign-off
+- [ ] Docs updated if behavior changed
+- [ ] Tests added for new behavior
 
-    Returns:
-        Fit result with best-fit parameters and uncertainties.
+### 2. Open the Pull Request
 
-    Raises:
-        ValueError: If initial_params is empty.
-    """
-```
+1. Push to your fork:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+2. Open a PR on GitHub (`base: main` <- `compare: your-branch`)
+3. Fill out the PR template
 
-### 4. Commit Messages
+### 3. Code Review
 
-Следуйте [Conventional Commits](https://www.conventionalcommits.org/):
+- Maintainers will review and comment
+- Address requested changes (or explain tradeoffs)
+- Pushing updates to your branch will update the PR automatically
 
-```
-type(scope): short description
+### 4. Merge
 
-[optional body]
-
-[optional footer]
-
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-**Types:**
-- `feat` — новая функциональность
-- `fix` — исправление бага
-- `docs` — только документация
-- `test` — добавление тестов
-- `refactor` — рефакторинг без изменения API
-- `perf` — оптимизация производительности
-- `chore` — maintenance задачи
-
-**Scopes:** `ns-core`, `ns-compute`, `ns-inference`, `ns-translate`, `ns-viz`, `ns-cli`, `ns-py`
-
-**Примеры:**
-```
-feat(ns-inference): implement L-BFGS optimizer
-fix(ns-compute): correct gradient calculation for Poisson
-docs(README): update installation instructions
-test(ns-core): add tests for error handling
-```
+After approval, a maintainer will merge your PR into `main`.
 
 ## DCO Sign-off
 
-**ОБЯЗАТЕЛЬНО:** Все коммиты должны быть подписаны DCO (Developer Certificate of Origin).
+All commits must be signed off with DCO (Developer Certificate of Origin).
 
-### Что такое DCO?
+What it means: by signing off, you certify you have the right to contribute the code under the project's license.
 
-DCO — это легковесная альтернатива CLA (Contributor License Agreement). Подписывая коммит, вы подтверждаете, что имеете право вносить этот код под лицензией проекта (AGPL-3.0).
+See `DCO.md` for the full text.
 
-Полный текст: [DCO.md](DCO.md)
+Sign off automatically:
 
-### Как подписать коммит
-
-**Автоматически (рекомендуется):**
 ```bash
 git commit -s -m "your commit message"
 ```
 
-**Вручную:**
-```bash
-git commit -m "your commit message
-
-Signed-off-by: Your Name <your.email@example.com>"
-```
-
-### Проверка sign-off
+If you forgot:
 
 ```bash
-git log --show-signature
-```
-
-Каждый коммит должен содержать строку:
-```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-### Если забыли подписать
-
-**Последний коммит:**
-```bash
+# last commit
 git commit --amend --signoff
-```
 
-**Несколько коммитов:**
-```bash
-git rebase --signoff HEAD~3  # последние 3 коммита
+# multiple commits
+git rebase --signoff HEAD~3
 git push --force-with-lease origin your-branch
 ```
 
-## Процесс Pull Request
+## Testing
 
-### 1. Проверить перед созданием PR
+### Types of Tests
 
-- [ ] Все тесты проходят: `cargo test --workspace`
-- [ ] Нет clippy warnings: `cargo clippy --workspace -- -D warnings`
-- [ ] Код отформатирован: `cargo fmt --check`
-- [ ] Все коммиты подписаны DCO
-- [ ] Документация обновлена (если нужно)
-- [ ] Добавлены тесты для новой функциональности
+- Unit tests: small, isolated checks of functions/modules
+- Integration tests: behavior across module boundaries (including CLI smoke tests)
+- Doc tests: examples in Rust documentation
 
-### 2. Создать Pull Request
-
-1. Push в ваш fork:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-2. Открыть PR на GitHub: `base: main` ← `compare: your-branch`
-
-3. Заполнить шаблон PR:
-   ```markdown
-   ## Описание
-   [Краткое описание изменений]
-
-   ## Тип изменений
-   - [ ] Bug fix
-   - [ ] New feature
-   - [ ] Breaking change
-   - [ ] Documentation update
-
-   ## Чеклист
-   - [ ] Тесты проходят
-   - [ ] Код отформатирован (cargo fmt)
-   - [ ] Нет clippy warnings
-   - [ ] DCO sign-off на всех коммитах
-   - [ ] Документация обновлена
-   - [ ] Следовал TDD процессу
-
-   ## Связанные Issues
-   Closes #123
-   ```
-
-### 3. Code Review
-
-- Maintainers проверят ваш код и оставят комментарии
-- Внесите запрошенные изменения
-- Push изменений автоматически обновит PR
-
-### 4. Merge
-
-После одобрения maintainer'ом ваш PR будет влит в `main`.
-
-## Тестирование
-
-### Типы тестов
-
-1. **Unit tests** — тесты отдельных функций/модулей
-   ```rust
-   #[cfg(test)]
-   mod tests {
-       use super::*;
-
-       #[test]
-       fn test_nll_calculation() {
-           let backend = CpuBackend::new();
-           let result = backend.nll(&[1.0, 2.0]);
-           assert!(result.is_ok());
-       }
-   }
-   ```
-
-2. **Integration tests** — тесты взаимодействия между модулями
-   ```rust
-   // tests/integration_test.rs
-   use ns_inference::MaximumLikelihoodEstimator;
-   use ns_compute::CpuBackend;
-
-   #[test]
-   fn test_mle_with_cpu_backend() {
-       // Test full workflow
-   }
-   ```
-
-3. **Doc tests** — примеры в документации
-   ```rust
-   /// ```
-   /// use ns_core::ComputeBackend;
-   /// let backend = CpuBackend::new();
-   /// assert_eq!(backend.name(), "CPU");
-   /// ```
-   ```
-
-### Запуск тестов
+### Running Tests
 
 ```bash
-# Все тесты
-cargo test --workspace
+# All Rust tests
+cargo test --workspace --all-features
 
-# Конкретный package
-cargo test --package ns-core
+# A specific crate
+cargo test -p ns-core
 
-# Конкретный тест
-cargo test --package ns-core test_name
+# A specific test
+cargo test -p ns-core test_name
 
-# С выводом
-cargo test --package ns-core -- --nocapture
+# With output
+cargo test -p ns-core -- --nocapture
 
-# Только doc tests
+# Doctests only
 cargo test --doc
 ```
 
-### Требования к покрытию
+Python tests (use the repo venv):
 
-- Новые модули: ≥ 80% покрытие
-- Критические компоненты (ns-core, ns-compute): ≥ 90%
-- Bug fixes: добавить regression test
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python -m pytest -q -m "not slow" tests/python
+```
 
-## Документация
+## Documentation
 
-### Типы документации
+Documentation types:
 
-1. **Code documentation** (обязательно для public API)
-   ```rust
-   /// Brief description.
-   ///
-   /// Detailed description with examples.
-   ///
-   /// # Arguments
-   ///
-   /// * `param` - Description
-   ///
-   /// # Returns
-   ///
-   /// Description of return value
-   ///
-   /// # Errors
-   ///
-   /// When this function returns error
-   ///
-   /// # Examples
-   ///
-   /// ```
-   /// let result = function(param);
-   /// ```
-   pub fn function(param: Type) -> Result<Output> {
-       // Implementation
-   }
-   ```
+1. Code docs: required for public APIs
+2. User docs: update `README.md` and relevant pages under `docs/`
+3. Architecture/design docs: add or update docs under `docs/plans/` (or create an RFC if needed)
 
-2. **User documentation** (для новых возможностей)
-   - Обновить README.md
-   - Добавить примеры в docs/
-   - Обновить CHANGELOG.md (maintainers сделают)
+## Questions
 
-3. **Architecture documentation** (для больших изменений)
-   - Создать RFC в docs/rfcs/
-   - Обновить docs/architecture/
-
-## Вопросы?
-
-- Создайте Issue с меткой `question`
+- Open a GitHub issue with label `question`
 - Email: dev@nextstat.io
-- Документация: https://docs.nextstat.io
 
----
-
-**Спасибо за ваш вклад в NextStat!** 🚀

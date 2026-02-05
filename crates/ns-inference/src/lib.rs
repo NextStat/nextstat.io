@@ -16,13 +16,24 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
+pub mod adapt;
+pub mod chain;
+pub mod diagnostics;
+pub mod hmc;
 pub mod hypotest;
 pub mod mle;
+pub mod nuts;
 pub mod optimizer;
+pub mod posterior;
 pub mod profile_likelihood;
 pub mod transforms;
 
+pub use chain::SamplerResult;
+pub use diagnostics::DiagnosticsResult;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
+pub use nuts::{NutsConfig, sample_nuts};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
+pub use posterior::{Posterior, Prior};
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
+pub use transforms::ParameterTransform;
