@@ -17,6 +17,8 @@ try:
         from_pyhf,
         profile_scan,
         upper_limit,
+        upper_limits,
+        upper_limits_root,
     )
 except ImportError:  # pragma: no cover
     __version__ = "0.0.0"
@@ -29,6 +31,8 @@ except ImportError:  # pragma: no cover
     from_pyhf = None  # type: ignore
     profile_scan = None  # type: ignore
     upper_limit = None  # type: ignore
+    upper_limits = None  # type: ignore
+    upper_limits_root = None  # type: ignore
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
@@ -51,6 +55,8 @@ __all__ = [
     "from_pyhf",
     "profile_scan",
     "upper_limit",
+    "upper_limits",
+    "upper_limits_root",
     "PyModel",
     "PyFitResult",
 ]

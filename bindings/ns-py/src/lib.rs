@@ -490,14 +490,14 @@ fn cls_curve(
     let points: Vec<Py<PyAny>> = art
         .points
         .iter()
-        .map(|p| {
+        .map(|p| -> PyResult<Py<PyAny>> {
             let d = PyDict::new(py);
-            d.set_item("mu", p.mu).unwrap();
-            d.set_item("cls", p.cls).unwrap();
-            d.set_item("expected", p.expected.to_vec()).unwrap();
-            d.into_any().unbind()
+            d.set_item("mu", p.mu)?;
+            d.set_item("cls", p.cls)?;
+            d.set_item("expected", p.expected.to_vec())?;
+            Ok(d.into_any().unbind())
         })
-        .collect();
+        .collect::<PyResult<Vec<_>>>()?;
     out.set_item("points", PyList::new(py, points)?)?;
 
     Ok(out.into_any().unbind())
@@ -534,16 +534,16 @@ fn profile_curve(
     let points: Vec<Py<PyAny>> = art
         .points
         .iter()
-        .map(|p| {
+        .map(|p| -> PyResult<Py<PyAny>> {
             let d = PyDict::new(py);
-            d.set_item("mu", p.mu).unwrap();
-            d.set_item("q_mu", p.q_mu).unwrap();
-            d.set_item("nll_mu", p.nll_mu).unwrap();
-            d.set_item("converged", p.converged).unwrap();
-            d.set_item("n_iter", p.n_iter).unwrap();
-            d.into_any().unbind()
+            d.set_item("mu", p.mu)?;
+            d.set_item("q_mu", p.q_mu)?;
+            d.set_item("nll_mu", p.nll_mu)?;
+            d.set_item("converged", p.converged)?;
+            d.set_item("n_iter", p.n_iter)?;
+            Ok(d.into_any().unbind())
         })
-        .collect();
+        .collect::<PyResult<Vec<_>>>()?;
     out.set_item("points", PyList::new(py, points)?)?;
 
     Ok(out.into_any().unbind())
