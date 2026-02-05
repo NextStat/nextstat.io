@@ -878,6 +878,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ns-prob"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "ns-core",
+ "proptest",
+]
+
+[[package]]
 name = "ns-py"
 version = "0.1.0"
 dependencies = [
