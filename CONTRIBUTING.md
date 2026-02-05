@@ -22,7 +22,7 @@ We aim to build an open and welcoming community. Please be respectful and constr
 ### Find Something to Work On
 
 1. Browse GitHub issues labeled `good first issue` or `help wanted`
-2. Read `docs/plans/README.md` for architectural context
+2. Read `docs/WHITEPAPER.md` for architectural and validation context
 3. If you have a new idea, open an issue first to discuss scope and approach
 
 ### Environment Setup
@@ -194,10 +194,9 @@ Documentation types:
 
 1. Code docs: required for public APIs
 2. User docs: update `README.md` and relevant pages under `docs/`
-3. Architecture/design docs: add or update docs under `docs/plans/` (or create an RFC if needed)
+3. Architecture/design docs: add or update docs under `docs/` (or create an RFC if needed)
 
 ## Questions
 
 - Open a GitHub issue with label `question`
 - Email: dev@nextstat.io
-

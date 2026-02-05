@@ -69,7 +69,7 @@ The baseline binned likelihood is constructed from:
 - Constraint terms for nuisance parameters (e.g., Gaussian constraints)
 - Optional auxiliary terms (e.g., Barlow-Beeston-like constructions)
 
-The canonical objective and tolerances are specified in `docs/plans/standards.md`.
+The canonical objective and tolerances are enforced by the deterministic CPU validation suite (parity vs pyhf) and documented as internal standards.
 
 ## 5. Inference Algorithms
 
@@ -180,7 +180,7 @@ Reproducibility is treated as a first-class feature:
 
 - Deterministic CPU reference path (single-thread or deterministic reductions)
 - Explicit seeds for toy generation and sampling
-- Version-pinned toolchain and dependencies (see `docs/plans/versions.md`)
+- Version-pinned toolchain and dependencies (Rust toolchain pin + `Cargo.lock`)
 
 ## 10. Licensing and Open-Core Boundaries
 
@@ -196,7 +196,7 @@ The intended open-core boundary is documented in `docs/legal/open-core-boundarie
 
 ## 11. Roadmap (High Level)
 
-For the executable plan and phase breakdown, see `docs/plans/README.md` and `docs/plans/2026-02-05-nextstat-implementation-plan.md`.
+The detailed phase plan is maintained as an internal document set (not published in this repository).
 
 At a high level:
 
@@ -213,4 +213,3 @@ At a high level:
 - Cowan, Cranmer, Gross, Vitells. "Asymptotic formulae for likelihood-based tests of new physics." arXiv:1007.1727.
 - pyhf project (HistFactory in pure Python): https://github.com/scikit-hep/pyhf
 - HistFactory (ROOT) background and conventions: https://cds.cern.ch/record/1456844
-

@@ -87,7 +87,7 @@ Goal: first working fit plus parity on small models.
 
 Critical:
 
-- determinism and numeric contract (`docs/plans/standards.md`),
+- determinism and numeric contract (internal standards),
 - validators and fixtures,
 - minimal CLI/Python API.
 
@@ -129,4 +129,3 @@ Mitigation: wheels, minimal dependencies, fast "hello fit" path, examples.
 2. Repo layout: split OSS and Pro repos vs single repo + private modules.
 3. Release policy: which artifacts are published under AGPL and in what form.
 4. Minimum supported platforms: Linux x86_64 + macOS arm64 (initially).
-

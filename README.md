@@ -185,7 +185,7 @@ cargo bench -p ns-core --bench core_benchmark
 ## Documentation
 
 - White paper: `docs/WHITEPAPER.md`
-- Plans / design notes: `docs/plans/README.md`
+- Internal plans/design notes are maintained outside this public repository.
 
 ## Contributing
 
@@ -202,4 +202,3 @@ NextStat uses a dual-licensing model:
 
 - Website: https://nextstat.io
 - GitHub: https://github.com/nextstat/nextstat
-
