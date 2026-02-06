@@ -34,7 +34,8 @@ def test_viz_artifacts_contracts():
     assert {"mu_values", "cls_obs", "cls_exp"} <= set(cls.keys())
     assert len(cls["mu_values"]) == 3
     assert len(cls["cls_obs"]) == 3
-    assert len(cls["cls_exp"]) == 3
+    # `cls_exp` is sigma-major: shape (len(nsigma_order), len(mu_values)).
+    assert len(cls["cls_exp"]) == len(cls["nsigma_order"])
     assert len(cls["cls_exp"][0]) == 3
 
     prof = nextstat.viz.profile_curve(model, [0.0, 2.0])
