@@ -11,7 +11,7 @@ import nextstat
 
 def load_workspace():
     """Load simple workspace."""
-    with open("tests/fixtures/simple_workspace.json") as f:
+    with open("tests/fixtures/tchannel_workspace.json") as f:
         return json.load(f)
 
 def pyhf_fit(workspace):
@@ -23,6 +23,7 @@ def pyhf_fit(workspace):
     t_fit0 = time.perf_counter()
     bestfit = pyhf.infer.mle.fit(data, model)
     t_fit = time.perf_counter() - t_fit0
+    poi_index = int(model.config.poi_index)
 
     # Compute NLL at best-fit point
     nll = float(pyhf.infer.mle.twice_nll(bestfit, data, model)[0]) / 2.0
@@ -71,6 +72,7 @@ def pyhf_fit(workspace):
 
     return {
         'parameters': list(bestfit),
+        'poi_index': poi_index,
         'uncertainties': uncertainties,
         'nll': nll,
         'timing_s': {
@@ -107,6 +109,24 @@ def compare_results(pyhf_res, nextstat_res):
     print("=" * 60)
     print("MLE VALIDATION: NextStat vs pyhf")
     print("=" * 60)
+
+    # Best-fit summary (vector + POI)
+    pyhf_params = np.asarray(pyhf_res["parameters"], dtype=float)
+    ns_params = np.asarray(nextstat_res["parameters"], dtype=float)
+    poi_idx = int(pyhf_res.get("poi_index", 0))
+
+    print("\n🏁 BEST FIT:")
+    print(f"  POI index: {poi_idx}")
+    if 0 <= poi_idx < len(pyhf_params) and 0 <= poi_idx < len(ns_params):
+        diff_poi = abs(pyhf_params[poi_idx] - ns_params[poi_idx])
+        print(f"  Best-fit POI (pyhf):     {pyhf_params[poi_idx]:.6f}")
+        print(f"  Best-fit POI (NextStat): {ns_params[poi_idx]:.6f}")
+        print(f"  Diff (POI):              {diff_poi:.2e}")
+    else:
+        print("  (POI index out of range; printing full vectors only)")
+
+    print("  Best-fit vector (pyhf):    ", np.array2string(pyhf_params, precision=6, separator=", "))
+    print("  Best-fit vector (NextStat):", np.array2string(ns_params, precision=6, separator=", "))
 
     print("\n📊 PARAMETERS:")
     print(f"{'Parameter':<15} {'pyhf':<15} {'NextStat':<15} {'Diff':<15}")
