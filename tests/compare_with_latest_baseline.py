@@ -131,6 +131,84 @@ def collect_environment(repo: Path) -> Dict[str, Any]:
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text())
 
+def _load_manifest_with_fallbacks(path: Path) -> Dict[str, Any]:
+    """Load a baseline manifest and fill missing baseline keys from the same directory.
+
+    This is intentionally forgiving: recording only one baseline type (e.g. ROOT on a cluster)
+    can overwrite `latest_manifest.json`. We recover by scanning `baseline_manifest_*.json` for
+    the newest manifest that contains the missing baseline key.
+    """
+    if not path.exists():
+        raise FileNotFoundError(str(path))
+
+    root = _read_json(path)
+    if not isinstance(root, dict):
+        raise ValueError("manifest_not_object")
+
+    baselines = root.get("baselines")
+    if not isinstance(baselines, dict):
+        baselines = {}
+        root["baselines"] = baselines
+
+    manifest_dir = path.parent
+    # Prefer explicit per-type latest manifests if they exist, then fall back to
+    # timestamped baseline manifests.
+    candidate_paths: List[Path] = []
+    for name in (
+        "latest_pyhf_manifest.json",
+        "latest_p6_glm_manifest.json",
+        "latest_root_manifest.json",
+    ):
+        p = manifest_dir / name
+        if p.exists() and p.resolve() != path.resolve():
+            candidate_paths.append(p)
+    candidate_paths += list(manifest_dir.glob("baseline_manifest_*.json"))
+    candidate_paths = sorted(
+        {p.resolve() for p in candidate_paths},
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    def find_latest_with_key(key: str) -> Optional[Tuple[Path, Dict[str, Any]]]:
+        for p in candidate_paths:
+            try:
+                d = _read_json(p)
+            except Exception:
+                continue
+            if not isinstance(d, dict):
+                continue
+            b = d.get("baselines")
+            if isinstance(b, dict) and key in b:
+                return p, d
+        return None
+
+    want_keys = [
+        "pyhf",
+        "p6_glm",
+        "root_prereq",
+        "root_cases",
+        "root_suite",
+    ]
+
+    merged_from: List[str] = [str(path)]
+    for k in want_keys:
+        if k in baselines:
+            continue
+        found = find_latest_with_key(k)
+        if found is None:
+            continue
+        p, d = found
+        b = d.get("baselines")
+        if isinstance(b, dict) and k in b:
+            baselines[k] = b[k]
+            merged_from.append(str(p))
+
+    # Record provenance in a stable way (paths are enough; not used by logic).
+    root.setdefault("meta", {})
+    if isinstance(root["meta"], dict):
+        root["meta"]["merged_from"] = list(dict.fromkeys(merged_from))
+    return root
+
 
 def _case_index(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
@@ -438,9 +516,10 @@ def main() -> int:
         print(f"Missing baseline manifest: {args.manifest}", file=sys.stderr)
         return 3
 
-    manifest = _read_json(args.manifest)
-    if not isinstance(manifest, dict):
-        print("Baseline manifest is not a JSON object", file=sys.stderr)
+    try:
+        manifest = _load_manifest_with_fallbacks(args.manifest)
+    except Exception as e:
+        print(f"Failed to load baseline manifest: {e}", file=sys.stderr)
         return 3
 
     baselines = manifest.get("baselines")

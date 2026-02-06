@@ -120,9 +120,12 @@ def _run_case(
     key: str,
     fixture: str,
     measurement: str,
+    params: str,
     n_toys: int,
     seed: int,
     mu_truth: float,
+    min_used_abs: int,
+    min_used_frac: float,
     pull_mean_delta_max: float,
     pull_std_delta_max: float,
     coverage_1sigma_delta_max: float,
@@ -134,92 +137,167 @@ def _run_case(
 
     workspace = _load_workspace(fixture)
     model, data_nominal = _pyhf_model_and_data(workspace, measurement_name=measurement)
+    pyhf_names = list(model.config.par_names)
 
     pars_true = np.asarray(model.config.suggested_init(), dtype=float)
     poi_idx = int(model.config.poi_index)
     pars_true[poi_idx] = float(mu_truth)
+    truth_by_name = {name: float(v) for name, v in zip(pyhf_names, pars_true)}
 
     expected = np.asarray(model.expected_data(pars_true), dtype=float)
     n_main = int(model.config.nmaindata)
-
-    pulls_pyhf: List[float] = []
-    pulls_ns: List[float] = []
-    cover_pyhf: List[bool] = []
-    cover_ns: List[bool] = []
 
     ns_model = nextstat.from_pyhf(json.dumps(workspace))
     ns_poi_idx = ns_model.poi_index()
     if ns_poi_idx is None:
         raise RuntimeError("NextStat model has no POI index")
-    ns_poi_idx = int(ns_poi_idx)
+    ns_names = list(ns_model.parameter_names())
+    ns_index = {name: i for i, name in enumerate(ns_names)}
+
+    poi_name = pyhf_names[poi_idx]
+    if poi_name not in ns_index:
+        raise RuntimeError(f"POI name '{poi_name}' missing from NextStat parameter names")
+
+    if params.strip().lower() == "poi":
+        param_names = [poi_name]
+    elif params.strip().lower() == "all":
+        # Preserve pyhf order for determinism.
+        param_names = [n for n in pyhf_names if n in ns_index]
+    else:
+        raise ValueError(f"Unknown params mode '{params}'. Expected: poi, all")
+
+    pulls_pyhf: Dict[str, List[float]] = {n: [] for n in param_names}
+    pulls_ns: Dict[str, List[float]] = {n: [] for n in param_names}
+    cover_pyhf: Dict[str, List[bool]] = {n: [] for n in param_names}
+    cover_ns: Dict[str, List[bool]] = {n: [] for n in param_names}
+
+    counters: Dict[str, int] = {
+        "n_toys_total": 0,
+        "n_pyhf_fit_failed": 0,
+        "n_pyhf_unc_failed": 0,
+        "n_ns_fit_failed": 0,
+        "n_param_valid_used": 0,
+    }
 
     rng = np.random.default_rng(seed)
     for _ in range(n_toys):
+        counters["n_toys_total"] += 1
         toy = data_nominal.copy()
         toy[:n_main] = rng.poisson(expected[:n_main])
 
-        bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
-        unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
-        mu_hat_pyhf = float(bestfit_pyhf[poi_idx])
-        mu_sig_pyhf = float(unc_pyhf[poi_idx])
-        if not (np.isfinite(mu_sig_pyhf) and mu_sig_pyhf > 0.0):
+        try:
+            bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
+        except Exception:
+            counters["n_pyhf_fit_failed"] += 1
             continue
-        pulls_pyhf.append((mu_hat_pyhf - mu_truth) / mu_sig_pyhf)
-        cover_pyhf.append(abs(mu_hat_pyhf - mu_truth) <= mu_sig_pyhf)
 
-        res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
-        mu_hat_ns = float(res_ns.bestfit[ns_poi_idx])
-        mu_sig_ns = float(res_ns.uncertainties[ns_poi_idx])
-        if not (np.isfinite(mu_sig_ns) and mu_sig_ns > 0.0):
+        try:
+            unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
+        except Exception:
+            counters["n_pyhf_unc_failed"] += 1
             continue
-        pulls_ns.append((mu_hat_ns - mu_truth) / mu_sig_ns)
-        cover_ns.append(abs(mu_hat_ns - mu_truth) <= mu_sig_ns)
 
-    n = min(len(pulls_pyhf), len(pulls_ns))
-    if n == 0:
-        return {
-            "name": key,
-            "status": "error",
-            "reason": "no_valid_toys",
-            "n_toys": int(n_toys),
-            "seed": int(seed),
+        try:
+            res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
+        except Exception:
+            counters["n_ns_fit_failed"] += 1
+            continue
+
+        bestfit_ns = np.asarray(res_ns.bestfit, dtype=float)
+        unc_ns = np.asarray(res_ns.uncertainties, dtype=float)
+
+        for name in param_names:
+            i_py = pyhf_names.index(name)
+            i_ns = ns_index[name]
+
+            th_true = float(truth_by_name[name])
+            th_hat_py = float(bestfit_pyhf[i_py])
+            th_sig_py = float(unc_pyhf[i_py])
+            th_hat_ns = float(bestfit_ns[i_ns])
+            th_sig_ns = float(unc_ns[i_ns])
+
+            if not (np.isfinite(th_hat_py) and np.isfinite(th_sig_py) and th_sig_py > 0.0):
+                continue
+            if not (np.isfinite(th_hat_ns) and np.isfinite(th_sig_ns) and th_sig_ns > 0.0):
+                continue
+
+            pulls_pyhf[name].append((th_hat_py - th_true) / th_sig_py)
+            cover_pyhf[name].append(abs(th_hat_py - th_true) <= th_sig_py)
+            pulls_ns[name].append((th_hat_ns - th_true) / th_sig_ns)
+            cover_ns[name].append(abs(th_hat_ns - th_true) <= th_sig_ns)
+            counters["n_param_valid_used"] += 1
+
+    min_used = max(int(min_used_abs), int(float(min_used_frac) * float(n_toys)))
+
+    per_param: Dict[str, Any] = {}
+    any_failed = False
+    any_ran = False
+    for name in param_names:
+        n_used = min(len(pulls_pyhf[name]), len(pulls_ns[name]))
+        if n_used < min_used:
+            per_param[name] = {
+                "status": "skipped",
+                "reason": f"insufficient_valid_toys:{n_used}<{min_used}",
+                "n_toys_used": int(n_used),
+            }
+            continue
+
+        any_ran = True
+        p_py = pulls_pyhf[name][:n_used]
+        p_ns = pulls_ns[name][:n_used]
+        c_py = cover_pyhf[name][:n_used]
+        c_ns = cover_ns[name][:n_used]
+
+        d_mean = float(_mean(p_ns) - _mean(p_py))
+        d_std = float(_std(p_ns) - _std(p_py))
+        d_cov = float(
+            _mean([1.0 if b else 0.0 for b in c_ns]) - _mean([1.0 if b else 0.0 for b in c_py])
+        )
+        ok = (
+            abs(d_mean) <= float(pull_mean_delta_max)
+            and abs(d_std) <= float(pull_std_delta_max)
+            and abs(d_cov) <= float(coverage_1sigma_delta_max)
+        )
+        if not ok:
+            any_failed = True
+
+        per_param[name] = {
+            "status": "ok" if ok else "fail",
+            "truth": float(truth_by_name[name]),
+            "n_toys_used": int(n_used),
+            "pyhf": {
+                "pull_mean": float(_mean(p_py)),
+                "pull_std": float(_std(p_py)),
+                "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in c_py])),
+            },
+            "nextstat": {
+                "pull_mean": float(_mean(p_ns)),
+                "pull_std": float(_std(p_ns)),
+                "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in c_ns])),
+            },
+            "delta": {"mean": d_mean, "std": d_std, "coverage_1sigma": d_cov},
+            "thresholds": {
+                "pull_mean_delta_max": float(pull_mean_delta_max),
+                "pull_std_delta_max": float(pull_std_delta_max),
+                "coverage_1sigma_delta_max": float(coverage_1sigma_delta_max),
+            },
         }
 
-    # Compare summary statistics (NextStat vs pyhf deltas).
-    d_mean = float(_mean(pulls_ns) - _mean(pulls_pyhf))
-    d_std = float(_std(pulls_ns) - _std(pulls_pyhf))
-    d_cov = float(_mean([1.0 if b else 0.0 for b in cover_ns]) - _mean([1.0 if b else 0.0 for b in cover_pyhf]))
-
-    ok = (
-        abs(d_mean) <= float(pull_mean_delta_max)
-        and abs(d_std) <= float(pull_std_delta_max)
-        and abs(d_cov) <= float(coverage_1sigma_delta_max)
-    )
-
+    status = "skipped" if (not any_ran and not any_failed) else ("fail" if any_failed else "ok")
     return {
         "name": key,
-        "status": "ok" if ok else "fail",
+        "status": status,
         "fixture": fixture,
         "measurement": measurement,
         "mu_truth": float(mu_truth),
+        "params": params,
+        "param_names": param_names,
         "n_toys_requested": int(n_toys),
-        "n_toys_used": int(n),
-        "pyhf": {
-            "pull_mean": float(_mean(pulls_pyhf)),
-            "pull_std": float(_std(pulls_pyhf)),
-            "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in cover_pyhf])),
-        },
-        "nextstat": {
-            "pull_mean": float(_mean(pulls_ns)),
-            "pull_std": float(_std(pulls_ns)),
-            "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in cover_ns])),
-        },
-        "delta": {"mean": d_mean, "std": d_std, "coverage_1sigma": d_cov},
-        "thresholds": {
-            "pull_mean_delta_max": float(pull_mean_delta_max),
-            "pull_std_delta_max": float(pull_std_delta_max),
-            "coverage_1sigma_delta_max": float(coverage_1sigma_delta_max),
-        },
+        "min_used_abs": int(min_used_abs),
+        "min_used_frac": float(min_used_frac),
+        "min_used": int(min_used),
+        "counters": counters,
+        "per_param": per_param,
     }
 
 
@@ -230,6 +308,9 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mu-truth", type=float, default=1.0)
     ap.add_argument("--fixtures", type=str, default="simple", help="simple,complex,all or comma-separated keys")
+    ap.add_argument("--params", type=str, default="poi", help="poi or all")
+    ap.add_argument("--min-used-abs", type=int, default=10)
+    ap.add_argument("--min-used-frac", type=float, default=0.50)
     ap.add_argument("--pull-mean-delta-max", type=float, default=0.05)
     ap.add_argument("--pull-std-delta-max", type=float, default=0.05)
     ap.add_argument("--coverage-1sigma-delta-max", type=float, default=0.03)
@@ -278,6 +359,9 @@ def main() -> int:
                 "seed": int(args.seed),
                 "mu_truth": float(args.mu_truth),
                 "fixtures": args.fixtures,
+                "params": str(args.params),
+                "min_used_abs": int(args.min_used_abs),
+                "min_used_frac": float(args.min_used_frac),
             },
         },
         "cases": [],
@@ -297,9 +381,12 @@ def main() -> int:
                 key=key,
                 fixture=fixture,
                 measurement=measurement,
+                params=str(args.params),
                 n_toys=int(args.n_toys),
                 seed=int(args.seed + case_idx),
                 mu_truth=float(args.mu_truth),
+                min_used_abs=int(args.min_used_abs),
+                min_used_frac=float(args.min_used_frac),
                 pull_mean_delta_max=float(args.pull_mean_delta_max),
                 pull_std_delta_max=float(args.pull_std_delta_max),
                 coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
@@ -340,4 +427,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

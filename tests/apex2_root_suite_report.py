@@ -111,6 +111,18 @@ def _check_prereqs(*, need_uproot: bool) -> Dict[str, Any]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases", type=Path, default=None, help="Path to JSON cases file.")
+    ap.add_argument(
+        "--case-index",
+        type=int,
+        default=None,
+        help="Run only a single case selected by 0-based index from --cases.",
+    )
+    ap.add_argument(
+        "--case-name",
+        type=str,
+        default=None,
+        help="Run only a single case with matching 'name' from --cases.",
+    )
     ap.add_argument("--workdir", type=Path, default=Path("tmp/root_parity_suite"))
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--keep-going", action="store_true", help="Keep running after failures.")
@@ -119,7 +131,22 @@ def main() -> int:
     ap.add_argument("--mu-hat-atol", type=float, default=1e-3)
     args = ap.parse_args()
 
+    if args.case_index is not None and args.case_name is not None:
+        raise SystemExit("--case-index and --case-name are mutually exclusive")
+
     cases = _load_cases(args.cases)
+    if args.case_index is not None:
+        idx = int(args.case_index)
+        if idx < 0 or idx >= len(cases):
+            raise SystemExit(f"--case-index out of range: {idx} (n_cases={len(cases)})")
+        cases = [cases[idx]]
+    if args.case_name is not None:
+        name = str(args.case_name)
+        matches = [c for c in cases if str(c.get("name") or "") == name]
+        if not matches:
+            raise SystemExit(f"--case-name not found: {name}")
+        cases = [matches[0]]
+
     workdir = args.workdir.resolve()
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -130,6 +157,8 @@ def main() -> int:
         "meta": {
             "timestamp": int(time.time()),
             "cases_file": str(args.cases) if args.cases else None,
+            "case_index": int(args.case_index) if args.case_index is not None else None,
+            "case_name": str(args.case_name) if args.case_name is not None else None,
             "workdir": str(workdir),
             "thresholds": {"dq_atol": args.dq_atol, "mu_hat_atol": args.mu_hat_atol},
             "prereqs": prereq,

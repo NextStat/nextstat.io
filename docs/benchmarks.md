@@ -94,8 +94,12 @@ make apex2-baseline-record
 This records both pyhf and P6 GLM baselines to `tmp/baselines/` with:
 - machine hostname + timestamp in filename
 - full environment metadata (Python, pyhf, nextstat, numpy versions, git commit, CPU, platform)
-- a `latest_manifest.json` linking both baseline files
+- a `latest_manifest.json` linking the most recently recorded *full* baseline set (pyhf + P6 GLM, and optionally ROOT suite artifacts)
 - per-type pointers (`latest_pyhf_manifest.json`, `latest_p6_glm_manifest.json`, `latest_root_manifest.json`) for workflows where baselines are recorded on different machines (e.g. ROOT suite on a cluster)
+
+Note: when you record only a subset via `--only ...` (for example `--only root` on a cluster),
+the recorder does not overwrite an existing `latest_manifest.json` (to avoid clobbering a full baseline set).
+Use the per-type latest manifests for that workflow.
 
 Options:
 
@@ -144,6 +148,9 @@ This writes a consolidated report to `tmp/baseline_compare_report.json` and exit
 - `0` if parity is OK and slowdown thresholds are satisfied
 - `2` if parity fails or performance regresses beyond thresholds
 - `4` if a runner errors (missing deps, crash, etc.)
+
+If the chosen manifest is missing some baseline keys (for example because it was recorded with `--only root`),
+the compare runner will attempt to recover missing entries by scanning newer `baseline_manifest_*.json` in the same directory.
 
 For strict performance gating, require the same host as the baseline:
 

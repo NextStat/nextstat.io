@@ -392,6 +392,9 @@ def main() -> int:
     ap.add_argument("--bias-pulls-n-toys", type=int, default=200)
     ap.add_argument("--bias-pulls-seed", type=int, default=0)
     ap.add_argument("--bias-pulls-fixtures", type=str, default="simple")
+    ap.add_argument("--bias-pulls-params", type=str, default="poi", help="poi or all (passed to bias/pulls runner)")
+    ap.add_argument("--bias-pulls-min-used-abs", type=int, default=10)
+    ap.add_argument("--bias-pulls-min-used-frac", type=float, default=0.50)
     ap.add_argument(
         "--sbc",
         action="store_true",
@@ -574,6 +577,12 @@ def main() -> int:
             str(args.bias_pulls_seed),
             "--fixtures",
             str(args.bias_pulls_fixtures),
+            "--params",
+            str(args.bias_pulls_params),
+            "--min-used-abs",
+            str(int(args.bias_pulls_min_used_abs)),
+            "--min-used-frac",
+            str(float(args.bias_pulls_min_used_frac)),
         ]
         rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
         report["bias_pulls"] = {
@@ -718,13 +727,15 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2))
 
-    # Exit code policy: fail on pyhf mismatch; fail on ROOT mismatch only if prereqs exist.
+    # Exit code policy: fail (rc=2) on any non-skipped runner failure.
     pyhf_ok = (rc_pyhf == 0)
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
     sbc_ok_or_skipped = report["sbc"]["status"] in ("ok", "skipped")
     root_ok_or_skipped = root_status in ("ok", "skipped")
+    nuts_smoke_ok_or_skipped = report["nuts_quality"]["status"] in ("ok", "skipped")
+    nuts_report_ok_or_skipped = report["nuts_quality_report"]["status"] in ("ok", "skipped")
 
     print(f"Wrote: {args.out}")
     if not pyhf_ok:
@@ -738,6 +749,10 @@ def main() -> int:
     if not sbc_ok_or_skipped:
         return 2
     if not root_ok_or_skipped:
+        return 2
+    if not nuts_smoke_ok_or_skipped:
+        return 2
+    if not nuts_report_ok_or_skipped:
         return 2
     return 0
 

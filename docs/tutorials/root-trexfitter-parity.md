@@ -510,7 +510,7 @@ root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json            # only if ROOT 
 root_cases_<hostname>_<YYYYMMDD_HHMMSS>.json                     # cases used by the suite (from --root-search-dir)
 root_prereq_<hostname>_<YYYYMMDD_HHMMSS>.json                    # prereq check snapshot (always recorded if root mode is requested)
 baseline_manifest_<hostname>_<YYYYMMDD_HHMMSS>.json   # links both + env fingerprint
-latest_manifest.json                                    # always points to last recorded baseline
+latest_manifest.json                                    # points to the most recent full baseline set (not overwritten by `--only ...` if it already exists)
 latest_pyhf_manifest.json                               # last pyhf-only pointer
 latest_p6_glm_manifest.json                             # last P6-only pointer
 latest_root_manifest.json                               # last ROOT-only pointer (cluster)
@@ -551,6 +551,10 @@ Exit codes:
 - `0`: OK (pyhf parity OK and perf within thresholds; P6 within thresholds)
 - `2`: FAIL (parity failure or slowdown threshold exceeded)
 - `4`: ERROR (runner error)
+
+If the selected manifest is missing some baseline keys (for example because it was recorded with `--only root`),
+`tests/compare_with_latest_baseline.py` will try to recover missing entries by scanning newer `baseline_manifest_*.json`
+in the same `tmp/baselines/` directory.
 
 For performance gating, use the same machine as the baseline and enable:
 

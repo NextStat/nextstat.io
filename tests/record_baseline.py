@@ -565,9 +565,16 @@ def main() -> int:
     manifest_path = args.out_dir / f"baseline_manifest_{stamp}.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
-    # Also write a "latest" symlink-like manifest for easy reference
+    # Also write a "latest" symlink-like manifest for easy reference.
+    #
+    # Important: when recording only a subset (e.g. `--only root` on a cluster),
+    # do not clobber an existing "full" latest manifest that might link other
+    # baseline types. We still create it if it doesn't exist yet.
     latest_path = args.out_dir / "latest_manifest.json"
-    latest_path.write_text(json.dumps(manifest, indent=2))
+    if args.only is None or not latest_path.exists():
+        latest_path.write_text(json.dumps(manifest, indent=2))
+    else:
+        print(f"NOTE: Not overwriting existing latest manifest: {latest_path}")
 
     # Also write per-type "latest" manifests so recording only one baseline type
     # (e.g. ROOT on a cluster) doesn't lose a stable pointer for other types.

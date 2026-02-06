@@ -87,6 +87,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --bias-pulls \
   --bias-pulls-n-toys 200 \
   --bias-pulls-fixtures simple \
+  --bias-pulls-params poi \
   --out tmp/apex2_master_report.json
 ```
 
