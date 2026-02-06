@@ -44,3 +44,23 @@ Notes:
 - `group_idx[i]` selects the group for observation `i`.
 - The random intercept is a partially-pooled Normal effect (group intercepts share hyperparameters).
 
+## Linear regression with random intercept
+
+```python
+import nextstat
+
+X = [[0.0], [1.0], [2.0], [3.0]]
+y = [0.2, 1.1, 2.0, 3.2]
+group_idx = [0, 0, 1, 1]
+
+m = nextstat.hier.linear_random_intercept(
+    x=X,
+    y=y,
+    group_idx=group_idx,
+    n_groups=2,
+)
+
+fit = nextstat.fit(m)
+print("nll:", fit.nll)
+```
+

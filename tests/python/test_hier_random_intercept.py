@@ -21,6 +21,17 @@ def test_logistic_random_intercept_builds_and_fits_smoke():
     assert len(fit.bestfit) == m.n_params()
 
 
+def test_linear_random_intercept_builds_and_fits_smoke():
+    x = [[0.0], [1.0], [2.0], [3.0]]
+    y = [0.2, 1.1, 2.0, 3.2]
+    group_idx = [0, 0, 1, 1]
+
+    m = nextstat.hier.linear_random_intercept(x=x, y=y, group_idx=group_idx, n_groups=2)
+    fit = nextstat.fit(m)
+    assert isinstance(fit.bestfit, list)
+    assert len(fit.bestfit) == m.n_params()
+
+
 def test_random_intercept_group_idx_length_mismatch_raises():
     x = [[0.0], [1.0], [0.0]]
     y = [0, 1, 0]
@@ -55,4 +66,3 @@ def test_logistic_random_intercept_sampling_smoke():
     )
     assert isinstance(raw, dict)
     assert {"posterior", "sample_stats", "diagnostics"} <= set(raw.keys())
-
