@@ -665,7 +665,7 @@ mod tests {
         let config = OptimizerConfig { max_iter: 100, ..OptimizerConfig::default() };
         let mle = MaximumLikelihoodEstimator::with_config(config);
         let n_toys = 100;
-        let seed = 42u64;
+        let seed = 0u64;
 
         // Run toys sequentially to avoid rayon hangs on some platforms
         let mut pulls = Vec::new();

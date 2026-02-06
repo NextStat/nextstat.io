@@ -1,16 +1,20 @@
-"""Generalized Linear Models (Phase 6).
+"""High-level regression/GLM surface (Phase 6).
 
-Public API:
-- `nextstat.glm.linear.fit(...)`
-- `nextstat.glm.logistic.fit(...)`
-- `nextstat.glm.poisson.fit(...)`
+This package provides small, Python-first wrappers around the compiled models in
+`nextstat._core`, plus common convenience methods like predict / predict_proba.
 """
 
-from __future__ import annotations
+from .linear import FittedLinearRegression, fit as fit_linear, fit_ols  # noqa: F401
+from .logistic import FittedLogisticRegression, fit as fit_logistic  # noqa: F401
+from .poisson import FittedPoissonRegression, fit as fit_poisson  # noqa: F401
 
-from . import linear as linear
-from . import logistic as logistic
-from . import poisson as poisson
-
-__all__ = ["linear", "logistic", "poisson"]
+__all__ = [
+    "FittedLinearRegression",
+    "FittedLogisticRegression",
+    "FittedPoissonRegression",
+    "fit_linear",
+    "fit_logistic",
+    "fit_poisson",
+    "fit_ols",
+]
 

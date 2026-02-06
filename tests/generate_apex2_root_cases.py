@@ -78,7 +78,14 @@ def main() -> int:
     for p in combo_paths:
         if not p.is_file():
             continue
-        name = f"{p.parent.name}"
+        # Use the relative directory path (from search_dir) as a stable, unique case name.
+        # TRExFitter exports often reuse `combination.xml` under many subfolders; parent
+        # directory basenames can collide.
+        try:
+            rel_parent = p.parent.resolve().relative_to(search_dir)
+            name = rel_parent.as_posix()
+        except Exception:
+            name = str(p.parent.name)
         cases.append(
             {
                 "name": name,
@@ -100,4 +107,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

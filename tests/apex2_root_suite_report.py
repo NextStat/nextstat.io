@@ -144,7 +144,7 @@ def main() -> int:
         print(json.dumps(report["meta"]["prereqs"], indent=2))
         print(f"Wrote: {args.out}")
         # Exit code: 0 only if all required prereqs are satisfied.
-        ok = bool(prereq["hist2workspace"]) and (prereq["uproot"] is not False)
+        ok = bool(prereq["hist2workspace"]) and bool(prereq["root"]) and (prereq["uproot"] is not False)
         return 0 if ok else 3
 
     validate = Path(__file__).resolve().parent / "validate_root_profile_scan.py"
@@ -170,6 +170,19 @@ def main() -> int:
                     "name": name,
                     "status": "skipped",
                     "reason": "missing_hist2workspace",
+                }
+            )
+            if not args.keep_going:
+                break
+            continue
+
+        if not prereq["root"]:
+            any_failed = True
+            report["cases"].append(
+                {
+                    "name": name,
+                    "status": "skipped",
+                    "reason": "missing_root",
                 }
             )
             if not args.keep_going:
@@ -268,6 +281,19 @@ def main() -> int:
         if not ok:
             any_failed = True
 
+        timing_s = summary.get("timing_s", {}) or {}
+        root_scan_wall = timing_s.get("root_profile_scan_wall")
+        ns_scan = timing_s.get("nextstat_profile_scan")
+        speedup_ns_vs_root_scan = None
+        try:
+            if root_scan_wall is not None and ns_scan is not None:
+                root_scan_wall_f = float(root_scan_wall)
+                ns_scan_f = float(ns_scan)
+                if ns_scan_f > 0.0:
+                    speedup_ns_vs_root_scan = root_scan_wall_f / ns_scan_f
+        except Exception:
+            speedup_ns_vs_root_scan = None
+
         report["cases"].append(
             {
                 "name": name,
@@ -276,7 +302,10 @@ def main() -> int:
                 "run_dir": str(run_dir),
                 "summary_path": str(summary_path),
                 "diff": {"max_abs_dq_mu": max_abs_dq_mu, "d_mu_hat": d_mu_hat},
-                "timing_s": summary.get("timing_s", {}),
+                "timing_s": timing_s,
+                "perf": {
+                    "speedup_nextstat_vs_root_scan": speedup_ns_vs_root_scan,
+                },
             }
         )
 
@@ -316,4 +345,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

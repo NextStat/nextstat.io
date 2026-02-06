@@ -50,18 +50,21 @@ jobs:
           pip install "pytest>=9.0" "pytest-cov>=7.0" "numpy>=2.0" "pyhf>=0.7.6"
           pytest -q -m "not slow" tests/python
 
-      - name: Run Apex2 pyhf parity report
+      - name: Run Apex2 master report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         run: |
           mkdir -p artifacts
-          python tests/apex2_pyhf_validation_report.py --out artifacts/apex2_pyhf_report.json
+          python tests/apex2_master_report.py \
+            --out artifacts/apex2_master_report.json \
+            --pyhf-out artifacts/apex2_pyhf_report.json \
+            --root-out artifacts/apex2_root_suite_report.json
 
       - name: Upload Apex2 report artifact
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         uses: actions/upload-artifact@v4
         with:
-          name: apex2-pyhf-report-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: artifacts/apex2_pyhf_report.json
+          name: apex2-report-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: artifacts/*.json
 
   lint:
     name: Python Linting

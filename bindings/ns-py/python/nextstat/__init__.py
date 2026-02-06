@@ -48,6 +48,7 @@ ols_fit = getattr(_core, "ols_fit", None)  # type: ignore
 from . import bayes as bayes  # noqa: E402
 from . import viz as viz  # noqa: E402
 from . import data as data  # noqa: E402
+from . import glm as glm  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -65,6 +66,7 @@ __all__ = [
     "bayes",
     "viz",
     "data",
+    "glm",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
