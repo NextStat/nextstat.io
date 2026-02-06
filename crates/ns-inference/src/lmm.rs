@@ -357,7 +357,123 @@ impl LogDensityModel for LmmMarginalModel {
     }
 
     fn parameter_init(&self) -> Vec<f64> {
-        vec![0.0; self.dim()]
+        // Heuristic initialization to avoid early-termination/local minima in
+        // generic quasi-Newton solvers:
+        // - intercept: mean(y)
+        // - betas: per-feature univariate slope on centered data
+        // - sigma_y: residual std under the heuristic beta
+        // - tau_*: std of group-wise residual summaries
+        let n = self.x.n;
+        let p = self.x.p;
+        let nb = self.n_beta();
+
+        let y_mean = self.y.iter().sum::<f64>() / (n as f64);
+        let mut x_mean = vec![0.0; p];
+        for i in 0..n {
+            let row = self.x.row(i);
+            for j in 0..p {
+                x_mean[j] += row[j];
+            }
+        }
+        for j in 0..p {
+            x_mean[j] /= n as f64;
+        }
+
+        let mut beta_init = vec![0.0; nb];
+        if self.include_intercept {
+            beta_init[0] = y_mean;
+        }
+
+        // Univariate slopes on centered x_j, centered y (rough, but stable).
+        for j in 0..p {
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for i in 0..n {
+                let xc = self.x.row(i)[j] - x_mean[j];
+                let yc = self.y[i] - y_mean;
+                num += xc * yc;
+                den += xc * xc;
+            }
+            let b = if den > 0.0 { num / den } else { 0.0 };
+            beta_init[self.beta_offset() + j] = b;
+        }
+
+        // Residuals under the heuristic beta.
+        let mut resid = vec![0.0; n];
+        let mut ss = 0.0;
+        for i in 0..n {
+            let row = self.x.row(i);
+            let eta = if self.include_intercept {
+                beta_init[0] + row_dot(row, &beta_init[1..])
+            } else {
+                row_dot(row, &beta_init)
+            };
+            let r = self.y[i] - eta;
+            resid[i] = r;
+            ss += r * r;
+        }
+        let sigma_y = (ss / (n as f64)).sqrt().max(1e-6);
+
+        // Group-wise residual means approximate random intercepts.
+        let mut alpha_hat = Vec::with_capacity(self.n_groups);
+        for g in 0..self.n_groups {
+            let idxs = &self.groups[g].indices;
+            if idxs.is_empty() {
+                continue;
+            }
+            let m = idxs.len() as f64;
+            let mu = idxs.iter().map(|&i| resid[i]).sum::<f64>() / m;
+            alpha_hat.push(mu);
+        }
+        let tau_alpha = if alpha_hat.len() >= 2 {
+            let m = alpha_hat.len() as f64;
+            let mean = alpha_hat.iter().sum::<f64>() / m;
+            let var = alpha_hat.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / m;
+            var.sqrt().max(1e-6)
+        } else {
+            1.0
+        };
+
+        // Group-wise slope residual summaries approximate random slopes.
+        let tau_u = match self.re {
+            RandomEffects::Intercept => None,
+            RandomEffects::InterceptSlope { feature_idx } => {
+                let mut u_hat = Vec::with_capacity(self.n_groups);
+                for g in 0..self.n_groups {
+                    let idxs = &self.groups[g].indices;
+                    if idxs.len() < 2 {
+                        continue;
+                    }
+                    let mut num = 0.0;
+                    let mut den = 0.0;
+                    for &i in idxs {
+                        let xc = self.x.row(i)[feature_idx] - x_mean[feature_idx];
+                        num += xc * resid[i];
+                        den += xc * xc;
+                    }
+                    if den > 0.0 {
+                        u_hat.push(num / den);
+                    }
+                }
+                if u_hat.len() >= 2 {
+                    let m = u_hat.len() as f64;
+                    let mean = u_hat.iter().sum::<f64>() / m;
+                    let var = u_hat.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / m;
+                    Some(var.sqrt().max(1e-6))
+                } else {
+                    Some(1.0)
+                }
+            }
+        };
+
+        let mut init = vec![0.0; self.dim()];
+        init[..nb].copy_from_slice(&beta_init);
+        init[nb] = sigma_y.ln();
+        init[nb + 1] = tau_alpha.ln();
+        if let Some(tu) = tau_u {
+            init[nb + 2] = tu.ln();
+        }
+        init
     }
 
     fn nll(&self, params: &[f64]) -> Result<f64> {
