@@ -69,6 +69,7 @@ from . import causal as causal  # noqa: E402
 from . import missing as missing  # noqa: E402
 from . import formula as formula  # noqa: E402
 from . import summary as summary  # noqa: E402
+from . import robust as robust  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -98,6 +99,7 @@ __all__ = [
     "missing",
     "formula",
     "summary",
+    "robust",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
