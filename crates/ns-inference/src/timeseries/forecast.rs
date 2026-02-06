@@ -6,6 +6,7 @@
 
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
+use statrs::distribution::{ContinuousCDF, Normal};
 
 use super::kalman::{KalmanFilterResult, KalmanModel};
 
@@ -24,6 +25,83 @@ pub struct KalmanForecastResult {
     pub obs_means: Vec<DVector<f64>>,
     /// Predicted observation covariances for steps 1..=K (each is n_obs x n_obs).
     pub obs_covs: Vec<DMatrix<f64>>,
+}
+
+/// Observation prediction intervals (marginal, per observed dimension).
+#[derive(Debug, Clone)]
+pub struct KalmanForecastIntervals {
+    /// Alpha for the two-sided interval (e.g. 0.05 means 95% interval).
+    pub alpha: f64,
+    /// Standard normal z-value for `1 - alpha/2`.
+    pub z: f64,
+    /// Lower bounds for steps 1..=K (each is n_obs).
+    pub obs_lower: Vec<DVector<f64>>,
+    /// Upper bounds for steps 1..=K (each is n_obs).
+    pub obs_upper: Vec<DVector<f64>>,
+}
+
+/// Compute marginal normal prediction intervals for the observation forecasts in `fc`.
+pub fn kalman_forecast_intervals(fc: &KalmanForecastResult, alpha: f64) -> Result<KalmanForecastIntervals> {
+    if !(alpha.is_finite() && alpha > 0.0 && alpha < 1.0) {
+        return Err(Error::Validation("alpha must be in (0, 1)".to_string()));
+    }
+    if fc.obs_means.len() != fc.obs_covs.len() {
+        return Err(Error::Validation("forecast result has inconsistent lengths".to_string()));
+    }
+    if fc.obs_means.is_empty() {
+        return Err(Error::Validation("forecast result must be non-empty".to_string()));
+    }
+
+    let n_obs = fc.obs_means[0].len();
+    for (k, (m, s)) in fc.obs_means.iter().zip(fc.obs_covs.iter()).enumerate() {
+        if m.len() != n_obs {
+            return Err(Error::Validation(format!("obs_means[{k}] has inconsistent length")));
+        }
+        if s.nrows() != n_obs || s.ncols() != n_obs {
+            return Err(Error::Validation(format!("obs_covs[{k}] has wrong shape")));
+        }
+    }
+
+    let normal = Normal::new(0.0, 1.0)
+        .map_err(|e| Error::Validation(format!("failed to construct normal distribution: {e}")))?;
+    let z = normal.inverse_cdf(1.0 - 0.5 * alpha);
+    if !z.is_finite() || z <= 0.0 {
+        return Err(Error::Computation("invalid z for alpha".to_string()));
+    }
+
+    let mut obs_lower = Vec::with_capacity(fc.obs_means.len());
+    let mut obs_upper = Vec::with_capacity(fc.obs_means.len());
+
+    for (m, s) in fc.obs_means.iter().zip(fc.obs_covs.iter()) {
+        let mut lo = DVector::<f64>::zeros(n_obs);
+        let mut hi = DVector::<f64>::zeros(n_obs);
+        for i in 0..n_obs {
+            let mu = m[i];
+            let var = s[(i, i)];
+            if !mu.is_finite() || !var.is_finite() {
+                return Err(Error::Computation(
+                    "forecast intervals failed: non-finite mean/variance".to_string(),
+                ));
+            }
+            if var < 0.0 {
+                return Err(Error::Computation(
+                    "forecast intervals failed: negative marginal variance".to_string(),
+                ));
+            }
+            let sd = var.sqrt();
+            lo[i] = mu - z * sd;
+            hi[i] = mu + z * sd;
+        }
+        obs_lower.push(lo);
+        obs_upper.push(hi);
+    }
+
+    Ok(KalmanForecastIntervals {
+        alpha,
+        z,
+        obs_lower,
+        obs_upper,
+    })
 }
 
 /// Forecast K steps ahead starting from a filtered state `(m_last, p_last)` at time T-1.
@@ -121,5 +199,33 @@ mod tests {
             assert_eq!(out.obs_covs[k].nrows(), 1);
         }
     }
-}
 
+    #[test]
+    fn test_forecast_intervals_shapes_1d() {
+        let model = KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[0.1]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[0.2]),
+            DVector::from_row_slice(&[0.0]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+        )
+        .unwrap();
+
+        let m_last = DVector::from_row_slice(&[0.3]);
+        let p_last = DMatrix::from_row_slice(1, 1, &[0.4]);
+        let fc = kalman_forecast_from_last(&model, &m_last, &p_last, 2).unwrap();
+        let iv = kalman_forecast_intervals(&fc, 0.05).unwrap();
+
+        assert_eq!(iv.obs_lower.len(), 2);
+        assert_eq!(iv.obs_upper.len(), 2);
+        for k in 0..2 {
+            assert_eq!(iv.obs_lower[k].len(), 1);
+            assert_eq!(iv.obs_upper[k].len(), 1);
+            assert!(iv.obs_lower[k][0].is_finite());
+            assert!(iv.obs_upper[k][0].is_finite());
+            assert!(iv.obs_lower[k][0] <= iv.obs_upper[k][0]);
+        }
+        assert!(iv.z.is_finite() && iv.z > 0.0);
+    }
+}

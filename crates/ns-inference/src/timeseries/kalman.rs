@@ -620,6 +620,15 @@ mod tests {
         let mut ll = 0.0;
 
         for &yt in y {
+            // Missing observations are represented as NaN: skip update + no likelihood contribution.
+            if yt.is_nan() {
+                m_filt.push(m_pred);
+                p_filt.push(p_pred);
+                m_pred = f * m_pred;
+                p_pred = f * f * p_pred + q;
+                continue;
+            }
+
             // v = y - h m
             let v = yt - h * m_pred;
             // s = h^2 p + r
@@ -710,30 +719,101 @@ mod tests {
     #[test]
     fn test_kalman_filter_allows_missing_obs_as_nan() {
         // Same model as the scalar reference test, but with a missing y at t=1.
+        let f = 1.0;
+        let q = 0.1;
+        let h = 1.0;
+        let r = 0.2;
+        let m0 = 0.0;
+        let p0 = 1.0;
+
         let model = KalmanModel::new(
-            DMatrix::from_row_slice(1, 1, &[1.0]),
-            DMatrix::from_row_slice(1, 1, &[0.1]),
-            DMatrix::from_row_slice(1, 1, &[1.0]),
-            DMatrix::from_row_slice(1, 1, &[0.2]),
-            DVector::from_row_slice(&[0.0]),
-            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[f]),
+            DMatrix::from_row_slice(1, 1, &[q]),
+            DMatrix::from_row_slice(1, 1, &[h]),
+            DMatrix::from_row_slice(1, 1, &[r]),
+            DVector::from_row_slice(&[m0]),
+            DMatrix::from_row_slice(1, 1, &[p0]),
         )
         .unwrap();
 
-        let ys = vec![
-            DVector::from_row_slice(&[0.9]),
-            DVector::from_row_slice(&[f64::NAN]),
-            DVector::from_row_slice(&[0.8]),
-        ];
+        let y = vec![0.9, f64::NAN, 0.8, 1.1];
+        let (m_ref, p_ref, ll_ref) = scalar_filter(&y, f, q, h, r, m0, p0);
+
+        let ys: Vec<DVector<f64>> = y.iter().map(|&v| DVector::from_row_slice(&[v])).collect();
 
         let fr = kalman_filter(&model, &ys).unwrap();
         assert!(fr.log_likelihood.is_finite());
-        assert_eq!(fr.filtered_means.len(), 3);
-        assert_eq!(fr.filtered_covs.len(), 3);
+        assert_eq!(fr.filtered_means.len(), y.len());
+        assert_eq!(fr.filtered_covs.len(), y.len());
 
-        // Missing observation should not crash and should keep finiteness.
-        assert!(fr.filtered_means[1][0].is_finite());
-        assert!(fr.filtered_covs[1][0].is_finite());
+        for t in 0..y.len() {
+            assert_close(fr.filtered_means[t][0], m_ref[t], 1e-12);
+            assert_close(fr.filtered_covs[t][0], p_ref[t], 1e-12);
+        }
+        assert_close(fr.log_likelihood, ll_ref, 1e-12);
+    }
+
+    #[test]
+    fn test_ar1_builder_matches_scalar_reference() {
+        let phi = 0.9;
+        let q = 0.1;
+        let r = 0.2;
+        let m0 = 0.0;
+        let p0 = 1.0;
+
+        let y = vec![0.9, 1.2, 0.8, 1.1];
+        let (m_ref, p_ref, ll_ref) = scalar_filter(&y, phi, q, 1.0, r, m0, p0);
+
+        let model = KalmanModel::ar1(phi, q, r, m0, p0).unwrap();
+        let ys: Vec<DVector<f64>> = y.iter().map(|&v| DVector::from_row_slice(&[v])).collect();
+        let fr = kalman_filter(&model, &ys).unwrap();
+
+        for t in 0..y.len() {
+            assert_close(fr.filtered_means[t][0], m_ref[t], 1e-12);
+            assert_close(fr.filtered_covs[t][0], p_ref[t], 1e-12);
+        }
+        assert_close(fr.log_likelihood, ll_ref, 1e-12);
+    }
+
+    #[test]
+    fn test_kalman_filter_partial_missing_multivariate_decoupled_matches_scalar_refs() {
+        // Build a fully decoupled 2D model:
+        // - state dims independent
+        // - observation dims independent
+        // This lets us validate partial-missing logic by comparing to two scalar filters.
+        let f = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+        let q = DMatrix::from_row_slice(2, 2, &[0.1, 0.0, 0.0, 0.2]);
+        let h = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+        let r = DMatrix::from_row_slice(2, 2, &[0.3, 0.0, 0.0, 0.4]);
+        let m0 = DVector::from_row_slice(&[0.0, 0.0]);
+        let p0 = DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+
+        let model = KalmanModel::new(f, q, h, r, m0, p0).unwrap();
+
+        // Missing is per-component.
+        let y0 = vec![0.9, 1.0, 0.8, f64::NAN];
+        let y1 = vec![1.1, f64::NAN, 0.95, 1.05];
+        let ys: Vec<DVector<f64>> = (0..y0.len())
+            .map(|t| DVector::from_row_slice(&[y0[t], y1[t]]))
+            .collect();
+
+        let fr = kalman_filter(&model, &ys).unwrap();
+
+        let (m0_ref, p0_ref, ll0_ref) = scalar_filter(&y0, 1.0, 0.1, 1.0, 0.3, 0.0, 1.0);
+        let (m1_ref, p1_ref, ll1_ref) = scalar_filter(&y1, 1.0, 0.2, 1.0, 0.4, 0.0, 1.0);
+
+        for t in 0..y0.len() {
+            assert_close(fr.filtered_means[t][0], m0_ref[t], 1e-12);
+            assert_close(fr.filtered_covs[t][(0, 0)], p0_ref[t], 1e-12);
+            assert_close(fr.filtered_means[t][1], m1_ref[t], 1e-12);
+            assert_close(fr.filtered_covs[t][(1, 1)], p1_ref[t], 1e-12);
+
+            // No cross-covariance should be introduced for a decoupled system.
+            assert!(fr.filtered_covs[t][(0, 1)].abs() <= 1e-12);
+            assert!(fr.filtered_covs[t][(1, 0)].abs() <= 1e-12);
+        }
+
+        assert_close(fr.log_likelihood, ll0_ref + ll1_ref, 1e-12);
     }
 
     #[test]

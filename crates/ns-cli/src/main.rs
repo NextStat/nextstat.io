@@ -280,6 +280,53 @@ enum TimeseriesCommands {
         output: Option<PathBuf>,
     },
 
+    /// Fit with EM, then run RTS smoother (and optional forecast)
+    KalmanFit {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Max EM iterations
+        #[arg(long, default_value = "50")]
+        max_iter: usize,
+
+        /// Relative tolerance on log-likelihood improvement
+        #[arg(long, default_value = "1e-6")]
+        tol: f64,
+
+        /// Update Q
+        #[arg(long, default_value_t = true)]
+        estimate_q: bool,
+
+        /// Update R
+        #[arg(long, default_value_t = true)]
+        estimate_r: bool,
+
+        /// Update F (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_f: bool,
+
+        /// Update H (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_h: bool,
+
+        /// Minimum diagonal value applied to Q/R
+        #[arg(long, default_value = "1e-12")]
+        min_diag: f64,
+
+        /// Number of forecast steps (>0). If 0, omit forecast.
+        #[arg(long, default_value = "0")]
+        forecast_steps: usize,
+
+        /// Skip running RTS smoother (only returns fitted model + EM trace)
+        #[arg(long, default_value_t = false)]
+        no_smooth: bool,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// Forecast K steps ahead after filtering the provided `ys`
     KalmanForecast {
         /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
@@ -289,6 +336,12 @@ enum TimeseriesCommands {
         /// Number of forecast steps (>0)
         #[arg(long, default_value = "1")]
         steps: usize,
+
+        /// Optional two-sided alpha for marginal normal prediction intervals.
+        ///
+        /// Example: `--alpha 0.05` computes 95% intervals per observation dimension.
+        #[arg(long)]
+        alpha: Option<f64>,
 
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -401,8 +454,33 @@ fn main() -> Result<()> {
                 min_diag,
                 output.as_ref(),
             ),
-            TimeseriesCommands::KalmanForecast { input, steps, output } => {
-                cmd_ts_kalman_forecast(&input, steps, output.as_ref())
+            TimeseriesCommands::KalmanFit {
+                input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                estimate_f,
+                estimate_h,
+                min_diag,
+                forecast_steps,
+                no_smooth,
+                output,
+            } => cmd_ts_kalman_fit(
+                &input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                estimate_f,
+                estimate_h,
+                min_diag,
+                forecast_steps,
+                no_smooth,
+                output.as_ref(),
+            ),
+            TimeseriesCommands::KalmanForecast { input, steps, alpha, output } => {
+                cmd_ts_kalman_forecast(&input, steps, alpha, output.as_ref())
             }
             TimeseriesCommands::KalmanSimulate { input, t_max, seed, output } => {
                 cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref())
@@ -806,19 +884,118 @@ fn cmd_ts_kalman_em(
     write_json(output, output_json)
 }
 
-fn cmd_ts_kalman_forecast(input: &PathBuf, steps: usize, output: Option<&PathBuf>) -> Result<()> {
+fn cmd_ts_kalman_fit(
+    input: &PathBuf,
+    max_iter: usize,
+    tol: f64,
+    estimate_q: bool,
+    estimate_r: bool,
+    estimate_f: bool,
+    estimate_h: bool,
+    min_diag: f64,
+    forecast_steps: usize,
+    no_smooth: bool,
+    output: Option<&PathBuf>,
+) -> Result<()> {
+    let (model, ys) = load_kalman_input(input)?;
+    let cfg = ns_inference::timeseries::em::KalmanEmConfig {
+        max_iter,
+        tol,
+        estimate_q,
+        estimate_r,
+        estimate_f,
+        estimate_h,
+        min_diag,
+    };
+
+    let em = ns_inference::timeseries::em::kalman_em(&model, &ys, cfg)
+        .map_err(|e| anyhow::anyhow!("kalman_em failed: {e}"))?;
+    let fitted = em.model;
+
+    let smooth_json = if no_smooth {
+        serde_json::Value::Null
+    } else {
+        let fr = ns_inference::timeseries::kalman::kalman_filter(&fitted, &ys)
+            .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+        let sr = ns_inference::timeseries::kalman::rts_smoother(&fitted, &fr)
+            .map_err(|e| anyhow::anyhow!("rts_smoother failed: {e}"))?;
+
+        serde_json::json!({
+            "log_likelihood": fr.log_likelihood,
+            "filtered_means": fr.filtered_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+            "filtered_covs": fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+            "smoothed_means": sr.smoothed_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+            "smoothed_covs": sr.smoothed_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+        })
+    };
+
+    let forecast_json = if forecast_steps == 0 {
+        serde_json::Value::Null
+    } else {
+        let fr = ns_inference::timeseries::kalman::kalman_filter(&fitted, &ys)
+            .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+        let fc = ns_inference::timeseries::forecast::kalman_forecast(&fitted, &fr, forecast_steps)
+            .map_err(|e| anyhow::anyhow!("kalman_forecast failed: {e}"))?;
+        serde_json::json!({
+            "state_means": fc.state_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+            "state_covs": fc.state_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+            "obs_means": fc.obs_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+            "obs_covs": fc.obs_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+        })
+    };
+
+    let output_json = serde_json::json!({
+        "em": {
+            "converged": em.converged,
+            "n_iter": em.n_iter,
+            "loglik_trace": em.loglik_trace,
+        },
+        "model": {
+            "f": dmatrix_to_nested(&fitted.f),
+            "h": dmatrix_to_nested(&fitted.h),
+            "q": dmatrix_to_nested(&fitted.q),
+            "r": dmatrix_to_nested(&fitted.r),
+            "m0": dvector_to_vec(&fitted.m0),
+            "p0": dmatrix_to_nested(&fitted.p0),
+        },
+        "smooth": smooth_json,
+        "forecast": forecast_json,
+    });
+
+    write_json(output, output_json)
+}
+
+fn cmd_ts_kalman_forecast(
+    input: &PathBuf,
+    steps: usize,
+    alpha: Option<f64>,
+    output: Option<&PathBuf>,
+) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
         .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
     let fc = ns_inference::timeseries::forecast::kalman_forecast(&model, &fr, steps)
         .map_err(|e| anyhow::anyhow!("kalman_forecast failed: {e}"))?;
 
-    let output_json = serde_json::json!({
+    let mut output_json = serde_json::json!({
         "state_means": fc.state_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
         "state_covs": fc.state_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
         "obs_means": fc.obs_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
         "obs_covs": fc.obs_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
     });
+
+    if let Some(alpha) = alpha {
+        let iv = ns_inference::timeseries::forecast::kalman_forecast_intervals(&fc, alpha)
+            .map_err(|e| anyhow::anyhow!("kalman_forecast_intervals failed: {e}"))?;
+        output_json["alpha"] = serde_json::json!(iv.alpha);
+        output_json["z"] = serde_json::json!(iv.z);
+        output_json["obs_lower"] = serde_json::json!(
+            iv.obs_lower.iter().map(dvector_to_vec).collect::<Vec<_>>()
+        );
+        output_json["obs_upper"] = serde_json::json!(
+            iv.obs_upper.iter().map(dvector_to_vec).collect::<Vec<_>>()
+        );
+    }
 
     write_json(output, output_json)
 }

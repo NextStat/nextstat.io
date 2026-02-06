@@ -70,12 +70,78 @@ def kalman_em(
         min_diag=min_diag,
     )
 
+def kalman_fit(
+    model,
+    ys: Sequence[Sequence[float | None]],
+    *,
+    max_iter: int = 50,
+    tol: float = 1e-6,
+    estimate_q: bool = True,
+    estimate_r: bool = True,
+    estimate_f: bool = False,
+    estimate_h: bool = False,
+    min_diag: float = 1e-12,
+    forecast_steps: int = 0,
+    no_smooth: bool = False,
+) -> Mapping[str, Any]:
+    """Fit with EM, then run RTS smoother (and optional forecast).
 
-def kalman_forecast(model, ys: Sequence[Sequence[float | None]], *, steps: int = 1) -> Mapping[str, Any]:
+    Returns
+    - dict with keys:
+      - model: fitted `nextstat._core.KalmanModel`
+      - em: EM metadata + fitted matrices (nested lists)
+      - smooth: smoother output dict, or None if `no_smooth=True`
+      - forecast: forecast output dict, or None if `forecast_steps=0`
+    """
+    em_out = kalman_em(
+        model,
+        ys,
+        max_iter=max_iter,
+        tol=tol,
+        estimate_q=estimate_q,
+        estimate_r=estimate_r,
+        estimate_f=estimate_f,
+        estimate_h=estimate_h,
+        min_diag=min_diag,
+    )
+
+    fitted_model = em_out["model"]
+    em_meta = {
+        "converged": em_out["converged"],
+        "n_iter": em_out["n_iter"],
+        "loglik_trace": em_out["loglik_trace"],
+        "f": em_out["f"],
+        "h": em_out["h"],
+        "q": em_out["q"],
+        "r": em_out["r"],
+    }
+
+    smooth_out = None if no_smooth else kalman_smooth(fitted_model, ys)
+    forecast_out = None
+    if int(forecast_steps) != 0:
+        if int(forecast_steps) < 0:
+            raise ValueError("forecast_steps must be >= 0")
+        forecast_out = kalman_forecast(fitted_model, ys, steps=int(forecast_steps))
+
+    return {
+        "model": fitted_model,
+        "em": em_meta,
+        "smooth": smooth_out,
+        "forecast": forecast_out,
+    }
+
+
+def kalman_forecast(
+    model,
+    ys: Sequence[Sequence[float | None]],
+    *,
+    steps: int = 1,
+    alpha: float | None = None,
+) -> Mapping[str, Any]:
     """Forecast future states/observations after ingesting `ys`."""
     from . import _core
 
-    return _core.kalman_forecast(model, [list(y) for y in ys], steps=steps)
+    return _core.kalman_forecast(model, [list(y) for y in ys], steps=steps, alpha=alpha)
 
 
 def kalman_simulate(model, *, t_max: int, seed: int = 42) -> Mapping[str, Any]:
@@ -221,6 +287,7 @@ __all__ = [
     "kalman_filter",
     "kalman_smooth",
     "kalman_em",
+    "kalman_fit",
     "kalman_forecast",
     "kalman_simulate",
     "local_level_model",

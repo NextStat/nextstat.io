@@ -31,7 +31,9 @@ use ns_inference::timeseries::kalman::{
 use ns_inference::timeseries::em::{
     KalmanEmConfig as RustKalmanEmConfig, kalman_em as rust_kalman_em,
 };
-use ns_inference::timeseries::forecast::kalman_forecast as rust_kalman_forecast;
+use ns_inference::timeseries::forecast::{
+    kalman_forecast as rust_kalman_forecast, kalman_forecast_intervals as rust_kalman_forecast_intervals,
+};
 use ns_inference::timeseries::simulate::kalman_simulate as rust_kalman_simulate;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
@@ -402,12 +404,13 @@ fn kalman_em(
 }
 
 #[pyfunction]
-#[pyo3(signature = (model, ys, *, steps=1))]
+#[pyo3(signature = (model, ys, *, steps=1, alpha=None))]
 fn kalman_forecast(
     py: Python<'_>,
     model: &PyKalmanModel,
     ys: Vec<Vec<Option<f64>>>,
     steps: usize,
+    alpha: Option<f64>,
 ) -> PyResult<Py<PyAny>> {
     let ys: Vec<DVector<f64>> = ys
         .into_iter()
@@ -425,6 +428,14 @@ fn kalman_forecast(
     out.set_item("state_covs", fc.state_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>())?;
     out.set_item("obs_means", fc.obs_means.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
     out.set_item("obs_covs", fc.obs_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>())?;
+    if let Some(alpha) = alpha {
+        let iv = rust_kalman_forecast_intervals(&fc, alpha)
+            .map_err(|e| PyValueError::new_err(format!("kalman_forecast_intervals failed: {}", e)))?;
+        out.set_item("alpha", iv.alpha)?;
+        out.set_item("z", iv.z)?;
+        out.set_item("obs_lower", iv.obs_lower.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+        out.set_item("obs_upper", iv.obs_upper.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+    }
 
     Ok(out.into_any().unbind())
 }
@@ -1606,6 +1617,22 @@ fn fit<'py>(
     mle.fit(py, model, data)
 }
 
+/// Convenience wrapper: fit multiple models in parallel (Rayon).
+///
+/// Two call forms:
+/// - `fit_batch(models)` — list of models, each with its own observations
+/// - `fit_batch(model, datasets)` — HistFactoryModel + list of observation vectors
+#[pyfunction]
+#[pyo3(signature = (models_or_model, datasets=None))]
+fn fit_batch<'py>(
+    py: Python<'py>,
+    models_or_model: &Bound<'py, PyAny>,
+    datasets: Option<Vec<Vec<f64>>>,
+) -> PyResult<Vec<PyFitResult>> {
+    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+    mle.fit_batch(py, models_or_model, datasets)
+}
+
 /// Convenience wrapper: generate Poisson toys and fit each in parallel.
 #[pyfunction]
 #[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
@@ -2143,6 +2170,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;

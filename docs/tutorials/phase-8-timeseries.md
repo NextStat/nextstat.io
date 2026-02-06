@@ -36,12 +36,13 @@ Create an input JSON like:
 Then run:
 
 ```sh
-nextstat timeseries kalman-filter --input kalman_1d.json
-nextstat timeseries kalman-smooth --input kalman_1d.json
-nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
-nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10
-nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
-```
+	nextstat timeseries kalman-filter --input kalman_1d.json
+	nextstat timeseries kalman-smooth --input kalman_1d.json
+	nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
+	nextstat timeseries kalman-fit --input kalman_1d.json --max-iter 50 --tol 1e-6 --forecast-steps 10
+	nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10 --alpha 0.05
+	nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
+	```
 
 ## EM options
 
@@ -50,6 +51,11 @@ nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 - CLI: `--estimate-f true` to estimate `F[0,0]`.
 - CLI: `--estimate-h true` to estimate `H[0,0]`.
 - Python: `nextstat.timeseries.kalman_em(..., estimate_f=True, estimate_h=True)`.
+
+## Fit helper
+
+- Python: `nextstat.timeseries.kalman_fit(model, ys, forecast_steps=10)` runs EM + RTS smoothing (+ optional forecast) and returns a dict with `model`, `em`, `smooth`, `forecast`.
+- CLI: `nextstat timeseries kalman-fit --input ... --forecast-steps 10` outputs the same sections in JSON.
 
 ## Missing observations
 
@@ -67,3 +73,7 @@ Both `kalman_filter` and `kalman_smooth` return plain Python dicts containing ne
 
 - `*_means`: `T x n_state`
 - `*_covs`: `T x n_state x n_state`
+
+Forecast intervals:
+
+- `kalman_forecast(..., alpha=0.05)` adds `obs_lower` and `obs_upper` (marginal normal intervals).
