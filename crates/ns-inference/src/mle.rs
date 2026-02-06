@@ -89,6 +89,25 @@ impl MaximumLikelihoodEstimator {
         model: &impl LogDensityModel,
     ) -> Result<crate::optimizer::OptimizationResult> {
         let initial_params: Vec<f64> = model.parameter_init();
+        self.fit_minimum_from(model, &initial_params)
+    }
+
+    /// Minimize NLL from an explicit starting point (warm-start).
+    ///
+    /// This is important for profile scans / CLs scans where consecutive points
+    /// are highly correlated and re-starting from `parameter_init()` is slow.
+    pub fn fit_minimum_from(
+        &self,
+        model: &impl LogDensityModel,
+        initial_params: &[f64],
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        if initial_params.len() != model.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "fit_minimum_from: initial_params length {} != model.dim() {}",
+                initial_params.len(),
+                model.dim()
+            )));
+        }
         let bounds: Vec<(f64, f64)> = model.parameter_bounds();
         let prepared = model.prepared();
 
@@ -109,7 +128,7 @@ impl MaximumLikelihoodEstimator {
 
         let objective = ModelObjective { prepared, model };
         let optimizer = LbfgsbOptimizer::new(self.config.clone());
-        optimizer.minimize(&objective, &initial_params, &bounds)
+        optimizer.minimize(&objective, initial_params, &bounds)
     }
 
     /// Compute full Hessian matrix using forward differences of analytical gradient.
@@ -625,8 +644,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow (~30s release); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
+    #[ignore = "slow (~60s release); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
     fn test_fit_toys_pull_distribution() {
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Poisson};
+
         let workspace = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&workspace).unwrap();
 
@@ -637,32 +659,52 @@ mod tests {
         let mut truth: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         truth[poi_idx] = mu_true;
 
+        let expected = model.expected_data(&truth).unwrap();
+
         let mle = MaximumLikelihoodEstimator::new();
         let n_toys = 200;
         let seed = 42u64;
-        let results = mle.fit_toys(&model, &truth, n_toys, seed);
 
-        // Collect pulls from converged toys
+        // Run toys sequentially to avoid rayon hangs on some platforms
         let mut pulls = Vec::new();
         let mut n_converged = 0usize;
         let mut n_covered = 0usize;
 
-        for r in &results {
-            if let Ok(fit) = r {
-                if !fit.converged {
-                    continue;
-                }
-                n_converged += 1;
-                let mu_hat = fit.parameters[poi_idx];
-                let sigma_mu = fit.uncertainties[poi_idx];
-                if sigma_mu <= 0.0 || !sigma_mu.is_finite() {
-                    continue;
-                }
-                let pull = (mu_hat - mu_true) / sigma_mu;
-                pulls.push(pull);
-                if pull.abs() <= 1.0 {
-                    n_covered += 1;
-                }
+        for toy_idx in 0..n_toys {
+            let toy_seed = seed.wrapping_add(toy_idx as u64);
+            let mut rng = rand::rngs::StdRng::seed_from_u64(toy_seed);
+
+            let toy_data: Vec<f64> = expected
+                .iter()
+                .map(|&lam| {
+                    let pois = Poisson::new(lam.max(1e-10)).unwrap();
+                    pois.sample(&mut rng)
+                })
+                .collect();
+
+            let toy_model = match model.with_observed_main(&toy_data) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let fit = match mle.fit(&toy_model) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+
+            if !fit.converged {
+                continue;
+            }
+            n_converged += 1;
+            let mu_hat = fit.parameters[poi_idx];
+            let sigma_mu = fit.uncertainties[poi_idx];
+            if sigma_mu <= 0.0 || !sigma_mu.is_finite() {
+                continue;
+            }
+            let pull = (mu_hat - mu_true) / sigma_mu;
+            pulls.push(pull);
+            if pull.abs() <= 1.0 {
+                n_covered += 1;
             }
         }
 

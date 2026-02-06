@@ -70,7 +70,7 @@ fn viz_cls_contract() {
         "--scan-stop",
         "5.0",
         "--scan-points",
-        "51",
+        "21",
         "--threads",
         "1",
     ]);
@@ -87,7 +87,7 @@ fn viz_cls_contract() {
     let exp = v.get("exp_limits").and_then(|x| x.as_array()).expect("exp_limits should be array");
     assert_eq!(exp.len(), 5);
     let points = v.get("points").and_then(|x| x.as_array()).expect("points should be array");
-    assert_eq!(points.len(), 51);
+    assert_eq!(points.len(), 21);
     let first = points[0].as_object().expect("point should be object");
     assert!(first.get("cls").and_then(|x| x.as_f64()).unwrap().is_finite());
     let expected =

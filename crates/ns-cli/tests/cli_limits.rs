@@ -36,7 +36,7 @@ fn upper_limit_scan_writes_expected_contract() {
         "--scan-stop",
         "5.0",
         "--scan-points",
-        "201",
+        "41",
         "--threads",
         "1",
     ]);

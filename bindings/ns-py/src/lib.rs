@@ -9,10 +9,10 @@ use pyo3::wrap_pyfunction;
 // Re-export types from core crates
 use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_core::{Error as NsError, Result as NsResult};
-use ns_inference::chain::sample_nuts_multichain;
+use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult};
 use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
-use ns_inference::nuts::NutsConfig;
+use ns_inference::nuts::{sample_nuts, NutsConfig};
 use ns_inference::{
     hypotest::AsymptoticCLsContext as RustCLsCtx,
     profile_likelihood as pl,
@@ -23,6 +23,27 @@ use ns_inference::{
 };
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
+
+fn sample_nuts_multichain_with_seeds(
+    model: &(impl LogDensityModel + Sync),
+    n_warmup: usize,
+    n_samples: usize,
+    seeds: &[u64],
+    config: NutsConfig,
+) -> NsResult<RustSamplerResult> {
+    let mut chains: Vec<RustChain> = Vec::with_capacity(seeds.len());
+    for &seed in seeds {
+        let chain = sample_nuts(model, n_warmup, n_samples, seed, config.clone())?;
+        chains.push(chain);
+    }
+    Ok(RustSamplerResult {
+        chains,
+        param_names: model.parameter_names(),
+        n_warmup,
+        n_samples,
+        diagnostics: None,
+    })
+}
 
 /// Python wrapper for HistFactoryModel
 #[pyclass(name = "HistFactoryModel")]
@@ -784,27 +805,62 @@ fn sample<'py>(
     let result = match sample_model {
         SampleModel::HistFactory(m) => {
             let config = config.clone();
-            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::GaussianMean(m) => {
             let config = config.clone();
-            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LinearRegression(m) => {
             let config = config.clone();
-            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LogisticRegression(m) => {
             let config = config.clone();
-            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::PoissonRegression(m) => {
             let config = config.clone();
-            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
     };

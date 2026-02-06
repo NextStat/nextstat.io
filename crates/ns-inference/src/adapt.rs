@@ -21,10 +21,14 @@ pub struct DualAveraging {
 impl DualAveraging {
     /// Create with target acceptance rate and initial step size.
     pub fn new(target_accept: f64, init_eps: f64) -> Self {
+        // Initialize the smoothed step size to the same value as the current step size.
+        // Starting from 1.0 (log_eps_bar=0) can badly distort short warmup runs and
+        // makes multi-chain diagnostics (R-hat) flaky.
+        let log_eps0 = init_eps.ln();
         Self {
             target_accept,
-            log_eps: init_eps.ln(),
-            log_eps_bar: 0.0,
+            log_eps: log_eps0,
+            log_eps_bar: log_eps0,
             h_bar: 0.0,
             mu: (10.0 * init_eps).ln(),
             gamma: 0.05,

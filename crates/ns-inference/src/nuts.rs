@@ -111,7 +111,11 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     // Use weights relative to the start point: log_weight = -(H - H0) = -energy_error.
     let logp = -h;
     let in_slice = log_u <= logp;
-    let log_weight = if in_slice { -energy_error } else { f64::NEG_INFINITY };
+    // Slice-based NUTS: select uniformly among states in the slice.
+    // Using exp(-deltaH) weights here (multinomial NUTS) together with an explicit
+    // slice threshold tends to bias short chains and makes R-hat flaky in our
+    // HistFactory models. Keep weights uniform for correctness and stability.
+    let log_weight = if in_slice { 0.0 } else { f64::NEG_INFINITY };
 
     let accept_prob = (-energy_error).exp().min(1.0);
 
@@ -1156,7 +1160,6 @@ mod tests {
             }
 
             let inv_var_y = 1.0 / (self.sigma_y * self.sigma_y);
-            let _inv_var_a = 1.0 / (sigma_a * sigma_a);
 
             // Likelihood: y_j ~ Normal(alpha_j, sigma_y) (up to constant in sigma_y)
             let mut nll = 0.0;

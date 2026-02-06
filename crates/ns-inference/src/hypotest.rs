@@ -5,6 +5,7 @@
 //! `pyhf.infer.calculators.AsymptoticCalculator` (pyhf 0.7.x).
 
 use crate::MaximumLikelihoodEstimator;
+use ns_core::traits::LogDensityModel;
 use ns_core::{Error, Result};
 use ns_translate::pyhf::HistFactoryModel;
 
@@ -246,10 +247,77 @@ impl AsymptoticCLsContext {
         let mut observed_cls: Vec<f64> = Vec::with_capacity(scan.len());
         let mut expected_cls: Vec<[f64; 5]> = Vec::with_capacity(scan.len());
 
+        // Warm-start fixed fits across scan points (huge speedup vs restarting from parameter_init).
+        let mut last_fixed_data_params: Option<Vec<f64>> = None;
+        let mut last_fixed_asimov_params: Option<Vec<f64>> = None;
+
         for &mu in scan {
-            let r = self.hypotest_qtilde(mle, mu)?;
-            observed_cls.push(r.cls);
-            expected_cls.push(expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt()));
+            // Observed: q_mu
+            let fixed_data_model = self.data_model.with_fixed_param(self.poi, mu);
+            let init_data = if let Some(mut p) = last_fixed_data_params.clone() {
+                if self.poi < p.len() {
+                    p[self.poi] = mu;
+                }
+                p
+            } else {
+                fixed_data_model.parameter_init()
+            };
+            let fixed_data = mle.fit_minimum_from(&fixed_data_model, &init_data)?;
+            if !fixed_data.converged {
+                return Err(Error::Validation(format!(
+                    "Fixed fit did not converge for mu_test={}: {}",
+                    mu, fixed_data.message
+                )));
+            }
+            last_fixed_data_params = Some(fixed_data.parameters.clone());
+
+            let llr = 2.0 * (fixed_data.fval - self.free_data_nll);
+            let mut q_mu = llr.max(0.0);
+            if self.free_data_mu_hat > mu {
+                q_mu = 0.0;
+            }
+
+            // Asimov: q_mu,A
+            let fixed_asimov_model = self.asimov_model.with_fixed_param(self.poi, mu);
+            let init_asimov = if let Some(mut p) = last_fixed_asimov_params.clone() {
+                if self.poi < p.len() {
+                    p[self.poi] = mu;
+                }
+                p
+            } else {
+                fixed_asimov_model.parameter_init()
+            };
+            let fixed_asimov = mle.fit_minimum_from(&fixed_asimov_model, &init_asimov)?;
+            if !fixed_asimov.converged {
+                return Err(Error::Validation(format!(
+                    "Fixed fit (Asimov) did not converge for mu_test={}: {}",
+                    mu, fixed_asimov.message
+                )));
+            }
+            last_fixed_asimov_params = Some(fixed_asimov.parameters.clone());
+
+            let llr_a = 2.0 * (fixed_asimov.fval - self.free_asimov_nll);
+            let mut q_mu_a = llr_a.max(0.0);
+            if self.free_asimov_mu_hat > mu {
+                q_mu_a = 0.0;
+            }
+
+            let sqrtq = q_mu.sqrt();
+            let sqrtq_a = q_mu_a.sqrt();
+
+            let teststat = if sqrtq <= sqrtq_a {
+                sqrtq - sqrtq_a
+            } else {
+                let denom = 2.0 * sqrtq_a.max(1e-16);
+                (q_mu - q_mu_a) / denom
+            };
+
+            let clsb = normal_cdf(-(teststat + sqrtq_a));
+            let clb = normal_cdf(-teststat);
+            let cls = clsb / clb;
+
+            observed_cls.push(cls);
+            expected_cls.push(expected_cls_band_from_sqrtq_a(sqrtq_a));
         }
 
         fn interp_limit(alpha: f64, xs: &[f64], ys: &[f64]) -> Result<f64> {
