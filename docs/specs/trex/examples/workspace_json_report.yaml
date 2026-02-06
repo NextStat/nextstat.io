@@ -1,0 +1,53 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: Workspace JSON + Report
+  description: Use an existing pyhf JSON workspace and generate a report (requires combination.xml for bin edges).
+  tags: ["workspace", "report"]
+
+inputs:
+  mode: workspace_json
+  workspace_json:
+    path: /abs/path/to/workspace.json
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: false
+    output_json: tmp/unused_workspace_out.json
+
+  fit:
+    enabled: false
+    output_json: tmp/ws_fit.json
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: tmp/ws_scan.json
+
+  report:
+    enabled: true
+    out_dir: tmp/ws_report
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: /abs/path/to/combination.xml
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+

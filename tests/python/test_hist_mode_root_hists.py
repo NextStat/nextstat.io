@@ -25,6 +25,7 @@ def test_hist_mode_reads_simple_root_hists_drop_policy():
     for hist_path, exp in expected.items():
         got = out[hist_path]
         assert got["flow_policy"] == "drop"
+        assert got["sumw2_policy"] in ("root", "poisson_fallback")
         assert float(got["underflow"]) == pytest.approx(0.0, abs=1e-12)
         assert float(got["overflow"]) == pytest.approx(0.0, abs=1e-12)
 
@@ -32,8 +33,8 @@ def test_hist_mode_reads_simple_root_hists_drop_policy():
         assert got["bin_content"] == pytest.approx(exp["bin_content"], abs=1e-12)
 
         sw2 = got.get("sumw2")
-        if sw2 is not None:
-            assert len(sw2) == len(exp["bin_content"])
+        assert sw2 is not None
+        assert sw2 == pytest.approx(exp["bin_content"], abs=1e-12)
 
 
 def test_hist_mode_fold_policy_is_explicit_and_stable_for_zero_flows():
@@ -45,9 +46,12 @@ def test_hist_mode_fold_policy_is_explicit_and_stable_for_zero_flows():
 
     assert got_drop["flow_policy"] == "drop"
     assert got_fold["flow_policy"] == "fold"
+    assert got_drop["sumw2"] is not None
+    assert got_fold["sumw2"] is not None
 
     assert got_drop["bin_edges"] == pytest.approx(expected["hist1"]["bin_edges"], abs=1e-12)
     assert got_fold["bin_edges"] == pytest.approx(expected["hist1"]["bin_edges"], abs=1e-12)
 
     # For this fixture, under/overflow are zero, so folding is a no-op on main bins.
     assert got_fold["bin_content"] == pytest.approx(got_drop["bin_content"], abs=1e-12)
+    assert got_fold["sumw2"] == pytest.approx(got_drop["sumw2"], abs=1e-12)

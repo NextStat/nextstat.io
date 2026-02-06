@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
-use ns_root::RootFile;
+use ns_root::{Histogram, RootFile};
 
 use crate::pyhf::schema::{
     Channel, HistoSysData, Measurement, MeasurementConfig, Modifier, NormSysData, Observation,
@@ -119,7 +119,7 @@ fn build_channel(
         root_cache,
     )?;
 
-    let observation = Observation { name: ch.name.clone(), data: obs_hist };
+    let observation = Observation { name: ch.name.clone(), data: obs_hist.bin_content };
 
     // Build samples
     let mut samples = Vec::new();
@@ -157,7 +157,7 @@ fn build_sample(
         modifiers.extend(mods);
     }
 
-    Ok(Sample { name: s.name.clone(), data: nominal, modifiers })
+    Ok(Sample { name: s.name.clone(), data: nominal.bin_content, modifiers })
 }
 
 /// Build Modifier(s) from an XML modifier element.
@@ -167,7 +167,7 @@ fn build_modifier(
     default_input_file: Option<&str>,
     base_dir: &Path,
     root_cache: &mut HashMap<PathBuf, RootFile>,
-    nominal: &[f64],
+    nominal: &Histogram,
     channel_name: &str,
 ) -> Result<Vec<Modifier>> {
     match m {
@@ -199,17 +199,17 @@ fn build_modifier(
 
             Ok(vec![Modifier::HistoSys {
                 name: name.clone(),
-                data: HistoSysData { hi_data, lo_data },
+                data: HistoSysData { hi_data: hi_data.bin_content, lo_data: lo_data.bin_content },
             }])
         }
         ModifierXml::ShapeSys { name, histo_name, histo_path, input_file, .. } => {
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
-                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?
+                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content
             } else {
                 // If no histogram specified, use relative uncertainties from nominal
-                nominal.iter().map(|v| v.sqrt()).collect()
+                nominal.bin_content.iter().map(|v| v.sqrt()).collect()
             };
 
             Ok(vec![Modifier::ShapeSys { name: name.clone(), data }])
@@ -222,10 +222,15 @@ fn build_modifier(
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
-                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?
+                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content
             } else {
-                // Use sqrt(nominal) as default stat error
-                nominal.iter().map(|v| v.sqrt()).collect()
+                // Prefer nominal sumw2 if available (weighted MC templates).
+                if let Some(sw2) = nominal.sumw2.as_ref() {
+                    sw2.iter().map(|v| v.max(0.0).sqrt()).collect()
+                } else {
+                    // Fallback: Poisson-ish sqrt(nominal).
+                    nominal.bin_content.iter().map(|v| v.sqrt()).collect()
+                }
             };
 
             // StatError name follows pyhf convention: "staterror_{channel_name}"
@@ -271,7 +276,7 @@ fn resolve_and_read_histogram(
     input_file: Option<&str>,
     base_dir: &Path,
     root_cache: &mut HashMap<PathBuf, RootFile>,
-) -> Result<Vec<f64>> {
+) -> Result<Histogram> {
     let input_file = input_file.ok_or_else(|| {
         Error::Xml(format!("no InputFile specified for histogram '{}'", histo_name))
     })?;
@@ -302,5 +307,5 @@ fn resolve_and_read_histogram(
         ))
     })?;
 
-    Ok(hist.bin_content)
+    Ok(hist)
 }

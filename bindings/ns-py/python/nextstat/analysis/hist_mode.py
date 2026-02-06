@@ -44,6 +44,18 @@ def read_root_histogram(
     raw: dict[str, Any] = _core.read_root_histogram(_to_path_str(root_path), str(hist_path))
     raw["flow_policy"] = flow_policy
 
+    # Ensure `sumw2` is always available for downstream TREx-like workflows.
+    #
+    # Policy:
+    # - if ROOT provides sumw2: keep it (`sumw2_policy="root"`)
+    # - else: assume unweighted Poisson semantics and set sumw2 := bin_content
+    #         (`sumw2_policy="poisson_fallback"`)
+    if raw.get("sumw2") is None:
+        raw["sumw2_policy"] = "poisson_fallback"
+        raw["sumw2"] = list(raw.get("bin_content") or [])
+    else:
+        raw["sumw2_policy"] = "root"
+
     if flow_policy == "drop":
         return raw
 
@@ -58,15 +70,13 @@ def read_root_histogram(
     content[-1] += overflow
     raw["bin_content"] = content
 
-    sw2 = raw.get("sumw2")
-    if sw2 is not None:
-        sw2_list = list(sw2)
-        if sw2_list:
-            uf2 = raw.get("underflow_sumw2")
-            of2 = raw.get("overflow_sumw2")
-            sw2_list[0] += float(uf2) if uf2 is not None else 0.0
-            sw2_list[-1] += float(of2) if of2 is not None else 0.0
-            raw["sumw2"] = sw2_list
+    sw2_list = list(raw.get("sumw2") or [])
+    if sw2_list:
+        uf2 = raw.get("underflow_sumw2")
+        of2 = raw.get("overflow_sumw2")
+        sw2_list[0] += float(uf2) if uf2 is not None else 0.0
+        sw2_list[-1] += float(of2) if of2 is not None else 0.0
+        raw["sumw2"] = sw2_list
 
     return raw
 
@@ -82,4 +92,3 @@ def read_root_histograms(
     for hp in hist_paths:
         out[str(hp)] = read_root_histogram(root_path, str(hp), flow_policy=flow_policy)
     return out
-

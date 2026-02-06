@@ -1,0 +1,55 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: HistFactory Fit + Scan + Report
+  description: Deterministic pipeline (import -> fit -> scan -> report) with explicit outputs.
+  tags: ["histfactory", "fit", "scan", "report"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: /abs/path/to/trex/output
+    combination_xml: null
+    measurement: measurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: tmp/hf_pipeline/workspace.json
+
+  fit:
+    enabled: true
+    output_json: tmp/hf_pipeline/fit.json
+
+  profile_scan:
+    enabled: true
+    start: 0.0
+    stop: 5.0
+    points: 51
+    output_json: tmp/hf_pipeline/scan.json
+
+  report:
+    enabled: true
+    out_dir: tmp/hf_pipeline/report
+    overwrite: true
+    include_covariance: true
+    histfactory_xml: null
+    render:
+      enabled: true
+      pdf: tmp/hf_pipeline/report.pdf
+      svg_dir: tmp/hf_pipeline/svg
+      python: .venv/bin/python
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+

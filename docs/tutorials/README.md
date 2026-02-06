@@ -12,6 +12,7 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 - Phase 3.1 (frequentist): `docs/tutorials/phase-3.1-frequentist.md`
   - MLE fit, asymptotic CLs hypotest, upper limits, profile scans, plot-friendly artifacts.
 - ROOT/TRExFitter parity and reproducibility: `docs/tutorials/root-trexfitter-parity.md`
+- TREx analysis spec (YAML + schema + one-command runner): `docs/tutorials/trex-analysis-spec.md`
 
 ## General statistics and modeling packs
 
@@ -42,4 +43,3 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 ## Release and quality gates
 
 - Release gates: `docs/tutorials/release-gates.md`
-

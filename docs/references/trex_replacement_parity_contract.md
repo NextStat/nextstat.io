@@ -59,6 +59,10 @@ Schemas (v0):
 - `docs/schemas/trex/report_corr_v0.schema.json`
 - `docs/schemas/trex/report_yields_v0.schema.json`
 
+Tools:
+- Validate a spec: `scripts/trex/validate_analysis_spec.py`
+- Run a spec (one command): `scripts/trex/run_analysis_spec.py`
+
 ### 2.0 Plotting correctness contract (why this exists)
 
 In practice, TRExFitter “plot accuracy” means: correct numbers + correct bin geometry + correct uncertainties.
