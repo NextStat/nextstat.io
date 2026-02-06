@@ -189,22 +189,117 @@ enum PosteriorModel {
 }
 
 impl PosteriorModel {
-    fn as_model(&self) -> &(dyn LogDensityModel + Sync) {
+    fn dim(&self) -> usize {
         match self {
-            PosteriorModel::HistFactory(m) => m,
-            PosteriorModel::GaussianMean(m) => m,
-            PosteriorModel::LinearRegression(m) => m,
-            PosteriorModel::LogisticRegression(m) => m,
-            PosteriorModel::OrderedLogit(m) => m,
-            PosteriorModel::OrderedProbit(m) => m,
-            PosteriorModel::PoissonRegression(m) => m,
-            PosteriorModel::NegativeBinomialRegression(m) => m,
-            PosteriorModel::ComposedGlm(m) => m,
-            PosteriorModel::LmmMarginal(m) => m,
-            PosteriorModel::ExponentialSurvival(m) => m,
-            PosteriorModel::WeibullSurvival(m) => m,
-            PosteriorModel::LogNormalAft(m) => m,
-            PosteriorModel::CoxPh(m) => m,
+            PosteriorModel::HistFactory(m) => m.dim(),
+            PosteriorModel::GaussianMean(m) => m.dim(),
+            PosteriorModel::LinearRegression(m) => m.dim(),
+            PosteriorModel::LogisticRegression(m) => m.dim(),
+            PosteriorModel::OrderedLogit(m) => m.dim(),
+            PosteriorModel::OrderedProbit(m) => m.dim(),
+            PosteriorModel::PoissonRegression(m) => m.dim(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.dim(),
+            PosteriorModel::ComposedGlm(m) => m.dim(),
+            PosteriorModel::LmmMarginal(m) => m.dim(),
+            PosteriorModel::ExponentialSurvival(m) => m.dim(),
+            PosteriorModel::WeibullSurvival(m) => m.dim(),
+            PosteriorModel::LogNormalAft(m) => m.dim(),
+            PosteriorModel::CoxPh(m) => m.dim(),
+        }
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_names(),
+            PosteriorModel::GaussianMean(m) => m.parameter_names(),
+            PosteriorModel::LinearRegression(m) => m.parameter_names(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_names(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_names(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_names(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_names(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_names(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_names(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_names(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_names(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_names(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_names(),
+            PosteriorModel::CoxPh(m) => m.parameter_names(),
+        }
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_bounds(),
+            PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
+            PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_bounds(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_bounds(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_bounds(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_bounds(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_bounds(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_bounds(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_bounds(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_bounds(),
+            PosteriorModel::CoxPh(m) => m.parameter_bounds(),
+        }
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_init(),
+            PosteriorModel::GaussianMean(m) => m.parameter_init(),
+            PosteriorModel::LinearRegression(m) => m.parameter_init(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_init(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_init(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_init(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_init(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_init(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_init(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_init(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_init(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_init(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_init(),
+            PosteriorModel::CoxPh(m) => m.parameter_init(),
+        }
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.nll(params),
+            PosteriorModel::GaussianMean(m) => m.nll(params),
+            PosteriorModel::LinearRegression(m) => m.nll(params),
+            PosteriorModel::LogisticRegression(m) => m.nll(params),
+            PosteriorModel::OrderedLogit(m) => m.nll(params),
+            PosteriorModel::OrderedProbit(m) => m.nll(params),
+            PosteriorModel::PoissonRegression(m) => m.nll(params),
+            PosteriorModel::NegativeBinomialRegression(m) => m.nll(params),
+            PosteriorModel::ComposedGlm(m) => m.nll(params),
+            PosteriorModel::LmmMarginal(m) => m.nll(params),
+            PosteriorModel::ExponentialSurvival(m) => m.nll(params),
+            PosteriorModel::WeibullSurvival(m) => m.nll(params),
+            PosteriorModel::LogNormalAft(m) => m.nll(params),
+            PosteriorModel::CoxPh(m) => m.nll(params),
+        }
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.grad_nll(params),
+            PosteriorModel::GaussianMean(m) => m.grad_nll(params),
+            PosteriorModel::LinearRegression(m) => m.grad_nll(params),
+            PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
+            PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
+            PosteriorModel::OrderedProbit(m) => m.grad_nll(params),
+            PosteriorModel::PoissonRegression(m) => m.grad_nll(params),
+            PosteriorModel::NegativeBinomialRegression(m) => m.grad_nll(params),
+            PosteriorModel::ComposedGlm(m) => m.grad_nll(params),
+            PosteriorModel::LmmMarginal(m) => m.grad_nll(params),
+            PosteriorModel::ExponentialSurvival(m) => m.grad_nll(params),
+            PosteriorModel::WeibullSurvival(m) => m.grad_nll(params),
+            PosteriorModel::LogNormalAft(m) => m.grad_nll(params),
+            PosteriorModel::CoxPh(m) => m.grad_nll(params),
         }
     }
 }
@@ -278,10 +373,10 @@ impl PyPosterior {
     #[new]
     fn new(model: &Bound<'_, PyAny>) -> PyResult<Self> {
         let model = extract_posterior_model(model)?;
-        let dim = model.as_model().dim();
+        let dim = model.dim();
 
         // Defensive: keep Posterior well-defined even if bounds length != dim.
-        let mut bounds: Vec<(f64, f64)> = model.as_model().parameter_bounds();
+        let mut bounds: Vec<(f64, f64)> = model.parameter_bounds();
         if bounds.len() > dim {
             bounds.truncate(dim);
         } else if bounds.len() < dim {
@@ -297,7 +392,7 @@ impl PyPosterior {
     }
 
     fn parameter_names(&self) -> Vec<String> {
-        self.model.as_model().parameter_names()
+        self.model.parameter_names()
     }
 
     fn suggested_bounds(&self) -> Vec<(f64, f64)> {
@@ -305,16 +400,13 @@ impl PyPosterior {
     }
 
     fn suggested_init(&self) -> Vec<f64> {
-        self.model.as_model().parameter_init()
+        self.model.parameter_init()
     }
 
     fn logpdf(&self, theta: &Bound<'_, PyAny>) -> PyResult<f64> {
         let theta = extract_f64_vec(theta)?;
         validate_f64_vec("theta", &theta, self.dim)?;
-        let nll = self
-            .model
-            .as_model()
-            .nll(&theta)
+        let nll = self.model.nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("logpdf failed: {}", e)))?;
         Ok(-nll)
     }
@@ -322,10 +414,7 @@ impl PyPosterior {
     fn grad(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
         let theta = extract_f64_vec(theta)?;
         validate_f64_vec("theta", &theta, self.dim)?;
-        let mut g = self
-            .model
-            .as_model()
-            .grad_nll(&theta)
+        let mut g = self.model.grad_nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("grad failed: {}", e)))?;
         for gi in g.iter_mut() {
             *gi = -*gi;
@@ -349,10 +438,7 @@ impl PyPosterior {
         let z = extract_f64_vec(z)?;
         validate_f64_vec("z", &z, self.dim)?;
         let theta = self.transform.forward(&z);
-        let nll = self
-            .model
-            .as_model()
-            .nll(&theta)
+        let nll = self.model.nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("logpdf_unconstrained failed: {}", e)))?;
         let log_jac = self.transform.log_abs_det_jacobian(&z);
         Ok(-nll + log_jac)
@@ -364,10 +450,7 @@ impl PyPosterior {
         let theta = self.transform.forward(&z);
 
         // grad(logpdf) = -grad(nll)
-        let mut grad_theta = self
-            .model
-            .as_model()
-            .grad_nll(&theta)
+        let mut grad_theta = self.model.grad_nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("grad_unconstrained failed: {}", e)))?;
         for gi in grad_theta.iter_mut() {
             *gi = -*gi;
