@@ -158,6 +158,7 @@ def _load_manifest_with_fallbacks(path: Path) -> Dict[str, Any]:
         "latest_pyhf_manifest.json",
         "latest_p6_glm_manifest.json",
         "latest_nuts_quality_manifest.json",
+        "latest_bias_pulls_manifest.json",
         "latest_root_manifest.json",
     ):
         p = manifest_dir / name
@@ -187,6 +188,7 @@ def _load_manifest_with_fallbacks(path: Path) -> Dict[str, Any]:
         "pyhf",
         "p6_glm",
         "nuts_quality",
+        "bias_pulls",
         "root_prereq",
         "root_cases",
         "root_suite",
@@ -558,6 +560,7 @@ def main() -> int:
         "pyhf": None,
         "p6_glm": None,
         "nuts_quality": None,
+        "bias_pulls": None,
         "root_suite": None,
         "status": None,
         "summary": None,
@@ -880,6 +883,89 @@ def main() -> int:
                 }
     else:
         report["nuts_quality"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
+
+    # ------------------------------------------------------------------
+    # Bias/pulls: rerun suite with baseline parameters (quality only)
+    # ------------------------------------------------------------------
+    bias_entry = baselines.get("bias_pulls")
+    if isinstance(bias_entry, dict) and isinstance(bias_entry.get("path"), str):
+        baseline_bias = Path(bias_entry["path"])
+        if not baseline_bias.exists():
+            report["bias_pulls"] = {"status": "error", "reason": "baseline_missing", "path": str(baseline_bias)}
+            any_error = True
+        else:
+            base_rep = _read_json(baseline_bias)
+            base_meta = (base_rep.get("meta") if isinstance(base_rep, dict) else None) or {}
+            base_params = (base_meta.get("params") if isinstance(base_meta, dict) else None) or {}
+
+            out_cur = args.workdir / f"bias_pulls_current_{cur_env['hostname']}_{cur_env['timestamp']}.json"
+            runner = repo / "tests" / "apex2_bias_pulls_report.py"
+
+            cmd = [
+                sys.executable,
+                str(runner),
+                "--out",
+                str(out_cur),
+                "--n-toys",
+                str(int(base_params.get("n_toys", 200))),
+                "--seed",
+                str(int(base_params.get("seed", 0))),
+                "--mu-truth",
+                str(float(base_params.get("mu_truth", 1.0))),
+                "--fixtures",
+                str(base_params.get("fixtures", "simple")),
+                "--params",
+                str(base_params.get("params", "poi")),
+                "--min-used-abs",
+                str(int(base_params.get("min_used_abs", 10))),
+                "--min-used-frac",
+                str(float(base_params.get("min_used_frac", 0.50))),
+            ]
+
+            if bool(base_params.get("include_zoo")):
+                cmd.append("--include-zoo")
+                zs = base_params.get("zoo_sizes", [])
+                if isinstance(zs, list) and zs:
+                    cmd += ["--zoo-sizes", ",".join(str(int(x)) for x in zs)]
+
+            t0 = time.time()
+            rc, stdout = _run(cmd, cwd=repo, env=env_dict)
+            wall = time.time() - t0
+
+            if rc not in (0, 2) or not out_cur.exists():
+                report["bias_pulls"] = {
+                    "status": "error",
+                    "reason": "runner_failed",
+                    "returncode": int(rc),
+                    "stdout_tail": stdout[-4000:],
+                    "current_path": str(out_cur),
+                    "baseline_path": str(baseline_bias),
+                }
+                any_error = True
+            else:
+                cur_rep = _read_json(out_cur)
+                if isinstance(cur_rep, dict):
+                    cur_rep["baseline_env"] = cur_env
+                    cur_rep.setdefault("meta", {})
+                    if isinstance(cur_rep["meta"], dict):
+                        cur_rep["meta"]["wall_s"] = float(wall)
+                    out_cur.write_text(json.dumps(cur_rep, indent=2))
+
+                cur_rep = _read_json(out_cur)
+                cur_status = (
+                    ((cur_rep.get("summary") or {}).get("status") if isinstance(cur_rep, dict) else None) or None
+                )
+                ok = (cur_status == "ok")
+                if not ok:
+                    any_failed = True
+                report["bias_pulls"] = {
+                    "status": "ok" if ok else "fail",
+                    "baseline_path": str(baseline_bias),
+                    "current_path": str(out_cur),
+                    "current_status": cur_status,
+                }
+    else:
+        report["bias_pulls"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
 
     # ------------------------------------------------------------------
     # ROOT suite: optional compare (only if baseline suite + cases exist)

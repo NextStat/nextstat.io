@@ -371,6 +371,74 @@ def record_nuts_quality_baseline(
     return out_path
 
 
+def record_bias_pulls_baseline(
+    *,
+    repo: Path,
+    env_dict: Dict[str, str],
+    environment: Dict[str, Any],
+    out_dir: Path,
+    stamp: str,
+    n_toys: int,
+    seed: int,
+    mu_truth: float,
+    fixtures: str,
+    include_zoo: bool,
+    zoo_sizes: str,
+    params: str,
+) -> Optional[Path]:
+    """Run bias/pulls regression suite and save as baseline (slow)."""
+    out_path = out_dir / f"bias_pulls_baseline_{stamp}.json"
+    runner = repo / "tests" / "apex2_bias_pulls_report.py"
+
+    cmd = [
+        sys.executable,
+        str(runner),
+        "--out",
+        str(out_path),
+        "--n-toys",
+        str(int(n_toys)),
+        "--seed",
+        str(int(seed)),
+        "--mu-truth",
+        str(float(mu_truth)),
+        "--fixtures",
+        str(fixtures),
+        "--params",
+        str(params),
+    ]
+    if include_zoo:
+        cmd.append("--include-zoo")
+        if str(zoo_sizes).strip():
+            cmd += ["--zoo-sizes", str(zoo_sizes)]
+
+    print("[bias_pulls] Running suite (slow)...")
+    t0 = time.time()
+    rc, output = _run(cmd, cwd=repo, env=env_dict)
+    wall = time.time() - t0
+
+    if rc != 0:
+        print(f"[bias_pulls] FAILED (exit {rc})")
+        print(output[-2000:])
+        return None
+
+    if out_path.exists():
+        report = json.loads(out_path.read_text())
+        # Treat "skipped" as failure for baselines: if dependencies were missing, this baseline is not useful.
+        status = ((report.get("summary") or {}).get("status") if isinstance(report, dict) else None) or None
+        if status != "ok":
+            print(f"[bias_pulls] FAILED (status {status!r})")
+            return None
+        report["baseline_env"] = environment
+        report.setdefault("meta", {})
+        if isinstance(report["meta"], dict):
+            report["meta"]["recorded_as_baseline"] = True
+            report["meta"]["wall_s"] = float(wall)
+        out_path.write_text(json.dumps(report, indent=2))
+
+    print(f"[bias_pulls] OK  ({wall:.1f}s) -> {out_path}")
+    return out_path
+
+
 def record_root_suite_baseline(
     *,
     repo: Path,
@@ -489,7 +557,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--only",
-        choices=["pyhf", "p6", "nuts_quality", "root"],
+        choices=["pyhf", "p6", "nuts_quality", "bias_pulls", "root"],
         default=None,
         help="Record only one baseline type (default: both).",
     )
@@ -510,6 +578,14 @@ def main() -> int:
     ap.add_argument("--nuts-funnel-warmup", type=int, default=300)
     ap.add_argument("--nuts-funnel-samples", type=int, default=300)
     ap.add_argument("--nuts-seed", type=int, default=0)
+    # Bias/pulls regression (slow; frequentist parity regression suite)
+    ap.add_argument("--bias-n-toys", type=int, default=200)
+    ap.add_argument("--bias-seed", type=int, default=0)
+    ap.add_argument("--bias-mu-truth", type=float, default=1.0)
+    ap.add_argument("--bias-fixtures", type=str, default="simple")
+    ap.add_argument("--bias-params", type=str, default="poi", help="poi or all")
+    ap.add_argument("--bias-include-zoo", action="store_true")
+    ap.add_argument("--bias-zoo-sizes", type=str, default="")
     # ROOT suite options (optional; requires ROOT + hist2workspace + uproot)
     ap.add_argument("--root-search-dir", type=Path, default=None, help="Directory to scan for TRExFitter/HistFactory exports (combination.xml).")
     ap.add_argument("--root-glob", type=str, default="**/combination.xml", help="Glob for HistFactory XML under --root-search-dir.")
@@ -572,6 +648,7 @@ def main() -> int:
     pyhf_path: Optional[Path] = None
     p6_path: Optional[Path] = None
     nuts_path: Optional[Path] = None
+    bias_path: Optional[Path] = None
     root_prereq_path: Optional[Path] = None
     root_cases_path: Optional[Path] = None
     root_suite_path: Optional[Path] = None
@@ -625,6 +702,25 @@ def main() -> int:
             nuts_seed=int(args.nuts_seed),
         )
         if nuts_path is None:
+            any_failed = True
+
+    # Record bias/pulls baseline (slow; optional)
+    if args.only is None or args.only == "bias_pulls":
+        bias_path = record_bias_pulls_baseline(
+            repo=repo,
+            env_dict=env_dict,
+            environment=environment,
+            out_dir=args.out_dir,
+            stamp=stamp,
+            n_toys=int(args.bias_n_toys),
+            seed=int(args.bias_seed),
+            mu_truth=float(args.bias_mu_truth),
+            fixtures=str(args.bias_fixtures),
+            include_zoo=bool(args.bias_include_zoo),
+            zoo_sizes=str(args.bias_zoo_sizes),
+            params=str(args.bias_params),
+        )
+        if bias_path is None:
             any_failed = True
 
     # Record ROOT suite baseline (optional)
@@ -711,6 +807,11 @@ def main() -> int:
             "path": str(nuts_path),
             "filename": nuts_path.name,
         }
+    if bias_path is not None:
+        manifest["baselines"]["bias_pulls"] = {
+            "path": str(bias_path),
+            "filename": bias_path.name,
+        }
     if root_prereq_path is not None:
         manifest["baselines"]["root_prereq"] = {
             "path": str(root_prereq_path),
@@ -763,6 +864,11 @@ def main() -> int:
             "latest_nuts_quality_manifest.json",
             {"nuts_quality": {"path": str(nuts_path), "filename": nuts_path.name}},
         )
+    if bias_path is not None:
+        _write_latest(
+            "latest_bias_pulls_manifest.json",
+            {"bias_pulls": {"path": str(bias_path), "filename": bias_path.name}},
+        )
     if root_prereq_path is not None or root_cases_path is not None or root_suite_path is not None:
         subset: Dict[str, Any] = {}
         if root_prereq_path is not None:
@@ -783,6 +889,8 @@ def main() -> int:
         print(f"p6_glm:    {p6_path}")
     if nuts_path:
         print(f"nuts:      {nuts_path}")
+    if bias_path:
+        print(f"bias:      {bias_path}")
     if root_suite_path:
         print(f"root:      {root_suite_path}")
     print()

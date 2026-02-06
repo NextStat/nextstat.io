@@ -71,6 +71,8 @@ from . import formula as formula  # noqa: E402
 from . import summary as summary  # noqa: E402
 from . import robust as robust  # noqa: E402
 from . import sklearn as sklearn  # noqa: E402
+from . import panel as panel  # noqa: E402
+from . import econometrics as econometrics  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -102,6 +104,8 @@ __all__ = [
     "summary",
     "robust",
     "sklearn",
+    "panel",
+    "econometrics",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
