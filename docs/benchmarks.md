@@ -85,10 +85,17 @@ Use `tests/record_baseline.py` to record reference baselines with a full environ
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
 ```
 
+Or via `make`:
+
+```bash
+make apex2-baseline-record
+```
+
 This records both pyhf and P6 GLM baselines to `tmp/baselines/` with:
 - machine hostname + timestamp in filename
 - full environment metadata (Python, pyhf, nextstat, numpy versions, git commit, CPU, platform)
 - a `latest_manifest.json` linking both baseline files
+- per-type pointers (`latest_pyhf_manifest.json`, `latest_p6_glm_manifest.json`, `latest_root_manifest.json`) for workflows where baselines are recorded on different machines (e.g. ROOT suite on a cluster)
 
 Options:
 
@@ -125,6 +132,12 @@ After recording baselines once, compare current HEAD against the latest manifest
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py
+```
+
+Or via `make`:
+
+```bash
+make apex2-baseline-compare
 ```
 
 This writes a consolidated report to `tmp/baseline_compare_report.json` and exits with:

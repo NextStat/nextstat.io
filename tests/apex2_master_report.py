@@ -324,6 +324,12 @@ def main() -> int:
     )
     ap.add_argument("--bias-pulls-out", type=Path, default=Path("tmp/apex2_bias_pulls_report.json"))
     ap.add_argument("--sbc-out", type=Path, default=Path("tmp/apex2_sbc_report.json"))
+    ap.add_argument(
+        "--nuts-quality-out",
+        type=Path,
+        default=Path("tmp/apex2_nuts_quality_report.json"),
+        help="Standalone NUTS quality report JSON output (from tests/apex2_nuts_quality_report.py).",
+    )
     ap.add_argument("--root-out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--root-cases", type=Path, default=None, help="Cases JSON for ROOT suite.")
     ap.add_argument(
@@ -391,6 +397,15 @@ def main() -> int:
         action="store_true",
         help="Also run slow SBC (NUTS) report and embed report (requires NS_RUN_SLOW=1).",
     )
+    ap.add_argument(
+        "--nuts-quality",
+        action="store_true",
+        help="Also run the NUTS quality report and embed it (fast; JSON artifact).",
+    )
+    ap.add_argument("--nuts-quality-cases", type=str, default="gaussian,linear,histfactory")
+    ap.add_argument("--nuts-quality-warmup", type=int, default=200)
+    ap.add_argument("--nuts-quality-samples", type=int, default=200)
+    ap.add_argument("--nuts-quality-seed", type=int, default=0)
     ap.add_argument("--sbc-cases", type=str, default="lin1d,lin2d")
     ap.add_argument("--sbc-n-runs", type=int, default=None)
     ap.add_argument("--sbc-warmup", type=int, default=None)
@@ -415,6 +430,7 @@ def main() -> int:
         "pyhf": None,
         "regression_golden": None,
         "nuts_quality": None,
+        "nuts_quality_report": None,
         "p6_glm_bench": None,
         "bias_pulls": None,
         "sbc": None,
@@ -458,6 +474,42 @@ def main() -> int:
     # NUTS quality smoke (fast, deterministic, non-HEP)
     # ------------------------------------------------------------------
     report["nuts_quality"] = _run_nuts_quality_smoke()
+
+    # ------------------------------------------------------------------
+    # NUTS quality report (optional; JSON runner)
+    # ------------------------------------------------------------------
+    if args.nuts_quality:
+        nuts_runner = repo / "tests" / "apex2_nuts_quality_report.py"
+        nuts_cmd = [
+            sys.executable,
+            str(nuts_runner),
+            "--out",
+            str(args.nuts_quality_out),
+            "--cases",
+            str(args.nuts_quality_cases),
+            "--warmup",
+            str(int(args.nuts_quality_warmup)),
+            "--samples",
+            str(int(args.nuts_quality_samples)),
+            "--seed",
+            str(int(args.nuts_quality_seed)),
+        ]
+        rc_nuts, out_nuts = _run_json(nuts_cmd, cwd=cwd, env=env)
+        nuts_report = _read_json(args.nuts_quality_out) if args.nuts_quality_out.exists() else None
+        nuts_declared = (nuts_report or {}).get("status") if isinstance(nuts_report, dict) else None
+        if nuts_declared in ("ok", "fail", "skipped", "error"):
+            status = str(nuts_declared)
+        else:
+            status = "ok" if rc_nuts == 0 else "fail"
+        report["nuts_quality_report"] = {
+            "status": status,
+            "returncode": int(rc_nuts),
+            "stdout_tail": out_nuts[-4000:],
+            "report_path": str(args.nuts_quality_out),
+            "report": nuts_report,
+        }
+    else:
+        report["nuts_quality_report"] = {"status": "skipped", "reason": "not_requested"}
 
     # ------------------------------------------------------------------
     # P6 benchmarks (optional)

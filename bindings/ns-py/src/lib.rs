@@ -20,6 +20,9 @@ use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
     PoissonRegressionModel as RustPoissonRegressionModel,
+    ExponentialSurvivalModel as RustExponentialSurvivalModel,
+    WeibullSurvivalModel as RustWeibullSurvivalModel,
+    LogNormalAftModel as RustLogNormalAftModel,
     hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
     profile_likelihood as pl,
 };
@@ -1066,6 +1069,142 @@ impl PyComposedGlmModel {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Survival models (Phase 9 Pack A).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ExponentialSurvivalModel` (right-censoring).
+#[pyclass(name = "ExponentialSurvivalModel")]
+struct PyExponentialSurvivalModel {
+    inner: RustExponentialSurvivalModel,
+}
+
+#[pymethods]
+impl PyExponentialSurvivalModel {
+    #[new]
+    fn new(times: Vec<f64>, events: Vec<bool>) -> PyResult<Self> {
+        let inner = RustExponentialSurvivalModel::new(times, events)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `WeibullSurvivalModel` (right-censoring).
+#[pyclass(name = "WeibullSurvivalModel")]
+struct PyWeibullSurvivalModel {
+    inner: RustWeibullSurvivalModel,
+}
+
+#[pymethods]
+impl PyWeibullSurvivalModel {
+    #[new]
+    fn new(times: Vec<f64>, events: Vec<bool>) -> PyResult<Self> {
+        let inner = RustWeibullSurvivalModel::new(times, events)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `LogNormalAftModel` (right-censoring).
+#[pyclass(name = "LogNormalAftModel")]
+struct PyLogNormalAftModel {
+    inner: RustLogNormalAftModel,
+}
+
+#[pymethods]
+impl PyLogNormalAftModel {
+    #[new]
+    fn new(times: Vec<f64>, events: Vec<bool>) -> PyResult<Self> {
+        let inner = RustLogNormalAftModel::new(times, events)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for FitResult
 #[pyclass(name = "FitResult")]
 struct PyFitResult {
@@ -1144,6 +1283,9 @@ impl PyMaximumLikelihoodEstimator {
             PoissonRegression(RustPoissonRegressionModel),
             NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
             ComposedGlm(RustComposedGlmModel),
+            ExponentialSurvival(RustExponentialSurvivalModel),
+            WeibullSurvival(RustWeibullSurvivalModel),
+            LogNormalAft(RustLogNormalAftModel),
         }
 
         let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -1185,9 +1327,24 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::ComposedGlm(glm.inner.clone())
+        } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::ExponentialSurvival(m.inner.clone())
+        } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::WeibullSurvival(m.inner.clone())
+        } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::LogNormalAft(m.inner.clone())
         } else {
             return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
             ));
         };
 
@@ -1224,6 +1381,21 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::ComposedGlm(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::ExponentialSurvival(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::WeibullSurvival(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::LogNormalAft(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -1875,6 +2047,9 @@ fn sample<'py>(
         PoissonRegression(RustPoissonRegressionModel),
         NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
         ComposedGlm(RustComposedGlmModel),
+        ExponentialSurvival(RustExponentialSurvivalModel),
+        WeibullSurvival(RustWeibullSurvivalModel),
+        LogNormalAft(RustLogNormalAftModel),
     }
 
     let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -1916,9 +2091,24 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::ComposedGlm(glm.inner.clone())
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::ExponentialSurvival(m.inner.clone())
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::WeibullSurvival(m.inner.clone())
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::LogNormalAft(m.inner.clone())
     } else {
         return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
         ));
     };
 
@@ -1979,6 +2169,33 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::ComposedGlm(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::ExponentialSurvival(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::WeibullSurvival(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::LogNormalAft(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
@@ -2197,6 +2414,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyNegativeBinomialRegressionModel>()?;
     m.add_class::<PyComposedGlmModel>()?;
+    m.add_class::<PyExponentialSurvivalModel>()?;
+    m.add_class::<PyWeibullSurvivalModel>()?;
+    m.add_class::<PyLogNormalAftModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

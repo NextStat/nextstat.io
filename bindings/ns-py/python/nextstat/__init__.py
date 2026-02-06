@@ -40,6 +40,9 @@ PoissonRegressionModel = _get("PoissonRegressionModel")
 NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
 KalmanModel = _get("KalmanModel")
+ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
+WeibullSurvivalModel = _get("WeibullSurvivalModel")
+LogNormalAftModel = _get("LogNormalAftModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
 ranking = _get("ranking")
@@ -52,6 +55,7 @@ from . import glm as glm  # noqa: E402
 from . import timeseries as timeseries  # noqa: E402
 from . import hier as hier  # noqa: E402
 from . import ppc as ppc  # noqa: E402
+from . import survival as survival  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -74,6 +78,7 @@ __all__ = [
     "timeseries",
     "hier",
     "ppc",
+    "survival",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
@@ -82,6 +87,9 @@ __all__ = [
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
     "KalmanModel",
+    "ExponentialSurvivalModel",
+    "WeibullSurvivalModel",
+    "LogNormalAftModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "ols_fit",
@@ -94,4 +102,7 @@ __all__ = [
     "upper_limits_root",
     "PyModel",
     "PyFitResult",
+    "ExponentialSurvivalModel",
+    "WeibullSurvivalModel",
+    "LogNormalAftModel",
 ]

@@ -278,6 +278,118 @@ def compare_pyhf_perf(
     }
 
 
+def compare_root_suite_perf(
+    *,
+    baseline_report: Dict[str, Any],
+    current_report: Dict[str, Any],
+    max_slowdown: float,
+    min_baseline_s: float,
+    require_same_host: bool,
+) -> Dict[str, Any]:
+    base_env = baseline_report.get("baseline_env")
+    cur_env = current_report.get("baseline_env")
+
+    warn: List[str] = []
+    if require_same_host:
+        b_host = (base_env or {}).get("hostname")
+        c_host = (cur_env or {}).get("hostname")
+        if b_host and c_host and b_host != c_host:
+            return {
+                "status": "error",
+                "reason": "hostname_mismatch",
+                "baseline_hostname": b_host,
+                "current_hostname": c_host,
+            }
+    else:
+        b_host = (base_env or {}).get("hostname")
+        c_host = (cur_env or {}).get("hostname")
+        if b_host and c_host and b_host != c_host:
+            warn.append(f"hostname_mismatch:{b_host}->{c_host}")
+
+    base_cases = baseline_report.get("cases")
+    cur_cases = current_report.get("cases")
+    if not isinstance(base_cases, list) or not isinstance(cur_cases, list):
+        return {"status": "error", "reason": "missing_cases_list"}
+
+    base_idx = _case_index([c for c in base_cases if isinstance(c, dict)])
+    cur_idx = _case_index([c for c in cur_cases if isinstance(c, dict)])
+
+    cases_out: List[Dict[str, Any]] = []
+    any_failed = False
+    max_slow = 0.0
+
+    for name, cur in sorted(cur_idx.items(), key=lambda kv: kv[0]):
+        base = base_idx.get(name)
+        row: Dict[str, Any] = {"name": name}
+        if base is None:
+            any_failed = True
+            row.update({"ok": False, "reason": "missing_baseline_case"})
+            cases_out.append(row)
+            continue
+
+        if cur.get("status") != "ok":
+            any_failed = True
+            row.update({"ok": False, "reason": f"current_case_status:{cur.get('status')}"})
+            cases_out.append(row)
+            continue
+        if base.get("status") != "ok":
+            any_failed = True
+            row.update({"ok": False, "reason": f"baseline_case_status:{base.get('status')}"})
+            cases_out.append(row)
+            continue
+
+        try:
+            b = float(base.get("timing_s", {}).get("nextstat_profile_scan"))
+            c = float(cur.get("timing_s", {}).get("nextstat_profile_scan"))
+        except Exception:
+            any_failed = True
+            row.update({"ok": False, "reason": "missing_nextstat_profile_scan_timing"})
+            cases_out.append(row)
+            continue
+
+        if not (b > 0.0) or not (c >= 0.0):
+            any_failed = True
+            row.update({"ok": False, "reason": "invalid_nextstat_profile_scan_timing"})
+            cases_out.append(row)
+            continue
+
+        slow = c / b
+        max_slow = max(max_slow, slow)
+        checked = b >= float(min_baseline_s)
+        ok = (slow <= float(max_slowdown)) if checked else True
+        if not ok:
+            any_failed = True
+        row.update(
+            {
+                "ok": bool(ok),
+                "baseline": {"nextstat_profile_scan_s": float(b)},
+                "current": {"nextstat_profile_scan_s": float(c)},
+                "slowdown": {"nextstat_profile_scan": float(slow)},
+                "checks": {"timing_checked": bool(checked)},
+                "thresholds": {"max_slowdown": float(max_slowdown)},
+            }
+        )
+        cases_out.append(row)
+
+    baseline_only = sorted(set(base_idx.keys()) - set(cur_idx.keys()))
+    if baseline_only:
+        warn.append(f"baseline_only_cases:{len(baseline_only)}")
+
+    status = "ok" if not any_failed else "fail"
+    return {
+        "status": status,
+        "warnings": warn,
+        "summary": {
+            "n_cases": int(len(cases_out)),
+            "n_ok": int(sum(1 for c in cases_out if c.get("ok") is True)),
+            "n_fail": int(sum(1 for c in cases_out if c.get("ok") is False)),
+            "max_slowdown_nextstat_profile_scan": float(max_slow),
+            "baseline_only": baseline_only,
+        },
+        "cases": cases_out,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -312,6 +424,10 @@ def main() -> int:
     # P6 compare thresholds (passed through)
     ap.add_argument("--p6-max-slowdown", type=float, default=1.30)
     ap.add_argument("--p6-min-baseline-fit-s", type=float, default=1e-3)
+
+    # ROOT suite perf compare thresholds
+    ap.add_argument("--root-max-slowdown", type=float, default=1.30)
+    ap.add_argument("--root-min-baseline-s", type=float, default=0.0)
     args = ap.parse_args()
 
     repo = _repo_root()
@@ -340,10 +456,16 @@ def main() -> int:
             "manifest_path": str(args.manifest),
             "workdir": str(args.workdir),
             "current_env": cur_env,
+            "thresholds": {
+                "pyhf_max_slowdown": float(args.pyhf_max_slowdown),
+                "p6_max_slowdown": float(args.p6_max_slowdown),
+                "root_max_slowdown": float(args.root_max_slowdown),
+            },
         },
         "baseline_manifest": manifest,
         "pyhf": None,
         "p6_glm": None,
+        "root_suite": None,
         "status": None,
         "summary": None,
     }
@@ -527,6 +649,117 @@ def main() -> int:
                 }
     else:
         report["p6_glm"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
+
+    # ------------------------------------------------------------------
+    # ROOT suite: optional compare (only if baseline suite + cases exist)
+    # ------------------------------------------------------------------
+    root_suite_entry = baselines.get("root_suite")
+    root_cases_entry = baselines.get("root_cases")
+    if (
+        isinstance(root_suite_entry, dict)
+        and isinstance(root_suite_entry.get("path"), str)
+        and isinstance(root_cases_entry, dict)
+        and isinstance(root_cases_entry.get("path"), str)
+    ):
+        baseline_root_suite = Path(root_suite_entry["path"])
+        baseline_root_cases = Path(root_cases_entry["path"])
+
+        if not baseline_root_suite.exists() or not baseline_root_cases.exists():
+            report["root_suite"] = {
+                "status": "error",
+                "reason": "baseline_missing",
+                "baseline_suite_path": str(baseline_root_suite),
+                "baseline_cases_path": str(baseline_root_cases),
+            }
+            any_error = True
+        else:
+            # Check current prereqs (fast)
+            prereq_out = args.workdir / f"root_prereq_current_{cur_env['hostname']}_{cur_env['timestamp']}.json"
+            prereq_runner = repo / "tests" / "apex2_root_suite_report.py"
+            rc_pr, stdout_pr = _run(
+                [sys.executable, str(prereq_runner), "--prereq-only", "--out", str(prereq_out)],
+                cwd=repo,
+                env=env_dict,
+            )
+            if rc_pr != 0:
+                report["root_suite"] = {
+                    "status": "skipped",
+                    "reason": "missing_prereqs",
+                    "prereq_path": str(prereq_out),
+                    "stdout_tail": stdout_pr[-4000:],
+                }
+            else:
+                base_rep = _read_json(baseline_root_suite)
+                base_meta = (base_rep.get("meta") if isinstance(base_rep, dict) else None) or {}
+                thr = (base_meta.get("thresholds") if isinstance(base_meta, dict) else None) or {}
+                dq_atol = float(thr.get("dq_atol", 1e-3))
+                mu_hat_atol = float(thr.get("mu_hat_atol", 1e-3))
+
+                out_cur = args.workdir / f"root_suite_current_{cur_env['hostname']}_{cur_env['timestamp']}.json"
+                workdir = args.workdir / f"root_parity_suite_{cur_env['hostname']}_{cur_env['timestamp']}"
+                cmd = [
+                    sys.executable,
+                    str(prereq_runner),
+                    "--cases",
+                    str(baseline_root_cases),
+                    "--keep-going",
+                    "--workdir",
+                    str(workdir),
+                    "--dq-atol",
+                    str(float(dq_atol)),
+                    "--mu-hat-atol",
+                    str(float(mu_hat_atol)),
+                    "--out",
+                    str(out_cur),
+                ]
+
+                rc, stdout = _run(cmd, cwd=repo, env=env_dict)
+                if rc != 0 or not out_cur.exists():
+                    report["root_suite"] = {
+                        "status": "error",
+                        "reason": "runner_failed",
+                        "returncode": int(rc),
+                        "stdout_tail": stdout[-4000:],
+                        "baseline_suite_path": str(baseline_root_suite),
+                        "baseline_cases_path": str(baseline_root_cases),
+                        "current_path": str(out_cur),
+                    }
+                    any_error = True
+                else:
+                    cur_rep = _read_json(out_cur)
+                    if isinstance(cur_rep, dict):
+                        cur_rep["baseline_env"] = cur_env
+                        out_cur.write_text(json.dumps(cur_rep, indent=2))
+
+                    cur_rep = _read_json(out_cur)
+                    # Root suite already encodes correctness vs ROOT via its exit code / statuses.
+                    root_ok = True
+                    try:
+                        summ = cur_rep.get("summary", {})
+                        root_ok = int(summ.get("n_fail", 0)) == 0 and int(summ.get("n_error", 0)) == 0
+                    except Exception:
+                        root_ok = False
+
+                    cmp = compare_root_suite_perf(
+                        baseline_report=base_rep,
+                        current_report=cur_rep,
+                        max_slowdown=float(args.root_max_slowdown),
+                        min_baseline_s=float(args.root_min_baseline_s),
+                        require_same_host=bool(args.require_same_host),
+                    )
+                    status = "ok" if (root_ok and cmp.get("status") == "ok") else "fail"
+                    if status != "ok":
+                        any_failed = True
+                    report["root_suite"] = {
+                        "status": status,
+                        "root_ok": bool(root_ok),
+                        "baseline_suite_path": str(baseline_root_suite),
+                        "baseline_cases_path": str(baseline_root_cases),
+                        "current_path": str(out_cur),
+                        "compare": cmp,
+                    }
+    else:
+        report["root_suite"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
 
     # ------------------------------------------------------------------
     # Finalize

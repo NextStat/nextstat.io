@@ -38,6 +38,8 @@ pub mod posterior;
 pub mod profile_likelihood;
 /// Regression models (general statistics).
 pub mod regression;
+/// Parametric survival models (Phase 9 Pack A).
+pub mod survival;
 /// Time series and state space models (Phase 8).
 pub mod timeseries;
 /// Bijective transforms for unconstrained parameterisation.
@@ -58,6 +60,7 @@ pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
 pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };
+pub use survival::{ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

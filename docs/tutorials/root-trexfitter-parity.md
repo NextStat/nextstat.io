@@ -491,13 +491,29 @@ Use the unified baseline recorder to capture both pyhf and P6 GLM baselines with
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
 ```
 
+If ROOT is available (cluster) you can also record a ROOT/HistFactory parity baseline by pointing the recorder at a directory containing TRExFitter exports (or any HistFactory exports with `combination.xml`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py \
+  --only root \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+```
+
 Output (in `tmp/baselines/`):
 
 ```
 pyhf_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
 p6_glm_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
+root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json            # only if ROOT prereqs satisfied
+root_cases_<hostname>_<YYYYMMDD_HHMMSS>.json                     # cases used by the suite (from --root-search-dir)
+root_prereq_<hostname>_<YYYYMMDD_HHMMSS>.json                    # prereq check snapshot (always recorded if root mode is requested)
 baseline_manifest_<hostname>_<YYYYMMDD_HHMMSS>.json   # links both + env fingerprint
 latest_manifest.json                                    # always points to last recorded baseline
+latest_pyhf_manifest.json                               # last pyhf-only pointer
+latest_p6_glm_manifest.json                             # last P6-only pointer
+latest_root_manifest.json                               # last ROOT-only pointer (cluster)
 ```
 
 Options:
@@ -522,6 +538,13 @@ latest baseline manifest:
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
   --manifest tmp/baselines/latest_manifest.json \
   --out tmp/baseline_compare_report.json
+```
+
+If you recorded only ROOT baselines on a cluster, use:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --manifest tmp/baselines/latest_root_manifest.json
 ```
 
 Exit codes:

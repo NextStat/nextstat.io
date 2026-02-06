@@ -2,7 +2,8 @@
 """Record reference baseline JSONs for Apex2 regression testing.
 
 This script captures a full environment fingerprint and runs the pyhf
-validation + P6 GLM fit/predict benchmarks, saving the results as
+validation + P6 GLM fit/predict benchmarks (and optionally the ROOT/HistFactory
+parity suite), saving the results as
 timestamped baseline files under ``tmp/baselines/``.
 
 Usage (from repo root, after ``maturin develop --release``):
@@ -15,6 +16,10 @@ Usage (from repo root, after ``maturin develop --release``):
 
   # Record only P6 GLM baseline:
   PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only p6
+
+  # Record ROOT/HistFactory parity baseline (cluster/root required):
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py \
+    --only root --root-search-dir /abs/path/to/trex/output
 
   # Custom output directory:
   PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --out-dir tmp/baselines
@@ -283,6 +288,109 @@ def record_p6_glm_baseline(
     return out_path
 
 
+def record_root_suite_baseline(
+    *,
+    repo: Path,
+    env_dict: Dict[str, str],
+    environment: Dict[str, Any],
+    out_dir: Path,
+    stamp: str,
+    root_search_dir: Path,
+    root_glob: str,
+    root_include_fixtures: bool,
+    root_cases_absolute_paths: bool,
+    root_mu_start: float,
+    root_mu_stop: float,
+    root_mu_points: int,
+    root_keep_going: bool,
+    root_dq_atol: float,
+    root_mu_hat_atol: float,
+) -> Dict[str, Optional[Path]]:
+    """Run ROOT suite parity and save as baseline if prereqs are available.
+
+    Always records a prereq report. Only runs the full suite if prereqs are satisfied.
+    """
+    prereq_out = out_dir / f"root_prereq_{stamp}.json"
+    prereq_runner = repo / "tests" / "apex2_root_suite_report.py"
+    cmd_prereq = [sys.executable, str(prereq_runner), "--prereq-only", "--out", str(prereq_out)]
+    rc_prereq, out_prereq = _run(cmd_prereq, cwd=repo, env=env_dict)
+    if rc_prereq != 0:
+        print("[root] Prereqs not satisfied; recording prereq report and skipping suite.")
+        if out_prereq:
+            print(out_prereq[-2000:])
+        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": None, "suite": None}
+
+    cases_out = out_dir / f"root_cases_{stamp}.json"
+    gen = repo / "tests" / "generate_apex2_root_cases.py"
+    cmd_cases = [
+        sys.executable,
+        str(gen),
+        "--search-dir",
+        str(root_search_dir),
+        "--glob",
+        str(root_glob),
+        "--out",
+        str(cases_out),
+        "--start",
+        str(float(root_mu_start)),
+        "--stop",
+        str(float(root_mu_stop)),
+        "--points",
+        str(int(root_mu_points)),
+    ]
+    if root_include_fixtures:
+        cmd_cases.append("--include-fixtures")
+    if root_cases_absolute_paths:
+        cmd_cases.append("--absolute-paths")
+
+    print("[root] Generating cases JSON...")
+    rc_cases, out_cases = _run(cmd_cases, cwd=repo, env=env_dict)
+    if rc_cases != 0 or not cases_out.exists():
+        print(f"[root] FAILED to generate cases (exit {rc_cases})")
+        print(out_cases[-2000:])
+        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": None, "suite": None}
+
+    suite_out = out_dir / f"root_suite_baseline_{stamp}.json"
+    workdir = out_dir / f"root_parity_suite_{stamp}"
+    cmd_suite = [
+        sys.executable,
+        str(prereq_runner),
+        "--cases",
+        str(cases_out),
+        "--workdir",
+        str(workdir),
+        "--dq-atol",
+        str(float(root_dq_atol)),
+        "--mu-hat-atol",
+        str(float(root_mu_hat_atol)),
+        "--out",
+        str(suite_out),
+    ]
+    if root_keep_going:
+        cmd_suite.append("--keep-going")
+
+    print("[root] Running suite (this can be slow)...")
+    t0 = time.time()
+    rc_suite, out_suite = _run(cmd_suite, cwd=repo, env=env_dict)
+    wall = time.time() - t0
+    if rc_suite != 0:
+        print(f"[root] FAILED (exit {rc_suite})")
+        print(out_suite[-2000:])
+        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": None}
+
+    if suite_out.exists():
+        report = json.loads(suite_out.read_text())
+        report["baseline_env"] = environment
+        meta = report.get("meta")
+        if isinstance(meta, dict):
+            meta["recorded_as_baseline"] = True
+            meta["wall_s"] = float(wall)
+        suite_out.write_text(json.dumps(report, indent=2))
+
+    print(f"[root] OK  ({wall:.1f}s) -> {suite_out}")
+    return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": suite_out}
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 
@@ -298,7 +406,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--only",
-        choices=["pyhf", "p6"],
+        choices=["pyhf", "p6", "root"],
         default=None,
         help="Record only one baseline type (default: both).",
     )
@@ -312,6 +420,17 @@ def main() -> int:
     ap.add_argument("--p", type=int, default=20, help="Feature count.")
     ap.add_argument("--l2", type=float, default=0.0, help="Ridge penalty (0=off).")
     ap.add_argument("--nb-alpha", type=float, default=0.5, help="NegBin dispersion.")
+    # ROOT suite options (optional; requires ROOT + hist2workspace + uproot)
+    ap.add_argument("--root-search-dir", type=Path, default=None, help="Directory to scan for TRExFitter/HistFactory exports (combination.xml).")
+    ap.add_argument("--root-glob", type=str, default="**/combination.xml", help="Glob for HistFactory XML under --root-search-dir.")
+    ap.add_argument("--root-include-fixtures", action="store_true", help="Include the built-in smoke fixture case in the ROOT suite cases list.")
+    ap.add_argument("--root-cases-absolute-paths", action="store_true", help="Write absolute paths in generated ROOT cases JSON.")
+    ap.add_argument("--root-mu-start", type=float, default=0.0)
+    ap.add_argument("--root-mu-stop", type=float, default=5.0)
+    ap.add_argument("--root-mu-points", type=int, default=51)
+    ap.add_argument("--root-keep-going", action="store_true", help="Keep running the ROOT suite after failures/skips.")
+    ap.add_argument("--root-dq-atol", type=float, default=1e-3)
+    ap.add_argument("--root-mu-hat-atol", type=float, default=1e-3)
     args = ap.parse_args()
 
     repo = _repo_root()
@@ -344,6 +463,9 @@ def main() -> int:
 
     pyhf_path: Optional[Path] = None
     p6_path: Optional[Path] = None
+    root_prereq_path: Optional[Path] = None
+    root_cases_path: Optional[Path] = None
+    root_suite_path: Optional[Path] = None
     any_failed = False
 
     # Record pyhf baseline
@@ -378,6 +500,37 @@ def main() -> int:
         if p6_path is None:
             any_failed = True
 
+    # Record ROOT suite baseline (optional)
+    if args.only is None or args.only == "root":
+        if args.root_search_dir is None:
+            if args.only == "root":
+                print("ERROR: --only root requires --root-search-dir", file=sys.stderr)
+                return 2
+            print("[root] Skipping (no --root-search-dir provided).")
+        else:
+            root_res = record_root_suite_baseline(
+                repo=repo,
+                env_dict=env_dict,
+                environment=environment,
+                out_dir=args.out_dir,
+                stamp=stamp,
+                root_search_dir=Path(args.root_search_dir),
+                root_glob=str(args.root_glob),
+                root_include_fixtures=bool(args.root_include_fixtures),
+                root_cases_absolute_paths=bool(args.root_cases_absolute_paths),
+                root_mu_start=float(args.root_mu_start),
+                root_mu_stop=float(args.root_mu_stop),
+                root_mu_points=int(args.root_mu_points),
+                root_keep_going=bool(args.root_keep_going),
+                root_dq_atol=float(args.root_dq_atol),
+                root_mu_hat_atol=float(args.root_mu_hat_atol),
+            )
+            root_prereq_path = root_res.get("prereq")
+            root_cases_path = root_res.get("cases")
+            root_suite_path = root_res.get("suite")
+            if args.only == "root" and root_suite_path is None:
+                any_failed = True
+
     # Write manifest linking both baselines + environment
     manifest: Dict[str, Any] = {
         "baseline_env": environment,
@@ -393,6 +546,21 @@ def main() -> int:
             "path": str(p6_path),
             "filename": p6_path.name,
         }
+    if root_prereq_path is not None:
+        manifest["baselines"]["root_prereq"] = {
+            "path": str(root_prereq_path),
+            "filename": Path(root_prereq_path).name,
+        }
+    if root_cases_path is not None:
+        manifest["baselines"]["root_cases"] = {
+            "path": str(root_cases_path),
+            "filename": Path(root_cases_path).name,
+        }
+    if root_suite_path is not None:
+        manifest["baselines"]["root_suite"] = {
+            "path": str(root_suite_path),
+            "filename": Path(root_suite_path).name,
+        }
 
     manifest_path = args.out_dir / f"baseline_manifest_{stamp}.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -400,6 +568,33 @@ def main() -> int:
     # Also write a "latest" symlink-like manifest for easy reference
     latest_path = args.out_dir / "latest_manifest.json"
     latest_path.write_text(json.dumps(manifest, indent=2))
+
+    # Also write per-type "latest" manifests so recording only one baseline type
+    # (e.g. ROOT on a cluster) doesn't lose a stable pointer for other types.
+    def _write_latest(name: str, baselines_subset: Dict[str, Any]) -> None:
+        p = args.out_dir / name
+        obj = {"baseline_env": environment, "baselines": baselines_subset}
+        p.write_text(json.dumps(obj, indent=2))
+
+    if pyhf_path is not None:
+        _write_latest(
+            "latest_pyhf_manifest.json",
+            {"pyhf": {"path": str(pyhf_path), "filename": pyhf_path.name}},
+        )
+    if p6_path is not None:
+        _write_latest(
+            "latest_p6_glm_manifest.json",
+            {"p6_glm": {"path": str(p6_path), "filename": p6_path.name}},
+        )
+    if root_prereq_path is not None or root_cases_path is not None or root_suite_path is not None:
+        subset: Dict[str, Any] = {}
+        if root_prereq_path is not None:
+            subset["root_prereq"] = {"path": str(root_prereq_path), "filename": Path(root_prereq_path).name}
+        if root_cases_path is not None:
+            subset["root_cases"] = {"path": str(root_cases_path), "filename": Path(root_cases_path).name}
+        if root_suite_path is not None:
+            subset["root_suite"] = {"path": str(root_suite_path), "filename": Path(root_suite_path).name}
+        _write_latest("latest_root_manifest.json", subset)
 
     print()
     print("-" * 72)
@@ -409,6 +604,8 @@ def main() -> int:
         print(f"pyhf:      {pyhf_path}")
     if p6_path:
         print(f"p6_glm:    {p6_path}")
+    if root_suite_path:
+        print(f"root:      {root_suite_path}")
     print()
 
     if any_failed:

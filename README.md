@@ -244,6 +244,20 @@ cargo bench -p ns-core --bench core_benchmark
 
 Details (quick mode, baselines, CI workflows): `docs/benchmarks.md`.
 
+### Apex2 Baselines (pyhf + P6 GLM)
+
+Record a reference baseline (writes JSON under `tmp/baselines/` with a full environment fingerprint):
+
+```bash
+make apex2-baseline-record
+```
+
+Compare current HEAD vs the latest recorded baseline (writes `tmp/baseline_compare_report.json`):
+
+```bash
+make apex2-baseline-compare
+```
+
 ## Documentation
 
 - White paper (Markdown): `docs/WHITEPAPER.md`
