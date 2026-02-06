@@ -146,6 +146,14 @@ PYTHONPATH=bindings/ns-py/python python3 tests/generate_golden_ordinal.py
 2) Generate an external reference JSON using your preferred tool (Stan/PyMC).
 Expected schema is documented implicitly by `tests/external/merge_ordinal_external_goldens.py`.
 
+Optional helper (PyMC MAP):
+
+```bash
+python3 tests/external/generate_ordinal_goldens_pymc.py \
+  tests/fixtures/ordinal/ordered_logit_small.json \
+  --out /tmp/external_ordinal_logit.json
+```
+
 3) Merge the external reference into a fixture:
 
 ```bash
