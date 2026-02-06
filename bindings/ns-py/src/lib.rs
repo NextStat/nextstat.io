@@ -20,6 +20,7 @@ use ns_inference::{
     hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
     profile_likelihood as pl,
 };
+use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -378,6 +379,50 @@ impl PyPoissonRegressionModel {
     }
 }
 
+/// Python wrapper for `NegativeBinomialRegressionModel` (NB2 mean/dispersion).
+#[pyclass(name = "NegativeBinomialRegressionModel")]
+struct PyNegativeBinomialRegressionModel {
+    inner: RustNegativeBinomialRegressionModel,
+}
+
+#[pymethods]
+impl PyNegativeBinomialRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true, offset=None))]
+    fn new(
+        x: Vec<Vec<f64>>,
+        y: Vec<u64>,
+        include_intercept: bool,
+        offset: Option<Vec<f64>>,
+    ) -> PyResult<Self> {
+        let inner = RustNegativeBinomialRegressionModel::new(x, y, include_intercept, offset)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for `ComposedGlmModel` built via `ModelBuilder`.
 #[pyclass(name = "ComposedGlmModel")]
 struct PyComposedGlmModel {
@@ -591,6 +636,7 @@ impl PyMaximumLikelihoodEstimator {
             LinearRegression(RustLinearRegressionModel),
             LogisticRegression(RustLogisticRegressionModel),
             PoissonRegression(RustPoissonRegressionModel),
+            NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
             ComposedGlm(RustComposedGlmModel),
         }
 
@@ -623,6 +669,11 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::PoissonRegression(pois.inner.clone())
+        } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::NegativeBinomialRegression(nb.inner.clone())
         } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
             if data.is_some() {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -657,6 +708,11 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::PoissonRegression(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::NegativeBinomialRegression(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -915,6 +971,7 @@ fn sample<'py>(
         LinearRegression(RustLinearRegressionModel),
         LogisticRegression(RustLogisticRegressionModel),
         PoissonRegression(RustPoissonRegressionModel),
+        NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
         ComposedGlm(RustComposedGlmModel),
     }
 
@@ -947,6 +1004,11 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::PoissonRegression(pois.inner.clone())
+    } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::NegativeBinomialRegression(nb.inner.clone())
     } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
         if data.is_some() {
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -1009,6 +1071,18 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::PoissonRegression(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::NegativeBinomialRegression(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
@@ -1216,6 +1290,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
     m.add_class::<PyPoissonRegressionModel>()?;
+    m.add_class::<PyNegativeBinomialRegressionModel>()?;
     m.add_class::<PyComposedGlmModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;

@@ -41,6 +41,7 @@ GaussianMeanModel = getattr(_core, "GaussianMeanModel", None)  # type: ignore
 LinearRegressionModel = getattr(_core, "LinearRegressionModel", None)  # type: ignore
 LogisticRegressionModel = getattr(_core, "LogisticRegressionModel", None)  # type: ignore
 PoissonRegressionModel = getattr(_core, "PoissonRegressionModel", None)  # type: ignore
+NegativeBinomialRegressionModel = getattr(_core, "NegativeBinomialRegressionModel", None)  # type: ignore
 ComposedGlmModel = getattr(_core, "ComposedGlmModel", None)  # type: ignore
 ols_fit = getattr(_core, "ols_fit", None)  # type: ignore
 
@@ -72,6 +73,7 @@ __all__ = [
     "LinearRegressionModel",
     "LogisticRegressionModel",
     "PoissonRegressionModel",
+    "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
     "MaximumLikelihoodEstimator",
     "FitResult",

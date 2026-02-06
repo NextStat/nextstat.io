@@ -52,6 +52,126 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text())
 
 
+def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        return float("inf")
+    return max((abs(float(x) - float(y)) for x, y in zip(a, b)), default=0.0)
+
+
+def _vec_allclose(a: list[float], b: list[float], *, rtol: float, atol: float = 0.0) -> bool:
+    if len(a) != len(b):
+        return False
+    for x, y in zip(a, b):
+        x = float(x)
+        y = float(y)
+        scale = max(abs(x), abs(y), 1.0)
+        if abs(x - y) > (float(atol) + float(rtol) * scale):
+            return False
+    return True
+
+
+def _run_regression_golden() -> Dict[str, Any]:
+    repo = _repo_root()
+    fx_dir = repo / "tests" / "fixtures" / "regression"
+    cases: list[Dict[str, Any]] = []
+
+    try:
+        import nextstat  # type: ignore
+    except ModuleNotFoundError as e:
+        return {"status": "skipped", "reason": f"import_nextstat_failed:{e}"}
+
+    paths = sorted(fx_dir.glob("*.json"))
+    if not paths:
+        return {"status": "error", "reason": f"no_fixtures_found:{fx_dir}"}
+
+    any_failed = False
+    for path in paths:
+        data = json.loads(path.read_text())
+        kind = str(data.get("kind"))
+        name = str(data.get("name") or path.stem)
+        include_intercept = bool(data.get("include_intercept", True))
+        x = data["x"]
+        y = data["y"]
+
+        row: Dict[str, Any] = {"name": name, "kind": kind, "path": str(path)}
+
+        try:
+            if kind == "ols":
+                r = nextstat.glm.linear.fit(x, y, include_intercept=include_intercept)
+                ok_coef = _vec_allclose(list(r.coef), list(data["beta_hat"]), rtol=1e-10, atol=1e-12)
+                ok_se = _vec_allclose(
+                    list(r.standard_errors), list(data["se_hat"]), rtol=1e-10, atol=1e-12
+                )
+                # Recompute NLL at hat (SSE/2).
+                yhat = r.predict(x)
+                nll = 0.5 * sum((float(a) - float(b)) ** 2 for a, b in zip(yhat, y))
+                ok_nll = abs(float(nll) - float(data["nll_at_hat"])) <= 1e-8
+                row.update(
+                    {
+                        "ok": bool(ok_coef and ok_se and ok_nll),
+                        "max_abs_coef_diff": _max_abs_vec_diff(list(r.coef), list(data["beta_hat"])),
+                        "max_abs_se_diff": _max_abs_vec_diff(
+                            list(r.standard_errors), list(data["se_hat"])
+                        ),
+                        "abs_nll_diff": abs(float(nll) - float(data["nll_at_hat"])),
+                    }
+                )
+            elif kind == "logistic":
+                y_int = [1 if float(v) >= 0.5 else 0 for v in y]
+                r = nextstat.glm.logistic.fit(x, y_int, include_intercept=include_intercept)
+                ok_coef = _vec_allclose(list(r.coef), list(data["beta_hat"]), rtol=2e-3, atol=1e-6)
+                ok_se = _vec_allclose(
+                    list(r.standard_errors), list(data["se_hat"]), rtol=2e-2, atol=1e-6
+                )
+                ok_nll = abs(float(r.nll) - float(data["nll_at_hat"])) <= 1e-6
+                row.update(
+                    {
+                        "ok": bool(ok_coef and ok_se and ok_nll and bool(r.converged)),
+                        "converged": bool(r.converged),
+                        "max_abs_coef_diff": _max_abs_vec_diff(list(r.coef), list(data["beta_hat"])),
+                        "max_abs_se_diff": _max_abs_vec_diff(
+                            list(r.standard_errors), list(data["se_hat"])
+                        ),
+                        "abs_nll_diff": abs(float(r.nll) - float(data["nll_at_hat"])),
+                    }
+                )
+            elif kind == "poisson":
+                y_int = [int(round(float(v))) for v in y]
+                r = nextstat.glm.poisson.fit(x, y_int, include_intercept=include_intercept)
+                ok_coef = _vec_allclose(list(r.coef), list(data["beta_hat"]), rtol=2e-3, atol=1e-6)
+                ok_se = _vec_allclose(
+                    list(r.standard_errors), list(data["se_hat"]), rtol=2e-2, atol=1e-6
+                )
+                ok_nll = abs(float(r.nll) - float(data["nll_at_hat"])) <= 1e-6
+                row.update(
+                    {
+                        "ok": bool(ok_coef and ok_se and ok_nll and bool(r.converged)),
+                        "converged": bool(r.converged),
+                        "max_abs_coef_diff": _max_abs_vec_diff(list(r.coef), list(data["beta_hat"])),
+                        "max_abs_se_diff": _max_abs_vec_diff(
+                            list(r.standard_errors), list(data["se_hat"])
+                        ),
+                        "abs_nll_diff": abs(float(r.nll) - float(data["nll_at_hat"])),
+                    }
+                )
+            else:
+                row.update({"ok": False, "reason": f"unknown_kind:{kind}"})
+        except Exception as e:
+            row.update({"ok": False, "reason": f"exception:{type(e).__name__}:{e}"})
+
+        if not row.get("ok"):
+            any_failed = True
+        cases.append(row)
+
+    n_ok = sum(1 for c in cases if c.get("ok") is True)
+    out: Dict[str, Any] = {
+        "status": "ok" if not any_failed else "fail",
+        "summary": {"n_cases": len(cases), "n_ok": int(n_ok), "n_failed": int(len(cases) - n_ok)},
+        "cases": cases,
+    }
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
@@ -108,6 +228,7 @@ def main() -> int:
             "platform": platform.platform(),
         },
         "pyhf": None,
+        "regression_golden": None,
         "root": None,
     }
 
@@ -138,6 +259,11 @@ def main() -> int:
         "report_path": str(args.pyhf_out),
         "report": _read_json(args.pyhf_out) if args.pyhf_out.exists() else None,
     }
+
+    # ------------------------------------------------------------------
+    # Regression golden fixtures (GLM surface)
+    # ------------------------------------------------------------------
+    report["regression_golden"] = _run_regression_golden()
 
     # ------------------------------------------------------------------
     # ROOT suite runner (may be skipped)
@@ -232,10 +358,13 @@ def main() -> int:
 
     # Exit code policy: fail on pyhf mismatch; fail on ROOT mismatch only if prereqs exist.
     pyhf_ok = (rc_pyhf == 0)
+    reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     root_ok_or_skipped = root_status in ("ok", "skipped")
 
     print(f"Wrote: {args.out}")
     if not pyhf_ok:
+        return 2
+    if not reg_ok_or_skipped:
         return 2
     if not root_ok_or_skipped:
         return 2

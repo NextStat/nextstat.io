@@ -8,6 +8,7 @@ use nalgebra::{DMatrix, DVector};
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
 use ns_prob::math::{log1pexp, sigmoid};
+use statrs::function::gamma::{digamma, ln_gamma};
 
 #[inline]
 fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()> {
@@ -530,6 +531,204 @@ impl LogDensityModel for PoissonRegressionModel {
     }
 }
 
+/// Negative binomial regression (NB2) with log link.
+///
+/// Model (GLM parameterization):
+/// `y_i ~ NegBin(mean=mu_i, dispersion=alpha)`, `mu_i = exp(eta_i)`,
+/// `eta_i = intercept + X_i * beta + offset_i`.
+///
+/// Dispersion `alpha > 0` implies: `Var(Y) = mu + alpha * mu^2`.
+/// Internally we parameterize `alpha = exp(log_alpha)` to avoid bounds.
+#[derive(Debug, Clone)]
+pub struct NegativeBinomialRegressionModel {
+    x: DenseX,
+    y: Vec<u64>,
+    include_intercept: bool,
+    offset: Option<Vec<f64>>,
+}
+
+impl NegativeBinomialRegressionModel {
+    /// Create a new negative binomial regression model.
+    ///
+    /// Offset is optional; if provided, must have length `n` and all finite values.
+    pub fn new(
+        x: Vec<Vec<f64>>,
+        y: Vec<u64>,
+        include_intercept: bool,
+        offset: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let x = DenseX::from_rows(x)?;
+        validate_xy_dims(x.n, x.p, x.data.len(), y.len())?;
+        if let Some(off) = &offset {
+            if off.len() != x.n {
+                return Err(Error::Validation(format!(
+                    "offset has wrong length: expected n={}, got {}",
+                    x.n,
+                    off.len()
+                )));
+            }
+            if off.iter().any(|v| !v.is_finite()) {
+                return Err(Error::Validation(
+                    "offset must contain only finite values".to_string(),
+                ));
+            }
+        }
+        Ok(Self { x, y, include_intercept, offset })
+    }
+
+    #[inline]
+    fn dim_internal(&self) -> usize {
+        // beta + log_alpha
+        (self.x.p + if self.include_intercept { 1 } else { 0 }) + 1
+    }
+
+    #[inline]
+    fn split_params<'a>(&self, params: &'a [f64]) -> Result<(&'a [f64], f64)> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+        let (beta, log_alpha) = params.split_at(params.len() - 1);
+        Ok((beta, log_alpha[0]))
+    }
+
+    #[inline]
+    fn eta(&self, i: usize, beta: &[f64]) -> f64 {
+        let base = if self.include_intercept {
+            let (b0, b) = beta.split_first().unwrap();
+            *b0 + row_dot(self.x.row(i), b)
+        } else {
+            row_dot(self.x.row(i), beta)
+        };
+        if let Some(off) = &self.offset { base + off[i] } else { base }
+    }
+}
+
+impl LogDensityModel for NegativeBinomialRegressionModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.dim_internal()
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let mut out = Vec::with_capacity(self.dim_internal());
+        if self.include_intercept {
+            out.push("intercept".to_string());
+        }
+        for j in 0..self.x.p {
+            out.push(format!("beta{}", j + 1));
+        }
+        out.push("log_alpha".to_string());
+        out
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.dim_internal()]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        let mut out = vec![0.0; self.dim_internal()];
+        // log_alpha defaults to 0 => alpha=1
+        out[self.dim_internal() - 1] = 0.0;
+        out
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        let (beta, log_alpha) = self.split_params(params)?;
+        let alpha = log_alpha.exp();
+        if !alpha.is_finite() || alpha <= 0.0 {
+            return Err(Error::Validation(format!(
+                "alpha must be finite and > 0, got {}",
+                alpha
+            )));
+        }
+        let theta = 1.0 / alpha;
+
+        let mut nll = 0.0;
+        for i in 0..self.x.n {
+            let eta = self.eta(i, beta);
+            let mu = eta.exp();
+            let y = self.y[i] as f64;
+
+            // logpmf (NB2 mean/disp) ignoring constant -ln(y!)
+            // log p = ln Gamma(y+theta) - ln Gamma(theta) + theta ln(theta/(theta+mu)) + y ln(mu/(theta+mu))
+            let ln_p = ln_gamma(y + theta) - ln_gamma(theta)
+                + theta * (theta.ln() - (theta + mu).ln())
+                + y * (mu.ln() - (theta + mu).ln());
+            nll -= ln_p;
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        let (beta, log_alpha) = self.split_params(params)?;
+        let alpha = log_alpha.exp();
+        if !alpha.is_finite() || alpha <= 0.0 {
+            return Err(Error::Validation(format!(
+                "alpha must be finite and > 0, got {}",
+                alpha
+            )));
+        }
+        let theta = 1.0 / alpha;
+
+        let n_beta = beta.len();
+        let mut grad_beta = vec![0.0; n_beta];
+        let mut grad_log_alpha = 0.0;
+
+        for i in 0..self.x.n {
+            let eta = self.eta(i, beta);
+            let mu = eta.exp();
+            let y_u = self.y[i];
+            let y = y_u as f64;
+
+            // d/deta nll = mu * (theta + y) / (theta + mu) - y
+            let err = mu * (theta + y) / (theta + mu) - y;
+            if self.include_intercept {
+                grad_beta[0] += err;
+                let row = self.x.row(i);
+                for j in 0..self.x.p {
+                    grad_beta[1 + j] += err * row[j];
+                }
+            } else {
+                let row = self.x.row(i);
+                for j in 0..self.x.p {
+                    grad_beta[j] += err * row[j];
+                }
+            }
+
+            // d/dtheta log p:
+            // psi(y+theta) - psi(theta) + ln(theta) + 1 - ln(theta+mu) - (theta+y)/(theta+mu)
+            let d_logp_d_theta = digamma(y + theta) - digamma(theta)
+                + theta.ln()
+                + 1.0
+                - (theta + mu).ln()
+                - (theta + y) / (theta + mu);
+            let d_nll_d_theta = -d_logp_d_theta;
+            // theta = 1/alpha, so d/d log_alpha = -theta * d/dtheta
+            grad_log_alpha += -theta * d_nll_d_theta;
+        }
+
+        let mut out = Vec::with_capacity(self.dim_internal());
+        out.extend_from_slice(&grad_beta);
+        out.push(grad_log_alpha);
+        Ok(out)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +742,7 @@ mod tests {
         y: Vec<f64>,
         offset: Option<Vec<f64>>,
         beta_hat: Vec<f64>,
+        log_alpha_hat: Option<f64>,
         nll_at_hat: f64,
     }
 
@@ -619,6 +819,32 @@ mod tests {
     }
 
     #[test]
+    fn test_negbin_regression_nll_and_grad_at_fixture_hat() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
+        assert_eq!(fx.kind, "negbin");
+        let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
+        let log_alpha = fx.log_alpha_hat.expect("negbin fixture must include log_alpha_hat");
+        let mut params = fx.beta_hat.clone();
+        params.push(log_alpha);
+        let m = NegativeBinomialRegressionModel::new(
+            fx.x.clone(),
+            y,
+            fx.include_intercept,
+            fx.offset.clone(),
+        )
+        .unwrap();
+        let nll = m.nll(&params).unwrap();
+        assert!((nll - fx.nll_at_hat).abs() < 1e-6);
+        let g = m.grad_nll(&params).unwrap();
+        assert!(
+            inf_norm(&g) < 1e-6,
+            "grad inf-norm too large: {}",
+            inf_norm(&g)
+        );
+    }
+
+    #[test]
     fn test_fixture_contract_shapes() {
         let fx =
             load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
@@ -684,6 +910,35 @@ mod tests {
         let r = mle.fit(&m).unwrap();
         assert!(r.converged, "MLE should converge on poisson fixture");
         assert_vec_close(&r.parameters, &fx.beta_hat, 1e-4);
+        assert!(
+            (r.nll - fx.nll_at_hat).abs() < 1e-6,
+            "nll mismatch: got {}, expected {}",
+            r.nll,
+            fx.nll_at_hat
+        );
+    }
+
+    #[test]
+    fn test_mle_negbin_regression_recovers_fixture_hat() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
+        assert_eq!(fx.kind, "negbin");
+        let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
+        let log_alpha = fx.log_alpha_hat.expect("negbin fixture must include log_alpha_hat");
+        let mut params_hat = fx.beta_hat.clone();
+        params_hat.push(log_alpha);
+        let m = NegativeBinomialRegressionModel::new(
+            fx.x.clone(),
+            y,
+            fx.include_intercept,
+            fx.offset.clone(),
+        )
+        .unwrap();
+
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(r.converged, "MLE should converge on negbin fixture");
+        assert_vec_close(&r.parameters, &params_hat, 1e-4);
         assert!(
             (r.nll - fx.nll_at_hat).abs() < 1e-6,
             "nll mismatch: got {}, expected {}",

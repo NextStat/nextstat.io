@@ -14,19 +14,24 @@ from __future__ import annotations
 from . import linear as linear
 from . import logistic as logistic
 from . import poisson as poisson
+from . import negbin as negbin
 
 from .linear import LinearFit, fit as fit_linear  # noqa: F401
 from .logistic import LogisticFit, fit as fit_logistic  # noqa: F401
 from .poisson import PoissonFit, fit as fit_poisson  # noqa: F401
+from .negbin import NegativeBinomialFit, fit as fit_negbin  # noqa: F401
 
 __all__ = [
     "linear",
     "logistic",
     "poisson",
+    "negbin",
     "LinearFit",
     "LogisticFit",
     "PoissonFit",
+    "NegativeBinomialFit",
     "fit_linear",
     "fit_logistic",
     "fit_poisson",
+    "fit_negbin",
 ]

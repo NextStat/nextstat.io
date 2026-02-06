@@ -77,6 +77,24 @@ class PoissonRegressionModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class NegativeBinomialRegressionModel:
+    def __init__(
+        self,
+        x: List[List[float]],
+        y: List[int],
+        *,
+        include_intercept: bool = ...,
+        offset: Optional[List[float]] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class ComposedGlmModel:
     @staticmethod
     def linear_regression(
@@ -155,6 +173,7 @@ class MaximumLikelihoodEstimator:
             LinearRegressionModel,
             LogisticRegressionModel,
             PoissonRegressionModel,
+            NegativeBinomialRegressionModel,
             ComposedGlmModel,
         ],
         *,
@@ -170,6 +189,7 @@ def fit(
         LinearRegressionModel,
         LogisticRegressionModel,
         PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
         ComposedGlmModel,
     ],
     *,
@@ -235,6 +255,7 @@ def sample(
         LinearRegressionModel,
         LogisticRegressionModel,
         PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
         ComposedGlmModel,
     ],
     *,
