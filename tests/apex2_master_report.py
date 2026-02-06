@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from _apex2_json import write_report_json
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -345,6 +347,11 @@ def _run_nuts_quality_smoke() -> Dict[str, Any]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
     ap.add_argument(
         "--p6-glm-bench-out",
@@ -537,6 +544,8 @@ def main() -> int:
         ]
         if args.pyhf_fit:
             pyhf_cmd.append("--fit")
+        if args.deterministic:
+            pyhf_cmd.append("--deterministic")
 
         rc_pyhf, out_pyhf = _run_json(pyhf_cmd, cwd=cwd, env=env)
         report["pyhf"] = {
@@ -678,6 +687,8 @@ def main() -> int:
                 bias_cmd += ["--zoo-sizes", str(args.bias_pulls_zoo_sizes)]
             if args.bias_pulls_zoo_n_toys is not None:
                 bias_cmd += ["--zoo-n-toys", str(int(args.bias_pulls_zoo_n_toys))]
+        if args.deterministic:
+            bias_cmd.append("--deterministic")
         out_bias = ""
         rc_bias = 0
         shard_count = None
@@ -760,6 +771,8 @@ def main() -> int:
             sbc_cmd += ["--seed", str(args.sbc_seed)]
         sbc_cmd += ["--rhat-max", str(args.sbc_rhat_max)]
         sbc_cmd += ["--divergence-rate-max", str(args.sbc_divergence_rate_max)]
+        if args.deterministic:
+            sbc_cmd.append("--deterministic")
         rc_sbc, out_sbc = _run_json(sbc_cmd, cwd=cwd, env=env)
         sbc_report = _read_json(args.sbc_out) if args.sbc_out.exists() else None
         # Prefer the report's declared status to avoid "ok but skipped" confusion.
@@ -820,8 +833,7 @@ def main() -> int:
                 "cases_generation": root_cases_generation,
             }
             report["meta"]["wall_s"] = float(time.time() - t0)
-            args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(json.dumps(report, indent=2))
+            write_report_json(args.out, report, deterministic=bool(args.deterministic))
             print(f"Wrote: {args.out}")
             return 2
 
@@ -836,6 +848,8 @@ def main() -> int:
         root_cmd += ["--cases", str(root_cases_used)]
     if args.root_prereq_only:
         root_cmd.append("--prereq-only")
+    if args.deterministic:
+        root_cmd.append("--deterministic")
 
     rc_root, out_root = _run_json(root_cmd, cwd=cwd, env=env)
     root_report = _read_json(args.root_out) if args.root_out.exists() else None
@@ -866,8 +880,7 @@ def main() -> int:
 
     report["meta"]["wall_s"] = float(time.time() - t0)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
 
     # Exit code policy: fail (rc=2) on any non-skipped runner failure.
     pyhf_ok = (rc_pyhf == 0)

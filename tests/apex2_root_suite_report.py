@@ -43,6 +43,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from _apex2_json import write_report_json
+
 
 def _which(name: str) -> Optional[str]:
     return shutil.which(name)
@@ -129,6 +131,11 @@ def main() -> int:
     ap.add_argument("--prereq-only", action="store_true", help="Only validate prerequisites, do not run.")
     ap.add_argument("--dq-atol", type=float, default=1e-3)
     ap.add_argument("--mu-hat-atol", type=float, default=1e-3)
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     if args.case_index is not None and args.case_name is not None:
@@ -168,9 +175,8 @@ def main() -> int:
     }
 
     if args.prereq_only:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
-        print(json.dumps(report["meta"]["prereqs"], indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
+        print(json.dumps(report["meta"]["prereqs"], indent=2, sort_keys=True))
         print(f"Wrote: {args.out}")
         # Exit code: 0 only if all required prereqs are satisfied.
         ok = bool(prereq["hist2workspace"]) and bool(prereq["root"]) and (prereq["uproot"] is not False)
@@ -352,8 +358,7 @@ def main() -> int:
         "n_error": int(n_err),
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
 
     print(
         json.dumps(

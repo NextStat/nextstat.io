@@ -38,6 +38,8 @@ import pyhf
 
 import nextstat
 
+from _apex2_json import write_report_json
+
 PY_TESTS_DIR = Path(__file__).resolve().parent / "python"
 if str(PY_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(PY_TESTS_DIR))
@@ -161,6 +163,11 @@ def main() -> int:
     ap.add_argument("--nll-atol", type=float, default=5e-9)
     ap.add_argument("--nll-rtol", type=float, default=1e-6)
     ap.add_argument("--expected-data-atol", type=float, default=1e-8)
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     sizes = [int(x.strip()) for x in args.sizes.split(",") if x.strip()]
@@ -402,8 +409,7 @@ def main() -> int:
         "failures": failures,
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
 
     # Concise stdout summary
     print("=" * 88)

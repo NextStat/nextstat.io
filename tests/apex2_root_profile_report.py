@@ -27,6 +27,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from _apex2_json import write_report_json
+
 
 def _which(name: str) -> Optional[str]:
     return shutil.which(name)
@@ -58,6 +60,11 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_root_profile_report.json"))
     ap.add_argument("--dq-atol", type=float, default=1e-3)
     ap.add_argument("--mu-hat-atol", type=float, default=1e-3)
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     if bool(args.pyhf_json) == bool(args.histfactory_xml):
@@ -162,14 +169,12 @@ def main() -> int:
         "summary": summary,
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
 
-    print(json.dumps(report["result"], indent=2))
+    print(json.dumps(report["result"], indent=2, sort_keys=True))
     print(f"Wrote: {args.out}")
     return 0 if ok else 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

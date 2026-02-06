@@ -21,6 +21,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from _apex2_json import write_report_json
+
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -472,6 +474,11 @@ def _run_case(
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_bias_pulls.json"))
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     ap.add_argument("--n-toys", type=int, default=200)
     ap.add_argument(
         "--zoo-n-toys",
@@ -558,8 +565,7 @@ def main() -> int:
         prereqs["ok"] = False
         prereqs["reason"] = f"missing_dependency:{e}"
         report = {"meta": {"prereqs": prereqs}, "cases": [], "summary": {"status": "skipped"}}
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
 
@@ -666,8 +672,7 @@ def main() -> int:
         "wall_s": float(time.time() - t0),
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
     print(f"Wrote: {args.out}")
 
     # Exit policy: only fail if we actually ran and got a failure/error.

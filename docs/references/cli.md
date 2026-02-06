@@ -12,6 +12,8 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 ## Commands (high level)
 
 HEP / HistFactory:
+- `nextstat import histfactory --xml combination.xml --output workspace.json`
+- `nextstat import trex-config --config trex.txt --output workspace.json`
 - `nextstat fit --input workspace.json`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
@@ -22,7 +24,7 @@ HEP / HistFactory:
 - `nextstat viz pulls --input workspace.json --fit fit.json`
 - `nextstat viz corr --input workspace.json --fit fit.json`
 - `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json]`
-- `nextstat report --input workspace.json --histfactory-xml combination.xml --fit fit.json --out-dir report/ [--render]`
+- `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render]`
 
 Time series (Phase 8):
 - `nextstat timeseries kalman-filter --input kalman_1d.json`
@@ -51,10 +53,22 @@ Scan mode is useful for:
 
 The CLI outputs pretty JSON to stdout by default, or to `--output`.
 
-`nextstat report` writes multiple JSON artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`). When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs (requires `matplotlib`, see `nextstat[viz]` extra).
+`nextstat report` writes multiple artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`, `uncertainty.json`, plus `yields.csv` and `yields.tex`). `uncertainty.json` is ranking-based and can be skipped via `--skip-uncertainty`. When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs (requires `matplotlib`, see `nextstat[viz]` extra).
+
+If `--fit` is omitted, `nextstat report` runs an MLE fit itself and writes `fit.json` into `--out-dir` before producing the report artifacts.
 
 For time series input formats, see:
 - `docs/tutorials/phase-8-timeseries.md`
 
 For the frequentist (CLs) workflow, see:
 - `docs/tutorials/phase-3.1-frequentist.md`
+
+## Import notes
+
+`nextstat import trex-config` currently supports only a small subset of TRExFitter configs:
+- `ReadFrom: NTUP` (or omitted).
+- `Region:` blocks with `Variable`, `Binning`, optional `Selection`.
+- `Sample:` blocks with `File`, optional `Weight`, and optional simple modifiers (`NormFactor`, `NormSys`, `StatError`).
+- `Systematic:` blocks for `Type: norm|weight|tree` applied by `Samples:` and optional `Regions:`.
+
+Example config: `docs/examples/trex_config_ntup_minimal.txt`.

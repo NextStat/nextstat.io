@@ -237,6 +237,41 @@ def _plot_yields_channel(channel: Mapping[str, Any]):
     return fig
 
 
+def _plot_uncertainty(artifact: Mapping[str, Any]):
+    import matplotlib.pyplot as plt
+
+    groups = list(artifact.get("groups") or [])
+    if not groups:
+        fig, ax = plt.subplots(figsize=(7.6, 2.8))
+        ax.text(0.5, 0.5, "Missing/empty uncertainty breakdown", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
+    names = [str(g.get("name", "")) for g in groups]
+    impacts = [float(g.get("impact", 0.0)) for g in groups]
+    y = list(range(len(groups)))
+
+    fig_h = max(3.0, 0.22 * len(groups) + 1.2)
+    fig, ax = plt.subplots(figsize=(7.6, fig_h))
+    ax.barh(y, impacts, color="#1D4ED8", alpha=0.85)
+    ax.set_yticks(y)
+    ax.set_yticklabels(names, fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("Impact on POI (quadrature)")
+    ax.set_title("Uncertainty breakdown")
+
+    try:
+        total = float(artifact.get("total", 0.0))
+        ax.axvline(total, color="#111827", lw=1.2, ls=":", label=f"Total={total:.3g}")
+        ax.legend()
+    except Exception:
+        pass
+
+    ax.grid(True, axis="x", alpha=0.25)
+    ax.grid(False, axis="y")
+    return fig
+
+
 def render_report(
     input_dir: Path,
     *,
@@ -263,6 +298,7 @@ def render_report(
     pulls_path = input_dir / "pulls.json"
     corr_path = input_dir / "corr.json"
     yields_path = input_dir / "yields.json"
+    uncertainty_path = input_dir / "uncertainty.json"
 
     with PdfPages(pdf) as pages:
         # Distributions: one page per channel.
@@ -309,6 +345,13 @@ def render_report(
                 ch_name = str(ch.get("channel_name", "channel"))
                 _save_figure(fig, f"yields__{ch_name}", targets, pages)
                 plt.close(fig)
+
+        # Uncertainty breakdown (groups).
+        if uncertainty_path.exists():
+            u = _read_json(uncertainty_path)
+            fig = _plot_uncertainty(u)
+            _save_figure(fig, "uncertainty", targets, pages)
+            plt.close(fig)
 
 
 def _cmd_render(args: argparse.Namespace) -> int:

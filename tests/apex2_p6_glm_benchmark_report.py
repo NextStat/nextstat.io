@@ -28,6 +28,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from _apex2_json import write_report_json
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -136,6 +138,11 @@ def main() -> int:
     ap.add_argument("--p", type=int, default=20, help="Feature count (without intercept).")
     ap.add_argument("--l2", type=float, default=0.0, help="Optional ridge (0 disables).")
     ap.add_argument("--nb-alpha", type=float, default=0.5, help="NegBin alpha for synthetic data.")
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     repo = _repo_root()
@@ -200,8 +207,7 @@ def main() -> int:
         report["status"] = "error"
         report["summary"] = {"reason": "benchmark_failed"}
         report["meta"]["wall_s"] = float(time.time() - t0)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 4
 
@@ -213,8 +219,7 @@ def main() -> int:
         report["compare"] = None
         report["summary"] = {"n_cases": len(list(_iter_results(bench_report)))}
         report["meta"]["wall_s"] = float(time.time() - t0)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
 
@@ -223,8 +228,7 @@ def main() -> int:
         report["compare"] = {"baseline_path": str(args.baseline), "reason": "baseline_missing"}
         report["summary"] = {"reason": "baseline_missing"}
         report["meta"]["wall_s"] = float(time.time() - t0)
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 4
 
@@ -307,8 +311,7 @@ def main() -> int:
     }
 
     report["meta"]["wall_s"] = float(time.time() - t0)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
     print(f"Wrote: {args.out}")
     return 0 if report["status"] == "ok" else 2
 

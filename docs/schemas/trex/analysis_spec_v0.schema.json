@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json",
+  "title": "TREx Analysis Spec v0 (NextStat)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "analysis", "inputs", "execution", "reports", "gates"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional schema URI for IDE integration."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "trex_analysis_spec_v0"
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "tags"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["histfactory_xml", "hist", "ntuple"],
+          "description": "Input mode. v0 focuses on histfactory_xml (TREx export directory)."
+        },
+        "histfactory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["export_dir", "combination_xml", "measurement"],
+          "properties": {
+            "export_dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Directory containing HistFactory exports (e.g. TRExFitter output)."
+            },
+            "combination_xml": {
+              "type": ["string", "null"],
+              "description": "Optional explicit path to combination.xml. If null, auto-discover under export_dir."
+            },
+            "measurement": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Measurement name inside the HistFactory workspace."
+            }
+          }
+        },
+        "hist": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Reserved for M1 (binned ROOT histograms)."
+        },
+        "ntuple": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Reserved for M2 (ROOT ntuples)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "histfactory_xml" } }, "required": ["mode"] },
+          "then": { "required": ["histfactory"] }
+        }
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["determinism", "fit", "profile_scan"],
+      "properties": {
+        "determinism": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads"],
+          "properties": {
+            "threads": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Deterministic parity mode should use threads=1."
+            }
+          }
+        },
+        "fit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "poi", "data"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "poi": { "type": "string", "minLength": 1 },
+            "data": { "type": "string", "enum": ["observed", "asimov"] }
+          }
+        },
+        "profile_scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "poi", "grid", "tolerances"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "poi": { "type": "string", "minLength": 1 },
+            "grid": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start", "stop", "points"],
+              "properties": {
+                "start": { "type": "number" },
+                "stop": { "type": "number" },
+                "points": { "type": "integer", "minimum": 2 }
+              }
+            },
+            "tolerances": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["dq_atol", "mu_hat_atol"],
+              "properties": {
+                "dq_atol": { "type": "number", "minimum": 0.0 },
+                "mu_hat_atol": { "type": "number", "minimum": 0.0 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "reports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["distributions", "pulls", "corr", "yields"],
+      "properties": {
+        "distributions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json", "ratio"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "type": "string", "minLength": 1 },
+            "ratio": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["data_over_total", "data_over_bkg"],
+                  "description": "Ratio policy (must be explicit for reproducible rendering)."
+                }
+              }
+            }
+          }
+        },
+        "pulls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "type": "string", "minLength": 1 }
+          }
+        },
+        "corr": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "type": "string", "minLength": 1 }
+          }
+        },
+        "yields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_compare"],
+      "properties": {
+        "baseline_compare": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "baseline_dir", "require_same_host", "max_slowdown"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "baseline_dir": { "type": "string", "minLength": 1 },
+            "require_same_host": { "type": "boolean" },
+            "max_slowdown": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      }
+    }
+  }
+}
+

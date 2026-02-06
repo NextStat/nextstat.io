@@ -29,6 +29,9 @@ pub mod corr;
 /// Yields tables artifacts (TREx-style).
 pub mod yields;
 
+/// Uncertainty breakdown artifacts (TREx-style).
+pub mod uncertainty;
+
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
 pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
 pub use ranking::RankingArtifact;
@@ -36,3 +39,4 @@ pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, Rat
 pub use pulls::{PullsArtifact, PullEntry};
 pub use corr::CorrArtifact;
 pub use yields::YieldsArtifact;
+pub use uncertainty::UncertaintyBreakdownArtifact;

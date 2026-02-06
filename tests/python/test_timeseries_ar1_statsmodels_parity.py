@@ -34,12 +34,16 @@ def _statsmodels_ar1_filter_smooth(
 ) -> dict:
     import numpy as np
     from statsmodels.tsa.statespace.kalman_filter import KalmanFilter
+    from statsmodels.tsa.statespace.kalman_smoother import KalmanSmoother
 
     y = np.asarray(ys, dtype=float)
     if y.ndim != 1:
         raise AssertionError("ys must be 1D")
 
-    kf = KalmanFilter(k_endog=1, k_states=1, initialization="known")
+    # Note: In statsmodels 0.14+, passing `initialization="known"` requires providing the
+    # initial state in the constructor kwargs. To stay version-tolerant, construct first
+    # and then call `initialize_known(...)`.
+    kf = KalmanFilter(k_endog=1, k_states=1)
     # Some statsmodels versions require bind() before setting matrices; others don't.
     try:
         kf.bind(y[:, None])
@@ -90,25 +94,26 @@ def _statsmodels_ar1_filter_smooth(
         predicted_means = [[float(ps[0, t])] for t in range(use)]
         predicted_covs = [[[float(pP[0, 0, t])]] for t in range(use)]
 
-    # Smoother.
-    sr = None
-    try:
-        sr = kf.smooth()
-    except Exception:
-        # Some versions expose smoothing off the filter results.
-        try:  # pragma: no cover
-            sr = fr.smooth()
-        except Exception:
-            sr = None
+    # Smoother (statsmodels exposes smoothing via KalmanSmoother, not KalmanFilter).
+    ks = KalmanSmoother(k_endog=1, k_states=1)
+    ks.bind(y[:, None])
+    ks.design = np.asarray([[1.0]], dtype=float)
+    ks.transition = np.asarray([[float(phi)]], dtype=float)
+    ks.selection = np.asarray([[1.0]], dtype=float)
+    ks.state_cov = np.asarray([[float(q)]], dtype=float)
+    ks.obs_cov = np.asarray([[float(r)]], dtype=float)
+    ks.state_intercept = np.asarray([[0.0]], dtype=float)
+    ks.obs_intercept = np.asarray([[0.0]], dtype=float)
+    if hasattr(ks, "initialize_known"):
+        ks.initialize_known(np.asarray([float(m0)]), np.asarray([[float(p0)]]))
+    sr = ks.smooth()
 
-    smoothed_means = None
-    smoothed_covs = None
-    if sr is not None:
-        ss = getattr(sr, "smoothed_state", None)
-        sP = getattr(sr, "smoothed_state_cov", None)
-        if ss is not None and sP is not None:
-            smoothed_means = [[float(ss[0, t])] for t in range(n)]
-            smoothed_covs = [[[float(sP[0, 0, t])]] for t in range(n)]
+    ss = getattr(sr, "smoothed_state", None)
+    sP = getattr(sr, "smoothed_state_cov", None)
+    if ss is None or sP is None:
+        raise AssertionError("statsmodels smoother result missing smoothed_state/smoothed_state_cov")
+    smoothed_means = [[float(ss[0, t])] for t in range(n)]
+    smoothed_covs = [[[float(sP[0, 0, t])]] for t in range(n)]
 
     # Log-likelihood.
     ll = None
@@ -150,6 +155,16 @@ def _deterministic_ar1_observations(*, n: int, phi: float) -> list[float]:
     return ys
 
 
+def _flatten_1d_means(xs) -> list[float]:
+    # nextstat returns [[m_t]] for 1D, statsmodels reference does the same.
+    return [float(v[0]) for v in xs]
+
+
+def _flatten_1x1_covs(ps) -> list[float]:
+    # nextstat returns [[[p_t]]] for 1D.
+    return [float(v[0][0]) for v in ps]
+
+
 def test_ar1_kalman_filter_parity_vs_statsmodels():
     phi = 0.8
     q = 0.05
@@ -164,14 +179,22 @@ def test_ar1_kalman_filter_parity_vs_statsmodels():
 
     assert float(ns["log_likelihood"]) == pytest.approx(float(sm["log_likelihood"]), rel=1e-6, abs=1e-6)
 
-    assert ns["filtered_means"] == pytest.approx(sm["filtered_means"], rel=0.0, abs=1e-6)
-    assert ns["filtered_covs"] == pytest.approx(sm["filtered_covs"], rel=0.0, abs=1e-6)
+    assert _flatten_1d_means(ns["filtered_means"]) == pytest.approx(
+        _flatten_1d_means(sm["filtered_means"]), rel=0.0, abs=1e-6
+    )
+    assert _flatten_1x1_covs(ns["filtered_covs"]) == pytest.approx(
+        _flatten_1x1_covs(sm["filtered_covs"]), rel=0.0, abs=1e-6
+    )
 
     if sm["predicted_means"] is not None and sm["predicted_covs"] is not None:
         # Some statsmodels versions expose (n+1) predictions; compare only overlapping prefix.
         n_pred = min(len(ns["predicted_means"]), len(sm["predicted_means"]))
-        assert ns["predicted_means"][:n_pred] == pytest.approx(sm["predicted_means"][:n_pred], rel=0.0, abs=1e-6)
-        assert ns["predicted_covs"][:n_pred] == pytest.approx(sm["predicted_covs"][:n_pred], rel=0.0, abs=1e-6)
+        assert _flatten_1d_means(ns["predicted_means"][:n_pred]) == pytest.approx(
+            _flatten_1d_means(sm["predicted_means"][:n_pred]), rel=0.0, abs=1e-6
+        )
+        assert _flatten_1x1_covs(ns["predicted_covs"][:n_pred]) == pytest.approx(
+            _flatten_1x1_covs(sm["predicted_covs"][:n_pred]), rel=0.0, abs=1e-6
+        )
 
 
 def test_ar1_kalman_smoother_parity_vs_statsmodels():
@@ -192,6 +215,9 @@ def test_ar1_kalman_smoother_parity_vs_statsmodels():
     if sm["smoothed_means"] is None or sm["smoothed_covs"] is None:
         pytest.skip("statsmodels smoothing API not available for this version/config")
 
-    assert ns["smoothed_means"] == pytest.approx(sm["smoothed_means"], rel=0.0, abs=1e-6)
-    assert ns["smoothed_covs"] == pytest.approx(sm["smoothed_covs"], rel=0.0, abs=1e-6)
-
+    assert _flatten_1d_means(ns["smoothed_means"]) == pytest.approx(
+        _flatten_1d_means(sm["smoothed_means"]), rel=0.0, abs=1e-6
+    )
+    assert _flatten_1x1_covs(ns["smoothed_covs"]) == pytest.approx(
+        _flatten_1x1_covs(sm["smoothed_covs"]), rel=0.0, abs=1e-6
+    )

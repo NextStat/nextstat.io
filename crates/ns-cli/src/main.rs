@@ -160,8 +160,7 @@ enum Commands {
 
         /// Fit result JSON (from `nextstat fit`) providing postfit parameters (+ uncertainties/covariance).
         ///
-        /// If omitted, postfit is set equal to prefit (init parameters) and artifacts requiring
-        /// uncertainties/covariance are skipped.
+        /// If omitted, `nextstat report` runs an MLE fit itself and writes `fit.json` into `--out-dir`.
         #[arg(long)]
         fit: Option<PathBuf>,
 
@@ -192,6 +191,14 @@ enum Commands {
         /// Python executable used for rendering (defaults to `.venv/bin/python` if it exists, else `python3`).
         #[arg(long)]
         python: Option<PathBuf>,
+
+        /// Skip computing the uncertainty breakdown artifact (ranking-based, can be expensive).
+        #[arg(long, default_value_t = false)]
+        skip_uncertainty: bool,
+
+        /// Uncertainty grouping policy (currently: `prefix_1`).
+        #[arg(long, default_value = "prefix_1")]
+        uncertainty_grouping: String,
 
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
@@ -370,6 +377,23 @@ enum ImportCommands {
         /// Path to HistFactory `combination.xml`
         #[arg(long)]
         xml: PathBuf,
+
+        /// Output file for the workspace (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// TRExFitter-style config (subset; ReadFrom=NTUP) → pyhf JSON workspace
+    TrexConfig {
+        /// Path to TRExFitter config file (text).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Base directory for resolving relative ROOT file paths.
+        ///
+        /// Defaults to the directory containing `--config`.
+        #[arg(long)]
+        base_dir: Option<PathBuf>,
 
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -629,6 +653,8 @@ fn main() -> Result<()> {
             pdf,
             svg_dir,
             python,
+            skip_uncertainty,
+            uncertainty_grouping,
             threads,
         } => cmd_report(
             &input,
@@ -641,6 +667,8 @@ fn main() -> Result<()> {
             pdf.as_ref(),
             svg_dir.as_ref(),
             python.as_ref(),
+            skip_uncertainty,
+            uncertainty_grouping.as_str(),
             threads,
         ),
         Commands::Viz { command } => match command {
@@ -703,6 +731,9 @@ fn main() -> Result<()> {
         Commands::Import { command } => match command {
             ImportCommands::Histfactory { xml, output } => {
                 cmd_import_histfactory(&xml, output.as_ref(), cli.bundle.as_ref())
+            }
+            ImportCommands::TrexConfig { config, base_dir, output } => {
+                cmd_import_trex_config(&config, base_dir.as_ref(), output.as_ref(), cli.bundle.as_ref())
             }
         },
         Commands::Timeseries { command } => match command {
@@ -811,6 +842,30 @@ fn cmd_import_histfactory(
 
     tracing::info!(path = %xml.display(), "importing HistFactory combination.xml");
     let ws = ns_translate::histfactory::from_xml(xml)?;
+    let output_json = serde_json::to_value(&ws)?;
+    write_json(output, &output_json)?;
+    Ok(())
+}
+
+fn cmd_import_trex_config(
+    config: &PathBuf,
+    base_dir: Option<&PathBuf>,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for `nextstat import trex-config` yet");
+    }
+
+    tracing::info!(path = %config.display(), "importing TRExFitter config");
+    let text = std::fs::read_to_string(config)?;
+
+    let base_dir = base_dir
+        .map(|p| p.as_path())
+        .or_else(|| config.parent())
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    let ws = ns_translate::trex::workspace_from_str(&text, base_dir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
     Ok(())
@@ -930,17 +985,28 @@ fn write_yields_tables(yields: &ns_viz::yields::YieldsArtifact, out_dir: &std::p
     for ch in &yields.channels {
         for s in &ch.samples {
             csv.push_str(&format!(
-                "{},{},{},{:.12g},{:.12g}\n",
-                ch.channel_name, "sample", s.name, s.prefit, s.postfit
+                "{},{},{},{},{}\n",
+                ch.channel_name,
+                "sample",
+                s.name,
+                s.prefit.to_string(),
+                s.postfit.to_string()
             ));
         }
         csv.push_str(&format!(
-            "{},{},{},{:.12g},{:.12g}\n",
-            ch.channel_name, "total", "TOTAL", ch.total_prefit, ch.total_postfit
+            "{},{},{},{},{}\n",
+            ch.channel_name,
+            "total",
+            "TOTAL",
+            ch.total_prefit.to_string(),
+            ch.total_postfit.to_string()
         ));
         csv.push_str(&format!(
-            "{},{},{},{:.12g},\n",
-            ch.channel_name, "data", "DATA", ch.data
+            "{},{},{},{},\n",
+            ch.channel_name,
+            "data",
+            "DATA",
+            ch.data.to_string()
         ));
     }
     std::fs::write(out_dir.join("yields.csv"), csv)?;
@@ -956,14 +1022,15 @@ fn write_yields_tables(yields: &ns_viz::yields::YieldsArtifact, out_dir: &std::p
         tex.push_str("Sample & Prefit & Postfit \\\\\n");
         tex.push_str("\\midrule\n");
         for s in &ch.samples {
-            tex.push_str(&format!("{} & {:.6g} & {:.6g} \\\\\n", s.name, s.prefit, s.postfit));
+            tex.push_str(&format!("{} & {} & {} \\\\\n", s.name, s.prefit.to_string(), s.postfit.to_string()));
         }
         tex.push_str("\\midrule\n");
         tex.push_str(&format!(
-            "Total & {:.6g} & {:.6g} \\\\\n",
-            ch.total_prefit, ch.total_postfit
+            "Total & {} & {} \\\\\n",
+            ch.total_prefit.to_string(),
+            ch.total_postfit.to_string()
         ));
-        tex.push_str(&format!("Data & {:.6g} & \\\\\n", ch.data));
+        tex.push_str(&format!("Data & {} & \\\\\n", ch.data.to_string()));
         tex.push_str("\\bottomrule\n");
         tex.push_str("\\end{tabular}\n\n");
     }
@@ -2321,6 +2388,8 @@ fn cmd_report(
     pdf: Option<&PathBuf>,
     svg_dir: Option<&PathBuf>,
     python: Option<&PathBuf>,
+    skip_uncertainty: bool,
+    uncertainty_grouping: &str,
     threads: usize,
 ) -> Result<()> {
     ensure_out_dir(out_dir, overwrite)?;
@@ -2445,6 +2514,18 @@ fn cmd_report(
         }
     } else {
         tracing::warn!("fit uncertainties missing/omitted; skipping pulls.json and corr.json");
+    }
+
+    if !skip_uncertainty {
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let entries = mle.ranking(&model)?;
+        let ranking_artifact: ns_viz::RankingArtifact = entries.into();
+        let unc = ns_viz::uncertainty::uncertainty_breakdown_from_ranking(
+            &ranking_artifact,
+            uncertainty_grouping,
+            threads,
+        )?;
+        write_json_file(&out_dir.join("uncertainty.json"), &serde_json::to_value(&unc)?)?;
     }
 
     if render {

@@ -139,3 +139,33 @@ fn trex_report_yields_invariants_prefit_equals_postfit() {
     }
 }
 
+#[test]
+fn trex_report_uncertainty_breakdown_grouping_prefix_1() {
+    let ranking = ns_viz::RankingArtifact {
+        names: vec!["lumi_test".to_string(), "gamma_stat_foo".to_string(), "JES_bar".to_string()],
+        delta_mu_up: vec![0.2, -0.1, 0.05],
+        delta_mu_down: vec![-0.15, 0.08, -0.02],
+        pull: vec![0.0, 0.0, 0.0],
+        constraint: vec![1.0, 1.0, 1.0],
+    };
+
+    let unc = ns_viz::uncertainty::uncertainty_breakdown_from_ranking(&ranking, "prefix_1", 1)
+        .expect("uncertainty breakdown");
+    assert_eq!(unc.schema_version, "trex_report_uncertainty_v0");
+
+    let mut by_name = std::collections::HashMap::new();
+    for g in &unc.groups {
+        by_name.insert(g.name.as_str(), g.impact);
+    }
+
+    assert!(by_name.contains_key("lumi"));
+    assert!(by_name.contains_key("stat"));
+    assert!(by_name.contains_key("JES"));
+
+    assert_abs_diff_eq!(*by_name.get("lumi").unwrap(), 0.2, epsilon = 1e-12);
+    assert_abs_diff_eq!(*by_name.get("stat").unwrap(), 0.1, epsilon = 1e-12);
+    assert_abs_diff_eq!(*by_name.get("JES").unwrap(), 0.05, epsilon = 1e-12);
+
+    let total = (0.2_f64 * 0.2 + 0.1 * 0.1 + 0.05 * 0.05).sqrt();
+    assert_abs_diff_eq!(unc.total, total, epsilon = 1e-12);
+}

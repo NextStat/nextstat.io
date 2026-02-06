@@ -1,0 +1,58 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: Example HEP Fit
+  description: Minimal TREx-style analysis spec for HistFactory exports (M0).
+  tags: ["example", "histfactory", "trex"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: /abs/path/to/trex/output
+    # If null, NextStat should auto-discover combination.xml under export_dir.
+    combination_xml: null
+    # Measurement name inside the workspace/model.
+    measurement: measurement
+
+execution:
+  determinism:
+    threads: 1
+  fit:
+    enabled: true
+    poi: mu
+    data: observed
+  profile_scan:
+    enabled: true
+    poi: mu
+    grid:
+      start: 0.0
+      stop: 5.0
+      points: 51
+    tolerances:
+      dq_atol: 1.0e-3
+      mu_hat_atol: 1.0e-3
+
+reports:
+  distributions:
+    enabled: true
+    output_json: tmp/trex_report_distributions.json
+    ratio:
+      kind: data_over_total
+  pulls:
+    enabled: true
+    output_json: tmp/trex_report_pulls.json
+  corr:
+    enabled: true
+    output_json: tmp/trex_report_corr.json
+  yields:
+    enabled: true
+    output_json: tmp/trex_report_yields.json
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+

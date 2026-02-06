@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from _apex2_json import write_report_json
+
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -315,6 +317,11 @@ def main() -> int:
     ap.add_argument("--histfactory-ess-bulk-min", type=float, default=None)
     ap.add_argument("--histfactory-ess-tail-min", type=float, default=None)
     ap.add_argument("--no-determinism-check", action="store_true")
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     if args.strict:
@@ -375,8 +382,7 @@ def main() -> int:
         import nextstat  # type: ignore
     except ModuleNotFoundError as e:
         report["reason"] = f"import_nextstat_failed:{e}"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
 
@@ -507,8 +513,7 @@ def main() -> int:
     report["status"] = "ok" if not any_failed else "fail"
     report["meta"]["elapsed_s"] = float(time.time() - t0)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
     print(f"Wrote: {args.out}")
     return 0 if report["status"] == "ok" else 1
 

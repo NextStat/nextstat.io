@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
 
+from _apex2_json import write_report_json
+
 
 def _mean(xs: Sequence[float]) -> float:
     return float(sum(xs) / len(xs)) if xs else float("nan")
@@ -224,6 +226,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--rhat-max", type=float, default=1.40)
     ap.add_argument("--divergence-rate-max", type=float, default=0.05)
+    ap.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
+    )
     args = ap.parse_args()
 
     env_cfg = _require_slow_from_env()
@@ -252,21 +259,18 @@ def main() -> int:
 
     if os.environ.get("NS_RUN_SLOW") != "1":
         report["reason"] = "NS_RUN_SLOW!=1"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
 
     if n_runs < 10:
         report["reason"] = "n_runs<10"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
     if n_warmup < 100 or n_samples < 100:
         report["reason"] = "warmup_or_samples_too_small(<100)"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 0
 
@@ -275,8 +279,7 @@ def main() -> int:
     except Exception as e:
         report["status"] = "error"
         report["reason"] = f"import_nextstat_failed:{type(e).__name__}:{e}"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(report, indent=2))
+        write_report_json(args.out, report, deterministic=bool(args.deterministic))
         print(f"Wrote: {args.out}")
         return 2
 
@@ -318,8 +321,7 @@ def main() -> int:
     report["status"] = "ok" if not any_failed else "fail"
     report["meta"]["wall_s"] = float(time.time() - t0)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2))
+    write_report_json(args.out, report, deterministic=bool(args.deterministic))
     print(f"Wrote: {args.out}")
     return 0 if not any_failed else 2
 
