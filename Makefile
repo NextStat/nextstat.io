@@ -2,10 +2,13 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	apex2-root-prereq \
+	apex2-root-baseline-record \
 	apex2-root-cases \
 	apex2-condor-render-root-array-sub \
 	apex2-root-aggregate \
-	apex2-root-suite-compare-perf
+	apex2-root-suite-compare-perf \
+	apex2-root-suite-compare-latest
 
 PY ?= ./.venv/bin/python
 PYTHONPATH ?= bindings/ns-py/python
@@ -15,6 +18,8 @@ ROOT_SEARCH_DIR ?=
 ROOT_CASES_OUT ?= tmp/apex2_root_cases.json
 ROOT_CASES_ARGS ?=
 ROOT_CASES_JSON ?=
+ROOT_BASELINE_OUT_DIR ?= tmp/baselines
+ROOT_BASELINE_ARGS ?=
 ROOT_CONDOR_INITIALDIR ?= $(CURDIR)
 ROOT_CONDOR_SUB_OUT ?= apex2_root_suite_array.sub
 ROOT_RESULTS_DIR ?=
@@ -25,6 +30,7 @@ ROOT_BASELINE_SUITE ?=
 ROOT_CURRENT_SUITE ?=
 ROOT_PERF_OUT ?= tmp/root_suite_perf_compare.json
 ROOT_PERF_ARGS ?=
+ROOT_ROOT_MANIFEST ?= tmp/baselines/latest_root_manifest.json
 
 apex2-baseline-record:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py $(RECORD_ARGS)
@@ -34,6 +40,17 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+apex2-root-prereq:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/apex2_root_suite_report.py --prereq-only --out tmp/apex2_root_prereq.json
+
+apex2-root-baseline-record:
+	@test -n "$(ROOT_SEARCH_DIR)" || (echo "Set ROOT_SEARCH_DIR=/abs/path/to/trex/output" >&2; exit 2)
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py \
+		--only root \
+		--out-dir "$(ROOT_BASELINE_OUT_DIR)" \
+		--root-search-dir "$(ROOT_SEARCH_DIR)" \
+		$(ROOT_BASELINE_ARGS)
 
 apex2-root-cases:
 	@test -n "$(ROOT_SEARCH_DIR)" || (echo "Set ROOT_SEARCH_DIR=/abs/path/to/trex/output" >&2; exit 2)
@@ -62,6 +79,14 @@ apex2-root-suite-compare-perf:
 	@test -n "$(ROOT_CURRENT_SUITE)" || (echo "Set ROOT_CURRENT_SUITE=/abs/path/to/root_suite_current.json" >&2; exit 2)
 	"$(PY)" tests/compare_apex2_root_suite_to_baseline.py \
 		--baseline "$(ROOT_BASELINE_SUITE)" \
+		--current "$(ROOT_CURRENT_SUITE)" \
+		--out "$(ROOT_PERF_OUT)" \
+		$(ROOT_PERF_ARGS)
+
+apex2-root-suite-compare-latest:
+	@test -n "$(ROOT_CURRENT_SUITE)" || (echo "Set ROOT_CURRENT_SUITE=/abs/path/to/apex2_root_suite_aggregate.json" >&2; exit 2)
+	"$(PY)" tests/compare_apex2_root_suite_to_latest_baseline.py \
+		--manifest "$(ROOT_ROOT_MANIFEST)" \
 		--current "$(ROOT_CURRENT_SUITE)" \
 		--out "$(ROOT_PERF_OUT)" \
 		$(ROOT_PERF_ARGS)

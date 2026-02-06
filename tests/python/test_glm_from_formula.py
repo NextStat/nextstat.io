@@ -21,7 +21,11 @@ def _manual_design(formula: str, data):
 
 
 def test_linear_from_formula_matches_manual_fit_numeric():
-    data = {"y": [1.0, 2.0, 3.0], "x1": [10.0, 11.0, 12.0], "x2": [0.0, 1.0, 0.0]}
+    data = {
+        "y": [1.0, 2.0, 3.0, 4.0],
+        "x1": [10.0, 11.0, 12.0, 13.0],
+        "x2": [0.0, 1.0, 0.0, 1.0],
+    }
     formula = "y ~ 1 + x1 + x2"
 
     r1, names1 = nextstat.glm.linear.from_formula(formula, data)

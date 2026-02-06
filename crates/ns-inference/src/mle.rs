@@ -38,6 +38,7 @@ impl MaximumLikelihoodEstimator {
         // Compute full Hessian and covariance matrix
         let hessian = self.compute_hessian(model, &result.parameters)?;
         let n = result.parameters.len();
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
         match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
@@ -45,7 +46,7 @@ impl MaximumLikelihoodEstimator {
                 let uncertainties: Vec<f64> = (0..n)
                     .map(|i| {
                         let var = covariance[(i, i)];
-                        if var > 0.0 { var.sqrt() } else { 1e6 }
+                        if var.is_finite() && var > 0.0 { var.sqrt() } else { diag_uncertainties[i] }
                     })
                     .collect();
 
@@ -169,15 +170,48 @@ impl MaximumLikelihoodEstimator {
     ///
     /// Returns `None` if the Hessian is not positive definite.
     fn invert_hessian(&self, hessian: &DMatrix<f64>, n: usize) -> Option<DMatrix<f64>> {
-        // Try Cholesky first (fastest, requires positive definite)
-        if let Some(chol) = nalgebra::linalg::Cholesky::new(hessian.clone()) {
-            let identity = DMatrix::identity(n, n);
-            return Some(chol.solve(&identity));
+        // We want a positive-(semi)definite covariance; even at a valid minimum the
+        // numerically estimated Hessian can be slightly indefinite. Prefer a damped
+        // Cholesky solve to avoid negative variances (which then explode to 1e6).
+        let identity = DMatrix::identity(n, n);
+
+        // Scale damping to the Hessian diagonal to be unit-ish across models.
+        let diag_scale = (0..n)
+            .map(|i| hessian[(i, i)].abs())
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+
+        let mut h_damped = hessian.clone();
+        let mut damping = 0.0_f64;
+        let max_attempts = 10;
+
+        for attempt in 0..max_attempts {
+            if let Some(chol) = nalgebra::linalg::Cholesky::new(h_damped.clone()) {
+                return Some(chol.solve(&identity));
+            }
+
+            if attempt + 1 == max_attempts {
+                break;
+            }
+
+            // Increase diagonal damping geometrically.
+            let next_damping = if damping == 0.0 { diag_scale * 1e-9 } else { damping * 10.0 };
+            let add = next_damping - damping;
+            for i in 0..n {
+                h_damped[(i, i)] += add;
+            }
+            damping = next_damping;
         }
 
-        // Fallback: LU decomposition (handles semi-definite cases)
-        let lu = hessian.clone().lu();
-        lu.try_inverse()
+        let cov = h_damped.lu().try_inverse()?;
+        // Reject clearly-bad inverses (negative/NaN variances).
+        for i in 0..n {
+            let v = cov[(i, i)];
+            if !(v.is_finite() && v > 0.0) {
+                return None;
+            }
+        }
+        Some(cov)
     }
 
     /// Extract uncertainties from Hessian diagonal (fallback).
@@ -185,7 +219,8 @@ impl MaximumLikelihoodEstimator {
         (0..n)
             .map(|i| {
                 let hess_ii = hessian[(i, i)];
-                if hess_ii > 1e-10 { 1.0 / hess_ii.sqrt() } else { 1e6 }
+                let denom = hess_ii.abs().max(1e-12);
+                1.0 / denom.sqrt()
             })
             .collect()
     }
@@ -747,5 +782,14 @@ mod tests {
             assert!(entry.constraint.is_finite(), "constraint should be finite");
             assert!(entry.constraint > 0.0, "constraint should be positive");
         }
+    }
+
+    #[test]
+    fn test_diagonal_uncertainties_abs_diag() {
+        let mle = MaximumLikelihoodEstimator::new();
+        let h = DMatrix::<f64>::from_diagonal(&nalgebra::DVector::from_vec(vec![-4.0, 9.0]));
+        let u = mle.diagonal_uncertainties(&h, 2);
+        assert!((u[0] - 0.5).abs() < 1e-12);
+        assert!((u[1] - (1.0 / 3.0)).abs() < 1e-12);
     }
 }

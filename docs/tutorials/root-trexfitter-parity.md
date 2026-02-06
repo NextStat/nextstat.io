@@ -139,6 +139,12 @@ PYTHONPATH=bindings/ns-py/python python3 tests/compare_apex2_root_suite_to_basel
   --out "${APEX2_RESULTS_DIR}/apex2_root_suite_perf_compare.json"
 ```
 
+Optional compare vs the latest recorded ROOT baseline manifest:
+
+```bash
+make apex2-root-suite-compare-latest ROOT_CURRENT_SUITE="${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json"
+```
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
