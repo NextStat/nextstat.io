@@ -44,6 +44,7 @@ pub mod transforms;
 #[cfg(test)]
 mod universal_tests;
 
+pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
@@ -56,6 +57,5 @@ pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };
 pub use transforms::ParameterTransform;
-pub use builder::{ComposedGlmModel, ModelBuilder};
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

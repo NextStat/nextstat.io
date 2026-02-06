@@ -160,9 +160,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0, help="RNG seed.")
     ap.add_argument("--fit", action="store_true", help="Also profile full MLE fits.")
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
-    ap.add_argument("--nll-atol", type=float, default=1e-9)
-    ap.add_argument("--nll-rtol", type=float, default=0.0)
-    ap.add_argument("--expected-data-atol", type=float, default=1e-10)
+    # Defaults match `docs/plans/standards.md` (twice_nll atol=1e-8, rtol=1e-6).
+    # This script compares NLL (not twice_nll), so atol is halved.
+    ap.add_argument("--nll-atol", type=float, default=5e-9)
+    ap.add_argument("--nll-rtol", type=float, default=1e-6)
+    ap.add_argument("--expected-data-atol", type=float, default=1e-8)
     args = ap.parse_args()
 
     sizes = [int(x.strip()) for x in args.sizes.split(",") if x.strip()]

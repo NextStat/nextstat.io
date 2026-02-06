@@ -661,7 +661,9 @@ mod tests {
 
         let expected = model.expected_data(&truth).unwrap();
 
-        let mle = MaximumLikelihoodEstimator::new();
+        // Use limited max_iter to avoid hanging on pathological toys
+        let config = OptimizerConfig { max_iter: 200, ..OptimizerConfig::default() };
+        let mle = MaximumLikelihoodEstimator::with_config(config);
         let n_toys = 200;
         let seed = 42u64;
 
@@ -687,16 +689,9 @@ mod tests {
                 Err(_) => continue,
             };
 
-            println!("toy {}/{}: fitting...", toy_idx + 1, n_toys);
             let fit = match mle.fit(&toy_model) {
-                Ok(f) => {
-                    println!("  converged={}, nll={:.4}", f.converged, f.nll);
-                    f
-                }
-                Err(e) => {
-                    println!("  error: {}", e);
-                    continue;
-                }
+                Ok(f) => f,
+                Err(_) => continue,
             };
 
             if !fit.converged {

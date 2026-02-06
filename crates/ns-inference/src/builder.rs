@@ -94,8 +94,8 @@ struct RandomIntercept {
     group_idx: Vec<usize>, // length n
     // Parameter indices in the model parameter vector:
     mu_idx: usize,
-    sigma_idx: usize,     // sigma_alpha > 0
-    alpha_offset: usize,  // alpha_j at params[alpha_offset + j]
+    sigma_idx: usize,    // sigma_alpha > 0
+    alpha_offset: usize, // alpha_j at params[alpha_offset + j]
     // Priors:
     mu_prior: NormalPrior,
     logsigma_prior_m: f64,
@@ -191,7 +191,11 @@ impl ComposedGlmModel {
     fn eta_components<'a>(&self, params: &'a [f64]) -> Result<(&'a [f64], f64)> {
         let dim = self.dim_internal();
         if params.len() != dim {
-            return Err(Error::Validation(format!("expected {} parameters, got {}", dim, params.len())));
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                dim,
+                params.len()
+            )));
         }
         if params.iter().any(|v| !v.is_finite()) {
             return Err(Error::Validation("params must contain only finite values".to_string()));
@@ -232,7 +236,10 @@ impl LogDensityModel for ComposedGlmModel {
     }
 
     fn parameter_bounds(&self) -> Vec<(f64, f64)> {
-        let mut out = vec![(f64::NEG_INFINITY, f64::INFINITY); self.x.p + if self.include_intercept { 1 } else { 0 }];
+        let mut out = vec![
+            (f64::NEG_INFINITY, f64::INFINITY);
+            self.x.p + if self.include_intercept { 1 } else { 0 }
+        ];
         if let Some(ri) = &self.random_intercept {
             out.push((f64::NEG_INFINITY, f64::INFINITY)); // mu_alpha
             out.push((0.0, f64::INFINITY)); // sigma_alpha
@@ -443,7 +450,11 @@ pub struct ModelBuilder {
 
 impl ModelBuilder {
     /// Start a Gaussian linear regression builder (sigma fixed to 1).
-    pub fn linear_regression(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> Result<Self> {
+    pub fn linear_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        include_intercept: bool,
+    ) -> Result<Self> {
         let x = DenseX::from_rows(x)?;
         if y.len() != x.n {
             return Err(Error::Validation(format!(
@@ -462,7 +473,11 @@ impl ModelBuilder {
     }
 
     /// Start a Bernoulli-logit (logistic regression) builder.
-    pub fn logistic_regression(x: Vec<Vec<f64>>, y: Vec<u8>, include_intercept: bool) -> Result<Self> {
+    pub fn logistic_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<u8>,
+        include_intercept: bool,
+    ) -> Result<Self> {
         let x = DenseX::from_rows(x)?;
         if y.len() != x.n {
             return Err(Error::Validation(format!(
@@ -588,12 +603,13 @@ mod tests {
         assert_eq!(fx.kind, "ols");
         let explicit =
             LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
-        let built = ModelBuilder::linear_regression(fx.x.clone(), fx.y.clone(), fx.include_intercept)
-            .unwrap()
-            .with_coef_prior_normal(0.0, 1e9)
-            .unwrap()
-            .build()
-            .unwrap();
+        let built =
+            ModelBuilder::linear_regression(fx.x.clone(), fx.y.clone(), fx.include_intercept)
+                .unwrap()
+                .with_coef_prior_normal(0.0, 1e9)
+                .unwrap()
+                .build()
+                .unwrap();
 
         let nll_e = explicit.nll(&fx.beta_hat).unwrap();
         let nll_b = built.nll(&fx.beta_hat).unwrap();
@@ -608,11 +624,13 @@ mod tests {
 
     #[test]
     fn test_builder_logistic_regression_matches_explicit_model_at_hat() {
-        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
         assert_eq!(fx.kind, "logistic");
         let y: Vec<u8> = fx.y.iter().map(|&v| if v >= 0.5 { 1 } else { 0 }).collect();
 
-        let explicit = LogisticRegressionModel::new(fx.x.clone(), y.clone(), fx.include_intercept).unwrap();
+        let explicit =
+            LogisticRegressionModel::new(fx.x.clone(), y.clone(), fx.include_intercept).unwrap();
         let built = ModelBuilder::logistic_regression(fx.x.clone(), y, fx.include_intercept)
             .unwrap()
             .with_coef_prior_normal(0.0, 1e9)

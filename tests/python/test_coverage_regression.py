@@ -24,7 +24,8 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 FIXTURE = "simple_workspace.json"
 N_TOYS = int(os.environ.get("NS_TOYS", "20"))
 SEED = int(os.environ.get("NS_SEED", "0"))
-SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "81"))
+# Default to a moderate scan resolution: this test is O(NS_TOYS * NS_SCAN_POINTS).
+SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "21"))
 
 
 def load_workspace() -> dict:
@@ -44,39 +45,6 @@ def pyhf_model_and_data(workspace: dict, measurement_name: str):
     )
     data = np.asarray(ws.data(model), dtype=float)
     return model, data
-
-
-def pyhf_upper_limit_observed_only(data, model, *, level=0.05, rtol=1e-4, atol=2e-12, **hypotest_kwargs) -> float:
-    """Compute only the observed upper limit (no expected band) for speed."""
-    import pyhf
-    from scipy.optimize import toms748
-
-    cache = {}
-
-    def cls(mu: float) -> float:
-        if mu not in cache:
-            cache[mu] = pyhf.infer.hypotest(
-                mu,
-                data,
-                model,
-                return_expected_set=False,
-                **hypotest_kwargs,
-            )
-        return float(cache[mu])
-
-    def f(mu: float) -> float:
-        return cls(mu) - level
-
-    bounds = model.config.suggested_bounds()[model.config.par_slice(model.config.poi_name).start]
-    lo, hi = float(bounds[0]), float(bounds[1])
-
-    # Expand to bracket.
-    while f(lo) < 0.0:
-        lo /= 2.0
-    while f(hi) > 0.0:
-        hi *= 2.0
-
-    return float(toms748(f, lo, hi, k=2, xtol=atol, rtol=rtol))
 
 
 def test_upper_limit_coverage_regression_vs_pyhf():
@@ -101,6 +69,10 @@ def test_upper_limit_coverage_regression_vs_pyhf():
 
     ns_model = nextstat.from_pyhf(json.dumps(workspace))
 
+    # Fixed scan grid (keeps runtime stable and comparable).
+    # Coverage tests are expensive: prefer moderate resolution by default.
+    scan = np.linspace(0.0, 5.0, SCAN_POINTS)
+
     covered_pyhf = 0
     covered_ns = 0
     mu_true = 1.0
@@ -109,23 +81,15 @@ def test_upper_limit_coverage_regression_vs_pyhf():
         toy = data_nominal.copy()
         toy[:n_main] = rng.poisson(expected[:n_main])
 
-        pyhf_obs = pyhf_upper_limit_observed_only(
+        pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
             toy.tolist(),
             model,
+            scan=scan,
             level=0.05,
-            rtol=1e-4,
             test_stat="qtilde",
             calctype="asymptotics",
         )
-        ns_obs = ns_infer.upper_limit(
-            ns_model,
-            alpha=0.05,
-            lo=0.0,
-            hi=5.0,
-            rtol=1e-4,
-            max_iter=80,
-            data=toy[:n_main].tolist(),
-        )
+        ns_obs, _ns_exp = ns_infer.upper_limits(ns_model, scan.tolist(), alpha=0.05, data=toy[:n_main].tolist())
 
         covered_pyhf += int(mu_true <= float(pyhf_obs))
         covered_ns += int(mu_true <= float(ns_obs))

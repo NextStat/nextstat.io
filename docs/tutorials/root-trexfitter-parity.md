@@ -61,6 +61,35 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
 
 Опция `--rootdir` нужна только если в XML относительные пути должны резолвиться не от папки с `combination.xml`.
 
+## Apex2 runners (рекомендуется)
+
+Для воспроизводимости и отчетов используем Apex2-скрипты:
+
+1) Сгенерировать `cases` файл из директории с TRExFitter/HistFactory экспортами:
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/root_cases.json \
+  --include-fixtures
+```
+
+2) Прогнать suite-отчет (агрегирует результаты нескольких моделей):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/root_cases.json \
+  --keep-going \
+  --out tmp/apex2_root_suite_report.json
+```
+
+3) Если есть расхождения, объяснить их по артефактам одного run_dir (без ROOT):
+
+```bash
+./.venv/bin/python tests/explain_root_vs_nextstat_profile_diff.py \
+  --run-dir tmp/root_parity_suite/<case>/run_<timestamp>
+```
+
 ## 2) Что считать “совпадением”
 
 Ожидаемые источники отличий ROOT vs pyhf/NextStat:
@@ -86,4 +115,3 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
 - время *одного fit* и *скана из N фиксированных fit’ов*
 
 Следующий шаг — добавить отдельный бенч “NLL eval в ROOT vs NextStat” и “fit time”, но сначала важно зафиксировать паритет математики на q(mu).
-

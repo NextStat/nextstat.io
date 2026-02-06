@@ -409,6 +409,8 @@ def main() -> int:
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
     ns_scan = ns_infer.profile_scan(ns_model, mu_values)
     t_ns = time.perf_counter() - t3
+    ns_out = run_dir / "nextstat_profile_scan.json"
+    ns_out.write_text(json.dumps(ns_scan, indent=2))
 
     # Normalize NextStat scan into comparable format.
     ns_points_by_mu = {float(p["mu"]): p for p in ns_scan["points"]}
@@ -420,6 +422,10 @@ def main() -> int:
         diffs.append((mu, q_ns - q_root))
 
     max_abs_dq = max(abs(d) for _, d in diffs) if diffs else 0.0
+    max_abs_dq_mu = None
+    if diffs:
+        max_abs_dq_mu = max(diffs, key=lambda t: abs(t[1]))[0]
+    top_diffs = sorted(diffs, key=lambda t: abs(t[1]), reverse=True)[:10]
     mu_hat_root = float(root_result["mu_hat"])
     mu_hat_ns = float(ns_scan["mu_hat"])
     d_mu_hat = mu_hat_ns - mu_hat_root
@@ -436,6 +442,10 @@ def main() -> int:
             "root_profile_scan_wall": t_root,
             "nextstat_profile_scan": t_ns,
         },
+        "artifacts": {
+            "root_profile_scan_json": str(root_out),
+            "nextstat_profile_scan_json": str(ns_out),
+        },
         "root": {
             "mu_hat": mu_hat_root,
             "nll_hat": float(root_result["nll_hat"]),
@@ -447,6 +457,8 @@ def main() -> int:
         "diff": {
             "mu_hat": d_mu_hat,
             "max_abs_dq_mu": max_abs_dq,
+            "mu_at_max_abs_dq_mu": max_abs_dq_mu,
+            "top_dq_mu_by_abs": [{"mu": float(mu), "delta_q_mu": float(dq)} for mu, dq in top_diffs],
         },
     }
 
