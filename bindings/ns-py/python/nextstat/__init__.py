@@ -67,6 +67,7 @@ from . import survival as survival  # noqa: E402
 from . import ordinal as ordinal  # noqa: E402
 from . import causal as causal  # noqa: E402
 from . import missing as missing  # noqa: E402
+from . import formula as formula  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -94,6 +95,7 @@ __all__ = [
     "ordinal",
     "causal",
     "missing",
+    "formula",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",

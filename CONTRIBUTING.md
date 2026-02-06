@@ -137,6 +137,7 @@ After approval, a maintainer will merge your PR into `main`.
 - [ ] If the baseline is stale (expected perf change), re-record: `make apex2-baseline-record`
 - [ ] Review `tmp/baseline_compare_report.json` for any slowdowns/flags
 - [ ] Follow the canonical runbook: `docs/tutorials/release-gates.md`
+- [ ] Optional (cluster): run ROOT/TRExFitter parity and archive artifacts (see `docs/tutorials/root-trexfitter-parity.md`)
 
 ## DCO Sign-off
 

@@ -137,6 +137,43 @@ def _case_gaussian_mean(nextstat_mod, *, seed: int, n_warmup: int, n_samples: in
     }
 
 
+def _case_gaussian_posterior_with_prior(
+    nextstat_mod, *, seed: int, n_warmup: int, n_samples: int
+) -> Dict[str, Any]:
+    """Posterior sampling smoke: ensure priors are actually plumbed into NUTS.
+
+    We use a strong Normal prior centered far from the data MLE; the posterior mean
+    should shift toward the prior (not necessarily all the way, but materially).
+    """
+    model = nextstat_mod.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
+    post = nextstat_mod.Posterior(model)
+    post.set_prior_normal("mu", center=10.0, width=0.1)
+
+    r = nextstat_mod.sample(
+        post,
+        n_chains=2,
+        n_warmup=n_warmup,
+        n_samples=n_samples,
+        seed=seed,
+        init_jitter_rel=0.10,
+    )
+    posterior = r["posterior"]
+    mu_draws = _flatten_chains(posterior, "mu")
+    mu_mean = _mean(mu_draws)
+    return {
+        "name": "gaussian_posterior_prior",
+        "model": "Posterior(GaussianMeanModel + Normal prior)",
+        "raw_quality": (r.get("diagnostics") or {}).get("quality"),
+        "summary": _diag_summary(r["diagnostics"]),
+        "checks": {
+            "posterior_mean_mu": mu_mean,
+            # Sanity: should move meaningfully toward the prior center=10.0.
+            # Data mean is 2.5; with width=0.1 this should typically be >> 2.5.
+            "posterior_mean_mu_gt_5": bool(mu_mean > 5.0),
+        },
+    }
+
+
 def _case_linear_regression(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
     x = [[1.0] for _ in range(30)]
     y = [1.0, 1.3, 0.9, 1.1, 1.2] * 6
@@ -273,6 +310,12 @@ def main() -> int:
     for c in requested:
         if c == "gaussian":
             cases.append(_case_gaussian_mean(nextstat, seed=args.seed + 1, n_warmup=args.warmup, n_samples=args.samples))
+        elif c == "posterior":
+            cases.append(
+                _case_gaussian_posterior_with_prior(
+                    nextstat, seed=args.seed + 4, n_warmup=args.warmup, n_samples=args.samples
+                )
+            )
         elif c == "linear":
             cases.append(_case_linear_regression(nextstat, seed=args.seed + 2, n_warmup=args.warmup, n_samples=args.samples))
         elif c == "histfactory":
