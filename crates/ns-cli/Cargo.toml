@@ -29,5 +29,6 @@ rayon.workspace = true
 nalgebra.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+statrs.workspace = true
 
 [dev-dependencies]

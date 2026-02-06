@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use nalgebra::{DMatrix, DVector};
 use serde::Deserialize;
+use statrs::distribution::ContinuousCDF;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -327,6 +328,55 @@ enum TimeseriesCommands {
         output: Option<PathBuf>,
     },
 
+    /// Plot-friendly artifact for smoothed states/observations (+ optional forecast bands)
+    ///
+    /// Runs EM, then Kalman smooth, and computes marginal normal bands using `--level`.
+    KalmanViz {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Max EM iterations
+        #[arg(long, default_value = "50")]
+        max_iter: usize,
+
+        /// Relative tolerance on log-likelihood improvement
+        #[arg(long, default_value = "1e-6")]
+        tol: f64,
+
+        /// Update Q
+        #[arg(long, default_value_t = true)]
+        estimate_q: bool,
+
+        /// Update R
+        #[arg(long, default_value_t = true)]
+        estimate_r: bool,
+
+        /// Update F (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_f: bool,
+
+        /// Update H (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_h: bool,
+
+        /// Minimum diagonal value applied to Q/R
+        #[arg(long, default_value = "1e-12")]
+        min_diag: f64,
+
+        /// Two-sided central credible level for normal bands (e.g. 0.95 -> 95%).
+        #[arg(long, default_value = "0.95")]
+        level: f64,
+
+        /// Number of forecast steps (>0). If 0, omit forecast.
+        #[arg(long, default_value = "0")]
+        forecast_steps: usize,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// Forecast K steps ahead after filtering the provided `ys`
     KalmanForecast {
         /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
@@ -477,6 +527,31 @@ fn main() -> Result<()> {
                 min_diag,
                 forecast_steps,
                 no_smooth,
+                output.as_ref(),
+            ),
+            TimeseriesCommands::KalmanViz {
+                input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                estimate_f,
+                estimate_h,
+                min_diag,
+                level,
+                forecast_steps,
+                output,
+            } => cmd_ts_kalman_viz(
+                &input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                estimate_f,
+                estimate_h,
+                min_diag,
+                level,
+                forecast_steps,
                 output.as_ref(),
             ),
             TimeseriesCommands::KalmanForecast { input, steps, alpha, output } => {
@@ -812,6 +887,96 @@ fn load_kalman_input(
     Ok((model, ys))
 }
 
+fn load_kalman_input_with_raw(
+    path: &PathBuf,
+) -> Result<(
+    ns_inference::timeseries::kalman::KalmanModel,
+    Vec<DVector<f64>>,
+    Vec<Vec<Option<f64>>>,
+)> {
+    let bytes = std::fs::read(path)?;
+    let input: KalmanInputJson = serde_json::from_slice(&bytes)?;
+
+    let mut model_count = 0usize;
+    model_count += input.model.is_some() as usize;
+    model_count += input.local_level.is_some() as usize;
+    model_count += input.local_linear_trend.is_some() as usize;
+    model_count += input.ar1.is_some() as usize;
+    model_count += input.local_level_seasonal.is_some() as usize;
+    model_count += input.local_linear_trend_seasonal.is_some() as usize;
+    if model_count != 1 {
+        anyhow::bail!(
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, local_level_seasonal, local_linear_trend_seasonal"
+        );
+    }
+
+    let model = if let Some(mj) = input.model {
+        ns_inference::timeseries::kalman::KalmanModel::new(
+            dmatrix_from_nested("F", mj.f)?,
+            dmatrix_from_nested("Q", mj.q)?,
+            dmatrix_from_nested("H", mj.h)?,
+            dmatrix_from_nested("R", mj.r)?,
+            dvector_from_vec("m0", mj.m0)?,
+            dmatrix_from_nested("P0", mj.p0)?,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?
+    } else if let Some(ll) = input.local_level {
+        ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
+            .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?
+    } else if let Some(lt) = input.local_linear_trend {
+        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend(
+            lt.q_level,
+            lt.q_slope,
+            lt.r,
+            lt.level0,
+            lt.slope0,
+            lt.p0_level,
+            lt.p0_slope,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend model: {e}"))?
+    } else if let Some(ar) = input.ar1 {
+        ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
+            .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?
+    } else if let Some(seas) = input.local_level_seasonal {
+        ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
+            seas.period,
+            seas.q_level,
+            seas.q_season,
+            seas.r,
+            seas.level0,
+            seas.p0_level,
+            seas.p0_season,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_level_seasonal model: {e}"))?
+    } else if let Some(seas) = input.local_linear_trend_seasonal {
+        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_seasonal(
+            seas.period,
+            seas.q_level,
+            seas.q_slope,
+            seas.q_season,
+            seas.r,
+            seas.level0,
+            seas.slope0,
+            seas.p0_level,
+            seas.p0_slope,
+            seas.p0_season,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?
+    } else {
+        anyhow::bail!("unreachable: model spec missing");
+    };
+
+    let ys_raw = input.ys.clone();
+    let ys: Vec<DVector<f64>> = input
+        .ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok((model, ys, ys_raw))
+}
+
 fn cmd_ts_kalman_filter(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
@@ -959,6 +1124,234 @@ fn cmd_ts_kalman_fit(
             "p0": dmatrix_to_nested(&fitted.p0),
         },
         "smooth": smooth_json,
+        "forecast": forecast_json,
+    });
+
+    write_json(output, output_json)
+}
+
+fn z_for_level(level: f64) -> Result<(f64, f64)> {
+    if !level.is_finite() || !(0.0 < level && level < 1.0) {
+        anyhow::bail!("level must be finite and in (0, 1)");
+    }
+    let alpha = 1.0 - level;
+    let normal = statrs::distribution::Normal::new(0.0, 1.0).unwrap();
+    let p = 1.0 - 0.5 * alpha;
+    let z = normal.inverse_cdf(p);
+    if !z.is_finite() || z <= 0.0 {
+        anyhow::bail!("failed to compute z-score for level={level}");
+    }
+    Ok((alpha, z))
+}
+
+fn bands_from_means_covs(means: &[DVector<f64>], covs: &[DMatrix<f64>], z: f64) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+    if means.is_empty() {
+        anyhow::bail!("means must be non-empty");
+    }
+    if means.len() != covs.len() {
+        anyhow::bail!("means/covs length mismatch");
+    }
+    let t_max = means.len();
+    let dim = means[0].len();
+    if dim == 0 {
+        anyhow::bail!("means must have dim > 0");
+    }
+
+    let mut mean_out = Vec::with_capacity(t_max);
+    let mut lo_out = Vec::with_capacity(t_max);
+    let mut hi_out = Vec::with_capacity(t_max);
+
+    for t in 0..t_max {
+        let m = &means[t];
+        let p = &covs[t];
+        if m.len() != dim {
+            anyhow::bail!("means must be rectangular");
+        }
+        if p.nrows() != dim || p.ncols() != dim {
+            anyhow::bail!("covs must be T x dim x dim");
+        }
+        let mut lo = Vec::with_capacity(dim);
+        let mut hi = Vec::with_capacity(dim);
+        for j in 0..dim {
+            let mu = m[j];
+            let mut var = p[(j, j)];
+            if !mu.is_finite() || !var.is_finite() {
+                anyhow::bail!("non-finite mean/variance in bands");
+            }
+            if var < 0.0 {
+                // Numerical noise guard.
+                if var > -1e-12 {
+                    var = 0.0;
+                } else {
+                    anyhow::bail!("negative marginal variance in bands");
+                }
+            }
+            let sd = var.sqrt();
+            if !sd.is_finite() {
+                anyhow::bail!("non-finite sd in bands");
+            }
+            lo.push(mu - z * sd);
+            hi.push(mu + z * sd);
+        }
+        mean_out.push(dvector_to_vec(m));
+        lo_out.push(lo);
+        hi_out.push(hi);
+    }
+
+    Ok((mean_out, lo_out, hi_out))
+}
+
+fn obs_bands_from_state(
+    model: &ns_inference::timeseries::kalman::KalmanModel,
+    means: &[DVector<f64>],
+    covs: &[DMatrix<f64>],
+    z: f64,
+) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+    if means.is_empty() {
+        anyhow::bail!("means must be non-empty");
+    }
+    if means.len() != covs.len() {
+        anyhow::bail!("means/covs length mismatch");
+    }
+
+    let t_max = means.len();
+    let n_state = model.n_state();
+    let n_obs = model.n_obs();
+    if n_state == 0 || n_obs == 0 {
+        anyhow::bail!("model dimensions must be > 0");
+    }
+
+    let mut mean_out = Vec::with_capacity(t_max);
+    let mut lo_out = Vec::with_capacity(t_max);
+    let mut hi_out = Vec::with_capacity(t_max);
+
+    for t in 0..t_max {
+        let m = &means[t];
+        let p = &covs[t];
+        if m.len() != n_state {
+            anyhow::bail!("state mean has wrong dim");
+        }
+        if p.nrows() != n_state || p.ncols() != n_state {
+            anyhow::bail!("state cov has wrong shape");
+        }
+
+        let y_mean = &model.h * m;
+        let s = &model.h * p * model.h.transpose() + &model.r;
+        if y_mean.len() != n_obs || s.nrows() != n_obs || s.ncols() != n_obs {
+            anyhow::bail!("computed obs mean/cov has wrong shape");
+        }
+
+        let mut lo = Vec::with_capacity(n_obs);
+        let mut hi = Vec::with_capacity(n_obs);
+        for i in 0..n_obs {
+            let mu = y_mean[i];
+            let mut var = s[(i, i)];
+            if !mu.is_finite() || !var.is_finite() {
+                anyhow::bail!("non-finite obs mean/variance in bands");
+            }
+            if var < 0.0 {
+                if var > -1e-12 {
+                    var = 0.0;
+                } else {
+                    anyhow::bail!("negative obs marginal variance in bands");
+                }
+            }
+            let sd = var.sqrt();
+            if !sd.is_finite() {
+                anyhow::bail!("non-finite obs sd in bands");
+            }
+            lo.push(mu - z * sd);
+            hi.push(mu + z * sd);
+        }
+
+        mean_out.push(dvector_to_vec(&y_mean));
+        lo_out.push(lo);
+        hi_out.push(hi);
+    }
+
+    Ok((mean_out, lo_out, hi_out))
+}
+
+fn cmd_ts_kalman_viz(
+    input: &PathBuf,
+    max_iter: usize,
+    tol: f64,
+    estimate_q: bool,
+    estimate_r: bool,
+    estimate_f: bool,
+    estimate_h: bool,
+    min_diag: f64,
+    level: f64,
+    forecast_steps: usize,
+    output: Option<&PathBuf>,
+) -> Result<()> {
+    let (model0, ys, ys_raw) = load_kalman_input_with_raw(input)?;
+    let t_max = ys.len();
+    if t_max == 0 {
+        anyhow::bail!("ys must be non-empty");
+    }
+
+    let (alpha, z) = z_for_level(level)?;
+
+    let cfg = ns_inference::timeseries::em::KalmanEmConfig {
+        max_iter,
+        tol,
+        estimate_q,
+        estimate_r,
+        estimate_f,
+        estimate_h,
+        min_diag,
+    };
+    let em = ns_inference::timeseries::em::kalman_em(&model0, &ys, cfg)
+        .map_err(|e| anyhow::anyhow!("kalman_em failed: {e}"))?;
+    let fitted = em.model;
+
+    let fr = ns_inference::timeseries::kalman::kalman_filter(&fitted, &ys)
+        .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+    let sr = ns_inference::timeseries::kalman::rts_smoother(&fitted, &fr)
+        .map_err(|e| anyhow::anyhow!("rts_smoother failed: {e}"))?;
+
+    let (state_mean, state_lo, state_hi) =
+        bands_from_means_covs(&sr.smoothed_means, &sr.smoothed_covs, z)?;
+    let (obs_mean, obs_lo, obs_hi) =
+        obs_bands_from_state(&fitted, &sr.smoothed_means, &sr.smoothed_covs, z)?;
+
+    let forecast_json = if forecast_steps == 0 {
+        serde_json::Value::Null
+    } else {
+        let fc = ns_inference::timeseries::forecast::kalman_forecast(&fitted, &fr, forecast_steps)
+            .map_err(|e| anyhow::anyhow!("kalman_forecast failed: {e}"))?;
+        let (fc_state_mean, fc_state_lo, fc_state_hi) =
+            bands_from_means_covs(&fc.state_means, &fc.state_covs, z)?;
+        let (fc_obs_mean, fc_obs_lo, fc_obs_hi) =
+            bands_from_means_covs(&fc.obs_means, &fc.obs_covs, z)?;
+
+        serde_json::json!({
+            "t": (t_max..t_max + forecast_steps).collect::<Vec<_>>(),
+            "state_mean": fc_state_mean,
+            "state_lo": fc_state_lo,
+            "state_hi": fc_state_hi,
+            "obs_mean": fc_obs_mean,
+            "obs_lo": fc_obs_lo,
+            "obs_hi": fc_obs_hi,
+        })
+    };
+
+    let output_json = serde_json::json!({
+        "level": level,
+        "alpha": alpha,
+        "z": z,
+        "t_obs": (0..t_max).collect::<Vec<_>>(),
+        "ys": ys_raw,
+        "log_likelihood": fr.log_likelihood,
+        "smooth": {
+            "state_mean": state_mean,
+            "state_lo": state_lo,
+            "state_hi": state_hi,
+            "obs_mean": obs_mean,
+            "obs_lo": obs_lo,
+            "obs_hi": obs_hi,
+        },
         "forecast": forecast_json,
     });
 

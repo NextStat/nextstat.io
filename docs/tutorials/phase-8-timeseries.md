@@ -43,13 +43,14 @@ Create an input JSON like:
 Then run:
 
 ```sh
-	nextstat timeseries kalman-filter --input kalman_1d.json
-	nextstat timeseries kalman-smooth --input kalman_1d.json
-	nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
-	nextstat timeseries kalman-fit --input kalman_1d.json --max-iter 50 --tol 1e-6 --forecast-steps 10
-	nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10 --alpha 0.05
-	nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
-	```
+nextstat timeseries kalman-filter --input kalman_1d.json
+nextstat timeseries kalman-smooth --input kalman_1d.json
+nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
+nextstat timeseries kalman-fit --input kalman_1d.json --max-iter 50 --tol 1e-6 --forecast-steps 10
+nextstat timeseries kalman-viz --input kalman_1d.json --max-iter 50 --tol 1e-6 --level 0.95 --forecast-steps 10
+nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10 --alpha 0.05
+nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
+```
 
 ## EM options
 

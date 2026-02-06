@@ -347,6 +347,68 @@ fn timeseries_kalman_fit_contract() {
 }
 
 #[test]
+fn timeseries_kalman_viz_contract() {
+    let input = fixture_path("kalman_1d.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&[
+        "timeseries",
+        "kalman-viz",
+        "--input",
+        input.to_string_lossy().as_ref(),
+        "--max-iter",
+        "5",
+        "--tol",
+        "1e-12",
+        "--min-diag",
+        "1e-9",
+        "--level",
+        "0.9",
+        "--forecast-steps",
+        "2",
+    ]);
+
+    assert!(
+        out.status.success(),
+        "timeseries kalman-viz should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    assert!(v.get("level").and_then(|x| x.as_f64()).unwrap() > 0.0);
+    assert!(v.get("z").and_then(|x| x.as_f64()).unwrap().is_finite());
+
+    let t_obs = v.get("t_obs").and_then(|x| x.as_array()).expect("t_obs should be array");
+    assert_eq!(t_obs.len(), 4);
+
+    let ys = v.get("ys").and_then(|x| x.as_array()).expect("ys should be array");
+    assert_eq!(ys.len(), 4);
+
+    let smooth = v.get("smooth").expect("smooth should exist");
+    let state_mean = smooth
+        .get("state_mean")
+        .and_then(|x| x.as_array())
+        .expect("smooth.state_mean should be array");
+    assert_eq!(state_mean.len(), 4);
+    let obs_mean = smooth
+        .get("obs_mean")
+        .and_then(|x| x.as_array())
+        .expect("smooth.obs_mean should be array");
+    assert_eq!(obs_mean.len(), 4);
+
+    let forecast = v.get("forecast").expect("forecast should exist");
+    assert_eq!(
+        forecast
+            .get("t")
+            .and_then(|x| x.as_array())
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
 fn timeseries_kalman_forecast_contract() {
     let input = fixture_path("kalman_1d.json");
     assert!(input.exists(), "missing fixture: {}", input.display());

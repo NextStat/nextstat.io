@@ -46,8 +46,7 @@ def test_ppc_glm_from_sample_linear_random_slope_smoke():
     y = [0.2, 1.1, 2.0, 3.2, 0.6, 1.4]
     group_idx = [0, 0, 0, 1, 1, 1]
 
-    spec = nextstat.data.GlmSpec(
-        kind="linear",
+    spec = nextstat.data.GlmSpec.linear_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -80,8 +79,7 @@ def test_ppc_glm_from_sample_linear_correlated_intercept_slope_smoke():
     y = [0.2, 1.1, 2.0, 3.2, 0.6, 1.4]
     group_idx = [0, 0, 0, 1, 1, 1]
 
-    spec = nextstat.data.GlmSpec(
-        kind="linear",
+    spec = nextstat.data.GlmSpec.linear_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -141,8 +139,7 @@ def test_ppc_replicate_glm_logistic_random_slope_deterministic():
     y = [0, 0, 0, 0]
     group_idx = [0, 1, 0, 1]
 
-    spec = nextstat.data.GlmSpec(
-        kind="logistic",
+    spec = nextstat.data.GlmSpec.logistic_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -174,8 +171,7 @@ def test_ppc_replicate_glm_logistic_correlated_random_intercept_slope_determinis
     y = [0, 0, 0, 0]
     group_idx = [0, 1, 0, 1]
 
-    spec = nextstat.data.GlmSpec(
-        kind="logistic",
+    spec = nextstat.data.GlmSpec.logistic_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -206,8 +202,7 @@ def test_ppc_replicate_glm_linear_random_slope_centered_matches_manual_eta():
     x = [[1.0], [1.0], [2.0], [2.0]]
     y = [0.0, 0.0, 0.0, 0.0]
     group_idx = [0, 1, 0, 1]
-    spec = nextstat.data.GlmSpec(
-        kind="linear",
+    spec = nextstat.data.GlmSpec.linear_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -245,8 +240,7 @@ def test_ppc_replicate_glm_linear_correlated_intercept_slope_matches_manual_eta(
     x = [[1.0], [1.0], [2.0], [2.0]]
     y = [0.0, 0.0, 0.0, 0.0]
     group_idx = [0, 1, 0, 1]
-    spec = nextstat.data.GlmSpec(
-        kind="linear",
+    spec = nextstat.data.GlmSpec.linear_regression(
         x=x,
         y=y,
         include_intercept=False,
@@ -290,14 +284,13 @@ def test_ppc_replicate_glm_poisson_smoke():
     y = [0, 0, 0, 0]
     group_idx = [0, 0, 1, 1]
     offset = [0.0, 0.0, 0.0, 0.0]
-    spec = nextstat.data.GlmSpec(
-        kind="poisson",
+    spec = nextstat.data.GlmSpec.poisson_regression(
         x=x,
         y=y,
         include_intercept=True,
+        offset=offset,
         group_idx=group_idx,
         n_groups=2,
-        offset=offset,
     )
 
     draw = {

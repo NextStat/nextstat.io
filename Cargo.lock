@@ -821,6 +821,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "statrs",
  "tracing",
  "tracing-subscriber",
 ]
