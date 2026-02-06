@@ -158,6 +158,8 @@ def from_formula(
     categorical: Optional[Sequence[str]] = None,
     l2: Optional[float] = None,
     penalize_intercept: bool = False,
+    fallback_l2: Optional[float] = None,
+    fallback_on_separation: bool = False,
 ) -> Tuple[LogisticFit, List[str]]:
     """Fit logistic regression from a minimal formula and tabular data.
 
@@ -179,7 +181,15 @@ def from_formula(
         feature_names = list(names_full)
         include_intercept = False
 
-    r = fit(x, y, include_intercept=include_intercept, l2=l2, penalize_intercept=penalize_intercept)
+    r = fit(
+        x,
+        y,
+        include_intercept=include_intercept,
+        l2=l2,
+        penalize_intercept=penalize_intercept,
+        fallback_l2=fallback_l2,
+        fallback_on_separation=fallback_on_separation,
+    )
     colnames = (["Intercept"] if include_intercept else []) + feature_names
     return r, colnames
 

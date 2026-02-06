@@ -68,14 +68,15 @@ pub fn read_ttree(payload: &[u8]) -> Result<Tree> {
     let _estimate = r.read_i64()?;           // fEstimate
 
     // Cluster range arrays (v19+)
-    if tree_ver >= 19 && n_cluster_range > 0 {
+    // ROOT always writes the UChar_t array size header, even when n_cluster_range == 0
+    if tree_ver >= 19 {
         // fClusterRangeEnd: array of i64
-        let _n = r.read_u8()?; // TArray header byte
+        let _n = r.read_u8()?;
         for _ in 0..n_cluster_range {
             let _val = r.read_i64()?;
         }
         // fClusterSize: array of i64
-        let _n = r.read_u8()?; // TArray header byte
+        let _n = r.read_u8()?;
         for _ in 0..n_cluster_range {
             let _val = r.read_i64()?;
         }
@@ -98,9 +99,22 @@ pub fn read_ttree(payload: &[u8]) -> Result<Tree> {
 
 // ── TObjArray parsing ──────────────────────────────────────────
 
+/// ROOT reference system constants.
+const K_BYTE_COUNT_MASK: u32 = 0x4000_0000;
+const K_NEW_CLASS_TAG: u32 = 0xFFFF_FFFF;
+const K_CLASS_MASK: u32 = 0x8000_0000;
+
 /// State for tracking class tags in ROOT's reference system.
+///
+/// ROOT uses a byte-offset based reference system for class names in TObjArray:
+/// - `kNewClassTag (0xFFFFFFFF)` introduces a new class name (null-terminated C string)
+/// - `kClassMask (0x80000000) | offset` references a previously registered class
+/// - `kByteCountMask (0x40000000)` wraps objects with a byte count
+///
+/// Classes are registered by their byte offset in the stream for later reference.
 struct ClassRefTracker {
-    classes: Vec<String>,
+    /// Maps byte offset → class name for the ROOT reference system.
+    classes: Vec<(usize, String)>,
 }
 
 impl ClassRefTracker {
@@ -108,47 +122,68 @@ impl ClassRefTracker {
         Self { classes: Vec::new() }
     }
 
-    /// Read a class tag and return the class name.
-    fn read_class_tag(&mut self, r: &mut RBuffer) -> Result<Option<String>> {
+    /// Look up a class by its byte offset tag.
+    fn lookup(&self, offset: usize) -> Option<&str> {
+        self.classes.iter()
+            .find(|(off, _)| *off == offset)
+            .map(|(_, name)| name.as_str())
+    }
+
+    /// Read a single element from a TObjArray.
+    /// Returns (class_name, object_end_pos) — object_end_pos is the absolute
+    /// position where this element's data ends (from byte-count wrapper).
+    fn read_element(&mut self, r: &mut RBuffer) -> Result<Option<(String, usize)>> {
         let tag = r.read_u32()?;
 
         if tag == 0 {
-            // Null pointer
             return Ok(None);
         }
 
-        // New class tag: bit 30 set, top 2 bits = 0b10
-        if tag & 0xC000_0000 == 0x8000_0000 {
-            // New class — read class name
-            let class_name = r.read_string()?;
-            self.classes.push(class_name.clone());
-            return Ok(Some(class_name));
-        }
+        // Objects in TObjArray are wrapped with kByteCountMask
+        if tag & K_BYTE_COUNT_MASK != 0 {
+            let byte_count = (tag & !K_BYTE_COUNT_MASK) as usize;
+            let obj_start = r.pos() - 4; // start of this u32
+            let obj_end = obj_start + 4 + byte_count;
 
-        // Existing class reference (bits 31:30 = 0b11)
-        if tag & 0xC000_0000 == 0xC000_0000 {
-            let idx = (tag & !0xC000_0000) as usize;
-            // ROOT indexes class tags by byte offset, but we just index
-            // sequentially. Fall back to lookup.
-            if let Some(name) = self.classes.last() {
-                return Ok(Some(name.clone()));
-            }
-            return Err(RootError::Deserialization(format!(
-                "class ref tag {:#x} not found (idx={})", tag, idx
-            )));
-        }
+            // Now read the class tag
+            let class_tag_pos = r.pos(); // position where class tag is stored
+            let class_tag = r.read_u32()?;
 
-        // Object tag — has byte count, then class tag
-        // High bit set means object with byte count
-        if tag & 0x4000_0000 != 0 {
-            // This is a byte-count — the object starts here
-            let _byte_count = tag & !0x4000_0000;
-            // Next read the actual class tag
-            return self.read_class_tag(r);
+            let class_name = if class_tag == K_NEW_CLASS_TAG {
+                // New class: read null-terminated class name
+                let name_start = r.pos();
+                let name = r.read_cstring()?;
+                // Register this class with the offset of the class tag
+                // ROOT uses (class_tag_pos | kClassMask) for back-references
+                self.classes.push((class_tag_pos, name.clone()));
+                // Also register at name_start - some ROOT versions reference differently
+                let _ = name_start;
+                name
+            } else if class_tag & K_CLASS_MASK != 0 {
+                // Reference to existing class by offset
+                let ref_offset = (class_tag & !K_CLASS_MASK) as usize;
+                match self.lookup(ref_offset) {
+                    Some(name) => name.to_string(),
+                    None => {
+                        return Err(RootError::Deserialization(format!(
+                            "class ref offset {} not found (tag={:#010x}, known: {:?})",
+                            ref_offset, class_tag, self.classes
+                        )));
+                    }
+                }
+            } else {
+                return Err(RootError::Deserialization(format!(
+                    "unexpected class tag {:#010x} at pos {}",
+                    class_tag, class_tag_pos
+                )));
+            };
+
+            return Ok(Some((class_name, obj_end)));
         }
 
         Err(RootError::Deserialization(format!(
-            "unexpected tag {:#010x} in TObjArray", tag
+            "unexpected tag {:#010x} in TObjArray at pos {}",
+            tag, r.pos() - 4
         )))
     }
 }
@@ -173,28 +208,27 @@ fn read_tobjarray_branches(r: &mut RBuffer) -> Result<Vec<BranchInfo>> {
     let mut tracker = ClassRefTracker::new();
 
     for _ in 0..count {
-        let class = tracker.read_class_tag(r)?;
+        let element = tracker.read_element(r)?;
 
-        match class.as_deref() {
+        match element {
             None => {
                 // Null entry — skip
             }
-            Some("TBranch") => {
-                let branch = read_tbranch(r)?;
-                branches.push(branch);
-            }
-            Some(other) => {
-                // Unknown branch type — try to skip via byte count
-                // The class tag already consumed a versioned header for
-                // the object, so we need to skip it.
-                log::debug!("skipping unknown branch class: {}", other);
-                // Try to read as TBranch anyway (many subclasses share layout)
+            Some((ref class_name, obj_end)) if class_name == "TBranch" => {
                 match read_tbranch(r) {
                     Ok(branch) => branches.push(branch),
                     Err(_) => {
-                        // If parsing fails, just skip to array end
-                        r.set_pos(arr_end);
-                        return Ok(branches);
+                        r.set_pos(obj_end);
+                    }
+                }
+            }
+            Some((class_name, obj_end)) => {
+                // Unknown branch type — try to read as TBranch
+                log::debug!("skipping unknown branch class: {}", class_name);
+                match read_tbranch(r) {
+                    Ok(branch) => branches.push(branch),
+                    Err(_) => {
+                        r.set_pos(obj_end);
                     }
                 }
             }
@@ -236,10 +270,9 @@ fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
     let write_basket = r.read_i32()?;    // fWriteBasket (= number of valid baskets)
     let _entry_number = r.read_i64()?;   // fEntryNumber
 
-    // IOBits (v13+)
+    // IOBits (v13+): TIOFeatures streamed as a versioned object
     if branch_ver >= 13 {
-        // fIOBits — just a u32 in practice
-        let _io_bits = r.read_u32()?;
+        skip_versioned(r)?;
     }
 
     let _offset = r.read_i32()?;        // fOffset
@@ -338,31 +371,20 @@ fn read_tobjarray_leaves(r: &mut RBuffer) -> Result<Option<LeafType>> {
     let mut tracker = ClassRefTracker::new();
 
     for _ in 0..count {
-        let class = tracker.read_class_tag(r)?;
+        let element = tracker.read_element(r)?;
 
-        match class.as_deref() {
+        match element {
             None => {}
-            Some(cls) => {
-                let lt = leaf_type_from_class(cls);
+            Some((class_name, obj_end)) => {
+                let lt = leaf_type_from_class(&class_name);
 
-                // Read TLeaf to skip it properly
-                let (_leaf_ver, leaf_end) = r.read_version()?;
-                if let Some(end) = leaf_end {
-                    // We only need the class name for the type
-                    r.set_pos(end);
-                } else {
-                    // No byte count — can't skip reliably
-                    // Just set leaf type and break to array end
-                    if leaf_type.is_none() {
-                        leaf_type = lt;
-                    }
-                    r.set_pos(arr_end);
-                    return Ok(leaf_type);
-                }
-
+                // The element byte-count wrapper already includes the versioned
+                // TLeaf data. The TLeaf versioned header follows next in the stream.
+                // Skip to obj_end to move past this leaf.
                 if leaf_type.is_none() {
                     leaf_type = lt;
                 }
+                r.set_pos(obj_end);
             }
         }
     }

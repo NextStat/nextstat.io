@@ -16,6 +16,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import platform
@@ -54,6 +55,12 @@ def _run_json(cmd: list[str], *, cwd: Path, env: Dict[str, str]) -> Tuple[int, s
 
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text())
+
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
 
 
 def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
@@ -507,30 +514,33 @@ def main() -> int:
     # ------------------------------------------------------------------
     # pyhf runner (always runnable if pyhf installed)
     # ------------------------------------------------------------------
-    pyhf_runner = repo / "tests" / "apex2_pyhf_validation_report.py"
-    pyhf_cmd = [
-        sys.executable,
-        str(pyhf_runner),
-        "--out",
-        str(args.pyhf_out),
-        "--sizes",
-        args.pyhf_sizes,
-        "--n-random",
-        str(args.pyhf_n_random),
-        "--seed",
-        str(args.pyhf_seed),
-    ]
-    if args.pyhf_fit:
-        pyhf_cmd.append("--fit")
+    if not _module_available("pyhf"):
+        report["pyhf"] = {"status": "skipped", "reason": "missing_dependency:pyhf"}
+    else:
+        pyhf_runner = repo / "tests" / "apex2_pyhf_validation_report.py"
+        pyhf_cmd = [
+            sys.executable,
+            str(pyhf_runner),
+            "--out",
+            str(args.pyhf_out),
+            "--sizes",
+            args.pyhf_sizes,
+            "--n-random",
+            str(args.pyhf_n_random),
+            "--seed",
+            str(args.pyhf_seed),
+        ]
+        if args.pyhf_fit:
+            pyhf_cmd.append("--fit")
 
-    rc_pyhf, out_pyhf = _run_json(pyhf_cmd, cwd=cwd, env=env)
-    report["pyhf"] = {
-        "status": "ok" if rc_pyhf == 0 else "fail",
-        "returncode": int(rc_pyhf),
-        "stdout_tail": out_pyhf[-4000:],
-        "report_path": str(args.pyhf_out),
-        "report": _read_json(args.pyhf_out) if args.pyhf_out.exists() else None,
-    }
+        rc_pyhf, out_pyhf = _run_json(pyhf_cmd, cwd=cwd, env=env)
+        report["pyhf"] = {
+            "status": "ok" if rc_pyhf == 0 else "fail",
+            "returncode": int(rc_pyhf),
+            "stdout_tail": out_pyhf[-4000:],
+            "report_path": str(args.pyhf_out),
+            "report": _read_json(args.pyhf_out) if args.pyhf_out.exists() else None,
+        }
 
     # ------------------------------------------------------------------
     # Regression golden fixtures (GLM surface)
@@ -675,9 +685,17 @@ def main() -> int:
             shard_paths = []
             for i in range(int(shard_count)):
                 shard_out = args.bias_pulls_out.with_name(
-                    f\"{args.bias_pulls_out.stem}_shard{i}{args.bias_pulls_out.suffix}\"
+                    f"{args.bias_pulls_out.stem}_shard{i}{args.bias_pulls_out.suffix}"
                 )
-                cmd_i = [*bias_cmd, \"--out\", str(shard_out), \"--shard-count\", str(int(shard_count)), \"--shard-index\", str(int(i))]
+                cmd_i = [
+                    *bias_cmd,
+                    "--out",
+                    str(shard_out),
+                    "--shard-count",
+                    str(int(shard_count)),
+                    "--shard-index",
+                    str(int(i)),
+                ]
                 rc_i, out_i = _run_json(cmd_i, cwd=cwd, env=env)
                 out_bias = out_i
                 if rc_i not in (0, 2) or not shard_out.exists():
@@ -685,10 +703,16 @@ def main() -> int:
                     break
                 shard_paths.append(shard_out)
             else:
-                cmd_merge = [sys.executable, str(bias_merger), \"--out\", str(args.bias_pulls_out), *[str(p) for p in shard_paths]]
+                cmd_merge = [
+                    sys.executable,
+                    str(bias_merger),
+                    "--out",
+                    str(args.bias_pulls_out),
+                    *[str(p) for p in shard_paths],
+                ]
                 rc_bias, out_bias = _run_json(cmd_merge, cwd=cwd, env=env)
         else:
-            rc_bias, out_bias = _run_json([*bias_cmd, \"--out\", str(args.bias_pulls_out)], cwd=cwd, env=env)
+            rc_bias, out_bias = _run_json([*bias_cmd, "--out", str(args.bias_pulls_out)], cwd=cwd, env=env)
 
         bias_report = _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None
         bias_declared = ((bias_report or {}).get("summary") or {}).get("status") if isinstance(bias_report, dict) else None

@@ -37,6 +37,26 @@ pub struct Parameter {
     pub constraint_width: Option<f64>,
 }
 
+/// Per-sample expected yields for one channel.
+#[derive(Debug, Clone)]
+pub struct ExpectedChannelSampleYields {
+    /// Channel name (as provided in the input workspace).
+    pub channel_name: String,
+    /// Per-sample expected yields (main bins only).
+    pub samples: Vec<ExpectedSampleYields>,
+    /// Total expected yields (sum of samples; main bins only).
+    pub total: Vec<f64>,
+}
+
+/// Expected yields for one sample (main bins only).
+#[derive(Debug, Clone)]
+pub struct ExpectedSampleYields {
+    /// Sample name (as provided in the input workspace).
+    pub sample_name: String,
+    /// Expected yields per bin (main bins only).
+    pub y: Vec<f64>,
+}
+
 /// Model channel
 #[derive(Debug, Clone)]
 struct ModelChannel {
@@ -777,6 +797,152 @@ impl HistFactoryModel {
     pub fn expected_data(&self, params: &[f64]) -> Result<Vec<f64>> {
         self.validate_params_len(params.len())?;
         self.expected_data_generic(params)
+    }
+
+    /// Expected **main** yields per channel and per sample (workspace order), without auxdata.
+    ///
+    /// This is the “numbers-first” surface used for TREx-like stacked distributions:
+    /// we need the decomposition into samples, not only the total.
+    pub fn expected_main_by_channel_sample(&self, params: &[f64]) -> Result<Vec<ExpectedChannelSampleYields>> {
+        self.validate_params_len(params.len())?;
+
+        let mut out: Vec<ExpectedChannelSampleYields> = Vec::with_capacity(self.channels.len());
+
+        for channel in &self.channels {
+            let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            let mut total: Vec<f64> = vec![0.0; n_bins];
+            let mut samples_out: Vec<ExpectedSampleYields> = Vec::with_capacity(channel.samples.len());
+
+            for sample in &channel.samples {
+                // Same semantics as expected_data_generic, but we keep the per-sample vector.
+                let sample_nominal: Vec<f64> = sample.nominal.clone();
+                let mut sample_deltas: Vec<f64> = vec![0.0; sample_nominal.len()];
+                let mut sample_factors: Vec<f64> = vec![1.0; sample_nominal.len()];
+
+                for modifier in &sample.modifiers {
+                    match modifier {
+                        ModelModifier::NormFactor { param_idx } => {
+                            let norm = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormFactor param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            for fac in &mut sample_factors {
+                                *fac *= norm;
+                            }
+                        }
+                        ModelModifier::ShapeSys { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeSys gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            for fac in &mut sample_factors {
+                                *fac *= factor;
+                            }
+                        }
+                        ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "HistoSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                let delta = histosys_code4p_delta(alpha, lo, nom_val, hi);
+                                *delta_slot += delta;
+                            }
+                        }
+                        ModelModifier::StatError { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "StatError gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::ShapeFactor { param_indices } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeFactor gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::Lumi { param_idx } => {
+                            let lumi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "Lumi param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            for fac in &mut sample_factors {
+                                *fac *= lumi;
+                            }
+                        }
+                    }
+                }
+
+                let mut y: Vec<f64> = vec![0.0; n_bins];
+                for bin_idx in 0..n_bins {
+                    let nom = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                    let delta = sample_deltas.get(bin_idx).copied().unwrap_or(0.0);
+                    let fac = sample_factors.get(bin_idx).copied().unwrap_or(1.0);
+                    let v = (nom + delta) * fac;
+                    y[bin_idx] = v;
+                    total[bin_idx] += v;
+                }
+
+                samples_out.push(ExpectedSampleYields {
+                    sample_name: sample.name.clone(),
+                    y,
+                });
+            }
+
+            out.push(ExpectedChannelSampleYields {
+                channel_name: channel.name.clone(),
+                samples: samples_out,
+                total,
+            });
+        }
+
+        Ok(out)
     }
 
     /// Expected **main** data in pyhf ordering (channels lexicographically), without auxdata.

@@ -17,6 +17,22 @@ pub mod profile;
 /// Nuisance-parameter ranking artifacts (impact on POI).
 pub mod ranking;
 
+/// Stacked distributions artifacts (prefit/postfit, ratio).
+pub mod distributions;
+
+/// Pulls + constraints artifacts (TREx-style).
+pub mod pulls;
+
+/// Correlation matrix artifacts (TREx-style).
+pub mod corr;
+
+/// Yields tables artifacts (TREx-style).
+pub mod yields;
+
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
 pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
 pub use ranking::RankingArtifact;
+pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy};
+pub use pulls::{PullsArtifact, PullEntry};
+pub use corr::CorrArtifact;
+pub use yields::YieldsArtifact;

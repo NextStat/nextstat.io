@@ -117,13 +117,26 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --out tmp/apex2_master_report.json
 ```
 
+Optional: shard bias/pulls across multiple processes and merge into a single JSON artifact.
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --bias-pulls \
+  --bias-pulls-shard-count 4 \
+  --bias-pulls-n-toys 200 \
+  --bias-pulls-fixtures simple \
+  --out tmp/apex2_master_report.json
+```
+
 Optional: include synthetic "model zoo" cases in bias/pulls (still slow; intended for nightly).
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
   --bias-pulls \
   --bias-pulls-include-zoo \
-  --bias-pulls-fixtures zoo_multichannel_3 \
+  --bias-pulls-fixtures simple \
+  --bias-pulls-zoo-sizes 16,64,256 \
+  --bias-pulls-zoo-n-toys 50 \
   --bias-pulls-n-toys 200 \
   --out tmp/apex2_master_report.json
 ```

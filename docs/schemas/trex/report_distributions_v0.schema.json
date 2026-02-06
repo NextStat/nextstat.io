@@ -93,6 +93,11 @@
         "data_y": { "$ref": "#/$defs/num_array" },
         "data_yerr_lo": { "$ref": "#/$defs/num_array" },
         "data_yerr_hi": { "$ref": "#/$defs/num_array" },
+        "data_error_model": {
+          "type": "string",
+          "description": "Explicit data error model used to produce data_yerr_lo/hi.",
+          "enum": ["garwood_poisson_68", "sqrt_y_fallback"]
+        },
         "samples": {
           "type": "array",
           "items": { "$ref": "#/$defs/sample_series" }
@@ -139,4 +144,3 @@
     }
   }
 }
-

@@ -14,6 +14,61 @@ use crate::pyhf::schema::{
 use super::channel::{self, ChannelXml, ModifierXml};
 use super::combination::{self, CombinationConfig};
 
+/// Extract per-channel bin edges from a HistFactory export.
+///
+/// This uses each channel's `data` histogram as the canonical binning source.
+pub fn bin_edges_by_channel_from_xml(combination_path: &Path) -> Result<HashMap<String, Vec<f64>>> {
+    let base_dir = combination_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+
+    let config = combination::parse_combination(combination_path)?;
+    let channels_xml: Vec<ChannelXml> = config
+        .channel_files
+        .iter()
+        .map(|f| channel::parse_channel(&base_dir.join(f)))
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut root_cache: HashMap<PathBuf, RootFile> = HashMap::new();
+    let mut out: HashMap<String, Vec<f64>> = HashMap::new();
+
+    for ch_xml in &channels_xml {
+        let input_file = ch_xml.data.input_file.as_deref().or(ch_xml.input_file.as_deref());
+        let histo_path = ch_xml.data.histo_path.as_deref().or(ch_xml.histo_path.as_deref());
+        let input_file = input_file.ok_or_else(|| {
+            Error::Xml(format!(
+                "no InputFile specified for channel '{}' data histogram",
+                ch_xml.name
+            ))
+        })?;
+
+        let root_path = base_dir.join(input_file);
+        if !root_cache.contains_key(&root_path) {
+            let rf = RootFile::open(&root_path).map_err(|e| {
+                Error::RootFile(format!("opening {}: {}", root_path.display(), e))
+            })?;
+            root_cache.insert(root_path.clone(), rf);
+        }
+        let rf = root_cache.get(&root_path).unwrap();
+
+        let full_path = match histo_path {
+            Some(hp) if !hp.is_empty() => format!("{}/{}", hp, ch_xml.data.histo_name),
+            _ => ch_xml.data.histo_name.clone(),
+        };
+        let hist = rf.get_histogram(&full_path).map_err(|e| {
+            Error::RootFile(format!(
+                "reading histogram '{}' from {}: {}",
+                full_path,
+                root_path.display(),
+                e
+            ))
+        })?;
+        out.insert(ch_xml.name.clone(), hist.bin_edges);
+    }
+
+    Ok(out)
+}
+
 /// Parse a HistFactory `combination.xml` and its referenced ROOT files,
 /// producing a `Workspace` identical to the pyhf JSON format.
 pub fn from_xml(combination_path: &Path) -> Result<Workspace> {

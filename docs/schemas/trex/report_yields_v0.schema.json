@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/report_yields_v0.schema.json",
+  "title": "NextStat TREx Replacement — Yields Tables Artifact (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "channels"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_report_yields_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version", "created_unix_ms", "parity_mode"],
+      "properties": {
+        "tool": { "type": "string", "const": "nextstat" },
+        "tool_version": { "type": "string" },
+        "created_unix_ms": { "type": "integer", "minimum": 0 },
+        "parity_mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads", "stable_ordering"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1 },
+            "stable_ordering": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/channel_yields" }
+    }
+  },
+  "$defs": {
+    "sample_yield": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "prefit", "postfit"],
+      "properties": {
+        "name": { "type": "string" },
+        "prefit": { "type": "number" },
+        "postfit": { "type": "number" }
+      }
+    },
+    "channel_yields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel_name", "data", "samples", "total_prefit", "total_postfit"],
+      "properties": {
+        "channel_name": { "type": "string" },
+        "data": { "type": "number" },
+        "samples": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sample_yield" }
+        },
+        "total_prefit": { "type": "number" },
+        "total_postfit": { "type": "number" }
+      }
+    }
+  }
+}
+

@@ -243,6 +243,50 @@ enum VizCommands {
         #[arg(long, default_value = "1")]
         threads: usize,
     },
+
+    /// Pulls + constraints artifact (TREx-style)
+    Pulls {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Fit result JSON (from `nextstat fit`) providing postfit parameters + uncertainties.
+        #[arg(long)]
+        fit: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// TREx-like stacked distributions artifact (prefit/postfit + ratio)
+    Distributions {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// HistFactory `combination.xml` (used to extract bin edges from ROOT histograms).
+        #[arg(long)]
+        histfactory_xml: PathBuf,
+
+        /// Fit result JSON (from `nextstat fit`) providing postfit parameters.
+        ///
+        /// If omitted, postfit is set equal to prefit (init parameters).
+        #[arg(long)]
+        fit: Option<PathBuf>,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -525,6 +569,23 @@ fn main() -> Result<()> {
             VizCommands::Ranking { input, output, threads } => {
                 cmd_viz_ranking(&input, output.as_ref(), threads, cli.bundle.as_ref())
             }
+            VizCommands::Pulls { input, fit, output, threads } => {
+                cmd_viz_pulls(&input, &fit, output.as_ref(), threads, cli.bundle.as_ref())
+            }
+            VizCommands::Distributions {
+                input,
+                histfactory_xml,
+                fit,
+                output,
+                threads,
+            } => cmd_viz_distributions(
+                &input,
+                &histfactory_xml,
+                fit.as_ref(),
+                output.as_ref(),
+                threads,
+                cli.bundle.as_ref(),
+            ),
         },
         Commands::Import { command } => match command {
             ImportCommands::Histfactory { xml, output } => {
@@ -697,6 +758,23 @@ fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::His
     let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
     tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok(model)
+}
+
+fn load_workspace_and_model(
+    input: &PathBuf,
+    threads: usize,
+) -> Result<(ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel)> {
+    if threads > 0 {
+        // Best-effort; if a global pool already exists, keep going.
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
+    }
+
+    tracing::info!(path = %input.display(), "loading workspace");
+    let json = std::fs::read_to_string(input)?;
+    let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
+    tracing::info!(parameters = model.parameters().len(), "workspace loaded");
+    Ok((workspace, model))
 }
 
 fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
@@ -1996,5 +2074,133 @@ fn cmd_viz_ranking(
             &output_json,
         )?;
     }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FitResultJson {
+    parameter_names: Vec<String>,
+    bestfit: Vec<f64>,
+    #[serde(default)]
+    uncertainties: Vec<f64>,
+}
+
+fn params_from_fit_result(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    fit: &FitResultJson,
+) -> Result<Vec<f64>> {
+    if fit.parameter_names.len() != fit.bestfit.len() {
+        anyhow::bail!(
+            "fit result length mismatch: parameter_names={} bestfit={}",
+            fit.parameter_names.len(),
+            fit.bestfit.len()
+        );
+    }
+
+    let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    for (n, v) in fit.parameter_names.iter().zip(fit.bestfit.iter()) {
+        map.insert(n.as_str(), *v);
+    }
+
+    let mut out = Vec::with_capacity(model.parameters().len());
+    for p in model.parameters() {
+        let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
+            ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+        })?;
+        out.push(v);
+    }
+    Ok(out)
+}
+
+fn cmd_viz_distributions(
+    input: &PathBuf,
+    histfactory_xml: &PathBuf,
+    fit: Option<&PathBuf>,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for `nextstat viz distributions` yet");
+    }
+
+    let (workspace, model) = load_workspace_and_model(input, threads)?;
+    let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+    let params_postfit: Vec<f64> = if let Some(fit_path) = fit {
+        let bytes = std::fs::read(fit_path)?;
+        let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
+        params_from_fit_result(&model, &fit_json)?
+    } else {
+        params_prefit.clone()
+    };
+
+    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    for obs in &workspace.observations {
+        data_by_channel.insert(obs.name.clone(), obs.data.clone());
+    }
+
+    let bin_edges_by_channel =
+        ns_translate::histfactory::bin_edges_by_channel_from_xml(histfactory_xml)?;
+
+    let artifact = ns_viz::distributions::distributions_artifact(
+        &model,
+        &data_by_channel,
+        &bin_edges_by_channel,
+        &params_prefit,
+        &params_postfit,
+        threads,
+    )?;
+
+    let output_json = serde_json::to_value(&artifact)?;
+    write_json(output, &output_json)?;
+    Ok(())
+}
+
+fn cmd_viz_pulls(
+    input: &PathBuf,
+    fit: &PathBuf,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for `nextstat viz pulls` yet");
+    }
+
+    let model = load_model(input, threads)?;
+
+    let bytes = std::fs::read(fit)?;
+    let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
+    if fit_json.uncertainties.is_empty() {
+        anyhow::bail!("fit result missing `uncertainties` (required for pulls)");
+    }
+
+    let params_postfit = params_from_fit_result(&model, &fit_json)?;
+    let uncs_postfit = {
+        if fit_json.parameter_names.len() != fit_json.uncertainties.len() {
+            anyhow::bail!(
+                "fit result length mismatch: parameter_names={} uncertainties={}",
+                fit_json.parameter_names.len(),
+                fit_json.uncertainties.len()
+            );
+        }
+        let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+        for (n, v) in fit_json.parameter_names.iter().zip(fit_json.uncertainties.iter()) {
+            map.insert(n.as_str(), *v);
+        }
+        let mut out = Vec::with_capacity(model.parameters().len());
+        for p in model.parameters() {
+            let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
+                ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+            })?;
+            out.push(v);
+        }
+        out
+    };
+
+    let artifact = ns_viz::pulls::pulls_artifact(&model, &params_postfit, &uncs_postfit, threads)?;
+    let output_json = serde_json::to_value(&artifact)?;
+    write_json(output, &output_json)?;
     Ok(())
 }

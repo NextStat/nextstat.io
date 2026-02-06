@@ -62,6 +62,20 @@ def test_logistic_from_formula_matches_manual_fit():
     assert r1.converged == r2.converged
 
 
+def test_logistic_from_formula_fallback_l2_applies_on_separation():
+    data = {"y": [0, 0, 0, 0, 1, 1, 1, 1], "x": [-3.0, -2.0, -1.5, -1.0, 1.0, 1.5, 2.0, 3.0]}
+    formula = "y ~ 1 + x"
+
+    r, _names = nextstat.glm.logistic.from_formula(
+        formula,
+        data,
+        fallback_l2=10.0,
+        fallback_on_separation=True,
+    )
+    assert r.converged
+    assert "fallback_l2_applied" in r.warnings
+
+
 def test_poisson_from_formula_matches_manual_fit_with_offset_column():
     data = {
         "y": [1, 2, 1, 3, 4],

@@ -121,6 +121,22 @@ impl<'a> RBuffer<'a> {
         ]))
     }
 
+    /// Read a null-terminated C string (used by ROOT class reference system).
+    pub fn read_cstring(&mut self) -> Result<String> {
+        let start = self.pos;
+        while self.pos < self.data.len() {
+            if self.data[self.pos] == 0 {
+                let s = String::from_utf8_lossy(&self.data[start..self.pos]).into_owned();
+                self.pos += 1; // skip the null terminator
+                return Ok(s);
+            }
+            self.pos += 1;
+        }
+        Err(RootError::Deserialization(
+            "unterminated C string".into(),
+        ))
+    }
+
     /// Read a ROOT-encoded string.
     ///
     /// Format: length byte (if < 255), or 255 + u32 length, then UTF-8 bytes.

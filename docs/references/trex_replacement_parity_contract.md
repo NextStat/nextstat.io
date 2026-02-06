@@ -52,6 +52,12 @@ Contract:
 
 Renderers must treat artifacts as canonical numeric truth. Artifacts are stable, versioned JSON.
 
+Schemas (v0):
+- `docs/schemas/trex/report_distributions_v0.schema.json`
+- `docs/schemas/trex/report_pulls_v0.schema.json`
+- `docs/schemas/trex/report_corr_v0.schema.json`
+- `docs/schemas/trex/report_yields_v0.schema.json`
+
 ### 2.0 Plotting correctness contract (why this exists)
 
 TRExFitter “точность графиков” на практике = корректные числа + корректная геометрия бинов + корректные ошибки.
