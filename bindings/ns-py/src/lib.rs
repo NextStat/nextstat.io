@@ -19,20 +19,23 @@ use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
 use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::transforms::ParameterTransform;
 use ns_inference::OptimizerConfig;
-use ns_inference::{
-    ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
-    LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
-    PoissonRegressionModel as RustPoissonRegressionModel,
-    OrderedLogitModel as RustOrderedLogitModel,
-    OrderedProbitModel as RustOrderedProbitModel,
-    CoxPhModel as RustCoxPhModel,
-    CoxTies as RustCoxTies,
-    ExponentialSurvivalModel as RustExponentialSurvivalModel,
-    WeibullSurvivalModel as RustWeibullSurvivalModel,
-    LogNormalAftModel as RustLogNormalAftModel,
-    hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
-    profile_likelihood as pl,
-};
+	use ns_inference::{
+	    ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
+	    LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
+	    PoissonRegressionModel as RustPoissonRegressionModel,
+	    OrderedLogitModel as RustOrderedLogitModel,
+	    OrderedProbitModel as RustOrderedProbitModel,
+	    CoxPhModel as RustCoxPhModel,
+	    CoxTies as RustCoxTies,
+	    ExponentialSurvivalModel as RustExponentialSurvivalModel,
+	    WeibullSurvivalModel as RustWeibullSurvivalModel,
+	    LogNormalAftModel as RustLogNormalAftModel,
+	    LloqPolicy as RustLloqPolicy,
+	    OneCompartmentOralPkModel as RustOneCompartmentOralPkModel,
+	    OneCompartmentOralPkNlmeModel as RustOneCompartmentOralPkNlmeModel,
+	    hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
+	    profile_likelihood as pl,
+	};
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
 use ns_inference::lmm::{LmmMarginalModel as RustLmmMarginalModel, RandomEffects as RustLmmRandomEffects};
 use ns_inference::timeseries::kalman::{
@@ -266,157 +269,173 @@ enum PosteriorModel {
     LmmMarginal(RustLmmMarginalModel),
     ExponentialSurvival(RustExponentialSurvivalModel),
     WeibullSurvival(RustWeibullSurvivalModel),
-    LogNormalAft(RustLogNormalAftModel),
-    CoxPh(RustCoxPhModel),
-}
+	    LogNormalAft(RustLogNormalAftModel),
+	    CoxPh(RustCoxPhModel),
+	    OneCompartmentOralPk(RustOneCompartmentOralPkModel),
+	    OneCompartmentOralPkNlme(RustOneCompartmentOralPkNlmeModel),
+	}
 
 impl PosteriorModel {
-    fn dim(&self) -> usize {
-        match self {
-            PosteriorModel::HistFactory(m) => m.dim(),
-            PosteriorModel::GaussianMean(m) => m.dim(),
-            PosteriorModel::Funnel(m) => m.dim(),
-            PosteriorModel::StdNormal(m) => m.dim(),
-            PosteriorModel::LinearRegression(m) => m.dim(),
-            PosteriorModel::LogisticRegression(m) => m.dim(),
-            PosteriorModel::OrderedLogit(m) => m.dim(),
-            PosteriorModel::OrderedProbit(m) => m.dim(),
-            PosteriorModel::PoissonRegression(m) => m.dim(),
-            PosteriorModel::NegativeBinomialRegression(m) => m.dim(),
-            PosteriorModel::ComposedGlm(m) => m.dim(),
-            PosteriorModel::LmmMarginal(m) => m.dim(),
-            PosteriorModel::ExponentialSurvival(m) => m.dim(),
-            PosteriorModel::WeibullSurvival(m) => m.dim(),
-            PosteriorModel::LogNormalAft(m) => m.dim(),
-            PosteriorModel::CoxPh(m) => m.dim(),
-        }
-    }
+	    fn dim(&self) -> usize {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.dim(),
+	            PosteriorModel::GaussianMean(m) => m.dim(),
+	            PosteriorModel::Funnel(m) => m.dim(),
+	            PosteriorModel::StdNormal(m) => m.dim(),
+	            PosteriorModel::LinearRegression(m) => m.dim(),
+	            PosteriorModel::LogisticRegression(m) => m.dim(),
+	            PosteriorModel::OrderedLogit(m) => m.dim(),
+	            PosteriorModel::OrderedProbit(m) => m.dim(),
+	            PosteriorModel::PoissonRegression(m) => m.dim(),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.dim(),
+	            PosteriorModel::ComposedGlm(m) => m.dim(),
+	            PosteriorModel::LmmMarginal(m) => m.dim(),
+	            PosteriorModel::ExponentialSurvival(m) => m.dim(),
+	            PosteriorModel::WeibullSurvival(m) => m.dim(),
+	            PosteriorModel::LogNormalAft(m) => m.dim(),
+	            PosteriorModel::CoxPh(m) => m.dim(),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.dim(),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.dim(),
+	        }
+	    }
 
-    fn parameter_names(&self) -> Vec<String> {
-        match self {
-            PosteriorModel::HistFactory(m) => m.parameter_names(),
-            PosteriorModel::GaussianMean(m) => m.parameter_names(),
-            PosteriorModel::Funnel(m) => m.parameter_names(),
-            PosteriorModel::StdNormal(m) => m.parameter_names(),
-            PosteriorModel::LinearRegression(m) => m.parameter_names(),
-            PosteriorModel::LogisticRegression(m) => m.parameter_names(),
-            PosteriorModel::OrderedLogit(m) => m.parameter_names(),
-            PosteriorModel::OrderedProbit(m) => m.parameter_names(),
-            PosteriorModel::PoissonRegression(m) => m.parameter_names(),
-            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_names(),
-            PosteriorModel::ComposedGlm(m) => m.parameter_names(),
-            PosteriorModel::LmmMarginal(m) => m.parameter_names(),
-            PosteriorModel::ExponentialSurvival(m) => m.parameter_names(),
-            PosteriorModel::WeibullSurvival(m) => m.parameter_names(),
-            PosteriorModel::LogNormalAft(m) => m.parameter_names(),
-            PosteriorModel::CoxPh(m) => m.parameter_names(),
-        }
-    }
+	    fn parameter_names(&self) -> Vec<String> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.parameter_names(),
+	            PosteriorModel::GaussianMean(m) => m.parameter_names(),
+	            PosteriorModel::Funnel(m) => m.parameter_names(),
+	            PosteriorModel::StdNormal(m) => m.parameter_names(),
+	            PosteriorModel::LinearRegression(m) => m.parameter_names(),
+	            PosteriorModel::LogisticRegression(m) => m.parameter_names(),
+	            PosteriorModel::OrderedLogit(m) => m.parameter_names(),
+	            PosteriorModel::OrderedProbit(m) => m.parameter_names(),
+	            PosteriorModel::PoissonRegression(m) => m.parameter_names(),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_names(),
+	            PosteriorModel::ComposedGlm(m) => m.parameter_names(),
+	            PosteriorModel::LmmMarginal(m) => m.parameter_names(),
+	            PosteriorModel::ExponentialSurvival(m) => m.parameter_names(),
+	            PosteriorModel::WeibullSurvival(m) => m.parameter_names(),
+	            PosteriorModel::LogNormalAft(m) => m.parameter_names(),
+	            PosteriorModel::CoxPh(m) => m.parameter_names(),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.parameter_names(),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_names(),
+	        }
+	    }
 
-    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
-        match self {
-            PosteriorModel::HistFactory(m) => m.parameter_bounds(),
-            PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
-            PosteriorModel::Funnel(m) => m.parameter_bounds(),
-            PosteriorModel::StdNormal(m) => m.parameter_bounds(),
-            PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
-            PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
-            PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
-            PosteriorModel::OrderedProbit(m) => m.parameter_bounds(),
-            PosteriorModel::PoissonRegression(m) => m.parameter_bounds(),
-            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_bounds(),
-            PosteriorModel::ComposedGlm(m) => m.parameter_bounds(),
-            PosteriorModel::LmmMarginal(m) => m.parameter_bounds(),
-            PosteriorModel::ExponentialSurvival(m) => m.parameter_bounds(),
-            PosteriorModel::WeibullSurvival(m) => m.parameter_bounds(),
-            PosteriorModel::LogNormalAft(m) => m.parameter_bounds(),
-            PosteriorModel::CoxPh(m) => m.parameter_bounds(),
-        }
-    }
+	    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.parameter_bounds(),
+	            PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
+	            PosteriorModel::Funnel(m) => m.parameter_bounds(),
+	            PosteriorModel::StdNormal(m) => m.parameter_bounds(),
+	            PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
+	            PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
+	            PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
+	            PosteriorModel::OrderedProbit(m) => m.parameter_bounds(),
+	            PosteriorModel::PoissonRegression(m) => m.parameter_bounds(),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_bounds(),
+	            PosteriorModel::ComposedGlm(m) => m.parameter_bounds(),
+	            PosteriorModel::LmmMarginal(m) => m.parameter_bounds(),
+	            PosteriorModel::ExponentialSurvival(m) => m.parameter_bounds(),
+	            PosteriorModel::WeibullSurvival(m) => m.parameter_bounds(),
+	            PosteriorModel::LogNormalAft(m) => m.parameter_bounds(),
+	            PosteriorModel::CoxPh(m) => m.parameter_bounds(),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.parameter_bounds(),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_bounds(),
+	        }
+	    }
 
-    fn parameter_init(&self) -> Vec<f64> {
-        match self {
-            PosteriorModel::HistFactory(m) => m.parameter_init(),
-            PosteriorModel::GaussianMean(m) => m.parameter_init(),
-            PosteriorModel::Funnel(m) => m.parameter_init(),
-            PosteriorModel::StdNormal(m) => m.parameter_init(),
-            PosteriorModel::LinearRegression(m) => m.parameter_init(),
-            PosteriorModel::LogisticRegression(m) => m.parameter_init(),
-            PosteriorModel::OrderedLogit(m) => m.parameter_init(),
-            PosteriorModel::OrderedProbit(m) => m.parameter_init(),
-            PosteriorModel::PoissonRegression(m) => m.parameter_init(),
-            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_init(),
-            PosteriorModel::ComposedGlm(m) => m.parameter_init(),
-            PosteriorModel::LmmMarginal(m) => m.parameter_init(),
-            PosteriorModel::ExponentialSurvival(m) => m.parameter_init(),
-            PosteriorModel::WeibullSurvival(m) => m.parameter_init(),
-            PosteriorModel::LogNormalAft(m) => m.parameter_init(),
-            PosteriorModel::CoxPh(m) => m.parameter_init(),
-        }
-    }
+	    fn parameter_init(&self) -> Vec<f64> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.parameter_init(),
+	            PosteriorModel::GaussianMean(m) => m.parameter_init(),
+	            PosteriorModel::Funnel(m) => m.parameter_init(),
+	            PosteriorModel::StdNormal(m) => m.parameter_init(),
+	            PosteriorModel::LinearRegression(m) => m.parameter_init(),
+	            PosteriorModel::LogisticRegression(m) => m.parameter_init(),
+	            PosteriorModel::OrderedLogit(m) => m.parameter_init(),
+	            PosteriorModel::OrderedProbit(m) => m.parameter_init(),
+	            PosteriorModel::PoissonRegression(m) => m.parameter_init(),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_init(),
+	            PosteriorModel::ComposedGlm(m) => m.parameter_init(),
+	            PosteriorModel::LmmMarginal(m) => m.parameter_init(),
+	            PosteriorModel::ExponentialSurvival(m) => m.parameter_init(),
+	            PosteriorModel::WeibullSurvival(m) => m.parameter_init(),
+	            PosteriorModel::LogNormalAft(m) => m.parameter_init(),
+	            PosteriorModel::CoxPh(m) => m.parameter_init(),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.parameter_init(),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_init(),
+	        }
+	    }
 
-    fn nll(&self, params: &[f64]) -> NsResult<f64> {
-        match self {
-            PosteriorModel::HistFactory(m) => m.nll(params),
-            PosteriorModel::GaussianMean(m) => m.nll(params),
-            PosteriorModel::Funnel(m) => m.nll(params),
-            PosteriorModel::StdNormal(m) => m.nll(params),
-            PosteriorModel::LinearRegression(m) => m.nll(params),
-            PosteriorModel::LogisticRegression(m) => m.nll(params),
-            PosteriorModel::OrderedLogit(m) => m.nll(params),
-            PosteriorModel::OrderedProbit(m) => m.nll(params),
-            PosteriorModel::PoissonRegression(m) => m.nll(params),
-            PosteriorModel::NegativeBinomialRegression(m) => m.nll(params),
-            PosteriorModel::ComposedGlm(m) => m.nll(params),
-            PosteriorModel::LmmMarginal(m) => m.nll(params),
-            PosteriorModel::ExponentialSurvival(m) => m.nll(params),
-            PosteriorModel::WeibullSurvival(m) => m.nll(params),
-            PosteriorModel::LogNormalAft(m) => m.nll(params),
-            PosteriorModel::CoxPh(m) => m.nll(params),
-        }
-    }
+	    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.nll(params),
+	            PosteriorModel::GaussianMean(m) => m.nll(params),
+	            PosteriorModel::Funnel(m) => m.nll(params),
+	            PosteriorModel::StdNormal(m) => m.nll(params),
+	            PosteriorModel::LinearRegression(m) => m.nll(params),
+	            PosteriorModel::LogisticRegression(m) => m.nll(params),
+	            PosteriorModel::OrderedLogit(m) => m.nll(params),
+	            PosteriorModel::OrderedProbit(m) => m.nll(params),
+	            PosteriorModel::PoissonRegression(m) => m.nll(params),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.nll(params),
+	            PosteriorModel::ComposedGlm(m) => m.nll(params),
+	            PosteriorModel::LmmMarginal(m) => m.nll(params),
+	            PosteriorModel::ExponentialSurvival(m) => m.nll(params),
+	            PosteriorModel::WeibullSurvival(m) => m.nll(params),
+	            PosteriorModel::LogNormalAft(m) => m.nll(params),
+	            PosteriorModel::CoxPh(m) => m.nll(params),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.nll(params),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.nll(params),
+	        }
+	    }
 
-    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
-        match self {
-            PosteriorModel::HistFactory(m) => m.grad_nll(params),
-            PosteriorModel::GaussianMean(m) => m.grad_nll(params),
-            PosteriorModel::Funnel(m) => m.grad_nll(params),
-            PosteriorModel::StdNormal(m) => m.grad_nll(params),
-            PosteriorModel::LinearRegression(m) => m.grad_nll(params),
-            PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
-            PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
-            PosteriorModel::OrderedProbit(m) => m.grad_nll(params),
-            PosteriorModel::PoissonRegression(m) => m.grad_nll(params),
-            PosteriorModel::NegativeBinomialRegression(m) => m.grad_nll(params),
-            PosteriorModel::ComposedGlm(m) => m.grad_nll(params),
-            PosteriorModel::LmmMarginal(m) => m.grad_nll(params),
-            PosteriorModel::ExponentialSurvival(m) => m.grad_nll(params),
-            PosteriorModel::WeibullSurvival(m) => m.grad_nll(params),
-            PosteriorModel::LogNormalAft(m) => m.grad_nll(params),
-            PosteriorModel::CoxPh(m) => m.grad_nll(params),
-        }
-    }
+	    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => m.grad_nll(params),
+	            PosteriorModel::GaussianMean(m) => m.grad_nll(params),
+	            PosteriorModel::Funnel(m) => m.grad_nll(params),
+	            PosteriorModel::StdNormal(m) => m.grad_nll(params),
+	            PosteriorModel::LinearRegression(m) => m.grad_nll(params),
+	            PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
+	            PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
+	            PosteriorModel::OrderedProbit(m) => m.grad_nll(params),
+	            PosteriorModel::PoissonRegression(m) => m.grad_nll(params),
+	            PosteriorModel::NegativeBinomialRegression(m) => m.grad_nll(params),
+	            PosteriorModel::ComposedGlm(m) => m.grad_nll(params),
+	            PosteriorModel::LmmMarginal(m) => m.grad_nll(params),
+	            PosteriorModel::ExponentialSurvival(m) => m.grad_nll(params),
+	            PosteriorModel::WeibullSurvival(m) => m.grad_nll(params),
+	            PosteriorModel::LogNormalAft(m) => m.grad_nll(params),
+	            PosteriorModel::CoxPh(m) => m.grad_nll(params),
+	            PosteriorModel::OneCompartmentOralPk(m) => m.grad_nll(params),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => m.grad_nll(params),
+	        }
+	    }
 
-    fn fit_mle(&self, mle: &RustMLE) -> NsResult<ns_core::FitResult> {
-        match self {
-            PosteriorModel::HistFactory(m) => mle.fit(m),
-            PosteriorModel::GaussianMean(m) => mle.fit(m),
-            PosteriorModel::Funnel(m) => mle.fit(m),
-            PosteriorModel::StdNormal(m) => mle.fit(m),
-            PosteriorModel::LinearRegression(m) => mle.fit(m),
-            PosteriorModel::LogisticRegression(m) => mle.fit(m),
-            PosteriorModel::OrderedLogit(m) => mle.fit(m),
-            PosteriorModel::OrderedProbit(m) => mle.fit(m),
-            PosteriorModel::PoissonRegression(m) => mle.fit(m),
-            PosteriorModel::NegativeBinomialRegression(m) => mle.fit(m),
-            PosteriorModel::ComposedGlm(m) => mle.fit(m),
-            PosteriorModel::LmmMarginal(m) => mle.fit(m),
-            PosteriorModel::ExponentialSurvival(m) => mle.fit(m),
-            PosteriorModel::WeibullSurvival(m) => mle.fit(m),
-            PosteriorModel::LogNormalAft(m) => mle.fit(m),
-            PosteriorModel::CoxPh(m) => mle.fit(m),
-        }
-    }
+	    fn fit_mle(&self, mle: &RustMLE) -> NsResult<ns_core::FitResult> {
+	        match self {
+	            PosteriorModel::HistFactory(m) => mle.fit(m),
+	            PosteriorModel::GaussianMean(m) => mle.fit(m),
+	            PosteriorModel::Funnel(m) => mle.fit(m),
+	            PosteriorModel::StdNormal(m) => mle.fit(m),
+	            PosteriorModel::LinearRegression(m) => mle.fit(m),
+	            PosteriorModel::LogisticRegression(m) => mle.fit(m),
+	            PosteriorModel::OrderedLogit(m) => mle.fit(m),
+	            PosteriorModel::OrderedProbit(m) => mle.fit(m),
+	            PosteriorModel::PoissonRegression(m) => mle.fit(m),
+	            PosteriorModel::NegativeBinomialRegression(m) => mle.fit(m),
+	            PosteriorModel::ComposedGlm(m) => mle.fit(m),
+	            PosteriorModel::LmmMarginal(m) => mle.fit(m),
+	            PosteriorModel::ExponentialSurvival(m) => mle.fit(m),
+	            PosteriorModel::WeibullSurvival(m) => mle.fit(m),
+	            PosteriorModel::LogNormalAft(m) => mle.fit(m),
+	            PosteriorModel::CoxPh(m) => mle.fit(m),
+	            PosteriorModel::OneCompartmentOralPk(m) => mle.fit(m),
+	            PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit(m),
+	        }
+	    }
 
     fn sample_nuts_multichain(
         &self,
@@ -475,6 +494,12 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::CoxPh(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OneCompartmentOralPk(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OneCompartmentOralPkNlme(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
         }
@@ -543,6 +568,14 @@ impl PosteriorModel {
                 mle.fit(&w)
             }
             PosteriorModel::CoxPh(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::OneCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::OneCompartmentOralPkNlme(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -625,6 +658,14 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::OneCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OneCompartmentOralPkNlme(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
         }
     }
 }
@@ -662,9 +703,13 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::LogNormalAft(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
         Ok(PosteriorModel::CoxPh(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyOneCompartmentOralPkModel>>() {
+        Ok(PosteriorModel::OneCompartmentOralPk(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyOneCompartmentOralPkNlmeModel>>() {
+        Ok(PosteriorModel::OneCompartmentOralPkNlme(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, or a PK model.",
         ))
     }
 }
@@ -2525,6 +2570,195 @@ impl PyCoxPhModel {
 }
 
 // ---------------------------------------------------------------------------
+// Pharmacometrics (Phase 13): PK / NLME baselines.
+// ---------------------------------------------------------------------------
+
+fn parse_lloq_policy(policy: &str) -> PyResult<RustLloqPolicy> {
+    match policy.to_ascii_lowercase().as_str() {
+        "ignore" => Ok(RustLloqPolicy::Ignore),
+        "replace_half" => Ok(RustLloqPolicy::ReplaceHalf),
+        "censored" => Ok(RustLloqPolicy::Censored),
+        _ => Err(PyValueError::new_err(
+            "Invalid lloq_policy: expected 'ignore', 'replace_half', or 'censored'",
+        )),
+    }
+}
+
+#[inline]
+fn conc_oral(dose: f64, bioavailability: f64, cl: f64, v: f64, ka: f64, t: f64) -> f64 {
+    let ke = cl / v;
+    let d = ka - ke;
+    let d_amt = dose * bioavailability;
+    let pref = d_amt / v;
+
+    let eke = (-ke * t).exp();
+    let s = if d.abs() < 1e-10 {
+        t
+    } else {
+        (-(-d * t).exp_m1()) / d
+    };
+
+    pref * ka * eke * s
+}
+
+/// Python wrapper for `OneCompartmentOralPkModel` (oral, first-order absorption).
+#[pyclass(name = "OneCompartmentOralPkModel")]
+struct PyOneCompartmentOralPkModel {
+    inner: RustOneCompartmentOralPkModel,
+    times: Vec<f64>,
+    dose: f64,
+    bioavailability: f64,
+}
+
+#[pymethods]
+impl PyOneCompartmentOralPkModel {
+    #[new]
+    #[pyo3(signature = (times, y, *, dose, bioavailability=1.0, sigma=0.05, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        sigma: f64,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let lloq_policy = parse_lloq_policy(lloq_policy)?;
+        let times_for_pred = times.clone();
+        let inner = RustOneCompartmentOralPkModel::new(
+            times,
+            y,
+            dose,
+            bioavailability,
+            sigma,
+            lloq,
+            lloq_policy,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            inner,
+            times: times_for_pred,
+            dose,
+            bioavailability,
+        })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn predict(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        if params.len() != 3 {
+            return Err(PyValueError::new_err(format!(
+                "expected 3 parameters, got {}",
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(PyValueError::new_err("params must be finite and > 0"));
+        }
+        let cl = params[0];
+        let v = params[1];
+        let ka = params[2];
+        Ok(self
+            .times
+            .iter()
+            .map(|&t| conc_oral(self.dose, self.bioavailability, cl, v, ka, t))
+            .collect())
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `OneCompartmentOralPkNlmeModel` (population + random effects).
+#[pyclass(name = "OneCompartmentOralPkNlmeModel")]
+struct PyOneCompartmentOralPkNlmeModel {
+    inner: RustOneCompartmentOralPkNlmeModel,
+}
+
+#[pymethods]
+impl PyOneCompartmentOralPkNlmeModel {
+    #[new]
+    #[pyo3(signature = (times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, sigma=0.05, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        subject_idx: Vec<usize>,
+        n_subjects: usize,
+        dose: f64,
+        bioavailability: f64,
+        sigma: f64,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let lloq_policy = parse_lloq_policy(lloq_policy)?;
+        let inner = RustOneCompartmentOralPkNlmeModel::new(
+            times,
+            y,
+            subject_idx,
+            n_subjects,
+            dose,
+            bioavailability,
+            sigma,
+            lloq,
+            lloq_policy,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // LMM (Phase 9 Pack B).
 // ---------------------------------------------------------------------------
 
@@ -3167,8 +3401,73 @@ impl PyMaximumLikelihoodEstimator {
                     .collect();
             }
 
+            if first.extract::<PyRef<'_, PyOneCompartmentOralPkModel>>().is_ok() {
+                let mut models: Vec<RustOneCompartmentOralPkModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item
+                        .extract::<PyRef<'_, PyOneCompartmentOralPkModel>>()
+                        .map_err(|_| {
+                            PyValueError::new_err(
+                                "All items in the list must be OneCompartmentOralPkModel",
+                            )
+                        })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyOneCompartmentOralPkNlmeModel>>().is_ok() {
+                let mut models: Vec<RustOneCompartmentOralPkNlmeModel> =
+                    Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item
+                        .extract::<PyRef<'_, PyOneCompartmentOralPkNlmeModel>>()
+                        .map_err(|_| {
+                            PyValueError::new_err(
+                                "All items in the list must be OneCompartmentOralPkNlmeModel",
+                            )
+                        })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
             Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, a survival model, or a PK model.",
             ))
         }
     }
@@ -3760,6 +4059,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyWeibullSurvivalModel>()?;
     m.add_class::<PyLogNormalAftModel>()?;
     m.add_class::<PyCoxPhModel>()?;
+    m.add_class::<PyOneCompartmentOralPkModel>()?;
+    m.add_class::<PyOneCompartmentOralPkNlmeModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

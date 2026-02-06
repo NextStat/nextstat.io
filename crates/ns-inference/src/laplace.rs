@@ -25,8 +25,6 @@ pub struct LaplaceResult {
 
 fn compute_hessian(model: &impl LogDensityModel, params: &[f64]) -> Result<DMatrix<f64>> {
     let n = params.len();
-    let grad_center = model.grad_nll(params)?;
-
     let mut hessian = DMatrix::zeros(n, n);
     for j in 0..n {
         let eps = 1e-4 * params[j].abs().max(1.0);
@@ -35,8 +33,12 @@ fn compute_hessian(model: &impl LogDensityModel, params: &[f64]) -> Result<DMatr
         params_plus[j] += eps;
         let grad_plus = model.grad_nll(&params_plus)?;
 
+        let mut params_minus = params.to_vec();
+        params_minus[j] -= eps;
+        let grad_minus = model.grad_nll(&params_minus)?;
+
         for i in 0..n {
-            hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
+            hessian[(i, j)] = (grad_plus[i] - grad_minus[i]) / (2.0 * eps);
         }
     }
 
@@ -46,18 +48,46 @@ fn compute_hessian(model: &impl LogDensityModel, params: &[f64]) -> Result<DMatr
 }
 
 fn log_det_pd(h: &DMatrix<f64>) -> Result<f64> {
-    let chol = nalgebra::linalg::Cholesky::new(h.clone())
-        .ok_or_else(|| Error::Validation("Laplace requires a positive-definite Hessian".to_string()))?;
-    let l = chol.l();
-    let mut sum = 0.0;
-    for i in 0..l.nrows() {
-        let d = l[(i, i)];
-        if !d.is_finite() || d <= 0.0 {
-            return Err(Error::Validation("non-finite/negative Cholesky diagonal".to_string()));
-        }
-        sum += d.ln();
+    let n = h.nrows();
+    if n != h.ncols() {
+        return Err(Error::Validation("hessian must be square".to_string()));
     }
-    Ok(2.0 * sum)
+
+    // Numeric Hessians can be slightly indefinite even at a (local) mode. Try a small diagonal
+    // jitter (Levenberg-style) before giving up.
+    let max_abs_diag = (0..n)
+        .map(|i| h[(i, i)].abs())
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
+
+    let mut jitter = 1e-10 * max_abs_diag;
+    for attempt in 0..15 {
+        let mut h_try = h.clone();
+        if attempt > 0 {
+            for i in 0..n {
+                h_try[(i, i)] += jitter;
+            }
+        }
+
+        if let Some(chol) = nalgebra::linalg::Cholesky::new(h_try) {
+            let l = chol.l();
+            let mut sum = 0.0;
+            for i in 0..l.nrows() {
+                let d = l[(i, i)];
+                if !d.is_finite() || d <= 0.0 {
+                    return Err(Error::Validation("non-finite/negative Cholesky diagonal".to_string()));
+                }
+                sum += d.ln();
+            }
+            return Ok(2.0 * sum);
+        }
+
+        jitter *= 10.0;
+    }
+
+    Err(Error::Validation(
+        "Laplace requires a positive-definite Hessian".to_string(),
+    ))
 }
 
 /// Compute a Laplace approximation at `params_mode`.
@@ -107,4 +137,3 @@ mod tests {
         assert!(r.log_marginal.is_finite());
     }
 }
-
