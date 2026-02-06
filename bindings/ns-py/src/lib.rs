@@ -8,6 +8,7 @@ use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
 
 use nalgebra::{DMatrix, DVector};
+use std::collections::HashMap;
 
 // Re-export types from core crates
 use ns_core::traits::{LogDensityModel, PreparedNll};
@@ -16,10 +17,15 @@ use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult
 use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summary};
 use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
 use ns_inference::nuts::{NutsConfig, sample_nuts};
+use ns_inference::transforms::ParameterTransform;
 use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
     PoissonRegressionModel as RustPoissonRegressionModel,
+    OrderedLogitModel as RustOrderedLogitModel,
+    OrderedProbitModel as RustOrderedProbitModel,
+    CoxPhModel as RustCoxPhModel,
+    CoxTies as RustCoxTies,
     ExponentialSurvivalModel as RustExponentialSurvivalModel,
     WeibullSurvivalModel as RustWeibullSurvivalModel,
     LogNormalAftModel as RustLogNormalAftModel,
@@ -27,6 +33,7 @@ use ns_inference::{
     profile_likelihood as pl,
 };
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
+use ns_inference::lmm::{LmmMarginalModel as RustLmmMarginalModel, RandomEffects as RustLmmRandomEffects};
 use ns_inference::timeseries::kalman::{
     KalmanModel as RustKalmanModel, kalman_filter as rust_kalman_filter,
     rts_smoother as rust_rts_smoother,
@@ -37,7 +44,10 @@ use ns_inference::timeseries::em::{
 use ns_inference::timeseries::forecast::{
     kalman_forecast as rust_kalman_forecast, kalman_forecast_intervals as rust_kalman_forecast_intervals,
 };
-use ns_inference::timeseries::simulate::kalman_simulate as rust_kalman_simulate;
+use ns_inference::timeseries::simulate::{
+    kalman_simulate as rust_kalman_simulate,
+    kalman_simulate_with_x0 as rust_kalman_simulate_with_x0,
+};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -155,6 +165,524 @@ fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
         out.push(row);
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Bayesian posterior surface (Phase 3/5 standards: explicit Posterior API).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+enum PosteriorModel {
+    HistFactory(RustModel),
+    GaussianMean(GaussianMeanModel),
+    LinearRegression(RustLinearRegressionModel),
+    LogisticRegression(RustLogisticRegressionModel),
+    OrderedLogit(RustOrderedLogitModel),
+    OrderedProbit(RustOrderedProbitModel),
+    PoissonRegression(RustPoissonRegressionModel),
+    NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
+    ComposedGlm(RustComposedGlmModel),
+    LmmMarginal(RustLmmMarginalModel),
+    ExponentialSurvival(RustExponentialSurvivalModel),
+    WeibullSurvival(RustWeibullSurvivalModel),
+    LogNormalAft(RustLogNormalAftModel),
+    CoxPh(RustCoxPhModel),
+}
+
+impl PosteriorModel {
+    fn dim(&self) -> usize {
+        match self {
+            PosteriorModel::HistFactory(m) => m.dim(),
+            PosteriorModel::GaussianMean(m) => m.dim(),
+            PosteriorModel::LinearRegression(m) => m.dim(),
+            PosteriorModel::LogisticRegression(m) => m.dim(),
+            PosteriorModel::OrderedLogit(m) => m.dim(),
+            PosteriorModel::OrderedProbit(m) => m.dim(),
+            PosteriorModel::PoissonRegression(m) => m.dim(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.dim(),
+            PosteriorModel::ComposedGlm(m) => m.dim(),
+            PosteriorModel::LmmMarginal(m) => m.dim(),
+            PosteriorModel::ExponentialSurvival(m) => m.dim(),
+            PosteriorModel::WeibullSurvival(m) => m.dim(),
+            PosteriorModel::LogNormalAft(m) => m.dim(),
+            PosteriorModel::CoxPh(m) => m.dim(),
+        }
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_names(),
+            PosteriorModel::GaussianMean(m) => m.parameter_names(),
+            PosteriorModel::LinearRegression(m) => m.parameter_names(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_names(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_names(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_names(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_names(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_names(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_names(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_names(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_names(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_names(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_names(),
+            PosteriorModel::CoxPh(m) => m.parameter_names(),
+        }
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_bounds(),
+            PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
+            PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_bounds(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_bounds(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_bounds(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_bounds(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_bounds(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_bounds(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_bounds(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_bounds(),
+            PosteriorModel::CoxPh(m) => m.parameter_bounds(),
+        }
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.parameter_init(),
+            PosteriorModel::GaussianMean(m) => m.parameter_init(),
+            PosteriorModel::LinearRegression(m) => m.parameter_init(),
+            PosteriorModel::LogisticRegression(m) => m.parameter_init(),
+            PosteriorModel::OrderedLogit(m) => m.parameter_init(),
+            PosteriorModel::OrderedProbit(m) => m.parameter_init(),
+            PosteriorModel::PoissonRegression(m) => m.parameter_init(),
+            PosteriorModel::NegativeBinomialRegression(m) => m.parameter_init(),
+            PosteriorModel::ComposedGlm(m) => m.parameter_init(),
+            PosteriorModel::LmmMarginal(m) => m.parameter_init(),
+            PosteriorModel::ExponentialSurvival(m) => m.parameter_init(),
+            PosteriorModel::WeibullSurvival(m) => m.parameter_init(),
+            PosteriorModel::LogNormalAft(m) => m.parameter_init(),
+            PosteriorModel::CoxPh(m) => m.parameter_init(),
+        }
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.nll(params),
+            PosteriorModel::GaussianMean(m) => m.nll(params),
+            PosteriorModel::LinearRegression(m) => m.nll(params),
+            PosteriorModel::LogisticRegression(m) => m.nll(params),
+            PosteriorModel::OrderedLogit(m) => m.nll(params),
+            PosteriorModel::OrderedProbit(m) => m.nll(params),
+            PosteriorModel::PoissonRegression(m) => m.nll(params),
+            PosteriorModel::NegativeBinomialRegression(m) => m.nll(params),
+            PosteriorModel::ComposedGlm(m) => m.nll(params),
+            PosteriorModel::LmmMarginal(m) => m.nll(params),
+            PosteriorModel::ExponentialSurvival(m) => m.nll(params),
+            PosteriorModel::WeibullSurvival(m) => m.nll(params),
+            PosteriorModel::LogNormalAft(m) => m.nll(params),
+            PosteriorModel::CoxPh(m) => m.nll(params),
+        }
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        match self {
+            PosteriorModel::HistFactory(m) => m.grad_nll(params),
+            PosteriorModel::GaussianMean(m) => m.grad_nll(params),
+            PosteriorModel::LinearRegression(m) => m.grad_nll(params),
+            PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
+            PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
+            PosteriorModel::OrderedProbit(m) => m.grad_nll(params),
+            PosteriorModel::PoissonRegression(m) => m.grad_nll(params),
+            PosteriorModel::NegativeBinomialRegression(m) => m.grad_nll(params),
+            PosteriorModel::ComposedGlm(m) => m.grad_nll(params),
+            PosteriorModel::LmmMarginal(m) => m.grad_nll(params),
+            PosteriorModel::ExponentialSurvival(m) => m.grad_nll(params),
+            PosteriorModel::WeibullSurvival(m) => m.grad_nll(params),
+            PosteriorModel::LogNormalAft(m) => m.grad_nll(params),
+            PosteriorModel::CoxPh(m) => m.grad_nll(params),
+        }
+    }
+
+    fn fit_mle(&self, mle: &RustMLE) -> NsResult<ns_core::FitResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => mle.fit(m),
+            PosteriorModel::GaussianMean(m) => mle.fit(m),
+            PosteriorModel::LinearRegression(m) => mle.fit(m),
+            PosteriorModel::LogisticRegression(m) => mle.fit(m),
+            PosteriorModel::OrderedLogit(m) => mle.fit(m),
+            PosteriorModel::OrderedProbit(m) => mle.fit(m),
+            PosteriorModel::PoissonRegression(m) => mle.fit(m),
+            PosteriorModel::NegativeBinomialRegression(m) => mle.fit(m),
+            PosteriorModel::ComposedGlm(m) => mle.fit(m),
+            PosteriorModel::LmmMarginal(m) => mle.fit(m),
+            PosteriorModel::ExponentialSurvival(m) => mle.fit(m),
+            PosteriorModel::WeibullSurvival(m) => mle.fit(m),
+            PosteriorModel::LogNormalAft(m) => mle.fit(m),
+            PosteriorModel::CoxPh(m) => mle.fit(m),
+        }
+    }
+
+    fn sample_nuts_multichain(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: NutsConfig,
+    ) -> NsResult<RustSamplerResult> {
+        let seeds: Vec<u64> =
+            (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+        match self {
+            PosteriorModel::HistFactory(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::GaussianMean(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LinearRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedLogit(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedProbit(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ComposedGlm(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LmmMarginal(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ExponentialSurvival(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::WeibullSurvival(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogNormalAft(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::CoxPh(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+        }
+    }
+}
+
+fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel> {
+    if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+        Ok(PosteriorModel::HistFactory(hf.inner.clone()))
+    } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
+        Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
+    } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
+        Ok(PosteriorModel::LinearRegression(lr.inner.clone()))
+    } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
+        Ok(PosteriorModel::LogisticRegression(logit.inner.clone()))
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedLogitModel>>() {
+        Ok(PosteriorModel::OrderedLogit(ord.inner.clone()))
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
+        Ok(PosteriorModel::OrderedProbit(ord.inner.clone()))
+    } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
+        Ok(PosteriorModel::PoissonRegression(pois.inner.clone()))
+    } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
+        Ok(PosteriorModel::NegativeBinomialRegression(nb.inner.clone()))
+    } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
+        Ok(PosteriorModel::ComposedGlm(glm.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
+        Ok(PosteriorModel::LmmMarginal(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
+        Ok(PosteriorModel::ExponentialSurvival(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
+        Ok(PosteriorModel::WeibullSurvival(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
+        Ok(PosteriorModel::LogNormalAft(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
+        Ok(PosteriorModel::CoxPh(m.inner.clone()))
+    } else {
+        Err(PyValueError::new_err(
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+        ))
+    }
+}
+
+fn extract_posterior_model_with_data(
+    model: &Bound<'_, PyAny>,
+    data: Option<Vec<f64>>,
+) -> PyResult<PosteriorModel> {
+    if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+        let m = if let Some(obs_main) = data {
+            hf.inner
+                .with_observed_main(&obs_main)
+                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+        } else {
+            hf.inner.clone()
+        };
+        Ok(PosteriorModel::HistFactory(m))
+    } else {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        extract_posterior_model(model)
+    }
+}
+
+fn validate_f64_vec(name: &str, xs: &[f64], dim: usize) -> PyResult<()> {
+    if xs.len() != dim {
+        return Err(PyValueError::new_err(format!(
+            "expected {name} length = model.dim() = {dim}, got {}",
+            xs.len()
+        )));
+    }
+    if xs.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "{name} must contain only finite values"
+        )));
+    }
+    Ok(())
+}
+
+/// Posterior wrapper: provides constrained and unconstrained log-density evaluation.
+///
+/// Notes:
+/// - Uses the model's `nll`/`grad_nll`. For HistFactory, constraint terms are already included
+///   in `nll` (pyhf parity baseline), and Posterior does not double-count them.
+#[pyclass(name = "Posterior")]
+struct PyPosterior {
+    model: PosteriorModel,
+    bounds: Vec<(f64, f64)>,
+    transform: ParameterTransform,
+    dim: usize,
+    names: Vec<String>,
+    name_to_idx: HashMap<String, usize>,
+    priors: Vec<Prior>,
+}
+
+#[derive(Debug, Clone)]
+enum Prior {
+    Flat,
+    Normal { center: f64, width: f64 },
+}
+
+impl Prior {
+    fn logpdf(&self, theta: f64) -> PyResult<f64> {
+        match self {
+            Prior::Flat => Ok(0.0),
+            Prior::Normal { center, width } => {
+                if !width.is_finite() || *width <= 0.0 {
+                    return Err(PyValueError::new_err(format!(
+                        "Normal prior width must be finite and > 0, got {}",
+                        width
+                    )));
+                }
+                let pull = (theta - center) / width;
+                Ok(-0.5 * pull * pull)
+            }
+        }
+    }
+
+    fn grad(&self, theta: f64) -> PyResult<f64> {
+        match self {
+            Prior::Flat => Ok(0.0),
+            Prior::Normal { center, width } => {
+                if !width.is_finite() || *width <= 0.0 {
+                    return Err(PyValueError::new_err(format!(
+                        "Normal prior width must be finite and > 0, got {}",
+                        width
+                    )));
+                }
+                Ok(-(theta - center) / (width * width))
+            }
+        }
+    }
+}
+
+#[pymethods]
+impl PyPosterior {
+    #[new]
+    fn new(model: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let model = extract_posterior_model(model)?;
+        let dim = model.dim();
+
+        // Defensive: keep Posterior well-defined even if bounds length != dim.
+        let mut bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        if bounds.len() > dim {
+            bounds.truncate(dim);
+        } else if bounds.len() < dim {
+            bounds.resize(dim, (f64::NEG_INFINITY, f64::INFINITY));
+        }
+
+        let transform = ParameterTransform::from_bounds(&bounds);
+        let names = model.parameter_names();
+        let mut name_to_idx = HashMap::with_capacity(names.len());
+        for (i, n) in names.iter().enumerate() {
+            name_to_idx.insert(n.clone(), i);
+        }
+        let priors = vec![Prior::Flat; dim];
+        Ok(Self { model, bounds, transform, dim, names, name_to_idx, priors })
+    }
+
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.names.clone()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.bounds.clone()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.model.parameter_init()
+    }
+
+    fn clear_priors(&mut self) {
+        self.priors.fill(Prior::Flat);
+    }
+
+    fn set_prior_flat(&mut self, name: String) -> PyResult<()> {
+        let idx = self.param_idx(&name)?;
+        self.priors[idx] = Prior::Flat;
+        Ok(())
+    }
+
+    fn set_prior_normal(&mut self, name: String, center: f64, width: f64) -> PyResult<()> {
+        let idx = self.param_idx(&name)?;
+        if !center.is_finite() {
+            return Err(PyValueError::new_err("Normal prior center must be finite"));
+        }
+        if !width.is_finite() || width <= 0.0 {
+            return Err(PyValueError::new_err(
+                "Normal prior width must be finite and > 0",
+            ));
+        }
+        self.priors[idx] = Prior::Normal { center, width };
+        Ok(())
+    }
+
+    fn priors<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let out = PyDict::new(py);
+        for (i, name) in self.names.iter().enumerate() {
+            let d = PyDict::new(py);
+            match &self.priors[i] {
+                Prior::Flat => {
+                    d.set_item("type", "flat")?;
+                }
+                Prior::Normal { center, width } => {
+                    d.set_item("type", "normal")?;
+                    d.set_item("center", *center)?;
+                    d.set_item("width", *width)?;
+                }
+            }
+            out.set_item(name, d)?;
+        }
+        Ok(out.into_any().unbind())
+    }
+
+    fn logpdf(&self, theta: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        let nll = self.model.nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("logpdf failed: {}", e)))?;
+        let lp_prior = self.prior_logpdf(&theta)?;
+        Ok(-nll + lp_prior)
+    }
+
+    fn grad(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        let mut g = self.model.grad_nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("grad failed: {}", e)))?;
+        for gi in g.iter_mut() {
+            *gi = -*gi;
+        }
+        self.add_prior_grad(&theta, &mut g)?;
+        Ok(g)
+    }
+
+    fn to_unconstrained(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        Ok(self.transform.inverse(&theta))
+    }
+
+    fn to_constrained(&self, z: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        Ok(self.transform.forward(&z))
+    }
+
+    fn logpdf_unconstrained(&self, z: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        let theta = self.transform.forward(&z);
+        let nll = self.model.nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("logpdf_unconstrained failed: {}", e)))?;
+        let lp_prior = self.prior_logpdf(&theta)?;
+        let log_jac = self.transform.log_abs_det_jacobian(&z);
+        Ok(-nll + lp_prior + log_jac)
+    }
+
+    fn grad_unconstrained(&self, z: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        let theta = self.transform.forward(&z);
+
+        // grad(logpdf) = -grad(nll)
+        let mut grad_theta = self.model.grad_nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("grad_unconstrained failed: {}", e)))?;
+        for gi in grad_theta.iter_mut() {
+            *gi = -*gi;
+        }
+        self.add_prior_grad(&theta, &mut grad_theta)?;
+
+        let jac_diag = self.transform.jacobian_diag(&z);
+        let grad_log_jac = self.transform.grad_log_abs_det_jacobian(&z);
+        let grad_z: Vec<f64> = grad_theta
+            .iter()
+            .zip(jac_diag.iter())
+            .zip(grad_log_jac.iter())
+            .map(|((&gt, &jd), &glj)| gt * jd + glj)
+            .collect();
+        Ok(grad_z)
+    }
+}
+
+impl PyPosterior {
+    fn param_idx(&self, name: &str) -> PyResult<usize> {
+        self.name_to_idx
+            .get(name)
+            .copied()
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown parameter name {name:?}")))
+    }
+
+    fn prior_logpdf(&self, theta: &[f64]) -> PyResult<f64> {
+        let mut lp = 0.0;
+        for (th, pr) in theta.iter().copied().zip(self.priors.iter()) {
+            lp += pr.logpdf(th)?;
+        }
+        Ok(lp)
+    }
+
+    fn add_prior_grad(&self, theta: &[f64], grad_theta: &mut [f64]) -> PyResult<()> {
+        debug_assert_eq!(theta.len(), grad_theta.len());
+        for i in 0..theta.len() {
+            grad_theta[i] += self.priors[i].grad(theta[i])?;
+        }
+        Ok(())
+    }
 }
 
 /// Python wrapper for HistFactoryModel
@@ -444,9 +972,34 @@ fn kalman_forecast(
 }
 
 #[pyfunction]
-#[pyo3(signature = (model, *, t_max, seed=42))]
-fn kalman_simulate(py: Python<'_>, model: &PyKalmanModel, t_max: usize, seed: u64) -> PyResult<Py<PyAny>> {
-    let sim = rust_kalman_simulate(&model.inner, t_max, seed)
+#[pyo3(signature = (model, *, t_max, seed=42, init="sample", x0=None))]
+fn kalman_simulate(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    t_max: usize,
+    seed: u64,
+    init: &str,
+    x0: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let x0 = if let Some(x0) = x0 {
+        Some(dvector_from_vec("x0", x0)?)
+    } else {
+        match init {
+            "sample" => None,
+            "mean" => Some(model.inner.m0.clone()),
+            _ => {
+                return Err(PyValueError::new_err(
+                    "init must be one of {'sample','mean'} (or pass x0=...)",
+                ));
+            }
+        }
+    };
+
+    let sim = if let Some(x0) = x0 {
+        rust_kalman_simulate_with_x0(&model.inner, t_max, seed, Some(x0))
+    } else {
+        rust_kalman_simulate(&model.inner, t_max, seed)
+    }
         .map_err(|e| PyValueError::new_err(format!("kalman_simulate failed: {}", e)))?;
 
     let out = PyDict::new(py);
@@ -688,6 +1241,96 @@ impl PyLogisticRegressionModel {
     }
 }
 
+/// Python wrapper for `OrderedLogitModel` (ordinal logistic regression).
+#[pyclass(name = "OrderedLogitModel")]
+struct PyOrderedLogitModel {
+    inner: RustOrderedLogitModel,
+}
+
+#[pymethods]
+impl PyOrderedLogitModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, n_levels))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<u8>, n_levels: usize) -> PyResult<Self> {
+        let inner = RustOrderedLogitModel::new(x, y, n_levels)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `OrderedProbitModel` (ordinal probit regression).
+#[pyclass(name = "OrderedProbitModel")]
+struct PyOrderedProbitModel {
+    inner: RustOrderedProbitModel,
+}
+
+#[pymethods]
+impl PyOrderedProbitModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, n_levels))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<u8>, n_levels: usize) -> PyResult<Self> {
+        let inner = RustOrderedProbitModel::new(x, y, n_levels)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for `PoissonRegressionModel`.
 #[pyclass(name = "PoissonRegressionModel")]
 struct PyPoissonRegressionModel {
@@ -796,9 +1439,9 @@ struct PyComposedGlmModel {
 
 #[pymethods]
 impl PyComposedGlmModel {
-    /// Build a composed Gaussian linear regression model (sigma fixed to 1).
+    /// Build a composed Gaussian linear regression model (optionally with inferred sigma_y).
     #[staticmethod]
-    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false, random_intercept_non_centered=false, random_slope_feature_idx=None, random_slope_non_centered=false, correlated_feature_idx=None, lkj_eta=1.0))]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false, obs_sigma_prior_m=None, obs_sigma_prior_s=None, random_intercept_non_centered=false, random_slope_feature_idx=None, random_slope_non_centered=false, correlated_feature_idx=None, lkj_eta=1.0))]
     fn linear_regression(
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
@@ -808,6 +1451,8 @@ impl PyComposedGlmModel {
         coef_prior_mu: f64,
         coef_prior_sigma: f64,
         penalize_intercept: bool,
+        obs_sigma_prior_m: Option<f64>,
+        obs_sigma_prior_s: Option<f64>,
         random_intercept_non_centered: bool,
         random_slope_feature_idx: Option<usize>,
         random_slope_non_centered: bool,
@@ -824,6 +1469,17 @@ impl PyComposedGlmModel {
             .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         b = b.with_penalize_intercept(penalize_intercept);
+
+        if obs_sigma_prior_m.is_some() != obs_sigma_prior_s.is_some() {
+            return Err(PyValueError::new_err(
+                "obs_sigma_prior_m and obs_sigma_prior_s must be set together",
+            ));
+        }
+        if let (Some(m), Some(s)) = (obs_sigma_prior_m, obs_sigma_prior_s) {
+            b = b
+                .with_gaussian_obs_sigma_prior_lognormal((m, s))
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        }
 
         if correlated_feature_idx.is_some() {
             if random_slope_feature_idx.is_some()
@@ -1073,6 +1729,16 @@ impl PyComposedGlmModel {
 // Survival models (Phase 9 Pack A).
 // ---------------------------------------------------------------------------
 
+fn parse_cox_ties(ties: &str) -> PyResult<RustCoxTies> {
+    match ties.to_ascii_lowercase().as_str() {
+        "breslow" => Ok(RustCoxTies::Breslow),
+        "efron" => Ok(RustCoxTies::Efron),
+        _ => Err(PyValueError::new_err(
+            "Invalid ties policy: expected 'efron' or 'breslow'",
+        )),
+    }
+}
+
 /// Python wrapper for `ExponentialSurvivalModel` (right-censoring).
 #[pyclass(name = "ExponentialSurvivalModel")]
 struct PyExponentialSurvivalModel {
@@ -1205,6 +1871,114 @@ impl PyLogNormalAftModel {
     }
 }
 
+/// Python wrapper for `CoxPhModel` (partial likelihood; right-censoring).
+#[pyclass(name = "CoxPhModel")]
+struct PyCoxPhModel {
+    inner: RustCoxPhModel,
+}
+
+#[pymethods]
+impl PyCoxPhModel {
+    #[new]
+    #[pyo3(signature = (times, events, x, *, ties = "efron"))]
+    fn new(times: Vec<f64>, events: Vec<bool>, x: Vec<Vec<f64>>, ties: &str) -> PyResult<Self> {
+        let ties = parse_cox_ties(ties)?;
+        let inner = RustCoxPhModel::new(times, events, x, ties)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LMM (Phase 9 Pack B).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `LmmMarginalModel` (Gaussian mixed model, marginal likelihood).
+#[pyclass(name = "LmmMarginalModel")]
+struct PyLmmMarginalModel {
+    inner: RustLmmMarginalModel,
+}
+
+#[pymethods]
+impl PyLmmMarginalModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx, n_groups=None, random_slope_feature_idx=None))]
+    fn new(
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        include_intercept: bool,
+        group_idx: Vec<usize>,
+        n_groups: Option<usize>,
+        random_slope_feature_idx: Option<usize>,
+    ) -> PyResult<Self> {
+        let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
+        let re = if let Some(k) = random_slope_feature_idx {
+            RustLmmRandomEffects::InterceptSlope { feature_idx: k }
+        } else {
+            RustLmmRandomEffects::Intercept
+        };
+        let inner = RustLmmMarginalModel::new(x, y, include_intercept, group_idx, ng, re)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for FitResult
 #[pyclass(name = "FitResult")]
 struct PyFitResult {
@@ -1274,133 +2048,12 @@ impl PyMaximumLikelihoodEstimator {
         model: &Bound<'py, PyAny>,
         data: Option<Vec<f64>>,
     ) -> PyResult<PyFitResult> {
-        // Extract a Rust-owned model before releasing the GIL.
-        enum FitModel {
-            HistFactory(RustModel),
-            GaussianMean(GaussianMeanModel),
-            LinearRegression(RustLinearRegressionModel),
-            LogisticRegression(RustLogisticRegressionModel),
-            PoissonRegression(RustPoissonRegressionModel),
-            NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
-            ComposedGlm(RustComposedGlmModel),
-            ExponentialSurvival(RustExponentialSurvivalModel),
-            WeibullSurvival(RustWeibullSurvivalModel),
-            LogNormalAft(RustLogNormalAftModel),
-        }
-
-        let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
-            let m = if let Some(obs_main) = data {
-                hf.inner.with_observed_main(&obs_main).map_err(|e| {
-                    PyValueError::new_err(format!("Failed to set observed data: {}", e))
-                })?
-            } else {
-                hf.inner.clone()
-            };
-            FitModel::HistFactory(m)
-        } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::GaussianMean(gm.inner.clone())
-        } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LinearRegression(lr.inner.clone())
-        } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LogisticRegression(logit.inner.clone())
-        } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::PoissonRegression(pois.inner.clone())
-        } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::NegativeBinomialRegression(nb.inner.clone())
-        } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::ComposedGlm(glm.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::ExponentialSurvival(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::WeibullSurvival(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LogNormalAft(m.inner.clone())
-        } else {
-            return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
-            ));
-        };
+        let fit_model = extract_posterior_model_with_data(model, data)?;
 
         let mle = self.inner.clone();
-        let result = match fit_model {
-            FitModel::HistFactory(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::GaussianMean(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LinearRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LogisticRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::PoissonRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::NegativeBinomialRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::ComposedGlm(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::ExponentialSurvival(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::WeibullSurvival(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LogNormalAft(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-        };
+        let result = py
+            .detach(move || fit_model.fit_mle(&mle))
+            .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
 
         Ok(PyFitResult {
             parameters: result.parameters,
@@ -1605,6 +2258,62 @@ impl PyMaximumLikelihoodEstimator {
                     .collect();
             }
 
+            if first.extract::<PyRef<'_, PyOrderedLogitModel>>().is_ok() {
+                let mut models: Vec<RustOrderedLogitModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyOrderedLogitModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be OrderedLogitModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyOrderedProbitModel>>().is_ok() {
+                let mut models: Vec<RustOrderedProbitModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyOrderedProbitModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be OrderedProbitModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
             if first
                 .extract::<PyRef<'_, PyPoissonRegressionModel>>()
                 .is_ok()
@@ -1703,8 +2412,148 @@ impl PyMaximumLikelihoodEstimator {
                     .collect();
             }
 
+            if first.extract::<PyRef<'_, PyLmmMarginalModel>>().is_ok() {
+                let mut models: Vec<RustLmmMarginalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyLmmMarginalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be LmmMarginalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyExponentialSurvivalModel>>().is_ok() {
+                let mut models: Vec<RustExponentialSurvivalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyExponentialSurvivalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be ExponentialSurvivalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyWeibullSurvivalModel>>().is_ok() {
+                let mut models: Vec<RustWeibullSurvivalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyWeibullSurvivalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be WeibullSurvivalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyLogNormalAftModel>>().is_ok() {
+                let mut models: Vec<RustLogNormalAftModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyLogNormalAftModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be LogNormalAftModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyCoxPhModel>>().is_ok() {
+                let mut models: Vec<RustCoxPhModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyCoxPhModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be CoxPhModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
             Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
             ))
         }
     }
@@ -1817,6 +2666,31 @@ fn fit_toys(
 ) -> PyResult<Vec<PyFitResult>> {
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
     mle.fit_toys(py, model, params, n_toys, seed)
+}
+
+/// Generate an Asimov (deterministic expected) **main** dataset for a HistFactory model.
+///
+/// Returns a flat vector of main-bin expectations (no auxdata), suitable for passing to
+/// `nextstat.fit(model, data=...)` or `model.with_observed_main(...)`.
+#[pyfunction]
+fn asimov_data(model: &PyHistFactoryModel, params: Vec<f64>) -> PyResult<Vec<f64>> {
+    ns_inference::toys::asimov_main(&model.inner, &params)
+        .map_err(|e| PyValueError::new_err(format!("asimov_data failed: {}", e)))
+}
+
+/// Generate Poisson-fluctuated **main** toy datasets for a HistFactory model.
+///
+/// Returns `n_toys` flat vectors of main-bin observations (no auxdata).
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+fn poisson_toys(
+    model: &PyHistFactoryModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+) -> PyResult<Vec<Vec<f64>>> {
+    ns_inference::toys::poisson_main_toys(&model.inner, &params, n_toys, seed)
+        .map_err(|e| PyValueError::new_err(format!("poisson_toys failed: {}", e)))
 }
 
 /// Convenience wrapper: nuisance-parameter ranking (impact on POI).
@@ -2037,174 +2911,12 @@ fn sample<'py>(
         init_overdispersed_rel,
         ..Default::default()
     };
-
-    // Extract a Rust-owned model before releasing the GIL.
-    enum SampleModel {
-        HistFactory(RustModel),
-        GaussianMean(GaussianMeanModel),
-        LinearRegression(RustLinearRegressionModel),
-        LogisticRegression(RustLogisticRegressionModel),
-        PoissonRegression(RustPoissonRegressionModel),
-        NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
-        ComposedGlm(RustComposedGlmModel),
-        ExponentialSurvival(RustExponentialSurvivalModel),
-        WeibullSurvival(RustWeibullSurvivalModel),
-        LogNormalAft(RustLogNormalAftModel),
-    }
-
-    let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
-        let m = if let Some(obs_main) = data {
-            hf.inner
-                .with_observed_main(&obs_main)
-                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
-        } else {
-            hf.inner.clone()
-        };
-        SampleModel::HistFactory(m)
-    } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::GaussianMean(gm.inner.clone())
-    } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LinearRegression(lr.inner.clone())
-    } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LogisticRegression(logit.inner.clone())
-    } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::PoissonRegression(pois.inner.clone())
-    } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::NegativeBinomialRegression(nb.inner.clone())
-    } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::ComposedGlm(glm.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::ExponentialSurvival(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::WeibullSurvival(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LogNormalAft(m.inner.clone())
-    } else {
-        return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
-        ));
-    };
+    let sample_model = extract_posterior_model_with_data(model, data)?;
 
     // Release GIL during sampling (Rayon-parallel for multi-chain).
-    let result = match sample_model {
-        SampleModel::HistFactory(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::GaussianMean(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LinearRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LogisticRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::PoissonRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::NegativeBinomialRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::ComposedGlm(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::ExponentialSurvival(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::WeibullSurvival(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LogNormalAft(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-    };
+    let result = py
+        .detach(move || sample_model.sample_nuts_multichain(n_chains, n_warmup, n_samples, seed, config))
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
 
     let diag = compute_diagnostics(&result);
     let param_names = &result.param_names;
@@ -2389,6 +3101,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
+    m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
@@ -2407,16 +3121,21 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
+    m.add_class::<PyPosterior>()?;
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
+    m.add_class::<PyOrderedLogitModel>()?;
+    m.add_class::<PyOrderedProbitModel>()?;
     m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyNegativeBinomialRegressionModel>()?;
     m.add_class::<PyComposedGlmModel>()?;
+    m.add_class::<PyLmmMarginalModel>()?;
     m.add_class::<PyExponentialSurvivalModel>()?;
     m.add_class::<PyWeibullSurvivalModel>()?;
     m.add_class::<PyLogNormalAftModel>()?;
+    m.add_class::<PyCoxPhModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

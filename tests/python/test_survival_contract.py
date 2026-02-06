@@ -39,3 +39,37 @@ def test_survival_length_mismatch_raises() -> None:
     with pytest.raises(ValueError):
         nextstat.ExponentialSurvivalModel([1.0, 2.0], [True])
 
+
+def test_cox_ph_contract_and_fit_smoke() -> None:
+    times = [2.0, 1.0, 1.0, 0.5, 0.5, 0.2]
+    events = [True, True, False, True, False, False]
+    x = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, -1.0],
+        [0.0, -1.0],
+        [0.5, 0.5],
+    ]
+
+    m = nextstat.CoxPhModel(times, events, x, ties="efron")
+    assert m.n_params() == 2
+    assert m.parameter_names() == ["beta1", "beta2"]
+
+    init = m.suggested_init()
+    nll = m.nll(init)
+    g = m.grad_nll(init)
+    assert math.isfinite(nll)
+    assert len(g) == 2
+    assert all(math.isfinite(float(v)) for v in g)
+
+    res = nextstat.fit(m)
+    assert len(res.bestfit) == 2
+    assert math.isfinite(res.nll)
+
+    m_breslow = nextstat.CoxPhModel(times, events, x, ties="breslow")
+    assert math.isfinite(m_breslow.nll(m_breslow.suggested_init()))
+
+    # ties policy validation
+    with pytest.raises(ValueError):
+        nextstat.CoxPhModel(times, events, x, ties="invalid")

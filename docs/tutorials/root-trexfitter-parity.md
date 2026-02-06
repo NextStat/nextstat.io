@@ -46,6 +46,60 @@ Two practical execution templates:
 
 See the Cookbook section below for copy-paste examples for both.
 
+Repo templates (recommended starting point):
+- `scripts/condor/apex2_root_suite_single.sub` + `scripts/condor/run_apex2_root_suite_single.sh`
+- `scripts/condor/apex2_root_suite_array.sub` + `scripts/condor/run_apex2_root_suite_case.sh`
+
+HTCondor template quickstart:
+
+```bash
+mkdir -p scripts/condor/logs
+
+export APEX2_ROOT_CASES_JSON=/abs/path/to/apex2_root_cases.json
+export APEX2_RESULTS_DIR=/abs/path/to/results
+
+# Optional: source ROOT setup on worker nodes
+# export APEX2_ROOT_SETUP='source /cvmfs/sft.cern.ch/lcg/views/LCG_*/x86_64-el9-gcc*/setup.sh'
+
+# Optional: choose a python (venv/conda)
+# export APEX2_PYTHON=/abs/path/to/python3
+```
+
+Submit (single job):
+
+```bash
+condor_submit scripts/condor/apex2_root_suite_single.sub
+```
+
+Submit (job array): set `queue <N>` in `scripts/condor/apex2_root_suite_array.sub`, where `<N>` is the number of
+cases in your JSON (0-based `--case-index` uses `$(Process)`).
+
+Optional helper to render a `.sub` with the correct `queue N`:
+
+```bash
+python3 scripts/condor/render_apex2_root_suite_array_sub.py \
+  --cases "${APEX2_ROOT_CASES_JSON}" \
+  --initialdir /abs/path/to/nextstat.io \
+  --out apex2_root_suite_array.sub
+condor_submit apex2_root_suite_array.sub
+```
+
+After the array finishes, aggregate:
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir "${APEX2_RESULTS_DIR}" \
+  --glob "apex2_root_case_*.json" \
+  --out "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --exit-nonzero-on-fail
+```
+
+Optional Makefile wrapper (when running from the repo checkout):
+
+```bash
+make apex2-root-aggregate ROOT_RESULTS_DIR="${APEX2_RESULTS_DIR}" ROOT_AGG_ARGS="--exit-nonzero-on-fail"
+```
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
@@ -108,6 +162,12 @@ If you have a directory with TRExFitter exports (or any HistFactory exports), yo
 
 Each case `name` is generated as the export directory path relative to `--search-dir` to avoid collisions (large datasets often reuse the same subfolder names).
 
+Optional Makefile wrapper (same thing, more ergonomic):
+
+```bash
+make apex2-root-cases ROOT_SEARCH_DIR=/abs/path/to/trex/output ROOT_CASES_ARGS="--include-fixtures --absolute-paths"
+```
+
 2) Or skip manual generation and pass the directory directly to the master runner (see Execution).
 
 ### Execution (runs)
@@ -136,6 +196,15 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_repor
   --cases tmp/apex2_root_cases.json \
   --keep-going \
   --out tmp/apex2_root_suite_report.json
+```
+
+To run a single case (useful for HTCondor job arrays):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --case-index 0 \
+  --out tmp/apex2_root_suite_case_0.json
 ```
 
 #### Option C: pyhf parity + speed only (no ROOT)
@@ -324,6 +393,10 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
 
 12) HTCondor: one job for the whole suite (simple template)
 
+Preferred: start from the repo templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_single.sub`
+- `scripts/condor/run_apex2_root_suite_single.sh`
+
 Create a submit file `root_suite.sub` next to the repository (or in a separate directory):
 
 ```ini
@@ -353,7 +426,34 @@ Notes:
 
 13) HTCondor: job array (one case per job)
 
-Idea: generate `tmp/apex2_root_cases.json` ahead of time, then split into a case list (by export folder names) and run `tests/apex2_root_profile_report.py` for a single input XML at a time.
+Preferred: use the suite runner's per-case mode (`--case-index`) with the templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_array.sub`
+- `scripts/condor/run_apex2_root_suite_case.sh`
+
+This keeps the report format identical to the single-job suite (just `n_cases=1` per job), which makes
+post-aggregation straightforward.
+
+Aggregation (preferred array mode):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir /path/to/results \
+  --glob "apex2_root_case_*.json" \
+  --out /path/to/results/apex2_root_suite_aggregate.json \
+  --exit-nonzero-on-fail
+```
+
+Optional: compare aggregated perf vs a recorded ROOT baseline suite report:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_apex2_root_suite_to_baseline.py \
+  --baseline tmp/baselines/root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json \
+  --current /path/to/results/apex2_root_suite_aggregate.json \
+  --out /path/to/results/apex2_root_suite_perf_compare.json
+```
+
+Alternative: if you want full control and/or do not want to depend on `--case-index`, you can run the low-level
+engine (`tests/validate_root_profile_scan.py`) in an array keyed by case name (example below).
 
 Minimal path without a custom split script:
 1) Generate cases (this also gives you the list of `name` values in JSON):
@@ -555,6 +655,11 @@ Exit codes:
 If the selected manifest is missing some baseline keys (for example because it was recorded with `--only root`),
 `tests/compare_with_latest_baseline.py` will try to recover missing entries by scanning newer `baseline_manifest_*.json`
 in the same `tmp/baselines/` directory.
+
+Performance noise notes (local dev machines):
+- `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons when the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`).
+- `tests/benchmark_glm_fit_predict.py` uses median timings to reduce false regressions when CPU load/frequency changes.
+- `tests/apex2_p6_glm_benchmark_report.py` skips predict comparisons when baseline `predict_s < 1e-3` seconds by default (`--min-baseline-predict-s`), mirroring `--min-baseline-fit-s`.
 
 For performance gating, use the same machine as the baseline and enable:
 

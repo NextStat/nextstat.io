@@ -198,6 +198,23 @@ def test_kalman_simulate_x0_depends_on_seed():
     b = nextstat.timeseries.kalman_simulate(model, t_max=3, seed=2)
     assert float(a["xs"][0][0]) != float(b["xs"][0][0])
 
+def test_kalman_simulate_init_mean_uses_m0():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [10.0], [[1.0]])
+    out = nextstat.timeseries.kalman_simulate(model, t_max=1, seed=123, init="mean")
+    assert float(out["xs"][0][0]) == 10.0
+
+
+def test_kalman_simulate_can_fix_x0():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [0.0], [[1.0]])
+    a = nextstat.timeseries.kalman_simulate(model, t_max=3, seed=1, x0=[123.0])
+    b = nextstat.timeseries.kalman_simulate(model, t_max=3, seed=2, x0=[123.0])
+    assert float(a["xs"][0][0]) == 123.0
+    assert float(b["xs"][0][0]) == 123.0
+
 
 def test_kalman_filter_allows_missing_none():
     import nextstat

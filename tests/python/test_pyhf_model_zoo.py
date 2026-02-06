@@ -21,6 +21,11 @@ import nextstat
 
 from _tolerances import EXPECTED_DATA_ATOL, TWICE_NLL_ATOL, TWICE_NLL_RTOL
 
+from _pyhf_model_zoo import (
+    make_workspace_histo_normsys_staterror,
+    make_workspace_multichannel,
+    make_workspace_shapefactor_control_region,
+)
 
 pyhf = pytest.importorskip("pyhf")
 
@@ -70,37 +75,45 @@ def _sample_params(rng: random.Random, init: list[float], bounds: list[tuple[flo
     return out
 
 
-def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed: int, n_random: int):
-    pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
-    pyhf_init = list(map(float, pyhf_model.config.suggested_init()))
-    pyhf_bounds = [(float(a), float(b)) for a, b in pyhf_model.config.suggested_bounds()]
+def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, ns_timing, *, seed: int, n_random: int):
+    with ns_timing.time("pyhf"):
+        pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
+        pyhf_init = list(map(float, pyhf_model.config.suggested_init()))
+        pyhf_bounds = [(float(a), float(b)) for a, b in pyhf_model.config.suggested_bounds()]
 
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    ns_names = ns_model.parameter_names()
-    ns_init = ns_model.suggested_init()
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_names = ns_model.parameter_names()
+        ns_init = ns_model.suggested_init()
 
     assert set(ns_names) == set(pyhf_model.config.par_names)
 
     def expected_data_full_ns(pyhf_params: list[float]) -> list[float]:
         ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
-        return [float(x) for x in ns_model.expected_data(ns_params)]
+        with ns_timing.time("nextstat"):
+            return [float(x) for x in ns_model.expected_data(ns_params)]
 
     def expected_data_main_ns(pyhf_params: list[float]) -> list[float]:
         ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
-        return [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
+        with ns_timing.time("nextstat"):
+            return [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
 
     def expected_data_full_pyhf(pyhf_params: list[float]) -> list[float]:
-        return [float(x) for x in pyhf_model.expected_data(pyhf_params)]
+        with ns_timing.time("pyhf"):
+            return [float(x) for x in pyhf_model.expected_data(pyhf_params)]
 
     def expected_data_main_pyhf(pyhf_params: list[float]) -> list[float]:
-        return [float(x) for x in pyhf_model.expected_data(pyhf_params, include_auxdata=False)]
+        with ns_timing.time("pyhf"):
+            return [float(x) for x in pyhf_model.expected_data(pyhf_params, include_auxdata=False)]
 
     def twice_nll_ns(pyhf_params: list[float]) -> float:
         ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
-        return 2.0 * float(ns_model.nll(ns_params))
+        with ns_timing.time("nextstat"):
+            return 2.0 * float(ns_model.nll(ns_params))
 
     def twice_nll_pyhf(pyhf_params: list[float]) -> float:
-        return _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_params)
+        with ns_timing.time("pyhf"):
+            return _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_params)
 
     # suggested init
     assert twice_nll_ns(pyhf_init) == pytest.approx(
@@ -162,121 +175,13 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
             )
 
 
-def _make_workspace_multichannel(n_bins: int) -> dict[str, Any]:
-    # 3 channels: SR, CR1, CR2. Signal only in SR. Backgrounds with shapesys.
-    def ch(name: str, sig: float, bkg: float, unc: float):
-        signal = {
-            "name": "signal",
-            "data": [sig] * n_bins,
-            "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-        }
-        background = {
-            "name": "background",
-            "data": [bkg + 0.1 * i for i in range(n_bins)],
-            "modifiers": [{"name": f"shapesys_{name}", "type": "shapesys", "data": [unc] * n_bins}],
-        }
-        return {"name": name, "samples": [signal, background]}
-
-    channels = [
-        ch("SR", sig=5.0, bkg=100.0, unc=10.0),
-        ch("CR1", sig=0.0, bkg=500.0, unc=30.0),
-        ch("CR2", sig=0.0, bkg=800.0, unc=40.0),
-    ]
-    observations = []
-    for c in channels:
-        # Observed near nominal
-        total = [sum(s["data"][i] for s in c["samples"]) for i in range(n_bins)]
-        observations.append({"name": c["name"], "data": [float(x) for x in total]})
-
-    return {
-        "channels": channels,
-        "observations": observations,
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
-
-
-def _make_workspace_histo_normsys_staterror(n_bins: int) -> dict[str, Any]:
-    # Single channel, two samples with:
-    # - global lumi (constrained)
-    # - background normsys + histosys
-    # - staterror per bin
-    signal = {
-        "name": "signal",
-        "data": [10.0] * n_bins,
-        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}, {"name": "lumi", "type": "lumi", "data": None}],
-    }
-    nominal = [200.0 + 0.25 * i for i in range(n_bins)]
-    hi = [x * (1.08 + 0.01 * ((i % 5) - 2)) for i, x in enumerate(nominal)]
-    lo = [x * (0.92 - 0.005 * ((i % 7) - 3)) for i, x in enumerate(nominal)]
-    stat = [max(1.0, 0.15 * (x**0.5)) for x in nominal]
-    background = {
-        "name": "background",
-        "data": nominal,
-        "modifiers": [
-            {"name": "lumi", "type": "lumi", "data": None},
-            {"name": "bkg_norm", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}},
-            {"name": "bkg_shape", "type": "histosys", "data": {"hi_data": hi, "lo_data": lo}},
-            {"name": "staterror_c", "type": "staterror", "data": stat},
-        ],
-    }
-    obs = [float(s + b) for s, b in zip(signal["data"], background["data"])]
-    return {
-        "channels": [{"name": "c", "samples": [signal, background]}],
-        "observations": [{"name": "c", "data": obs}],
-        "measurements": [
-            {
-                "name": "m",
-                "config": {
-                    "poi": "mu",
-                    "parameters": [
-                        {"name": "lumi", "inits": [1.0], "bounds": [[0.9, 1.1]], "auxdata": [1.0], "sigmas": [0.02]},
-                    ],
-                },
-            }
-        ],
-        "version": "1.0.0",
-    }
-
-
-def _make_workspace_shapefactor_control_region(n_bins: int) -> dict[str, Any]:
-    # Two channels: SR (signal+background) and CR (background-only with shapefactor).
-    sr_signal = {
-        "name": "signal",
-        "data": [6.0] * n_bins,
-        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-    }
-    sr_bkg = {
-        "name": "background",
-        "data": [80.0] * n_bins,
-        "modifiers": [{"name": "sr_shape", "type": "histosys", "data": {"hi_data": [85.0] * n_bins, "lo_data": [75.0] * n_bins}}],
-    }
-    cr_bkg = {
-        "name": "background",
-        "data": [500.0 + i for i in range(n_bins)],
-        "modifiers": [{"name": "sf_cr", "type": "shapefactor", "data": None}],
-    }
-    channels = [
-        {"name": "SR", "samples": [sr_signal, sr_bkg]},
-        {"name": "CR", "samples": [cr_bkg]},
-    ]
-    obs_sr = [float(a + b) for a, b in zip(sr_signal["data"], sr_bkg["data"])]
-    obs_cr = [float(x) for x in cr_bkg["data"]]
-    return {
-        "channels": channels,
-        "observations": [{"name": "SR", "data": obs_sr}, {"name": "CR", "data": obs_cr}],
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
-
-
 @pytest.mark.parametrize(
     ("workspace", "measurement", "seed", "n_random"),
     [
-        (_make_workspace_multichannel(3), "m", 0, 6),
-        (_make_workspace_histo_normsys_staterror(10), "m", 1, 6),
-        (_make_workspace_shapefactor_control_region(4), "m", 2, 6),
+        (make_workspace_multichannel(3), "m", 0, 6),
+        (make_workspace_histo_normsys_staterror(10), "m", 1, 6),
+        (make_workspace_shapefactor_control_region(4), "m", 2, 6),
     ],
 )
-def test_model_zoo_nll_parity(workspace, measurement, seed, n_random):
-    _assert_nll_parity(workspace, measurement, seed=seed, n_random=n_random)
+def test_model_zoo_nll_parity(workspace, measurement, seed, n_random, ns_timing):
+    _assert_nll_parity(workspace, measurement, ns_timing, seed=seed, n_random=n_random)

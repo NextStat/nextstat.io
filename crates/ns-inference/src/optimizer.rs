@@ -197,7 +197,7 @@ impl LbfgsbOptimizer {
         // Create executor
         let res = Executor::new(problem, solver)
             .configure(|state| {
-                state.param(init_clamped).max_iters(self.config.max_iter).target_cost(0.0)
+                state.param(init_clamped).max_iters(self.config.max_iter)
             })
             .run()
             .map_err(|e| ns_core::Error::Validation(format!("Optimization failed: {}", e)))?;
@@ -301,6 +301,38 @@ mod tests {
         // Should find constrained optimum
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-4);
         assert_relative_eq!(result.parameters[1], 2.0, epsilon = 1e-4);
+    }
+
+    // Quadratic with negative offset: minimum is negative.
+    struct QuadraticNegativeOffset;
+
+    impl ObjectiveFunction for QuadraticNegativeOffset {
+        fn eval(&self, params: &[f64]) -> Result<f64> {
+            let x = params[0];
+            Ok((x - 2.0).powi(2) - 5.0)
+        }
+
+        fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+            let x = params[0];
+            Ok(vec![2.0 * (x - 2.0)])
+        }
+    }
+
+    #[test]
+    fn test_optimizer_does_not_stop_at_negative_cost() {
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+        let objective = QuadraticNegativeOffset;
+
+        // f(0) = -1 already < 0, but the true minimum is f(2) = -5.
+        let init = vec![0.0];
+        let bounds = vec![(-10.0, 10.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+
+        assert!(result.converged, "Optimizer should converge");
+        assert_relative_eq!(result.parameters[0], 2.0, epsilon = 1e-4);
+        assert_relative_eq!(result.fval, -5.0, epsilon = 1e-6);
     }
 
     // Rosenbrock function: f(x,y) = (a-x)^2 + b(y-x^2)^2

@@ -729,6 +729,23 @@ struct KalmanLocalLinearTrendSeasonalJson {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct KalmanArma11Json {
+    phi: f64,
+    theta: f64,
+    sigma2: f64,
+    #[serde(default = "default_r_tiny")]
+    r: f64,
+    #[serde(default = "default_m0")]
+    m0_x: f64,
+    #[serde(default = "default_m0")]
+    m0_eps: f64,
+    #[serde(default = "default_p0")]
+    p0_x: f64,
+    #[serde(default = "default_p0")]
+    p0_eps: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct KalmanInputJson {
     #[serde(default)]
     model: Option<KalmanModelJson>,
@@ -738,6 +755,8 @@ struct KalmanInputJson {
     local_linear_trend: Option<KalmanLocalLinearTrendJson>,
     #[serde(default)]
     ar1: Option<KalmanAr1Json>,
+    #[serde(default)]
+    arma11: Option<KalmanArma11Json>,
     #[serde(default)]
     local_level_seasonal: Option<KalmanLocalLevelSeasonalJson>,
     #[serde(default)]
@@ -751,6 +770,7 @@ enum KalmanSpecKind {
     LocalLevel,
     LocalLinearTrend,
     Ar1,
+    Arma11,
     LocalLevelSeasonal { period: usize },
     LocalLinearTrendSeasonal { period: usize },
 }
@@ -769,6 +789,10 @@ fn default_slope0() -> f64 {
 
 fn default_p0() -> f64 {
     1.0
+}
+
+fn default_r_tiny() -> f64 {
+    1e-12
 }
 
 fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> Result<DMatrix<f64>> {
@@ -853,11 +877,12 @@ fn load_kalman_input(
     model_count += input.local_level.is_some() as usize;
     model_count += input.local_linear_trend.is_some() as usize;
     model_count += input.ar1.is_some() as usize;
+    model_count += input.arma11.is_some() as usize;
     model_count += input.local_level_seasonal.is_some() as usize;
     model_count += input.local_linear_trend_seasonal.is_some() as usize;
     if model_count != 1 {
         anyhow::bail!(
-            "expected exactly one of: model, local_level, local_linear_trend, ar1, local_level_seasonal, local_linear_trend_seasonal"
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal"
         );
     }
 
@@ -888,6 +913,39 @@ fn load_kalman_input(
     } else if let Some(ar) = input.ar1 {
         ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
             .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?
+    } else if let Some(arma) = input.arma11 {
+        if !arma.phi.is_finite() {
+            anyhow::bail!("invalid arma11: phi must be finite");
+        }
+        if !arma.theta.is_finite() {
+            anyhow::bail!("invalid arma11: theta must be finite");
+        }
+        if !arma.sigma2.is_finite() || arma.sigma2 <= 0.0 {
+            anyhow::bail!("invalid arma11: sigma2 must be finite and > 0");
+        }
+        if !arma.r.is_finite() || arma.r <= 0.0 {
+            anyhow::bail!("invalid arma11: r must be finite and > 0");
+        }
+        if !arma.m0_x.is_finite() || !arma.m0_eps.is_finite() {
+            anyhow::bail!("invalid arma11: initial state must be finite");
+        }
+        if !arma.p0_x.is_finite()
+            || arma.p0_x <= 0.0
+            || !arma.p0_eps.is_finite()
+            || arma.p0_eps <= 0.0
+        {
+            anyhow::bail!("invalid arma11: p0_x/p0_eps must be finite and > 0");
+        }
+
+        ns_inference::timeseries::kalman::KalmanModel::new(
+            DMatrix::from_row_slice(2, 2, &[arma.phi, arma.theta, 0.0, 0.0]),
+            DMatrix::from_row_slice(2, 2, &[arma.sigma2, arma.sigma2, arma.sigma2, arma.sigma2]),
+            DMatrix::from_row_slice(1, 2, &[1.0, 0.0]),
+            DMatrix::from_row_slice(1, 1, &[arma.r]),
+            DVector::from_row_slice(&[arma.m0_x, arma.m0_eps]),
+            DMatrix::from_row_slice(2, 2, &[arma.p0_x, 0.0, 0.0, arma.p0_eps]),
+        )
+        .map_err(|e| anyhow::anyhow!("invalid arma11 model: {e}"))?
     } else if let Some(seas) = input.local_level_seasonal {
         ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
             seas.period,
@@ -943,11 +1001,12 @@ fn load_kalman_input_with_raw(
     model_count += input.local_level.is_some() as usize;
     model_count += input.local_linear_trend.is_some() as usize;
     model_count += input.ar1.is_some() as usize;
+    model_count += input.arma11.is_some() as usize;
     model_count += input.local_level_seasonal.is_some() as usize;
     model_count += input.local_linear_trend_seasonal.is_some() as usize;
     if model_count != 1 {
         anyhow::bail!(
-            "expected exactly one of: model, local_level, local_linear_trend, ar1, local_level_seasonal, local_linear_trend_seasonal"
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal"
         );
     }
 
@@ -982,6 +1041,40 @@ fn load_kalman_input_with_raw(
         let model = ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
             .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?;
         (model, KalmanSpecKind::Ar1)
+    } else if let Some(arma) = input.arma11 {
+        if !arma.phi.is_finite() {
+            anyhow::bail!("invalid arma11: phi must be finite");
+        }
+        if !arma.theta.is_finite() {
+            anyhow::bail!("invalid arma11: theta must be finite");
+        }
+        if !arma.sigma2.is_finite() || arma.sigma2 <= 0.0 {
+            anyhow::bail!("invalid arma11: sigma2 must be finite and > 0");
+        }
+        if !arma.r.is_finite() || arma.r <= 0.0 {
+            anyhow::bail!("invalid arma11: r must be finite and > 0");
+        }
+        if !arma.m0_x.is_finite() || !arma.m0_eps.is_finite() {
+            anyhow::bail!("invalid arma11: initial state must be finite");
+        }
+        if !arma.p0_x.is_finite()
+            || arma.p0_x <= 0.0
+            || !arma.p0_eps.is_finite()
+            || arma.p0_eps <= 0.0
+        {
+            anyhow::bail!("invalid arma11: p0_x/p0_eps must be finite and > 0");
+        }
+
+        let model = ns_inference::timeseries::kalman::KalmanModel::new(
+            DMatrix::from_row_slice(2, 2, &[arma.phi, arma.theta, 0.0, 0.0]),
+            DMatrix::from_row_slice(2, 2, &[arma.sigma2, arma.sigma2, arma.sigma2, arma.sigma2]),
+            DMatrix::from_row_slice(1, 2, &[1.0, 0.0]),
+            DMatrix::from_row_slice(1, 1, &[arma.r]),
+            DVector::from_row_slice(&[arma.m0_x, arma.m0_eps]),
+            DMatrix::from_row_slice(2, 2, &[arma.p0_x, 0.0, 0.0, arma.p0_eps]),
+        )
+        .map_err(|e| anyhow::anyhow!("invalid arma11 model: {e}"))?;
+        (model, KalmanSpecKind::Arma11)
     } else if let Some(seas) = input.local_level_seasonal {
         let period = seas.period;
         let model = ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
@@ -1409,6 +1502,7 @@ fn cmd_ts_kalman_viz(
     let mut state_labels: Vec<String> = match kind {
         KalmanSpecKind::LocalLevel => vec!["level".to_string()],
         KalmanSpecKind::Ar1 => vec!["x".to_string()],
+        KalmanSpecKind::Arma11 => vec!["x".to_string(), "eps".to_string()],
         KalmanSpecKind::LocalLinearTrend => vec!["level".to_string(), "slope".to_string()],
         KalmanSpecKind::LocalLevelSeasonal { period } => {
             let mut out = vec!["level".to_string()];

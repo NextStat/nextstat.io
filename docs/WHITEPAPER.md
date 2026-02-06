@@ -342,17 +342,21 @@ aft = survival.weibull_aft.fit(time, event, x, include_intercept=True)
 cox = survival.cox_ph.fit(time, event, x, ties="efron")
 ```
 
-### 9.3 Social Sciences Pack (Phase 9.C, Planned)
+### 9.3 Social Sciences Pack (Phase 9.C, Partial)
 
 Primary target: **ordinal outcomes**, missing data policies, and causal diagnostics that make common applied workflows easier to reproduce and review.
 
-Planned baseline scope:
+Baseline scope:
 
 - Ordinal logistic/probit (ordered outcomes) with clear link functions and diagnostics.
 - Missing data policy and measurement error baseline (explicit assumptions; deterministic behavior).
 - Causal helpers: propensity score estimation + weighting/matching diagnostics (as a convenience layer, not a claim of causal identification).
 
-API sketch (proposed):
+Current status:
+
+- Implemented: ordered logistic regression (proportional odds) baseline via `nextstat.ordinal.ordered_logit`.
+
+API sketch:
 
 ```python
 from nextstat import ordinal

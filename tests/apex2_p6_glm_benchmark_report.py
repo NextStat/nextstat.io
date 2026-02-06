@@ -126,6 +126,12 @@ def main() -> int:
         default=1e-3,
         help="Skip fit-time comparisons when baseline fit_s is below this (too noisy at sub-ms scale).",
     )
+    ap.add_argument(
+        "--min-baseline-predict-s",
+        type=float,
+        default=1e-3,
+        help="Skip predict-time comparisons when baseline predict_s is below this (too noisy at sub-ms scale).",
+    )
     ap.add_argument("--sizes", default="200,2000,20000", help="Comma-separated n values.")
     ap.add_argument("--p", type=int, default=20, help="Feature count (without intercept).")
     ap.add_argument("--l2", type=float, default=0.0, help="Optional ridge (0 disables).")
@@ -156,6 +162,7 @@ def main() -> int:
                 if args.max_slowdown_predict is not None
                 else None,
                 "min_baseline_fit_s": float(args.min_baseline_fit_s),
+                "min_baseline_predict_s": float(args.min_baseline_predict_s),
             },
         },
         "status": None,
@@ -228,6 +235,7 @@ def main() -> int:
     max_fit = float(args.max_slowdown_fit) if args.max_slowdown_fit is not None else float(args.max_slowdown)
     max_pred = float(args.max_slowdown_predict) if args.max_slowdown_predict is not None else float(args.max_slowdown)
     min_fit = float(args.min_baseline_fit_s)
+    min_pred = float(args.min_baseline_predict_s)
 
     cases: List[Dict[str, Any]] = []
     any_failed = False
@@ -263,7 +271,8 @@ def main() -> int:
 
         fit_checked = b_fit >= min_fit
         ok_fit = (slow_fit <= max_fit) if fit_checked else True
-        ok_pred = (slow_pred <= max_pred)
+        pred_checked = b_pred >= min_pred
+        ok_pred = (slow_pred <= max_pred) if pred_checked else True
         ok = ok_fit and ok_pred
         if not ok:
             any_failed = True
@@ -274,7 +283,7 @@ def main() -> int:
                 "current": {"fit_s": float(c_fit), "predict_s": float(c_pred)},
                 "slowdown": {"fit": float(slow_fit), "predict": float(slow_pred)},
                 "thresholds": {"fit": float(max_fit), "predict": float(max_pred)},
-                "checks": {"fit_checked": bool(fit_checked), "predict_checked": True},
+                "checks": {"fit_checked": bool(fit_checked), "predict_checked": bool(pred_checked)},
             }
         )
         cases.append(row)

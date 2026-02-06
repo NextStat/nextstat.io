@@ -24,6 +24,24 @@ from typing import Any, Dict, List, Optional, Tuple
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
+# Optional: reuse the shared synthetic "model zoo" workspace generators.
+PY_TESTS_DIR = Path(__file__).resolve().parent / "python"
+if str(PY_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PY_TESTS_DIR))
+
+try:
+    from _pyhf_model_zoo import (  # type: ignore
+        make_synthetic_shapesys_workspace,
+        make_workspace_histo_normsys_staterror,
+        make_workspace_multichannel,
+        make_workspace_shapefactor_control_region,
+    )
+except Exception:  # pragma: no cover
+    make_synthetic_shapesys_workspace = None
+    make_workspace_histo_normsys_staterror = None
+    make_workspace_multichannel = None
+    make_workspace_shapefactor_control_region = None
+
 
 def _load_workspace(fixture: str) -> dict[str, Any]:
     return json.loads((FIXTURES_DIR / fixture).read_text())
@@ -115,10 +133,11 @@ def _std(xs: List[float]) -> float:
     return float(math.sqrt(v))
 
 
-def _run_case(
+def _run_case_workspace(
     *,
     key: str,
-    fixture: str,
+    fixture: Optional[str],
+    workspace: dict[str, Any],
     measurement: str,
     params: str,
     n_toys: int,
@@ -135,9 +154,18 @@ def _run_case(
     import nextstat
     import pyhf
 
-    workspace = _load_workspace(fixture)
+    timing_s: Dict[str, float] = {
+        "pyhf_build": 0.0,
+        "nextstat_build": 0.0,
+        "pyhf_fit": 0.0,
+        "pyhf_uncertainties": 0.0,
+        "nextstat_fit": 0.0,
+    }
+
+    t0 = time.perf_counter()
     model, data_nominal = _pyhf_model_and_data(workspace, measurement_name=measurement)
     pyhf_names = list(model.config.par_names)
+    pyhf_index = {name: i for i, name in enumerate(pyhf_names)}
 
     pars_true = np.asarray(model.config.suggested_init(), dtype=float)
     poi_idx = int(model.config.poi_index)
@@ -146,13 +174,16 @@ def _run_case(
 
     expected = np.asarray(model.expected_data(pars_true), dtype=float)
     n_main = int(model.config.nmaindata)
+    timing_s["pyhf_build"] += time.perf_counter() - t0
 
+    t0 = time.perf_counter()
     ns_model = nextstat.from_pyhf(json.dumps(workspace))
     ns_poi_idx = ns_model.poi_index()
     if ns_poi_idx is None:
         raise RuntimeError("NextStat model has no POI index")
     ns_names = list(ns_model.parameter_names())
     ns_index = {name: i for i, name in enumerate(ns_names)}
+    timing_s["nextstat_build"] += time.perf_counter() - t0
 
     poi_name = pyhf_names[poi_idx]
     if poi_name not in ns_index:
@@ -186,19 +217,25 @@ def _run_case(
         toy[:n_main] = rng.poisson(expected[:n_main])
 
         try:
+            t0 = time.perf_counter()
             bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
+            timing_s["pyhf_fit"] += time.perf_counter() - t0
         except Exception:
             counters["n_pyhf_fit_failed"] += 1
             continue
 
         try:
+            t0 = time.perf_counter()
             unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
+            timing_s["pyhf_uncertainties"] += time.perf_counter() - t0
         except Exception:
             counters["n_pyhf_unc_failed"] += 1
             continue
 
         try:
+            t0 = time.perf_counter()
             res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
+            timing_s["nextstat_fit"] += time.perf_counter() - t0
         except Exception:
             counters["n_ns_fit_failed"] += 1
             continue
@@ -207,7 +244,7 @@ def _run_case(
         unc_ns = np.asarray(res_ns.uncertainties, dtype=float)
 
         for name in param_names:
-            i_py = pyhf_names.index(name)
+            i_py = pyhf_index[name]
             i_ns = ns_index[name]
 
             th_true = float(truth_by_name[name])
@@ -232,6 +269,12 @@ def _run_case(
     per_param: Dict[str, Any] = {}
     any_failed = False
     any_ran = False
+    max_abs_delta_mean = 0.0
+    max_abs_delta_std = 0.0
+    max_abs_delta_cov = 0.0
+    n_param_ok = 0
+    n_param_fail = 0
+    n_param_skipped = 0
     for name in param_names:
         n_used = min(len(pulls_pyhf[name]), len(pulls_ns[name]))
         if n_used < min_used:
@@ -240,6 +283,7 @@ def _run_case(
                 "reason": f"insufficient_valid_toys:{n_used}<{min_used}",
                 "n_toys_used": int(n_used),
             }
+            n_param_skipped += 1
             continue
 
         any_ran = True
@@ -260,6 +304,13 @@ def _run_case(
         )
         if not ok:
             any_failed = True
+            n_param_fail += 1
+        else:
+            n_param_ok += 1
+
+        max_abs_delta_mean = max(max_abs_delta_mean, abs(d_mean))
+        max_abs_delta_std = max(max_abs_delta_std, abs(d_std))
+        max_abs_delta_cov = max(max_abs_delta_cov, abs(d_cov))
 
         per_param[name] = {
             "status": "ok" if ok else "fail",
@@ -297,8 +348,55 @@ def _run_case(
         "min_used_frac": float(min_used_frac),
         "min_used": int(min_used),
         "counters": counters,
+        "timing_s": {
+            **{k: float(v) for k, v in timing_s.items()},
+            "pyhf_total": float(timing_s["pyhf_build"] + timing_s["pyhf_fit"] + timing_s["pyhf_uncertainties"]),
+            "nextstat_total": float(timing_s["nextstat_build"] + timing_s["nextstat_fit"]),
+        },
+        "summary": {
+            "n_params": int(len(param_names)),
+            "n_params_ok": int(n_param_ok),
+            "n_params_fail": int(n_param_fail),
+            "n_params_skipped": int(n_param_skipped),
+            "max_abs_delta_mean": float(max_abs_delta_mean),
+            "max_abs_delta_std": float(max_abs_delta_std),
+            "max_abs_delta_coverage_1sigma": float(max_abs_delta_cov),
+        },
         "per_param": per_param,
     }
+
+
+def _run_case(
+    *,
+    key: str,
+    fixture: str,
+    measurement: str,
+    params: str,
+    n_toys: int,
+    seed: int,
+    mu_truth: float,
+    min_used_abs: int,
+    min_used_frac: float,
+    pull_mean_delta_max: float,
+    pull_std_delta_max: float,
+    coverage_1sigma_delta_max: float,
+) -> Dict[str, Any]:
+    workspace = _load_workspace(fixture)
+    return _run_case_workspace(
+        key=key,
+        fixture=fixture,
+        workspace=workspace,
+        measurement=measurement,
+        params=params,
+        n_toys=n_toys,
+        seed=seed,
+        mu_truth=mu_truth,
+        min_used_abs=min_used_abs,
+        min_used_frac=min_used_frac,
+        pull_mean_delta_max=pull_mean_delta_max,
+        pull_std_delta_max=pull_std_delta_max,
+        coverage_1sigma_delta_max=coverage_1sigma_delta_max,
+    )
 
 
 def main() -> int:
@@ -308,6 +406,13 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mu-truth", type=float, default=1.0)
     ap.add_argument("--fixtures", type=str, default="simple", help="simple,complex,all or comma-separated keys")
+    ap.add_argument("--include-zoo", action="store_true", help="Also include synthetic model-zoo cases.")
+    ap.add_argument(
+        "--zoo-sizes",
+        type=str,
+        default="",
+        help="Comma-separated synthetic shapesys bin counts to include (requires --include-zoo).",
+    )
     ap.add_argument("--params", type=str, default="poi", help="poi or all")
     ap.add_argument("--min-used-abs", type=int, default=10)
     ap.add_argument("--min-used-frac", type=float, default=0.50)
@@ -316,12 +421,34 @@ def main() -> int:
     ap.add_argument("--coverage-1sigma-delta-max", type=float, default=0.03)
     args = ap.parse_args()
 
-    cases = {
+    fixture_cases: Dict[str, Tuple[str, str]] = {
         "simple": ("simple_workspace.json", "GaussExample"),
         "complex": ("complex_workspace.json", "measurement"),
     }
+    workspace_cases: Dict[str, Tuple[dict[str, Any], str]] = {}
+
+    zoo_sizes: List[int] = []
+    if args.include_zoo:
+        if make_workspace_multichannel is None:
+            # Keep report runnable even if imports fail for some reason.
+            workspace_cases["zoo_import_error"] = ({}, "m")
+        else:
+            workspace_cases["zoo_multichannel_3"] = (make_workspace_multichannel(3), "m")
+            workspace_cases["zoo_histo_normsys_staterror_10"] = (
+                make_workspace_histo_normsys_staterror(10),
+                "m",
+            )
+            workspace_cases["zoo_shapefactor_control_4"] = (
+                make_workspace_shapefactor_control_region(4),
+                "m",
+            )
+
+            zoo_sizes = [int(x.strip()) for x in str(args.zoo_sizes).split(",") if x.strip()]
+            for n in zoo_sizes:
+                workspace_cases[f"synthetic_shapesys_{n}"] = (make_synthetic_shapesys_workspace(int(n)), "m")
+
     if args.fixtures.strip().lower() == "all":
-        keys = ["simple", "complex"]
+        keys = list(fixture_cases.keys()) + (list(workspace_cases.keys()) if args.include_zoo else [])
     else:
         keys = [k.strip().lower() for k in args.fixtures.split(",") if k.strip()]
 
@@ -359,6 +486,8 @@ def main() -> int:
                 "seed": int(args.seed),
                 "mu_truth": float(args.mu_truth),
                 "fixtures": args.fixtures,
+                "include_zoo": bool(args.include_zoo),
+                "zoo_sizes": zoo_sizes,
                 "params": str(args.params),
                 "min_used_abs": int(args.min_used_abs),
                 "min_used_frac": float(args.min_used_frac),
@@ -371,26 +500,46 @@ def main() -> int:
     any_failed = False
     any_ran = False
     for case_idx, key in enumerate(keys):
-        if key not in cases:
-            report["cases"].append({"name": key, "status": "error", "reason": "unknown_fixture_key"})
-            any_failed = True
-            continue
-        fixture, measurement = cases[key]
         try:
-            row = _run_case(
-                key=key,
-                fixture=fixture,
-                measurement=measurement,
-                params=str(args.params),
-                n_toys=int(args.n_toys),
-                seed=int(args.seed + case_idx),
-                mu_truth=float(args.mu_truth),
-                min_used_abs=int(args.min_used_abs),
-                min_used_frac=float(args.min_used_frac),
-                pull_mean_delta_max=float(args.pull_mean_delta_max),
-                pull_std_delta_max=float(args.pull_std_delta_max),
-                coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
-            )
+            if key in fixture_cases:
+                fixture, measurement = fixture_cases[key]
+                row = _run_case(
+                    key=key,
+                    fixture=fixture,
+                    measurement=measurement,
+                    params=str(args.params),
+                    n_toys=int(args.n_toys),
+                    seed=int(args.seed + case_idx),
+                    mu_truth=float(args.mu_truth),
+                    min_used_abs=int(args.min_used_abs),
+                    min_used_frac=float(args.min_used_frac),
+                    pull_mean_delta_max=float(args.pull_mean_delta_max),
+                    pull_std_delta_max=float(args.pull_std_delta_max),
+                    coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
+                )
+            elif key in workspace_cases:
+                workspace, measurement = workspace_cases[key]
+                if key == "zoo_import_error":
+                    row = {"name": key, "status": "skipped", "reason": "zoo_import_error"}
+                else:
+                    row = _run_case_workspace(
+                        key=key,
+                        fixture=None,
+                        workspace=workspace,
+                        measurement=measurement,
+                        params=str(args.params),
+                        n_toys=int(args.n_toys),
+                        seed=int(args.seed + case_idx),
+                        mu_truth=float(args.mu_truth),
+                        min_used_abs=int(args.min_used_abs),
+                        min_used_frac=float(args.min_used_frac),
+                        pull_mean_delta_max=float(args.pull_mean_delta_max),
+                        pull_std_delta_max=float(args.pull_std_delta_max),
+                        coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
+                    )
+            else:
+                row = {"name": key, "status": "error", "reason": "unknown_fixture_key"}
+                any_failed = True
         except Exception as e:
             row = {"name": key, "status": "skipped", "reason": f"exception:{type(e).__name__}:{e}"}
         if row.get("status") in ("ok", "fail"):

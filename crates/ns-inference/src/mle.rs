@@ -216,12 +216,10 @@ impl MaximumLikelihoodEstimator {
         n_toys: usize,
         seed: u64,
     ) -> Vec<Result<FitResult>> {
-        use rand::SeedableRng;
-        use rand_distr::{Distribution, Poisson};
         use rayon::prelude::*;
 
-        // Generate expected data at given parameters
-        let expected = match model.expected_data(params) {
+        // Generate expected main data at given parameters (pyhf ordering)
+        let expected = match model.expected_data_pyhf_main(params) {
             Ok(e) => e,
             Err(e) => return vec![Err(e)],
         };
@@ -230,19 +228,8 @@ impl MaximumLikelihoodEstimator {
         (0..n_toys)
             .into_par_iter()
             .map(|toy_idx| {
-                // Deterministic per-toy seed
                 let toy_seed = seed.wrapping_add(toy_idx as u64);
-                let mut rng = rand::rngs::StdRng::seed_from_u64(toy_seed);
-
-                // Generate Poisson-fluctuated observed data
-                let toy_data: Vec<f64> = expected
-                    .iter()
-                    .map(|&lam| {
-                        let lam_safe = lam.max(1e-10);
-                        let pois = Poisson::new(lam_safe).unwrap();
-                        pois.sample(&mut rng)
-                    })
-                    .collect();
+                let toy_data = crate::toys::poisson_main_from_expected(&expected, toy_seed);
 
                 // Create toy model with fluctuated data
                 let toy_model = model.with_observed_main(&toy_data)?;

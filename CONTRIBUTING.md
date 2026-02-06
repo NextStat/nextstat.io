@@ -130,6 +130,14 @@ Required for code changes:
 
 After approval, a maintainer will merge your PR into `main`.
 
+## Release Checklist (Maintainers)
+
+- [ ] Ensure git working tree is clean (or set `APEX2_ALLOW_DIRTY=1` only if you understand the risk)
+- [ ] Run the Apex2 pre-release gate: `make apex2-pre-release-gate`
+- [ ] If the baseline is stale (expected perf change), re-record: `make apex2-baseline-record`
+- [ ] Review `tmp/baseline_compare_report.json` for any slowdowns/flags
+- [ ] Follow the canonical runbook: `docs/tutorials/release-gates.md`
+
 ## DCO Sign-off
 
 All commits must be signed off with DCO (Developer Certificate of Origin).

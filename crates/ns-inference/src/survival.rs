@@ -1,8 +1,9 @@
-//! Parametric survival models (Phase 9 Pack A).
+//! Survival models (Phase 9 Pack A).
 //!
 //! Baseline scope:
 //! - right-censoring via (t, event) data
-//! - intercept-only parametric families (no covariates yet)
+//! - intercept-only parametric families
+//! - Cox proportional hazards (partial likelihood; covariates supported)
 //!
 //! Parameterisation:
 //! - Exponential: `log_rate`
@@ -11,6 +12,7 @@
 
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
+use ns_prob::math::exp_clamped;
 
 const MIN_TAIL: f64 = 1e-300;
 
@@ -371,6 +373,289 @@ impl LogDensityModel for LogNormalAftModel {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Cox proportional hazards (partial likelihood; right-censoring).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Ties approximation for the Cox PH partial likelihood.
+pub enum CoxTies {
+    /// Breslow ties approximation.
+    Breslow,
+    /// Efron ties approximation.
+    Efron,
+}
+
+#[inline]
+fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
+    debug_assert_eq!(x_row.len(), beta.len());
+    x_row.iter().zip(beta).map(|(&x, &b)| x * b).sum()
+}
+
+/// Cox proportional hazards model using partial likelihood (right-censoring).
+///
+/// Data:
+/// - `times[i] >= 0`
+/// - `events[i] = true` indicates an observed event at `times[i]`
+/// - `events[i] = false` indicates right-censoring at `times[i]`
+///
+/// Notes:
+/// - Intercept is not identifiable in the partial likelihood and is not included.
+/// - Ties policy is fixed per-model (Breslow or Efron).
+#[derive(Debug, Clone)]
+pub struct CoxPhModel {
+    n: usize,
+    p: usize,
+    events: Vec<bool>, // aligned with sorted times
+    x: Vec<f64>,      // row-major, aligned with sorted times
+    group_starts: Vec<usize>,
+    ties: CoxTies,
+}
+
+impl CoxPhModel {
+    /// Create a new Cox PH model from `times`, `events`, and row-wise covariates `x`.
+    pub fn new(times: Vec<f64>, events: Vec<bool>, x: Vec<Vec<f64>>, ties: CoxTies) -> Result<Self> {
+        validate_right_censoring_data(&times, &events)?;
+        let n = times.len();
+        let p = x.first().map(|r| r.len()).unwrap_or(0);
+        if p == 0 {
+            return Err(Error::Validation("X must have at least 1 feature column".to_string()));
+        }
+        if x.len() != n {
+            return Err(Error::Validation(format!(
+                "X must have n rows: expected {}, got {}",
+                n,
+                x.len()
+            )));
+        }
+        if events.iter().all(|d| !*d) {
+            return Err(Error::Validation("need at least one event".to_string()));
+        }
+
+        // Validate and pack X row-major.
+        let mut x_data = Vec::with_capacity(n * p);
+        for (i, row) in x.into_iter().enumerate() {
+            if row.len() != p {
+                return Err(Error::Validation(format!(
+                    "X must be rectangular: row {} has len {}, expected {}",
+                    i,
+                    row.len(),
+                    p
+                )));
+            }
+            for v in row {
+                if !v.is_finite() {
+                    return Err(Error::Validation("X must contain only finite values".to_string()));
+                }
+                x_data.push(v);
+            }
+        }
+
+        // Sort by time descending and build aligned arrays.
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|&i, &j| times[j].partial_cmp(&times[i]).unwrap());
+
+        let mut times_s = Vec::with_capacity(n);
+        let mut events_s = Vec::with_capacity(n);
+        let mut x_s = Vec::with_capacity(n * p);
+        for idx in order {
+            times_s.push(times[idx]);
+            events_s.push(events[idx]);
+            let start = idx * p;
+            x_s.extend_from_slice(&x_data[start..start + p]);
+        }
+
+        // Group boundaries for ties at exact times.
+        let mut group_starts = Vec::new();
+        group_starts.push(0);
+        for i in 1..n {
+            if times_s[i] != times_s[i - 1] {
+                group_starts.push(i);
+            }
+        }
+
+        Ok(Self { n, p, events: events_s, x: x_s, group_starts, ties })
+    }
+
+    #[inline]
+    fn row(&self, i: usize) -> &[f64] {
+        let start = i * self.p;
+        &self.x[start..start + self.p]
+    }
+}
+
+impl LogDensityModel for CoxPhModel {
+    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.p
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        (0..self.p).map(|j| format!("beta{}", j + 1)).collect()
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.p]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0; self.p]
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != self.p {
+            return Err(Error::Validation("params length mismatch".to_string()));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must be finite".to_string()));
+        }
+
+        let mut eta = vec![0.0; self.n];
+        let mut w = vec![0.0; self.n];
+        for i in 0..self.n {
+            let e = row_dot(self.row(i), params);
+            eta[i] = e;
+            w[i] = exp_clamped(e);
+        }
+
+        let mut ll = 0.0;
+        let mut risk0 = 0.0;
+
+        for (g, &start) in self.group_starts.iter().enumerate() {
+            let end = self
+                .group_starts
+                .get(g + 1)
+                .copied()
+                .unwrap_or(self.n);
+
+            for i in start..end {
+                risk0 += w[i];
+            }
+
+            let mut m = 0usize;
+            let mut sum_eta_events = 0.0;
+            let mut d0 = 0.0;
+            for i in start..end {
+                if self.events[i] {
+                    m += 1;
+                    sum_eta_events += eta[i];
+                    d0 += w[i];
+                }
+            }
+            if m == 0 {
+                continue;
+            }
+
+            ll += sum_eta_events;
+            match self.ties {
+                CoxTies::Breslow => {
+                    ll -= (m as f64) * risk0.ln();
+                }
+                CoxTies::Efron => {
+                    let m_f = m as f64;
+                    for r in 0..m {
+                        let frac = (r as f64) / m_f;
+                        let denom = (risk0 - frac * d0).max(MIN_TAIL);
+                        ll -= denom.ln();
+                    }
+                }
+            }
+        }
+
+        Ok(-ll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != self.p {
+            return Err(Error::Validation("params length mismatch".to_string()));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must be finite".to_string()));
+        }
+
+        let mut eta = vec![0.0; self.n];
+        let mut w = vec![0.0; self.n];
+        for i in 0..self.n {
+            let e = row_dot(self.row(i), params);
+            eta[i] = e;
+            w[i] = exp_clamped(e);
+        }
+
+        let mut grad_ll = vec![0.0; self.p];
+        let mut risk0 = 0.0;
+        let mut risk1 = vec![0.0; self.p];
+
+        for (g, &start) in self.group_starts.iter().enumerate() {
+            let end = self
+                .group_starts
+                .get(g + 1)
+                .copied()
+                .unwrap_or(self.n);
+
+            for i in start..end {
+                let wi = w[i];
+                risk0 += wi;
+                let row = self.row(i);
+                for j in 0..self.p {
+                    risk1[j] += wi * row[j];
+                }
+            }
+
+            let mut m = 0usize;
+            let mut x_events = vec![0.0; self.p];
+            let mut d0 = 0.0;
+            let mut d1 = vec![0.0; self.p];
+            for i in start..end {
+                if !self.events[i] {
+                    continue;
+                }
+                m += 1;
+                let wi = w[i];
+                d0 += wi;
+                let row = self.row(i);
+                for j in 0..self.p {
+                    x_events[j] += row[j];
+                    d1[j] += wi * row[j];
+                }
+            }
+            if m == 0 {
+                continue;
+            }
+
+            match self.ties {
+                CoxTies::Breslow => {
+                    let inv = 1.0 / risk0.max(MIN_TAIL);
+                    for j in 0..self.p {
+                        grad_ll[j] += x_events[j] - (m as f64) * risk1[j] * inv;
+                    }
+                }
+                CoxTies::Efron => {
+                    let m_f = m as f64;
+                    let mut tmp = vec![0.0; self.p];
+                    for r in 0..m {
+                        let frac = (r as f64) / m_f;
+                        let denom = (risk0 - frac * d0).max(MIN_TAIL);
+                        let inv = 1.0 / denom;
+                        for j in 0..self.p {
+                            tmp[j] += (risk1[j] - frac * d1[j]) * inv;
+                        }
+                    }
+                    for j in 0..self.p {
+                        grad_ll[j] += x_events[j] - tmp[j];
+                    }
+                }
+            }
+        }
+
+        Ok(grad_ll.into_iter().map(|v| -v).collect())
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,6 +720,26 @@ mod tests {
         let times = vec![0.5, 1.2, 0.7, 2.0, 0.9, 3.1];
         let events = vec![true, false, true, false, false, true];
         let m = LogNormalAftModel::new(times, events).unwrap();
+        let p = vec![0.1, -0.2];
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+        assert!((g[0] - g_fd[0]).abs() < 5e-5);
+        assert!((g[1] - g_fd[1]).abs() < 5e-5);
+    }
+
+    #[test]
+    fn cox_grad_matches_finite_diff_efron() {
+        let times = vec![2.0, 1.0, 1.0, 0.5, 0.5, 0.2];
+        let events = vec![true, true, false, true, false, false];
+        let x = vec![
+            vec![1.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 1.0],
+            vec![1.0, -1.0],
+            vec![0.0, -1.0],
+            vec![0.5, 0.5],
+        ];
+        let m = CoxPhModel::new(times, events, x, CoxTies::Efron).unwrap();
         let p = vec![0.1, -0.2];
         let g = m.grad_nll(&p).unwrap();
         let g_fd = finite_diff_grad(&m, &p, 1e-6);

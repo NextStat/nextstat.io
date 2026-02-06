@@ -68,6 +68,30 @@ class LogisticRegressionModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class OrderedLogitModel:
+    def __init__(self, x: List[List[float]], y: List[int], *, n_levels: int) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class OrderedProbitModel:
+    def __init__(self, x: List[List[float]], y: List[int], *, n_levels: int) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class PoissonRegressionModel:
     def __init__(
         self,
@@ -123,6 +147,25 @@ class LogNormalAftModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class CoxPhModel:
+    def __init__(
+        self,
+        times: List[float],
+        events: List[bool],
+        x: List[List[float]],
+        *,
+        ties: Literal["efron", "breslow"] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class NegativeBinomialRegressionModel:
     def __init__(
         self,
@@ -154,6 +197,8 @@ class ComposedGlmModel:
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
         penalize_intercept: bool = ...,
+        obs_sigma_prior_m: Optional[float] = ...,
+        obs_sigma_prior_s: Optional[float] = ...,
         random_intercept_non_centered: bool = ...,
         random_slope_feature_idx: Optional[int] = ...,
         random_slope_non_centered: bool = ...,
@@ -206,6 +251,27 @@ class ComposedGlmModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class LmmMarginalModel:
+    def __init__(
+        self,
+        x: List[List[float]],
+        y: List[float],
+        *,
+        include_intercept: bool = ...,
+        group_idx: List[int],
+        n_groups: Optional[int] = ...,
+        random_slope_feature_idx: Optional[int] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class KalmanModel:
     def __init__(
         self,
@@ -241,6 +307,46 @@ class FitResult:
     def success(self) -> bool: ...
 
 
+class Posterior:
+    def __init__(
+        self,
+        model: Union[
+            HistFactoryModel,
+            GaussianMeanModel,
+            LinearRegressionModel,
+            LogisticRegressionModel,
+            OrderedLogitModel,
+            OrderedProbitModel,
+            PoissonRegressionModel,
+            NegativeBinomialRegressionModel,
+            ComposedGlmModel,
+            LmmMarginalModel,
+            ExponentialSurvivalModel,
+            WeibullSurvivalModel,
+            LogNormalAftModel,
+            CoxPhModel,
+        ],
+    ) -> None: ...
+
+    def dim(self) -> int: ...
+    def parameter_names(self) -> List[str]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+    def suggested_init(self) -> List[float]: ...
+
+    def clear_priors(self) -> None: ...
+    def set_prior_flat(self, name: str) -> None: ...
+    def set_prior_normal(self, name: str, center: float, width: float) -> None: ...
+    def priors(self) -> Dict[str, Dict[str, Any]]: ...
+
+    def logpdf(self, theta: ParamsLike) -> float: ...
+    def grad(self, theta: ParamsLike) -> List[float]: ...
+
+    def to_unconstrained(self, theta: ParamsLike) -> List[float]: ...
+    def to_constrained(self, z: ParamsLike) -> List[float]: ...
+    def logpdf_unconstrained(self, z: ParamsLike) -> float: ...
+    def grad_unconstrained(self, z: ParamsLike) -> List[float]: ...
+
+
 class MaximumLikelihoodEstimator:
     def __init__(self) -> None: ...
     @overload
@@ -252,9 +358,16 @@ class MaximumLikelihoodEstimator:
             GaussianMeanModel,
             LinearRegressionModel,
             LogisticRegressionModel,
+            OrderedLogitModel,
+            OrderedProbitModel,
             PoissonRegressionModel,
             NegativeBinomialRegressionModel,
             ComposedGlmModel,
+            LmmMarginalModel,
+            ExponentialSurvivalModel,
+            WeibullSurvivalModel,
+            LogNormalAftModel,
+            CoxPhModel,
         ],
         *,
         data: Literal[None] = ...,
@@ -286,6 +399,18 @@ class MaximumLikelihoodEstimator:
     @overload
     def fit_batch(
         self,
+        models_or_model: List[OrderedLogitModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[OrderedProbitModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
         models_or_model: List[PoissonRegressionModel],
         datasets: Literal[None] = ...,
     ) -> List[FitResult]: ...
@@ -299,6 +424,36 @@ class MaximumLikelihoodEstimator:
     def fit_batch(
         self,
         models_or_model: List[ComposedGlmModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[LmmMarginalModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[ExponentialSurvivalModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[WeibullSurvivalModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[LogNormalAftModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[CoxPhModel],
         datasets: Literal[None] = ...,
     ) -> List[FitResult]: ...
     @overload
@@ -330,9 +485,16 @@ def fit(
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
+        OrderedLogitModel,
+        OrderedProbitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,
+        LmmMarginalModel,
+        ExponentialSurvivalModel,
+        WeibullSurvivalModel,
+        LogNormalAftModel,
+        CoxPhModel,
     ],
     *,
     data: Literal[None] = ...,
@@ -346,11 +508,25 @@ def fit_batch(models_or_model: List[LinearRegressionModel], datasets: Literal[No
 @overload
 def fit_batch(models_or_model: List[LogisticRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
+def fit_batch(models_or_model: List[OrderedLogitModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[OrderedProbitModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
 def fit_batch(models_or_model: List[PoissonRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[NegativeBinomialRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[ComposedGlmModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[LmmMarginalModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[ExponentialSurvivalModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[WeibullSurvivalModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[LogNormalAftModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[CoxPhModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: HistFactoryModel, datasets: List[List[float]]) -> List[FitResult]: ...
 def fit_toys(
@@ -360,6 +536,14 @@ def fit_toys(
     n_toys: int = ...,
     seed: int = ...,
 ) -> List[FitResult]: ...
+def asimov_data(model: HistFactoryModel, params: List[float]) -> List[float]: ...
+def poisson_toys(
+    model: HistFactoryModel,
+    params: List[float],
+    *,
+    n_toys: int = ...,
+    seed: int = ...,
+) -> List[List[float]]: ...
 def ranking(
     model: HistFactoryModel,
 ) -> List[Dict[str, Any]]: ...
@@ -437,9 +621,16 @@ def sample(
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
+        OrderedLogitModel,
+        OrderedProbitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,
+        LmmMarginalModel,
+        ExponentialSurvivalModel,
+        WeibullSurvivalModel,
+        LogNormalAftModel,
+        CoxPhModel,
     ],
     *,
     n_chains: int = ...,
@@ -512,4 +703,6 @@ def kalman_simulate(
     *,
     t_max: int,
     seed: int = ...,
+    init: str = ...,
+    x0: Optional[List[float]] = ...,
 ) -> Dict[str, Any]: ...

@@ -32,19 +32,26 @@ upper_limits_root = _get("upper_limits_root")
 HistFactoryModel = _get("HistFactoryModel")
 MaximumLikelihoodEstimator = _get("MaximumLikelihoodEstimator")
 FitResult = _get("FitResult")
+Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
 PoissonRegressionModel = _get("PoissonRegressionModel")
+OrderedLogitModel = _get("OrderedLogitModel")
+OrderedProbitModel = _get("OrderedProbitModel")
 NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
+LmmMarginalModel = _get("LmmMarginalModel")
 KalmanModel = _get("KalmanModel")
 ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
 LogNormalAftModel = _get("LogNormalAftModel")
+CoxPhModel = _get("CoxPhModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
+asimov_data = _get("asimov_data")
+poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
 
 # Optional convenience wrappers (use optional deps like arviz).
@@ -56,6 +63,9 @@ from . import timeseries as timeseries  # noqa: E402
 from . import hier as hier  # noqa: E402
 from . import ppc as ppc  # noqa: E402
 from . import survival as survival  # noqa: E402
+from . import ordinal as ordinal  # noqa: E402
+from . import causal as causal  # noqa: E402
+from . import missing as missing  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -79,21 +89,31 @@ __all__ = [
     "hier",
     "ppc",
     "survival",
+    "ordinal",
+    "causal",
+    "missing",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
     "PoissonRegressionModel",
+    "OrderedLogitModel",
+    "OrderedProbitModel",
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
+    "LmmMarginalModel",
     "KalmanModel",
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",
     "LogNormalAftModel",
+    "CoxPhModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
+    "Posterior",
     "ols_fit",
     "fit_toys",
+    "asimov_data",
+    "poisson_toys",
     "ranking",
     "from_pyhf",
     "profile_scan",
@@ -105,4 +125,5 @@ __all__ = [
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",
     "LogNormalAftModel",
+    "CoxPhModel",
 ]

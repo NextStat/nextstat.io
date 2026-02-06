@@ -18,6 +18,7 @@ import platform
 import sys
 import time
 import timeit
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -28,7 +29,7 @@ import nextstat
 from nextstat.glm import linear, logistic, negbin, poisson
 
 
-def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 5) -> float:
+def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 7) -> float:
     number = 1
     while True:
         t = timeit.timeit(fn, number=number)
@@ -36,16 +37,21 @@ def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat
             break
         number *= 2
     times = [timeit.timeit(fn, number=number) / number for _ in range(repeat)]
-    return min(times)
+    # Median is more robust than min for regression gating on shared/dev machines.
+    return float(statistics.median(times))
 
 
-def bench_fit_time(fn: Callable[[], Any], *, repeat: int = 3) -> float:
-    times: list[float] = []
-    for _ in range(repeat):
-        t0 = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - t0)
-    return min(times)
+def bench_fit_time(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 7) -> float:
+    # Calibrated timeit loop: for faster fits we run multiple iterations per measurement to
+    # reduce timer/CPU noise. For slower fits, `number` naturally stays at 1.
+    number = 1
+    while True:
+        t = timeit.timeit(fn, number=number)
+        if t >= target_s or number >= 128:
+            break
+        number *= 2
+    times = [timeit.timeit(fn, number=number) / number for _ in range(repeat)]
+    return float(statistics.median(times))
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:

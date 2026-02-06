@@ -627,6 +627,11 @@ impl HistFactoryModel {
             });
         }
 
+        // pyhf orders channels lexicographically (see `model.config.channels`), and the flattened
+        // main-data vector follows that order. Sort here so `with_observed_main(...)` can accept
+        // pyhf-ordered observations without requiring callers to permute.
+        channels.sort_by(|a, b| a.name.cmp(&b.name));
+
         let model = Self { parameters, poi_index, channels };
         model.validate_internal_indices()?;
         Ok(model)
@@ -1334,7 +1339,13 @@ impl HistFactoryModel {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
-                let exp = expected.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
+                let exp = expected.get(bin_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "expected_data length mismatch on tape: bin_idx={} len={}",
+                        bin_idx,
+                        expected.len()
+                    ))
+                })?;
                 let floor = tape.constant(1e-10);
                 let exp = tape.max(exp, floor);
 
@@ -1365,7 +1376,13 @@ impl HistFactoryModel {
                         .zip(constraint.observed.iter())
                         .zip(param_indices.iter())
                     {
-                        let gamma = params.get(gamma_idx).copied().unwrap_or(tape.constant(1.0));
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range in aux constraint (tape): idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
                         let tau_c = tape.constant(tau);
                         let exp_aux = tape.mul(gamma, tau_c);
                         let floor = tape.constant(1e-10);
@@ -1395,7 +1412,13 @@ impl HistFactoryModel {
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
-                let value = params.get(param_idx).copied().unwrap_or(tape.constant(param.init));
+                let value = params.get(param_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "Constrained parameter index out of range (tape): idx={} len={}",
+                        param_idx,
+                        params.len()
+                    ))
+                })?;
                 let center_c = tape.constant(center);
                 let diff = tape.sub(value, center_c);
                 let inv_width = tape.constant(1.0 / width);
@@ -1606,7 +1629,8 @@ impl HistFactoryModel {
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
                 observed_flat.push(obs);
-                ln_factorials.push(Self::ln_factorial(obs));
+                // `ln_factorial(0) = 0`, so avoid a `ln_gamma` call for sparse observations.
+                ln_factorials.push(if obs == 0.0 { 0.0 } else { Self::ln_factorial(obs) });
                 obs_mask.push(if obs > 0.0 { 1.0 } else { 0.0 });
             }
         }
@@ -2157,14 +2181,18 @@ mod tests {
         // Should have data for SR (2 bins) + CR (2 bins) = 4 bins
         assert_eq!(expected.len(), 4);
 
-        // SR expected depends on modifiers applied
-        // For now, just check that we have reasonable values
-        assert!(expected[0] > 100.0 && expected[0] < 150.0, "SR bin 0: {}", expected[0]);
-        assert!(expected[1] > 100.0 && expected[1] < 150.0, "SR bin 1: {}", expected[1]);
+        // `HistFactoryModel` uses pyhf ordering for main bins: channels are sorted
+        // lexicographically, so CR comes before SR for this fixture.
+        assert_eq!(model.channels[0].name, "CR");
+        assert_eq!(model.channels[1].name, "SR");
 
         // CR: background(500,510) at nominal with shapefactor
-        assert!(expected[2] > 450.0 && expected[2] < 550.0, "CR bin 0: {}", expected[2]);
-        assert!(expected[3] > 450.0 && expected[3] < 550.0, "CR bin 1: {}", expected[3]);
+        assert!(expected[0] > 450.0 && expected[0] < 550.0, "CR bin 0: {}", expected[0]);
+        assert!(expected[1] > 450.0 && expected[1] < 550.0, "CR bin 1: {}", expected[1]);
+
+        // SR expected depends on modifiers applied; check reasonable values.
+        assert!(expected[2] > 100.0 && expected[2] < 150.0, "SR bin 0: {}", expected[2]);
+        assert!(expected[3] > 100.0 && expected[3] < 150.0, "SR bin 1: {}", expected[3]);
     }
 
     #[test]

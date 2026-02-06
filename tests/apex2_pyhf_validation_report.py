@@ -38,6 +38,17 @@ import pyhf
 
 import nextstat
 
+PY_TESTS_DIR = Path(__file__).resolve().parent / "python"
+if str(PY_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(PY_TESTS_DIR))
+
+from _pyhf_model_zoo import (  # noqa: E402
+    make_synthetic_shapesys_workspace,
+    make_workspace_histo_normsys_staterror,
+    make_workspace_multichannel,
+    make_workspace_shapefactor_control_region,
+)
+
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -97,147 +108,6 @@ def sample_params(
             a, b = lo_f, hi_f
         out.append(rng.uniform(a, b))
     return out
-
-
-def make_synthetic_shapesys_workspace(n_bins: int) -> dict[str, Any]:
-    signal = {
-        "name": "signal",
-        "data": [5.0] * n_bins,
-        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-    }
-    bkg = {
-        "name": "background",
-        "data": [50.0] * n_bins,
-        "modifiers": [{"name": "uncorr_bkguncrt", "type": "shapesys", "data": [5.0] * n_bins}],
-    }
-    return {
-        "channels": [{"name": "c", "samples": [signal, bkg]}],
-        "observations": [{"name": "c", "data": [53.0] * n_bins}],
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
-
-
-def make_workspace_multichannel(n_bins: int) -> dict[str, Any]:
-    # 3 channels: SR, CR1, CR2. Signal only in SR. Backgrounds with shapesys.
-    def ch(name: str, sig: float, bkg: float, unc: float):
-        signal = {
-            "name": "signal",
-            "data": [sig] * n_bins,
-            "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-        }
-        background = {
-            "name": "background",
-            "data": [bkg + 0.1 * i for i in range(n_bins)],
-            "modifiers": [{"name": f"shapesys_{name}", "type": "shapesys", "data": [unc] * n_bins}],
-        }
-        return {"name": name, "samples": [signal, background]}
-
-    channels = [
-        ch("SR", sig=5.0, bkg=100.0, unc=10.0),
-        ch("CR1", sig=0.0, bkg=500.0, unc=30.0),
-        ch("CR2", sig=0.0, bkg=800.0, unc=40.0),
-    ]
-    observations = []
-    for c in channels:
-        total = [sum(s["data"][i] for s in c["samples"]) for i in range(n_bins)]
-        observations.append({"name": c["name"], "data": [float(x) for x in total]})
-
-    return {
-        "channels": channels,
-        "observations": observations,
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
-
-
-def make_workspace_histo_normsys_staterror(n_bins: int) -> dict[str, Any]:
-    # Single channel, two samples with:
-    # - global lumi (constrained)
-    # - background normsys + histosys
-    # - staterror per bin
-    signal = {
-        "name": "signal",
-        "data": [10.0] * n_bins,
-        "modifiers": [
-            {"name": "mu", "type": "normfactor", "data": None},
-            {"name": "lumi", "type": "lumi", "data": None},
-        ],
-    }
-    nominal = [200.0 + 0.25 * i for i in range(n_bins)]
-    hi = [x * (1.08 + 0.01 * ((i % 5) - 2)) for i, x in enumerate(nominal)]
-    lo = [x * (0.92 - 0.005 * ((i % 7) - 3)) for i, x in enumerate(nominal)]
-    stat = [max(1.0, 0.15 * (x**0.5)) for x in nominal]
-    background = {
-        "name": "background",
-        "data": nominal,
-        "modifiers": [
-            {"name": "lumi", "type": "lumi", "data": None},
-            {"name": "bkg_norm", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}},
-            {"name": "bkg_shape", "type": "histosys", "data": {"hi_data": hi, "lo_data": lo}},
-            {"name": "staterror_c", "type": "staterror", "data": stat},
-        ],
-    }
-    obs = [float(s + b) for s, b in zip(signal["data"], background["data"])]
-    return {
-        "channels": [{"name": "c", "samples": [signal, background]}],
-        "observations": [{"name": "c", "data": obs}],
-        "measurements": [
-            {
-                "name": "m",
-                "config": {
-                    "poi": "mu",
-                    "parameters": [
-                        {
-                            "name": "lumi",
-                            "inits": [1.0],
-                            "bounds": [[0.9, 1.1]],
-                            "auxdata": [1.0],
-                            "sigmas": [0.02],
-                        },
-                    ],
-                },
-            }
-        ],
-        "version": "1.0.0",
-    }
-
-
-def make_workspace_shapefactor_control_region(n_bins: int) -> dict[str, Any]:
-    # Two channels: SR (signal+background) and CR (background-only with shapefactor).
-    sr_signal = {
-        "name": "signal",
-        "data": [6.0] * n_bins,
-        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-    }
-    sr_bkg = {
-        "name": "background",
-        "data": [80.0] * n_bins,
-        "modifiers": [
-            {
-                "name": "sr_shape",
-                "type": "histosys",
-                "data": {"hi_data": [85.0] * n_bins, "lo_data": [75.0] * n_bins},
-            }
-        ],
-    }
-    cr_bkg = {
-        "name": "background",
-        "data": [500.0 + i for i in range(n_bins)],
-        "modifiers": [{"name": "sf_cr", "type": "shapefactor", "data": None}],
-    }
-    channels = [
-        {"name": "SR", "samples": [sr_signal, sr_bkg]},
-        {"name": "CR", "samples": [cr_bkg]},
-    ]
-    obs_sr = [float(a + b) for a, b in zip(sr_signal["data"], sr_bkg["data"])]
-    obs_cr = [float(x) for x in cr_bkg["data"]]
-    return {
-        "channels": channels,
-        "observations": [{"name": "SR", "data": obs_sr}, {"name": "CR", "data": obs_cr}],
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
 
 
 def make_suite(*, sizes: List[int]) -> List[Case]:
@@ -323,14 +193,25 @@ def main() -> int:
     failures: List[Dict[str, Any]] = []
 
     for case in suite:
+        timing_s = {
+            "pyhf_build": 0.0,
+            "nextstat_build": 0.0,
+            "pyhf_validate": 0.0,
+            "nextstat_validate": 0.0,
+        }
+
+        t0 = time.perf_counter()
         py_model, py_data = pyhf_model_and_data(case.workspace, case.measurement)
         py_init = list(map(float, py_model.config.suggested_init()))
         py_bounds = [(float(a), float(b)) for a, b in py_model.config.suggested_bounds()]
         py_names = list(py_model.config.par_names)
+        timing_s["pyhf_build"] += time.perf_counter() - t0
 
+        t0 = time.perf_counter()
         ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(case.workspace))
         ns_names = ns_model.parameter_names()
         ns_init = ns_model.suggested_init()
+        timing_s["nextstat_build"] += time.perf_counter() - t0
 
         if set(ns_names) != set(py_names):
             failures.append(
@@ -374,8 +255,13 @@ def main() -> int:
         max_abs_exp_main_point: Optional[Dict[str, Any]] = None
 
         for _tag, p in points:
+            t0 = time.perf_counter()
             nll_py = pyhf_nll(py_model, py_data, p)
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             nll_ns = float(ns_model.nll(ns_params(p)))
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             delta_nll = nll_ns - nll_py
             nll_diffs.append(delta_nll)
             max_abs_nll_py = max(max_abs_nll_py, abs(nll_py))
@@ -388,16 +274,26 @@ def main() -> int:
                     "delta": float(delta_nll),
                 }
 
+            t0 = time.perf_counter()
             exp_py_full = [float(x) for x in py_model.expected_data(p)]
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             exp_ns_full = [float(x) for x in ns_model.expected_data(ns_params(p), include_auxdata=True)]
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             d_full = max_abs_diff(exp_ns_full, exp_py_full)
             exp_full_diffs.append(d_full)
             if d_full >= max_abs_exp_full:
                 max_abs_exp_full = float(d_full)
                 max_abs_exp_full_point = {"tag": _tag, "max_abs_delta": float(d_full)}
 
+            t0 = time.perf_counter()
             exp_py_main = [float(x) for x in py_model.expected_data(p, include_auxdata=False)]
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params(p), include_auxdata=False)]
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             d_main = max_abs_diff(exp_ns_main, exp_py_main)
             exp_main_diffs.append(d_main)
             if d_main >= max_abs_exp_main:
@@ -470,6 +366,14 @@ def main() -> int:
                 "pyhf_nll_wall_s": float(pyhf_t),
                 "nextstat_nll_wall_s": float(ns_t),
                 "speedup": float(speedup),
+                "timing_s": {
+                    "pyhf_build": float(timing_s["pyhf_build"]),
+                    "nextstat_build": float(timing_s["nextstat_build"]),
+                    "pyhf_validate": float(timing_s["pyhf_validate"]),
+                    "nextstat_validate": float(timing_s["nextstat_validate"]),
+                    "pyhf_total": float(timing_s["pyhf_build"] + timing_s["pyhf_validate"]),
+                    "nextstat_total": float(timing_s["nextstat_build"] + timing_s["nextstat_validate"]),
+                },
             },
         }
         if fit_info is not None:

@@ -93,7 +93,7 @@ def _statsmodels_kalman_filter(
     return ll, np.asarray(res.filtered_state, dtype=float), np.asarray(res.filtered_state_cov, dtype=float)
 
 
-def test_ar1_builder_filter_matches_statsmodels_optional():
+def test_ar1_builder_filter_matches_statsmodels_optional(ns_timing):
     import nextstat
 
     ys, params = _load_ar1_fixture()
@@ -104,18 +104,20 @@ def test_ar1_builder_filter_matches_statsmodels_optional():
     p0 = float(params["p0"])
 
     model = nextstat.timeseries.ar1_model(phi=phi, q=q, r=r, m0=m0, p0=p0)
-    out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
-    ll_ns = float(out["log_likelihood"])
+    with ns_timing.time("nextstat"):
+        out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
+        ll_ns = float(out["log_likelihood"])
 
-    ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
-        ys,
-        transition=np.asarray([[phi]], dtype=float),
-        state_cov=np.asarray([[q]], dtype=float),
-        design=np.asarray([[1.0]], dtype=float),
-        obs_cov=np.asarray([[r]], dtype=float),
-        init_state=np.asarray([m0], dtype=float),
-        init_cov=np.asarray([[p0]], dtype=float),
-    )
+    with ns_timing.time("statsmodels"):
+        ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
+            ys,
+            transition=np.asarray([[phi]], dtype=float),
+            state_cov=np.asarray([[q]], dtype=float),
+            design=np.asarray([[1.0]], dtype=float),
+            obs_cov=np.asarray([[r]], dtype=float),
+            init_state=np.asarray([m0], dtype=float),
+            init_cov=np.asarray([[p0]], dtype=float),
+        )
 
     assert abs(ll_ns - ll_sm) <= 1e-8
 
@@ -130,7 +132,7 @@ def test_ar1_builder_filter_matches_statsmodels_optional():
         assert abs(float(out["filtered_covs"][t][0][0]) - float(p_sm[0, 0, t])) <= 1e-8
 
 
-def test_local_level_builder_filter_matches_statsmodels_optional():
+def test_local_level_builder_filter_matches_statsmodels_optional(ns_timing):
     import nextstat
 
     ys, params = _load_local_level_fixture()
@@ -140,18 +142,20 @@ def test_local_level_builder_filter_matches_statsmodels_optional():
     p0 = float(params.get("p0", 1.0))
 
     model = nextstat.timeseries.local_level_model(q=q, r=r, m0=m0, p0=p0)
-    out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
-    ll_ns = float(out["log_likelihood"])
+    with ns_timing.time("nextstat"):
+        out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
+        ll_ns = float(out["log_likelihood"])
 
-    ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
-        ys,
-        transition=np.asarray([[1.0]], dtype=float),
-        state_cov=np.asarray([[q]], dtype=float),
-        design=np.asarray([[1.0]], dtype=float),
-        obs_cov=np.asarray([[r]], dtype=float),
-        init_state=np.asarray([m0], dtype=float),
-        init_cov=np.asarray([[p0]], dtype=float),
-    )
+    with ns_timing.time("statsmodels"):
+        ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
+            ys,
+            transition=np.asarray([[1.0]], dtype=float),
+            state_cov=np.asarray([[q]], dtype=float),
+            design=np.asarray([[1.0]], dtype=float),
+            obs_cov=np.asarray([[r]], dtype=float),
+            init_state=np.asarray([m0], dtype=float),
+            init_cov=np.asarray([[p0]], dtype=float),
+        )
 
     assert abs(ll_ns - ll_sm) <= 1e-8
     assert m_sm.shape == (1, len(ys))
@@ -161,7 +165,7 @@ def test_local_level_builder_filter_matches_statsmodels_optional():
         assert abs(float(out["filtered_covs"][t][0][0]) - float(p_sm[0, 0, t])) <= 1e-8
 
 
-def test_local_linear_trend_builder_filter_matches_statsmodels_optional():
+def test_local_linear_trend_builder_filter_matches_statsmodels_optional(ns_timing):
     import nextstat
 
     ys, params = _load_local_linear_trend_fixture()
@@ -171,18 +175,20 @@ def test_local_linear_trend_builder_filter_matches_statsmodels_optional():
 
     # Fixture uses defaults in CLI/Rust builder: level0=0, slope0=0, p0_level=1, p0_slope=1.
     model = nextstat.timeseries.local_linear_trend_model(q_level=q_level, q_slope=q_slope, r=r)
-    out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
-    ll_ns = float(out["log_likelihood"])
+    with ns_timing.time("nextstat"):
+        out = nextstat.timeseries.kalman_filter(model, [[v] for v in ys])
+        ll_ns = float(out["log_likelihood"])
 
-    ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
-        ys,
-        transition=np.asarray([[1.0, 1.0], [0.0, 1.0]], dtype=float),
-        state_cov=np.asarray([[q_level, 0.0], [0.0, q_slope]], dtype=float),
-        design=np.asarray([[1.0, 0.0]], dtype=float),
-        obs_cov=np.asarray([[r]], dtype=float),
-        init_state=np.asarray([0.0, 0.0], dtype=float),
-        init_cov=np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=float),
-    )
+    with ns_timing.time("statsmodels"):
+        ll_sm, m_sm, p_sm = _statsmodels_kalman_filter(
+            ys,
+            transition=np.asarray([[1.0, 1.0], [0.0, 1.0]], dtype=float),
+            state_cov=np.asarray([[q_level, 0.0], [0.0, q_slope]], dtype=float),
+            design=np.asarray([[1.0, 0.0]], dtype=float),
+            obs_cov=np.asarray([[r]], dtype=float),
+            init_state=np.asarray([0.0, 0.0], dtype=float),
+            init_cov=np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=float),
+        )
 
     assert abs(ll_ns - ll_sm) <= 1e-8
     assert m_sm.shape == (2, len(ys))

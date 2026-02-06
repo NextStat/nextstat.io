@@ -30,9 +30,11 @@ def benchmark_pyhf_nll(n_iterations=1000):
     print("=" * 70)
 
     workspace = load_fixture("simple_workspace.json")
+    t0 = time.perf_counter()
     ws = pyhf.Workspace(workspace)
     model = ws.model("GaussExample")
     observations = ws.data(model)
+    setup_s = time.perf_counter() - t0
 
     params = np.array([1.0, 1.0, 1.0])
 
@@ -50,6 +52,7 @@ def benchmark_pyhf_nll(n_iterations=1000):
     per_call = elapsed / n_iterations * 1e6  # microseconds
 
     print(f"\nIterations: {n_iterations}")
+    print(f"Setup time: {setup_s:.4f} s")
     print(f"Total time: {elapsed:.4f} s")
     print(f"Per call:   {per_call:.2f} µs")
     print(f"Throughput: {n_iterations / elapsed:.0f} calls/sec")
@@ -64,8 +67,10 @@ def benchmark_nextstat_nll(n_iterations=100000):
     print("=" * 70)
 
     workspace = load_fixture("simple_workspace.json")
+    t0 = time.perf_counter()
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
     params = model.suggested_init()
+    setup_s = time.perf_counter() - t0
 
     # Warmup
     for _ in range(50):
@@ -80,6 +85,7 @@ def benchmark_nextstat_nll(n_iterations=100000):
     per_call = elapsed / n_iterations * 1e6  # microseconds
 
     print(f"\nIterations: {n_iterations}")
+    print(f"Setup time: {setup_s:.4f} s")
     print(f"Total time: {elapsed:.4f} s")
     print(f"Per call:   {per_call:.2f} µs")
     print(f"Throughput: {n_iterations / elapsed:.0f} calls/sec")

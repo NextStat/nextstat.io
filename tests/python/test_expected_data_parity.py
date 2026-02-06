@@ -89,32 +89,40 @@ def sample_params(rng: random.Random, init: list[float], bounds: list[tuple[floa
         ("complex_workspace.json", "measurement"),
     ],
 )
-def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement: str):
+def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):
     workspace = load_fixture(fixture)
-    model = pyhf_model(workspace, measurement)
-    pyhf_init = list(map(float, model.config.suggested_init()))
+    with ns_timing.time("pyhf"):
+        model = pyhf_model(workspace, measurement)
+        pyhf_init = list(map(float, model.config.suggested_init()))
 
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    ns_params = map_params_by_name(
-        model.config.par_names,
-        pyhf_init,
-        ns_model.parameter_names(),
-        ns_model.suggested_init(),
-    )
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_params = map_params_by_name(
+            model.config.par_names,
+            pyhf_init,
+            ns_model.parameter_names(),
+            ns_model.suggested_init(),
+        )
 
-    exp_pyhf = [float(x) for x in model.expected_data(pyhf_init)]
-    exp_ns = [float(x) for x in ns_model.expected_data(ns_params)]
+    with ns_timing.time("pyhf"):
+        exp_pyhf = [float(x) for x in model.expected_data(pyhf_init)]
+    with ns_timing.time("nextstat"):
+        exp_ns = [float(x) for x in ns_model.expected_data(ns_params)]
     assert exp_ns == pytest.approx(exp_pyhf, rel=0.0, abs=EXPECTED_DATA_ATOL)
 
-    exp_pyhf_main = [float(x) for x in model.expected_data(pyhf_init, include_auxdata=False)]
-    exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
+    with ns_timing.time("pyhf"):
+        exp_pyhf_main = [float(x) for x in model.expected_data(pyhf_init, include_auxdata=False)]
+    with ns_timing.time("nextstat"):
+        exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
     assert exp_ns_main == pytest.approx(exp_pyhf_main, rel=0.0, abs=EXPECTED_DATA_ATOL)
 
     # Buffer protocol should be supported (perf-critical for large parameter vectors).
     ns_params_buf = array("d", ns_params)
-    exp_ns_buf = [float(x) for x in ns_model.expected_data(ns_params_buf)]
+    with ns_timing.time("nextstat"):
+        exp_ns_buf = [float(x) for x in ns_model.expected_data(ns_params_buf)]
     assert exp_ns_buf == pytest.approx(exp_pyhf, rel=0.0, abs=EXPECTED_DATA_ATOL)
-    exp_ns_main_buf = [float(x) for x in ns_model.expected_data(ns_params_buf, include_auxdata=False)]
+    with ns_timing.time("nextstat"):
+        exp_ns_main_buf = [float(x) for x in ns_model.expected_data(ns_params_buf, include_auxdata=False)]
     assert exp_ns_main_buf == pytest.approx(exp_pyhf_main, rel=0.0, abs=EXPECTED_DATA_ATOL)
 
 @pytest.mark.parametrize(
@@ -124,23 +132,27 @@ def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement:
         ("complex_workspace.json", "measurement"),
     ],
 )
-def test_nll_accepts_buffer_and_matches_pyhf_at_suggested_init(fixture: str, measurement: str):
+def test_nll_accepts_buffer_and_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):
     workspace = load_fixture(fixture)
-    model, data = pyhf_model_and_data(workspace, measurement)
-    pyhf_init = list(map(float, model.config.suggested_init()))
+    with ns_timing.time("pyhf"):
+        model, data = pyhf_model_and_data(workspace, measurement)
+        pyhf_init = list(map(float, model.config.suggested_init()))
 
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    ns_params_list = map_params_by_name(
-        model.config.par_names,
-        pyhf_init,
-        ns_model.parameter_names(),
-        ns_model.suggested_init(),
-    )
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_params_list = map_params_by_name(
+            model.config.par_names,
+            pyhf_init,
+            ns_model.parameter_names(),
+            ns_model.suggested_init(),
+        )
     ns_params_buf = array("d", ns_params_list)
 
-    nll_pyhf = pyhf_nll(model, data, pyhf_init)
-    nll_ns = float(ns_model.nll(ns_params_list))
-    nll_ns_buf = float(ns_model.nll(ns_params_buf))
+    with ns_timing.time("pyhf"):
+        nll_pyhf = pyhf_nll(model, data, pyhf_init)
+    with ns_timing.time("nextstat"):
+        nll_ns = float(ns_model.nll(ns_params_list))
+        nll_ns_buf = float(ns_model.nll(ns_params_buf))
 
     scale = max(abs(float(nll_pyhf)), 1.0)
     allowed = max(NLL_ATOL, NLL_RTOL * scale)
@@ -170,15 +182,17 @@ def test_grad_nll_accepts_buffer_matches_list_simple_fixture():
         ("complex_workspace.json", "measurement", 1),
     ],
 )
-def test_expected_data_matches_pyhf_at_random_points(fixture: str, measurement: str, seed: int):
+def test_expected_data_matches_pyhf_at_random_points(fixture: str, measurement: str, seed: int, ns_timing):
     workspace = load_fixture(fixture)
-    model = pyhf_model(workspace, measurement)
-    pyhf_init = list(map(float, model.config.suggested_init()))
-    pyhf_bounds = [(float(a), float(b)) for a, b in model.config.suggested_bounds()]
+    with ns_timing.time("pyhf"):
+        model = pyhf_model(workspace, measurement)
+        pyhf_init = list(map(float, model.config.suggested_init()))
+        pyhf_bounds = [(float(a), float(b)) for a, b in model.config.suggested_bounds()]
 
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    ns_init = ns_model.suggested_init()
-    ns_names = ns_model.parameter_names()
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_init = ns_model.suggested_init()
+        ns_names = ns_model.parameter_names()
 
     rng = random.Random(seed)
     for _ in range(5):
@@ -190,10 +204,14 @@ def test_expected_data_matches_pyhf_at_random_points(fixture: str, measurement: 
             ns_init,
         )
 
-        exp_pyhf = [float(x) for x in model.expected_data(pyhf_params)]
-        exp_ns = [float(x) for x in ns_model.expected_data(ns_params)]
+        with ns_timing.time("pyhf"):
+            exp_pyhf = [float(x) for x in model.expected_data(pyhf_params)]
+        with ns_timing.time("nextstat"):
+            exp_ns = [float(x) for x in ns_model.expected_data(ns_params)]
         assert exp_ns == pytest.approx(exp_pyhf, rel=0.0, abs=EXPECTED_DATA_ATOL)
 
-        exp_pyhf_main = [float(x) for x in model.expected_data(pyhf_params, include_auxdata=False)]
-        exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
+        with ns_timing.time("pyhf"):
+            exp_pyhf_main = [float(x) for x in model.expected_data(pyhf_params, include_auxdata=False)]
+        with ns_timing.time("nextstat"):
+            exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
         assert exp_ns_main == pytest.approx(exp_pyhf_main, rel=0.0, abs=EXPECTED_DATA_ATOL)

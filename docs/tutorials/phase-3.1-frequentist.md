@@ -25,10 +25,20 @@ From the repo root:
 cargo test
 ```
 
-Optional (Python surface):
+Optional (Python surface + Apex2 validation runners):
 
 ```bash
-./.venv/bin/maturin develop -m bindings/ns-py/Cargo.toml
+# Install Python deps used by the validation harness (pyhf, numpy, etc.)
+./.venv/bin/pip install -e "bindings/ns-py[validation]"
+
+# Build the `nextstat._core` extension into the active venv (recommended: release build)
+./.venv/bin/maturin develop --release -m bindings/ns-py/Cargo.toml
+```
+
+Optional (plots in this doc):
+
+```bash
+./.venv/bin/pip install -e "bindings/ns-py[viz]"
 ```
 
 ## Validation Harness (Apex2)
@@ -60,6 +70,16 @@ In addition to the pyhf + golden regression checks, the master report also inclu
 fast, deterministic NUTS/HMC diagnostics smoke test on a small non-HEP model
 (GaussianMeanModel). This is intended to catch catastrophic sampling regressions without
 requiring `NS_RUN_SLOW=1`.
+
+Optional: embed the full NUTS/HMC quality report into the master report JSON.
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --nuts-quality \
+  --nuts-quality-warmup 200 \
+  --nuts-quality-samples 200 \
+  --out tmp/apex2_master_report.json
+```
 
 ### 0.2) NUTS/HMC quality report (JSON, thresholds)
 
@@ -106,6 +126,7 @@ Notes:
 
 - bias/pulls is intended for manual/nightly runs; it is not part of default CI.
 - SBC (NUTS) is intended for manual/nightly runs; it requires `NS_RUN_SLOW=1`.
+  - For the pytest suite, SBC tests are additionally gated behind `NS_RUN_SBC=1` and the `sbc` marker.
 - ROOT parity is recorded as `skipped` unless ROOT prerequisites are present.
 
 ## 1) Fit (MLE)

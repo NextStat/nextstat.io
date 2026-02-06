@@ -26,12 +26,18 @@ pub mod diagnostics;
 pub mod hmc;
 /// Frequentist hypothesis testing (asymptotic CLs).
 pub mod hypotest;
+/// Laplace approximation utilities (generic).
+pub mod laplace;
+/// Linear mixed models (marginal likelihood baseline).
+pub mod lmm;
 /// Maximum-likelihood estimation via L-BFGS-B.
 pub mod mle;
 /// NUTS tree-building and sampling.
 pub mod nuts;
 /// Generic numerical optimizer (L-BFGS-B backend).
 pub mod optimizer;
+/// Ordinal regression models (Phase 9 Pack C).
+pub mod ordinal;
 /// Posterior API: log-pdf, gradient, transforms.
 pub mod posterior;
 /// Profile likelihood scans.
@@ -42,6 +48,8 @@ pub mod regression;
 pub mod survival;
 /// Time series and state space models (Phase 8).
 pub mod timeseries;
+/// Toy data generation (Asimov + Poisson).
+pub mod toys;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -52,15 +60,21 @@ pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
+pub use laplace::{LaplaceResult, laplace_log_marginal};
+pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
 pub use nuts::{NutsConfig, sample_nuts};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
+pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
 pub use posterior::{Posterior, Prior};
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
 pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };
-pub use survival::{ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel};
+pub use survival::{
+    CoxPhModel, CoxTies, ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel,
+};
+pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

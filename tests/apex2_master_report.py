@@ -585,12 +585,18 @@ def main() -> int:
             str(float(args.bias_pulls_min_used_frac)),
         ]
         rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
+        bias_report = _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None
+        bias_declared = ((bias_report or {}).get("summary") or {}).get("status") if isinstance(bias_report, dict) else None
+        if bias_declared in ("ok", "fail", "skipped", "error"):
+            bias_status = str(bias_declared)
+        else:
+            bias_status = "ok" if rc_bias == 0 else "fail"
         report["bias_pulls"] = {
-            "status": "ok" if rc_bias == 0 else "fail",
+            "status": bias_status,
             "returncode": int(rc_bias),
             "stdout_tail": out_bias[-4000:],
             "report_path": str(args.bias_pulls_out),
-            "report": _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None,
+            "report": bias_report,
         }
     else:
         report["bias_pulls"] = {"status": "skipped", "reason": "not_requested"}

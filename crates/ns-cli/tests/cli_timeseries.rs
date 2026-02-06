@@ -115,6 +115,29 @@ fn timeseries_kalman_filter_ar1_contract() {
 }
 
 #[test]
+fn timeseries_kalman_filter_arma11_contract() {
+    let input = fixture_path("kalman_arma11.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&[
+        "timeseries",
+        "kalman-filter",
+        "--input",
+        input.to_string_lossy().as_ref(),
+    ]);
+
+    assert!(
+        out.status.success(),
+        "timeseries kalman-filter (arma11) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    assert!(v.get("log_likelihood").and_then(|x| x.as_f64()).unwrap().is_finite());
+}
+
+#[test]
 fn timeseries_kalman_filter_local_level_seasonal_contract() {
     let input = fixture_path("kalman_local_level_seasonal.json");
     assert!(input.exists(), "missing fixture: {}", input.display());

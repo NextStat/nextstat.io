@@ -126,7 +126,29 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     let mut new_state = state.clone();
 
     // Integrate forward/backward by taking a step with +/- eps.
-    integrator.step_dir(&mut new_state, direction)?;
+    if integrator.step_dir(&mut new_state, direction).is_err() {
+        // If the leapfrog step fails (e.g. non-finite logpdf/grad, or q blows up),
+        // treat it as an immediate divergence with zero weight. This mirrors Stan's
+        // behavior: invalid proposals should be rejected and drive step size down,
+        // not abort the entire sampling run.
+        return Ok(NutsTree {
+            q_left: state.q.clone(),
+            p_left: state.p.clone(),
+            grad_left: state.grad_potential.clone(),
+            q_right: state.q.clone(),
+            p_right: state.p.clone(),
+            grad_right: state.grad_potential.clone(),
+            q_proposal: state.q.clone(),
+            potential_proposal: state.potential,
+            grad_proposal: state.grad_potential.clone(),
+            log_sum_weight: f64::NEG_INFINITY,
+            depth: 0,
+            n_leapfrog: 1,
+            divergent: true,
+            turning: true,
+            sum_accept_prob: 0.0,
+        });
+    }
 
     let h = new_state.hamiltonian(inv_mass);
     let energy_error = h - h0;
@@ -428,7 +450,29 @@ pub fn sample_nuts<M: LogDensityModel>(
             _ => model.parameter_init(),
         }
     };
-    let z_init = posterior.to_unconstrained(&theta_init)?;
+    let mut z_init = posterior.to_unconstrained(&theta_init)?;
+    if z_init.iter().any(|v| !v.is_finite()) {
+        // If MLE/initialization lands exactly on a parameter bound, the inverse
+        // transform can produce ±inf (or NaN if slightly out-of-bounds). NUTS
+        // requires finite unconstrained coordinates; clamp to a large but finite
+        // value to start very near the boundary.
+        const Z_CLAMP: f64 = 20.0;
+        for zi in z_init.iter_mut() {
+            if zi.is_finite() {
+                continue;
+            }
+            let orig = *zi;
+            *zi = if orig.is_nan() {
+                0.0
+            } else if orig == f64::NEG_INFINITY {
+                -Z_CLAMP
+            } else if orig == f64::INFINITY {
+                Z_CLAMP
+            } else {
+                0.0
+            };
+        }
+    }
     let init_modes = (config.init_jitter > 0.0) as u8
         + config.init_jitter_rel.is_some() as u8
         + config.init_overdispersed_rel.is_some() as u8;
@@ -598,6 +642,7 @@ pub fn sample_nuts<M: LogDensityModel>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ns_core::traits::{LogDensityModel, PreparedModelRef};
     use ns_translate::pyhf::{HistFactoryModel, Workspace};
     use rand::SeedableRng;
 
@@ -719,6 +764,74 @@ mod tests {
             "Same seed should produce identical draws"
         );
         assert_eq!(chain1.energies, chain2.energies, "Energy series should be deterministic");
+    }
+
+    #[test]
+    fn test_sample_nuts_clamps_non_finite_z_init() {
+        // A minimal bounded model whose optimum is exactly at the lower bound.
+        // The inverse transform produces -inf in unconstrained space; sampling
+        // should clamp to a large finite negative value and proceed.
+        struct BoundaryModel;
+
+        impl LogDensityModel for BoundaryModel {
+            type Prepared<'a>
+                = PreparedModelRef<'a, Self>
+            where
+                Self: 'a;
+
+            fn dim(&self) -> usize {
+                1
+            }
+
+            fn parameter_names(&self) -> Vec<String> {
+                vec!["x".to_string()]
+            }
+
+            fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+                vec![(0.0, 10.0)]
+            }
+
+            fn parameter_init(&self) -> Vec<f64> {
+                vec![0.0]
+            }
+
+            fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+                let x = params[0];
+                Ok(x * x)
+            }
+
+            fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+                let x = params[0];
+                Ok(vec![2.0 * x])
+            }
+
+            fn prepared(&self) -> Self::Prepared<'_> {
+                PreparedModelRef::new(self)
+            }
+        }
+
+        let model = BoundaryModel;
+        let config = NutsConfig {
+            max_treedepth: 6,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+            init_overdispersed_rel: None,
+        };
+
+        let chain = sample_nuts(&model, 10, 5, 123, config).unwrap();
+        assert_eq!(chain.draws_unconstrained.len(), 5);
+
+        for draw in &chain.draws_unconstrained {
+            assert!(draw[0].is_finite(), "unconstrained draw must be finite");
+        }
+        for draw in &chain.draws_constrained {
+            assert!(
+                draw[0].is_finite() && draw[0] >= 0.0 && draw[0] <= 10.0,
+                "constrained draw should stay within bounds: {}",
+                draw[0]
+            );
+        }
     }
 
     /// Quality gate: full pipeline must produce well-converged samples on the

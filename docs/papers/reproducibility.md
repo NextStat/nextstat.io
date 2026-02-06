@@ -348,11 +348,14 @@ pytest tests/python/test_pyhf_validation.py tests/python/test_hypotest_cls.py \
 pytest tests/python/test_sampling.py -v
 
 # Level 4: Toy pull distributions (opt-in, ~ 5 minutes)
-NS_RUN_SLOW=1 NS_TOYS=200 NS_SEED=0 pytest tests/python/test_bias_pulls.py -v -m slow
+NS_RUN_SLOW=1 NS_TOYS=200 NS_SEED=0 pytest tests/python/test_bias_pulls.py -v -m "slow and not sbc"
 
 # Level 4: Coverage regression (opt-in, ~ 10 minutes)
 NS_RUN_SLOW=1 NS_TOYS=20 NS_SEED=0 NS_SCAN_POINTS=81 \
-    pytest tests/python/test_coverage_regression.py -v -m slow
+    pytest tests/python/test_coverage_regression.py -v -m "slow and not sbc"
+
+# Level 5.4.2: SBC (very slow, opt-in)
+NS_RUN_SLOW=1 NS_RUN_SBC=1 pytest tests/python/test_sbc_nuts.py -v -m "slow and sbc"
 
 # Rust unit tests (excludes ns-py)
 cargo test -p ns-core -p ns-ad -p ns-compute -p ns-translate -p ns-inference
@@ -366,10 +369,11 @@ cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignore
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `NS_RUN_SLOW` | `0` | Enable slow (Level 4) tests |
-| `NS_TOYS` | `200` | Number of toys for pull/coverage tests |
+| `NS_RUN_SBC` | `0` | Enable SBC tests (in addition to `NS_RUN_SLOW=1`) |
+| `NS_TOYS` | varies | Number of toys for pull/coverage tests (set explicitly for stable runtime) |
 | `NS_SEED` | `0` | Base RNG seed for reproducibility |
-| `NS_FIXTURES` | `simple,complex` | Comma-separated fixture list |
-| `NS_SCAN_POINTS` | `81` | Grid points for upper limit scan |
+| `NS_FIXTURES` | `simple` | Comma-separated fixture list |
+| `NS_SCAN_POINTS` | `11` | Grid points for upper limit scan |
 
 ## 7. Determinism Guarantees
 

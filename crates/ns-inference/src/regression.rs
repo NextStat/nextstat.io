@@ -11,7 +11,7 @@ use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
 use statrs::function::gamma::{digamma, ln_gamma};
 
 #[inline]
-fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()> {
+pub(crate) fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()> {
     if n == 0 {
         return Err(Error::Validation("X/y must be non-empty".to_string()));
     }
@@ -35,21 +35,21 @@ fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()
 }
 
 #[inline]
-fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
+pub(crate) fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
     debug_assert_eq!(x_row.len(), beta.len());
     x_row.iter().zip(beta).map(|(&x, &b)| x * b).sum()
 }
 
 /// Dense row-major design matrix.
 #[derive(Debug, Clone)]
-struct DenseX {
-    n: usize,
-    p: usize,
-    data: Vec<f64>, // length n*p, row-major
+pub(crate) struct DenseX {
+    pub(crate) n: usize,
+    pub(crate) p: usize,
+    pub(crate) data: Vec<f64>, // length n*p, row-major
 }
 
 impl DenseX {
-    fn from_rows(x: Vec<Vec<f64>>) -> Result<Self> {
+    pub(crate) fn from_rows(x: Vec<Vec<f64>>) -> Result<Self> {
         let n = x.len();
         let p = x.first().map(|r| r.len()).unwrap_or(0);
         if n == 0 || p == 0 {
@@ -76,7 +76,7 @@ impl DenseX {
     }
 
     #[inline]
-    fn row(&self, i: usize) -> &[f64] {
+    pub(crate) fn row(&self, i: usize) -> &[f64] {
         let start = i * self.p;
         &self.data[start..start + self.p]
     }
@@ -946,4 +946,5 @@ mod tests {
             fx.nll_at_hat
         );
     }
+
 }

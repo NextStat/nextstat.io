@@ -3,6 +3,7 @@
 
 import json
 import sys
+import time
 import numpy as np
 import pyhf
 
@@ -19,7 +20,9 @@ def pyhf_fit(workspace):
     data = pyhf.Workspace(workspace).data(model)
 
     # Fit returns bestfit parameters
+    t_fit0 = time.perf_counter()
     bestfit = pyhf.infer.mle.fit(data, model)
+    t_fit = time.perf_counter() - t_fit0
 
     # Compute NLL at best-fit point
     nll = float(pyhf.infer.mle.twice_nll(bestfit, data, model)[0]) / 2.0
@@ -31,6 +34,7 @@ def pyhf_fit(workspace):
     x0 = np.asarray(bestfit, dtype=float)
     n = len(x0)
     hessian = np.zeros((n, n), dtype=float)
+    t_unc0 = time.perf_counter()
     f0 = nll_func(x0)
 
     # Match NextStat defaults (see crates/ns-inference/src/mle.rs)
@@ -63,11 +67,17 @@ def pyhf_fit(workspace):
         cov = np.linalg.pinv(hessian)
 
     uncertainties = np.sqrt(np.maximum(np.diag(cov), 0.0))
+    t_unc = time.perf_counter() - t_unc0
 
     return {
         'parameters': list(bestfit),
         'uncertainties': uncertainties,
-        'nll': nll
+        'nll': nll,
+        'timing_s': {
+            'fit': t_fit,
+            'uncertainties': t_unc,
+            'total': t_fit + t_unc,
+        },
     }
 
 def nextstat_fit(workspace):
@@ -76,14 +86,20 @@ def nextstat_fit(workspace):
     model = nextstat.HistFactoryModel.from_workspace(workspace_json)
 
     mle = nextstat.MaximumLikelihoodEstimator()
+    t_fit0 = time.perf_counter()
     result = mle.fit(model)
+    t_fit = time.perf_counter() - t_fit0
 
     return {
         'parameters': result.parameters,
         'uncertainties': result.uncertainties,
         'nll': result.nll,
         'converged': result.converged,
-        'n_evaluations': result.n_evaluations
+        'n_evaluations': result.n_evaluations,
+        'timing_s': {
+            'fit': t_fit,
+            'total': t_fit,
+        },
     }
 
 def compare_results(pyhf_res, nextstat_res):
@@ -129,6 +145,16 @@ def compare_results(pyhf_res, nextstat_res):
     print("\n⚙️  CONVERGENCE:")
     print(f"  Converged: {nextstat_res['converged']}")
     print(f"  Evaluations: {nextstat_res['n_evaluations']}")
+
+    if "timing_s" in pyhf_res and "timing_s" in nextstat_res:
+        t_pyhf = pyhf_res["timing_s"]
+        t_ns = nextstat_res["timing_s"]
+        print("\n⏱️  TIMING (seconds):")
+        print(f"  pyhf fit:           {t_pyhf.get('fit', float('nan')):.4f}")
+        print(f"  pyhf uncertainties: {t_pyhf.get('uncertainties', float('nan')):.4f}")
+        print(f"  pyhf total:         {t_pyhf.get('total', float('nan')):.4f}")
+        print(f"  NextStat fit:       {t_ns.get('fit', float('nan')):.4f}")
+        print(f"  NextStat total:     {t_ns.get('total', float('nan')):.4f}")
 
     print("\n" + "=" * 60)
     if params_match and nll_match and unc_match:
