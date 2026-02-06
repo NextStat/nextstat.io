@@ -52,6 +52,10 @@ Exit codes:
   - `pyhf.compare.cases[*].ok` for perf regressions
   - `p6_glm.attempts[*].status` to see retry outcomes
   - `p6_glm.compare.compare.cases[*].ok` for fit/predict regressions (selected attempt)
+- Note: by default, very small baseline timings are **not** gated (to avoid timer noise):
+  - pyhf: `--pyhf-min-baseline-s` (default `1e-5`)
+  - P6: `--p6-min-baseline-fit-s` and `--p6-min-baseline-predict-s` (default `1e-2`)
+  Override via `COMPARE_ARGS="..."` if you want stricter gating on a dedicated benchmark host.
 - If the baseline is stale (e.g. after a known perf improvement), record a new baseline and re-run the gate.
 
 ## Cluster notes (ROOT/TRExFitter)

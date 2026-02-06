@@ -92,6 +92,83 @@ fn sample_nuts_multichain_with_seeds(
     })
 }
 
+fn sampler_result_to_py<'py>(
+    py: Python<'py>,
+    result: &RustSamplerResult,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+) -> PyResult<Py<PyAny>> {
+    let diag = compute_diagnostics(result);
+    let param_names = &result.param_names;
+    let n_params = param_names.len();
+
+    // Build "posterior" dict: {param_name: [[chain0_draws], [chain1_draws], ...]}
+    let posterior = PyDict::new(py);
+    for (p, name) in param_names.iter().enumerate() {
+        let chains_draws: Vec<Vec<f64>> = result.param_draws(p);
+        posterior.set_item(name, chains_draws)?;
+    }
+
+    // Build "sample_stats" dict
+    let sample_stats = PyDict::new(py);
+    let diverging: Vec<Vec<bool>> = result.chains.iter().map(|c| c.divergences.clone()).collect();
+    let tree_depth: Vec<Vec<usize>> = result.chains.iter().map(|c| c.tree_depths.clone()).collect();
+    let accept_prob: Vec<Vec<f64>> = result.chains.iter().map(|c| c.accept_probs.clone()).collect();
+    let energy: Vec<Vec<f64>> = result.chains.iter().map(|c| c.energies.clone()).collect();
+    let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
+    sample_stats.set_item("diverging", diverging)?;
+    sample_stats.set_item("tree_depth", tree_depth)?;
+    sample_stats.set_item("accept_prob", accept_prob)?;
+    sample_stats.set_item("energy", energy)?;
+    sample_stats.set_item("step_size", step_sizes)?;
+
+    // Build "diagnostics" dict
+    let diagnostics_dict = PyDict::new(py);
+
+    let r_hat_dict = PyDict::new(py);
+    let ess_bulk_dict = PyDict::new(py);
+    let ess_tail_dict = PyDict::new(py);
+    for p in 0..n_params {
+        r_hat_dict.set_item(&param_names[p], diag.r_hat[p])?;
+        ess_bulk_dict.set_item(&param_names[p], diag.ess_bulk[p])?;
+        ess_tail_dict.set_item(&param_names[p], diag.ess_tail[p])?;
+    }
+    diagnostics_dict.set_item("r_hat", r_hat_dict)?;
+    diagnostics_dict.set_item("ess_bulk", ess_bulk_dict)?;
+    diagnostics_dict.set_item("ess_tail", ess_tail_dict)?;
+    diagnostics_dict.set_item("divergence_rate", diag.divergence_rate)?;
+    diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
+    diagnostics_dict.set_item("ebfmi", diag.ebfmi.clone())?;
+
+    // Non-slow quality summary (conservative gates).
+    let gates = QualityGates::default();
+    let qs = quality_summary(&diag, n_chains, n_samples, &gates);
+    let quality = PyDict::new(py);
+    quality.set_item("status", qs.status.to_string())?;
+    quality.set_item("enabled", qs.enabled)?;
+    quality.set_item("warnings", qs.warnings)?;
+    quality.set_item("failures", qs.failures)?;
+    quality.set_item("total_draws", qs.total_draws)?;
+    quality.set_item("max_r_hat", qs.max_r_hat)?;
+    quality.set_item("min_ess_bulk", qs.min_ess_bulk)?;
+    quality.set_item("min_ess_tail", qs.min_ess_tail)?;
+    quality.set_item("min_ebfmi", qs.min_ebfmi)?;
+    diagnostics_dict.set_item("quality", quality)?;
+
+    // Assemble top-level dict
+    let out = PyDict::new(py);
+    out.set_item("posterior", posterior)?;
+    out.set_item("sample_stats", sample_stats)?;
+    out.set_item("diagnostics", diagnostics_dict)?;
+    out.set_item("param_names", param_names)?;
+    out.set_item("n_chains", n_chains)?;
+    out.set_item("n_warmup", n_warmup)?;
+    out.set_item("n_samples", n_samples)?;
+
+    Ok(out.into_any().unbind())
+}
+
 fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> PyResult<DMatrix<f64>> {
     if rows.is_empty() {
         return Err(PyValueError::new_err(format!("{name} must be non-empty")));
@@ -375,6 +452,138 @@ impl PosteriorModel {
             }
             PosteriorModel::CoxPh(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+        }
+    }
+
+    fn fit_map(&self, mle: &RustMLE, priors: Vec<Prior>) -> NsResult<ns_core::FitResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::GaussianMean(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::LinearRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::OrderedLogit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::OrderedProbit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ComposedGlm(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::LmmMarginal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ExponentialSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::WeibullSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::LogNormalAft(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::CoxPh(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+        }
+    }
+
+    fn sample_nuts_multichain_map(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: NutsConfig,
+        priors: Vec<Prior>,
+    ) -> NsResult<RustSamplerResult> {
+        let seeds: Vec<u64> =
+            (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+        match self {
+            PosteriorModel::HistFactory(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::GaussianMean(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LinearRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedLogit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedProbit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ComposedGlm(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LmmMarginal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ExponentialSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::WeibullSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogNormalAft(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::CoxPh(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
         }
     }
@@ -2710,6 +2919,32 @@ fn fit<'py>(
     mle.fit(py, model, data)
 }
 
+/// Convenience wrapper: fit a Posterior (MAP) by minimizing negative log-posterior.
+#[pyfunction]
+fn map_fit<'py>(py: Python<'py>, posterior: &Bound<'py, PyAny>) -> PyResult<PyFitResult> {
+    let post = posterior
+        .extract::<PyRef<'_, PyPosterior>>()
+        .map_err(|_| PyValueError::new_err("map_fit expects a Posterior"))?;
+
+    let mle = RustMLE::new();
+    let model = post.model.clone();
+    let priors = post.priors.clone();
+
+    let result = py
+        .detach(move || model.fit_map(&mle, priors))
+        .map_err(|e| PyValueError::new_err(format!("MAP fit failed: {}", e)))?;
+
+    Ok(PyFitResult {
+        parameters: result.parameters,
+        uncertainties: result.uncertainties,
+        nll: result.nll,
+        converged: result.converged,
+        n_iter: result.n_iter,
+        n_fev: result.n_fev,
+        n_gev: result.n_gev,
+    })
+}
+
 /// Convenience wrapper: fit multiple models in parallel (Rayon).
 ///
 /// Two call forms:
@@ -2983,81 +3218,29 @@ fn sample<'py>(
         init_overdispersed_rel,
         ..Default::default()
     };
-    let sample_model = extract_posterior_model_with_data(model, data)?;
 
-    // Release GIL during sampling (Rayon-parallel for multi-chain).
-    let result = py
-        .detach(move || sample_model.sample_nuts_multichain(n_chains, n_warmup, n_samples, seed, config))
-        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
+    // Accept `Posterior` objects (MAP sampling), otherwise sample the model (ML posterior).
+    let result = if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data= is not supported when sampling a Posterior; build the Posterior from the desired model/data",
+            ));
+        }
+        let priors = post.priors.clone();
+        let m = post.model.clone();
+        py.detach(move || {
+            m.sample_nuts_multichain_map(
+                n_chains, n_warmup, n_samples, seed, config, priors,
+            )
+        })
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+    } else {
+        let sample_model = extract_posterior_model_with_data(model, data)?;
+        py.detach(move || sample_model.sample_nuts_multichain(n_chains, n_warmup, n_samples, seed, config))
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+    };
 
-    let diag = compute_diagnostics(&result);
-    let param_names = &result.param_names;
-    let n_params = param_names.len();
-
-    // Build "posterior" dict: {param_name: [[chain0_draws], [chain1_draws], ...]}
-    let posterior = PyDict::new(py);
-    for (p, name) in param_names.iter().enumerate() {
-        let chains_draws: Vec<Vec<f64>> = result.param_draws(p);
-        posterior.set_item(name, chains_draws)?;
-    }
-
-    // Build "sample_stats" dict
-    let sample_stats = PyDict::new(py);
-    let diverging: Vec<Vec<bool>> = result.chains.iter().map(|c| c.divergences.clone()).collect();
-    let tree_depth: Vec<Vec<usize>> = result.chains.iter().map(|c| c.tree_depths.clone()).collect();
-    let accept_prob: Vec<Vec<f64>> = result.chains.iter().map(|c| c.accept_probs.clone()).collect();
-    let energy: Vec<Vec<f64>> = result.chains.iter().map(|c| c.energies.clone()).collect();
-    let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
-    sample_stats.set_item("diverging", diverging)?;
-    sample_stats.set_item("tree_depth", tree_depth)?;
-    sample_stats.set_item("accept_prob", accept_prob)?;
-    sample_stats.set_item("energy", energy)?;
-    sample_stats.set_item("step_size", step_sizes)?;
-
-    // Build "diagnostics" dict
-    let diagnostics_dict = PyDict::new(py);
-
-    let r_hat_dict = PyDict::new(py);
-    let ess_bulk_dict = PyDict::new(py);
-    let ess_tail_dict = PyDict::new(py);
-    for p in 0..n_params {
-        r_hat_dict.set_item(&param_names[p], diag.r_hat[p])?;
-        ess_bulk_dict.set_item(&param_names[p], diag.ess_bulk[p])?;
-        ess_tail_dict.set_item(&param_names[p], diag.ess_tail[p])?;
-    }
-    diagnostics_dict.set_item("r_hat", r_hat_dict)?;
-    diagnostics_dict.set_item("ess_bulk", ess_bulk_dict)?;
-    diagnostics_dict.set_item("ess_tail", ess_tail_dict)?;
-    diagnostics_dict.set_item("divergence_rate", diag.divergence_rate)?;
-    diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
-    diagnostics_dict.set_item("ebfmi", diag.ebfmi.clone())?;
-
-    // Non-slow quality summary (conservative gates).
-    let gates = QualityGates::default();
-    let qs = quality_summary(&diag, n_chains, n_samples, &gates);
-    let quality = PyDict::new(py);
-    quality.set_item("status", qs.status.to_string())?;
-    quality.set_item("enabled", qs.enabled)?;
-    quality.set_item("warnings", qs.warnings)?;
-    quality.set_item("failures", qs.failures)?;
-    quality.set_item("total_draws", qs.total_draws)?;
-    quality.set_item("max_r_hat", qs.max_r_hat)?;
-    quality.set_item("min_ess_bulk", qs.min_ess_bulk)?;
-    quality.set_item("min_ess_tail", qs.min_ess_tail)?;
-    quality.set_item("min_ebfmi", qs.min_ebfmi)?;
-    diagnostics_dict.set_item("quality", quality)?;
-
-    // Assemble top-level dict
-    let out = PyDict::new(py);
-    out.set_item("posterior", posterior)?;
-    out.set_item("sample_stats", sample_stats)?;
-    out.set_item("diagnostics", diagnostics_dict)?;
-    out.set_item("param_names", param_names)?;
-    out.set_item("n_chains", n_chains)?;
-    out.set_item("n_warmup", n_warmup)?;
-    out.set_item("n_samples", n_samples)?;
-
-    Ok(out.into_any().unbind())
+    sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
 }
 
 /// Plot-friendly CLs curve + Brazil band artifact over a scan grid.
@@ -3171,6 +3354,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
+    m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;

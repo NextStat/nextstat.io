@@ -1931,3 +1931,29 @@ fn cmd_viz_cls(
     }
     Ok(())
 }
+
+fn cmd_viz_ranking(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let model = load_model(input, threads)?;
+    let mle = ns_inference::MaximumLikelihoodEstimator::new();
+
+    let entries = mle.ranking(&model)?;
+    let artifact: ns_viz::RankingArtifact = entries.into();
+
+    let output_json = serde_json::to_value(artifact)?;
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_ranking",
+            serde_json::json!({ "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
+}

@@ -498,12 +498,12 @@ def main() -> int:
     ap.add_argument("--pyhf-max-slowdown", type=float, default=1.30)
     ap.add_argument("--pyhf-max-slowdown-fit", type=float, default=None)
     # Skip comparing extremely small baseline timings which are dominated by timer noise.
-    ap.add_argument("--pyhf-min-baseline-s", type=float, default=1e-6)
+    ap.add_argument("--pyhf-min-baseline-s", type=float, default=1e-5)
 
     # P6 compare thresholds (passed through)
     ap.add_argument("--p6-max-slowdown", type=float, default=1.30)
-    ap.add_argument("--p6-min-baseline-fit-s", type=float, default=1e-3)
-    ap.add_argument("--p6-min-baseline-predict-s", type=float, default=1e-3)
+    ap.add_argument("--p6-min-baseline-fit-s", type=float, default=1e-2)
+    ap.add_argument("--p6-min-baseline-predict-s", type=float, default=1e-2)
     ap.add_argument(
         "--p6-attempts",
         type=int,

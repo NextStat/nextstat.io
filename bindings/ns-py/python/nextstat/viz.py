@@ -24,6 +24,36 @@ def profile_curve(model, mu_values: Sequence[float], *, data: Optional[list[floa
 
     return _core.profile_curve(model, list(mu_values), data=data)
 
+def ranking(model):
+    """Compute nuisance-parameter ranking (impact on POI)."""
+    from . import _core
+
+    return _core.ranking(model)
+
+
+def _ranking_arrays_from_entries(entries: Sequence[Mapping[str, Any]]):
+    """Convert ranking entries into plot-friendly arrays (no dict-per-entry)."""
+    names: list[str] = []
+    delta_mu_up: list[float] = []
+    delta_mu_down: list[float] = []
+    pull: list[float] = []
+    constraint: list[float] = []
+
+    for e in entries:
+        names.append(str(e["name"]))
+        delta_mu_up.append(float(e["delta_mu_up"]))
+        delta_mu_down.append(float(e["delta_mu_down"]))
+        pull.append(float(e["pull"]))
+        constraint.append(float(e["constraint"]))
+
+    return {
+        "names": names,
+        "delta_mu_up": delta_mu_up,
+        "delta_mu_down": delta_mu_down,
+        "pull": pull,
+        "constraint": constraint,
+    }
+
 
 def ranking_artifact(model, *, top_n: Optional[int] = None) -> Mapping[str, Any]:
     """Compute nuisance-parameter ranking artifact (impact on POI).
@@ -45,6 +75,24 @@ def ranking_artifact(model, *, top_n: Optional[int] = None) -> Mapping[str, Any]
         entries = entries[:n]
 
     return {"entries": entries, "n_total": n_total, "n_returned": len(entries)}
+
+def ranking_arrays(artifact_or_entries: Mapping[str, Any] | Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """Return plot-friendly ranking arrays.
+
+    Accepts either:
+    - a list of entry dicts (as returned by `nextstat.ranking(...)`), or
+    - a dict from `ranking_artifact(...)` (must contain `entries`), or
+    - a dict that already contains `names`/`delta_mu_up`/etc (returned unchanged).
+    """
+    if isinstance(artifact_or_entries, (list, tuple)):
+        return _ranking_arrays_from_entries(artifact_or_entries)
+
+    artifact = dict(artifact_or_entries)
+    if "entries" in artifact:
+        return _ranking_arrays_from_entries(list(artifact["entries"]))
+    if "names" in artifact and "delta_mu_up" in artifact and "delta_mu_down" in artifact:
+        return artifact
+    raise ValueError("unsupported ranking input: expected entries list, ranking_artifact dict, or arrays dict")
 
 
 def _require_matplotlib():
@@ -280,6 +328,80 @@ def plot_profile_curve(
     if title:
         ax.set_title(title)
     return ax
+
+
+def plot_ranking(
+    artifact_or_entries: Mapping[str, Any] | Sequence[Mapping[str, Any]],
+    *,
+    max_nps: int = 20,
+    title: Optional[str] = None,
+    ax_pull=None,
+    ax_impact=None,
+):
+    """Plot a standard HEP-style ranking: pulls (left) and POI impacts (right).
+
+    Accepts either:
+    - an artifact dict from `ranking_artifact(...)`, or
+    - a list of ranking entry dicts (as returned by `nextstat.ranking(...)`).
+    """
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    if isinstance(artifact_or_entries, (list, tuple)):
+        artifact = _ranking_arrays_from_entries(artifact_or_entries)
+    else:
+        artifact = ranking_arrays(artifact_or_entries)
+
+    names = list(artifact.get("names") or [])
+    up = [float(x) for x in (artifact.get("delta_mu_up") or [])]
+    down = [float(x) for x in (artifact.get("delta_mu_down") or [])]
+    pulls = [float(x) for x in (artifact.get("pull") or [])]
+
+    n = min(len(names), len(up), len(down), len(pulls))
+    n = min(n, int(max_nps))
+    if n <= 0:
+        raise ValueError("ranking artifact is empty")
+
+    names = names[:n]
+    up = up[:n]
+    down = down[:n]
+    pulls = pulls[:n]
+
+    y = list(range(n))
+
+    if ax_pull is None or ax_impact is None:
+        height = max(2.8, 0.35 * float(n) + 0.8)
+        _, (ax_pull, ax_impact) = plt.subplots(
+            ncols=2,
+            sharey=True,
+            figsize=(9.4, height),
+            gridspec_kw={"width_ratios": [1.0, 2.0]},
+        )
+
+    # Pulls panel
+    ax_pull.axvspan(-1.0, 1.0, color="#E5E7EB", alpha=0.7, zorder=0)
+    ax_pull.axvline(0.0, color="#9CA3AF", lw=1.0)
+    ax_pull.scatter(pulls, y, s=28, color="#111827", zorder=3)
+    ax_pull.set_xlim(-3.0, 3.0)
+    ax_pull.set_xlabel("pull")
+    ax_pull.grid(True, axis="x", alpha=0.25)
+
+    # Impact panel
+    ax_impact.axvline(0.0, color="#9CA3AF", lw=1.0)
+    ax_impact.barh(y, up, color="#2563EB", alpha=0.85, height=0.36, label="+1σ")
+    ax_impact.barh(y, down, color="#F97316", alpha=0.75, height=0.36, label="-1σ")
+    ax_impact.set_xlabel("Δmu")
+    ax_impact.grid(True, axis="x", alpha=0.25)
+    ax_impact.legend(frameon=False, loc="lower right")
+
+    ax_pull.set_yticks(y)
+    ax_pull.set_yticklabels(names)
+    ax_pull.invert_yaxis()
+
+    if title:
+        ax_impact.set_title(title)
+
+    return ax_pull, ax_impact
 
 
 def plot_ranking(
