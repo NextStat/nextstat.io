@@ -94,6 +94,12 @@ class GlmSpec:
     offset: Optional[List[float]] = None
     coef_prior_mu: float = 0.0
     coef_prior_sigma: float = 10.0
+    # Phase 7 hierarchical extensions (kept optional for backward compat).
+    random_intercept_non_centered: bool = False
+    random_slope_feature_idx: Optional[int] = None
+    random_slope_non_centered: bool = False
+    correlated_feature_idx: Optional[int] = None
+    lkj_eta: float = 1.0
 
     @staticmethod
     def linear_regression(
@@ -176,6 +182,11 @@ class GlmSpec:
                 "offset": self.offset,
                 "coef_prior_mu": self.coef_prior_mu,
                 "coef_prior_sigma": self.coef_prior_sigma,
+                "random_intercept_non_centered": self.random_intercept_non_centered,
+                "random_slope_feature_idx": self.random_slope_feature_idx,
+                "random_slope_non_centered": self.random_slope_non_centered,
+                "correlated_feature_idx": self.correlated_feature_idx,
+                "lkj_eta": self.lkj_eta,
             }
         )
 
@@ -201,6 +212,15 @@ class GlmSpec:
             offset=(None if d.get("offset") is None else _as_1d_float_list(d.get("offset"))),
             coef_prior_mu=float(d.get("coef_prior_mu", 0.0)),
             coef_prior_sigma=float(d.get("coef_prior_sigma", 10.0)),
+            random_intercept_non_centered=bool(d.get("random_intercept_non_centered", False)),
+            random_slope_feature_idx=(
+                None if d.get("random_slope_feature_idx") is None else int(d.get("random_slope_feature_idx"))
+            ),
+            random_slope_non_centered=bool(d.get("random_slope_non_centered", False)),
+            correlated_feature_idx=(
+                None if d.get("correlated_feature_idx") is None else int(d.get("correlated_feature_idx"))
+            ),
+            lkj_eta=float(d.get("lkj_eta", 1.0)),
         )
 
     def build(self) -> Any:
@@ -212,10 +232,37 @@ class GlmSpec:
             raise ValueError("group_idx must be non-empty if provided")
         if self.kind != "poisson" and self.offset is not None:
             raise ValueError("offset is only supported for poisson")
+        if self.lkj_eta <= 0.0:
+            raise ValueError("lkj_eta must be > 0")
+
+        has_hier = (
+            self.random_intercept_non_centered
+            or self.random_slope_feature_idx is not None
+            or self.random_slope_non_centered
+            or self.correlated_feature_idx is not None
+        )
+        if has_hier and self.group_idx is None:
+            raise ValueError("random slopes / correlated effects require group_idx")
+        if self.correlated_feature_idx is not None and (
+            self.random_slope_feature_idx is not None
+            or self.random_intercept_non_centered
+            or self.random_slope_non_centered
+        ):
+            raise ValueError(
+                "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles"
+            )
 
         ng = self.n_groups
         if self.group_idx is not None and ng is None:
             ng = max(self.group_idx) + 1
+
+        n_features = len(self.x[0]) if self.x else 0
+        if self.random_slope_feature_idx is not None:
+            if not (0 <= self.random_slope_feature_idx < n_features):
+                raise ValueError(f"random_slope_feature_idx out of range: {self.random_slope_feature_idx}")
+        if self.correlated_feature_idx is not None:
+            if not (0 <= self.correlated_feature_idx < n_features):
+                raise ValueError(f"correlated_feature_idx out of range: {self.correlated_feature_idx}")
 
         if self.kind == "linear":
             return _core.ComposedGlmModel.linear_regression(
@@ -226,6 +273,11 @@ class GlmSpec:
                 n_groups=ng,
                 coef_prior_mu=self.coef_prior_mu,
                 coef_prior_sigma=self.coef_prior_sigma,
+                random_intercept_non_centered=self.random_intercept_non_centered,
+                random_slope_feature_idx=self.random_slope_feature_idx,
+                random_slope_non_centered=self.random_slope_non_centered,
+                correlated_feature_idx=self.correlated_feature_idx,
+                lkj_eta=self.lkj_eta,
             )
         if self.kind == "logistic":
             return _core.ComposedGlmModel.logistic_regression(
@@ -236,6 +288,11 @@ class GlmSpec:
                 n_groups=ng,
                 coef_prior_mu=self.coef_prior_mu,
                 coef_prior_sigma=self.coef_prior_sigma,
+                random_intercept_non_centered=self.random_intercept_non_centered,
+                random_slope_feature_idx=self.random_slope_feature_idx,
+                random_slope_non_centered=self.random_slope_non_centered,
+                correlated_feature_idx=self.correlated_feature_idx,
+                lkj_eta=self.lkj_eta,
             )
         return _core.ComposedGlmModel.poisson_regression(
             self.x,
@@ -246,6 +303,11 @@ class GlmSpec:
             n_groups=ng,
             coef_prior_mu=self.coef_prior_mu,
             coef_prior_sigma=self.coef_prior_sigma,
+            random_intercept_non_centered=self.random_intercept_non_centered,
+            random_slope_feature_idx=self.random_slope_feature_idx,
+            random_slope_non_centered=self.random_slope_non_centered,
+            correlated_feature_idx=self.correlated_feature_idx,
+            lkj_eta=self.lkj_eta,
         )
 
 
