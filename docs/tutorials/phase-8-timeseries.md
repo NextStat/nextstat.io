@@ -26,6 +26,7 @@ fit = nextstat.timeseries.kalman_fit(model, ys, forecast_steps=10)
 art = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.95)
 # Plotting requires matplotlib:
 # nextstat.timeseries.plot_kalman_obs(art, title="Kalman fit")
+# nextstat.timeseries.plot_kalman_states(art, title="Latent states")
 ```
 
 ## CLI quickstart

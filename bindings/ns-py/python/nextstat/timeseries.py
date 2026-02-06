@@ -401,6 +401,96 @@ def plot_kalman_obs(
     ax.legend(frameon=False)
     return ax
 
+def plot_kalman_states(
+    artifact: Mapping[str, Any],
+    *,
+    state_indices: Sequence[int] | None = None,
+    labels: Sequence[str] | None = None,
+    ax=None,
+    title: str | None = None,
+    show_bands: bool = True,
+    show_forecast: bool = True,
+):
+    """Plot smoothed latent states x[t] with uncertainty bands (+ optional forecast)."""
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    smooth = artifact.get("smooth") or None
+    if not isinstance(smooth, Mapping):
+        raise ValueError("artifact.smooth is missing; build artifact from kalman_fit with smoothing enabled")
+    state_mean = smooth.get("state_mean")
+    state_lo = smooth.get("state_lo")
+    state_hi = smooth.get("state_hi")
+    if not (isinstance(state_mean, list) and isinstance(state_lo, list) and isinstance(state_hi, list)):
+        raise ValueError("artifact.smooth missing state_mean/state_lo/state_hi")
+
+    t_obs = artifact.get("t_obs") or list(range(len(state_mean)))
+    if len(t_obs) != len(state_mean):
+        raise ValueError("artifact.t_obs length mismatch")
+    t_obs_f = [float(t) for t in t_obs]
+
+    n_state = len(state_mean[0]) if state_mean else 0
+    if n_state <= 0:
+        raise ValueError("state_mean must be non-empty")
+
+    if state_indices is None:
+        idxs = list(range(n_state))
+    else:
+        idxs = [int(i) for i in state_indices]
+        for i in idxs:
+            if i < 0 or i >= n_state:
+                raise ValueError(f"state index out of range: {i} (n_state={n_state})")
+
+    if labels is not None and len(labels) != len(idxs):
+        raise ValueError("labels length must match state_indices")
+
+    n = len(idxs)
+    if ax is None:
+        _, axs = plt.subplots(n, 1, figsize=(7.2, 2.2 * n), sharex=True)
+        if n == 1:
+            axs = [axs]
+    else:
+        axs = ax
+        if not isinstance(axs, (list, tuple)):
+            axs = [axs]
+        if len(axs) != n:
+            raise ValueError("ax must be None or a list of axes matching the number of states")
+
+    fc = artifact.get("forecast") or None
+    fc_t = None
+    if show_forecast and isinstance(fc, Mapping):
+        fc_t = [float(t) for t in fc.get("t") or []]
+
+    for k, j in enumerate(idxs):
+        a = axs[k]
+        lab = labels[k] if labels is not None else f"x[{j}]"
+
+        mu = [float(row[j]) for row in state_mean]
+        a.plot(t_obs_f, mu, color="#1D4ED8", lw=2.0, label="Smoothed")
+        if show_bands:
+            lo = [float(row[j]) for row in state_lo]
+            hi = [float(row[j]) for row in state_hi]
+            a.fill_between(t_obs_f, lo, hi, color="#93C5FD", alpha=0.35, label="Smoothed band")
+
+        if fc_t is not None and isinstance(fc, Mapping) and fc.get("state_mean") is not None:
+            fmu = [float(row[j]) for row in fc["state_mean"]]
+            a.plot(fc_t, fmu, color="#059669", lw=2.0, ls="--", label="Forecast")
+            if show_bands and fc.get("state_lo") is not None and fc.get("state_hi") is not None:
+                flo = [float(row[j]) for row in fc["state_lo"]]
+                fhi = [float(row[j]) for row in fc["state_hi"]]
+                a.fill_between(fc_t, flo, fhi, color="#6EE7B7", alpha=0.25, label="Forecast band")
+
+        a.set_ylabel(lab)
+        a.grid(True, alpha=0.25)
+
+    axs[-1].set_xlabel("t")
+    if title:
+        axs[0].set_title(title)
+
+    # Legend only once (top axis) to reduce clutter.
+    axs[0].legend(frameon=False, ncol=2)
+    return axs
+
 
 def kalman_forecast(
     model,
@@ -561,6 +651,7 @@ __all__ = [
     "kalman_fit",
     "kalman_viz_artifact",
     "plot_kalman_obs",
+    "plot_kalman_states",
     "kalman_forecast",
     "kalman_simulate",
     "local_level_model",

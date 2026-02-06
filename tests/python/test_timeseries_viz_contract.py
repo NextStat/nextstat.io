@@ -34,3 +34,29 @@ def test_kalman_viz_artifact_contract_smoke():
     assert len(fc["obs_lo"]) == 2
     assert len(fc["obs_hi"]) == 2
 
+
+def test_timeseries_plot_helpers_optional_matplotlib():
+    import nextstat
+    import pytest
+
+    model = nextstat.timeseries.local_level_model(q=0.1, r=0.2, m0=0.0, p0=1.0)
+    ys = [[0.9], [1.2], [None], [1.1]]
+    fit = nextstat.timeseries.kalman_fit(model, ys, max_iter=2, tol=1e-9, forecast_steps=1)
+    art = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.9)
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as _plt  # noqa: F401
+    except Exception:
+        with pytest.raises(ImportError):
+            nextstat.timeseries.plot_kalman_obs(art)
+        with pytest.raises(ImportError):
+            nextstat.timeseries.plot_kalman_states(art)
+    else:
+        ax = nextstat.timeseries.plot_kalman_obs(art, title="Smoke")
+        assert ax is not None
+
+        axs = nextstat.timeseries.plot_kalman_states(art, state_indices=[0], title="Smoke")
+        assert axs is not None
