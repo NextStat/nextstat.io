@@ -75,6 +75,7 @@ The Apex2 validation system runs full Python-level benchmarks and produces machi
 | `tests/apex2_p6_glm_benchmark_report.py` | P6 GLM regression vs baseline (slowdown detection) | `tmp/apex2_p6_glm_bench_report.json` |
 | `tests/apex2_sbc_report.py` | SBC posterior calibration (NUTS) | `tmp/apex2_sbc_report.json` |
 | `tests/apex2_master_report.py` | Aggregates all runners into one report | `tmp/apex2_master_report.json` |
+| `tests/compare_with_latest_baseline.py` | Compare current runs vs `tmp/baselines/latest_manifest.json` | `tmp/baseline_compare_report.json` |
 
 ### Recording Baselines
 
@@ -118,6 +119,14 @@ PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/apex2_master_report.py \
 
 The comparison uses a configurable slowdown threshold (default 1.3x) and skips sub-millisecond timings as too noisy.
 
+### Compare Against Latest Baseline Manifest
+
+After recording baselines once, compare current HEAD against the latest manifest:
+
+```bash
+PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/compare_with_latest_baseline.py
+```
+
 ### Baseline Environment Fingerprint
 
 Every baseline JSON includes a `baseline_env` block:
@@ -155,4 +164,3 @@ An opt-in, non-blocking perf smoke workflow is available as:
 
 The perf smoke job is intended to catch obvious breakage (bench runtime errors) without
 gating merges on absolute timing thresholds.
-
