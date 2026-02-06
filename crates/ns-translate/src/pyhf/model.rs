@@ -1262,6 +1262,8 @@ impl PreparedModel<'_> {
         let mut nll = if self.has_zero_obs {
             // For sparse observations, scalar is often faster because it can skip `ln(exp)`
             // lane-by-lane, while SIMD would still compute `ln()` for mixed chunks.
+            //
+            // This guarantees we do not compute `ln(exp)` when `obs == 0`.
             poisson_nll_scalar_sparse(
                 &expected,
                 &self.observed_flat,

@@ -42,6 +42,9 @@ class FitResult:
     nll: float
     converged: bool
     n_evaluations: int
+    n_iter: int
+    n_fev: int
+    n_gev: int
 
     @property
     def bestfit(self) -> List[float]: ...

@@ -15,8 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import nextstat
-import nextstat.infer as ns_infer
+from _tolerances import COVERAGE_DELTA_MAX
 
 from _tolerances import COVERAGE_DELTA_MAX
 
@@ -53,6 +52,8 @@ def test_upper_limit_coverage_regression_vs_pyhf():
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow coverage regression tests.")
 
+    import nextstat
+    import nextstat.infer as ns_infer
     import pyhf
 
     rng = np.random.default_rng(SEED)

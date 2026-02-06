@@ -29,6 +29,14 @@ pub struct ClsCurveArtifact {
     pub nsigma_order: NsSigmaOrder,
     /// Per-point curve values.
     pub points: Vec<ClsCurvePoint>,
+    /// Scan x-values (same as `points[*].mu`).
+    pub mu_values: Vec<f64>,
+    /// Observed CLs values aligned with `mu_values`.
+    pub cls_obs: Vec<f64>,
+    /// Expected CLs values aligned with `mu_values`, grouped by `nsigma_order`.
+    ///
+    /// `cls_exp[i][j]` corresponds to `nsigma_order[i]` at `mu_values[j]`.
+    pub cls_exp: [Vec<f64>; 5],
     /// Observed upper limit from scan interpolation.
     pub obs_limit: f64,
     /// Expected upper limits from scan interpolation.
@@ -51,14 +59,33 @@ impl ClsCurveArtifact {
         }
 
         let mut points = Vec::with_capacity(scan.len());
+        let mut mu_values = Vec::with_capacity(scan.len());
+        let mut cls_obs = Vec::with_capacity(scan.len());
+        let mut cls_exp: [Vec<f64>; 5] = std::array::from_fn(|_| Vec::with_capacity(scan.len()));
+
         for &mu in scan {
             let r = ctx.hypotest_qtilde(mle, mu)?;
             let expected = ns_inference::hypotest::expected_cls_band_from_sqrtq_a(r.q_mu_a.sqrt());
             points.push(ClsCurvePoint { mu, cls: r.cls, expected });
+
+            mu_values.push(mu);
+            cls_obs.push(r.cls);
+            for i in 0..5 {
+                cls_exp[i].push(expected[i]);
+            }
         }
 
         let (obs_limit, exp_limits) = ctx.upper_limits_qtilde_linear_scan(mle, alpha, scan)?;
 
-        Ok(Self { alpha, nsigma_order: NSIGMA_ORDER, points, obs_limit, exp_limits })
+        Ok(Self {
+            alpha,
+            nsigma_order: NSIGMA_ORDER,
+            points,
+            mu_values,
+            cls_obs,
+            cls_exp,
+            obs_limit,
+            exp_limits,
+        })
     }
 }

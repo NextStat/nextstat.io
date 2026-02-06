@@ -24,10 +24,10 @@ fn make_fit_result(n: usize) -> FitResult {
         cov[i * n + i] += 1e-3; // eps*I
     }
 
-    let params = vec![1.0; n];
-    let uncs = (0..n).map(|i| cov[i * n + i].sqrt()).collect::<Vec<_>>();
-    FitResult::with_covariance(params, uncs, cov, 1.0, true, 10)
-}
+	    let params = vec![1.0; n];
+	    let uncs = (0..n).map(|i| cov[i * n + i].sqrt()).collect::<Vec<_>>();
+	    FitResult::with_covariance(params, uncs, cov, 1.0, true, 10, 0, 0)
+	}
 
 fn bench_correlation_matrix(c: &mut Criterion) {
     let mut group = c.benchmark_group("core_fitresult");

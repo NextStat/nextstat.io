@@ -10,4 +10,3 @@ COVERAGE_1SIGMA_DELTA_MAX = 0.03
 
 # Coverage regression (NextStat vs pyhf deltas)
 COVERAGE_DELTA_MAX = 0.05
-

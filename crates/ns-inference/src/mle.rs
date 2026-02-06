@@ -58,6 +58,8 @@ impl MaximumLikelihoodEstimator {
                     result.fval,
                     result.converged,
                     result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
                 ))
             }
             None => {
@@ -70,6 +72,8 @@ impl MaximumLikelihoodEstimator {
                     result.fval,
                     result.converged,
                     result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
                 ))
             }
         }
@@ -345,13 +349,13 @@ mod tests {
         let result = mle.fit(&model).unwrap();
 
         println!("Fit result:");
-        println!("  Parameters: {:?}", result.parameters);
-        println!("  Uncertainties: {:?}", result.uncertainties);
-        println!("  NLL: {:.6}", result.nll);
-        println!("  Converged: {}", result.converged);
-        println!("  Iterations: {}", result.n_evaluations);
+	        println!("  Parameters: {:?}", result.parameters);
+	        println!("  Uncertainties: {:?}", result.uncertainties);
+	        println!("  NLL: {:.6}", result.nll);
+	        println!("  Converged: {}", result.converged);
+	        println!("  Iterations: {}", result.n_iter);
 
-        assert!(result.converged, "Fit should converge");
+	        assert!(result.converged, "Fit should converge");
 
         let poi = result.parameters[0];
         assert!(poi > 0.0 && poi < 2.0, "POI should be reasonable: {}", poi);

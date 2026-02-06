@@ -20,8 +20,22 @@ pub struct FitResult {
     /// Convergence status
     pub converged: bool,
 
-    /// Number of function evaluations
-    pub n_evaluations: usize,
+    /// Number of optimizer iterations.
+    ///
+    /// This is the argmin iteration counter (L-BFGS iterations), not the number
+    /// of objective evaluations.
+    #[serde(alias = "n_evaluations")]
+    pub n_iter: usize,
+
+    /// Number of objective (cost) evaluations performed by the optimizer.
+    ///
+    /// Includes evaluations during line-search.
+    #[serde(default)]
+    pub n_fev: usize,
+
+    /// Number of gradient evaluations performed by the optimizer.
+    #[serde(default)]
+    pub n_gev: usize,
 }
 
 impl FitResult {
@@ -31,9 +45,11 @@ impl FitResult {
         uncertainties: Vec<f64>,
         nll: f64,
         converged: bool,
-        n_evaluations: usize,
+        n_iter: usize,
+        n_fev: usize,
+        n_gev: usize,
     ) -> Self {
-        Self { parameters, uncertainties, covariance: None, nll, converged, n_evaluations }
+        Self { parameters, uncertainties, covariance: None, nll, converged, n_iter, n_fev, n_gev }
     }
 
     /// Create a fit result with covariance matrix
@@ -43,7 +59,9 @@ impl FitResult {
         covariance: Vec<f64>,
         nll: f64,
         converged: bool,
-        n_evaluations: usize,
+        n_iter: usize,
+        n_fev: usize,
+        n_gev: usize,
     ) -> Self {
         Self {
             parameters,
@@ -51,8 +69,15 @@ impl FitResult {
             covariance: Some(covariance),
             nll,
             converged,
-            n_evaluations,
+            n_iter,
+            n_fev,
+            n_gev,
         }
+    }
+
+    /// Back-compat alias for older code/tests. Prefer `n_iter`.
+    pub fn n_evaluations(&self) -> usize {
+        self.n_iter
     }
 
     /// Get correlation matrix element (i, j). Returns `None` if covariance is unavailable.
@@ -77,9 +102,10 @@ mod tests {
 
     #[test]
     fn test_fit_result() {
-        let result = FitResult::new(vec![1.0, 2.0], vec![0.1, 0.2], 123.45, true, 100);
+        let result = FitResult::new(vec![1.0, 2.0], vec![0.1, 0.2], 123.45, true, 100, 0, 0);
         assert_eq!(result.parameters.len(), 2);
         assert_eq!(result.uncertainties.len(), 2);
         assert!(result.converged);
+        assert_eq!(result.n_iter, 100);
     }
 }
