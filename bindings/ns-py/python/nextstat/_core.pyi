@@ -113,6 +113,11 @@ class ComposedGlmModel:
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
         penalize_intercept: bool = ...,
+        random_intercept_non_centered: bool = ...,
+        random_slope_feature_idx: Optional[int] = ...,
+        random_slope_non_centered: bool = ...,
+        correlated_feature_idx: Optional[int] = ...,
+        lkj_eta: float = ...,
     ) -> ComposedGlmModel: ...
 
     @staticmethod
@@ -126,6 +131,11 @@ class ComposedGlmModel:
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
         penalize_intercept: bool = ...,
+        random_intercept_non_centered: bool = ...,
+        random_slope_feature_idx: Optional[int] = ...,
+        random_slope_non_centered: bool = ...,
+        correlated_feature_idx: Optional[int] = ...,
+        lkj_eta: float = ...,
     ) -> ComposedGlmModel: ...
 
     @staticmethod
@@ -140,6 +150,11 @@ class ComposedGlmModel:
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
         penalize_intercept: bool = ...,
+        random_intercept_non_centered: bool = ...,
+        random_slope_feature_idx: Optional[int] = ...,
+        random_slope_non_centered: bool = ...,
+        correlated_feature_idx: Optional[int] = ...,
+        lkj_eta: float = ...,
     ) -> ComposedGlmModel: ...
 
     def n_params(self) -> int: ...
