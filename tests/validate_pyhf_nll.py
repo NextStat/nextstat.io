@@ -11,8 +11,36 @@ Requires: pip install -e bindings/ns-py[validation]
 
 import json
 from pathlib import Path
+import time
+from collections import defaultdict
+from contextlib import contextmanager
 import pyhf
 import nextstat
+
+
+class _Timing:
+    def __init__(self) -> None:
+        self.totals_s: dict[str, float] = defaultdict(float)
+
+    @contextmanager
+    def time(self, label: str):
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.totals_s[str(label)] += time.perf_counter() - t0
+
+    def print_summary(self) -> None:
+        if not self.totals_s:
+            return
+        print("\n" + "-" * 70)
+        print("Timing breakdown (seconds)")
+        print("-" * 70)
+        for k, v in sorted(self.totals_s.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"{k:<28} {v:>12.6f}")
+        print("-" * 70)
+        total = sum(self.totals_s.values())
+        print(f"{'total':<28} {total:>12.6f}")
 
 
 def load_fixture(name: str) -> dict:
@@ -22,7 +50,7 @@ def load_fixture(name: str) -> dict:
         return json.load(f)
 
 
-def compute_pyhf_nll(workspace: dict, measurement_name: str, params: list[float]) -> float:
+def compute_pyhf_nll(workspace: dict, measurement_name: str, params: list[float], *, timing: _Timing) -> float:
     """
     Compute NLL using pyhf for given workspace and parameters.
 
@@ -35,20 +63,23 @@ def compute_pyhf_nll(workspace: dict, measurement_name: str, params: list[float]
         NLL value (negative log-likelihood)
     """
     # Create pyhf model
-    ws = pyhf.Workspace(workspace)
-    model = ws.model(
-        measurement_name=measurement_name,
-        modifier_settings={
-            'normsys': {'interpcode': 'code4'},
-            'histosys': {'interpcode': 'code4p'},
-        }
-    )
+    with timing.time("pyhf:workspace+model"):
+        ws = pyhf.Workspace(workspace)
+        model = ws.model(
+            measurement_name=measurement_name,
+            modifier_settings={
+                'normsys': {'interpcode': 'code4'},
+                'histosys': {'interpcode': 'code4p'},
+            }
+        )
 
     # Get observations from workspace
-    observations = ws.data(model)
+    with timing.time("pyhf:data"):
+        observations = ws.data(model)
 
     # Compute NLL (pyhf returns -2*log(L), we want -log(L))
-    twice_nll = pyhf.infer.mle.twice_nll(params, observations, model)
+    with timing.time("pyhf:twice_nll"):
+        twice_nll = pyhf.infer.mle.twice_nll(params, observations, model)
 
     # Extract scalar value if numpy array
     if hasattr(twice_nll, 'item'):
@@ -59,16 +90,17 @@ def compute_pyhf_nll(workspace: dict, measurement_name: str, params: list[float]
     return nll
 
 
-def compute_nextstat_nll(workspace: dict, pyhf_model, pyhf_params: list[float]) -> float:
+def compute_nextstat_nll(workspace: dict, pyhf_model, pyhf_params: list[float], *, timing: _Timing) -> float:
     """
     Compute NLL using NextStat for given workspace and pyhf parameters.
 
     This maps `pyhf` parameter order → NextStat parameter order by name.
     """
-    model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    ns_names = model.parameter_names()
-    ns_init = model.suggested_init()
-    ns_index = {name: i for i, name in enumerate(ns_names)}
+    with timing.time("nextstat:from_workspace"):
+        model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_names = model.parameter_names()
+        ns_init = model.suggested_init()
+        ns_index = {name: i for i, name in enumerate(ns_names)}
 
     ns_params = list(ns_init)
     for name, value in zip(pyhf_model.config.par_names, pyhf_params):
@@ -76,11 +108,13 @@ def compute_nextstat_nll(workspace: dict, pyhf_model, pyhf_params: list[float]) 
             raise RuntimeError(f"NextStat model missing parameter '{name}'")
         ns_params[ns_index[name]] = float(value)
 
-    return float(model.nll(ns_params))
+    with timing.time("nextstat:nll"):
+        return float(model.nll(ns_params))
 
 
 def validate_simple_workspace():
     """Validate simple_workspace.json fixture."""
+    timing = _Timing()
     print("=" * 70)
     print("Validating: simple_workspace.json")
     print("=" * 70)
@@ -98,8 +132,8 @@ def validate_simple_workspace():
     )
     params_nominal = model.config.suggested_init()
 
-    nll_nominal = compute_pyhf_nll(workspace, "GaussExample", params_nominal)
-    nll_ns_nominal = compute_nextstat_nll(workspace, model, params_nominal)
+    nll_nominal = compute_pyhf_nll(workspace, "GaussExample", params_nominal, timing=timing)
+    nll_ns_nominal = compute_nextstat_nll(workspace, model, params_nominal, timing=timing)
     print(f"\nNLL at nominal (mu=1.0, gammas=1.0): {nll_nominal:.10f}")
     print(f"NextStat NLL at nominal:               {nll_ns_nominal:.10f}")
     print(f"Diff:                                  {abs(nll_ns_nominal - nll_nominal):.3e}")
@@ -111,10 +145,10 @@ def validate_simple_workspace():
     params_mu_2 = params_nominal.copy()
     params_mu_2[poi_idx] = 2.0
 
-    nll_mu_0 = compute_pyhf_nll(workspace, "GaussExample", params_mu_0)
-    nll_mu_2 = compute_pyhf_nll(workspace, "GaussExample", params_mu_2)
-    nll_ns_mu_0 = compute_nextstat_nll(workspace, model, params_mu_0)
-    nll_ns_mu_2 = compute_nextstat_nll(workspace, model, params_mu_2)
+    nll_mu_0 = compute_pyhf_nll(workspace, "GaussExample", params_mu_0, timing=timing)
+    nll_mu_2 = compute_pyhf_nll(workspace, "GaussExample", params_mu_2, timing=timing)
+    nll_ns_mu_0 = compute_nextstat_nll(workspace, model, params_mu_0, timing=timing)
+    nll_ns_mu_2 = compute_nextstat_nll(workspace, model, params_mu_2, timing=timing)
 
     print(f"NLL at mu=0.0: {nll_mu_0:.10f}")
     print(f"NLL at mu=2.0: {nll_mu_2:.10f}")
@@ -124,10 +158,12 @@ def validate_simple_workspace():
     print("\n✓ Expected behavior:")
     print(f"  - NLL values should be finite")
     print(f"  - NLL changes with POI: {nll_mu_0 != nll_nominal != nll_mu_2}")
+    timing.print_summary()
 
 
 def validate_complex_workspace():
     """Validate complex_workspace.json fixture."""
+    timing = _Timing()
     print("\n" + "=" * 70)
     print("Validating: complex_workspace.json")
     print("=" * 70)
@@ -149,8 +185,8 @@ def validate_complex_workspace():
 
     # At nominal (all parameters at suggested init values)
     params_nominal = model.config.suggested_init()
-    nll_nominal = compute_pyhf_nll(workspace, "measurement", params_nominal)
-    nll_ns_nominal = compute_nextstat_nll(workspace, model, params_nominal)
+    nll_nominal = compute_pyhf_nll(workspace, "measurement", params_nominal, timing=timing)
+    nll_ns_nominal = compute_nextstat_nll(workspace, model, params_nominal, timing=timing)
 
     print(f"\nNLL at nominal: {nll_nominal:.10f}")
     print(f"NextStat NLL at nominal: {nll_ns_nominal:.10f}")
@@ -164,15 +200,16 @@ def validate_complex_workspace():
     params_mu_2 = params_nominal.copy()
     params_mu_2[model.config.poi_index] = 2.0
 
-    nll_mu_0 = compute_pyhf_nll(workspace, "measurement", params_mu_0)
-    nll_mu_2 = compute_pyhf_nll(workspace, "measurement", params_mu_2)
-    nll_ns_mu_0 = compute_nextstat_nll(workspace, model, params_mu_0)
-    nll_ns_mu_2 = compute_nextstat_nll(workspace, model, params_mu_2)
+    nll_mu_0 = compute_pyhf_nll(workspace, "measurement", params_mu_0, timing=timing)
+    nll_mu_2 = compute_pyhf_nll(workspace, "measurement", params_mu_2, timing=timing)
+    nll_ns_mu_0 = compute_nextstat_nll(workspace, model, params_mu_0, timing=timing)
+    nll_ns_mu_2 = compute_nextstat_nll(workspace, model, params_mu_2, timing=timing)
 
     print(f"NLL at mu=0.0: {nll_mu_0:.10f}")
     print(f"NLL at mu=2.0: {nll_mu_2:.10f}")
     print(f"NextStat NLL at mu=0.0: {nll_ns_mu_0:.10f}")
     print(f"NextStat NLL at mu=2.0: {nll_ns_mu_2:.10f}")
+    timing.print_summary()
 
 
 def main():

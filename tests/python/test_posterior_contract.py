@@ -44,3 +44,29 @@ def test_posterior_transform_roundtrip_histfactory_smoke():
     assert float(post.logpdf(theta0)) == pytest.approx(-float(m.nll(theta0)), rel=0.0, abs=1e-10)
     assert all(v == v and abs(v) < 1e100 for v in post.grad(theta0))
 
+
+def test_posterior_normal_prior_affects_logpdf_and_grad_by_name():
+    m = nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0], sigma=2.0)
+    post = nextstat.Posterior(m)
+
+    theta = [0.25]
+    base_lp = float(post.logpdf(theta))
+    base_g = list(map(float, post.grad(theta)))
+
+    post.set_prior_normal("mu", center=0.0, width=1.0)
+    lp = float(post.logpdf(theta))
+    g = list(map(float, post.grad(theta)))
+
+    expected_lp = base_lp - 0.5 * (theta[0] ** 2)
+    expected_g = [base_g[0] - theta[0]]
+
+    assert lp == pytest.approx(expected_lp, rel=0.0, abs=1e-12)
+    assert g == pytest.approx(expected_g, rel=0.0, abs=1e-12)
+
+    ps = post.priors()
+    assert ps["mu"]["type"] == "normal"
+    assert float(ps["mu"]["center"]) == pytest.approx(0.0)
+    assert float(ps["mu"]["width"]) == pytest.approx(1.0)
+
+    post.clear_priors()
+    assert float(post.logpdf(theta)) == pytest.approx(base_lp, rel=0.0, abs=1e-12)

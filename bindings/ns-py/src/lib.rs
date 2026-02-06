@@ -8,6 +8,7 @@ use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
 
 use nalgebra::{DMatrix, DVector};
+use std::collections::HashMap;
 
 // Re-export types from core crates
 use ns_core::traits::{LogDensityModel, PreparedNll};
@@ -366,6 +367,48 @@ struct PyPosterior {
     bounds: Vec<(f64, f64)>,
     transform: ParameterTransform,
     dim: usize,
+    names: Vec<String>,
+    name_to_idx: HashMap<String, usize>,
+    priors: Vec<Prior>,
+}
+
+#[derive(Debug, Clone)]
+enum Prior {
+    Flat,
+    Normal { center: f64, width: f64 },
+}
+
+impl Prior {
+    fn logpdf(&self, theta: f64) -> PyResult<f64> {
+        match self {
+            Prior::Flat => Ok(0.0),
+            Prior::Normal { center, width } => {
+                if !width.is_finite() || *width <= 0.0 {
+                    return Err(PyValueError::new_err(format!(
+                        "Normal prior width must be finite and > 0, got {}",
+                        width
+                    )));
+                }
+                let pull = (theta - center) / width;
+                Ok(-0.5 * pull * pull)
+            }
+        }
+    }
+
+    fn grad(&self, theta: f64) -> PyResult<f64> {
+        match self {
+            Prior::Flat => Ok(0.0),
+            Prior::Normal { center, width } => {
+                if !width.is_finite() || *width <= 0.0 {
+                    return Err(PyValueError::new_err(format!(
+                        "Normal prior width must be finite and > 0, got {}",
+                        width
+                    )));
+                }
+                Ok(-(theta - center) / (width * width))
+            }
+        }
+    }
 }
 
 #[pymethods]
@@ -384,7 +427,13 @@ impl PyPosterior {
         }
 
         let transform = ParameterTransform::from_bounds(&bounds);
-        Ok(Self { model, bounds, transform, dim })
+        let names = model.parameter_names();
+        let mut name_to_idx = HashMap::with_capacity(names.len());
+        for (i, n) in names.iter().enumerate() {
+            name_to_idx.insert(n.clone(), i);
+        }
+        let priors = vec![Prior::Flat; dim];
+        Ok(Self { model, bounds, transform, dim, names, name_to_idx, priors })
     }
 
     fn dim(&self) -> usize {
@@ -392,7 +441,7 @@ impl PyPosterior {
     }
 
     fn parameter_names(&self) -> Vec<String> {
-        self.model.parameter_names()
+        self.names.clone()
     }
 
     fn suggested_bounds(&self) -> Vec<(f64, f64)> {
@@ -403,12 +452,56 @@ impl PyPosterior {
         self.model.parameter_init()
     }
 
+    fn clear_priors(&mut self) {
+        self.priors.fill(Prior::Flat);
+    }
+
+    fn set_prior_flat(&mut self, name: String) -> PyResult<()> {
+        let idx = self.param_idx(&name)?;
+        self.priors[idx] = Prior::Flat;
+        Ok(())
+    }
+
+    fn set_prior_normal(&mut self, name: String, center: f64, width: f64) -> PyResult<()> {
+        let idx = self.param_idx(&name)?;
+        if !center.is_finite() {
+            return Err(PyValueError::new_err("Normal prior center must be finite"));
+        }
+        if !width.is_finite() || width <= 0.0 {
+            return Err(PyValueError::new_err(
+                "Normal prior width must be finite and > 0",
+            ));
+        }
+        self.priors[idx] = Prior::Normal { center, width };
+        Ok(())
+    }
+
+    fn priors<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let out = PyDict::new(py);
+        for (i, name) in self.names.iter().enumerate() {
+            let d = PyDict::new(py);
+            match &self.priors[i] {
+                Prior::Flat => {
+                    d.set_item("type", "flat")?;
+                }
+                Prior::Normal { center, width } => {
+                    d.set_item("type", "normal")?;
+                    d.set_item("center", *center)?;
+                    d.set_item("width", *width)?;
+                }
+            }
+            out.set_item(name, d)?;
+        }
+        Ok(out.into_any().unbind())
+    }
+
     fn logpdf(&self, theta: &Bound<'_, PyAny>) -> PyResult<f64> {
         let theta = extract_f64_vec(theta)?;
         validate_f64_vec("theta", &theta, self.dim)?;
         let nll = self.model.nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("logpdf failed: {}", e)))?;
-        Ok(-nll)
+        let lp_prior = self.prior_logpdf(&theta)?;
+        Ok(-nll + lp_prior)
     }
 
     fn grad(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
@@ -419,6 +512,7 @@ impl PyPosterior {
         for gi in g.iter_mut() {
             *gi = -*gi;
         }
+        self.add_prior_grad(&theta, &mut g)?;
         Ok(g)
     }
 
@@ -440,8 +534,9 @@ impl PyPosterior {
         let theta = self.transform.forward(&z);
         let nll = self.model.nll(&theta)
             .map_err(|e| PyValueError::new_err(format!("logpdf_unconstrained failed: {}", e)))?;
+        let lp_prior = self.prior_logpdf(&theta)?;
         let log_jac = self.transform.log_abs_det_jacobian(&z);
-        Ok(-nll + log_jac)
+        Ok(-nll + lp_prior + log_jac)
     }
 
     fn grad_unconstrained(&self, z: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
@@ -455,6 +550,7 @@ impl PyPosterior {
         for gi in grad_theta.iter_mut() {
             *gi = -*gi;
         }
+        self.add_prior_grad(&theta, &mut grad_theta)?;
 
         let jac_diag = self.transform.jacobian_diag(&z);
         let grad_log_jac = self.transform.grad_log_abs_det_jacobian(&z);
@@ -465,6 +561,31 @@ impl PyPosterior {
             .map(|((&gt, &jd), &glj)| gt * jd + glj)
             .collect();
         Ok(grad_z)
+    }
+}
+
+impl PyPosterior {
+    fn param_idx(&self, name: &str) -> PyResult<usize> {
+        self.name_to_idx
+            .get(name)
+            .copied()
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown parameter name {name:?}")))
+    }
+
+    fn prior_logpdf(&self, theta: &[f64]) -> PyResult<f64> {
+        let mut lp = 0.0;
+        for (th, pr) in theta.iter().copied().zip(self.priors.iter()) {
+            lp += pr.logpdf(th)?;
+        }
+        Ok(lp)
+    }
+
+    fn add_prior_grad(&self, theta: &[f64], grad_theta: &mut [f64]) -> PyResult<()> {
+        debug_assert_eq!(theta.len(), grad_theta.len());
+        for i in 0..theta.len() {
+            grad_theta[i] += self.priors[i].grad(theta[i])?;
+        }
+        Ok(())
     }
 }
 

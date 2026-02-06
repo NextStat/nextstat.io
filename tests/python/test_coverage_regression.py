@@ -80,7 +80,7 @@ def pyhf_model_and_data(workspace: dict, measurement_name: str):
     return model, data
 
 
-def test_upper_limit_coverage_regression_vs_pyhf():
+def test_upper_limit_coverage_regression_vs_pyhf(ns_timing):
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow coverage regression tests.")
 
@@ -91,7 +91,8 @@ def test_upper_limit_coverage_regression_vs_pyhf():
     for case_idx, (key, source_kind, source_id, measurement, default_scan_stop) in enumerate(selected_cases()):
         rng = np.random.default_rng(SEED + case_idx)
         workspace = workspace_for_case(source_kind, source_id)
-        model, data_nominal = pyhf_model_and_data(workspace, measurement_name=measurement)
+        with ns_timing.time("pyhf"):
+            model, data_nominal = pyhf_model_and_data(workspace, measurement_name=measurement)
 
         # Truth: POI=1.0, nuisances at suggested init.
         pars_true = np.asarray(model.config.suggested_init(), dtype=float)
@@ -101,7 +102,8 @@ def test_upper_limit_coverage_regression_vs_pyhf():
         expected = np.asarray(model.expected_data(pars_true), dtype=float)
         n_main = int(model.config.nmaindata)
 
-        ns_model = nextstat.from_pyhf(json.dumps(workspace))
+        with ns_timing.time("nextstat"):
+            ns_model = nextstat.from_pyhf(json.dumps(workspace))
 
         # Fixed scan grid (keeps runtime stable and comparable).
         # Coverage tests are expensive: prefer moderate resolution by default.
@@ -120,17 +122,19 @@ def test_upper_limit_coverage_regression_vs_pyhf():
             toy[:n_main] = rng.poisson(expected[:n_main])
 
             try:
-                pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
-                    toy.tolist(),
-                    model,
-                    scan=scan,
-                    level=0.05,
-                    test_stat="qtilde",
-                    calctype="asymptotics",
-                )
-                ns_obs, _ns_exp = ns_infer.upper_limits(
-                    ns_model, scan.tolist(), alpha=0.05, data=toy[:n_main].tolist()
-                )
+                with ns_timing.time("pyhf"):
+                    pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
+                        toy.tolist(),
+                        model,
+                        scan=scan,
+                        level=0.05,
+                        test_stat="qtilde",
+                        calctype="asymptotics",
+                    )
+                with ns_timing.time("nextstat"):
+                    ns_obs, _ns_exp = ns_infer.upper_limits(
+                        ns_model, scan.tolist(), alpha=0.05, data=toy[:n_main].tolist()
+                    )
             except Exception:
                 # Skip rare numerical issues; the regression check is meaningful
                 # only when both sides succeed.

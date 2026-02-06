@@ -193,14 +193,25 @@ def main() -> int:
     failures: List[Dict[str, Any]] = []
 
     for case in suite:
+        timing_s = {
+            "pyhf_build": 0.0,
+            "nextstat_build": 0.0,
+            "pyhf_validate": 0.0,
+            "nextstat_validate": 0.0,
+        }
+
+        t0 = time.perf_counter()
         py_model, py_data = pyhf_model_and_data(case.workspace, case.measurement)
         py_init = list(map(float, py_model.config.suggested_init()))
         py_bounds = [(float(a), float(b)) for a, b in py_model.config.suggested_bounds()]
         py_names = list(py_model.config.par_names)
+        timing_s["pyhf_build"] += time.perf_counter() - t0
 
+        t0 = time.perf_counter()
         ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(case.workspace))
         ns_names = ns_model.parameter_names()
         ns_init = ns_model.suggested_init()
+        timing_s["nextstat_build"] += time.perf_counter() - t0
 
         if set(ns_names) != set(py_names):
             failures.append(
@@ -244,8 +255,13 @@ def main() -> int:
         max_abs_exp_main_point: Optional[Dict[str, Any]] = None
 
         for _tag, p in points:
+            t0 = time.perf_counter()
             nll_py = pyhf_nll(py_model, py_data, p)
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             nll_ns = float(ns_model.nll(ns_params(p)))
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             delta_nll = nll_ns - nll_py
             nll_diffs.append(delta_nll)
             max_abs_nll_py = max(max_abs_nll_py, abs(nll_py))
@@ -258,16 +274,26 @@ def main() -> int:
                     "delta": float(delta_nll),
                 }
 
+            t0 = time.perf_counter()
             exp_py_full = [float(x) for x in py_model.expected_data(p)]
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             exp_ns_full = [float(x) for x in ns_model.expected_data(ns_params(p), include_auxdata=True)]
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             d_full = max_abs_diff(exp_ns_full, exp_py_full)
             exp_full_diffs.append(d_full)
             if d_full >= max_abs_exp_full:
                 max_abs_exp_full = float(d_full)
                 max_abs_exp_full_point = {"tag": _tag, "max_abs_delta": float(d_full)}
 
+            t0 = time.perf_counter()
             exp_py_main = [float(x) for x in py_model.expected_data(p, include_auxdata=False)]
+            timing_s["pyhf_validate"] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
             exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params(p), include_auxdata=False)]
+            timing_s["nextstat_validate"] += time.perf_counter() - t0
             d_main = max_abs_diff(exp_ns_main, exp_py_main)
             exp_main_diffs.append(d_main)
             if d_main >= max_abs_exp_main:
@@ -340,6 +366,14 @@ def main() -> int:
                 "pyhf_nll_wall_s": float(pyhf_t),
                 "nextstat_nll_wall_s": float(ns_t),
                 "speedup": float(speedup),
+                "timing_s": {
+                    "pyhf_build": float(timing_s["pyhf_build"]),
+                    "nextstat_build": float(timing_s["nextstat_build"]),
+                    "pyhf_validate": float(timing_s["pyhf_validate"]),
+                    "nextstat_validate": float(timing_s["nextstat_validate"]),
+                    "pyhf_total": float(timing_s["pyhf_build"] + timing_s["pyhf_validate"]),
+                    "nextstat_total": float(timing_s["nextstat_build"] + timing_s["nextstat_validate"]),
+                },
             },
         }
         if fit_info is not None:
