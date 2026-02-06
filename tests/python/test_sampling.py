@@ -253,3 +253,18 @@ class TestSampleConfig:
                 init_jitter=0.1,
                 init_jitter_rel=0.10,
             )
+
+    def test_init_overdispersed_produces_distinct_chains(self):
+        model = _make_model()
+        r = nextstat.sample(
+            model,
+            n_chains=2,
+            n_warmup=50,
+            n_samples=30,
+            seed=123,
+            init_overdispersed_rel=0.50,
+        )
+        poi = r["param_names"][0]
+        c0 = r["posterior"][poi][0]
+        c1 = r["posterior"][poi][1]
+        assert c0 != c1, "Overdispersed init should not produce identical chains"

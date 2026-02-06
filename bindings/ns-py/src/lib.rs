@@ -942,7 +942,7 @@ fn upper_limits_root(
 
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
-#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, data=None))]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None))]
 fn sample<'py>(
     py: Python<'py>,
     model: &Bound<'py, PyAny>,
@@ -954,6 +954,7 @@ fn sample<'py>(
     target_accept: f64,
     init_jitter: f64,
     init_jitter_rel: Option<f64>,
+    init_overdispersed_rel: Option<f64>,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
     let config = NutsConfig {
@@ -961,6 +962,7 @@ fn sample<'py>(
         target_accept,
         init_jitter,
         init_jitter_rel,
+        init_overdispersed_rel,
         ..Default::default()
     };
 
@@ -1025,7 +1027,8 @@ fn sample<'py>(
         SampleModel::HistFactory(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1037,7 +1040,8 @@ fn sample<'py>(
         SampleModel::GaussianMean(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1049,7 +1053,8 @@ fn sample<'py>(
         SampleModel::LinearRegression(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1061,7 +1066,8 @@ fn sample<'py>(
         SampleModel::LogisticRegression(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1073,7 +1079,8 @@ fn sample<'py>(
         SampleModel::PoissonRegression(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1085,7 +1092,8 @@ fn sample<'py>(
         SampleModel::NegativeBinomialRegression(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
@@ -1097,7 +1105,8 @@ fn sample<'py>(
         SampleModel::ComposedGlm(m) => {
             let config = config.clone();
             py.detach(move || {
-                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                let seeds: Vec<u64> =
+                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
                     vec![seed; n_chains]
                 } else {
                     (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()

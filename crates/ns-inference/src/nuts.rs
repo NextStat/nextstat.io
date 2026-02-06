@@ -29,11 +29,26 @@ pub struct NutsConfig {
     ///
     /// Mutually exclusive with `init_jitter > 0`.
     pub init_jitter_rel: Option<f64>,
+
+    /// Optional overdispersed initialization around the deterministic starting point.
+    ///
+    /// Interpreted similarly to `init_jitter_rel`, but intended for larger dispersions
+    /// (e.g. overdispersed chain init) and uses a wider clamp to avoid silently
+    /// collapsing to tiny jitter near transform boundaries.
+    ///
+    /// Mutually exclusive with `init_jitter` and `init_jitter_rel`.
+    pub init_overdispersed_rel: Option<f64>,
 }
 
 impl Default for NutsConfig {
     fn default() -> Self {
-        Self { max_treedepth: 10, target_accept: 0.8, init_jitter: 0.0, init_jitter_rel: None }
+        Self {
+            max_treedepth: 10,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+            init_overdispersed_rel: None,
+        }
     }
 }
 
@@ -380,13 +395,53 @@ pub fn sample_nuts<M: LogDensityModel>(
         }
     };
     let z_init = posterior.to_unconstrained(&theta_init)?;
-    if config.init_jitter > 0.0 && config.init_jitter_rel.is_some() {
+    let init_modes = (config.init_jitter > 0.0) as u8
+        + config.init_jitter_rel.is_some() as u8
+        + config.init_overdispersed_rel.is_some() as u8;
+    if init_modes > 1 {
         return Err(ns_core::Error::Validation(
-            "init_jitter and init_jitter_rel are mutually exclusive".to_string(),
+            "init_jitter, init_jitter_rel, init_overdispersed_rel are mutually exclusive"
+                .to_string(),
         ));
     }
 
-    let z_init: Vec<f64> = if let Some(frac) = config.init_jitter_rel.filter(|&f| f > 0.0) {
+    let z_init: Vec<f64> = if let Some(frac) = config.init_overdispersed_rel.filter(|&f| f > 0.0) {
+        use rand_distr::{Distribution, Normal};
+
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        let jac = posterior.transform().jacobian_diag(&z_init);
+
+        let mut out = Vec::with_capacity(dim);
+        for i in 0..dim {
+            let (lo, hi) = bounds[i];
+            let lo_finite = lo > f64::NEG_INFINITY;
+            let hi_finite = hi < f64::INFINITY;
+
+            // Larger, more overdispersed constrained-space scale than init_jitter_rel.
+            let theta0 = theta_init[i];
+            let theta_sigma = if lo_finite && hi_finite {
+                (hi - lo).abs() * frac
+            } else if lo_finite || hi_finite {
+                theta0.abs().max(1.0) * frac
+            } else {
+                0.0
+            };
+
+            let jac_abs = jac[i].abs().max(1e-12);
+            let mut z_sigma = if theta_sigma > 0.0 {
+                theta_sigma / jac_abs
+            } else {
+                (1.0 + z_init[i].abs()) * frac
+            };
+
+            // Overdispersed: allow larger excursions than init_jitter_rel.
+            z_sigma = z_sigma.clamp(1e-6, 20.0);
+
+            let normal = Normal::new(0.0, z_sigma).unwrap();
+            out.push(z_init[i] + normal.sample(&mut rng));
+        }
+        out
+    } else if let Some(frac) = config.init_jitter_rel.filter(|&f| f > 0.0) {
         use rand_distr::{Distribution, Normal};
 
         let bounds: Vec<(f64, f64)> = model.parameter_bounds();
@@ -574,6 +629,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.5,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
         let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
 
@@ -610,6 +666,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
         let chain1 = sample_nuts(&model, 50, 20, 123, config.clone()).unwrap();
         let chain2 = sample_nuts(&model, 50, 20, 123, config).unwrap();
@@ -638,6 +695,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.5,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
         let result = sample_nuts_multichain(&model, 4, 500, 500, 42, config).unwrap();
 
@@ -791,6 +849,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
 
         let mut ranks = Vec::with_capacity(n_rep);
@@ -981,6 +1040,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
 
         let mut ranks = Vec::with_capacity(n_rep);
@@ -1259,6 +1319,7 @@ mod tests {
             target_accept: 0.85,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
 
         let mut ranks = Vec::with_capacity(n_rep);

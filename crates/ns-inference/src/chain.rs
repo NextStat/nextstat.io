@@ -115,6 +115,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
         let r1 = sample_nuts_multichain(&model, 2, 50, 20, 42, config.clone()).unwrap();
         let r2 = sample_nuts_multichain(&model, 2, 50, 20, 42, config).unwrap();
@@ -137,6 +138,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.5,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
         let result = sample_nuts_multichain(&model, 2, 100, 50, 42, config).unwrap();
 

@@ -132,6 +132,7 @@ mod tests {
             target_accept: 0.8,
             init_jitter: 0.0,
             init_jitter_rel: None,
+            init_overdispersed_rel: None,
         };
 
         // Smoke: run a tiny chain and validate moments are sane.
