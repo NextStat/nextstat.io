@@ -35,6 +35,9 @@ dev = [
 validation = [
     "numpy>=2.0",
     "pyhf>=0.7.6",
+    # Needed for HistFactory XML/ROOT IO used by pyhf.readxml/pyhf.writexml.
+    "uproot>=5.0",
+    "tqdm>=4.0",
 ]
 bayes = [
     "arviz>=0.23.4",
