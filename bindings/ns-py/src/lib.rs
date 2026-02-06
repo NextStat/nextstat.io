@@ -252,6 +252,7 @@ fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
 enum PosteriorModel {
     HistFactory(RustModel),
     GaussianMean(GaussianMeanModel),
+    Funnel(FunnelModel),
     LinearRegression(RustLinearRegressionModel),
     LogisticRegression(RustLogisticRegressionModel),
     OrderedLogit(RustOrderedLogitModel),
@@ -271,6 +272,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
+            PosteriorModel::Funnel(m) => m.dim(),
             PosteriorModel::LinearRegression(m) => m.dim(),
             PosteriorModel::LogisticRegression(m) => m.dim(),
             PosteriorModel::OrderedLogit(m) => m.dim(),
@@ -290,6 +292,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
+            PosteriorModel::Funnel(m) => m.parameter_names(),
             PosteriorModel::LinearRegression(m) => m.parameter_names(),
             PosteriorModel::LogisticRegression(m) => m.parameter_names(),
             PosteriorModel::OrderedLogit(m) => m.parameter_names(),
@@ -309,6 +312,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
+            PosteriorModel::Funnel(m) => m.parameter_bounds(),
             PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
             PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
             PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
@@ -328,6 +332,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
+            PosteriorModel::Funnel(m) => m.parameter_init(),
             PosteriorModel::LinearRegression(m) => m.parameter_init(),
             PosteriorModel::LogisticRegression(m) => m.parameter_init(),
             PosteriorModel::OrderedLogit(m) => m.parameter_init(),
@@ -347,6 +352,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
+            PosteriorModel::Funnel(m) => m.nll(params),
             PosteriorModel::LinearRegression(m) => m.nll(params),
             PosteriorModel::LogisticRegression(m) => m.nll(params),
             PosteriorModel::OrderedLogit(m) => m.nll(params),
@@ -366,6 +372,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
+            PosteriorModel::Funnel(m) => m.grad_nll(params),
             PosteriorModel::LinearRegression(m) => m.grad_nll(params),
             PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
             PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
@@ -385,6 +392,7 @@ impl PosteriorModel {
         match self {
             PosteriorModel::HistFactory(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
+            PosteriorModel::Funnel(m) => mle.fit(m),
             PosteriorModel::LinearRegression(m) => mle.fit(m),
             PosteriorModel::LogisticRegression(m) => mle.fit(m),
             PosteriorModel::OrderedLogit(m) => mle.fit(m),
@@ -415,6 +423,9 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::GaussianMean(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Funnel(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::LinearRegression(m) => {
@@ -464,6 +475,10 @@ impl PosteriorModel {
             }
             PosteriorModel::GaussianMean(m) => {
                 let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: *m, priors };
                 mle.fit(&w)
             }
             PosteriorModel::LinearRegression(m) => {
@@ -537,6 +552,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: *m, priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
             PosteriorModel::LinearRegression(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
@@ -594,6 +613,8 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::HistFactory(hf.inner.clone()))
     } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
+    } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
+        Ok(PosteriorModel::Funnel(fm.inner))
     } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
         Ok(PosteriorModel::LinearRegression(lr.inner.clone()))
     } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
@@ -620,7 +641,7 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::CoxPh(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
         ))
     }
 }
@@ -1395,6 +1416,132 @@ impl LogDensityModel for GaussianMeanModel {
 
     fn prepared(&self) -> Self::Prepared<'_> {
         PreparedGaussianMeanModel { model: self }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stress toy model: Neal's funnel (2D) for NUTS stability checks.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+struct FunnelModel;
+
+#[derive(Clone, Copy)]
+struct PreparedFunnelModel<'a> {
+    model: &'a FunnelModel,
+}
+
+impl PreparedNll for PreparedFunnelModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for FunnelModel {
+    type Prepared<'a>
+        = PreparedFunnelModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        2
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec!["y".to_string(), "x".to_string()]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY), (f64::NEG_INFINITY, f64::INFINITY)]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0, 0.0]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != 2 {
+            return Err(NsError::Validation("expected 2 parameters".to_string()));
+        }
+        let y = params[0];
+        let x = params[1];
+        if !(y.is_finite() && x.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+
+        // Neal's funnel:
+        // y ~ Normal(0, 3)
+        // x | y ~ Normal(0, exp(y/2))
+        //
+        // Include stable constants (doesn't affect inference) to avoid accidental drift.
+        let ln2pi = (2.0 * std::f64::consts::PI).ln();
+        let nll_y = 0.5 * (y * y) / 9.0 + 3.0_f64.ln() + 0.5 * ln2pi;
+        let nll_x = 0.5 * x * x * (-y).exp() + 0.5 * y + 0.5 * ln2pi;
+        Ok(nll_y + nll_x)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != 2 {
+            return Err(NsError::Validation("expected 2 parameters".to_string()));
+        }
+        let y = params[0];
+        let x = params[1];
+        if !(y.is_finite() && x.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+
+        // d/dy: y/9 + 0.5 - 0.5*x^2*exp(-y)
+        // d/dx: x*exp(-y)
+        let exp_neg_y = (-y).exp();
+        let dy = y / 9.0 - 0.5 * x * x * exp_neg_y + 0.5;
+        let dx = x * exp_neg_y;
+        Ok(vec![dy, dx])
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedFunnelModel { model: self }
+    }
+}
+
+/// Python wrapper for FunnelModel (Neal's funnel, 2D).
+#[pyclass(name = "FunnelModel")]
+struct PyFunnelModel {
+    inner: FunnelModel,
+}
+
+#[pymethods]
+impl PyFunnelModel {
+    #[new]
+    fn new() -> Self {
+        Self { inner: FunnelModel }
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
     }
 }
 
@@ -3394,6 +3541,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPosterior>()?;
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
+    m.add_class::<PyFunnelModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
     m.add_class::<PyOrderedLogitModel>()?;

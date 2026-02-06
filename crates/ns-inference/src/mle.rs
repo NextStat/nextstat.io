@@ -43,26 +43,44 @@ impl MaximumLikelihoodEstimator {
         match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
                 // Uncertainties from diagonal of covariance matrix
-                let uncertainties: Vec<f64> = (0..n)
-                    .map(|i| {
-                        let var = covariance[(i, i)];
-                        if var.is_finite() && var > 0.0 { var.sqrt() } else { diag_uncertainties[i] }
-                    })
-                    .collect();
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
 
-                // Store covariance as row-major flat Vec
-                let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                if all_variances_ok {
+                    // Store covariance as row-major flat Vec
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
 
-                Ok(FitResult::with_covariance(
-                    result.parameters,
-                    uncertainties,
-                    cov_flat,
-                    result.fval,
-                    result.converged,
-                    result.n_iter as usize,
-                    result.n_fev,
-                    result.n_gev,
-                ))
+                    Ok(FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                } else {
+                    log::warn!("Invalid covariance diagonal; omitting covariance matrix");
+                    Ok(FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                }
             }
             None => {
                 // Hessian inversion failed; fall back to diagonal estimate
@@ -404,6 +422,12 @@ mod tests {
         for (i, &unc) in result.uncertainties.iter().enumerate() {
             assert!(unc > 0.0, "Uncertainty[{}] should be positive: {}", i, unc);
             assert!(unc.is_finite(), "Uncertainty[{}] should be finite: {}", i, unc);
+            assert!(
+                unc < 1e5,
+                "Uncertainty[{}] looks like a numerical fallback (too large): {}",
+                i,
+                unc
+            );
         }
 
         assert!(result.nll > 0.0 && result.nll < 100.0);

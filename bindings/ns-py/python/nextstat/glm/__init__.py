@@ -17,6 +17,7 @@ from . import poisson as poisson
 from . import negbin as negbin
 from . import metrics as metrics
 from . import cv as cv
+from . import robust as robust
 
 from .linear import LinearFit, fit as fit_linear  # noqa: F401
 from .logistic import LogisticFit, fit as fit_logistic  # noqa: F401
@@ -32,6 +33,7 @@ __all__ = [
     "negbin",
     "metrics",
     "cv",
+    "robust",
     "LinearFit",
     "LogisticFit",
     "PoissonFit",
@@ -43,6 +45,7 @@ __all__ = [
     "CvResult",
     "kfold_indices",
     "cross_val_score",
+    "robust",
     "fit_linear",
     "fit_logistic",
     "fit_poisson",
