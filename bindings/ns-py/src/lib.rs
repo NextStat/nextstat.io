@@ -21,6 +21,7 @@ use ns_inference::{
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
     PoissonRegressionModel as RustPoissonRegressionModel,
     OrderedLogitModel as RustOrderedLogitModel,
+    OrderedProbitModel as RustOrderedProbitModel,
     CoxPhModel as RustCoxPhModel,
     CoxTies as RustCoxTies,
     ExponentialSurvivalModel as RustExponentialSurvivalModel,
@@ -732,6 +733,51 @@ impl PyOrderedLogitModel {
     #[pyo3(signature = (x, y, *, n_levels))]
     fn new(x: Vec<Vec<f64>>, y: Vec<u8>, n_levels: usize) -> PyResult<Self> {
         let inner = RustOrderedLogitModel::new(x, y, n_levels)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `OrderedProbitModel` (ordinal probit regression).
+#[pyclass(name = "OrderedProbitModel")]
+struct PyOrderedProbitModel {
+    inner: RustOrderedProbitModel,
+}
+
+#[pymethods]
+impl PyOrderedProbitModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, n_levels))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<u8>, n_levels: usize) -> PyResult<Self> {
+        let inner = RustOrderedProbitModel::new(x, y, n_levels)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(Self { inner })
     }
@@ -1489,6 +1535,7 @@ impl PyMaximumLikelihoodEstimator {
             LinearRegression(RustLinearRegressionModel),
             LogisticRegression(RustLogisticRegressionModel),
             OrderedLogit(RustOrderedLogitModel),
+            OrderedProbit(RustOrderedProbitModel),
             PoissonRegression(RustPoissonRegressionModel),
             NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
             ComposedGlm(RustComposedGlmModel),
@@ -1528,6 +1575,11 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::OrderedLogit(ord.inner.clone())
+        } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::OrderedProbit(ord.inner.clone())
         } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
             if data.is_some() {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -1570,7 +1622,7 @@ impl PyMaximumLikelihoodEstimator {
             FitModel::CoxPh(m.inner.clone())
         } else {
             return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
             ));
         };
 
@@ -1597,6 +1649,11 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::OrderedLogit(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::OrderedProbit(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -1851,6 +1908,34 @@ impl PyMaximumLikelihoodEstimator {
                 for item in list.iter() {
                     let m = item.extract::<PyRef<'_, PyOrderedLogitModel>>().map_err(|_| {
                         PyValueError::new_err("All items in the list must be OrderedLogitModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyOrderedProbitModel>>().is_ok() {
+                let mut models: Vec<RustOrderedProbitModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyOrderedProbitModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be OrderedProbitModel")
                     })?;
                     models.push(m.inner.clone());
                 }
@@ -2453,6 +2538,8 @@ fn sample<'py>(
         GaussianMean(GaussianMeanModel),
         LinearRegression(RustLinearRegressionModel),
         LogisticRegression(RustLogisticRegressionModel),
+        OrderedLogit(RustOrderedLogitModel),
+        OrderedProbit(RustOrderedProbitModel),
         PoissonRegression(RustPoissonRegressionModel),
         NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
         ComposedGlm(RustComposedGlmModel),
@@ -2487,6 +2574,16 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::LogisticRegression(logit.inner.clone())
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedLogitModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::OrderedLogit(ord.inner.clone())
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::OrderedProbit(ord.inner.clone())
     } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
         if data.is_some() {
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -2529,7 +2626,7 @@ fn sample<'py>(
         SampleModel::CoxPh(m.inner.clone())
     } else {
         return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
         ));
     };
 
@@ -2563,6 +2660,24 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LogisticRegression(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::OrderedLogit(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::OrderedProbit(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
@@ -2851,6 +2966,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
     m.add_class::<PyOrderedLogitModel>()?;
+    m.add_class::<PyOrderedProbitModel>()?;
     m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyNegativeBinomialRegressionModel>()?;
     m.add_class::<PyComposedGlmModel>()?;

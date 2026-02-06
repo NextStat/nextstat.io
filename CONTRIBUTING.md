@@ -130,6 +130,13 @@ Required for code changes:
 
 After approval, a maintainer will merge your PR into `main`.
 
+## Release Checklist (Maintainers)
+
+- [ ] Run the Apex2 pre-release gate: `make apex2-baseline-compare COMPARE_ARGS="--require-same-host"`
+- [ ] If the baseline is stale (expected perf change), re-record: `make apex2-baseline-record`
+- [ ] Review `tmp/baseline_compare_report.json` for any slowdowns/flags
+- [ ] Follow the canonical runbook: `docs/tutorials/release-gates.md`
+
 ## DCO Sign-off
 
 All commits must be signed off with DCO (Developer Certificate of Origin).

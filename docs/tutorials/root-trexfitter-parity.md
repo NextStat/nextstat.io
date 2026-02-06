@@ -421,6 +421,15 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/aggregate_apex2_root_s
   --exit-nonzero-on-fail
 ```
 
+Optional: compare aggregated perf vs a recorded ROOT baseline suite report:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_apex2_root_suite_to_baseline.py \
+  --baseline tmp/baselines/root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json \
+  --current /path/to/results/apex2_root_suite_aggregate.json \
+  --out /path/to/results/apex2_root_suite_perf_compare.json
+```
+
 Alternative: if you want full control and/or do not want to depend on `--case-index`, you can run the low-level
 engine (`tests/validate_root_profile_scan.py`) in an array keyed by case name (example below).
 

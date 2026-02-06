@@ -12,6 +12,8 @@ Files:
 - `run_apex2_root_suite_case.sh`: wrapper for the job-array submit file.
 - Aggregate per-case JSONs back into one suite report:
   - `tests/aggregate_apex2_root_suite_reports.py`
+- Optional: compare aggregated perf vs baseline:
+  - `tests/compare_apex2_root_suite_to_baseline.py`
 
 Note: the `.sub` templates use `executable = /bin/bash` and pass the wrapper script as an argument, so the
 wrapper `.sh` files do not need executable permissions.

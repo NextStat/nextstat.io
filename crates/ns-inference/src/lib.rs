@@ -63,12 +63,11 @@ pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
 pub use nuts::{NutsConfig, sample_nuts};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
-pub use ordinal::OrderedLogitModel;
+pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
 pub use posterior::{Posterior, Prior};
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
 pub use regression::{
-    LinearRegressionModel, LogisticRegressionModel, OrdinalLogitModel, OrdinalProbitModel,
-    PoissonRegressionModel, ols_fit,
+    LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };
 pub use survival::{
     CoxPhModel, CoxTies, ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel,

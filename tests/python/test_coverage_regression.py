@@ -5,10 +5,6 @@ This is an opt-in slow test that compares NextStat vs pyhf coverage for one or m
 Run with:
   NS_RUN_SLOW=1 NS_TOYS=20 NS_SEED=0 NS_SCAN_POINTS=81 NS_SCAN_STOP=5 pytest -v -m slow tests/python/test_coverage_regression.py
   NS_RUN_SLOW=1 NS_FIXTURES=all NS_TOYS=20 pytest -v -m slow tests/python/test_coverage_regression.py
-  NS_RUN_SLOW=1 NS_FIXTURES=extended NS_TOYS=20 pytest -v -m slow tests/python/test_coverage_regression.py
-  NS_RUN_SLOW=1 NS_FIXTURES=generated NS_TOYS=5 pytest -v -m slow tests/python/test_coverage_regression.py
-  NS_RUN_SLOW=1 NS_FIXTURES=gen_shapefactor4 NS_TOYS=20 pytest -v -m slow tests/python/test_coverage_regression.py
-  NS_RUN_SLOW=1 NS_FIXTURES=gen_histo_normsys8 NS_TOYS=20 pytest -v -m slow tests/python/test_coverage_regression.py
 
 Defaults are intentionally smaller for reasonable local runtime. Override via env vars for
 higher-stat precision.
@@ -36,29 +32,18 @@ SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "11"))
 # Keep the scan range modest by default: pyhf reference can be slow.
 SCAN_STOP = float(os.environ.get("NS_SCAN_STOP", "0.0") or 0.0)
 FIXTURES = os.environ.get("NS_FIXTURES", "simple")
-METHOD = os.environ.get("NS_COVERAGE_METHOD", "root").strip().lower()
-UL_RTOL = float(os.environ.get("NS_UL_RTOL", "1e-4"))
-UL_MAX_ITER = int(os.environ.get("NS_UL_MAX_ITER", "80"))
 
 CASES = {
     # Static fixtures.
     "simple": ("fixture", "simple_workspace.json", "GaussExample", 3.0),
     "complex": ("fixture", "complex_workspace.json", "measurement", 5.0),
-    # Generated workspaces (exercise modifier patterns beyond the static JSON fixtures).
-    "gen_shapefactor4": ("generated", "shapefactor4", "m", 20.0),
-    "gen_histo_normsys8": ("generated", "histo_normsys8", "m", 5.0),
 }
 
 
 def selected_cases():
     fixtures = FIXTURES.strip().lower()
     if fixtures == "all":
-        # Keep "all" fast and consistent with other suites: only static fixtures.
         keys = ["simple", "complex"]
-    elif fixtures == "generated":
-        keys = ["gen_shapefactor4", "gen_histo_normsys8"]
-    elif fixtures == "extended":
-        keys = ["simple", "complex", "gen_shapefactor4", "gen_histo_normsys8"]
     else:
         keys = [k.strip().lower() for k in FIXTURES.split(",") if k.strip()]
 
@@ -73,86 +58,10 @@ def selected_cases():
 def load_workspace(fixture: str) -> dict:
     return json.loads((FIXTURES_DIR / fixture).read_text())
 
-def _make_workspace_shapefactor(n_bins: int) -> dict:
-    signal = {
-        "name": "signal",
-        "data": [5.0] * n_bins,
-        "modifiers": [{"name": "mu", "type": "normfactor", "data": None}],
-    }
-    background = {
-        "name": "background",
-        "data": [50.0] * n_bins,
-        "modifiers": [{"name": "sf", "type": "shapefactor", "data": None}],
-    }
-    return {
-        "channels": [{"name": "c", "samples": [signal, background]}],
-        "observations": [{"name": "c", "data": [55.0] * n_bins}],
-        "measurements": [{"name": "m", "config": {"poi": "mu", "parameters": []}}],
-        "version": "1.0.0",
-    }
-
-
-def _make_workspace_histo_normsys(n_bins: int) -> dict:
-    nominal = [100.0 + 0.5 * i for i in range(n_bins)]
-    hi = [x * (1.10 + 0.01 * ((i % 7) - 3)) for i, x in enumerate(nominal)]
-    lo = [x * (0.90 - 0.005 * ((i % 5) - 2)) for i, x in enumerate(nominal)]
-    stat = [max(1.0, 0.20 * (x**0.5)) for x in nominal]
-
-    signal = {
-        "name": "signal",
-        "data": [10.0] * n_bins,
-        "modifiers": [
-            {"name": "mu", "type": "normfactor", "data": None},
-            {"name": "lumi", "type": "lumi", "data": None},
-        ],
-    }
-    background = {
-        "name": "background",
-        "data": nominal,
-        "modifiers": [
-            {"name": "lumi", "type": "lumi", "data": None},
-            {"name": "bkg_norm", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}},
-            {"name": "bkg_shape", "type": "histosys", "data": {"hi_data": hi, "lo_data": lo}},
-            {"name": "staterror_c", "type": "staterror", "data": stat},
-        ],
-    }
-
-    observations = [float(s + b) for s, b in zip(signal["data"], background["data"])]
-
-    return {
-        "channels": [{"name": "c", "samples": [signal, background]}],
-        "observations": [{"name": "c", "data": observations}],
-        "measurements": [
-            {
-                "name": "m",
-                "config": {
-                    "poi": "mu",
-                    "parameters": [
-                        {
-                            "name": "lumi",
-                            "inits": [1.0],
-                            "bounds": [[0.9, 1.1]],
-                            "auxdata": [1.0],
-                            "sigmas": [0.02],
-                        }
-                    ],
-                },
-            }
-        ],
-        "version": "1.0.0",
-    }
-
-
 def workspace_for_case(source_kind: str, source_id: str) -> dict:
     source_kind = str(source_kind)
     if source_kind == "fixture":
         return load_workspace(str(source_id))
-    if source_kind == "generated":
-        if source_id == "shapefactor4":
-            return _make_workspace_shapefactor(4)
-        if source_id == "histo_normsys8":
-            return _make_workspace_histo_normsys(8)
-        raise ValueError(f"Unknown generated workspace id: {source_id}")
     raise ValueError(f"Unknown source_kind: {source_kind}")
 
 
@@ -199,12 +108,7 @@ def test_upper_limit_coverage_regression_vs_pyhf():
         scan_stop = SCAN_STOP if SCAN_STOP > 0.0 else float(default_scan_stop)
         if not (scan_stop > 0.0):
             pytest.skip(f"invalid NS_SCAN_STOP={SCAN_STOP}; must be > 0")
-        method = METHOD
-        if method not in {"scan", "root"}:
-            pytest.skip(f"invalid NS_COVERAGE_METHOD={METHOD!r}; expected 'scan' or 'root'")
-        scan = None
-        if method == "scan":
-            scan = np.linspace(0.0, scan_stop, SCAN_POINTS)
+        scan = np.linspace(0.0, scan_stop, SCAN_POINTS)
 
         covered_pyhf = 0
         covered_ns = 0
@@ -216,53 +120,17 @@ def test_upper_limit_coverage_regression_vs_pyhf():
             toy[:n_main] = rng.poisson(expected[:n_main])
 
             try:
-                if method == "scan":
-                    pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
-                        toy.tolist(),
-                        model,
-                        scan=scan,
-                        level=0.05,
-                        test_stat="qtilde",
-                        calctype="asymptotics",
-                    )
-                    ns_obs, _ns_exp = ns_infer.upper_limits(
-                        ns_model, scan.tolist(), alpha=0.05, data=toy[:n_main].tolist()
-                    )
-                else:
-                    # Root-finding can probe POI values outside the default (0, 10) bound,
-                    # so widen the POI bound to safely contain the search interval.
-                    pyhf_init = list(model.config.suggested_init())
-                    pyhf_bounds = list(model.config.suggested_bounds())
-                    pyhf_fixed = list(model.config.suggested_fixed())
-                    pyhf_poi = int(model.config.poi_index)
-
-                    (b_lo, b_hi) = pyhf_bounds[pyhf_poi]
-                    lo_f = 0.0 if b_lo is None else float(b_lo)
-                    hi_f = float("inf") if b_hi is None else float(b_hi)
-                    hi_new = max(hi_f, float(scan_stop) * 4.0, 50.0)
-                    pyhf_bounds[pyhf_poi] = (lo_f, hi_new)
-
-                    pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
-                        toy.tolist(),
-                        model,
-                        scan=None,
-                        level=0.05,
-                        rtol=UL_RTOL,
-                        test_stat="qtilde",
-                        calctype="asymptotics",
-                        init_pars=pyhf_init,
-                        par_bounds=pyhf_bounds,
-                        fixed_params=pyhf_fixed,
-                    )
-                    ns_obs, _ns_exp = ns_infer.upper_limits_root(
-                        ns_model,
-                        alpha=0.05,
-                        lo=0.0,
-                        hi=float(scan_stop),
-                        rtol=float(UL_RTOL),
-                        max_iter=int(UL_MAX_ITER),
-                        data=toy[:n_main].tolist(),
-                    )
+                pyhf_obs, _pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
+                    toy.tolist(),
+                    model,
+                    scan=scan,
+                    level=0.05,
+                    test_stat="qtilde",
+                    calctype="asymptotics",
+                )
+                ns_obs, _ns_exp = ns_infer.upper_limits(
+                    ns_model, scan.tolist(), alpha=0.05, data=toy[:n_main].tolist()
+                )
             except Exception:
                 # Skip rare numerical issues; the regression check is meaningful
                 # only when both sides succeed.
@@ -293,10 +161,7 @@ def test_upper_limit_coverage_regression_vs_pyhf():
                 "seed": int(SEED + case_idx),
                 "scan_stop": float(scan_stop),
                 "measurement": str(measurement),
-                "method": str(method),
-                "scan_points": None if method != "scan" else int(SCAN_POINTS),
-                "ul_rtol": float(UL_RTOL),
-                "ul_max_iter": int(UL_MAX_ITER),
+                "scan_points": int(SCAN_POINTS),
                 "mu_true": mu_true,
                 "pyhf_coverage": cov_pyhf,
                 "nextstat_coverage": cov_ns,

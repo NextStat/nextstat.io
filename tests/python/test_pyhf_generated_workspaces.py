@@ -199,3 +199,60 @@ def _make_workspace_histo_normsys(n_bins: int) -> dict[str, Any]:
 )
 def test_generated_workspaces_nll_parity(workspace, measurement_name):
     _assert_nll_parity(workspace, measurement_name)
+
+
+@pytest.mark.slow
+def test_generated_workspaces_upper_limit_root_parity():
+    import os
+
+    if os.environ.get("NS_RUN_SLOW") != "1":
+        pytest.skip("Set NS_RUN_SLOW=1 to run slow upper-limit parity tests on generated workspaces.")
+
+    import nextstat.infer as ns_infer
+
+    cases = [
+        ("histo_normsys8", _make_workspace_histo_normsys(8), "m", 10.0),
+    ]
+
+    for key, workspace, measurement_name, hi in cases:
+        pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
+
+        # Root-finding can probe POI values outside the default (0, 10) bound,
+        # so widen the POI bound for a robust bracket search.
+        pyhf_init = list(pyhf_model.config.suggested_init())
+        pyhf_bounds = list(pyhf_model.config.suggested_bounds())
+        pyhf_fixed = list(pyhf_model.config.suggested_fixed())
+        pyhf_poi = int(pyhf_model.config.poi_index)
+
+        (b_lo, b_hi) = pyhf_bounds[pyhf_poi]
+        lo_f = 0.0 if b_lo is None else float(b_lo)
+        hi_f = float("inf") if b_hi is None else float(b_hi)
+        pyhf_bounds[pyhf_poi] = (lo_f, max(hi_f, float(hi) * 4.0, 50.0))
+
+        pyhf_obs, pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
+            pyhf_data,
+            pyhf_model,
+            scan=None,
+            level=0.05,
+            rtol=1e-4,
+            test_stat="qtilde",
+            calctype="asymptotics",
+            init_pars=pyhf_init,
+            par_bounds=pyhf_bounds,
+            fixed_params=pyhf_fixed,
+        )
+
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_obs, ns_exp = ns_infer.upper_limits_root(
+            ns_model,
+            alpha=0.05,
+            lo=0.0,
+            hi=float(hi),
+            rtol=1e-4,
+            max_iter=80,
+        )
+
+        assert abs(float(ns_obs) - float(pyhf_obs)) < 5e-3, f"{key}: obs limit mismatch"
+        assert len(ns_exp) == 5
+        for a, b in zip(ns_exp, pyhf_exp):
+            assert abs(float(a) - float(b)) < 5e-3, f"{key}: exp limit mismatch"

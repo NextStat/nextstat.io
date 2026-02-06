@@ -38,6 +38,7 @@ LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
 PoissonRegressionModel = _get("PoissonRegressionModel")
 OrderedLogitModel = _get("OrderedLogitModel")
+OrderedProbitModel = _get("OrderedProbitModel")
 NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
 LmmMarginalModel = _get("LmmMarginalModel")
@@ -90,6 +91,7 @@ __all__ = [
     "LogisticRegressionModel",
     "PoissonRegressionModel",
     "OrderedLogitModel",
+    "OrderedProbitModel",
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
     "LmmMarginalModel",

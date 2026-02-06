@@ -258,6 +258,8 @@ Compare current HEAD vs the latest recorded baseline (writes `tmp/baseline_compa
 make apex2-baseline-compare
 ```
 
+Pre-release gate runbook: `docs/tutorials/release-gates.md`.
+
 ## Documentation
 
 - White paper (Markdown): `docs/WHITEPAPER.md`
