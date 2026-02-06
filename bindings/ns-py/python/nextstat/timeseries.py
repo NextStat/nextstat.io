@@ -848,6 +848,7 @@ __all__ = [
     "local_level_model",
     "local_linear_trend_model",
     "ar1_model",
+    "arma11_model",
     "local_level_seasonal_model",
     "local_linear_trend_seasonal_model",
 ]
