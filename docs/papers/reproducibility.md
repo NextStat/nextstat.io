@@ -374,7 +374,13 @@ For strict reproducibility across builds:
 
 ### 7.3 Init Jitter
 
-NUTS initialization supports a jitter parameter (`init_jitter`) for exploring initialization sensitivity. Default is `0.0` (no jitter), ensuring deterministic initialization from `suggested_init()`. When jitter is nonzero, the test suite verifies that `init_jitter` and `init_jitter_rel` are mutually exclusive.
+NUTS initialization supports optional perturbations around the default initialization for exploring sensitivity and improving mixing in short runs. By default (`init_jitter=0.0` and no `*_rel` options), initialization is deterministic from `suggested_init()` / an MLE-based mode estimate.
+
+Initialization options are **mutually exclusive** (set at most one):
+
+- `init_jitter`: Normal jitter in unconstrained space (`z`).
+- `init_jitter_rel`: jitter scale relative to constrained-space parameter bounds / magnitude (mapped into `z` via a local Jacobian).
+- `init_overdispersed_rel`: like `init_jitter_rel` but allows larger excursions for overdispersed chain initialization.
 
 ## 8. Reproducibility Levels
 

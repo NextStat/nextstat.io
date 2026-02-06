@@ -71,6 +71,19 @@ def sample(
 ):
     """Run NUTS sampling.
 
+    Notes:
+    - Multi-chain seeding is deterministic: chain `i` uses `seed + i`.
+    - Initialization options are mutually exclusive (set at most one):
+      `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
+
+    Parameters:
+    - `init_jitter`: add Normal jitter in unconstrained space (`z`).
+    - `init_jitter_rel`: jitter scale relative to parameter bounds / magnitude
+      (mapped to `z` via a local Jacobian).
+    - `init_overdispersed_rel`: like `init_jitter_rel` but allows larger
+      excursions; useful for overdispersed initializations across chains.
+    - `data`: only supported for `HistFactoryModel` (overrides observed data).
+
     By default returns ArviZ `InferenceData` if dependencies are available.
     If `return_idata=False`, returns the raw dict from `_core.sample(...)`.
     """

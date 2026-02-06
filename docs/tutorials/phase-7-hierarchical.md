@@ -43,6 +43,8 @@ print(raw["diagnostics"]["quality"])
 Notes:
 - `group_idx[i]` selects the group for observation `i`.
 - The random intercept is a partially-pooled Normal effect (group intercepts share hyperparameters).
+- Sampling seeds are deterministic per chain: chain `i` uses `seed + i`.
+- Initialization options are mutually exclusive (set at most one): `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
 
 ## Posterior Predictive Checks (PPC)
 

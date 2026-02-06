@@ -32,6 +32,10 @@ print("observed mean(y):", obs_mean)
 print("replicated mean(y) range:", min(rep_means), max(rep_means))
 ```
 
+Notes:
+- Sampling seeds are deterministic per chain: chain `i` uses `seed + i`.
+- Initialization options are mutually exclusive (set at most one): `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
+
 ## Linear random intercept: replicate mean/variance
 
 ```python
@@ -57,4 +61,3 @@ ppc = nextstat.ppc.ppc_glm_from_sample(spec, raw, n_draws=100, seed=0)
 print("observed stats:", ppc.observed)
 print("replicated[0] stats:", ppc.replicated[0])
 ```
-

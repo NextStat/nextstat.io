@@ -304,10 +304,14 @@ where $U = -\log p$ is the potential energy and $M$ is the mass matrix.
 | `max_treedepth` | 10 | Maximum tree depth |
 | `target_accept` | 0.8 | Target acceptance probability |
 | `init_jitter` | 0.0 | Jitter in unconstrained space |
+| `init_jitter_rel` | None | Relative jitter scale (mapped from constrained to unconstrained) |
+| `init_overdispersed_rel` | None | Larger relative jitter for overdispersed initialization |
 | `num_warmup` | 500 | Warmup iterations |
 | `num_samples` | 1000 | Post-warmup samples |
 
 **Multi-chain sampling** runs chains in parallel via Rayon with deterministic seeding: `chain_seed = base_seed + chain_id`.
+
+Initialization options are mutually exclusive: `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
 
 **Diagnostics:**
 
