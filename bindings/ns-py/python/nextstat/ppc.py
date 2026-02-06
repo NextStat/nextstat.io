@@ -68,6 +68,115 @@ def _effective_group_intercepts(
     return None
 
 
+def _effective_group_slopes(
+    draw: Mapping[str, float], *, feature_idx: int, n_groups: int
+) -> Optional[List[float]]:
+    # Random slope naming is tied to ComposedGlmModel parameter_names:
+    # - centered: u_beta{k}_{g}
+    # - non-centered: z_u_beta{k}_{g} + hyper (mu_u_beta{k}, sigma_u_beta{k})
+    k = int(feature_idx) + 1
+
+    u1 = draw.get(f"u_beta{k}_1")
+    if u1 is not None:
+        return [float(draw[f"u_beta{k}_{g+1}"]) for g in range(n_groups)]
+
+    z1 = draw.get(f"z_u_beta{k}_1")
+    if z1 is not None:
+        mu = float(draw[f"mu_u_beta{k}"])
+        sigma = float(draw[f"sigma_u_beta{k}"])
+        return [mu + sigma * float(draw[f"z_u_beta{k}_{g+1}"]) for g in range(n_groups)]
+
+    return None
+
+
+def _effective_correlated_intercept_slope(
+    draw: Mapping[str, float], *, feature_idx: int, n_groups: int
+) -> Optional[tuple[List[float], List[float]]]:
+    # Correlated naming from ComposedGlmModel parameter_names:
+    # - mu_alpha
+    # - mu_u_beta{k}
+    # - tau_alpha > 0
+    # - tau_u_beta{k} > 0
+    # - rho_alpha_u_beta{k} in [-1,1]
+    # - per-group z_alpha_g{g}, z_u_beta{k}_g{g}
+    k = int(feature_idx) + 1
+    if f"rho_alpha_u_beta{k}" not in draw:
+        return None
+
+    mu_alpha = float(draw["mu_alpha"])
+    mu_u = float(draw[f"mu_u_beta{k}"])
+    tau_alpha = float(draw["tau_alpha"])
+    tau_u = float(draw[f"tau_u_beta{k}"])
+    rho = float(draw[f"rho_alpha_u_beta{k}"])
+
+    if not (tau_alpha > 0.0 and math.isfinite(tau_alpha)):
+        raise ValueError(f"tau_alpha must be finite and > 0, got {tau_alpha}")
+    if not (tau_u > 0.0 and math.isfinite(tau_u)):
+        raise ValueError(f"tau_u_beta{k} must be finite and > 0, got {tau_u}")
+    if not (math.isfinite(rho) and -1.0 <= rho <= 1.0):
+        raise ValueError(f"rho_alpha_u_beta{k} must be in [-1,1], got {rho}")
+
+    s = 1.0 - rho * rho
+    if s < 0.0:
+        # Numeric jitter could put rho slightly outside [-1,1]. Keep this strict in PPC.
+        raise ValueError(f"invalid rho_alpha_u_beta{k}={rho}: 1-rho^2 < 0")
+    s = math.sqrt(s)
+
+    alphas: List[float] = []
+    slopes: List[float] = []
+    for g in range(n_groups):
+        z1 = float(draw[f"z_alpha_g{g+1}"])
+        z2 = float(draw[f"z_u_beta{k}_g{g+1}"])
+        alpha_g = mu_alpha + tau_alpha * z1
+        u_g = mu_u + tau_u * (rho * z1 + s * z2)
+        alphas.append(float(alpha_g))
+        slopes.append(float(u_g))
+    return alphas, slopes
+
+
+def _poisson_sample(rng: random.Random, lam: float) -> int:
+    if not (lam >= 0.0) or not math.isfinite(lam):
+        raise ValueError(f"poisson rate must be finite and >= 0, got {lam}")
+    if lam == 0.0:
+        return 0
+
+    # Exact: Knuth for small lambda, PTRS (Hoermann) for larger lambda.
+    if lam < 10.0:
+        l = math.exp(-lam)
+        k = 0
+        p = 1.0
+        while p > l:
+            k += 1
+            p *= rng.random()
+        return k - 1
+
+    slam = math.sqrt(lam)
+    loglam = math.log(lam)
+    b = 0.931 + 2.53 * slam
+    a = -0.059 + 0.02483 * b
+    inv_alpha = 1.1239 + 1.1328 / (b - 3.4)
+    v_r = 0.9277 - 3.6224 / (b - 2.0)
+
+    while True:
+        u = rng.random() - 0.5
+        v = rng.random()
+        us = 0.5 - abs(u)
+        k = int(math.floor((2.0 * a / us + b) * u + lam + 0.43))
+
+        if k < 0:
+            continue
+        if us >= 0.07 and v <= v_r:
+            return k
+        if us < 0.013 and v > us:
+            continue
+
+        # Acceptance test in log-space.
+        lhs = math.log(v * inv_alpha / (a / (us * us) + b))
+        rhs = -lam + k * loglam - math.lgamma(k + 1.0)
+        if lhs <= rhs:
+            return k
+
+
 def _eta_glm(
     *,
     x_row: Sequence[float],
@@ -75,6 +184,9 @@ def _eta_glm(
     include_intercept: bool,
     group: Optional[int],
     group_intercepts: Optional[Sequence[float]],
+    slope_feature_idx: Optional[int],
+    group_slopes: Optional[Sequence[float]],
+    offset: Optional[float],
 ) -> float:
     eta = 0.0
     if include_intercept:
@@ -83,6 +195,10 @@ def _eta_glm(
         eta += float(draw.get(f"beta{j+1}", 0.0)) * float(xj)
     if group is not None and group_intercepts is not None:
         eta += float(group_intercepts[int(group)])
+    if group is not None and slope_feature_idx is not None and group_slopes is not None:
+        eta += float(group_slopes[int(group)]) * float(x_row[int(slope_feature_idx)])
+    if offset is not None:
+        eta += float(offset)
     return float(eta)
 
 
@@ -113,21 +229,54 @@ def replicate_glm(
     rng = random.Random(int(seed))
     n = len(spec.x)
     ng = spec.n_groups
-    group_intercepts = None
+    group_intercepts: Optional[Sequence[float]] = None
+    group_slopes: Optional[Sequence[float]] = None
+    slope_feature_idx: Optional[int] = None
+
+    if (spec.random_slope_feature_idx is not None or spec.correlated_feature_idx is not None) and spec.group_idx is None:
+        raise ValueError("random slopes / correlated effects require spec.group_idx")
+
     if spec.group_idx is not None:
         if ng is None:
             raise ValueError("spec.n_groups must be set when spec.group_idx is present")
-        group_intercepts = _effective_group_intercepts(draw, n_groups=int(ng))
+        n_groups = int(ng)
+
+        if spec.correlated_feature_idx is not None:
+            slope_feature_idx = int(spec.correlated_feature_idx)
+            eff = _effective_correlated_intercept_slope(
+                draw, feature_idx=slope_feature_idx, n_groups=n_groups
+            )
+            if eff is None:
+                raise ValueError("draw does not contain correlated random-effect parameters")
+            group_intercepts, group_slopes = eff
+        else:
+            group_intercepts = _effective_group_intercepts(draw, n_groups=n_groups)
+            if group_intercepts is None:
+                raise ValueError("draw does not contain random-intercept parameters")
+
+            if spec.random_slope_feature_idx is not None:
+                slope_feature_idx = int(spec.random_slope_feature_idx)
+                group_slopes = _effective_group_slopes(
+                    draw, feature_idx=slope_feature_idx, n_groups=n_groups
+                )
+                if group_slopes is None:
+                    raise ValueError("draw does not contain random-slope parameters")
 
     y_rep: List[float] = []
     for i in range(n):
         group = None if spec.group_idx is None else int(spec.group_idx[i])
+        offset_i = None
+        if spec.offset is not None:
+            offset_i = float(spec.offset[i])
         eta = _eta_glm(
             x_row=spec.x[i],
             draw=draw,
             include_intercept=bool(spec.include_intercept),
             group=group,
             group_intercepts=group_intercepts,
+            slope_feature_idx=slope_feature_idx,
+            group_slopes=group_slopes,
+            offset=offset_i,
         )
 
         if spec.kind == "linear":
@@ -135,8 +284,13 @@ def replicate_glm(
         elif spec.kind == "logistic":
             p = _sigmoid(eta)
             y_rep.append(1.0 if rng.random() < p else 0.0)
+        elif spec.kind == "poisson":
+            lam = math.exp(eta)
+            y_rep.append(float(_poisson_sample(rng, lam)))
         else:
-            raise NotImplementedError("PPC currently supports kind in {'linear','logistic'}")
+            raise NotImplementedError(
+                "PPC currently supports kind in {'linear','logistic','poisson'}"
+            )
 
     return y_rep
 
@@ -193,4 +347,3 @@ __all__ = [
     "replicate_glm",
     "ppc_glm_from_sample",
 ]
-
