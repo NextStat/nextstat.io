@@ -11,8 +11,10 @@ NextStat is a high-performance statistical fitting toolkit for High Energy Physi
 - pyhf JSON compatibility (HistFactory-style workspaces)
 - Negative log-likelihood (Poisson + constraints), including Barlow-Beeston auxiliary terms
 - Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via (damped) Hessian-based covariance + diagonal fallback
+- NUTS sampling surface (generic `Posterior` API) + optional ArviZ integration
 - SIMD kernels and Rayon parallelism where it matters
 - Rust library, Python package (PyO3/maturin), and a CLI
+- Implemented packs: regression/GLM, hierarchical models, time series (Kalman/EM/forecast), econometrics/causal helpers, and PK/NLME baselines
 
 ## Quickstart
 
@@ -142,8 +144,17 @@ nextstat.viz.plot_profile_curve(prof_art, title="Profile likelihood scan")
 
 ```bash
 nextstat fit --input workspace.json
+nextstat hypotest --input workspace.json --mu 1.0 --expected-set
+nextstat upper-limit --input workspace.json --expected --scan-start 0 --scan-stop 5 --scan-points 201
 nextstat version
 ```
+
+## Documentation
+
+- Tutorial index: `docs/tutorials/README.md`
+- Python API reference: `docs/references/python-api.md`
+- Rust API reference: `docs/references/rust-api.md`
+- CLI reference: `docs/references/cli.md`
 
 ## Architecture
 

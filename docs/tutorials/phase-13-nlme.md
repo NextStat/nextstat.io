@@ -31,6 +31,40 @@ This baseline is intentionally minimal:
 - Observation noise is additive Normal with fixed `sigma` (no proportional/combined error model yet).
 - Exposed in the Python bindings as `nextstat.OneCompartmentOralPkNlmeModel` (and `OneCompartmentOralPkModel`).
 
+## Python usage (MAP fit)
+
+```python
+import nextstat
+
+n_subjects = 3
+times_per = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+
+times = []
+y = []
+subject_idx = []
+for sid in range(n_subjects):
+    for t in times_per:
+        times.append(t)
+        y.append(0.0)  # fill with observations
+        subject_idx.append(sid)
+
+model = nextstat.OneCompartmentOralPkNlmeModel(
+    times,
+    y,
+    subject_idx,
+    n_subjects,
+    dose=100.0,
+    bioavailability=1.0,
+    sigma=0.05,
+    lloq=None,
+    lloq_policy="censored",
+)
+
+mle = nextstat.MaximumLikelihoodEstimator()
+fit = mle.fit(model)  # MAP for this NLME objective
+print("dim:", model.n_params(), "nll:", fit.nll)
+```
+
 ## Rust usage (MAP + Laplace)
 
 ```rust

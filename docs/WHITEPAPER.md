@@ -9,11 +9,18 @@ Status: Technical draft (public-facing)
 NextStat is a high-performance statistical inference toolkit implemented in Rust with Python bindings and a CLI. It spans two major use-cases:
 
 - **Binned likelihood inference** via pyhf JSON / HistFactory workspaces (HEP and adjacent sciences), with deterministic parity testing against pyhf in a CPU reference mode.
-- **General statistics workflows** (regression, multilevel/hierarchical models, and time series/state space) built on a shared `LogDensityModel` contract.
+- **General statistics workflows** (regression, multilevel/hierarchical models, and time series/state space) built on a shared `LogDensityModel` contract, plus baseline econometrics/causal inference and PK/NLME packs.
 
 NextStat provides a fast, reproducible engine for likelihood evaluation, maximum-likelihood fits, profile likelihood scans, asymptotic CLs limits, Bayesian posterior sampling (NUTS), and linear-Gaussian state-space inference (Kalman filtering/smoothing, EM parameter estimation, and forecasting with prediction intervals). The project is designed around a deterministic validation path and an optimized performance path (SIMD, parallelism) without breaking the reference contract.
 
 This paper describes the motivation, mathematical foundations, system architecture, inference algorithms, validation methodology, and benchmark strategy for NextStat.
+
+## Documentation map
+
+- Tutorials: `docs/tutorials/README.md`
+- Python API reference: `docs/references/python-api.md`
+- Rust API reference: `docs/references/rust-api.md`
+- CLI reference: `docs/references/cli.md`
 
 ## 1. Motivation
 
@@ -45,10 +52,16 @@ NextStat aims to provide:
 - General statistics pack:
   - GLMs: linear, logistic, Poisson, negative binomial
   - Composition builder for GLM-style models (including random intercepts/slopes)
+- Econometrics / causal pack:
+  - Robust/cluster standard errors, panel FE baseline
+  - DiD/event-study helpers, IV/2SLS baseline, doubly-robust AIPW baseline
 - Time series pack:
   - Linear-Gaussian Kalman filter + RTS smoother + log-likelihood
   - EM parameter estimation for standard models
   - Forecasting APIs with Gaussian prediction intervals
+- Pharmacometrics pack:
+  - 1-compartment oral PK baseline (closed-form concentration)
+  - NLME baseline with log-normal random effects (diagonal Omega)
 - A deterministic validation path and a performance path (SIMD / parallelism)
 
 ### 2.2 Non-goals (near-term)

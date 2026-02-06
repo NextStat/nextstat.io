@@ -750,6 +750,62 @@ fn validate_f64_vec(name: &str, xs: &[f64], dim: usize) -> PyResult<()> {
     Ok(())
 }
 
+fn validate_nuts_config(
+    n_chains: usize,
+    _n_warmup: usize,
+    n_samples: usize,
+    max_treedepth: usize,
+    target_accept: f64,
+    init_jitter: f64,
+    init_jitter_rel: Option<f64>,
+    init_overdispersed_rel: Option<f64>,
+) -> PyResult<()> {
+    if n_chains == 0 {
+        return Err(PyValueError::new_err("n_chains must be >= 1"));
+    }
+    if n_samples == 0 {
+        return Err(PyValueError::new_err("n_samples must be >= 1"));
+    }
+    if max_treedepth == 0 {
+        return Err(PyValueError::new_err("max_treedepth must be >= 1"));
+    }
+    if !target_accept.is_finite() || !(0.0 < target_accept && target_accept < 1.0) {
+        return Err(PyValueError::new_err(
+            "target_accept must be finite and in (0,1)",
+        ));
+    }
+
+    if !init_jitter.is_finite() || init_jitter < 0.0 {
+        return Err(PyValueError::new_err(
+            "init_jitter must be finite and >= 0",
+        ));
+    }
+    if let Some(v) = init_jitter_rel {
+        if !v.is_finite() || v <= 0.0 {
+            return Err(PyValueError::new_err(
+                "init_jitter_rel must be finite and > 0",
+            ));
+        }
+    }
+    if let Some(v) = init_overdispersed_rel {
+        if !v.is_finite() || v <= 0.0 {
+            return Err(PyValueError::new_err(
+                "init_overdispersed_rel must be finite and > 0",
+            ));
+        }
+    }
+
+    let init_modes = (init_jitter > 0.0) as u8
+        + init_jitter_rel.is_some() as u8
+        + init_overdispersed_rel.is_some() as u8;
+    if init_modes > 1 {
+        return Err(PyValueError::new_err(
+            "init_jitter, init_jitter_rel, init_overdispersed_rel are mutually exclusive",
+        ));
+    }
+    Ok(())
+}
+
 /// Posterior wrapper: provides constrained and unconstrained log-density evaluation.
 ///
 /// Notes:
@@ -3873,6 +3929,17 @@ fn sample<'py>(
     init_overdispersed_rel: Option<f64>,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
+    validate_nuts_config(
+        n_chains,
+        n_warmup,
+        n_samples,
+        max_treedepth,
+        target_accept,
+        init_jitter,
+        init_jitter_rel,
+        init_overdispersed_rel,
+    )?;
+
     let config = NutsConfig {
         max_treedepth,
         target_accept,

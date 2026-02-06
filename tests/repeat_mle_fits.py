@@ -430,20 +430,6 @@ def _summarize_runs(
     }
 
 
-    cross_pyhf_at_ns = [
-        float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
-        for r in rows
-        if r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat") is not None
-    ]
-    cross_ns_at_pyhf = [
-        float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
-        for r in rows
-        if r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat") is not None
-    ]
-
-    # (old summary code removed)
-
-
 def _write_summary(
     *,
     out_json: Path,
@@ -510,8 +496,12 @@ def _write_summary(
     lines.append("|---|---:|---:|---:|---:|---:|---|")
     for ws in ws_summaries:
         s = ws["summary"]
-        py = s["pyhf"]
-        ns = s["nextstat"]
+        py = s["pyhf"]  # selected: NextStat-converged paired runs
+        ns = s["nextstat"]  # selected: NextStat-converged paired runs
+        sel = s.get("selection", {})
+        all_ok = s.get("all_ok", {})
+        py_all = all_ok.get("pyhf", {})
+        ns_all = all_ok.get("nextstat", {})
         py_t = float(py["fit_wall_s"]["mean"])
         ns_t = float(ns["fit_wall_s"]["mean"])
         speed = (py_t / ns_t) if (math.isfinite(py_t) and math.isfinite(ns_t) and ns_t > 0) else float("nan")
@@ -522,11 +512,29 @@ def _write_summary(
         ns_p50 = float(ns["fit_wall_s"]["p50"])
         ns_p90 = float(ns["fit_wall_s"]["p90"])
         notes = ""
+        try:
+            n_total = int(sel.get("n_total_runs", 0))
+            n_ok_ns = int(sel.get("n_nextstat_ok", 0))
+            n_sel = int(sel.get("n_nextstat_converged", 0))
+            conv_rate = float(ns_all.get("converged_rate", float("nan")))
+            notes = f"selected={n_sel}/{n_total}; conv={n_sel}/{n_ok_ns} (rate={conv_rate:.3g})"
+        except Exception:
+            pass
         if math.isfinite(py_nll) and math.isfinite(ns_nll):
             if ns_nll < py_nll:
-                notes = "nextstat nll < pyhf"
+                notes = (notes + "; " if notes else "") + "nextstat nll < pyhf"
             elif py_nll < ns_nll:
-                notes = "pyhf nll < nextstat"
+                notes = (notes + "; " if notes else "") + "pyhf nll < nextstat"
+
+        # Show all-ok speedup too (includes non-converged cost, if any).
+        try:
+            py_all_t = float(((py_all.get("fit_wall_s") or {}).get("mean")))
+            ns_all_t = float(((ns_all.get("fit_wall_s") or {}).get("mean")))
+            speed_all = (py_all_t / ns_all_t) if (math.isfinite(py_all_t) and math.isfinite(ns_all_t) and ns_all_t > 0) else float("nan")
+            if math.isfinite(speed_all):
+                notes = (notes + "; " if notes else "") + f"speedup_all_ok={speed_all:.2f}x"
+        except Exception:
+            pass
         lines.append(
             f"| `{ws['path']}` | {py_t:.6f}/{py_p50:.6f}/{py_p90:.6f} | {ns_t:.6f}/{ns_p50:.6f}/{ns_p90:.6f} | {speed:.2f}x | {py_nll:.6g} | {ns_nll:.6g} | {notes} |"
         )

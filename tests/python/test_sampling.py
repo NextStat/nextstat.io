@@ -153,6 +153,40 @@ class TestSampleNonSlowGates:
 
 
 # ---------------------------------------------------------------------------
+# Input validation (fast, deterministic)
+# ---------------------------------------------------------------------------
+
+class TestSampleInputValidation:
+    def test_target_accept_out_of_range_raises(self):
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="target_accept must be finite and in"):
+            nextstat.sample(model, n_chains=1, n_warmup=10, n_samples=10, seed=1, target_accept=1.0)
+
+    def test_max_treedepth_zero_raises(self):
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="max_treedepth must be"):
+            nextstat.sample(model, n_chains=1, n_warmup=10, n_samples=10, seed=1, max_treedepth=0)
+
+    def test_negative_init_jitter_raises(self):
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="init_jitter must be"):
+            nextstat.sample(model, n_chains=1, n_warmup=10, n_samples=10, seed=1, init_jitter=-1.0)
+
+    def test_mutually_exclusive_init_modes_raises(self):
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            nextstat.sample(
+                model,
+                n_chains=1,
+                n_warmup=10,
+                n_samples=10,
+                seed=1,
+                init_jitter=0.1,
+                init_jitter_rel=0.1,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Quality gates
 # ---------------------------------------------------------------------------
 
