@@ -289,6 +289,11 @@ def main() -> int:
     ap.add_argument("--histfactory-warmup", type=int, default=None)
     ap.add_argument("--histfactory-samples", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="Use standards-like thresholds (rhat/divergence). May require longer runs to pass.",
+    )
     ap.add_argument("--rhat-max", type=float, default=1.10)
     ap.add_argument("--divergence-rate-max", type=float, default=0.05)
     ap.add_argument("--max-treedepth-rate-max", type=float, default=0.10)
@@ -302,6 +307,22 @@ def main() -> int:
     ap.add_argument("--histfactory-ess-tail-min", type=float, default=None)
     ap.add_argument("--no-determinism-check", action="store_true")
     args = ap.parse_args()
+
+    if args.strict:
+        # Standards (docs/plans/standards.md): R-hat < 1.01 on toy problems and divergence rate < 1%.
+        # This runner stays small/fast by default, so strict mode can fail unless warmup/samples are increased.
+        args.rhat_max = min(float(args.rhat_max), 1.01)
+        args.divergence_rate_max = min(float(args.divergence_rate_max), 0.01)
+        # If the user didn't override the smoke defaults, bump the run length to make strict mode
+        # realistically passable on simple toy models.
+        if int(args.warmup) == 200:
+            args.warmup = 400
+        if int(args.samples) == 200:
+            args.samples = 400
+        if int(args.funnel_warmup) == 300:
+            args.funnel_warmup = 600
+        if int(args.funnel_samples) == 300:
+            args.funnel_samples = 600
 
     t0 = time.time()
     report: Dict[str, Any] = {
@@ -317,6 +338,7 @@ def main() -> int:
             "histfactory_warmup": int(args.histfactory_warmup) if args.histfactory_warmup is not None else None,
             "histfactory_samples": int(args.histfactory_samples) if args.histfactory_samples is not None else None,
             "seed": int(args.seed),
+            "strict": bool(args.strict),
             "thresholds": {
                 "rhat_max": float(args.rhat_max),
                 "divergence_rate_max": float(args.divergence_rate_max),
@@ -385,6 +407,18 @@ def main() -> int:
     hf_ess_bulk_min = float(args.histfactory_ess_bulk_min) if args.histfactory_ess_bulk_min is not None else 2.0
     hf_ess_tail_min = float(args.histfactory_ess_tail_min) if args.histfactory_ess_tail_min is not None else 2.0
 
+    def _extra_gates(row: Mapping[str, Any]) -> List[str]:
+        # These checks cover failure modes that diagnostics alone won't catch.
+        checks = row.get("checks") if isinstance(row.get("checks"), dict) else {}
+        failures: List[str] = []
+        if isinstance(checks.get("energies_all_finite"), bool) and not bool(checks["energies_all_finite"]):
+            failures.append("energies_not_finite")
+        if isinstance(checks.get("posterior_mean_mu_gt_5"), bool) and not bool(checks["posterior_mean_mu_gt_5"]):
+            failures.append("posterior_prior_not_applied")
+        if isinstance(checks.get("determinism_ok"), bool) and not bool(checks["determinism_ok"]):
+            failures.append("determinism_failed")
+        return failures
+
     any_failed = False
     for row in cases:
         summary = row.get("summary") if isinstance(row.get("summary"), dict) else None
@@ -421,10 +455,11 @@ def main() -> int:
             ess_tail_min=float(thresholds_used["ess_tail_min"]),
             ebfmi_min=float(thresholds_used["ebfmi_min"]),
         )
-        row["ok"] = bool(ok)
-        row["failures"] = failures
+        extra = _extra_gates(row)
+        row["ok"] = bool(ok) and not extra
+        row["failures"] = list(failures) + list(extra)
         row["thresholds_used"] = thresholds_used
-        if not ok:
+        if not row["ok"]:
             any_failed = True
 
     report["cases"] = cases

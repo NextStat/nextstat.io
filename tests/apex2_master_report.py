@@ -465,6 +465,11 @@ def main() -> int:
         help="Also run the NUTS quality report and embed it (fast; JSON artifact).",
     )
     ap.add_argument(
+        "--nuts-quality-strict",
+        action="store_true",
+        help="Pass --strict to tests/apex2_nuts_quality_report.py (standards-like thresholds).",
+    )
+    ap.add_argument(
         "--nuts-quality-cases",
         type=str,
         default="gaussian,posterior,funnel,linear,histfactory",
@@ -579,6 +584,8 @@ def main() -> int:
             "--seed",
             str(int(args.nuts_quality_seed)),
         ]
+        if args.nuts_quality_strict:
+            nuts_cmd.append("--strict")
         rc_nuts, out_nuts = _run_json(nuts_cmd, cwd=cwd, env=env)
         nuts_report = _read_json(args.nuts_quality_out) if args.nuts_quality_out.exists() else None
         nuts_declared = (nuts_report or {}).get("status") if isinstance(nuts_report, dict) else None
