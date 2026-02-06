@@ -1,13 +1,26 @@
 # Benchmarks
 
-NextStat uses [Criterion.rs](https://crates.io/crates/criterion) for Rust micro-benchmarks.
+NextStat has two benchmark layers:
 
-This doc focuses on pragmatic workflows:
-- running benches locally (full vs quick)
-- saving and comparing baselines
-- CI workflows used for bench compilation and opt-in perf smoke
+1. **Rust micro-benchmarks** (Criterion.rs) — low-level NLL, gradient, fit kernels
+2. **Python end-to-end benchmarks** (Apex2) — full GLM fit/predict, pyhf parity, regression baselines
 
-## Local Runs
+## Rust Micro-Benchmarks (Criterion)
+
+[Criterion.rs](https://crates.io/crates/criterion) benchmarks live in `crates/ns-inference/benches/`.
+
+Available benchmarks:
+
+| Bench file | What it measures |
+|------------|-----------------|
+| `mle_benchmark.rs` | HistFactory MLE fit (single + batch) |
+| `glm_fit_predict_benchmark.rs` | GLM fit + predict for all families |
+| `regression_benchmark.rs` | GLM regression NLL/gradient |
+| `nuts_benchmark.rs` | NUTS sampler (warmup + sampling) |
+| `kalman_benchmark.rs` | Kalman filter/smoother/EM |
+| `hier_benchmark.rs` | Hierarchical model NLL/gradient |
+
+### Local Runs
 
 Run all benches (slow):
 
@@ -15,7 +28,7 @@ Run all benches (slow):
 cargo bench --workspace
 ```
 
-Run a common entry point:
+Run a specific bench:
 
 ```bash
 cargo bench -p ns-inference --bench mle_benchmark
@@ -23,7 +36,7 @@ cargo bench -p ns-inference --bench mle_benchmark
 
 Criterion writes HTML reports to `target/criterion/**/report/index.html`.
 
-## Quick Mode
+### Quick Mode
 
 For fast iteration (less stable numbers):
 
@@ -33,7 +46,7 @@ cargo bench -p ns-inference --bench mle_benchmark -- --quick
 
 Use `--quick` for CI smoke runs. Do not use quick mode for published numbers.
 
-## Baselines (Criterion)
+### Baselines (Criterion)
 
 Save a baseline:
 
@@ -48,6 +61,90 @@ cargo bench -p ns-inference --bench mle_benchmark -- --baseline main
 ```
 
 Baselines are stored under `target/criterion`.
+
+## Python End-to-End Benchmarks (Apex2)
+
+The Apex2 validation system runs full Python-level benchmarks and produces machine-readable JSON reports.
+
+### Apex2 Runners
+
+| Script | What it measures | Output |
+|--------|-----------------|--------|
+| `tests/apex2_pyhf_validation_report.py` | NLL/expected_data parity vs pyhf + speedup | `tmp/apex2_pyhf_report.json` |
+| `tests/benchmark_glm_fit_predict.py` | GLM fit/predict timing (linear/logistic/poisson/negbin) | `tmp/p6_glm_fit_predict.json` |
+| `tests/apex2_p6_glm_benchmark_report.py` | P6 GLM regression vs baseline (slowdown detection) | `tmp/apex2_p6_glm_bench_report.json` |
+| `tests/apex2_sbc_report.py` | SBC posterior calibration (NUTS) | `tmp/apex2_sbc_report.json` |
+| `tests/apex2_master_report.py` | Aggregates all runners into one report | `tmp/apex2_master_report.json` |
+
+### Recording Baselines
+
+Use `tests/record_baseline.py` to record reference baselines with a full environment fingerprint:
+
+```bash
+PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py
+```
+
+This records both pyhf and P6 GLM baselines to `tmp/baselines/` with:
+- machine hostname + timestamp in filename
+- full environment metadata (Python, pyhf, nextstat, numpy versions, git commit, CPU, platform)
+- a `latest_manifest.json` linking both baseline files
+
+Options:
+
+```bash
+# Record only pyhf baseline
+python tests/record_baseline.py --only pyhf
+
+# Record only P6 GLM baseline
+python tests/record_baseline.py --only p6
+
+# Custom GLM benchmark parameters
+python tests/record_baseline.py --sizes 200,2000,20000 --p 20
+```
+
+### Comparing Against Baselines
+
+```bash
+# Compare current P6 GLM run against recorded baseline
+PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
+  --baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
+  --out tmp/apex2_p6_glm_bench_report.json
+
+# Or via the master report
+PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/apex2_master_report.py \
+  --p6-glm-bench \
+  --p6-glm-bench-baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json
+```
+
+The comparison uses a configurable slowdown threshold (default 1.3x) and skips sub-millisecond timings as too noisy.
+
+### Baseline Environment Fingerprint
+
+Every baseline JSON includes a `baseline_env` block:
+
+```json
+{
+  "baseline_env": {
+    "timestamp": 1770389196,
+    "datetime_utc": "2026-02-06T14:46:36Z",
+    "hostname": "MacBook-Pro.local",
+    "python": "3.13.11",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu": "Apple M5",
+    "nextstat_version": "0.1.0",
+    "pyhf_version": "0.7.6",
+    "numpy_version": "2.4.2",
+    "git": {
+      "commit": "82418b01...",
+      "branch": "main",
+      "dirty": false
+    }
+  }
+}
+```
+
+For detailed Apex2 methodology (cluster jobs, ROOT parity, etc.) see [docs/tutorials/root-trexfitter-parity.md](tutorials/root-trexfitter-parity.md).
 
 ## CI
 

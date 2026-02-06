@@ -472,6 +472,10 @@ def plot_kalman_states(
             if i < 0 or i >= n_state:
                 raise ValueError(f"state index out of range: {i} (n_state={n_state})")
 
+    if labels is None:
+        art_labels = artifact.get("state_labels")
+        if isinstance(art_labels, (list, tuple)) and len(art_labels) >= n_state:
+            labels = [str(art_labels[i]) for i in idxs]
     if labels is not None and len(labels) != len(idxs):
         raise ValueError("labels length must match state_indices")
 
@@ -551,6 +555,10 @@ def plot_kalman_obs_grid(
             if i < 0 or i >= n_obs:
                 raise ValueError(f"obs index out of range: {i} (n_obs={n_obs})")
 
+    if labels is None:
+        art_labels = artifact.get("obs_labels")
+        if isinstance(art_labels, (list, tuple)) and len(art_labels) >= n_obs:
+            labels = [str(art_labels[i]) for i in idxs]
     if labels is not None and len(labels) != len(idxs):
         raise ValueError("labels length must match obs_indices")
 

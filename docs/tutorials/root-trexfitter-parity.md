@@ -197,8 +197,10 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/explain_pyhf_vs_nextst
 - for pyhf speedups see `tmp/apex2_pyhf_report.json` (and in `tmp/apex2_master_report.json` under `pyhf.stdout_tail`/`pyhf.report`)
 - for ROOT suite speedups see `tmp/apex2_root_suite_report.json` under `cases[*].perf.speedup_nextstat_vs_root_scan` (this is `root_profile_scan_wall / nextstat_profile_scan`)
 Baseline artifacts to archive and compare across environments:
-- pyhf parity: `tmp/apex2_pyhf_report.json` (includes NLL timings and optional fit timings)
-- P6 GLM: `tmp/p6_glm_fit_predict_baseline.json` (compare with `tests/apex2_p6_glm_benchmark_report.py`)
+- **Recommended:** use `tests/record_baseline.py` to record both pyhf + P6 baselines with environment fingerprint into `tmp/baselines/`
+- pyhf parity: `tmp/baselines/pyhf_baseline_<host>_<date>.json` (includes NLL timings and optional fit timings)
+- P6 GLM: `tmp/baselines/p6_glm_baseline_<host>_<date>.json` (compare with `tests/apex2_p6_glm_benchmark_report.py`)
+- Manifest: `tmp/baselines/latest_manifest.json` (links to both + full env fingerprint)
 - ROOT/TRExFitter: `tmp/apex2_root_suite_report.json` (and optionally per-case `tmp/root_parity_suite/*/run_*/summary.json`)
 
 ### Cookbook: examples for all options
@@ -474,12 +476,43 @@ How this ties into NextStat parity:
 ## P6 benchmarks: end-to-end fit/predict baselines (GLM)
 
 What already exists in the codebase:
+- Baseline recorder: `tests/record_baseline.py` (records both pyhf + P6 GLM baselines with full environment fingerprint).
 - Python end-to-end benchmark: `tests/benchmark_glm_fit_predict.py` (linear/logistic/poisson/negbin; fit + predict; writes JSON via `--out`).
 - Apex2 P6 report wrapper: `tests/apex2_p6_glm_benchmark_report.py` (compares against a baseline JSON).
 - Integrated into the master report: `tests/apex2_master_report.py --p6-glm-bench ...`.
 - Rust Criterion bench: `cargo bench -p ns-inference --bench glm_fit_predict_benchmark`.
 
-Examples:
+### Recording baselines (recommended)
+
+Use the unified baseline recorder to capture both pyhf and P6 GLM baselines with a complete environment fingerprint (Python/pyhf/nextstat/numpy versions, git commit, CPU, hostname, timestamp):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
+```
+
+Output (in `tmp/baselines/`):
+
+```
+pyhf_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
+p6_glm_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
+baseline_manifest_<hostname>_<YYYYMMDD_HHMMSS>.json   # links both + env fingerprint
+latest_manifest.json                                    # always points to last recorded baseline
+```
+
+Options:
+
+```bash
+# Record only pyhf baseline
+python tests/record_baseline.py --only pyhf
+
+# Record only P6 GLM baseline
+python tests/record_baseline.py --only p6
+
+# Custom sizes / features
+python tests/record_baseline.py --sizes 200,2000,20000 --p 20 --nb-alpha 0.5
+```
+
+### Manual baseline generation (alternative)
 
 1) Generate a baseline JSON (once on a reference machine):
 
@@ -488,11 +521,13 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/benchmark_glm_fit_pred
   --sizes 200,2000,20000 --p 20 --out tmp/p6_glm_fit_predict_baseline.json
 ```
 
+### Comparing against baselines
+
 2) Run a current benchmark and compare to the baseline:
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
-  --baseline tmp/p6_glm_fit_predict_baseline.json \
+  --baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
   --bench-out tmp/p6_glm_fit_predict_current.json \
   --out tmp/apex2_p6_glm_bench_report.json
 ```
@@ -502,7 +537,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_p6_glm_benchmark
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
   --p6-glm-bench \
-  --p6-glm-bench-baseline tmp/p6_glm_fit_predict_baseline.json \
+  --p6-glm-bench-baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
   --p6-glm-bench-out tmp/p6_glm_fit_predict_current.json
 ```
 
