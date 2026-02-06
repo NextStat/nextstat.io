@@ -215,6 +215,29 @@ def test_fit_batch_contract_model_and_datasets():
         assert isinstance(r.nll, float)
         assert isinstance(r.success, bool)
 
+
+def test_fit_batch_function_contract_matches_object_method():
+    ws = load_fixture("simple_workspace.json")
+    m0 = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+    m1 = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    results_fn = nextstat.fit_batch([m0, m1])
+    assert isinstance(results_fn, list)
+    assert len(results_fn) == 2
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    results_obj = mle.fit_batch([m0, m1])
+    assert len(results_obj) == len(results_fn)
+
+
+def test_fit_batch_function_supports_non_histfactory_models():
+    m0 = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+    m1 = nextstat.GaussianMeanModel([0.2, 1.2, 2.2], 1.0)
+
+    results = nextstat.fit_batch([m0, m1])
+    assert isinstance(results, list)
+    assert len(results) == 2
+
 def test_fit_batch_contract_list_of_gaussian_models():
     m0 = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
     m1 = nextstat.GaussianMeanModel([0.2, 1.2, 2.2], 1.0)

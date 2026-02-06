@@ -29,6 +29,7 @@ import random
 import sys
 import time
 import timeit
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -341,8 +342,10 @@ def main() -> int:
             )
             continue
 
-        def ns_params(py_params: List[float]) -> List[float]:
-            return map_params_by_name(py_names, py_params, ns_names, ns_init)
+        def ns_params(py_params: List[float]) -> array:
+            # Use a buffer-protocol object to avoid per-element Python float extraction
+            # for large parameter vectors (e.g. shapesys gamma per bin).
+            return array("d", map_params_by_name(py_names, py_params, ns_names, ns_init))
 
         # Parity checks: init + random points (+ POI variations)
         points: List[Tuple[str, List[float]]] = [("suggested_init", py_init)]
