@@ -388,7 +388,7 @@ struct PyComposedGlmModel {
 impl PyComposedGlmModel {
     /// Build a composed Gaussian linear regression model (sigma fixed to 1).
     #[staticmethod]
-    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0))]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false))]
     fn linear_regression(
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
@@ -397,6 +397,7 @@ impl PyComposedGlmModel {
         n_groups: Option<usize>,
         coef_prior_mu: f64,
         coef_prior_sigma: f64,
+        penalize_intercept: bool,
     ) -> PyResult<Self> {
         if group_idx.is_none() && n_groups.is_some() {
             return Err(PyValueError::new_err("n_groups requires group_idx"));
@@ -407,6 +408,7 @@ impl PyComposedGlmModel {
         b = b
             .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b.with_penalize_intercept(penalize_intercept);
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -421,7 +423,7 @@ impl PyComposedGlmModel {
 
     /// Build a composed logistic regression model (Bernoulli-logit).
     #[staticmethod]
-    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0))]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false))]
     fn logistic_regression(
         x: Vec<Vec<f64>>,
         y: Vec<u8>,
@@ -430,6 +432,7 @@ impl PyComposedGlmModel {
         n_groups: Option<usize>,
         coef_prior_mu: f64,
         coef_prior_sigma: f64,
+        penalize_intercept: bool,
     ) -> PyResult<Self> {
         if group_idx.is_none() && n_groups.is_some() {
             return Err(PyValueError::new_err("n_groups requires group_idx"));
@@ -440,6 +443,43 @@ impl PyComposedGlmModel {
         b = b
             .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b.with_penalize_intercept(penalize_intercept);
+
+        if let Some(group_idx) = group_idx {
+            let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
+            b = b
+                .with_random_intercept(group_idx, ng)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        }
+
+        let inner = b.build().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    /// Build a composed Poisson regression model (log link) with optional offset.
+    #[staticmethod]
+    #[pyo3(signature = (x, y, *, include_intercept=true, offset=None, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false))]
+    fn poisson_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<u64>,
+        include_intercept: bool,
+        offset: Option<Vec<f64>>,
+        group_idx: Option<Vec<usize>>,
+        n_groups: Option<usize>,
+        coef_prior_mu: f64,
+        coef_prior_sigma: f64,
+        penalize_intercept: bool,
+    ) -> PyResult<Self> {
+        if group_idx.is_none() && n_groups.is_some() {
+            return Err(PyValueError::new_err("n_groups requires group_idx"));
+        }
+
+        let mut b = RustModelBuilder::poisson_regression(x, y, include_intercept, offset)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b
+            .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b.with_penalize_intercept(penalize_intercept);
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);

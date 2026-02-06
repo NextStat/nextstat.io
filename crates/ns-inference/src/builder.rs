@@ -86,6 +86,7 @@ impl NormalPrior {
 enum Likelihood {
     GaussianY { y: Vec<f64> },      // sigma fixed to 1
     BernoulliLogitY { y: Vec<u8> }, // y in {0,1}
+    PoissonY { y: Vec<u64>, offset: Option<Vec<f64>> }, // y >= 0, log link
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +141,7 @@ pub struct ComposedGlmModel {
     include_intercept: bool,
     likelihood: Likelihood,
     coef_prior: NormalPrior, // applied to intercept (if present) + all beta_j
+    penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
 }
 
@@ -178,6 +180,29 @@ impl ComposedGlmModel {
                 }
                 if y.iter().any(|&v| v > 1) {
                     return Err(Error::Validation("y must contain only 0/1".to_string()));
+                }
+            }
+            Likelihood::PoissonY { y, offset } => {
+                if y.len() != n {
+                    return Err(Error::Validation(format!(
+                        "y length must match n: expected {}, got {}",
+                        n,
+                        y.len()
+                    )));
+                }
+                if let Some(off) = offset {
+                    if off.len() != n {
+                        return Err(Error::Validation(format!(
+                            "offset length must match n: expected {}, got {}",
+                            n,
+                            off.len()
+                        )));
+                    }
+                    if off.iter().any(|v| !v.is_finite()) {
+                        return Err(Error::Validation(
+                            "offset must contain only finite values".to_string(),
+                        ));
+                    }
                 }
             }
         }
@@ -267,7 +292,7 @@ impl LogDensityModel for ComposedGlmModel {
         // Coefficient priors (independent Normal, up to additive constant).
         let coef_mu = self.coef_prior.mu;
         let coef_sig2 = self.coef_prior.sigma * self.coef_prior.sigma;
-        if self.include_intercept {
+        if self.include_intercept && self.penalize_intercept {
             let v = params[0] - coef_mu;
             nll += 0.5 * v * v / coef_sig2;
         }
@@ -332,6 +357,14 @@ impl LogDensityModel for ComposedGlmModel {
                     let yi = y[i] as f64;
                     nll += log1pexp(eta) - yi * eta;
                 }
+                Likelihood::PoissonY { y, offset } => {
+                    let mut eta2 = eta;
+                    if let Some(off) = offset {
+                        eta2 += off[i];
+                    }
+                    let mu = eta2.exp();
+                    nll += mu - (y[i] as f64) * eta2;
+                }
             }
         }
 
@@ -348,7 +381,7 @@ impl LogDensityModel for ComposedGlmModel {
         // Coefficient priors.
         let coef_mu = self.coef_prior.mu;
         let coef_sig2 = self.coef_prior.sigma * self.coef_prior.sigma;
-        if self.include_intercept {
+        if self.include_intercept && self.penalize_intercept {
             grad[0] += (params[0] - coef_mu) / coef_sig2;
         }
         let beta_offset = if self.include_intercept { 1 } else { 0 };
@@ -416,6 +449,13 @@ impl LogDensityModel for ComposedGlmModel {
             let d_eta = match &self.likelihood {
                 Likelihood::GaussianY { y } => eta - y[i],
                 Likelihood::BernoulliLogitY { y } => sigmoid(eta) - (y[i] as f64),
+                Likelihood::PoissonY { y, offset } => {
+                    let mut eta2 = eta;
+                    if let Some(off) = offset {
+                        eta2 += off[i];
+                    }
+                    eta2.exp() - (y[i] as f64)
+                }
             };
 
             if self.include_intercept {
@@ -445,6 +485,7 @@ pub struct ModelBuilder {
     include_intercept: bool,
     likelihood: Likelihood,
     coef_prior: NormalPrior,
+    penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
 }
 
@@ -468,6 +509,7 @@ impl ModelBuilder {
             include_intercept,
             likelihood: Likelihood::GaussianY { y },
             coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
+            penalize_intercept: false,
             random_intercept: None,
         })
     }
@@ -494,6 +536,44 @@ impl ModelBuilder {
             include_intercept,
             likelihood: Likelihood::BernoulliLogitY { y },
             coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
+            penalize_intercept: false,
+            random_intercept: None,
+        })
+    }
+
+    /// Start a Poisson regression builder (log link) with optional offset.
+    pub fn poisson_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<u64>,
+        include_intercept: bool,
+        offset: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        let x = DenseX::from_rows(x)?;
+        if y.len() != x.n {
+            return Err(Error::Validation(format!(
+                "y length must match n: expected {}, got {}",
+                x.n,
+                y.len()
+            )));
+        }
+        if let Some(off) = &offset {
+            if off.len() != x.n {
+                return Err(Error::Validation(format!(
+                    "offset length must match n: expected {}, got {}",
+                    x.n,
+                    off.len()
+                )));
+            }
+            if off.iter().any(|v| !v.is_finite()) {
+                return Err(Error::Validation("offset must contain only finite values".to_string()));
+            }
+        }
+        Ok(Self {
+            x,
+            include_intercept,
+            likelihood: Likelihood::PoissonY { y, offset },
+            coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
+            penalize_intercept: false,
             random_intercept: None,
         })
     }
@@ -502,6 +582,14 @@ impl ModelBuilder {
     pub fn with_coef_prior_normal(mut self, mu: f64, sigma: f64) -> Result<Self> {
         self.coef_prior = NormalPrior { mu, sigma }.validate()?;
         Ok(self)
+    }
+
+    /// Whether to apply the coefficient prior to the intercept term.
+    ///
+    /// Default is `false` (common ridge convention).
+    pub fn with_penalize_intercept(mut self, penalize_intercept: bool) -> Self {
+        self.penalize_intercept = penalize_intercept;
+        self
     }
 
     /// Add a Normal random intercept with hyperparameters (mu_alpha, sigma_alpha).
@@ -549,6 +637,7 @@ impl ModelBuilder {
             include_intercept: self.include_intercept,
             likelihood: self.likelihood,
             coef_prior: self.coef_prior.validate()?,
+            penalize_intercept: self.penalize_intercept,
             random_intercept: self.random_intercept,
         };
         m.validate()?;
@@ -559,7 +648,7 @@ impl ModelBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::regression::{LinearRegressionModel, LogisticRegressionModel};
+    use crate::regression::{LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel};
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]
@@ -568,6 +657,7 @@ mod tests {
         include_intercept: bool,
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
+        offset: Option<Vec<f64>>,
         beta_hat: Vec<f64>,
         nll_at_hat: f64,
     }
@@ -637,6 +727,43 @@ mod tests {
             .unwrap()
             .build()
             .unwrap();
+
+        let nll_e = explicit.nll(&fx.beta_hat).unwrap();
+        let nll_b = built.nll(&fx.beta_hat).unwrap();
+        assert!((nll_e - nll_b).abs() < 1e-10);
+        assert!((nll_b - fx.nll_at_hat).abs() < 1e-6);
+
+        let g_e = explicit.grad_nll(&fx.beta_hat).unwrap();
+        let g_b = built.grad_nll(&fx.beta_hat).unwrap();
+        assert_vec_close(&g_e, &g_b, 1e-8);
+        assert!(inf_norm(&g_b) < 1e-6);
+    }
+
+    #[test]
+    fn test_builder_poisson_regression_matches_explicit_model_at_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        assert_eq!(fx.kind, "poisson");
+        let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
+
+        let explicit = PoissonRegressionModel::new(
+            fx.x.clone(),
+            y.clone(),
+            fx.include_intercept,
+            fx.offset.clone(),
+        )
+        .unwrap();
+
+        let built = ModelBuilder::poisson_regression(
+            fx.x.clone(),
+            y,
+            fx.include_intercept,
+            fx.offset.clone(),
+        )
+        .unwrap()
+        .with_coef_prior_normal(0.0, 1e9)
+        .unwrap()
+        .build()
+        .unwrap();
 
         let nll_e = explicit.nll(&fx.beta_hat).unwrap();
         let nll_b = built.nll(&fx.beta_hat).unwrap();

@@ -88,6 +88,7 @@ class ComposedGlmModel:
         n_groups: Optional[int] = ...,
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
+        penalize_intercept: bool = ...,
     ) -> ComposedGlmModel: ...
 
     @staticmethod
@@ -100,6 +101,21 @@ class ComposedGlmModel:
         n_groups: Optional[int] = ...,
         coef_prior_mu: float = ...,
         coef_prior_sigma: float = ...,
+        penalize_intercept: bool = ...,
+    ) -> ComposedGlmModel: ...
+
+    @staticmethod
+    def poisson_regression(
+        x: List[List[float]],
+        y: List[int],
+        *,
+        include_intercept: bool = ...,
+        offset: Optional[List[float]] = ...,
+        group_idx: Optional[List[int]] = ...,
+        n_groups: Optional[int] = ...,
+        coef_prior_mu: float = ...,
+        coef_prior_sigma: float = ...,
+        penalize_intercept: bool = ...,
     ) -> ComposedGlmModel: ...
 
     def n_params(self) -> int: ...

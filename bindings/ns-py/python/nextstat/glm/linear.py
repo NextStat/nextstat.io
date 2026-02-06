@@ -8,9 +8,9 @@ This is a high-level Python surface that wraps:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
-from ._linalg import add_intercept, as_2d_float_list, mat_inv, mat_mul, mat_t, mat_vec_mul
+from ._linalg import add_intercept, as_2d_float_list, mat_inv, mat_mul, mat_t, mat_vec_mul, solve_linear
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,8 @@ def fit(
     y: Sequence[float],
     *,
     include_intercept: bool = True,
+    l2: Optional[float] = None,
+    penalize_intercept: bool = False,
 ) -> LinearFit:
     import nextstat
 
@@ -42,13 +44,24 @@ def fit(
     if len(x2) != len(y2):
         raise ValueError("X and y must have the same length")
 
-    coef = nextstat._core.ols_fit(x2, y2, include_intercept=include_intercept)
-
     xd = add_intercept(x2) if include_intercept else x2
     n = len(y2)
-    k = len(coef)
+    k = (len(xd[0]) if xd else 0)
     if n <= k:
         raise ValueError("Need n > n_params to compute sigma2_hat")
+
+    if l2 is None or float(l2) <= 0.0:
+        coef = nextstat._core.ols_fit(x2, y2, include_intercept=include_intercept)
+    else:
+        lam = float(l2)
+        xt = mat_t(xd)
+        xtx = mat_mul(xt, xd)
+        xty = mat_vec_mul(xt, y2)
+        for i in range(k):
+            if include_intercept and not penalize_intercept and i == 0:
+                continue
+            xtx[i][i] += lam
+        coef = solve_linear(xtx, xty)
 
     resid = [pred - obs for pred, obs in zip(mat_vec_mul(xd, coef), y2)]
     sse = sum(r * r for r in resid)
@@ -56,6 +69,12 @@ def fit(
 
     xt = mat_t(xd)
     xtx = mat_mul(xt, xd)
+    if l2 is not None and float(l2) > 0.0:
+        lam = float(l2)
+        for i in range(k):
+            if include_intercept and not penalize_intercept and i == 0:
+                continue
+            xtx[i][i] += lam
     xtx_inv = mat_inv(xtx)
     cov = [[sigma2_hat * v for v in row] for row in xtx_inv]
     se = [(cov[i][i] ** 0.5) if cov[i][i] > 0.0 else float("inf") for i in range(k)]

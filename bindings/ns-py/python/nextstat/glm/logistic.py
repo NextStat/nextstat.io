@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 from ._linalg import add_intercept, as_2d_float_list, mat_vec_mul
 
@@ -45,6 +45,8 @@ def fit(
     y: Sequence[int],
     *,
     include_intercept: bool = True,
+    l2: Optional[float] = None,
+    penalize_intercept: bool = False,
 ) -> LogisticFit:
     import nextstat
 
@@ -56,8 +58,21 @@ def fit(
             raise ValueError("y must contain only 0/1 for logistic regression")
         y2.append(iv)
 
-    model = nextstat._core.LogisticRegressionModel(x2, y2, include_intercept=include_intercept)
-    r = nextstat.fit(model)
+    if l2 is None or float(l2) <= 0.0:
+        model = nextstat._core.LogisticRegressionModel(x2, y2, include_intercept=include_intercept)
+        r = nextstat.fit(model)
+    else:
+        lam = float(l2)
+        sigma = 1.0 / math.sqrt(lam)
+        model = nextstat._core.ComposedGlmModel.logistic_regression(
+            x2,
+            y2,
+            include_intercept=include_intercept,
+            coef_prior_mu=0.0,
+            coef_prior_sigma=sigma,
+            penalize_intercept=penalize_intercept,
+        )
+        r = nextstat.fit(model)
 
     return LogisticFit(
         coef=list(r.parameters),

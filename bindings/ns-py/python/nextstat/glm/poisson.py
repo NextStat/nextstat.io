@@ -69,6 +69,8 @@ def fit(
     include_intercept: bool = True,
     offset: Optional[Sequence[float]] = None,
     exposure: Optional[Sequence[float]] = None,
+    l2: Optional[float] = None,
+    penalize_intercept: bool = False,
 ) -> PoissonFit:
     import nextstat
 
@@ -97,13 +99,27 @@ def fit(
     if off2 is not None and len(off2) != len(y2):
         raise ValueError("offset/exposure must have length n")
 
-    model = nextstat._core.PoissonRegressionModel(
-        x2,
-        y2,
-        include_intercept=include_intercept,
-        offset=off2,
-    )
-    r = nextstat.fit(model)
+    if l2 is None or float(l2) <= 0.0:
+        model = nextstat._core.PoissonRegressionModel(
+            x2,
+            y2,
+            include_intercept=include_intercept,
+            offset=off2,
+        )
+        r = nextstat.fit(model)
+    else:
+        lam = float(l2)
+        sigma = 1.0 / math.sqrt(lam)
+        model = nextstat._core.ComposedGlmModel.poisson_regression(
+            x2,
+            y2,
+            include_intercept=include_intercept,
+            offset=off2,
+            coef_prior_mu=0.0,
+            coef_prior_sigma=sigma,
+            penalize_intercept=penalize_intercept,
+        )
+        r = nextstat.fit(model)
 
     return PoissonFit(
         coef=list(r.parameters),
