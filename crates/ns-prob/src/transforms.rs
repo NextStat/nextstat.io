@@ -255,8 +255,23 @@ impl Bijector for SigmoidBijector {
     fn inverse(&self, theta: f64) -> f64 {
         // z = logit((theta - a) / (b - a))
         let p = (theta - self.lower) / self.width;
-        let p = p.clamp(1e-15, 1.0 - 1e-15);
-        (p / (1.0 - p)).ln()
+
+        // Avoid clamping here to preserve the mathematical behavior:
+        // - for theta in (a, b): finite logit(p)
+        // - for theta == a/b: +/-inf (can happen due to IEEE-754 saturation in forward)
+        // - for theta outside [a, b]: NaN (invalid input)
+        if !(p.is_finite()) {
+            return f64::NAN;
+        }
+        if p <= 0.0 {
+            return f64::NEG_INFINITY;
+        }
+        if p >= 1.0 {
+            return f64::INFINITY;
+        }
+
+        // logit(p) with stable ln(1-p) via ln_1p(-p)
+        p.ln() - (-p).ln_1p()
     }
 
     #[inline]
@@ -523,7 +538,7 @@ mod tests {
     #[test]
     fn test_softplus_lower_bounded_roundtrip() {
         let b = SoftplusBijector::new(2.5);
-        let zs = vec![-10.0, -5.0, -1.0, 0.0, 1.0, 5.0, 10.0];
+        let zs = vec![-15.0, -10.0, -5.0, -1.0, 0.0, 1.0, 5.0, 10.0];
         test_bijector_roundtrip(&b, &zs, 1e-10);
     }
 
@@ -594,6 +609,14 @@ mod tests {
             let theta = b.forward(z);
             assert!(theta > 0.0 && theta < 10.0, "theta={} not strictly inside for z={}", theta, z);
         }
+    }
+
+    #[test]
+    fn test_sigmoid_inverse_handles_saturated_boundaries() {
+        // The inverse should map exact boundaries to +/-inf (rather than silently clamping).
+        let b = SigmoidBijector::new(0.0, 10.0);
+        assert!(b.inverse(0.0).is_infinite() && b.inverse(0.0).is_sign_negative());
+        assert!(b.inverse(10.0).is_infinite() && b.inverse(10.0).is_sign_positive());
     }
 
     #[test]
