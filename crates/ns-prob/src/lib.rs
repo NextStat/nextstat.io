@@ -5,13 +5,13 @@
 //! - transforms/bijectors (for constrained parameterizations)
 //! - small numeric helpers (stable log/exp/sigmoid primitives)
 
-pub mod math;
 pub mod bernoulli;
 pub mod beta;
 pub mod binomial;
 pub mod distributions;
 pub mod exponential;
 pub mod gamma;
+pub mod math;
 pub mod neg_binomial;
 pub mod normal;
 pub mod poisson;

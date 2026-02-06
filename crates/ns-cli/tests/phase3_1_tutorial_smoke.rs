@@ -16,10 +16,7 @@ fn fixture_path() -> PathBuf {
 
 fn run_nextstat_json(args: &[&str]) -> serde_json::Value {
     let exe = env!("CARGO_BIN_EXE_nextstat");
-    let out = Command::new(exe)
-        .args(args)
-        .output()
-        .expect("failed to run nextstat");
+    let out = Command::new(exe).args(args).output().expect("failed to run nextstat");
 
     if !out.status.success() {
         panic!(
@@ -88,14 +85,10 @@ fn phase3_1_tutorial_smoke_cli_outputs_have_expected_shape() {
     assert!((0.0..=1.0).contains(&as_f64(&ht, "clsb")));
     assert!(as_f64(&ht, "mu_hat").is_finite());
 
-    let exp = ht
-        .get("expected_set")
-        .and_then(|x| x.as_object())
-        .expect("expected expected_set object");
-    let exp_cls = exp
-        .get("cls")
-        .and_then(|x| x.as_array())
-        .expect("expected expected_set.cls array");
+    let exp =
+        ht.get("expected_set").and_then(|x| x.as_object()).expect("expected expected_set object");
+    let exp_cls =
+        exp.get("cls").and_then(|x| x.as_array()).expect("expected expected_set.cls array");
     assert_eq!(exp_cls.len(), 5);
     for v in exp_cls {
         let x = v.as_f64().expect("expected expected_set.cls elements to be f64");
@@ -120,10 +113,8 @@ fn phase3_1_tutorial_smoke_cli_outputs_have_expected_shape() {
     ]);
     assert!((0.0..=1.0).contains(&as_f64(&ul, "alpha")));
     assert!(as_f64(&ul, "obs_limit").is_finite());
-    let exp_limits = ul
-        .get("exp_limits")
-        .and_then(|x| x.as_array())
-        .expect("expected exp_limits array");
+    let exp_limits =
+        ul.get("exp_limits").and_then(|x| x.as_array()).expect("expected exp_limits array");
     assert_eq!(exp_limits.len(), 5);
 
     // 4) Profile scan
@@ -142,10 +133,7 @@ fn phase3_1_tutorial_smoke_cli_outputs_have_expected_shape() {
     ]);
     assert!(as_f64(&scan, "mu_hat").is_finite());
     assert!(as_f64(&scan, "nll_hat").is_finite());
-    let points = scan
-        .get("points")
-        .and_then(|x| x.as_array())
-        .expect("expected points array");
+    let points = scan.get("points").and_then(|x| x.as_array()).expect("expected points array");
     assert_eq!(points.len(), 21);
     for p in points {
         let mu = p.get("mu").and_then(|x| x.as_f64()).expect("mu must be f64");
@@ -193,4 +181,3 @@ fn phase3_1_tutorial_smoke_cli_outputs_have_expected_shape() {
         .expect("expected points array for cls artifact");
     assert_eq!(cls_points.len(), 31);
 }
-

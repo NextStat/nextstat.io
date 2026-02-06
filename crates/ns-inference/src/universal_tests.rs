@@ -1,7 +1,7 @@
 //! Universal (non-HEP) model tests for Phase 5 `LogDensityModel`.
 
-use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::Result;
+use ns_core::traits::{LogDensityModel, PreparedModelRef};
 
 /// 1D standard Normal negative log-likelihood: `0.5 * x^2 + const`.
 ///

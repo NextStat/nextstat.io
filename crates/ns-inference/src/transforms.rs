@@ -4,12 +4,6 @@
 //! implementation lives in `ns-prob` (Phase 5 shared modeling layer).
 
 pub use ns_prob::transforms::{
-    Bijector,
-    ExpBijector,
-    IdentityBijector,
-    LowerBoundedBijector,
-    SoftplusBijector,
-    UpperBoundedBijector,
-    ParameterTransform,
-    SigmoidBijector,
+    Bijector, ExpBijector, IdentityBijector, LowerBoundedBijector, ParameterTransform,
+    SigmoidBijector, SoftplusBijector, UpperBoundedBijector,
 };

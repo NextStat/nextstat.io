@@ -4,9 +4,9 @@
 //! - `MaximumLikelihoodEstimator` (MLE/MAP)
 //! - `sample_nuts` / `sample_nuts_multichain` (Bayesian sampling)
 
+use nalgebra::{DMatrix, DVector};
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
-use nalgebra::{DMatrix, DVector};
 use ns_prob::math::{log1pexp, sigmoid};
 
 #[inline]
@@ -27,8 +27,7 @@ fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()
     if y_len != n {
         return Err(Error::Validation(format!(
             "y has wrong length: expected n={}, got {}",
-            n,
-            y_len
+            n, y_len
         )));
     }
     Ok(())
@@ -249,7 +248,10 @@ pub fn ols_fit(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> Result
 
     let a = DMatrix::from_row_slice(d, d, &xtx);
     let b = DVector::from_vec(xty);
-    let sol = a.lu().solve(&b).ok_or_else(|| Error::Computation("OLS solve failed (singular XtX)".to_string()))?;
+    let sol = a
+        .lu()
+        .solve(&b)
+        .ok_or_else(|| Error::Computation("OLS solve failed (singular XtX)".to_string()))?;
     Ok(sol.iter().copied().collect())
 }
 
@@ -415,7 +417,9 @@ impl PoissonRegressionModel {
                 )));
             }
             if off.iter().any(|v| !v.is_finite()) {
-                return Err(Error::Validation("offset must contain only finite values".to_string()));
+                return Err(Error::Validation(
+                    "offset must contain only finite values".to_string(),
+                ));
             }
         }
         Ok(Self { x, y, include_intercept, offset })
@@ -434,11 +438,7 @@ impl PoissonRegressionModel {
         } else {
             row_dot(self.x.row(i), params)
         };
-        if let Some(off) = &self.offset {
-            base + off[i]
-        } else {
-            base
-        }
+        if let Some(off) = &self.offset { base + off[i] } else { base }
     }
 }
 
@@ -582,7 +582,8 @@ mod tests {
     #[test]
     fn test_linear_regression_nll_and_grad_at_fixture_hat() {
         let fx = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
-        let m = LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
+        let m =
+            LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
         let nll = m.nll(&fx.beta_hat).unwrap();
         assert!((nll - fx.nll_at_hat).abs() < 1e-8);
         let g = m.grad_nll(&fx.beta_hat).unwrap();
@@ -594,11 +595,7 @@ mod tests {
         let fx =
             load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
         assert_eq!(fx.kind, "logistic");
-        let y: Vec<u8> = fx
-            .y
-            .iter()
-            .map(|&v| if v >= 0.5 { 1u8 } else { 0u8 })
-            .collect();
+        let y: Vec<u8> = fx.y.iter().map(|&v| if v >= 0.5 { 1u8 } else { 0u8 }).collect();
         let m = LogisticRegressionModel::new(fx.x.clone(), y, fx.include_intercept).unwrap();
         let nll = m.nll(&fx.beta_hat).unwrap();
         assert!((nll - fx.nll_at_hat).abs() < 1e-6);
@@ -608,11 +605,13 @@ mod tests {
 
     #[test]
     fn test_poisson_regression_nll_and_grad_at_fixture_hat() {
-        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
         assert_eq!(fx.kind, "poisson");
         let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
-        let m = PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
-            .unwrap();
+        let m =
+            PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
+                .unwrap();
         let nll = m.nll(&fx.beta_hat).unwrap();
         assert!((nll - fx.nll_at_hat).abs() < 1e-6);
         let g = m.grad_nll(&fx.beta_hat).unwrap();
@@ -635,7 +634,8 @@ mod tests {
     fn test_mle_linear_regression_recovers_fixture_hat() {
         let fx = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
         assert_eq!(fx.kind, "ols");
-        let m = LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
+        let m =
+            LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
 
         let mle = crate::mle::MaximumLikelihoodEstimator::new();
         let r = mle.fit(&m).unwrap();
@@ -672,11 +672,13 @@ mod tests {
 
     #[test]
     fn test_mle_poisson_regression_recovers_fixture_hat() {
-        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
         assert_eq!(fx.kind, "poisson");
         let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
-        let m = PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
-            .unwrap();
+        let m =
+            PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
+                .unwrap();
 
         let mle = crate::mle::MaximumLikelihoodEstimator::new();
         let r = mle.fit(&m).unwrap();

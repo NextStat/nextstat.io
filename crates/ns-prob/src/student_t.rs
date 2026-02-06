@@ -9,10 +9,7 @@ const LN_PI: f64 = 1.144_729_885_849_400_2;
 /// Log-PDF of a Student-t distribution at `x` with location `mu`, scale `sigma`, and dof `nu`.
 pub fn logpdf(x: f64, mu: f64, sigma: f64, nu: f64) -> Result<f64> {
     if !sigma.is_finite() || sigma <= 0.0 {
-        return Err(Error::Validation(format!(
-            "sigma must be finite and > 0, got {}",
-            sigma
-        )));
+        return Err(Error::Validation(format!("sigma must be finite and > 0, got {}", sigma)));
     }
     if !nu.is_finite() || nu <= 0.0 {
         return Err(Error::Validation(format!("nu must be finite and > 0, got {}", nu)));

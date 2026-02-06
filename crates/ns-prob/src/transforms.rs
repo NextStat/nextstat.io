@@ -498,7 +498,11 @@ mod tests {
         );
 
         let z_back = b.inverse(theta);
-        assert!(z_back.is_finite() && z_back < -30.0, "inverse(theta) should be finite and very negative: {}", z_back);
+        assert!(
+            z_back.is_finite() && z_back < -30.0,
+            "inverse(theta) should be finite and very negative: {}",
+            z_back
+        );
     }
 
     #[test]

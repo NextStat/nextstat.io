@@ -84,4 +84,3 @@ mod tests {
         assert!(logpdf(0.5, 1.0, 0.0).is_err());
     }
 }
-

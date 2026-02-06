@@ -20,8 +20,10 @@ fn load_fixture(json: &'static str) -> Fixture {
 
 fn bench_regression_small_fixtures(c: &mut Criterion) {
     let fx_ols = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
-    let fx_log = load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
-    let fx_pois = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+    let fx_log =
+        load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+    let fx_pois =
+        load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
 
     let m_ols =
         LinearRegressionModel::new(fx_ols.x.clone(), fx_ols.y.clone(), fx_ols.include_intercept)

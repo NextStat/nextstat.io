@@ -70,6 +70,23 @@ pub trait LogDensityModel: Send + Sync {
     fn prepared(&self) -> Self::Prepared<'_>;
 }
 
+/// Optional extension: parameter-of-interest (POI) index.
+///
+/// This is primarily used by HEP workflows (profile likelihood, CLs). For general
+/// models, return `None`.
+pub trait PoiModel: Send + Sync {
+    /// Index of POI in the model's parameter order.
+    fn poi_index(&self) -> Option<usize>;
+}
+
+/// Optional extension: create a copy of the model with one parameter fixed.
+///
+/// This is used by profile likelihood / hypotest style workflows.
+pub trait FixedParamModel: Sized + Send + Sync {
+    /// Return a copy with parameter `param_idx` fixed at `value` (e.g., bounds clamped).
+    fn with_fixed_param(&self, param_idx: usize, value: f64) -> Self;
+}
+
 /// Compute backend trait - abstraction over CPU/Metal/CUDA
 ///
 /// This trait enables clean architecture where inference logic

@@ -11,10 +11,7 @@ use statrs::function::gamma::ln_gamma;
 /// Support: `x >= 0`.
 pub fn logpdf_shape_rate(x: f64, shape: f64, rate: f64) -> Result<f64> {
     if !shape.is_finite() || shape <= 0.0 {
-        return Err(Error::Validation(format!(
-            "shape must be finite and > 0, got {}",
-            shape
-        )));
+        return Err(Error::Validation(format!("shape must be finite and > 0, got {}", shape)));
     }
     if !rate.is_finite() || rate <= 0.0 {
         return Err(Error::Validation(format!("rate must be finite and > 0, got {}", rate)));
@@ -45,10 +42,7 @@ pub fn logpdf_shape_rate(x: f64, shape: f64, rate: f64) -> Result<f64> {
 /// Support: `x >= 0`.
 pub fn logpdf_shape_scale(x: f64, shape: f64, scale: f64) -> Result<f64> {
     if !scale.is_finite() || scale <= 0.0 {
-        return Err(Error::Validation(format!(
-            "scale must be finite and > 0, got {}",
-            scale
-        )));
+        return Err(Error::Validation(format!("scale must be finite and > 0, got {}", scale)));
     }
     logpdf_shape_rate(x, shape, 1.0 / scale)
 }
@@ -83,4 +77,3 @@ mod tests {
         assert!(logpdf_shape_rate(1.0, 1.0, 0.0).is_err());
     }
 }
-

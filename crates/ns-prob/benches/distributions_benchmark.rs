@@ -60,4 +60,3 @@ fn bench_scalar_distributions(c: &mut Criterion) {
 
 criterion_group!(benches, bench_scalar_distributions);
 criterion_main!(benches);
-

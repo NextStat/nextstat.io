@@ -96,8 +96,8 @@ pub fn sample_nuts_multichain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ns_translate::pyhf::Workspace;
     use ns_translate::pyhf::HistFactoryModel;
+    use ns_translate::pyhf::Workspace;
 
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");

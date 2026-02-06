@@ -5,7 +5,7 @@
 use super::schema::*;
 use ns_ad::scalar::Scalar;
 use ns_core::Result;
-use ns_core::traits::{LogDensityModel, PreparedNll};
+use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel, PreparedNll};
 use statrs::function::gamma::ln_gamma;
 use std::collections::HashMap;
 
@@ -560,11 +560,7 @@ impl HistFactoryModel {
             });
         }
 
-        Ok(Self {
-            parameters,
-            poi_index,
-            channels,
-        })
+        Ok(Self { parameters, poi_index, channels })
     }
 
     /// Number of parameters
@@ -1021,10 +1017,12 @@ impl HistFactoryModel {
                                     .copied()
                                     .unwrap_or(T::from_f64(0.0));
                                 let nom_val = nom.value();
-                                let hi =
-                                    T::from_f64(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
-                                let lo =
-                                    T::from_f64(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                let hi = T::from_f64(
+                                    hi_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                );
+                                let lo = T::from_f64(
+                                    lo_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                );
                                 let delta = histosys_code4p_delta(alpha, lo, nom, hi);
                                 *delta_slot = *delta_slot + delta;
                             }
@@ -1055,18 +1053,9 @@ impl HistFactoryModel {
                 }
 
                 for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
-                    let nom = sample_nominal
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(T::from_f64(0.0));
-                    let delta = sample_deltas
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(T::from_f64(0.0));
-                    let fac = sample_factors
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(T::from_f64(1.0));
+                    let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
+                    let delta = sample_deltas.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
+                    let fac = sample_factors.get(bin_idx).copied().unwrap_or(T::from_f64(1.0));
                     *ch_val = *ch_val + (nom + delta) * fac;
                 }
             }
@@ -1285,7 +1274,8 @@ impl HistFactoryModel {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
+                                    sample_factors[bin_idx] =
+                                        tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
@@ -1317,7 +1307,8 @@ impl HistFactoryModel {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
+                                    sample_factors[bin_idx] =
+                                        tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
@@ -1325,7 +1316,8 @@ impl HistFactoryModel {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
                                     let gamma = params[gamma_idx];
-                                    sample_factors[bin_idx] = tape.mul(sample_factors[bin_idx], gamma);
+                                    sample_factors[bin_idx] =
+                                        tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
@@ -1339,18 +1331,9 @@ impl HistFactoryModel {
                 }
 
                 for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
-                    let nom = sample_nominal
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(tape.constant(0.0));
-                    let delta = sample_deltas
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(tape.constant(0.0));
-                    let fac = sample_factors
-                        .get(bin_idx)
-                        .copied()
-                        .unwrap_or(tape.constant(1.0));
+                    let nom = sample_nominal.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
+                    let delta = sample_deltas.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
+                    let fac = sample_factors.get(bin_idx).copied().unwrap_or(tape.constant(1.0));
                     let sum = tape.add(nom, delta);
                     let val = tape.mul(sum, fac);
                     *ch_val = tape.add(*ch_val, val);
@@ -1564,6 +1547,18 @@ impl LogDensityModel for HistFactoryModel {
 
     fn prepared(&self) -> Self::Prepared<'_> {
         self.prepare()
+    }
+}
+
+impl PoiModel for HistFactoryModel {
+    fn poi_index(&self) -> Option<usize> {
+        HistFactoryModel::poi_index(self)
+    }
+}
+
+impl FixedParamModel for HistFactoryModel {
+    fn with_fixed_param(&self, param_idx: usize, value: f64) -> Self {
+        HistFactoryModel::with_fixed_param(self, param_idx, value)
     }
 }
 

@@ -35,9 +35,10 @@ impl LogDensityModel for NormalMeanModel {
     }
 
     fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
-        let mu = params.get(0).copied().ok_or_else(|| {
-            ns_core::Error::Validation("expected 1 parameter (mu)".to_string())
-        })?;
+        let mu = params
+            .get(0)
+            .copied()
+            .ok_or_else(|| ns_core::Error::Validation("expected 1 parameter (mu)".to_string()))?;
         if !self.sigma.is_finite() || self.sigma <= 0.0 {
             return Err(ns_core::Error::Validation(format!(
                 "sigma must be finite and > 0, got {}",
@@ -64,9 +65,10 @@ impl LogDensityModel for NormalMeanModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
-        let mu = params.get(0).copied().ok_or_else(|| {
-            ns_core::Error::Validation("expected 1 parameter (mu)".to_string())
-        })?;
+        let mu = params
+            .get(0)
+            .copied()
+            .ok_or_else(|| ns_core::Error::Validation("expected 1 parameter (mu)".to_string()))?;
         let inv_var = 1.0 / (self.sigma * self.sigma);
 
         let mut g = 0.0;
@@ -89,9 +91,7 @@ fn load_simple_model() -> HistFactoryModel {
 }
 
 fn bench_nuts_sampling(c: &mut Criterion) {
-    let data: Vec<f64> = (0..200)
-        .map(|i| (((i * 17) % 2000) as f64) / 1000.0 - 1.0)
-        .collect();
+    let data: Vec<f64> = (0..200).map(|i| (((i * 17) % 2000) as f64) / 1000.0 - 1.0).collect();
     let normal = NormalMeanModel { data, sigma: 1.0, prior_sigma: 1.0 };
     let histfactory = load_simple_model();
 
@@ -139,4 +139,3 @@ fn bench_nuts_sampling(c: &mut Criterion) {
 
 criterion_group!(benches, bench_nuts_sampling);
 criterion_main!(benches);
-

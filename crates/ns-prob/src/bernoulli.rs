@@ -51,9 +51,13 @@ mod tests {
     #[test]
     fn test_degenerate_probs() {
         assert_eq!(logpmf(0, 0.0).unwrap(), 0.0);
-        assert!(logpmf(1, 0.0).unwrap().is_infinite() && logpmf(1, 0.0).unwrap().is_sign_negative());
+        assert!(
+            logpmf(1, 0.0).unwrap().is_infinite() && logpmf(1, 0.0).unwrap().is_sign_negative()
+        );
         assert_eq!(logpmf(1, 1.0).unwrap(), 0.0);
-        assert!(logpmf(0, 1.0).unwrap().is_infinite() && logpmf(0, 1.0).unwrap().is_sign_negative());
+        assert!(
+            logpmf(0, 1.0).unwrap().is_infinite() && logpmf(0, 1.0).unwrap().is_sign_negative()
+        );
     }
 
     #[test]

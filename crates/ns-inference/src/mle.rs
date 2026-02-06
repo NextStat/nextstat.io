@@ -369,13 +369,13 @@ mod tests {
         let result = mle.fit(&model).unwrap();
 
         println!("Fit result:");
-	        println!("  Parameters: {:?}", result.parameters);
-	        println!("  Uncertainties: {:?}", result.uncertainties);
-	        println!("  NLL: {:.6}", result.nll);
-	        println!("  Converged: {}", result.converged);
-	        println!("  Iterations: {}", result.n_iter);
+        println!("  Parameters: {:?}", result.parameters);
+        println!("  Uncertainties: {:?}", result.uncertainties);
+        println!("  NLL: {:.6}", result.nll);
+        println!("  Converged: {}", result.converged);
+        println!("  Iterations: {}", result.n_iter);
 
-	        assert!(result.converged, "Fit should converge");
+        assert!(result.converged, "Fit should converge");
 
         let poi = result.parameters[0];
         assert!(poi > 0.0 && poi < 2.0, "POI should be reasonable: {}", poi);
@@ -687,9 +687,16 @@ mod tests {
                 Err(_) => continue,
             };
 
+            println!("toy {}/{}: fitting...", toy_idx + 1, n_toys);
             let fit = match mle.fit(&toy_model) {
-                Ok(f) => f,
-                Err(_) => continue,
+                Ok(f) => {
+                    println!("  converged={}, nll={:.4}", f.converged, f.nll);
+                    f
+                }
+                Err(e) => {
+                    println!("  error: {}", e);
+                    continue;
+                }
             };
 
             if !fit.converged {
@@ -728,21 +735,9 @@ mod tests {
             coverage
         );
 
-        assert!(
-            mean.abs() < 0.15,
-            "Pull mean should be near 0: {:.4}",
-            mean
-        );
-        assert!(
-            (std - 1.0).abs() < 0.15,
-            "Pull std should be near 1: {:.4}",
-            std
-        );
-        assert!(
-            (coverage - 0.68).abs() < 0.08,
-            "1σ coverage should be near 68%: {:.4}",
-            coverage
-        );
+        assert!(mean.abs() < 0.15, "Pull mean should be near 0: {:.4}", mean);
+        assert!((std - 1.0).abs() < 0.15, "Pull std should be near 1: {:.4}", std);
+        assert!((coverage - 0.68).abs() < 0.08, "1σ coverage should be near 68%: {:.4}", coverage);
     }
 
     #[test]

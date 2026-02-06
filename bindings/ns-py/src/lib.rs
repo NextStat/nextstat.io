@@ -12,14 +12,13 @@ use ns_core::{Error as NsError, Result as NsResult};
 use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult};
 use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
-use ns_inference::nuts::{sample_nuts, NutsConfig};
+use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::{
-    hypotest::AsymptoticCLsContext as RustCLsCtx,
-    profile_likelihood as pl,
     LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel,
     PoissonRegressionModel as RustPoissonRegressionModel,
-    ols_fit as rust_ols_fit,
+    hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
+    profile_likelihood as pl,
 };
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
@@ -459,9 +458,9 @@ impl PyMaximumLikelihoodEstimator {
 
         let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
             let m = if let Some(obs_main) = data {
-                hf.inner
-                    .with_observed_main(&obs_main)
-                    .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+                hf.inner.with_observed_main(&obs_main).map_err(|e| {
+                    PyValueError::new_err(format!("Failed to set observed data: {}", e))
+                })?
             } else {
                 hf.inner.clone()
             };
@@ -542,7 +541,11 @@ fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
 /// Convenience wrapper: fit model with optional overridden observations.
 #[pyfunction]
 #[pyo3(signature = (model, *, data=None))]
-fn fit<'py>(py: Python<'py>, model: &Bound<'py, PyAny>, data: Option<Vec<f64>>) -> PyResult<PyFitResult> {
+fn fit<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    data: Option<Vec<f64>>,
+) -> PyResult<PyFitResult> {
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
     mle.fit(py, model, data)
 }
@@ -813,7 +816,7 @@ fn sample<'py>(
                 };
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
-                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::GaussianMean(m) => {
             let config = config.clone();
@@ -825,7 +828,7 @@ fn sample<'py>(
                 };
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
-                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LinearRegression(m) => {
             let config = config.clone();
@@ -837,7 +840,7 @@ fn sample<'py>(
                 };
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
-                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LogisticRegression(m) => {
             let config = config.clone();
@@ -849,7 +852,7 @@ fn sample<'py>(
                 };
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
-                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::PoissonRegression(m) => {
             let config = config.clone();
@@ -861,7 +864,7 @@ fn sample<'py>(
                 };
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
-                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
     };
 

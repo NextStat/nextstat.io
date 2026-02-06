@@ -4,8 +4,8 @@
 //! `q_mu` / `qtilde_mu` in pyhf terminology (Cowan et al., arXiv:1007.1727).
 
 use crate::MaximumLikelihoodEstimator;
+use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel};
 use ns_core::{Error, Result};
-use ns_translate::pyhf::HistFactoryModel;
 
 /// Single point in a profile likelihood scan.
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ pub struct ProfileLikelihoodScan {
     pub points: Vec<ProfilePoint>,
 }
 
-fn poi_index(model: &HistFactoryModel) -> Result<usize> {
+fn poi_index(model: &(impl PoiModel + ?Sized)) -> Result<usize> {
     model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
 
@@ -45,7 +45,7 @@ fn poi_index(model: &HistFactoryModel) -> Result<usize> {
 /// Therefore `q_mu = 2 * (nll(mu) - nll_hat)`, clipped at 0.
 pub fn qmu_like(
     mle: &MaximumLikelihoodEstimator,
-    model: &HistFactoryModel,
+    model: &(impl LogDensityModel + PoiModel + FixedParamModel),
     mu_test: f64,
 ) -> Result<f64> {
     let poi = poi_index(model)?;
@@ -67,7 +67,7 @@ pub fn qmu_like(
 /// Run a profile likelihood scan over the provided POI values.
 pub fn scan(
     mle: &MaximumLikelihoodEstimator,
-    model: &HistFactoryModel,
+    model: &(impl LogDensityModel + PoiModel + FixedParamModel),
     mu_values: &[f64],
 ) -> Result<ProfileLikelihoodScan> {
     let poi = poi_index(model)?;

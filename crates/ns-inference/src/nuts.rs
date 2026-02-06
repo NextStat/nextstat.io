@@ -1250,9 +1250,9 @@ mod tests {
         use rand_distr::{Distribution, Normal};
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            let prior_mu: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
-            let prior_logsigma: Normal<f64> = Normal::new(0.0, 0.5).unwrap();
-            let obs: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
+        let prior_mu: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
+        let prior_logsigma: Normal<f64> = Normal::new(0.0, 0.5).unwrap();
+        let obs: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
 
         let config = NutsConfig {
             max_treedepth: 8,
@@ -1268,8 +1268,9 @@ mod tests {
             let sigma_true: f64 = log_sigma_true.exp();
 
             let alpha_prior = Normal::new(mu_true, sigma_true).unwrap();
-            let y: Vec<f64> =
-                (0..n_groups).map(|_| alpha_prior.sample(&mut rng) + obs.sample(&mut rng)).collect();
+            let y: Vec<f64> = (0..n_groups)
+                .map(|_| alpha_prior.sample(&mut rng) + obs.sample(&mut rng))
+                .collect();
 
             let model = HierInterceptModel {
                 y,
@@ -1350,7 +1351,12 @@ mod tests {
         let p_mu = chi2_pvalue(&counts_mu);
         let p_sigma = chi2_pvalue(&counts_sigma);
 
-        assert!(p_mu > 0.01, "SBC mu ranks deviate from uniform: p={}, counts={:?}", p_mu, counts_mu);
+        assert!(
+            p_mu > 0.01,
+            "SBC mu ranks deviate from uniform: p={}, counts={:?}",
+            p_mu,
+            counts_mu
+        );
         assert!(
             p_sigma > 0.01,
             "SBC sigma ranks deviate from uniform: p={}, counts={:?}",

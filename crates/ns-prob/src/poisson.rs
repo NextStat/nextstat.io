@@ -11,10 +11,7 @@ fn ln_factorial(n: u64) -> f64 {
 /// Log-PMF of a Poisson distribution with mean `lambda` at count `k`.
 pub fn logpmf(k: u64, lambda: f64) -> Result<f64> {
     if !lambda.is_finite() || lambda < 0.0 {
-        return Err(Error::Validation(format!(
-            "lambda must be finite and >= 0, got {}",
-            lambda
-        )));
+        return Err(Error::Validation(format!("lambda must be finite and >= 0, got {}", lambda)));
     }
     if lambda == 0.0 {
         return Ok(if k == 0 { 0.0 } else { f64::NEG_INFINITY });

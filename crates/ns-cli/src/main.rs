@@ -287,21 +287,21 @@ fn cmd_fit(input: &PathBuf, output: Option<&PathBuf>, threads: usize) -> Result<
 
     let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
 
-	    let output_json = serde_json::json!({
-	        "parameter_names": parameter_names,
-	        "poi_index": model.poi_index(),
-	        "bestfit": result.parameters,
-	        "uncertainties": result.uncertainties,
-	        "nll": result.nll,
-	        "twice_nll": 2.0 * result.nll,
-	        "converged": result.converged,
-	        // Back-compat: keep `n_evaluations` as alias for optimizer iterations.
-	        "n_evaluations": result.n_iter,
-	        "n_iter": result.n_iter,
-	        "n_fev": result.n_fev,
-	        "n_gev": result.n_gev,
-	        "covariance": result.covariance,
-	    });
+    let output_json = serde_json::json!({
+        "parameter_names": parameter_names,
+        "poi_index": model.poi_index(),
+        "bestfit": result.parameters,
+        "uncertainties": result.uncertainties,
+        "nll": result.nll,
+        "twice_nll": 2.0 * result.nll,
+        "converged": result.converged,
+        // Back-compat: keep `n_evaluations` as alias for optimizer iterations.
+        "n_evaluations": result.n_iter,
+        "n_iter": result.n_iter,
+        "n_fev": result.n_fev,
+        "n_gev": result.n_gev,
+        "covariance": result.covariance,
+    });
 
     write_json(output, output_json)
 }

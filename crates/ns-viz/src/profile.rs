@@ -57,6 +57,14 @@ impl From<ProfileLikelihoodScan> for ProfileCurveArtifact {
             });
         }
 
-        Self { poi_index, mu_hat, nll_hat, points: out_points, mu_values, q_mu_values, twice_delta_nll }
+        Self {
+            poi_index,
+            mu_hat,
+            nll_hat,
+            points: out_points,
+            mu_values,
+            q_mu_values,
+            twice_delta_nll,
+        }
     }
 }

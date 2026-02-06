@@ -19,10 +19,7 @@ pub fn logpmf_mean_disp(k: u64, mu: f64, alpha: f64) -> Result<f64> {
         return Err(Error::Validation(format!("mu must be finite and > 0, got {}", mu)));
     }
     if !alpha.is_finite() || alpha <= 0.0 {
-        return Err(Error::Validation(format!(
-            "alpha must be finite and > 0, got {}",
-            alpha
-        )));
+        return Err(Error::Validation(format!("alpha must be finite and > 0, got {}", alpha)));
     }
 
     let r = 1.0 / alpha;
@@ -80,4 +77,3 @@ mod tests {
         assert!(logpmf_r_p(0, 1.0, 1.0).is_err());
     }
 }
-

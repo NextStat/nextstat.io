@@ -10,10 +10,7 @@ pub fn logpdf(x: f64, k: f64, lambda: f64) -> Result<f64> {
         return Err(Error::Validation(format!("k must be finite and > 0, got {}", k)));
     }
     if !lambda.is_finite() || lambda <= 0.0 {
-        return Err(Error::Validation(format!(
-            "lambda must be finite and > 0, got {}",
-            lambda
-        )));
+        return Err(Error::Validation(format!("lambda must be finite and > 0, got {}", lambda)));
     }
     if x < 0.0 {
         return Ok(f64::NEG_INFINITY);

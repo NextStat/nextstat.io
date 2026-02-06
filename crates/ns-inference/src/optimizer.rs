@@ -218,7 +218,15 @@ impl LbfgsbOptimizer {
         let converged = state.terminated();
         let message = format!("{:?}", state.get_termination_status());
 
-        Ok(OptimizationResult { parameters: best_params, fval, n_iter, n_fev, n_gev, converged, message })
+        Ok(OptimizationResult {
+            parameters: best_params,
+            fval,
+            n_iter,
+            n_fev,
+            n_gev,
+            converged,
+            message,
+        })
     }
 }
 

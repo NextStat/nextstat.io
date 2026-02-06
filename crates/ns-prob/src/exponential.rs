@@ -7,10 +7,7 @@ use ns_core::{Error, Result};
 /// Support: `x >= 0`.
 pub fn logpdf(x: f64, rate: f64) -> Result<f64> {
     if !rate.is_finite() || rate <= 0.0 {
-        return Err(Error::Validation(format!(
-            "rate must be finite and > 0, got {}",
-            rate
-        )));
+        return Err(Error::Validation(format!("rate must be finite and > 0, got {}", rate)));
     }
     if x < 0.0 {
         return Ok(f64::NEG_INFINITY);
@@ -45,4 +42,3 @@ mod tests {
         assert!(logpdf(0.0, -1.0).is_err());
     }
 }
-
