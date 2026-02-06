@@ -15,6 +15,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from _tolerances import (
+    COVERAGE_1SIGMA_DELTA_MAX,
+    PULL_MEAN_DELTA_MAX,
+    PULL_STD_DELTA_MAX,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -166,9 +171,13 @@ def test_pull_mu_regression_vs_pyhf():
         d_std = float(pulls_ns.std(ddof=1) - pulls_pyhf.std(ddof=1))
         d_cov = float(cover_ns.mean() - cover_pyhf.mean())
 
-        assert abs(d_mean) <= 0.05, f"{key}: |Delta mean(pull_mu)|={abs(d_mean):.4f} too large"
-        assert abs(d_std) <= 0.05, f"{key}: |Delta std(pull_mu)|={abs(d_std):.4f} too large"
-        assert abs(d_cov) <= 0.03, f"{key}: |Delta coverage_1sigma(mu)|={abs(d_cov):.4f} too large"
+        assert abs(d_mean) <= PULL_MEAN_DELTA_MAX, (
+            f"{key}: |Delta mean(pull_mu)|={abs(d_mean):.4f} too large"
+        )
+        assert abs(d_std) <= PULL_STD_DELTA_MAX, f"{key}: |Delta std(pull_mu)|={abs(d_std):.4f} too large"
+        assert abs(d_cov) <= COVERAGE_1SIGMA_DELTA_MAX, (
+            f"{key}: |Delta coverage_1sigma(mu)|={abs(d_cov):.4f} too large"
+        )
 
         # Write JSON artifact for CI archival (opt-in via NS_ARTIFACTS_DIR)
         artifacts_dir = os.environ.get("NS_ARTIFACTS_DIR")

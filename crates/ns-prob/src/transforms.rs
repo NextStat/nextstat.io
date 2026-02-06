@@ -108,6 +108,45 @@ impl Bijector for LowerBoundedBijector {
     }
 }
 
+/// UpperBounded: `(-inf, inf) -> (-inf, b)`, `theta = b - exp(z)`.
+pub struct UpperBoundedBijector {
+    upper: f64,
+}
+
+impl UpperBoundedBijector {
+    /// Create a new upper-bounded bijector with given upper bound.
+    pub fn new(upper: f64) -> Self {
+        Self { upper }
+    }
+}
+
+impl Bijector for UpperBoundedBijector {
+    #[inline]
+    fn forward(&self, z: f64) -> f64 {
+        self.upper - z.exp()
+    }
+    #[inline]
+    fn inverse(&self, theta: f64) -> f64 {
+        // z = ln(b - theta)
+        // Clamp to keep inverse finite if theta is marginally out of bounds due to FP noise.
+        let d = (self.upper - theta).max(1e-15);
+        d.ln()
+    }
+    #[inline]
+    fn log_abs_det_jacobian(&self, z: f64) -> f64 {
+        // dtheta/dz = -exp(z), log|J| = z
+        z
+    }
+    #[inline]
+    fn grad_log_abs_det_jacobian(&self, _z: f64) -> f64 {
+        1.0
+    }
+    #[inline]
+    fn jacobian(&self, z: f64) -> f64 {
+        -z.exp()
+    }
+}
+
 /// Sigmoid: `(-inf, inf) -> (a, b)`, `theta = a + (b-a)*sigmoid(z)`.
 pub struct SigmoidBijector {
     lower: f64,
@@ -185,19 +224,27 @@ impl ParameterTransform {
                 match (lo_finite, hi_finite) {
                     (false, false) => Box::new(IdentityBijector),
                     (true, false) => {
-                        if lo == 0.0 {
+                        if !lo.is_finite() {
+                            Box::new(IdentityBijector)
+                        } else if lo == 0.0 {
                             Box::new(ExpBijector)
                         } else {
                             Box::new(LowerBoundedBijector::new(lo))
                         }
                     }
-                    (true, true) => Box::new(SigmoidBijector::new(lo, hi)),
+                    (true, true) => {
+                        if !lo.is_finite() || !hi.is_finite() || hi <= lo {
+                            Box::new(IdentityBijector)
+                        } else {
+                            Box::new(SigmoidBijector::new(lo, hi))
+                        }
+                    }
                     (false, true) => {
-                        // Upper-bounded only: reflect. theta = b - exp(z)
-                        // For simplicity, use Sigmoid with a wide lower bound.
-                        // In practice HEP models don't have upper-only bounds,
-                        // so we use Sigmoid(lo_practical, hi).
-                        Box::new(SigmoidBijector::new(hi - 100.0, hi))
+                        if !hi.is_finite() {
+                            Box::new(IdentityBijector)
+                        } else {
+                            Box::new(UpperBoundedBijector::new(hi))
+                        }
                     }
                 }
             })
@@ -353,6 +400,27 @@ mod tests {
     }
 
     #[test]
+    fn test_upper_bounded_roundtrip() {
+        let b = UpperBoundedBijector::new(3.0);
+        let zs = vec![-10.0, -2.0, 0.0, 1.5, 4.0];
+        test_bijector_roundtrip(&b, &zs, 1e-10);
+    }
+
+    #[test]
+    fn test_upper_bounded_inverse_roundtrip() {
+        let b = UpperBoundedBijector::new(3.0);
+        let thetas = vec![-100.0, -2.0, 0.0, 2.0, 2.9];
+        test_bijector_inverse_roundtrip(&b, &thetas, 1e-10);
+    }
+
+    #[test]
+    fn test_upper_bounded_grad_log_jac() {
+        let b = UpperBoundedBijector::new(3.0);
+        let zs = vec![-5.0, -1.0, 0.0, 1.0, 5.0];
+        test_bijector_grad_log_jac(&b, &zs, 1e-7);
+    }
+
+    #[test]
     fn test_sigmoid_roundtrip() {
         let b = SigmoidBijector::new(-5.0, 5.0);
         let zs = vec![-10.0, -2.0, 0.0, 2.0, 10.0];
@@ -451,4 +519,3 @@ mod tests {
         assert!(log_jac.is_finite(), "log_jac should be finite: {}", log_jac);
     }
 }
-

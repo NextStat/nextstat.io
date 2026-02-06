@@ -202,7 +202,7 @@ mod tests {
         let integrator = LeapfrogIntegrator::new(&posterior, eps, inv_mass.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let z_init = posterior.to_unconstrained(&theta_init);
+        let z_init = posterior.to_unconstrained(&theta_init).unwrap();
 
         let mut state = integrator.init_state(z_init).unwrap();
         // Set non-zero momentum
@@ -240,7 +240,7 @@ mod tests {
         let sampler = StaticHmcSampler::new(&posterior, 0.1, 10, inv_mass.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let z_init = posterior.to_unconstrained(&theta_init);
+        let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let state = sampler.integrator.init_state(z_init).unwrap();
 
         // Run with same seed twice
@@ -265,7 +265,7 @@ mod tests {
         let sampler = StaticHmcSampler::new(&posterior, 0.05, 20, inv_mass.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let z_init = posterior.to_unconstrained(&theta_init);
+        let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let mut state = sampler.integrator.init_state(z_init).unwrap();
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -281,7 +281,7 @@ mod tests {
                 accepted += 1;
             }
             if i >= burn {
-                let theta = posterior.to_constrained(&state.q);
+                let theta = posterior.to_constrained(&state.q).unwrap();
                 poi_samples.push(theta[0]);
             }
         }

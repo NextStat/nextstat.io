@@ -38,6 +38,8 @@ pub mod posterior;
 pub mod profile_likelihood;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
+/// Regression models (general statistics).
+pub mod regression;
 
 #[cfg(test)]
 mod universal_tests;
@@ -51,3 +53,4 @@ pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, Opti
 pub use posterior::{Posterior, Prior};
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
 pub use transforms::ParameterTransform;
+pub use regression::{LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit};

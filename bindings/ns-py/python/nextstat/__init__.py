@@ -12,7 +12,6 @@ try:
         hypotest,
         sample,
         HistFactoryModel,
-        GaussianMeanModel,
         MaximumLikelihoodEstimator,
         FitResult,
         from_pyhf,
@@ -27,7 +26,6 @@ except ImportError:  # pragma: no cover
     hypotest = None  # type: ignore
     sample = None  # type: ignore
     HistFactoryModel = None  # type: ignore
-    GaussianMeanModel = None  # type: ignore
     MaximumLikelihoodEstimator = None  # type: ignore
     FitResult = None  # type: ignore
     from_pyhf = None  # type: ignore
@@ -35,6 +33,11 @@ except ImportError:  # pragma: no cover
     upper_limit = None  # type: ignore
     upper_limits = None  # type: ignore
     upper_limits_root = None  # type: ignore
+
+# PyO3 renamed class: `from ... import` fails but attribute access works.
+import nextstat._core as _core  # type: ignore  # noqa: E402
+
+GaussianMeanModel = getattr(_core, "GaussianMeanModel", None)  # type: ignore
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
