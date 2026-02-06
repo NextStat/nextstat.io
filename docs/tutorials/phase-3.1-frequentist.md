@@ -126,6 +126,7 @@ Notes:
 
 - bias/pulls is intended for manual/nightly runs; it is not part of default CI.
 - SBC (NUTS) is intended for manual/nightly runs; it requires `NS_RUN_SLOW=1`.
+  - For the pytest suite, SBC tests are additionally gated behind `NS_RUN_SBC=1` and the `sbc` marker.
 - ROOT parity is recorded as `skipped` unless ROOT prerequisites are present.
 
 ## 1) Fit (MLE)

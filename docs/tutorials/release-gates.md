@@ -29,7 +29,7 @@ make apex2-baseline-compare COMPARE_ARGS="--require-same-host"
 or:
 
 ```bash
-bash scripts/apex2/pre_release_gate.sh
+make apex2-pre-release-gate
 ```
 
 Exit codes:
@@ -37,6 +37,7 @@ Exit codes:
 - `2`: FAIL (parity failure or slowdown threshold exceeded)
 - `3`: baseline manifest missing/invalid
 - `4`: runner error (missing deps, crash, etc.)
+- `5`: git working tree dirty (set `APEX2_ALLOW_DIRTY=1` to override)
 
 ## If it fails
 
@@ -51,4 +52,3 @@ ROOT/HistFactory parity baselines are recorded separately on a cluster environme
 - `tests/record_baseline.py --only root ...`
 
 See `docs/tutorials/root-trexfitter-parity.md` for the HTCondor job-array workflow and aggregation.
-

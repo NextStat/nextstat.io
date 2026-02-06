@@ -74,6 +74,16 @@ condor_submit scripts/condor/apex2_root_suite_single.sub
 Submit (job array): set `queue <N>` in `scripts/condor/apex2_root_suite_array.sub`, where `<N>` is the number of
 cases in your JSON (0-based `--case-index` uses `$(Process)`).
 
+Optional helper to render a `.sub` with the correct `queue N`:
+
+```bash
+python3 scripts/condor/render_apex2_root_suite_array_sub.py \
+  --cases "${APEX2_ROOT_CASES_JSON}" \
+  --initialdir /abs/path/to/nextstat.io \
+  --out apex2_root_suite_array.sub
+condor_submit apex2_root_suite_array.sub
+```
+
 After the array finishes, aggregate:
 
 ```bash
