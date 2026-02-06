@@ -19,7 +19,6 @@ use ns_inference::{
     LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel,
     PoissonRegressionModel as RustPoissonRegressionModel,
-    ols_fit as rust_ols_fit,
 };
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};

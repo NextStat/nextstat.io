@@ -33,7 +33,7 @@ pub fn logpdf(x: f64, k: f64, lambda: f64) -> Result<f64> {
     Ok(k.ln() - lambda.ln() + (k - 1.0) * x_over_l.ln() - x_over_l.powf(k))
 }
 
-/// Negative log-likelihood of a Weibull distribution at `x`.
+/// Negative log-likelihood for Weibull.
 pub fn nll(x: f64, k: f64, lambda: f64) -> Result<f64> {
     Ok(-logpdf(x, k, lambda)?)
 }
@@ -64,4 +64,3 @@ mod tests {
         assert!(logpdf(1.0, 1.0, 0.0).is_err());
     }
 }
-
