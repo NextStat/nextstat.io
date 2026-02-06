@@ -274,19 +274,25 @@ pub fn r_hat(chains: &[&[f64]]) -> f64 {
     }
 
     // Split each chain in half
-    let mut half_chains: Vec<&[f64]> = Vec::new();
+    let mut half_chains_raw: Vec<&[f64]> = Vec::new();
     for chain in chains {
         let n = chain.len();
         if n < 4 {
             return f64::NAN;
         }
         let mid = n / 2;
-        half_chains.push(&chain[..mid]);
-        half_chains.push(&chain[mid..]);
+        half_chains_raw.push(&chain[..mid]);
+        half_chains_raw.push(&chain[mid..]);
     }
 
+    let min_len = half_chains_raw.iter().map(|c| c.len()).min().unwrap_or(0);
+    if min_len < 2 {
+        return f64::NAN;
+    }
+    let half_chains: Vec<&[f64]> = half_chains_raw.iter().map(|c| &c[..min_len]).collect();
+
     let m = half_chains.len() as f64;
-    let n = half_chains[0].len() as f64;
+    let n = min_len as f64;
 
     // Chain means
     let chain_means: Vec<f64> =
@@ -441,26 +447,127 @@ fn ess_tail_quantile_indicators(chains: &[Vec<f64>]) -> f64 {
     ess_bulk(&lower_refs).min(ess_bulk(&upper_refs))
 }
 
-/// Compute effective sample size (ESS) via initial monotone sequence estimator.
-///
-/// Combines all chains after split for ESS computation.
-pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
+fn split_chains_for_ess<'a>(chains: &[&'a [f64]]) -> Option<Vec<&'a [f64]>> {
     if chains.is_empty() {
-        return 0.0;
+        return None;
     }
 
-    // Simple ESS estimate: N_eff = M*N / (1 + 2*sum(rho))
-    // where rho is the autocorrelation.
-    // For multi-chain, we use the formula ESS = M*N * var_hat+ / B_hat
-    // but a simpler approach: compute per-chain ESS via autocorrelation.
-
-    let mut total_ess = 0.0;
-
-    for chain in chains {
-        total_ess += chain_ess(chain);
+    let mut halves: Vec<&[f64]> = Vec::with_capacity(chains.len() * 2);
+    for c in chains {
+        if c.len() < 4 {
+            return None;
+        }
+        let mid = c.len() / 2;
+        halves.push(&c[..mid]);
+        halves.push(&c[mid..]);
     }
 
-    total_ess
+    let min_len = halves.iter().map(|c| c.len()).min().unwrap_or(0);
+    if min_len < 4 {
+        return None;
+    }
+    Some(halves.into_iter().map(|c| &c[..min_len]).collect())
+}
+
+fn mean_and_var(chain: &[f64]) -> (f64, f64) {
+    let n = chain.len() as f64;
+    let mean = chain.iter().sum::<f64>() / n;
+    let var = chain.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n.max(2.0) - 1.0);
+    (mean, var)
+}
+
+/// Compute effective sample size (ESS) using a multi-chain initial monotone
+/// sequence estimator (Geyer) on autocorrelation estimates derived from the
+/// variogram (Vehtari et al. 2021 / Stan-style).
+pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
+    let split = match split_chains_for_ess(chains) {
+        Some(v) => v,
+        None => return 0.0,
+    };
+
+    let m = split.len();
+    let n = split[0].len();
+    let total_draws = (m * n) as f64;
+
+    // Marginal posterior variance estimate (var_hat_plus).
+    let means_vars: Vec<(f64, f64)> = split.iter().map(|c| mean_and_var(c)).collect();
+    let means: Vec<f64> = means_vars.iter().map(|(mu, _)| *mu).collect();
+    let vars: Vec<f64> = means_vars.iter().map(|(_, v)| *v).collect();
+
+    let m_f = m as f64;
+    let n_f = n as f64;
+    let mean_all = means.iter().sum::<f64>() / m_f;
+    let b = means.iter().map(|&mu| (mu - mean_all).powi(2)).sum::<f64>() * n_f / (m_f - 1.0);
+    let w = vars.iter().sum::<f64>() / m_f;
+    let var_hat_plus = (n_f - 1.0) / n_f * w + b / n_f;
+
+    if !var_hat_plus.is_finite() || var_hat_plus < 1e-30 {
+        return total_draws;
+    }
+
+    // Autocorrelation estimates via variogram:
+    // rho_t = 1 - V_t / (2 * var_hat_plus)
+    // where V_t is the mean squared difference at lag t across all chains.
+    let max_lag = n - 1;
+    let mut rho: Vec<f64> = Vec::with_capacity(max_lag);
+    for lag in 1..=max_lag {
+        let mut sum = 0.0;
+        let mut count = 0usize;
+        for c in &split {
+            for i in 0..(n - lag) {
+                let d = c[i] - c[i + lag];
+                sum += d * d;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            break;
+        }
+        let v = sum / (count as f64);
+        let r = (1.0 - v / (2.0 * var_hat_plus)).clamp(-1.0, 1.0);
+        rho.push(r);
+
+        // Fast early stop: once the pair sum becomes negative we can stop building rho.
+        // (Still applies monotone adjustment below.)
+        if rho.len() >= 2 {
+            let k = rho.len();
+            if k % 2 == 0 {
+                let gamma = rho[k - 2] + rho[k - 1];
+                if gamma < 0.0 {
+                    break;
+                }
+            }
+        }
+    }
+
+    // Geyer initial monotone sequence estimator on paired sums.
+    let mut gammas: Vec<f64> = Vec::new();
+    let mut i = 0usize;
+    while i + 1 < rho.len() {
+        let g = rho[i] + rho[i + 1];
+        if g < 0.0 {
+            break;
+        }
+        gammas.push(g);
+        i += 2;
+    }
+
+    for k in 1..gammas.len() {
+        if gammas[k] > gammas[k - 1] {
+            gammas[k] = gammas[k - 1];
+        }
+    }
+
+    let mut tau = 1.0;
+    for g in gammas {
+        tau += 2.0 * g;
+    }
+    if !tau.is_finite() || tau <= 0.0 {
+        return total_draws;
+    }
+
+    let ess = (total_draws / tau).clamp(1.0, total_draws);
+    ess
 }
 
 /// Compute tail ESS (ESS of indicator I(x <= median) or I(x >= median)).
@@ -482,55 +589,6 @@ pub fn ess_tail(chains: &[&[f64]]) -> f64 {
     let tail_refs: Vec<&[f64]> = tail_chains.iter().map(|c| c.as_slice()).collect();
 
     ess_bulk(&tail_refs)
-}
-
-/// Single-chain ESS via initial positive sequence estimator of autocorrelation.
-fn chain_ess(chain: &[f64]) -> f64 {
-    let n = chain.len();
-    if n < 4 {
-        return 0.0;
-    }
-
-    let mean: f64 = chain.iter().sum::<f64>() / n as f64;
-    let var: f64 = chain.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
-
-    if var < 1e-30 {
-        return n as f64;
-    }
-
-    // Compute autocorrelation using FFT-free approach (direct for moderate N)
-    let max_lag = n - 1;
-    let mut rho_sum = 0.0;
-
-    let mut lag = 1;
-    while lag < max_lag {
-        let rho_lag = autocorrelation(chain, &mean, &var, lag);
-        let rho_lag1 =
-            if lag + 1 < max_lag { autocorrelation(chain, &mean, &var, lag + 1) } else { 0.0 };
-
-        // Initial positive sequence: stop when pair sum is negative
-        if rho_lag + rho_lag1 < 0.0 {
-            break;
-        }
-
-        rho_sum += rho_lag + rho_lag1;
-        lag += 2;
-    }
-
-    let tau = 1.0 + 2.0 * rho_sum;
-    (n as f64 / tau).max(1.0)
-}
-
-/// Autocorrelation at given lag.
-fn autocorrelation(chain: &[f64], mean: &f64, var: &f64, lag: usize) -> f64 {
-    let n = chain.len();
-    if lag >= n || *var < 1e-30 {
-        return 0.0;
-    }
-
-    let sum: f64 = (0..n - lag).map(|i| (chain[i] - mean) * (chain[i + lag] - mean)).sum();
-
-    sum / (n as f64 * var)
 }
 
 /// Compute full diagnostics for a SamplerResult.
@@ -700,7 +758,7 @@ mod tests {
     fn test_ess_constant_chain() {
         // Constant chain -> ESS = N (no autocorrelation, but var=0 => ESS=N)
         let chain = vec![1.0; 100];
-        let ess = chain_ess(&chain);
+        let ess = ess_bulk(&[&chain]);
         assert!(ess >= 99.0, "ESS of constant chain should be ~N: {}", ess);
     }
 
@@ -713,7 +771,7 @@ mod tests {
         let normal = Normal::new(0.0, 1.0).unwrap();
         let chain: Vec<f64> = (0..1000).map(|_| normal.sample(&mut rng)).collect();
 
-        let ess = chain_ess(&chain);
+        let ess = ess_bulk(&[&chain]);
         assert!(ess > 500.0, "ESS of IID chain should be close to N: {}", ess);
     }
 
@@ -731,7 +789,7 @@ mod tests {
             chain.push(x);
         }
 
-        let ess = chain_ess(&chain);
+        let ess = ess_bulk(&[&chain]);
         assert!(ess < 500.0, "ESS of correlated chain should be << N: {}", ess);
     }
 }
