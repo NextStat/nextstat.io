@@ -98,6 +98,21 @@ def solve_linear(a: Matrix, b: Vector) -> Vector:
     return x
 
 
+def mat_inv(a: Matrix) -> Matrix:
+    """Invert a small matrix by solving A x = e_i for each basis vector."""
+    n = len(a)
+    if n == 0:
+        return []
+    if any(len(row) != n for row in a):
+        raise ValueError("a must be square")
+    cols: Matrix = []
+    for i in range(n):
+        e = [0.0] * n
+        e[i] = 1.0
+        cols.append(solve_linear(a, e))
+    return mat_t(cols)
+
+
 def add_intercept(x: Matrix) -> Matrix:
     return [[1.0] + row[:] for row in x]
 
@@ -247,6 +262,9 @@ class Fixture:
     beta_hat: Vector
     nll_at_hat: float
     offset: Optional[Vector] = None
+    se_hat: Optional[Vector] = None
+    cov_hat: Optional[Matrix] = None
+    sigma2_hat: Optional[float] = None
 
     def to_json(self) -> dict:
         out = {
@@ -263,6 +281,12 @@ class Fixture:
         }
         if self.offset is not None:
             out["offset"] = self.offset
+        if self.se_hat is not None:
+            out["se_hat"] = self.se_hat
+        if self.cov_hat is not None:
+            out["cov_hat"] = self.cov_hat
+        if self.sigma2_hat is not None:
+            out["sigma2_hat"] = self.sigma2_hat
         return out
 
 
@@ -283,6 +307,14 @@ def build_fixtures() -> List[Fixture]:
     xd_ols = add_intercept(x_ols)
     resid = vec_sub(mat_vec_mul(xd_ols, beta_hat_ols), y_ols)
     nll_ols = 0.5 * sum(r * r for r in resid)
+    # Standard OLS sigma^2 estimate and covariance.
+    k_ols = len(beta_hat_ols)
+    sigma2_hat_ols = sum(r * r for r in resid) / float(n_ols - k_ols)
+    xt_ols = mat_t(xd_ols)
+    xtx_ols = mat_mul(xt_ols, xd_ols)
+    cov_ols = mat_inv(xtx_ols)
+    cov_ols = [[sigma2_hat_ols * v for v in row] for row in cov_ols]
+    se_ols = [math.sqrt(cov_ols[i][i]) for i in range(k_ols)]
 
     fixtures: List[Fixture] = [
         Fixture(
@@ -294,6 +326,9 @@ def build_fixtures() -> List[Fixture]:
             beta_true=beta_true_ols,
             beta_hat=beta_hat_ols,
             nll_at_hat=nll_ols,
+            se_hat=se_ols,
+            cov_hat=cov_ols,
+            sigma2_hat=sigma2_hat_ols,
         )
     ]
 
@@ -314,6 +349,9 @@ def build_fixtures() -> List[Fixture]:
 
     beta0_log = [0.0] * (p_log + 1)
     beta_hat_log, nll_log = newton_solve(log_obj, beta0_log, max_iter=100, tol=1e-10)
+    _nll, _grad, hess_log = logistic_nll_grad_hess(xd_log, y_log, beta_hat_log)
+    cov_log = mat_inv(hess_log)
+    se_log = [math.sqrt(cov_log[i][i]) for i in range(len(cov_log))]
 
     fixtures.append(
         Fixture(
@@ -325,6 +363,8 @@ def build_fixtures() -> List[Fixture]:
             beta_true=beta_true_log,
             beta_hat=beta_hat_log,
             nll_at_hat=nll_log,
+            se_hat=se_log,
+            cov_hat=cov_log,
         )
     )
 
@@ -345,6 +385,9 @@ def build_fixtures() -> List[Fixture]:
 
     beta0_pois = [0.0] * (p_pois + 1)
     beta_hat_pois, nll_pois = newton_solve(pois_obj, beta0_pois, max_iter=100, tol=1e-10)
+    _nll, _grad, hess_pois = poisson_nll_grad_hess(xd_pois, y_pois, beta_hat_pois, offset=None)
+    cov_pois = mat_inv(hess_pois)
+    se_pois = [math.sqrt(cov_pois[i][i]) for i in range(len(cov_pois))]
 
     fixtures.append(
         Fixture(
@@ -356,6 +399,8 @@ def build_fixtures() -> List[Fixture]:
             beta_true=beta_true_pois,
             beta_hat=beta_hat_pois,
             nll_at_hat=nll_pois,
+            se_hat=se_pois,
+            cov_hat=cov_pois,
         )
     )
 
@@ -373,4 +418,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
