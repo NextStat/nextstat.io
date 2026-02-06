@@ -111,6 +111,11 @@ class GlmSpec:
         n_groups: Optional[int] = None,
         coef_prior_mu: float = 0.0,
         coef_prior_sigma: float = 10.0,
+        random_intercept_non_centered: bool = False,
+        random_slope_feature_idx: Optional[int] = None,
+        random_slope_non_centered: bool = False,
+        correlated_feature_idx: Optional[int] = None,
+        lkj_eta: float = 1.0,
     ) -> "GlmSpec":
         return GlmSpec(
             kind="linear",
@@ -121,6 +126,11 @@ class GlmSpec:
             n_groups=n_groups,
             coef_prior_mu=float(coef_prior_mu),
             coef_prior_sigma=float(coef_prior_sigma),
+            random_intercept_non_centered=bool(random_intercept_non_centered),
+            random_slope_feature_idx=random_slope_feature_idx,
+            random_slope_non_centered=bool(random_slope_non_centered),
+            correlated_feature_idx=correlated_feature_idx,
+            lkj_eta=float(lkj_eta),
         )
 
     @staticmethod
@@ -133,6 +143,11 @@ class GlmSpec:
         n_groups: Optional[int] = None,
         coef_prior_mu: float = 0.0,
         coef_prior_sigma: float = 10.0,
+        random_intercept_non_centered: bool = False,
+        random_slope_feature_idx: Optional[int] = None,
+        random_slope_non_centered: bool = False,
+        correlated_feature_idx: Optional[int] = None,
+        lkj_eta: float = 1.0,
     ) -> "GlmSpec":
         return GlmSpec(
             kind="logistic",
@@ -144,6 +159,11 @@ class GlmSpec:
             offset=None,
             coef_prior_mu=float(coef_prior_mu),
             coef_prior_sigma=float(coef_prior_sigma),
+            random_intercept_non_centered=bool(random_intercept_non_centered),
+            random_slope_feature_idx=random_slope_feature_idx,
+            random_slope_non_centered=bool(random_slope_non_centered),
+            correlated_feature_idx=correlated_feature_idx,
+            lkj_eta=float(lkj_eta),
         )
 
     @staticmethod
@@ -157,6 +177,11 @@ class GlmSpec:
         n_groups: Optional[int] = None,
         coef_prior_mu: float = 0.0,
         coef_prior_sigma: float = 10.0,
+        random_intercept_non_centered: bool = False,
+        random_slope_feature_idx: Optional[int] = None,
+        random_slope_non_centered: bool = False,
+        correlated_feature_idx: Optional[int] = None,
+        lkj_eta: float = 1.0,
     ) -> "GlmSpec":
         return GlmSpec(
             kind="poisson",
@@ -168,6 +193,11 @@ class GlmSpec:
             offset=(None if offset is None else _as_1d_float_list(offset)),
             coef_prior_mu=float(coef_prior_mu),
             coef_prior_sigma=float(coef_prior_sigma),
+            random_intercept_non_centered=bool(random_intercept_non_centered),
+            random_slope_feature_idx=random_slope_feature_idx,
+            random_slope_non_centered=bool(random_slope_non_centered),
+            correlated_feature_idx=correlated_feature_idx,
+            lkj_eta=float(lkj_eta),
         )
 
     def to_json(self) -> str:

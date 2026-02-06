@@ -64,7 +64,7 @@ def test_glm_spec_roundtrip_linear_random_slope_smoke():
     import nextstat
     from nextstat.data import GlmSpec
 
-    base = GlmSpec.linear_regression(
+    spec = GlmSpec.linear_regression(
         x=[[0.0], [1.0], [2.0], [3.0]],
         y=[0.0, 1.0, 2.0, 3.0],
         include_intercept=False,
@@ -72,17 +72,6 @@ def test_glm_spec_roundtrip_linear_random_slope_smoke():
         n_groups=2,
         coef_prior_mu=0.0,
         coef_prior_sigma=1.0,
-    )
-    spec = GlmSpec(
-        kind=base.kind,
-        x=base.x,
-        y=base.y,
-        include_intercept=base.include_intercept,
-        group_idx=base.group_idx,
-        n_groups=base.n_groups,
-        offset=base.offset,
-        coef_prior_mu=base.coef_prior_mu,
-        coef_prior_sigma=base.coef_prior_sigma,
         random_intercept_non_centered=True,
         random_slope_feature_idx=0,
         random_slope_non_centered=True,
@@ -100,7 +89,7 @@ def test_glm_spec_build_logistic_correlated_intercept_slope_smoke():
     import nextstat
     from nextstat.data import GlmSpec
 
-    base = GlmSpec.logistic_regression(
+    spec = GlmSpec.logistic_regression(
         x=[[0.0], [1.0], [0.0], [1.0], [0.0], [1.0]],
         y=[0, 1, 0, 1, 0, 1],
         include_intercept=False,
@@ -108,17 +97,6 @@ def test_glm_spec_build_logistic_correlated_intercept_slope_smoke():
         n_groups=2,
         coef_prior_mu=0.0,
         coef_prior_sigma=1.0,
-    )
-    spec = GlmSpec(
-        kind=base.kind,
-        x=base.x,
-        y=base.y,
-        include_intercept=base.include_intercept,
-        group_idx=base.group_idx,
-        n_groups=base.n_groups,
-        offset=base.offset,
-        coef_prior_mu=base.coef_prior_mu,
-        coef_prior_sigma=base.coef_prior_sigma,
         correlated_feature_idx=0,
         lkj_eta=2.0,
     )
