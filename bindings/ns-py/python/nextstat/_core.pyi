@@ -92,18 +92,6 @@ class OrderedProbitModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
-class OrderedProbitModel:
-    def __init__(self, x: List[List[float]], y: List[int], *, n_levels: int) -> None: ...
-
-    def n_params(self) -> int: ...
-    def nll(self, params: List[float]) -> float: ...
-    def grad_nll(self, params: List[float]) -> List[float]: ...
-
-    def parameter_names(self) -> List[str]: ...
-    def suggested_init(self) -> List[float]: ...
-    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
-
-
 class PoissonRegressionModel:
     def __init__(
         self,
@@ -585,6 +573,8 @@ def sample(
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
+        OrderedLogitModel,
+        OrderedProbitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,

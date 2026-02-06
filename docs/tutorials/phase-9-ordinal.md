@@ -1,9 +1,9 @@
 ---
-title: "Phase 9: Ordinal Outcomes (Ordered Logit) — Tutorial"
+title: "Phase 9: Ordinal Outcomes (Ordered Logit/Probit) — Tutorial"
 status: draft
 ---
 
-# Phase 9: Ordinal Outcomes (Ordered Logit)
+# Phase 9: Ordinal Outcomes (Ordered Logit/Probit)
 
 This tutorial documents the baseline support for **ordinal outcomes** via
 ordered logistic regression (proportional odds model).
@@ -15,6 +15,11 @@ ordered logistic regression (proportional odds model).
 - Ordered logistic regression (K levels, y in `{0..K-1}`)
 - MLE fit through the standard `nextstat.fit(...)` surface
 - Prediction: per-level probabilities via `predict_proba(...)`
+
+`nextstat.ordinal.ordered_probit.fit(...)`:
+
+- Ordered probit regression (latent Gaussian threshold model)
+- Same output surface as ordered logit (fit + `predict_proba`)
 
 ## Prerequisites
 
@@ -125,3 +130,4 @@ ns_probs = np.asarray(fit.predict_proba(grid), dtype=float)
 print("max|Δprob|:", float(np.max(np.abs(sm_probs - ns_probs))))
 ```
 
+For ordered probit parity, use `distr="probit"` and `nextstat.ordinal.ordered_probit`.
