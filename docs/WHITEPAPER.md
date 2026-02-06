@@ -1,40 +1,54 @@
 # NextStat White Paper
 
 Version: 0.1.0 (Draft)  
-Last updated: 2026-02-05  
+Last updated: 2026-02-06  
 Status: Technical draft (public-facing)
 
 ## Abstract
 
-NextStat is a high-performance statistical inference toolkit for High Energy Physics (HEP), implemented in Rust with Python bindings. It targets compatibility with pyhf JSON (HistFactory-style workspaces) and provides a fast, reproducible engine for likelihood evaluation, maximum-likelihood fits, profile likelihood scans, and asymptotic CLs limits. NextStat is designed around a deterministic CPU reference path for validation and a performance path that can exploit SIMD and parallelism without breaking the parity contract.
+NextStat is a high-performance statistical inference toolkit implemented in Rust with Python bindings and a CLI. It spans two major use-cases:
+
+- **Binned likelihood inference** via pyhf JSON / HistFactory workspaces (HEP and adjacent sciences), with deterministic parity testing against pyhf in a CPU reference mode.
+- **General statistics workflows** (regression, multilevel/hierarchical models, and time series/state space) built on a shared `LogDensityModel` contract.
+
+NextStat provides a fast, reproducible engine for likelihood evaluation, maximum-likelihood fits, profile likelihood scans, asymptotic CLs limits, Bayesian posterior sampling (NUTS), and linear-Gaussian state-space inference (Kalman filtering/smoothing, EM parameter estimation, and forecasting with prediction intervals). The project is designed around a deterministic validation path and an optimized performance path (SIMD, parallelism) without breaking the reference contract.
 
 This paper describes the motivation, mathematical foundations, system architecture, inference algorithms, validation methodology, and benchmark strategy for NextStat.
 
 ## 1. Motivation
 
-Modern HEP analyses rely on large parameterized likelihood models (HistFactory family) and repeated inference tasks:
+Many scientific and applied domains rely on repeated inference tasks under a well-defined likelihood:
 
-- Maximum likelihood fits (best-fit and covariance)
-- Profile likelihood scans (test statistics as a function of the POI)
-- Asymptotic CLs hypothesis tests and upper limits
-- Large ensembles of toy experiments (bias/pull/coverage checks)
+- Regression and generalized linear models (GLMs)
+- Multilevel / hierarchical models (random effects, partial pooling)
+- Time series and state-space models (forecasting, missing observations)
+- Large binned likelihood analyses (HistFactory family) and derived workflows
 
-pyhf provides an established Python-first reference implementation and ecosystem integration. However, many workflows are dominated by compute-heavy likelihood evaluations and repeated fits. NextStat aims to provide:
+In high-energy physics, pyhf provides an established Python-first reference implementation for HistFactory-style workspaces and a wide ecosystem. In other fields (pharma, social sciences, ML research), tools like statsmodels and probabilistic programming languages provide rich modeling surfaces. Across all of these, workflows are often dominated by compute-heavy likelihood evaluations and repeated optimization / sampling.
+
+NextStat aims to provide:
 
 - A fast and scalable engine implemented in Rust
-- A stable, reproducible validation baseline (parity vs pyhf in deterministic CPU mode)
-- Multiple front-ends: Rust library, Python package, and CLI
+- A stable, reproducible validation baseline (deterministic reference mode)
+- A unified model contract (`LogDensityModel`) so inference algorithms generalize
+- Multiple front-ends: Rust library, Python package, and CLI artifacts suitable for pipelines
 
 ## 2. Scope and Non-Goals
 
 ### 2.1 In scope (v0.x)
 
 - HistFactory-style binned likelihoods via pyhf JSON workspaces
-- Canonical objective parity with pyhf in deterministic CPU mode:
-  - `logpdf(theta)` and `twice_nll(theta) = -2 * logpdf(theta)`
-- MLE with parameter bounds (L-BFGS-B style constraints)
-- Profile likelihood scan and asymptotic test statistics (`q_mu` / `qtilde_mu`)
-- Asymptotic CLs hypotest and upper limits (pyhf-style `test_stat="qtilde"`)
+- Canonical objective parity with pyhf in deterministic CPU mode (for supported workflows)
+- Generic inference over any `LogDensityModel`:
+  - MLE/MAP with parameter bounds (L-BFGS-B style constraints)
+  - NUTS sampling (single-chain and multi-chain)
+- General statistics pack:
+  - GLMs: linear, logistic, Poisson, negative binomial
+  - Composition builder for GLM-style models (including random intercepts/slopes)
+- Time series pack:
+  - Linear-Gaussian Kalman filter + RTS smoother + log-likelihood
+  - EM parameter estimation for standard models
+  - Forecasting APIs with Gaussian prediction intervals
 - A deterministic validation path and a performance path (SIMD / parallelism)
 
 ### 2.2 Non-goals (near-term)
@@ -42,6 +56,7 @@ pyhf provides an established Python-first reference implementation and ecosystem
 - Exact duplication of every pyhf backend and feature
 - Full numerical identity across all parallel backends and hardware (GPU/threads)
 - Replacing analysis frameworks or end-user modeling tools
+- Full drop-in replacement for the entire statsmodels surface area (parity tests are selective and often optional)
 
 ## 3. Compatibility Target: pyhf JSON / HistFactory
 
@@ -110,6 +125,17 @@ NextStat is designed to support Bayesian workflows without breaking the frequent
 
 The long-term goal is HMC/NUTS in Rust core, with reproducible seeds and diagnostics (R-hat, ESS, divergences), and golden tests on toy distributions.
 
+### 5.5 State Space Inference (Kalman / RTS / EM)
+
+For linear-Gaussian state-space models, NextStat provides:
+
+- Kalman filtering with log-likelihood accumulation
+- RTS smoothing for posterior state trajectories
+- EM parameter estimation for standard models (e.g., local level, AR(1))
+- Out-of-sample forecasting with Gaussian prediction intervals
+
+Missing observations are supported via a per-component missingness policy (skipping the update step for missing dimensions).
+
 ## 6. System Architecture
 
 NextStat follows a clean-architecture style: inference depends on stable abstractions, while compute backends provide implementations.
@@ -120,6 +146,7 @@ flowchart TB
   C["ns-translate\n(pyhf workspace ingestion\nmodel construction)"] --> B
   D["ns-compute\n(CPU reference + SIMD + parallel kernels)"] --> B
   E["ns-ad\n(automatic differentiation primitives)"] --> B
+  H["ns-prob\n(distributions + stable math)"] --> B
   F["bindings/ns-py\n(Python API)"] --> A
   F --> C
   G["ns-cli\n(command-line tools)"] --> A
@@ -158,6 +185,14 @@ Parity at single points is not sufficient to ensure statistical quality. NextSta
 
 The project policy is that NextStat must not silently diverge from pyhf’s statistical behavior; any correction must be explicit, validated, and documented.
 
+### 7.4 Cross-domain validation (general stats + time series)
+
+Beyond HistFactory parity, NextStat maintains:
+
+- Deterministic golden fixtures for regression models (OLS/logistic/Poisson), including gradient checks at fixture optima.
+- Hierarchical model contract tests (random intercept/slope and correlated random effects) across Rust and Python surfaces.
+- Kalman filter parity tests against independent scalar references (and optional parity vs statsmodels when available).
+
 ## 8. Performance and Benchmarks
 
 Performance goals focus on the dominant costs in typical workflows:
@@ -173,6 +208,13 @@ Recommended benchmarking practices:
 - Pin CPU frequency scaling where possible
 - Run both deterministic mode (correctness baseline) and performance mode
 - Report medians and variability (not single runs)
+
+Benchmark entry points (non-exhaustive):
+
+- Rust Criterion: `cargo bench --workspace`
+- Time series benches: `cargo bench -p ns-inference --bench kalman_benchmark`
+- Hierarchical benches: `cargo bench -p ns-inference --bench hier_benchmark`
+- Python microbench (no external deps): `.venv/bin/python tests/bench/python_microbench.py`
 
 ## 9. Reproducibility
 
@@ -195,6 +237,16 @@ The intended open-core boundary is documented in `docs/legal/open-core-boundarie
 - Commercial features add enterprise value around auditability, orchestration, compliance reporting, and collaboration
 
 ## 11. Roadmap (High Level)
+
+At a high level (implementation phases):
+
+- Phase 0–4: foundations, parity, performance paths, hardening
+- Phase 5: general statistics core (universal model API)
+- Phase 6: regression & GLM pack
+- Phase 7: hierarchical / multilevel models
+- Phase 8: time series & state space (Kalman/RTS/EM/forecasting)
+- Phase 9: pharma + social sciences packs (survival, ordinal, longitudinal, reproducibility artifacts)
+- Phase 10: benchmarks & performance coverage (including time series and hierarchical benches)
 
 The detailed phase plan is maintained as an internal document set (not published in this repository).
 

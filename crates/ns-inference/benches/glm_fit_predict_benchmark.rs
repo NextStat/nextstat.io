@@ -228,6 +228,75 @@ fn bench_fit_predict(c: &mut Criterion) {
     }
     fit.finish();
 
+    // Large fit benches: keep sample size small to avoid overly long runs in CI/dev loops.
+    let mut fit_large = c.benchmark_group("glm_fit_large");
+    fit_large.sample_size(3);
+    fit_large.measurement_time(Duration::from_secs(10));
+
+    let (label, n, p) = ("large", 20_000usize, 20usize);
+    let (x, y, include_intercept) = make_linear_dataset(n, p, 101);
+    let model = LinearRegressionModel::new(x, y, include_intercept).unwrap();
+    fit_large.bench_with_input(BenchmarkId::new("linear", label), &(), |b, _| {
+        b.iter(|| black_box(mle.fit(black_box(&model))).unwrap())
+    });
+
+    let (x, y, include_intercept) = make_logistic_dataset(n, p, 102);
+    let model = LogisticRegressionModel::new(x, y, include_intercept).unwrap();
+    fit_large.bench_with_input(BenchmarkId::new("logistic", label), &(), |b, _| {
+        b.iter(|| black_box(mle.fit(black_box(&model))).unwrap())
+    });
+
+    let (x, y, include_intercept, offset) = make_poisson_dataset(n, p, 103);
+    let model = PoissonRegressionModel::new(x, y, include_intercept, offset.clone()).unwrap();
+    fit_large.bench_with_input(BenchmarkId::new("poisson", label), &(), |b, _| {
+        b.iter(|| black_box(mle.fit(black_box(&model))).unwrap())
+    });
+
+    fit_large.finish();
+
+    // End-to-end batch fit benches (exercise Rayon overhead + optimizer throughput).
+    let mut fit_batch = c.benchmark_group("glm_fit_batch");
+    fit_batch.sample_size(10);
+    fit_batch.measurement_time(Duration::from_secs(10));
+
+    let batch_sizes = [
+        ("small", 200usize, 10usize, 16usize),
+        ("medium", 2_000usize, 20usize, 8usize),
+    ];
+
+    for (label, n, p, batch_n) in batch_sizes {
+        let mut models_lin = Vec::with_capacity(batch_n);
+        for i in 0..batch_n {
+            let (x, y, include_intercept) = make_linear_dataset(n, p, 201 + i as u64);
+            models_lin.push(LinearRegressionModel::new(x, y, include_intercept).unwrap());
+        }
+        fit_batch.bench_with_input(BenchmarkId::new("linear", label), &(), |b, _| {
+            b.iter(|| black_box(mle.fit_batch(black_box(&models_lin))))
+        });
+
+        let mut models_log = Vec::with_capacity(batch_n);
+        for i in 0..batch_n {
+            let (x, y, include_intercept) = make_logistic_dataset(n, p, 301 + i as u64);
+            models_log.push(LogisticRegressionModel::new(x, y, include_intercept).unwrap());
+        }
+        fit_batch.bench_with_input(BenchmarkId::new("logistic", label), &(), |b, _| {
+            b.iter(|| black_box(mle.fit_batch(black_box(&models_log))))
+        });
+
+        let mut models_pois = Vec::with_capacity(batch_n);
+        for i in 0..batch_n {
+            let (x, y, include_intercept, offset) = make_poisson_dataset(n, p, 401 + i as u64);
+            models_pois.push(
+                PoissonRegressionModel::new(x, y, include_intercept, offset.clone()).unwrap(),
+            );
+        }
+        fit_batch.bench_with_input(BenchmarkId::new("poisson", label), &(), |b, _| {
+            b.iter(|| black_box(mle.fit_batch(black_box(&models_pois))))
+        });
+    }
+
+    fit_batch.finish();
+
     // Predict-only benches (use a single fitted set of params per size).
     let mut predict = c.benchmark_group("glm_predict");
     predict.sample_size(50);

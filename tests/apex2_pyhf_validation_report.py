@@ -310,6 +310,7 @@ def main() -> int:
                 "n_random": args.n_random,
                 "seed": args.seed,
                 "fit": bool(args.fit),
+                "nextstat_params_mode": "buffer",
                 "nll_atol": args.nll_atol,
                 "nll_rtol": args.nll_rtol,
                 "expected_data_atol": args.expected_data_atol,
