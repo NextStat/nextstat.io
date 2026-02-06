@@ -51,6 +51,75 @@ let fit = mle.fit(&model)?;
 println!("nll={}", fit.nll);
 ```
 
+## `ns-root`
+
+Native ROOT file reader — zero dependency on ROOT C++.
+
+Key exports:
+- `ns_root::RootFile` — open ROOT files (mmap or owned bytes), read TH1 histograms and TTrees.
+- `ns_root::{Tree, BranchInfo, LeafType}` — TTree metadata and branch descriptors.
+- `ns_root::BranchReader` — columnar data extraction with parallel basket decompression (rayon).
+- `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` → `eval_row()` / `eval_bulk()`).
+- `ns_root::{HistogramSpec, FilledHistogram, fill_histograms}` — single-pass histogram filling.
+
+TTree example:
+
+```rust
+use ns_root::RootFile;
+
+let file = RootFile::open("data.root")?;
+let tree = file.get_tree("events")?;
+
+// Read a branch as Vec<f64> (type conversion from any numeric leaf type)
+let pt: Vec<f64> = file.branch_data(&tree, "pt")?;
+
+// Expression engine
+let sel = ns_root::CompiledExpr::compile("njet >= 4 && pt > 25.0")?;
+let mask = sel.eval_bulk(&[&njet_col, &pt_col]);
+
+// Fill histogram with selection + weight
+let spec = ns_root::HistogramSpec {
+    name: "mbb".into(),
+    variable: ns_root::CompiledExpr::compile("mbb")?,
+    weight: Some(ns_root::CompiledExpr::compile("weight_mc")?),
+    selection: Some(sel),
+    bin_edges: vec![0., 50., 100., 150., 200., 300.],
+};
+let histos = ns_root::fill_histograms(&[spec], &columns)?;
+```
+
+## `ns-translate`
+
+Key exports (in addition to existing pyhf/HistFactory):
+- `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples → HistFactory `Workspace`.
+- `ns_translate::ntuple::{ChannelConfig, SampleConfig, NtupleModifier}` — configuration types.
+
+Ntuple-to-workspace example:
+
+```rust
+use ns_translate::NtupleWorkspaceBuilder;
+
+let ws = NtupleWorkspaceBuilder::new()
+    .ntuple_path("ntuples/")
+    .tree_name("events")
+    .measurement("meas", "mu")
+    .add_channel("SR", |ch| {
+        ch.variable("mbb")
+          .binning(&[0., 50., 100., 150., 200., 300.])
+          .selection("njet >= 4 && pt > 25.0")
+          .add_sample("signal", |s| {
+              s.file("ttH.root").weight("weight_mc").normfactor("mu")
+          })
+          .add_sample("background", |s| {
+              s.file("ttbar.root")
+               .weight("weight_mc")
+               .normsys("bkg_norm", 0.9, 1.1)
+               .staterror()
+          })
+    })
+    .build()?;  // → Workspace
+```
+
 ## CLI
 
 The CLI is implemented in `crates/ns-cli` and wraps `ns-inference` surfaces.
