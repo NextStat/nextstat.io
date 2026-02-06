@@ -706,8 +706,11 @@ impl HistFactoryModel {
     /// Expected data in pyhf ordering: `main_data + auxdata`.
     ///
     /// pyhf orders main data by channel name (lexicographically), and appends auxiliary data
-    /// in the order constrained parameters are first encountered while scanning channels
-    /// (also ordered by name), then samples/modifiers in workspace order.
+    /// in the order parameters are constructed internally:
+    /// - `channels`, `samples`, and `(modifier_name, modifier_type)` are all sorted
+    /// - parameter sets are collected by modifier type in `histfactory_set` order
+    ///   (`histosys`, `lumi`, `normfactor`, `normsys`, `shapefactor`, `shapesys`, `staterror`)
+    /// - only constrained parameter sets contribute auxdata.
     pub fn expected_data_pyhf(&self, params: &[f64]) -> Result<Vec<f64>> {
         // Main expected (internal order), then reorder channels to match pyhf.
         let expected_main_flat: Vec<f64> = self.expected_data(params)?;
@@ -776,74 +779,132 @@ impl HistFactoryModel {
             }
         }
 
-        // pyhf parameter encounter order.
+        // pyhf auxdata order is determined by how parameter sets are collected:
+        // it loops over modifier *types* in `histfactory_set` order and only adds a parameter set
+        // when a modifier is actually present (thismod != None) for some (channel, sample).
+        //
+        // To match this, we:
+        // - sort channels/samples/modifiers to mimic pyhf's `_ChannelSummaryMixin`
+        // - scan modifier types in the same order as `pyhf.modifiers.histfactory_set`
+        // - push aux expectations for a parameter set in parameter-index order.
+        fn base_name(name: &str) -> &str {
+            name.split_once('[').map(|(b, _)| b).unwrap_or(name)
+        }
+
+        fn modifier_type(m: &ModelModifier) -> &'static str {
+            match m {
+                ModelModifier::HistoSys { .. } => "histosys",
+                ModelModifier::Lumi { .. } => "lumi",
+                ModelModifier::NormFactor { .. } => "normfactor",
+                ModelModifier::NormSys { .. } => "normsys",
+                ModelModifier::ShapeFactor { .. } => "shapefactor",
+                ModelModifier::ShapeSys { .. } => "shapesys",
+                ModelModifier::StatError { .. } => "staterror",
+            }
+        }
+
+        fn modifier_name_base<'a>(m: &ModelModifier, params: &'a [Parameter]) -> &'a str {
+            match m {
+                ModelModifier::NormFactor { param_idx }
+                | ModelModifier::NormSys { param_idx, .. }
+                | ModelModifier::HistoSys { param_idx, .. }
+                | ModelModifier::Lumi { param_idx } => params
+                    .get(*param_idx)
+                    .map(|p| base_name(p.name.as_str()))
+                    .unwrap_or(""),
+                ModelModifier::ShapeSys { param_indices, .. }
+                | ModelModifier::ShapeFactor { param_indices }
+                | ModelModifier::StatError { param_indices, .. } => params
+                    .get(*param_indices.first().unwrap_or(&usize::MAX))
+                    .map(|p| base_name(p.name.as_str()))
+                    .unwrap_or(""),
+            }
+        }
+
+        // Sorted channel list.
         let mut channel_refs: Vec<&ModelChannel> = self.channels.iter().collect();
         channel_refs.sort_by(|a, b| a.name.cmp(&b.name));
-        let mut seen = vec![false; self.parameters.len()];
 
-        for channel in channel_refs {
+        // Sorted union of sample names.
+        let mut sample_names: Vec<&str> = Vec::new();
+        for channel in &self.channels {
             for sample in &channel.samples {
-                // pyhf orders modifiers by kind (roughly) and then by modifier name.
-                // This ordering affects `model.config.par_names` and therefore auxdata order.
-                let mut modifiers: Vec<&ModelModifier> = sample.modifiers.iter().collect();
-                modifiers.sort_by(|a, b| {
-                    fn rank(m: &ModelModifier) -> u8 {
-                        match m {
-                            ModelModifier::HistoSys { .. } => 0,
-                            ModelModifier::NormSys { .. } => 1,
-                            ModelModifier::Lumi { .. } => 2,
-                            ModelModifier::NormFactor { .. } => 3,
-                            ModelModifier::ShapeFactor { .. } => 4,
-                            ModelModifier::StatError { .. } => 5,
-                            ModelModifier::ShapeSys { .. } => 6,
-                        }
+                sample_names.push(sample.name.as_str());
+            }
+        }
+        sample_names.sort();
+        sample_names.dedup();
+
+        // Sorted union of modifier (name, type) pairs.
+        let mut modifier_pairs: Vec<(String, String)> = Vec::new();
+        for channel in &self.channels {
+            for sample in &channel.samples {
+                for m in &sample.modifiers {
+                    let mname = modifier_name_base(m, &self.parameters).to_string();
+                    let mtype = modifier_type(m).to_string();
+                    if !mname.is_empty() {
+                        modifier_pairs.push((mname, mtype));
                     }
+                }
+            }
+        }
+        modifier_pairs.sort();
+        modifier_pairs.dedup();
 
-                    fn name_key<'a>(m: &ModelModifier, params: &'a [Parameter]) -> &'a str {
-                        match m {
-                            ModelModifier::NormFactor { param_idx }
-                            | ModelModifier::NormSys { param_idx, .. }
-                            | ModelModifier::HistoSys { param_idx, .. }
-                            | ModelModifier::Lumi { param_idx } => {
-                                params.get(*param_idx).map(|p| p.name.as_str()).unwrap_or("")
-                            }
-                            ModelModifier::ShapeSys { param_indices, .. }
-                            | ModelModifier::ShapeFactor { param_indices }
-                            | ModelModifier::StatError { param_indices, .. } => params
-                                .get(*param_indices.first().unwrap_or(&usize::MAX))
-                                .map(|p| p.name.as_str())
-                                .unwrap_or(""),
+        // Group parameter indices by parameter-set base name.
+        let mut paramset_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
+        for (idx, p) in self.parameters.iter().enumerate() {
+            let base = base_name(p.name.as_str()).to_string();
+            paramset_to_indices.entry(base).or_default().push(idx);
+        }
+
+        // Helper to find a sample by name in a channel.
+        fn find_sample<'a>(channel: &'a ModelChannel, name: &str) -> Option<&'a ModelSample> {
+            channel.samples.iter().find(|s| s.name == name)
+        }
+
+        // Helper to check if a (name, type) modifier exists in a sample.
+        fn sample_has_modifier(sample: &ModelSample, mname: &str, mtype: &str, params: &[Parameter]) -> bool {
+            sample.modifiers.iter().any(|m| {
+                modifier_type(m) == mtype && modifier_name_base(m, params) == mname
+            })
+        }
+
+        // Scan modifier types in the order defined by pyhf.
+        const PYHF_MTYPE_ORDER: [&str; 7] = [
+            "histosys",
+            "lumi",
+            "normfactor",
+            "normsys",
+            "shapefactor",
+            "shapesys",
+            "staterror",
+        ];
+
+        let mut seen_paramsets: HashMap<String, bool> = HashMap::new();
+
+        for mtype in PYHF_MTYPE_ORDER {
+            for channel in &channel_refs {
+                for &sname in &sample_names {
+                    let Some(sample) = find_sample(channel, sname) else { continue };
+
+                    for (mname, mtype_pair) in &modifier_pairs {
+                        if mtype_pair != mtype {
+                            continue;
                         }
-                    }
+                        if !sample_has_modifier(sample, mname.as_str(), mtype, &self.parameters) {
+                            continue;
+                        }
 
-                    let ra = rank(a);
-                    let rb = rank(b);
-                    ra.cmp(&rb).then_with(|| name_key(a, &self.parameters).cmp(name_key(b, &self.parameters)))
-                });
+                        if *seen_paramsets.get(mname).unwrap_or(&false) {
+                            continue;
+                        }
+                        seen_paramsets.insert(mname.clone(), true);
 
-                for modifier in modifiers {
-                    match modifier {
-                        ModelModifier::NormFactor { param_idx }
-                        | ModelModifier::NormSys { param_idx, .. }
-                        | ModelModifier::HistoSys { param_idx, .. }
-                        | ModelModifier::Lumi { param_idx } => {
-                            let idx = *param_idx;
-                            if idx < seen.len() && !seen[idx] {
-                                seen[idx] = true;
-                                if let Some(v) = aux_by_param[idx] {
+                        if let Some(indices) = paramset_to_indices.get(mname) {
+                            for &idx in indices {
+                                if let Some(v) = aux_by_param.get(idx).copied().flatten() {
                                     out.push(v);
-                                }
-                            }
-                        }
-                        ModelModifier::ShapeSys { param_indices, .. }
-                        | ModelModifier::ShapeFactor { param_indices }
-                        | ModelModifier::StatError { param_indices, .. } => {
-                            for &idx in param_indices {
-                                if idx < seen.len() && !seen[idx] {
-                                    seen[idx] = true;
-                                    if let Some(v) = aux_by_param[idx] {
-                                        out.push(v);
-                                    }
                                 }
                             }
                         }

@@ -4,7 +4,7 @@
 //! `z ∈ R^n`. These transforms map between unconstrained `z` and constrained
 //! parameters `theta`, providing Jacobian terms needed for correct densities.
 
-use crate::math::{log_sigmoid, sigmoid};
+use crate::math::{log_sigmoid, sigmoid, softplus};
 
 /// A bijective transform from unconstrained `z` to constrained `theta`.
 pub trait Bijector: Send + Sync {
@@ -144,6 +144,65 @@ impl Bijector for UpperBoundedBijector {
     #[inline]
     fn jacobian(&self, z: f64) -> f64 {
         -z.exp()
+    }
+}
+
+/// SoftplusLowerBounded: `(-inf, inf) -> (a, inf)`, `theta = a + softplus(z)`.
+///
+/// Compared to `LowerBoundedBijector` (exp), softplus has a gentler behavior for
+/// large negative `z`, which can improve numerical stability in some models.
+pub struct SoftplusBijector {
+    lower: f64,
+}
+
+impl SoftplusBijector {
+    /// Create a new softplus lower-bounded bijector with given lower bound.
+    pub fn new(lower: f64) -> Self {
+        Self { lower }
+    }
+
+    #[inline]
+    fn inverse_softplus(y: f64) -> f64 {
+        // Inverse of softplus(y) = ln(1 + exp(z)) is z = ln(exp(y) - 1).
+        //
+        // Use expm1 for stability and short-circuit for large y where exp(y) overflows.
+        let y = y.max(1e-15);
+        if y > 20.0 {
+            // softplus(z) ~= z for large z, so inverse ~= y
+            y
+        } else {
+            y.exp_m1().ln()
+        }
+    }
+}
+
+impl Bijector for SoftplusBijector {
+    #[inline]
+    fn forward(&self, z: f64) -> f64 {
+        self.lower + softplus(z)
+    }
+
+    #[inline]
+    fn inverse(&self, theta: f64) -> f64 {
+        let y = (theta - self.lower).max(1e-15);
+        Self::inverse_softplus(y)
+    }
+
+    #[inline]
+    fn log_abs_det_jacobian(&self, z: f64) -> f64 {
+        // d/dz softplus(z) = sigmoid(z)
+        log_sigmoid(z)
+    }
+
+    #[inline]
+    fn grad_log_abs_det_jacobian(&self, z: f64) -> f64 {
+        // d/dz log(sigmoid(z)) = 1 - sigmoid(z) = sigmoid(-z)
+        sigmoid(-z)
+    }
+
+    #[inline]
+    fn jacobian(&self, z: f64) -> f64 {
+        sigmoid(z)
     }
 }
 
@@ -416,6 +475,42 @@ mod tests {
     #[test]
     fn test_upper_bounded_grad_log_jac() {
         let b = UpperBoundedBijector::new(3.0);
+        let zs = vec![-5.0, -1.0, 0.0, 1.0, 5.0];
+        test_bijector_grad_log_jac(&b, &zs, 1e-7);
+    }
+
+    #[test]
+    fn test_softplus_lower_bounded_roundtrip() {
+        let b = SoftplusBijector::new(2.5);
+        let zs = vec![-10.0, -5.0, -1.0, 0.0, 1.0, 5.0, 10.0];
+        test_bijector_roundtrip(&b, &zs, 1e-10);
+    }
+
+    #[test]
+    fn test_softplus_lower_bounded_extreme_negative_saturates() {
+        let b = SoftplusBijector::new(2.5);
+        let z = -40.0;
+        let theta = b.forward(z);
+        assert!(
+            (theta - 2.5).abs() < 1e-12,
+            "softplus should saturate to lower for very negative z: theta={}",
+            theta
+        );
+
+        let z_back = b.inverse(theta);
+        assert!(z_back.is_finite() && z_back < -30.0, "inverse(theta) should be finite and very negative: {}", z_back);
+    }
+
+    #[test]
+    fn test_softplus_lower_bounded_inverse_roundtrip() {
+        let b = SoftplusBijector::new(2.5);
+        let thetas = vec![2.5 + 1e-8, 2.6, 3.0, 5.0, 100.0];
+        test_bijector_inverse_roundtrip(&b, &thetas, 1e-10);
+    }
+
+    #[test]
+    fn test_softplus_lower_bounded_grad_log_jac() {
+        let b = SoftplusBijector::new(2.5);
         let zs = vec![-5.0, -1.0, 0.0, 1.0, 5.0];
         test_bijector_grad_log_jac(&b, &zs, 1e-7);
     }

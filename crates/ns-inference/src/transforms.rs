@@ -8,7 +8,8 @@ pub use ns_prob::transforms::{
     ExpBijector,
     IdentityBijector,
     LowerBoundedBijector,
+    SoftplusBijector,
+    UpperBoundedBijector,
     ParameterTransform,
     SigmoidBijector,
 };
-

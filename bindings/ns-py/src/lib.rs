@@ -417,22 +417,77 @@ impl PyMaximumLikelihoodEstimator {
         PyMaximumLikelihoodEstimator { inner: RustMLE::new() }
     }
 
-    /// Fit a model to data
+    /// Fit any supported model (generic `LogDensityModel`) using MLE.
+    ///
+    /// `data=` is only supported for `HistFactoryModel` (overrides main-bin observations).
     #[pyo3(signature = (model, *, data=None))]
-    fn fit(&self, model: &PyHistFactoryModel, data: Option<Vec<f64>>) -> PyResult<PyFitResult> {
-        let fit_model = if let Some(obs_main) = data {
-            model
-                .inner
-                .with_observed_main(&obs_main)
-                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    fn fit<'py>(
+        &self,
+        py: Python<'py>,
+        model: &Bound<'py, PyAny>,
+        data: Option<Vec<f64>>,
+    ) -> PyResult<PyFitResult> {
+        // Extract a Rust-owned model before releasing the GIL.
+        enum FitModel {
+            HistFactory(RustModel),
+            GaussianMean(GaussianMeanModel),
+            LinearRegression(RustLinearRegressionModel),
+            LogisticRegression(RustLogisticRegressionModel),
+            PoissonRegression(RustPoissonRegressionModel),
+        }
+
+        let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+            let m = if let Some(obs_main) = data {
+                hf.inner
+                    .with_observed_main(&obs_main)
+                    .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+            } else {
+                hf.inner.clone()
+            };
+            FitModel::HistFactory(m)
+        } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::GaussianMean(gm.inner.clone())
+        } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::LinearRegression(lr.inner.clone())
+        } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::LogisticRegression(logit.inner.clone())
+        } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::PoissonRegression(pois.inner.clone())
         } else {
-            model.inner.clone()
+            return Err(PyValueError::new_err(
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, or a regression model.",
+            ));
         };
 
-        let result = self
-            .inner
-            .fit(&fit_model)
-            .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+        let result = match fit_model {
+            FitModel::HistFactory(m) => py
+                .detach(move || RustMLE::new().fit(&m))
+                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+            FitModel::GaussianMean(m) => py
+                .detach(move || RustMLE::new().fit(&m))
+                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+            FitModel::LinearRegression(m) => py
+                .detach(move || RustMLE::new().fit(&m))
+                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+            FitModel::LogisticRegression(m) => py
+                .detach(move || RustMLE::new().fit(&m))
+                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+            FitModel::PoissonRegression(m) => py
+                .detach(move || RustMLE::new().fit(&m))
+                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+        };
 
         Ok(PyFitResult {
             parameters: result.parameters,
@@ -455,29 +510,9 @@ fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
 /// Convenience wrapper: fit model with optional overridden observations.
 #[pyfunction]
 #[pyo3(signature = (model, *, data=None))]
-fn fit(model: &PyHistFactoryModel, data: Option<Vec<f64>>) -> PyResult<PyFitResult> {
-    let mle = RustMLE::new();
-    let fit_model = if let Some(obs_main) = data {
-        model
-            .inner
-            .with_observed_main(&obs_main)
-            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
-    } else {
-        model.inner.clone()
-    };
-
-    let result =
-        mle.fit(&fit_model).map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-
-    Ok(PyFitResult {
-        parameters: result.parameters,
-        uncertainties: result.uncertainties,
-        nll: result.nll,
-        converged: result.converged,
-        n_iter: result.n_iter,
-        n_fev: result.n_fev,
-        n_gev: result.n_gev,
-    })
+fn fit<'py>(py: Python<'py>, model: &Bound<'py, PyAny>, data: Option<Vec<f64>>) -> PyResult<PyFitResult> {
+    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+    mle.fit(py, model, data)
 }
 
 /// Closed-form OLS fit for linear regression fixtures and baselines.
