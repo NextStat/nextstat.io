@@ -9,9 +9,9 @@ analysis:
 inputs:
   mode: histfactory_xml
   histfactory:
-    export_dir: /abs/path/to/trex/output
+    export_dir: tests/fixtures/histfactory
     combination_xml: null
-    measurement: measurement
+    measurement: NominalMeasurement
 
 execution:
   determinism:
@@ -39,10 +39,10 @@ execution:
     include_covariance: true
     histfactory_xml: null
     render:
-      enabled: true
-      pdf: tmp/hf_pipeline/report.pdf
-      svg_dir: tmp/hf_pipeline/svg
-      python: .venv/bin/python
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
     skip_uncertainty: false
     uncertainty_grouping: prefix_1
 
@@ -52,4 +52,3 @@ gates:
     baseline_dir: tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

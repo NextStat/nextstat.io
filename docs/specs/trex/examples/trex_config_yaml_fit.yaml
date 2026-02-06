@@ -9,6 +9,7 @@ analysis:
 inputs:
   mode: trex_config_yaml
   trex_config_yaml:
+    base_dir: .
     read_from: NTUP
     tree_name: events
     measurement: meas
@@ -75,4 +76,3 @@ gates:
     baseline_dir: tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

@@ -423,7 +423,7 @@ class Posterior:
 class MaximumLikelihoodEstimator:
     def __init__(self, *, max_iter: int = ..., tol: float = ..., m: int = ...) -> None: ...
     @overload
-    def fit(self, model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+    def fit(self, model: HistFactoryModel, *, data: Optional[List[float]] = ..., init_pars: Optional[List[float]] = ...) -> FitResult: ...
     @overload
     def fit(
         self,
@@ -446,6 +446,7 @@ class MaximumLikelihoodEstimator:
         ],
         *,
         data: Literal[None] = ...,
+        init_pars: Optional[List[float]] = ...,
     ) -> FitResult: ...
     @overload
     def fit_batch(
@@ -568,7 +569,7 @@ def from_histfactory(xml_path: str) -> HistFactoryModel: ...
 
 def read_root_histogram(root_path: str, hist_path: str) -> Dict[str, Any]: ...
 @overload
-def fit(model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+def fit(model: HistFactoryModel, *, data: Optional[List[float]] = ..., init_pars: Optional[List[float]] = ...) -> FitResult: ...
 @overload
 def fit(
     model: Union[
@@ -590,6 +591,7 @@ def fit(
     ],
     *,
     data: Literal[None] = ...,
+    init_pars: Optional[List[float]] = ...,
 ) -> FitResult: ...
 
 def map_fit(posterior: Posterior) -> FitResult: ...

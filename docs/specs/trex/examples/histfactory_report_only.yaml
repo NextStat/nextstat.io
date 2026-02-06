@@ -9,9 +9,9 @@ analysis:
 inputs:
   mode: histfactory_xml
   histfactory:
-    export_dir: /abs/path/to/trex/output
+    export_dir: tests/fixtures/histfactory
     combination_xml: null
-    measurement: measurement
+    measurement: NominalMeasurement
 
 execution:
   determinism:
@@ -52,4 +52,3 @@ gates:
     baseline_dir: tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

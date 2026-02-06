@@ -10,6 +10,7 @@ use std::process::Command;
 
 mod report;
 mod run;
+mod analysis_spec;
 
 #[derive(Parser)]
 #[command(name = "nextstat")]
@@ -211,6 +212,10 @@ enum Commands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
+
+        /// Make JSON output deterministic (stable ordering; normalize timestamps/timings).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
     },
 
     /// Visualization artifacts (plot-friendly JSON)
@@ -667,6 +672,7 @@ fn main() -> Result<()> {
             skip_uncertainty,
             uncertainty_grouping,
             threads,
+            deterministic,
         } => cmd_report(
             &input,
             &histfactory_xml,
@@ -681,6 +687,7 @@ fn main() -> Result<()> {
             skip_uncertainty,
             uncertainty_grouping.as_str(),
             threads,
+            deterministic,
         ),
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
@@ -844,7 +851,13 @@ fn main() -> Result<()> {
 }
 
 fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
-    let cfg = run::read_run_config(config_path)?;
+    match analysis_spec::read_any_run_config(config_path.as_path())? {
+        analysis_spec::AnyRunConfig::Legacy(cfg) => cmd_run_legacy(config_path, bundle, &cfg),
+        analysis_spec::AnyRunConfig::SpecV0(spec) => cmd_run_spec_v0(config_path, bundle, &spec),
+    }
+}
+
+fn cmd_run_legacy(config_path: &PathBuf, bundle: Option<&PathBuf>, cfg: &run::RunConfig) -> Result<()> {
     let paths = run::derive_paths(&cfg.out_dir);
 
     ensure_out_dir(&paths.out_dir, cfg.overwrite)?;
@@ -869,10 +882,11 @@ fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
         cfg.skip_uncertainty,
         cfg.uncertainty_grouping.as_str(),
         cfg.threads,
+        cfg.deterministic,
     )?;
 
     if let Some(dir) = bundle {
-        run::write_run_bundle(dir, config_path, &cfg)?;
+        run::write_run_bundle(dir, config_path, cfg)?;
     }
 
     let summary = serde_json::json!({
@@ -882,6 +896,93 @@ fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
             "workspace_json": paths.workspace_json,
         },
         "artifacts_dir": paths.artifacts_dir,
+    });
+    println!("{}", serde_json::to_string_pretty(&summary)?);
+
+    Ok(())
+}
+
+fn cmd_run_spec_v0(
+    config_path: &PathBuf,
+    bundle: Option<&PathBuf>,
+    spec: &analysis_spec::AnalysisSpecV0,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for analysis spec v0 yet");
+    }
+
+    let plan = spec.to_run_plan(config_path.as_path())?;
+    let deterministic = plan.threads == 1;
+
+    if let Some(import) = plan.import.as_ref() {
+        if let Some(parent) = plan.workspace_json.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        match import {
+            analysis_spec::ImportPlan::HistfactoryXml { histfactory_xml } => {
+                tracing::info!(path = %histfactory_xml.display(), "importing HistFactory export");
+                let ws = ns_translate::histfactory::from_xml(histfactory_xml)?;
+                write_json_file(&plan.workspace_json, &serde_json::to_value(&ws)?)?;
+            }
+            analysis_spec::ImportPlan::TrexConfigTxt { config_path, base_dir } => {
+                tracing::info!(path = %config_path.display(), "importing TRExFitter config");
+                let text = std::fs::read_to_string(config_path)?;
+                let ws = ns_translate::trex::workspace_from_str(&text, base_dir)?;
+                write_json_file(&plan.workspace_json, &serde_json::to_value(&ws)?)?;
+            }
+        }
+    }
+
+    if let Some(fit_out) = plan.fit.as_ref() {
+        if let Some(parent) = fit_out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, /*bundle*/ None)?;
+    }
+
+    if let Some(scan) = plan.profile_scan.as_ref() {
+        if let Some(parent) = scan.output_json.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        cmd_scan(
+            &plan.workspace_json,
+            scan.start,
+            scan.stop,
+            scan.points,
+            Some(&scan.output_json),
+            plan.threads,
+            /*bundle*/ None,
+        )?;
+    }
+
+    if let Some(report) = plan.report.as_ref() {
+        cmd_report(
+            &plan.workspace_json,
+            &report.histfactory_xml,
+            plan.fit.as_ref(),
+            &report.out_dir,
+            report.overwrite,
+            report.include_covariance,
+            report.render,
+            report.pdf.as_ref(),
+            report.svg_dir.as_ref(),
+            report.python.as_ref(),
+            report.skip_uncertainty,
+            report.uncertainty_grouping.as_str(),
+            plan.threads,
+            deterministic,
+        )?;
+    }
+
+    let summary = serde_json::json!({
+        "schema_version": spec.schema_version,
+        "threads": plan.threads,
+        "workspace_json": plan.workspace_json,
+        "outputs": {
+            "fit_json": plan.fit,
+            "scan_json": plan.profile_scan.as_ref().map(|s| s.output_json.clone()),
+            "report_out_dir": plan.report.as_ref().map(|r| r.out_dir.clone()),
+        },
     });
     println!("{}", serde_json::to_string_pretty(&summary)?);
 
@@ -1000,6 +1101,39 @@ fn load_workspace_and_model(
     let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
     tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok((workspace, model))
+}
+
+fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::Value {
+    fn norm(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(map) => {
+                for (k, vv) in map.iter_mut() {
+                    match k.as_str() {
+                        "created_unix_ms" | "timestamp" => {
+                            *vv = serde_json::Value::Number(serde_json::Number::from(0u64));
+                        }
+                        "wall_s" | "elapsed_s" | "fit_s" | "predict_s" => {
+                            *vv = serde_json::json!(0.0);
+                        }
+                        "stdout_tail" => {
+                            *vv = serde_json::Value::String(String::new());
+                        }
+                        _ => {}
+                    }
+                    norm(vv);
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for vv in arr.iter_mut() {
+                    norm(vv);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    norm(&mut value);
+    value
 }
 
 fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
@@ -2495,6 +2629,7 @@ fn cmd_report(
     skip_uncertainty: bool,
     uncertainty_grouping: &str,
     threads: usize,
+    deterministic: bool,
 ) -> Result<()> {
     ensure_out_dir(out_dir, overwrite)?;
 
@@ -2568,6 +2703,8 @@ fn cmd_report(
             "n_gev": result.n_gev,
             "covariance": result.covariance,
         });
+        let fit_json_out =
+            if deterministic { normalize_json_for_determinism(fit_json_out) } else { fit_json_out };
         write_json_file(&out_dir.join("fit.json"), &fit_json_out)?;
 
         let fit_result = Some(ns_core::FitResult {
@@ -2601,23 +2738,39 @@ fn cmd_report(
         &params_postfit,
         threads,
     )?;
-    write_json_file(&out_dir.join("distributions.json"), &serde_json::to_value(&dist_artifact)?)?;
+    let mut dist_json = serde_json::to_value(&dist_artifact)?;
+    if deterministic {
+        dist_json = normalize_json_for_determinism(dist_json);
+    }
+    write_json_file(&out_dir.join("distributions.json"), &dist_json)?;
 
     // Yields
     let yields_artifact =
         ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads)?;
-    write_json_file(&out_dir.join("yields.json"), &serde_json::to_value(&yields_artifact)?)?;
+    let mut yields_json = serde_json::to_value(&yields_artifact)?;
+    if deterministic {
+        yields_json = normalize_json_for_determinism(yields_json);
+    }
+    write_json_file(&out_dir.join("yields.json"), &yields_json)?;
     write_yields_tables(&yields_artifact, out_dir)?;
 
     // Pulls + Corr depend on fit uncertainties/covariance.
     if let Some(fit_result) = fit_result.as_ref() {
         let pulls_artifact = ns_viz::pulls::pulls_artifact(&model, fit_result, threads)?;
-        write_json_file(&out_dir.join("pulls.json"), &serde_json::to_value(&pulls_artifact)?)?;
+        let mut pulls_json = serde_json::to_value(&pulls_artifact)?;
+        if deterministic {
+            pulls_json = normalize_json_for_determinism(pulls_json);
+        }
+        write_json_file(&out_dir.join("pulls.json"), &pulls_json)?;
 
         if fit_result.covariance.is_some() {
             let corr_artifact =
                 ns_viz::corr::corr_artifact(&model, fit_result, threads, include_covariance)?;
-            write_json_file(&out_dir.join("corr.json"), &serde_json::to_value(&corr_artifact)?)?;
+            let mut corr_json = serde_json::to_value(&corr_artifact)?;
+            if deterministic {
+                corr_json = normalize_json_for_determinism(corr_json);
+            }
+            write_json_file(&out_dir.join("corr.json"), &corr_json)?;
         } else {
             tracing::warn!("fit covariance missing; skipping corr.json");
         }
@@ -2634,7 +2787,11 @@ fn cmd_report(
             uncertainty_grouping,
             threads,
         )?;
-        write_json_file(&out_dir.join("uncertainty.json"), &serde_json::to_value(&unc)?)?;
+        let mut unc_json = serde_json::to_value(&unc)?;
+        if deterministic {
+            unc_json = normalize_json_for_determinism(unc_json);
+        }
+        write_json_file(&out_dir.join("uncertainty.json"), &unc_json)?;
     }
 
     if render {

@@ -2,9 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn fixture_path(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
-        .join(rel)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures").join(rel)
 }
 
 fn unique_tmp_dir(name: &str) -> PathBuf {
@@ -71,4 +69,3 @@ fn cli_run_histfactory_smoke_writes_bundle_and_artifacts() {
     let _ = std::fs::remove_dir_all(&bundle_dir);
     let _ = std::fs::remove_file(&cfg_path);
 }
-

@@ -313,6 +313,7 @@ def _summarize_runs(
     nextstat_names: List[str],
     pyhf_build_s: float,
     nextstat_build_s: float,
+    assessment_gates: Optional[dict[str, float]] = None,
 ) -> dict[str, Any]:
     # rows: only non-warmup, single workspace.
     #
@@ -324,6 +325,11 @@ def _summarize_runs(
 
     paired_ok = [r for r in rows if r.get("pyhf", {}).get("ok") and r.get("nextstat", {}).get("ok")]
     paired_converged = [r for r in paired_ok if r.get("nextstat", {}).get("converged") is True]
+
+    gates = assessment_gates or {}
+    gate_obj_parity_p99 = float(gates.get("obj_parity_abs_p99", 1e-6))
+    gate_nextstat_conv_rate_min = float(gates.get("nextstat_conv_rate_min", 0.95))
+    gate_min_selected_runs = int(float(gates.get("min_selected_runs", 50)))
 
     def tool_stats(tool_rows: List[dict[str, Any]], tool_key: str) -> dict[str, Any]:
         wall = [float(r[tool_key]["fit_wall_s"]) for r in tool_rows]
@@ -409,6 +415,99 @@ def _summarize_runs(
     cross_eval_all_ok = cross_eval_stats(paired_ok)
     cross_eval_converged = cross_eval_stats(paired_converged)
 
+    def dist(vals: List[float]) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "n": int(len(vals)),
+            "mean": float(statistics.mean(vals)) if vals else float("nan"),
+            "stdev": float(statistics.pstdev(vals)) if len(vals) >= 2 else 0.0,
+            "min": float(min(vals)) if vals else float("nan"),
+            "max": float(max(vals)) if vals else float("nan"),
+        }
+        out.update(_percentiles(vals, [50, 90, 99]))
+        return out
+
+    # Assessment:
+    # - "Objective parity" checks whether both toolchains compute (nearly) the same NLL on the
+    #   same parameters and data (independent of optimizer performance).
+    # - "Optimizer agreement" compares the fitted minima NLLs and indicates which optimizer
+    #   tends to find a lower minimum under the shared objective.
+    obj_parity_pyhf_at_ns_abs: List[float] = []
+    obj_parity_ns_at_pyhf_abs: List[float] = []
+    abs_delta_hat_nll: List[float] = []
+    pyhf_improvement_from_ns: List[float] = []
+    ns_improvement_from_pyhf: List[float] = []
+    for r in paired_ok:
+        try:
+            py_nll = float(r["pyhf"]["nll"])
+            ns_nll = float(r["nextstat"]["nll"])
+            cross_pyhf_at_ns = float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
+            cross_ns_at_pyhf = float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
+        except Exception:
+            continue
+
+        if all(map(math.isfinite, [py_nll, ns_nll, cross_pyhf_at_ns, cross_ns_at_pyhf])):
+            obj_parity_pyhf_at_ns_abs.append(abs(cross_pyhf_at_ns - ns_nll))
+            obj_parity_ns_at_pyhf_abs.append(abs(cross_ns_at_pyhf - py_nll))
+            abs_delta_hat_nll.append(abs(ns_nll - py_nll))
+
+            # Positive => the other tool's optimum is better under this tool's objective.
+            pyhf_improvement_from_ns.append(py_nll - cross_pyhf_at_ns)
+            ns_improvement_from_pyhf.append(ns_nll - cross_ns_at_pyhf)
+
+    # NextStat convergence rate among paired-ok runs (not only selected-converged).
+    n_paired_ok = len(paired_ok)
+    conv_rate = (len(paired_converged) / n_paired_ok) if n_paired_ok > 0 else 0.0
+
+    # Determine PASS/FAIL/INCONCLUSIVE (objective parity is the hard correctness gate).
+    status = "INCONCLUSIVE"
+    reasons: List[str] = []
+    if n_paired_ok == 0:
+        reasons.append("no paired-ok runs")
+    else:
+        if conv_rate < gate_nextstat_conv_rate_min:
+            reasons.append(f"nextstat conv_rate={conv_rate:.3g} < {gate_nextstat_conv_rate_min:.3g}")
+        if len(paired_converged) < gate_min_selected_runs:
+            reasons.append(f"selected_n={len(paired_converged)} < {gate_min_selected_runs}")
+
+        p99_pyhf_at_ns = float(dist(obj_parity_pyhf_at_ns_abs).get("p99", float("nan")))
+        p99_ns_at_pyhf = float(dist(obj_parity_ns_at_pyhf_abs).get("p99", float("nan")))
+        if math.isfinite(p99_pyhf_at_ns) and p99_pyhf_at_ns > gate_obj_parity_p99:
+            reasons.append(f"obj_parity(pyhf@ns_hat) p99={p99_pyhf_at_ns:.3g} > {gate_obj_parity_p99:.3g}")
+        if math.isfinite(p99_ns_at_pyhf) and p99_ns_at_pyhf > gate_obj_parity_p99:
+            reasons.append(f"obj_parity(ns@pyhf_hat) p99={p99_ns_at_pyhf:.3g} > {gate_obj_parity_p99:.3g}")
+
+        if any("obj_parity" in r for r in reasons):
+            status = "FAIL"
+        elif not reasons:
+            status = "PASS"
+        else:
+            status = "INCONCLUSIVE"
+
+    assessment = {
+        "status": status,
+        "reasons": reasons,
+        "gates": {
+            "obj_parity_abs_p99": gate_obj_parity_p99,
+            "nextstat_conv_rate_min": gate_nextstat_conv_rate_min,
+            "min_selected_runs": gate_min_selected_runs,
+        },
+        "counts": {
+            "n_total_runs": int(len(rows)),
+            "n_paired_ok": int(n_paired_ok),
+            "n_selected_converged": int(len(paired_converged)),
+        },
+        "rates": {"nextstat_conv_rate": float(conv_rate)},
+        "objective_parity": {
+            "abs(pyhf_nll_at_nextstat_hat - nextstat_nll)": dist(obj_parity_pyhf_at_ns_abs),
+            "abs(nextstat_nll_at_pyhf_hat - pyhf_nll)": dist(obj_parity_ns_at_pyhf_abs),
+        },
+        "optimizer": {
+            "abs(nextstat_hat_nll - pyhf_hat_nll)": dist(abs_delta_hat_nll),
+            "pyhf_improvement_from_nextstat_hat": dist(pyhf_improvement_from_ns),
+            "nextstat_improvement_from_pyhf_hat": dist(ns_improvement_from_pyhf),
+        },
+    }
+
     # Name-aligned mean diffs (in pyhf order), using converged-only paired runs.
     py_params = param_stats(paired_converged, names=pyhf_names, tool_key="pyhf")
     ns_params = param_stats(paired_converged, names=nextstat_names, tool_key="nextstat")
@@ -460,6 +559,7 @@ def _summarize_runs(
         "nextstat": ns_sel,
         "all_ok": {"pyhf": py_all, "nextstat": ns_all},
         "cross_eval": {"all_ok": cross_eval_all_ok, "converged": cross_eval_converged},
+        "assessment": assessment,
         "params": {
             "pyhf": py_params,
             "nextstat": ns_params,
@@ -484,6 +584,7 @@ def _write_summary(
     header: dict[str, Any],
     records: List[dict[str, Any]],
     exclude_workspace_ids: List[str],
+    assessment_gates: dict[str, float],
 ) -> None:
     # Group by workspace id, then compute summary stats.
     by_ws: Dict[str, List[dict[str, Any]]] = {}
@@ -516,6 +617,7 @@ def _write_summary(
                     nextstat_names=ns_names,
                     pyhf_build_s=pyhf_build_s,
                     nextstat_build_s=ns_build_s,
+                    assessment_gates=assessment_gates,
                 ),
             }
         )
@@ -600,6 +702,32 @@ def _write_summary(
         for row in top[:10]:
             lines.append(f"- `{row['name']}`: |Δmean|={float(row['abs_diff']):.6g}")
 
+    # Add a short correctness assessment section (objective parity gates).
+    lines.append("")
+    lines.append("## Assessment")
+    lines.append("")
+    for ws in ws_summaries:
+        a = (ws.get("summary") or {}).get("assessment") or {}
+        status = str(a.get("status") or "INCONCLUSIVE")
+        conv_rate = (a.get("rates") or {}).get("nextstat_conv_rate")
+        p1 = (a.get("objective_parity") or {}).get("abs(pyhf_nll_at_nextstat_hat - nextstat_nll)") or {}
+        p2 = (a.get("objective_parity") or {}).get("abs(nextstat_nll_at_pyhf_hat - pyhf_nll)") or {}
+        reasons = a.get("reasons") or []
+        lines.append(f"### `{ws['path']}`")
+        lines.append("")
+        lines.append(f"- status: `{status}`")
+        if conv_rate is not None:
+            lines.append(f"- nextstat conv_rate: {float(conv_rate):.6g}")
+        if p1.get("n", 0) or p2.get("n", 0):
+            lines.append(
+                f"- obj_parity abs p99: pyhf@ns_hat={float(p1.get('p99', float('nan'))):.6g}, ns@pyhf_hat={float(p2.get('p99', float('nan'))):.6g}"
+            )
+            lines.append(
+                f"- obj_parity abs max: pyhf@ns_hat={float(p1.get('max', float('nan'))):.6g}, ns@pyhf_hat={float(p2.get('max', float('nan'))):.6g}"
+            )
+        if reasons:
+            lines.append(f"- reasons: `{'; '.join(str(x) for x in reasons)}`")
+
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text("\n".join(lines) + "\n")
 
@@ -616,6 +744,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--threads", type=int, default=1, help="Set thread env vars (RAYON/OMP/MKL/OPENBLAS/VECLIB).")
     ap.add_argument("--toy-main", action="store_true", help="Poisson-fluctuate main observations per run (auxdata fixed).")
     ap.add_argument("--toy-seed", type=int, default=123, help="Base RNG seed for toy-main generation.")
+    ap.add_argument("--gate-obj-parity-abs-p99", type=float, default=1e-6, help="Gate: p99(|pyhf_nll_at_ns_hat - ns_nll|, |ns_nll_at_pyhf_hat - pyhf_nll|) <= threshold.")
+    ap.add_argument("--gate-nextstat-conv-rate-min", type=float, default=0.95, help="Gate: min NextStat convergence rate among paired-ok runs (else INCONCLUSIVE).")
+    ap.add_argument("--gate-min-selected-runs", type=int, default=50, help="Gate: require at least this many NextStat-converged paired runs (else INCONCLUSIVE).")
     ap.add_argument(
         "--fit-order",
         choices=["pyhf-first", "nextstat-first", "alternate"],
@@ -681,6 +812,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         pyhf_fit_options["do_stitch"] = bool(args.pyhf_do_stitch)
 
     nextstat_mle_config = {"max_iter": int(args.nextstat_max_iter), "tol": float(args.nextstat_tol), "m": int(args.nextstat_m)}
+    assessment_gates = {
+        "obj_parity_abs_p99": float(args.gate_obj_parity_abs_p99),
+        "nextstat_conv_rate_min": float(args.gate_nextstat_conv_rate_min),
+        "min_selected_runs": float(int(args.gate_min_selected_runs)),
+    }
 
     paths = [Path(p) for p in args.workspace] if args.workspace else list(_iter_default_workspace_paths())
     # Keep historical default exclusions only when running the whole fixture suite.
@@ -712,6 +848,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "excluded": excludes,
         "pyhf_fit_options": pyhf_fit_options,
         "nextstat_mle_config": nextstat_mle_config,
+        "assessment_gates": assessment_gates,
     }
 
     args.out_jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -938,6 +1075,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         header=header,
         records=records,
         exclude_workspace_ids=excluded_ws_ids,
+        assessment_gates=assessment_gates,
     )
 
     print(f"Wrote: {args.out_jsonl}")

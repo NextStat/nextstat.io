@@ -51,6 +51,7 @@ def _statsmodels_kalman_filter(
         raise AssertionError(f"Unable to set state-space matrix {key!r} on statsmodels KalmanFilter")
 
     _set("transition", np.asarray(transition, dtype=float))
+    _set("selection", np.eye(k_states, dtype=float))
     _set("state_cov", np.asarray(state_cov, dtype=float))
     _set("design", np.asarray(design, dtype=float))
     _set("obs_cov", np.asarray(obs_cov, dtype=float))
@@ -153,4 +154,3 @@ def test_arma11_builder_filter_matches_statsmodels_optional(ns_timing):
     for t in range(len(ys)):
         assert abs(float(out["filtered_covs"][t][0][0]) - float(p_sm[0, 0, t])) <= 1e-8
         assert abs(float(out["filtered_covs"][t][1][1]) - float(p_sm[1, 1, t])) <= 1e-8
-

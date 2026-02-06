@@ -69,6 +69,10 @@ def _statsmodels_kalman_filter(
         raise AssertionError(f"Unable to set state-space matrix {key!r} on statsmodels KalmanFilter")
 
     _set("transition", np.asarray(transition, dtype=float))
+    # `state_cov` models the covariance of the state disturbance. In statsmodels'
+    # state-space form it is mapped via `selection`; set identity to match our
+    # KalmanModel convention (each state has a disturbance).
+    _set("selection", np.eye(k_states, dtype=float))
     _set("state_cov", np.asarray(state_cov, dtype=float))
     _set("design", np.asarray(design, dtype=float))
     _set("obs_cov", np.asarray(obs_cov, dtype=float))

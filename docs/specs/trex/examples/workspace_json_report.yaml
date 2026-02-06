@@ -9,7 +9,7 @@ analysis:
 inputs:
   mode: workspace_json
   workspace_json:
-    path: /abs/path/to/workspace.json
+    path: tests/fixtures/histfactory/workspace.json
 
 execution:
   determinism:
@@ -35,7 +35,7 @@ execution:
     out_dir: tmp/ws_report
     overwrite: true
     include_covariance: false
-    histfactory_xml: /abs/path/to/combination.xml
+    histfactory_xml: tests/fixtures/histfactory/combination.xml
     render:
       enabled: false
       pdf: null
@@ -50,4 +50,3 @@ gates:
     baseline_dir: tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

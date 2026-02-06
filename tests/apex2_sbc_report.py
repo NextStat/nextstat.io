@@ -35,6 +35,14 @@ def _var(xs: Sequence[float]) -> float:
     mu = _mean(xs)
     return float(sum((x - mu) ** 2 for x in xs) / (len(xs) - 1))
 
+def _sample_normal(rng: random.Random, mu: float, sigma: float) -> float:
+    return float(mu + sigma * rng.gauss(0.0, 1.0))
+
+
+def _sample_lognormal(rng: random.Random, m: float, s: float) -> float:
+    # sigma > 0 by construction
+    return float(math.exp(m + s * rng.gauss(0.0, 1.0)))
+
 
 def _flatten_chains(posterior: Mapping[str, List[List[float]]], name: str) -> List[float]:
     out: List[float] = []
@@ -86,6 +94,7 @@ def _sample_posterior_u(
     seed: int,
     n_warmup: int,
     n_samples: int,
+    target_accept: float = 0.8,
     rhat_max: float,
     divergence_rate_max: float,
 ) -> Dict[str, float]:
@@ -96,6 +105,7 @@ def _sample_posterior_u(
         n_samples=n_samples,
         seed=seed,
         init_jitter_rel=0.10,
+        target_accept=float(target_accept),
     )
     diag = r["diagnostics"]
     if float(diag["divergence_rate"]) > divergence_rate_max:
@@ -215,11 +225,172 @@ def _case_linear_regression_2d(
         "check": {"ok": ok, "beta1": chk1, "beta2": chk2},
     }
 
+def _case_random_intercept_gaussian(
+    nextstat_mod,
+    *,
+    n_runs: int,
+    n_warmup: int,
+    n_samples: int,
+    seed0: int,
+    rhat_max: float,
+    divergence_rate_max: float,
+) -> Dict[str, Any]:
+    # Random intercept priors are hard-coded in Rust:
+    # mu_alpha ~ Normal(0, 1)
+    # sigma_alpha ~ LogNormal(m=0, s=0.5)
+    mu_prior = (0.0, 1.0)
+    logsigma_prior = (0.0, 0.5)
+
+    # Coef prior for beta's.
+    coef_prior_mu = 0.0
+    coef_prior_sigma = 1.0
+
+    n_groups = 4
+    n_per = 6
+    n = n_groups * n_per
+    group_idx = [g for g in range(n_groups) for _ in range(n_per)]
+
+    # Use a varying covariate so the global beta is identifiable separately from intercepts.
+    z = [(-1.0 + 2.0 * i / (n - 1)) for i in range(n)]
+    x = [[float(v)] for v in z]
+
+    u_mu_alpha: List[float] = []
+    u_sigma_alpha: List[float] = []
+    for run in range(n_runs):
+        rng = random.Random(seed0 + 1_000 + run)
+        beta1 = _sample_normal(rng, coef_prior_mu, coef_prior_sigma)
+        mu_alpha = _sample_normal(rng, mu_prior[0], mu_prior[1])
+        sigma_alpha = _sample_lognormal(rng, logsigma_prior[0], logsigma_prior[1])
+        alphas = [_sample_normal(rng, mu_alpha, sigma_alpha) for _ in range(n_groups)]
+
+        y: List[float] = []
+        for i in range(n):
+            eta = beta1 * float(z[i]) + alphas[group_idx[i]]
+            y.append(_sample_normal(rng, eta, 1.0))
+
+        model = nextstat_mod.ComposedGlmModel.linear_regression(
+            x,
+            y,
+            include_intercept=False,
+            group_idx=group_idx,
+            n_groups=n_groups,
+            coef_prior_mu=coef_prior_mu,
+            coef_prior_sigma=coef_prior_sigma,
+            random_intercept_non_centered=True,
+        )
+
+        u = _sample_posterior_u(
+            nextstat_mod,
+            model,
+            {"beta1": beta1, "mu_alpha": mu_alpha, "sigma_alpha": sigma_alpha},
+            seed=seed0 + 30_000 + run,
+            n_warmup=n_warmup,
+            n_samples=n_samples,
+            # Random intercept models can mix a bit worse on short runs.
+            target_accept=0.90,
+            rhat_max=max(1.50, float(rhat_max)),
+            divergence_rate_max=max(0.05, float(divergence_rate_max)),
+        )
+        u_mu_alpha.append(float(u["mu_alpha"]))
+        u_sigma_alpha.append(float(u["sigma_alpha"]))
+
+    # sigma_alpha is heavy-tailed under a lognormal prior; keep thresholds looser.
+    tol_mu = 0.30 if n_runs < 20 else 0.15
+    tol_sig = 0.35 if n_runs < 20 else 0.20
+    chk_mu = _assert_sbc_u01(u_mu_alpha, max_mean_delta=tol_mu, max_var_delta=tol_mu)
+    chk_sig = _assert_sbc_u01(u_sigma_alpha, max_mean_delta=tol_sig, max_var_delta=tol_sig)
+    ok = bool(chk_mu["ok"] and chk_sig["ok"])
+    return {
+        "name": "random_intercept_gaussian",
+        "u_by_param": {"mu_alpha": u_mu_alpha, "sigma_alpha": u_sigma_alpha},
+        "check": {"ok": ok, "mu_alpha": chk_mu, "sigma_alpha": chk_sig},
+    }
+
+
+def _case_random_intercept_bernoulli(
+    nextstat_mod,
+    *,
+    n_runs: int,
+    n_warmup: int,
+    n_samples: int,
+    seed0: int,
+    rhat_max: float,
+    divergence_rate_max: float,
+) -> Dict[str, Any]:
+    mu_prior = (0.0, 1.0)
+    logsigma_prior = (0.0, 0.5)
+
+    coef_prior_mu = 0.0
+    coef_prior_sigma = 1.0
+
+    n_groups = 4
+    n_per = 12
+    n = n_groups * n_per
+    group_idx = [g for g in range(n_groups) for _ in range(n_per)]
+    z = [(-1.0 + 2.0 * i / (n - 1)) for i in range(n)]
+    x = [[float(v)] for v in z]
+
+    u_mu_alpha: List[float] = []
+    u_sigma_alpha: List[float] = []
+    for run in range(n_runs):
+        rng = random.Random(seed0 + 2_000 + run)
+        beta1 = _sample_normal(rng, coef_prior_mu, coef_prior_sigma)
+        mu_alpha = _sample_normal(rng, mu_prior[0], mu_prior[1])
+        sigma_alpha = _sample_lognormal(rng, logsigma_prior[0], logsigma_prior[1])
+        alphas = [_sample_normal(rng, mu_alpha, sigma_alpha) for _ in range(n_groups)]
+
+        y: List[int] = []
+        for i in range(n):
+            eta = beta1 * float(z[i]) + alphas[group_idx[i]]
+            p = 1.0 / (1.0 + math.exp(-eta))
+            y.append(1 if rng.random() < p else 0)
+
+        model = nextstat_mod.ComposedGlmModel.logistic_regression(
+            x,
+            y,
+            include_intercept=False,
+            group_idx=group_idx,
+            n_groups=n_groups,
+            coef_prior_mu=coef_prior_mu,
+            coef_prior_sigma=coef_prior_sigma,
+            random_intercept_non_centered=True,
+        )
+
+        u = _sample_posterior_u(
+            nextstat_mod,
+            model,
+            {"beta1": beta1, "mu_alpha": mu_alpha, "sigma_alpha": sigma_alpha},
+            seed=seed0 + 40_000 + run,
+            n_warmup=n_warmup,
+            n_samples=n_samples,
+            target_accept=0.90,
+            rhat_max=max(1.60, float(rhat_max)),
+            divergence_rate_max=max(0.05, float(divergence_rate_max)),
+        )
+        u_mu_alpha.append(float(u["mu_alpha"]))
+        u_sigma_alpha.append(float(u["sigma_alpha"]))
+
+    tol_mu = 0.35 if n_runs < 20 else 0.18
+    tol_sig = 0.40 if n_runs < 20 else 0.22
+    chk_mu = _assert_sbc_u01(u_mu_alpha, max_mean_delta=tol_mu, max_var_delta=tol_mu)
+    chk_sig = _assert_sbc_u01(u_sigma_alpha, max_mean_delta=tol_sig, max_var_delta=tol_sig)
+    ok = bool(chk_mu["ok"] and chk_sig["ok"])
+    return {
+        "name": "random_intercept_bernoulli",
+        "u_by_param": {"mu_alpha": u_mu_alpha, "sigma_alpha": u_sigma_alpha},
+        "check": {"ok": ok, "mu_alpha": chk_mu, "sigma_alpha": chk_sig},
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_sbc_report.json"))
-    ap.add_argument("--cases", type=str, default="lin1d,lin2d", help="Comma-separated: lin1d,lin2d")
+    ap.add_argument(
+        "--cases",
+        type=str,
+        default="lin1d,lin2d",
+        help="Comma-separated: lin1d,lin2d,ri_gauss,ri_bern",
+    )
     ap.add_argument("--n-runs", type=int, default=None)
     ap.add_argument("--warmup", type=int, default=None)
     ap.add_argument("--samples", type=int, default=None)
@@ -300,6 +471,26 @@ def main() -> int:
                 )
             elif c == "lin2d":
                 row = _case_linear_regression_2d(
+                    nextstat,
+                    n_runs=n_runs,
+                    n_warmup=n_warmup,
+                    n_samples=n_samples,
+                    seed0=seed0,
+                    rhat_max=float(args.rhat_max),
+                    divergence_rate_max=float(args.divergence_rate_max),
+                )
+            elif c == "ri_gauss":
+                row = _case_random_intercept_gaussian(
+                    nextstat,
+                    n_runs=n_runs,
+                    n_warmup=n_warmup,
+                    n_samples=n_samples,
+                    seed0=seed0,
+                    rhat_max=float(args.rhat_max),
+                    divergence_rate_max=float(args.divergence_rate_max),
+                )
+            elif c == "ri_bern":
+                row = _case_random_intercept_bernoulli(
                     nextstat,
                     n_runs=n_runs,
                     n_warmup=n_warmup,

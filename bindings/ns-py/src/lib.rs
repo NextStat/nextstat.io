@@ -3654,14 +3654,15 @@ fn read_root_histogram<'py>(
 
 /// Convenience wrapper: fit model with optional overridden observations.
 #[pyfunction]
-#[pyo3(signature = (model, *, data=None))]
+#[pyo3(signature = (model, *, data=None, init_pars=None))]
 fn fit<'py>(
     py: Python<'py>,
     model: &Bound<'py, PyAny>,
     data: Option<Vec<f64>>,
+    init_pars: Option<Vec<f64>>,
 ) -> PyResult<PyFitResult> {
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
-    mle.fit(py, model, data)
+    mle.fit(py, model, data, init_pars)
 }
 
 /// Convenience wrapper: fit a Posterior (MAP) by minimizing negative log-posterior.

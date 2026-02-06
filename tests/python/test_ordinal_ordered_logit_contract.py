@@ -124,7 +124,11 @@ def test_ordered_logit_optional_parity_vs_statsmodels_predict_proba(ns_timing):
     with ns_timing.time("nextstat"):
         ns_p = ns_fit.predict_proba(grid)
     with ns_timing.time("statsmodels"):
-        sm_p = sm.model.predict(sm_res.params, exog=np.asarray(grid, dtype=float))
+        exog = np.asarray(grid, dtype=float)
+        if hasattr(sm, "predict"):
+            sm_p = sm.predict(sm_res.params, exog=exog)
+        else:
+            sm_p = sm_res.model.predict(sm_res.params, exog=exog)
 
     # Compare probabilities loosely (parameterizations differ, but predictions should match).
     sm_p = np.asarray(sm_p, dtype=float)

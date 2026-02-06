@@ -20,6 +20,10 @@ pub struct RunConfig {
     #[serde(default = "default_threads")]
     pub threads: usize,
 
+    /// Make JSON output deterministic (stable ordering; normalize timestamps/timings).
+    #[serde(default)]
+    pub deterministic: bool,
+
     /// Also include the raw covariance matrix in correlation artifacts (if available).
     #[serde(default)]
     pub include_covariance: bool,
@@ -75,12 +79,7 @@ pub fn derive_paths(out_dir: &Path) -> RunPaths {
     let inputs_dir = out_dir.join("inputs");
     let artifacts_dir = out_dir.join("artifacts");
     let workspace_json = inputs_dir.join("workspace.json");
-    RunPaths {
-        out_dir: out_dir.to_path_buf(),
-        inputs_dir,
-        artifacts_dir,
-        workspace_json,
-    }
+    RunPaths { out_dir: out_dir.to_path_buf(), inputs_dir, artifacts_dir, workspace_json }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -178,14 +177,15 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
     copy_file_into(config_path, &inputs_dir.join("run_config.yaml"))?;
 
     // Copy the HistFactory export directory (xml/root) to preserve referenced files.
-    let hf_dir = cfg
-        .histfactory_xml
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let hf_dir = cfg.histfactory_xml.parent().unwrap_or_else(|| Path::new("."));
     copy_tree_filtered(hf_dir, &inputs_dir.join("histfactory"), &["xml", "root"])?;
 
     // Copy run outputs (inputs+artifacts) verbatim.
-    copy_tree_filtered(&cfg.out_dir, &outputs_dir.join("run"), &["json", "csv", "tex", "pdf", "svg"])?;
+    copy_tree_filtered(
+        &cfg.out_dir,
+        &outputs_dir.join("run"),
+        &["json", "csv", "tex", "pdf", "svg"],
+    )?;
 
     // Meta (small, stable).
     let meta = serde_json::json!({
@@ -226,10 +226,7 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
     let manifest = Manifest { bundle_version: 1, files };
-    std::fs::write(
-        bundle_dir.join("manifest.json"),
-        serde_json::to_string_pretty(&manifest)?,
-    )?;
+    std::fs::write(bundle_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)?;
 
     Ok(())
 }
@@ -250,4 +247,3 @@ fn walk_files(dir: &Path) -> Result<Vec<PathBuf>> {
     }
     Ok(out)
 }
-
