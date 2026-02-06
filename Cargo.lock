@@ -885,6 +885,7 @@ dependencies = [
  "approx",
  "ns-core",
  "proptest",
+ "statrs",
 ]
 
 [[package]]

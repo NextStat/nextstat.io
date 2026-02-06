@@ -8,3 +8,5 @@
 pub mod math;
 pub mod normal;
 pub mod transforms;
+
+// Additional distributions are intentionally added incrementally (Phase 5).

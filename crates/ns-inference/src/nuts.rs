@@ -260,9 +260,13 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         sum_accept_prob: 0.0,
     };
 
+    // Tree depth is 0-based (Stan convention): depth=0 means a single leapfrog step.
+    // We track the maximum built depth and return it for diagnostics.
     let mut depth: usize = 0;
+    let mut depth_reached: usize = 0;
 
-    while depth < max_treedepth {
+    while depth <= max_treedepth {
+        depth_reached = depth;
         // Choose direction uniformly: +1 or -1
         let direction: i32 = if rng.random::<bool>() { 1 } else { -1 };
 
@@ -335,7 +339,7 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         q: tree.q_proposal,
         potential: tree.potential_proposal,
         grad_potential: tree.grad_proposal,
-        depth,
+        depth: depth_reached,
         divergent: tree.divergent,
         accept_prob,
         energy: h0,
@@ -371,7 +375,7 @@ pub fn sample_nuts<M: LogDensityModel>(
             _ => model.parameter_init(),
         }
     };
-    let z_init = posterior.to_unconstrained(&theta_init);
+    let z_init = posterior.to_unconstrained(&theta_init)?;
     if config.init_jitter > 0.0 && config.init_jitter_rel.is_some() {
         return Err(ns_core::Error::Validation(
             "init_jitter and init_jitter_rel are mutually exclusive".to_string(),
@@ -476,7 +480,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         state.grad_potential = transition.grad_potential;
 
         draws_unconstrained.push(state.q.clone());
-        draws_constrained.push(posterior.to_constrained(&state.q));
+        draws_constrained.push(posterior.to_constrained(&state.q)?);
         divergences.push(transition.divergent);
         tree_depths.push(transition.depth);
         accept_probs.push(transition.accept_prob);
@@ -520,7 +524,7 @@ mod tests {
         let integrator = LeapfrogIntegrator::new(&posterior, 0.1, inv_mass.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let z_init = posterior.to_unconstrained(&theta_init);
+        let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let state = integrator.init_state(z_init).unwrap();
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
@@ -542,7 +546,7 @@ mod tests {
         let integrator = LeapfrogIntegrator::new(&posterior, 0.1, inv_mass.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-        let z_init = posterior.to_unconstrained(&theta_init);
+        let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let state = integrator.init_state(z_init).unwrap();
 
         let mut rng1 = rand::rngs::StdRng::seed_from_u64(42);

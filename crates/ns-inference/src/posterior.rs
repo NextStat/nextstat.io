@@ -37,17 +37,33 @@ pub struct Posterior<'a, M: LogDensityModel + ?Sized> {
 impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
     /// Create a new posterior with flat priors (relying on model's built-in constraints).
     pub fn new(model: &'a M) -> Self {
-        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        let dim = model.dim();
+
+        // Defensive: keep Posterior well-defined even if a model accidentally
+        // returns bounds length != dim.
+        let mut bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        if bounds.len() > dim {
+            bounds.truncate(dim);
+        } else if bounds.len() < dim {
+            bounds.resize(dim, (f64::NEG_INFINITY, f64::INFINITY));
+        }
+
         let transform = ParameterTransform::from_bounds(&bounds);
-        let priors = vec![Prior::Flat; model.dim()];
+        let priors = vec![Prior::Flat; dim];
         Self { model, transform, priors }
     }
 
     /// Set priors (one per parameter). Length must match `model.dim()`.
-    pub fn with_priors(mut self, priors: Vec<Prior>) -> Self {
-        assert_eq!(priors.len(), self.model.dim());
+    pub fn with_priors(mut self, priors: Vec<Prior>) -> Result<Self> {
+        if priors.len() != self.model.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "priors length must match model.dim(): {} != {}",
+                priors.len(),
+                self.model.dim()
+            )));
+        }
         self.priors = priors;
-        self
+        Ok(self)
     }
 
     /// Number of parameters.
@@ -65,8 +81,31 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
         &self.transform
     }
 
+    fn validate_theta_len(&self, theta: &[f64]) -> Result<()> {
+        if theta.len() != self.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "expected theta length = model.dim() = {}, got {}",
+                self.dim(),
+                theta.len()
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_z_len(&self, z: &[f64]) -> Result<()> {
+        if z.len() != self.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "expected z length = model.dim() = {}, got {}",
+                self.dim(),
+                z.len()
+            )));
+        }
+        Ok(())
+    }
+
     /// Log-posterior in constrained space: `-model.nll(theta) + sum(prior_logpdf)`.
     pub fn logpdf(&self, theta: &[f64]) -> Result<f64> {
+        self.validate_theta_len(theta)?;
         let nll = self.model.nll(theta)?;
         let mut lp = -nll;
 
@@ -74,6 +113,12 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
             match prior {
                 Prior::Flat => {}
                 Prior::Normal { center, width } => {
+                    if !width.is_finite() || *width <= 0.0 {
+                        return Err(ns_core::Error::Validation(format!(
+                            "Normal prior width must be finite and > 0, got {}",
+                            width
+                        )));
+                    }
                     let pull = (theta[i] - center) / width;
                     lp -= 0.5 * pull * pull;
                 }
@@ -85,6 +130,7 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
 
     /// Gradient of log-posterior in constrained space.
     pub fn grad(&self, theta: &[f64]) -> Result<Vec<f64>> {
+        self.validate_theta_len(theta)?;
         let mut g = self.model.grad_nll(theta)?;
 
         // grad(logpdf) = -grad(nll) + grad(prior)
@@ -96,6 +142,12 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
             match prior {
                 Prior::Flat => {}
                 Prior::Normal { center, width } => {
+                    if !width.is_finite() || *width <= 0.0 {
+                        return Err(ns_core::Error::Validation(format!(
+                            "Normal prior width must be finite and > 0, got {}",
+                            width
+                        )));
+                    }
                     g[i] -= (theta[i] - center) / (width * width);
                 }
             }
@@ -106,7 +158,8 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
 
     /// Log-posterior in unconstrained space: `logpdf(transform(z)) + log|J(z)|`.
     pub fn logpdf_unconstrained(&self, z: &[f64]) -> Result<f64> {
-        let theta = self.transform.forward(z);
+        self.validate_z_len(z)?;
+        let theta = self.to_constrained(z)?;
         let lp = self.logpdf(&theta)?;
         let log_jac = self.transform.log_abs_det_jacobian(z);
         Ok(lp + log_jac)
@@ -117,7 +170,8 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
     /// Chain rule (diagonal Jacobian):
     /// `grad_z[i] = (dtheta_i/dz_i) * grad_theta[i] + d/dz_i log|J_i|`
     pub fn grad_unconstrained(&self, z: &[f64]) -> Result<Vec<f64>> {
-        let theta = self.transform.forward(z);
+        self.validate_z_len(z)?;
+        let theta = self.to_constrained(z)?;
         let grad_theta = self.grad(&theta)?;
         let jac_diag = self.transform.jacobian_diag(z);
         let grad_log_jac = self.transform.grad_log_abs_det_jacobian(z);
@@ -133,13 +187,15 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
     }
 
     /// Map constrained -> unconstrained.
-    pub fn to_unconstrained(&self, theta: &[f64]) -> Vec<f64> {
-        self.transform.inverse(theta)
+    pub fn to_unconstrained(&self, theta: &[f64]) -> Result<Vec<f64>> {
+        self.validate_theta_len(theta)?;
+        Ok(self.transform.inverse(theta))
     }
 
     /// Map unconstrained -> constrained.
-    pub fn to_constrained(&self, z: &[f64]) -> Vec<f64> {
-        self.transform.forward(z)
+    pub fn to_constrained(&self, z: &[f64]) -> Result<Vec<f64>> {
+        self.validate_z_len(z)?;
+        Ok(self.transform.forward(z))
     }
 }
 
@@ -211,8 +267,8 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let theta = vec![1.0; model.n_params()];
-        let z = posterior.to_unconstrained(&theta);
-        let theta_back = posterior.to_constrained(&z);
+        let z = posterior.to_unconstrained(&theta).unwrap();
+        let theta_back = posterior.to_constrained(&z).unwrap();
 
         // Roundtrip
         for (i, (&a, &b)) in theta.iter().zip(theta_back.iter()).enumerate() {
@@ -241,7 +297,7 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let theta = vec![1.2, 0.9, 1.1];
-        let z = posterior.to_unconstrained(&theta);
+        let z = posterior.to_unconstrained(&theta).unwrap();
         let grad = posterior.grad_unconstrained(&z).unwrap();
 
         let eps = 1e-6;
