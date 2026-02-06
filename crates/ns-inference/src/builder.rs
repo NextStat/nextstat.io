@@ -93,6 +93,7 @@ enum Likelihood {
 struct RandomIntercept {
     n_groups: usize,
     group_idx: Vec<usize>, // length n
+    non_centered: bool,
     // Parameter indices in the model parameter vector:
     mu_idx: usize,
     sigma_idx: usize,    // sigma_alpha > 0
@@ -254,7 +255,11 @@ impl LogDensityModel for ComposedGlmModel {
             out.push("mu_alpha".to_string());
             out.push("sigma_alpha".to_string());
             for j in 0..ri.n_groups {
-                out.push(format!("alpha{}", j + 1));
+                if ri.non_centered {
+                    out.push(format!("z_alpha{}", j + 1));
+                } else {
+                    out.push(format!("alpha{}", j + 1));
+                }
             }
         }
         out
@@ -303,29 +308,37 @@ impl LogDensityModel for ComposedGlmModel {
         }
 
         // Random intercept prior block (adds its own NLL terms).
-        let (alpha, _mu_alpha, _sigma_alpha) = match &self.random_intercept {
-            None => (None, 0.0, 1.0),
-            Some(ri) => {
-                let mu = params[ri.mu_idx];
-                let sigma = params[ri.sigma_idx];
-                if !sigma.is_finite() || sigma <= 0.0 {
-                    return Err(Error::Validation(format!(
-                        "sigma_alpha must be finite and > 0, got {}",
-                        sigma
-                    )));
+        if let Some(ri) = &self.random_intercept {
+            let mu = params[ri.mu_idx];
+            let sigma = params[ri.sigma_idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_alpha must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+
+            // mu prior: Normal(0, mu_prior.sigma)
+            let mu_sig2 = ri.mu_prior.sigma * ri.mu_prior.sigma;
+            let v = mu - ri.mu_prior.mu;
+            nll += 0.5 * v * v / mu_sig2;
+
+            // sigma prior: LogNormal(m, s) in terms of sigma (up to constant).
+            let t = sigma.ln();
+            let z = (t - ri.logsigma_prior_m) / ri.logsigma_prior_s;
+            nll += 0.5 * z * z + t;
+
+            if ri.non_centered {
+                // Non-centered: z_j ~ Normal(0,1), alpha_j = mu + sigma * z_j.
+                // Equivalent to centered alpha prior with Jacobian folded in.
+                let mut sum_sq = 0.0;
+                for j in 0..ri.n_groups {
+                    let zj = params[ri.alpha_offset + j];
+                    sum_sq += zj * zj;
                 }
-
-                // mu prior: Normal(0, mu_prior.sigma)
-                let mu_sig2 = ri.mu_prior.sigma * ri.mu_prior.sigma;
-                let v = mu - ri.mu_prior.mu;
-                nll += 0.5 * v * v / mu_sig2;
-
-                // sigma prior: LogNormal(m, s) in terms of sigma (up to constant).
-                let t = sigma.ln();
-                let z = (t - ri.logsigma_prior_m) / ri.logsigma_prior_s;
-                nll += 0.5 * z * z + t;
-
-                // alpha_j | mu, sigma: Normal(mu, sigma), includes +log(sigma) normalization.
+                nll += 0.5 * sum_sq;
+            } else {
+                // Centered: alpha_j | mu, sigma ~ Normal(mu, sigma).
                 let mut sum_sq = 0.0;
                 for j in 0..ri.n_groups {
                     let a = params[ri.alpha_offset + j];
@@ -334,18 +347,22 @@ impl LogDensityModel for ComposedGlmModel {
                 }
                 nll += 0.5 * sum_sq / (sigma * sigma);
                 nll += (ri.n_groups as f64) * sigma.ln();
-
-                let alpha_slice = &params[ri.alpha_offset..ri.alpha_offset + ri.n_groups];
-                (Some(alpha_slice), mu, sigma)
             }
-        };
+        }
 
         // Likelihood block.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
-            if let (Some(ri), Some(a)) = (&self.random_intercept, alpha) {
+            if let Some(ri) = &self.random_intercept {
                 let g = ri.group_idx[i];
-                eta += a[g];
+                if ri.non_centered {
+                    let mu = params[ri.mu_idx];
+                    let sigma = params[ri.sigma_idx];
+                    let zj = params[ri.alpha_offset + g];
+                    eta += mu + sigma * zj;
+                } else {
+                    eta += params[ri.alpha_offset + g];
+                }
             }
 
             match &self.likelihood {
@@ -390,29 +407,34 @@ impl LogDensityModel for ComposedGlmModel {
         }
 
         // Random intercept contributions.
-        let (alpha, _mu_alpha, _sigma_alpha) = match &self.random_intercept {
-            None => (None, 0.0, 1.0),
-            Some(ri) => {
-                let mu = params[ri.mu_idx];
-                let sigma = params[ri.sigma_idx];
-                if !sigma.is_finite() || sigma <= 0.0 {
-                    return Err(Error::Validation(format!(
-                        "sigma_alpha must be finite and > 0, got {}",
-                        sigma
-                    )));
+        if let Some(ri) = &self.random_intercept {
+            let mu = params[ri.mu_idx];
+            let sigma = params[ri.sigma_idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_alpha must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+
+            // mu prior: Normal(mu0, mu_sigma)
+            let mu_sig2 = ri.mu_prior.sigma * ri.mu_prior.sigma;
+            grad[ri.mu_idx] += (mu - ri.mu_prior.mu) / mu_sig2;
+
+            // sigma prior: LogNormal(m,s): 0.5*((ln s - m)/s)^2 + ln s
+            let t = sigma.ln();
+            let z = (t - ri.logsigma_prior_m) / ri.logsigma_prior_s;
+            let ddt = z / (ri.logsigma_prior_s) + 1.0;
+            grad[ri.sigma_idx] += ddt * (1.0 / sigma);
+
+            if ri.non_centered {
+                // z_j ~ Normal(0,1)
+                for j in 0..ri.n_groups {
+                    let zj = params[ri.alpha_offset + j];
+                    grad[ri.alpha_offset + j] += zj;
                 }
-
-                // mu prior: Normal(mu0, mu_sigma)
-                let mu_sig2 = ri.mu_prior.sigma * ri.mu_prior.sigma;
-                grad[ri.mu_idx] += (mu - ri.mu_prior.mu) / mu_sig2;
-
-                // sigma prior: LogNormal(m,s): 0.5*((ln s - m)/s)^2 + ln s
-                let t = sigma.ln();
-                let z = (t - ri.logsigma_prior_m) / ri.logsigma_prior_s;
-                let ddt = z / (ri.logsigma_prior_s) + 1.0;
-                grad[ri.sigma_idx] += ddt * (1.0 / sigma);
-
-                // alpha prior terms.
+            } else {
+                // Centered alpha prior terms.
                 let inv_var_a = 1.0 / (sigma * sigma);
 
                 let mut sum_sq = 0.0;
@@ -429,18 +451,22 @@ impl LogDensityModel for ComposedGlmModel {
                 // derivative of 0.5 * sum_sq / sigma^2 wrt sigma:
                 // d/dsigma [0.5 * sum_sq * sigma^{-2}] = -sum_sq * sigma^{-3}
                 grad[ri.sigma_idx] += -sum_sq / (sigma * sigma * sigma);
-
-                let alpha_slice = &params[ri.alpha_offset..ri.alpha_offset + ri.n_groups];
-                (Some(alpha_slice), mu, sigma)
             }
-        };
+        }
 
         // Likelihood contributions.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
-            let ri_group = if let (Some(ri), Some(a)) = (&self.random_intercept, alpha) {
+            let ri_group = if let Some(ri) = &self.random_intercept {
                 let g = ri.group_idx[i];
-                eta += a[g];
+                if ri.non_centered {
+                    let mu = params[ri.mu_idx];
+                    let sigma = params[ri.sigma_idx];
+                    let zj = params[ri.alpha_offset + g];
+                    eta += mu + sigma * zj;
+                } else {
+                    eta += params[ri.alpha_offset + g];
+                }
                 Some(g)
             } else {
                 None
@@ -466,7 +492,15 @@ impl LogDensityModel for ComposedGlmModel {
                 grad[beta_offset + j] += d_eta * row[j];
             }
             if let (Some(ri), Some(g)) = (&self.random_intercept, ri_group) {
-                grad[ri.alpha_offset + g] += d_eta;
+                if ri.non_centered {
+                    let sigma = params[ri.sigma_idx];
+                    let zj = params[ri.alpha_offset + g];
+                    grad[ri.mu_idx] += d_eta;
+                    grad[ri.sigma_idx] += d_eta * zj;
+                    grad[ri.alpha_offset + g] += d_eta * sigma;
+                } else {
+                    grad[ri.alpha_offset + g] += d_eta;
+                }
             }
         }
 
@@ -600,6 +634,7 @@ impl ModelBuilder {
         let ri = RandomIntercept {
             n_groups,
             group_idx,
+            non_centered: false,
             mu_idx: base,
             sigma_idx: base + 1,
             alpha_offset: base + 2,
@@ -609,6 +644,21 @@ impl ModelBuilder {
         };
         ri.validate(self.x.n)?;
         self.random_intercept = Some(ri);
+        Ok(self)
+    }
+
+    /// Toggle a non-centered parameterization for the random intercept block.
+    ///
+    /// If enabled, the group parameters are `z_alpha[j] ~ Normal(0,1)` and the
+    /// effective intercept is `alpha_j = mu_alpha + sigma_alpha * z_alpha[j]`.
+    pub fn with_random_intercept_non_centered(mut self, non_centered: bool) -> Result<Self> {
+        let Some(ri) = &mut self.random_intercept else {
+            return Err(Error::Validation(
+                "random intercept not enabled; call with_random_intercept first".to_string(),
+            ));
+        };
+        ri.non_centered = non_centered;
+        ri.validate(self.x.n)?;
         Ok(self)
     }
 
@@ -801,6 +851,34 @@ mod tests {
             .with_coef_prior_normal(0.0, 1e9)
             .unwrap()
             .with_random_intercept(group_idx, 2)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut p = m.parameter_init();
+        // Make sigma_alpha slightly away from 0 to avoid singularities.
+        let sigma_idx = m.parameter_names().iter().position(|s| s == "sigma_alpha").unwrap();
+        p[sigma_idx] = 0.7;
+
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+
+        assert_vec_close(&g, &g_fd, 5e-4);
+    }
+
+    #[test]
+    fn test_builder_random_intercept_non_centered_grad_finite_diff_smoke() {
+        let x = vec![vec![1.0, 0.5], vec![1.0, -0.3], vec![1.0, 1.2], vec![1.0, 0.1]];
+        let y = vec![0u8, 1u8, 1u8, 0u8];
+        let group_idx = vec![0usize, 1usize, 0usize, 1usize];
+
+        let m = ModelBuilder::logistic_regression(x, y, false)
+            .unwrap()
+            .with_coef_prior_normal(0.0, 1e9)
+            .unwrap()
+            .with_random_intercept(group_idx, 2)
+            .unwrap()
+            .with_random_intercept_non_centered(true)
             .unwrap()
             .build()
             .unwrap();
