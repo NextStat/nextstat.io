@@ -168,6 +168,13 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
             "estimate_f/estimate_h currently require n_state=1 and n_obs=1".to_string(),
         ));
     }
+    if cfg.estimate_h && cfg.estimate_q {
+        // With free Q (state scale) and H (observation scale), the model becomes poorly
+        // identifiable. Keep this baseline implementation explicit and safe.
+        return Err(Error::Validation(
+            "estimate_h requires estimate_q=false (fix Q to break scale degeneracy)".to_string(),
+        ));
+    }
 
     let mut cur = model.clone();
     let mut trace = Vec::with_capacity(cfg.max_iter + 1);
@@ -362,6 +369,8 @@ mod tests {
                 tol: 1e-7,
                 estimate_q: true,
                 estimate_r: true,
+                estimate_f: false,
+                estimate_h: false,
                 min_diag: 1e-9,
             },
         )
@@ -394,7 +403,7 @@ mod tests {
         let q_true = 0.05;
         let r_true = 0.20;
 
-        let true_model = KalmanModel::new(
+        let _true_model = KalmanModel::new(
             DMatrix::from_row_slice(1, 1, &[a_true]),
             DMatrix::from_row_slice(1, 1, &[q_true]),
             DMatrix::from_row_slice(1, 1, &[h_true]),
@@ -427,7 +436,7 @@ mod tests {
         // Init far from truth for f/h; keep q/r also wrong but positive.
         let init_model = KalmanModel::new(
             DMatrix::from_row_slice(1, 1, &[0.2]),
-            DMatrix::from_row_slice(1, 1, &[0.5]),
+            DMatrix::from_row_slice(1, 1, &[q_true]),
             DMatrix::from_row_slice(1, 1, &[0.7]),
             DMatrix::from_row_slice(1, 1, &[0.5]),
             DVector::from_row_slice(&[0.0]),
@@ -441,7 +450,7 @@ mod tests {
             KalmanEmConfig {
                 max_iter: 50,
                 tol: 1e-7,
-                estimate_q: true,
+                estimate_q: false,
                 estimate_r: true,
                 estimate_f: true,
                 estimate_h: true,
