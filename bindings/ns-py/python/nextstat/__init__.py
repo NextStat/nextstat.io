@@ -12,6 +12,7 @@ try:
         hypotest,
         sample,
         HistFactoryModel,
+        GaussianMeanModel,
         MaximumLikelihoodEstimator,
         FitResult,
         from_pyhf,
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover
     hypotest = None  # type: ignore
     sample = None  # type: ignore
     HistFactoryModel = None  # type: ignore
+    GaussianMeanModel = None  # type: ignore
     MaximumLikelihoodEstimator = None  # type: ignore
     FitResult = None  # type: ignore
     from_pyhf = None  # type: ignore
@@ -54,6 +56,7 @@ __all__ = [
     "bayes",
     "viz",
     "HistFactoryModel",
+    "GaussianMeanModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "from_pyhf",
