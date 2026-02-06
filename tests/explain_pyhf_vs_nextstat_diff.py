@@ -92,14 +92,28 @@ def main() -> int:
     ap.add_argument("--n-random", type=int, default=0, help="Also evaluate a few random points (smoke).")
     args = ap.parse_args()
 
+    timing_s: Dict[str, float] = {
+        "pyhf_build": 0.0,
+        "nextstat_build": 0.0,
+        "pyhf_nll": 0.0,
+        "nextstat_nll": 0.0,
+        "pyhf_expected_data": 0.0,
+        "nextstat_expected_data": 0.0,
+    }
+
     ws = json.loads(args.workspace.read_text())
+
+    t0 = time.perf_counter()
     pyhf_model, pyhf_data = pyhf_model_and_data(ws, args.measurement)
     pyhf_init = list(map(float, pyhf_model.config.suggested_init()))
     pyhf_bounds = [(float(a), float(b)) for a, b in pyhf_model.config.suggested_bounds()]
+    timing_s["pyhf_build"] += time.perf_counter() - t0
 
+    t0 = time.perf_counter()
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
     ns_names = ns_model.parameter_names()
     ns_init = ns_model.suggested_init()
+    timing_s["nextstat_build"] += time.perf_counter() - t0
 
     # sanity: same name set
     if set(ns_names) != set(pyhf_model.config.par_names):
@@ -111,15 +125,33 @@ def main() -> int:
         return map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
 
     def delta_nll(pyhf_params: List[float]) -> float:
-        return float(ns_model.nll(ns_params(pyhf_params))) - pyhf_nll(pyhf_model, pyhf_data, pyhf_params)
+        t0 = time.perf_counter()
+        nll_ns = float(ns_model.nll(ns_params(pyhf_params)))
+        timing_s["nextstat_nll"] += time.perf_counter() - t0
 
+        t0 = time.perf_counter()
+        nll_py = pyhf_nll(pyhf_model, pyhf_data, pyhf_params)
+        timing_s["pyhf_nll"] += time.perf_counter() - t0
+
+        return nll_ns - nll_py
+
+    # Evaluate NLLs at init (timed).
     t0 = time.perf_counter()
     nll_py = pyhf_nll(pyhf_model, pyhf_data, pyhf_init)
-    nll_ns = float(ns_model.nll(ns_params(pyhf_init)))
-    dt_eval = time.perf_counter() - t0
+    timing_s["pyhf_nll"] += time.perf_counter() - t0
 
+    t0 = time.perf_counter()
+    nll_ns = float(ns_model.nll(ns_params(pyhf_init)))
+    timing_s["nextstat_nll"] += time.perf_counter() - t0
+    dt_eval = timing_s["pyhf_nll"] + timing_s["nextstat_nll"]
+
+    t0 = time.perf_counter()
     exp_py = [float(x) for x in pyhf_model.expected_data(pyhf_init)]
+    timing_s["pyhf_expected_data"] += time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     exp_ns = [float(x) for x in ns_model.expected_data(ns_params(pyhf_init))]
+    timing_s["nextstat_expected_data"] += time.perf_counter() - t0
     if len(exp_py) != len(exp_ns):
         raise SystemExit(f"expected_data length mismatch: pyhf={len(exp_py)} ns={len(exp_ns)}")
 
@@ -142,6 +174,20 @@ def main() -> int:
             "nextstat": nll_ns,
             "delta": nll_ns - nll_py,
             "eval_wall_s": dt_eval,
+            "timing_s": {
+                "pyhf_build": float(timing_s["pyhf_build"]),
+                "nextstat_build": float(timing_s["nextstat_build"]),
+                "pyhf_nll": float(timing_s["pyhf_nll"]),
+                "nextstat_nll": float(timing_s["nextstat_nll"]),
+                "pyhf_expected_data": float(timing_s["pyhf_expected_data"]),
+                "nextstat_expected_data": float(timing_s["nextstat_expected_data"]),
+                "pyhf_total": float(
+                    timing_s["pyhf_build"] + timing_s["pyhf_nll"] + timing_s["pyhf_expected_data"]
+                ),
+                "nextstat_total": float(
+                    timing_s["nextstat_build"] + timing_s["nextstat_nll"] + timing_s["nextstat_expected_data"]
+                ),
+            },
         },
         "parameters": {
             "pyhf_order": list(pyhf_model.config.par_names),
@@ -183,4 +229,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

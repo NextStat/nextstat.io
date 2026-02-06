@@ -94,6 +94,12 @@ PYTHONPATH=bindings/ns-py/python python3 tests/aggregate_apex2_root_suite_report
   --exit-nonzero-on-fail
 ```
 
+Optional Makefile wrapper (when running from the repo checkout):
+
+```bash
+make apex2-root-aggregate ROOT_RESULTS_DIR="${APEX2_RESULTS_DIR}" ROOT_AGG_ARGS="--exit-nonzero-on-fail"
+```
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
@@ -155,6 +161,12 @@ If you have a directory with TRExFitter exports (or any HistFactory exports), yo
 ```
 
 Each case `name` is generated as the export directory path relative to `--search-dir` to avoid collisions (large datasets often reuse the same subfolder names).
+
+Optional Makefile wrapper (same thing, more ergonomic):
+
+```bash
+make apex2-root-cases ROOT_SEARCH_DIR=/abs/path/to/trex/output ROOT_CASES_ARGS="--include-fixtures --absolute-paths"
+```
 
 2) Or skip manual generation and pass the directory directly to the master runner (see Execution).
 
