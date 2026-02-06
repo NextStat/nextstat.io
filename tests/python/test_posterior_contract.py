@@ -70,3 +70,19 @@ def test_posterior_normal_prior_affects_logpdf_and_grad_by_name():
 
     post.clear_priors()
     assert float(post.logpdf(theta)) == pytest.approx(base_lp, rel=0.0, abs=1e-12)
+
+
+def test_posterior_map_fit_and_sampling_accept_posterior_smoke():
+    # MAP should be pulled strongly toward the prior center.
+    m = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], sigma=1.0)
+    post = nextstat.Posterior(m)
+    post.set_prior_normal("mu", center=10.0, width=0.1)
+
+    r = nextstat.map_fit(post)
+    assert r.success
+    assert float(r.bestfit[0]) > 9.0
+
+    # Smoke: NUTS accepts Posterior (i.e. includes priors).
+    raw = nextstat.sample(post, n_chains=1, n_warmup=20, n_samples=20, seed=7, max_treedepth=4)
+    assert isinstance(raw, dict)
+    assert raw.get("param_names") == ["mu"]

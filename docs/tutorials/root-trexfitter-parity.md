@@ -44,6 +44,11 @@ Two practical execution templates:
 1) **One job = one suite** (runs all cases sequentially; easier to debug, worse parallelism).
 2) **Job-array: one job = one case** (maximum parallelism; aggregate JSON afterward).
 
+Note on institute-style submit files (with `should_transfer_files = YES`):
+- Those are great for workflows where the job runs in worker scratch and only a small script + inputs are transferred.
+- For Apex2 ROOT parity, we intentionally execute from the repo checkout (`tests/*.py`, `bindings/ns-py/python`),
+  so the simplest operational mode is a shared filesystem checkout (set `initialdir`) and a shared results dir.
+
 See the Cookbook section below for copy-paste examples for both.
 
 Repo templates (recommended starting point):
@@ -84,6 +89,13 @@ python3 scripts/condor/render_apex2_root_suite_array_sub.py \
 condor_submit apex2_root_suite_array.sub
 ```
 
+Optional Makefile wrapper (renders `queue N` automatically):
+
+```bash
+make apex2-condor-render-root-array-sub ROOT_CASES_JSON="${APEX2_ROOT_CASES_JSON}" ROOT_CONDOR_INITIALDIR=/abs/path/to/nextstat.io ROOT_CONDOR_SUB_OUT=apex2_root_suite_array.sub
+condor_submit apex2_root_suite_array.sub
+```
+
 After the array finishes, aggregate:
 
 ```bash
@@ -98,6 +110,15 @@ Optional Makefile wrapper (when running from the repo checkout):
 
 ```bash
 make apex2-root-aggregate ROOT_RESULTS_DIR="${APEX2_RESULTS_DIR}" ROOT_AGG_ARGS="--exit-nonzero-on-fail"
+```
+
+Optional perf compare vs recorded baseline (JSON-only, does not require ROOT):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/compare_apex2_root_suite_to_baseline.py \
+  --baseline /abs/path/to/root_suite_baseline.json \
+  --current "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --out "${APEX2_RESULTS_DIR}/apex2_root_suite_perf_compare.json"
 ```
 
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)

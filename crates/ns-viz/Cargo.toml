@@ -12,8 +12,8 @@ categories.workspace = true
 description = "Visualization utilities for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
-ns-inference = { path = "../ns-inference" }
+ns-core.workspace = true
+ns-inference.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true

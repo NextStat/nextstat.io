@@ -236,6 +236,18 @@ def _run_nuts_quality_smoke() -> Dict[str, Any]:
         seed=123,
         init_jitter_rel=0.10,
     )
+
+    # Also smoke-test sampling from an explicit Posterior with additional priors.
+    post = nextstat.Posterior(model)
+    post.set_prior_normal("mu", center=10.0, width=0.1)
+    r_post = nextstat.sample(
+        post,
+        n_chains=2,
+        n_warmup=50,
+        n_samples=30,
+        seed=124,
+        init_jitter_rel=0.10,
+    )
     diag = r.get("diagnostics") or {}
     q = diag.get("quality") or {}
 
@@ -271,7 +283,24 @@ def _run_nuts_quality_smoke() -> Dict[str, Any]:
         },
         "quality": q,
         "quality_status": str(q.get("status") or "unknown"),
+        "posterior_prior_smoke": {
+            "ok": True,
+            "seed": 124,
+            "posterior_mean_mu": float("nan"),
+        },
     }
+
+    try:
+        mu_chains = (r_post.get("posterior") or {}).get("mu")
+        mu_draws = [float(v) for chain in (mu_chains or []) for v in chain]
+        if not mu_draws:
+            raise ValueError("no draws")
+        out["posterior_prior_smoke"]["posterior_mean_mu"] = float(sum(mu_draws) / len(mu_draws))
+    except Exception as e:
+        out["posterior_prior_smoke"]["ok"] = False
+        out["posterior_prior_smoke"]["reason"] = f"posterior_sampling_failed:{e}"
+        out["status"] = "fail"
+        return out
 
     # Hard floor: if diagnostics contain NaNs, treat as failure regardless of quality label.
     critical = [

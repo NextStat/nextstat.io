@@ -745,6 +745,13 @@ impl<M: LogDensityModel> LogDensityModel for WithPriors<M> {
     }
 
     fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if self.priors.len() != params.len() {
+            return Err(NsError::Validation(format!(
+                "priors length must match params length: {} != {}",
+                self.priors.len(),
+                params.len()
+            )));
+        }
         let mut out = self.model.nll(params)?;
         for (i, pr) in self.priors.iter().enumerate() {
             match pr {
@@ -765,6 +772,13 @@ impl<M: LogDensityModel> LogDensityModel for WithPriors<M> {
     }
 
     fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if self.priors.len() != params.len() {
+            return Err(NsError::Validation(format!(
+                "priors length must match params length: {} != {}",
+                self.priors.len(),
+                params.len()
+            )));
+        }
         let mut g = self.model.grad_nll(params)?;
         for (i, pr) in self.priors.iter().enumerate() {
             match pr {

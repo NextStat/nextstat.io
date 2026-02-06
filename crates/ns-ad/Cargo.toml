@@ -12,7 +12,7 @@ categories.workspace = true
 description = "Automatic differentiation (AD) and optimizer utilities for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
+ns-core.workspace = true
 thiserror.workspace = true
 ndarray.workspace = true
 num-traits.workspace = true

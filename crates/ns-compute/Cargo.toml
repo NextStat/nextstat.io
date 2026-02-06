@@ -12,7 +12,7 @@ categories.workspace = true
 description = "Compute backends (CPU/Metal/CUDA) for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
+ns-core.workspace = true
 thiserror.workspace = true
 log.workspace = true
 

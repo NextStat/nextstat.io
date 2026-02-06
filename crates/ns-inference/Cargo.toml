@@ -12,10 +12,10 @@ categories.workspace = true
 description = "Statistical inference (MLE, NUTS, profile likelihood) for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
-ns-compute = { path = "../ns-compute" }
-ns-prob = { path = "../ns-prob" }
-ns-translate = { path = "../ns-translate" }
+ns-core.workspace = true
+ns-compute.workspace = true
+ns-prob.workspace = true
+ns-translate.workspace = true
 thiserror.workspace = true
 log.workspace = true
 nalgebra.workspace = true

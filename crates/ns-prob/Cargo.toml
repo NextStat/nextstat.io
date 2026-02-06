@@ -12,7 +12,7 @@ categories.workspace = true
 description = "Probability distributions and math utilities for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
+ns-core.workspace = true
 statrs.workspace = true
 
 [dev-dependencies]

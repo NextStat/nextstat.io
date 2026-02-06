@@ -499,6 +499,8 @@ def fit(
     *,
     data: Literal[None] = ...,
 ) -> FitResult: ...
+
+def map_fit(posterior: Posterior) -> FitResult: ...
 @overload
 def fit_batch(models_or_model: List[HistFactoryModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
@@ -614,6 +616,21 @@ def sample(
     init_jitter_rel: Optional[float] = ...,
     init_overdispersed_rel: Optional[float] = ...,
     data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...
+@overload
+def sample(
+    model: Posterior,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    target_accept: float = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    data: Literal[None] = ...,
 ) -> Dict[str, Any]: ...
 @overload
 def sample(

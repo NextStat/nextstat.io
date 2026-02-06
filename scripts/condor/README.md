@@ -5,6 +5,13 @@ They assume you have:
 - a shared filesystem visible to worker nodes (recommended), and
 - a Python environment where `nextstat` is importable, plus ROOT/HistFactory tools (`root`, `hist2workspace`).
 
+Why these templates prefer a shared filesystem (vs file transfer):
+- The Apex2 runners execute code directly from this repo checkout (`tests/*.py`, `bindings/ns-py/python`).
+- HTCondor "file transfer" workflows (like TRExFitter bootstrap examples) can work well for single-purpose
+  scripts, but transferring a full repo checkout is typically too heavy and complicates dependency setup.
+- On lxplus, a practical approach is keeping the repo checkout and results on a shared path (e.g. EOS/project),
+  then pointing `initialdir` and `APEX2_RESULTS_DIR` at those locations.
+
 Files:
 - `apex2_root_suite_single.sub`: one job runs the full ROOT parity suite (all cases sequentially).
 - `apex2_root_suite_array.sub`: job-array mode (one job per case index).

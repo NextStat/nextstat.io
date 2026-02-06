@@ -12,9 +12,9 @@ categories.workspace = true
 description = "Format translators (pyhf JSON, HistFactory XML, ROOT) for NextStat"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
-ns-ad = { path = "../ns-ad" }
-ns-compute = { path = "../ns-compute" }
+ns-core.workspace = true
+ns-ad.workspace = true
+ns-compute.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

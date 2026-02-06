@@ -16,11 +16,11 @@ name = "nextstat"
 path = "src/main.rs"
 
 [dependencies]
-ns-core = { path = "../ns-core" }
-ns-compute = { path = "../ns-compute" }
-ns-inference = { path = "../ns-inference" }
-ns-translate = { path = "../ns-translate" }
-ns-viz = { path = "../ns-viz" }
+ns-core.workspace = true
+ns-compute.workspace = true
+ns-inference.workspace = true
+ns-translate.workspace = true
+ns-viz.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true

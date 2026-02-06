@@ -20,6 +20,7 @@ def _get(name: str, default=None):
 __version__ = _get("__version__", "0.0.0")
 
 fit = _get("fit")
+map_fit = _get("map_fit")
 fit_batch = _get("fit_batch")
 hypotest = _get("hypotest")
 sample = _get("sample")
@@ -77,6 +78,7 @@ PyFitResult = FitResult
 __all__ = [
     "__version__",
     "fit",
+    "map_fit",
     "fit_batch",
     "hypotest",
     "sample",
