@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/report_distributions_v0.schema.json",
+  "title": "NextStat TREx Replacement — Distributions Report Artifact (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "channels"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_report_distributions_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version", "created_unix_ms", "parity_mode"],
+      "properties": {
+        "tool": { "type": "string", "const": "nextstat" },
+        "tool_version": { "type": "string" },
+        "created_unix_ms": { "type": "integer", "minimum": 0 },
+        "parity_mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads", "stable_ordering"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1 },
+            "stable_ordering": { "type": "boolean" }
+          }
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "workspace_sha256": { "type": "string" },
+            "fit_result_sha256": { "type": "string" }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/channel" }
+    }
+  },
+  "$defs": {
+    "num_array": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "sample_series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "prefit_y", "postfit_y"],
+      "properties": {
+        "name": { "type": "string" },
+        "prefit_y": { "$ref": "#/$defs/num_array" },
+        "postfit_y": { "$ref": "#/$defs/num_array" }
+      }
+    },
+    "ratio_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator", "zero_policy"],
+      "properties": {
+        "numerator": { "type": "string", "enum": ["data"] },
+        "denominator": { "type": "string", "enum": ["mc_total_prefit", "mc_total_postfit"] },
+        "zero_policy": {
+          "type": "string",
+          "enum": ["nan", "skip", "zero"]
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel_name",
+        "bin_edges",
+        "data_y",
+        "data_yerr_lo",
+        "data_yerr_hi",
+        "samples",
+        "total_prefit_y",
+        "total_postfit_y",
+        "ratio_policy",
+        "ratio_y",
+        "ratio_yerr_lo",
+        "ratio_yerr_hi"
+      ],
+      "properties": {
+        "channel_name": { "type": "string" },
+        "bin_edges": { "$ref": "#/$defs/num_array" },
+        "data_y": { "$ref": "#/$defs/num_array" },
+        "data_yerr_lo": { "$ref": "#/$defs/num_array" },
+        "data_yerr_hi": { "$ref": "#/$defs/num_array" },
+        "samples": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sample_series" }
+        },
+        "stack_order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit stacking order (names). If omitted, use samples[] order."
+        },
+        "total_prefit_y": { "$ref": "#/$defs/num_array" },
+        "total_postfit_y": { "$ref": "#/$defs/num_array" },
+        "mc_band_prefit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lo", "hi"],
+          "properties": {
+            "lo": { "$ref": "#/$defs/num_array" },
+            "hi": { "$ref": "#/$defs/num_array" }
+          }
+        },
+        "mc_band_postfit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lo", "hi"],
+          "properties": {
+            "lo": { "$ref": "#/$defs/num_array" },
+            "hi": { "$ref": "#/$defs/num_array" }
+          }
+        },
+        "ratio_policy": { "$ref": "#/$defs/ratio_policy" },
+        "ratio_y": { "$ref": "#/$defs/num_array" },
+        "ratio_yerr_lo": { "$ref": "#/$defs/num_array" },
+        "ratio_yerr_hi": { "$ref": "#/$defs/num_array" },
+        "ratio_band": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lo", "hi"],
+          "properties": {
+            "lo": { "$ref": "#/$defs/num_array" },
+            "hi": { "$ref": "#/$defs/num_array" }
+          }
+        }
+      }
+    }
+  }
+}
+

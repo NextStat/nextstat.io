@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/report_corr_v0.schema.json",
+  "title": "NextStat TREx Replacement — Correlation Matrix Report Artifact (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "parameter_names", "corr"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_report_corr_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version", "created_unix_ms", "parity_mode"],
+      "properties": {
+        "tool": { "type": "string", "const": "nextstat" },
+        "tool_version": { "type": "string" },
+        "created_unix_ms": { "type": "integer", "minimum": 0 },
+        "parity_mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads", "stable_ordering"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1 },
+            "stable_ordering": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "parameter_names": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "corr": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "number" }
+      },
+      "description": "2D square matrix, aligned with parameter_names."
+    },
+    "covariance": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "number" }
+      },
+      "description": "Optional covariance matrix (same alignment)."
+    }
+  }
+}
+
