@@ -30,6 +30,7 @@ wrapper `.sh` files do not need executable permissions.
 Before submitting:
 - edit `initialdir = ...` to point at your checkout of this repo
 - export the variables noted in each `.sub` file (e.g. `APEX2_ROOT_CASES_JSON`, `APEX2_TREX_SEARCH_DIR`)
+- optionally tune tolerances via `APEX2_ROOT_DQ_ATOL` and `APEX2_ROOT_MU_HAT_ATOL`
 
 Optional helper (avoid manual edit of `queue <N>`):
 

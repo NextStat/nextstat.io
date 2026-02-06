@@ -9,6 +9,9 @@
 # Optional:
 # - APEX2_ROOT_SETUP: command to set up ROOT environment (see scripts/condor/README.md)
 # - APEX2_PYTHON: python executable to use (e.g. from a venv/conda env)
+# - APEX2_ROOT_DQ_ATOL: dq tolerance (optional)
+# - APEX2_ROOT_MU_HAT_ATOL: mu_hat tolerance (optional)
+# - APEX2_ROOT_KEEP_GOING: set to 0 to stop on first failure (default: keep-going)
 
 universe = vanilla
 

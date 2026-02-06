@@ -11,6 +11,8 @@
 # Optional:
 # - APEX2_ROOT_SETUP: command to set up ROOT environment (see scripts/condor/README.md)
 # - APEX2_PYTHON: python executable to use (e.g. from a venv/conda env)
+# - APEX2_ROOT_DQ_ATOL: dq tolerance (optional)
+# - APEX2_ROOT_MU_HAT_ATOL: mu_hat tolerance (optional)
 #
 # To choose array size, set `queue <N>` equal to the number of cases in your JSON.
 

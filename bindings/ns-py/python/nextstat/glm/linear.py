@@ -8,7 +8,7 @@ This is a high-level Python surface that wraps:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 from ._linalg import add_intercept, as_2d_float_list, mat_inv, mat_mul, mat_t, mat_vec_mul, solve_linear
 
@@ -87,5 +87,59 @@ def fit(
         include_intercept=include_intercept,
     )
 
+def from_formula(
+    formula: str,
+    data: Any,
+    *,
+    categorical: Optional[Sequence[str]] = None,
+    l2: Optional[float] = None,
+    penalize_intercept: bool = False,
+) -> Tuple[LinearFit, List[str]]:
+    """Fit linear regression from a minimal formula and tabular data.
 
-__all__ = ["LinearFit", "fit"]
+    Returns `(fit, column_names)` where `column_names` matches the coefficient order.
+    """
+    import nextstat
+
+    y_name, terms, include_intercept = nextstat.formula.parse_formula(formula)
+    cols = nextstat.formula.to_columnar(data, [y_name] + terms)
+    y, x_full, names_full = nextstat.formula.design_matrices(formula, cols, categorical=categorical)
+
+    # Map design-matrix output to the `fit(...)` convention (X excludes intercept column).
+    if names_full and names_full[0] == "Intercept":
+        x = [row[1:] for row in x_full]
+        feature_names = list(names_full[1:])
+        include_intercept = True
+    else:
+        x = x_full
+        feature_names = list(names_full)
+        include_intercept = False
+
+    # Intercept-only model: compute closed-form fit directly.
+    if include_intercept and not feature_names:
+        n = len(y)
+        if n < 2:
+            raise ValueError("Need at least 2 observations for intercept-only fit")
+        mu = sum(y) / float(n)
+        resid = [v - mu for v in y]
+        sse = sum(r * r for r in resid)
+        sigma2_hat = sse / float(n - 1)
+        se = [(sigma2_hat / float(n)) ** 0.5]
+        cov = [[sigma2_hat / float(n)]]
+        return (
+            LinearFit(
+                coef=[mu],
+                standard_errors=se,
+                covariance=cov,
+                sigma2_hat=sigma2_hat,
+                include_intercept=True,
+            ),
+            ["Intercept"],
+        )
+
+    r = fit(x, y, include_intercept=include_intercept, l2=l2, penalize_intercept=penalize_intercept)
+    colnames = (["Intercept"] if include_intercept else []) + feature_names
+    return r, colnames
+
+
+__all__ = ["LinearFit", "fit", "from_formula"]

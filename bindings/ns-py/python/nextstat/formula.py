@@ -43,6 +43,56 @@ def _as_float_list(name: str, x: Any) -> list[float]:
     return out
 
 
+def _is_pandas_dataframe(x: Any) -> bool:
+    try:
+        import pandas as pd  # type: ignore
+    except Exception:
+        return False
+    try:
+        return isinstance(x, pd.DataFrame)
+    except Exception:
+        return False
+
+
+def to_columnar(data: Any, columns: Sequence[str]) -> Mapping[str, Sequence[Any]]:
+    """Normalize supported tabular inputs to a dict-of-columns view.
+
+    Supported inputs:
+    - dict-of-columns (mapping)
+    - list of dict rows
+    - pandas.DataFrame (when pandas is installed)
+    """
+    cols = [str(c) for c in columns]
+
+    if _is_pandas_dataframe(data):
+        out: dict[str, Sequence[Any]] = {}
+        for c in cols:
+            if c not in data.columns:  # type: ignore[attr-defined]
+                raise KeyError(f"column {c!r} not found in data")
+            out[c] = list(data[c].tolist())  # type: ignore[index]
+        return out
+
+    if isinstance(data, Mapping):
+        for c in cols:
+            if c not in data:
+                raise KeyError(f"column {c!r} not found in data")
+        return data
+
+    # List-of-dicts rows
+    if _is_sequence(data):
+        rows = list(data)
+        if rows and all(isinstance(r, Mapping) for r in rows):
+            out2: dict[str, list[Any]] = {c: [] for c in cols}
+            for i, r in enumerate(rows):
+                for c in cols:
+                    if c not in r:
+                        raise KeyError(f"row {i} is missing column {c!r}")
+                    out2[c].append(r[c])
+            return out2
+
+    raise TypeError("Unsupported data type: expected mapping, list of dict rows, or pandas DataFrame")
+
+
 def _tokenize_rhs(rhs: str) -> list[str]:
     # Tokenize by whitespace and +/-, keeping the operators.
     tokens: list[str] = []
@@ -209,4 +259,4 @@ def design_matrices(
     return y, x, col_names
 
 
-__all__ = ["FormulaError", "parse_formula", "design_matrices"]
+__all__ = ["FormulaError", "parse_formula", "design_matrices", "to_columnar"]

@@ -68,4 +68,8 @@ Typical cluster gate workflow:
 - Run the ROOT suite via HTCondor (single job or array), then aggregate JSON outputs.
 - Optionally compare perf vs the recorded baseline (JSON-only, no ROOT needed for the compare step).
 
-See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, aggregation, and perf compare.
+Notes:
+- For large suites, it can be faster to record the baseline via HTCondor array + aggregation, then register it with:
+  `tests/record_baseline.py --only root --root-suite-existing ... --root-cases-existing ...`.
+
+See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, baseline registration, aggregation, and perf compare.

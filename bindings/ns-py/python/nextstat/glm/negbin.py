@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 from ._linalg import add_intercept, as_2d_float_list, mat_vec_mul
 
@@ -138,6 +138,56 @@ def fit(
         offset=off2,
     )
 
+def from_formula(
+    formula: str,
+    data: Any,
+    *,
+    categorical: Optional[Sequence[str]] = None,
+    offset: Optional[Union[str, Sequence[float]]] = None,
+    exposure: Optional[Union[str, Sequence[float]]] = None,
+) -> Tuple[NegativeBinomialFit, List[str]]:
+    """Fit negative binomial regression from a minimal formula and tabular data.
 
-__all__ = ["NegativeBinomialFit", "fit"]
+    `offset`/`exposure` may be a sequence, or a column name in `data`.
+    Returns `(fit, column_names)` where `column_names` matches the coefficient order
+    (note: dispersion parameter is not included).
+    """
+    import nextstat
 
+    y_name, terms, _include_intercept = nextstat.formula.parse_formula(formula)
+    extra_cols: list[str] = []
+    if isinstance(offset, str):
+        extra_cols.append(offset)
+    if isinstance(exposure, str):
+        extra_cols.append(exposure)
+
+    cols = nextstat.formula.to_columnar(data, [y_name] + terms + extra_cols)
+    y_float, x_full, names_full = nextstat.formula.design_matrices(formula, cols, categorical=categorical)
+
+    y = [int(v) for v in y_float]
+    if names_full and names_full[0] == "Intercept":
+        x = [row[1:] for row in x_full]
+        feature_names = list(names_full[1:])
+        include_intercept = True
+    else:
+        x = x_full
+        feature_names = list(names_full)
+        include_intercept = False
+
+    off_seq: Optional[Sequence[float]] = None
+    exp_seq: Optional[Sequence[float]] = None
+    if isinstance(offset, str):
+        off_seq = [float(v) for v in cols[offset]]
+    else:
+        off_seq = offset
+    if isinstance(exposure, str):
+        exp_seq = [float(v) for v in cols[exposure]]
+    else:
+        exp_seq = exposure
+
+    r = fit(x, y, include_intercept=include_intercept, offset=off_seq, exposure=exp_seq)
+    colnames = (["Intercept"] if include_intercept else []) + feature_names
+    return r, colnames
+
+
+__all__ = ["NegativeBinomialFit", "fit", "from_formula"]

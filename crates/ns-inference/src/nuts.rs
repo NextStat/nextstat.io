@@ -898,6 +898,139 @@ mod tests {
         assert!(poi_mean > 0.0 && poi_mean < 5.0, "POI posterior mean out of range: {}", poi_mean,);
     }
 
+    /// Stress gate: Neal's funnel (pathological geometry) should not produce
+    /// exploding energy or catastrophic divergence/treedepth behavior.
+    ///
+    /// This is intentionally ignored by default (slow-ish) and is meant as a
+    /// manual/nightly regression check per `docs/plans/standards.md` 7.3.
+    #[test]
+    #[ignore] // run with `cargo test -p ns-inference -- --ignored`
+    fn test_nuts_funnel_stress_gate() {
+        use crate::chain::sample_nuts_multichain;
+        use crate::diagnostics::compute_diagnostics;
+
+        #[derive(Clone, Copy)]
+        struct NealsFunnel2D;
+
+        impl LogDensityModel for NealsFunnel2D {
+            type Prepared<'a>
+                = PreparedModelRef<'a, Self>
+            where
+                Self: 'a;
+
+            fn dim(&self) -> usize {
+                2
+            }
+
+            fn parameter_names(&self) -> Vec<String> {
+                vec!["y".to_string(), "x".to_string()]
+            }
+
+            fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+                vec![(f64::NEG_INFINITY, f64::INFINITY), (f64::NEG_INFINITY, f64::INFINITY)]
+            }
+
+            fn parameter_init(&self) -> Vec<f64> {
+                vec![0.0, 0.0]
+            }
+
+            fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+                if params.len() != 2 {
+                    return Err(ns_core::Error::Validation(format!(
+                        "NealsFunnel2D expects 2 params, got {}",
+                        params.len()
+                    )));
+                }
+                let y = params[0];
+                let x = params[1];
+                if !(y.is_finite() && x.is_finite()) {
+                    return Err(ns_core::Error::Validation(
+                        "NealsFunnel2D params must be finite".to_string(),
+                    ));
+                }
+
+                // y ~ Normal(0, 3)
+                // x | y ~ Normal(0, exp(y/2))
+                //
+                // nll = 0.5*(y/3)^2 + ln(3*sqrt(2pi))
+                //     + 0.5*(x/exp(y/2))^2 + ln(exp(y/2)*sqrt(2pi))
+                let ln2pi = (2.0 * std::f64::consts::PI).ln();
+                let nll_y = 0.5 * (y * y) / 9.0 + 3.0_f64.ln() + 0.5 * ln2pi;
+                let nll_x = 0.5 * x * x * (-y).exp() + 0.5 * y + 0.5 * ln2pi;
+                Ok(nll_y + nll_x)
+            }
+
+            fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+                if params.len() != 2 {
+                    return Err(ns_core::Error::Validation(format!(
+                        "NealsFunnel2D expects 2 params, got {}",
+                        params.len()
+                    )));
+                }
+                let y = params[0];
+                let x = params[1];
+                if !(y.is_finite() && x.is_finite()) {
+                    return Err(ns_core::Error::Validation(
+                        "NealsFunnel2D params must be finite".to_string(),
+                    ));
+                }
+
+                let exp_neg_y = (-y).exp();
+                let dy = y / 9.0 - 0.5 * x * x * exp_neg_y + 0.5;
+                let dx = x * exp_neg_y;
+                Ok(vec![dy, dx])
+            }
+
+            fn prepared(&self) -> Self::Prepared<'_> {
+                PreparedModelRef::new(self)
+            }
+        }
+
+        let model = NealsFunnel2D;
+        let config = NutsConfig {
+            max_treedepth: 10,
+            target_accept: 0.9,
+            init_jitter: 1.0,
+            init_jitter_rel: None,
+            init_overdispersed_rel: None,
+        };
+
+        let result = sample_nuts_multichain(&model, 4, 600, 600, 123, config).unwrap();
+        let diag = compute_diagnostics(&result);
+
+        // No NaNs/infs in diagnostics or per-draw energies.
+        assert!(diag.divergence_rate.is_finite(), "divergence_rate must be finite");
+        for (chain_id, c) in result.chains.iter().enumerate() {
+            for (i, &e) in c.energies.iter().enumerate() {
+                assert!(
+                    e.is_finite(),
+                    "energy must be finite (chain={}, draw={}): {}",
+                    chain_id,
+                    i,
+                    e
+                );
+            }
+            for (i, &d) in c.tree_depths.iter().enumerate() {
+                assert!(
+                    d <= c.max_treedepth,
+                    "treedepth exceeds max (chain={}, draw={}): {} > {}",
+                    chain_id,
+                    i,
+                    d,
+                    c.max_treedepth
+                );
+            }
+        }
+
+        // This is a stress model; we don't demand zero divergences, but it should not
+        // be catastrophic in the default config.
+        assert!(
+            diag.divergence_rate < 0.30,
+            "divergence_rate too high for funnel stress gate: {}",
+            diag.divergence_rate
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Simulation-based calibration (SBC)
     // -----------------------------------------------------------------------

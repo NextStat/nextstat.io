@@ -112,6 +112,24 @@ Optional Makefile wrapper (when running from the repo checkout):
 make apex2-root-aggregate ROOT_RESULTS_DIR="${APEX2_RESULTS_DIR}" ROOT_AGG_ARGS="--exit-nonzero-on-fail"
 ```
 
+Record a ROOT baseline (cluster environment):
+
+- Small suites: run sequentially (single process) on the submit host:
+
+```bash
+make apex2-root-baseline-record ROOT_SEARCH_DIR=/abs/path/to/trex/output ROOT_BASELINE_ARGS="--root-include-fixtures --root-cases-absolute-paths"
+```
+
+- Large suites (recommended): register an already-aggregated HTCondor array result as the baseline:
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_baseline.py \
+  --only root \
+  --out-dir tmp/baselines \
+  --root-suite-existing "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --root-cases-existing "${APEX2_ROOT_CASES_JSON}"
+```
+
 Optional perf compare vs recorded baseline (JSON-only, does not require ROOT):
 
 ```bash
@@ -142,6 +160,12 @@ Recommended prereq check (fast, without running the suite):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
+```
+
+Makefile shortcut (writes `tmp/apex2_root_prereq.json`):
+
+```bash
+make apex2-root-prereq
 ```
 
 If the cluster does not have `.venv`, use any equivalent Python (conda/venv/module), but make sure:

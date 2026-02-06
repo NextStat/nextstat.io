@@ -179,6 +179,29 @@ def _stamp(hostname: str) -> str:
     return f"{hostname}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
+def _copy_json_with_baseline_env(
+    *,
+    src: Path,
+    dst: Path,
+    environment: Dict[str, Any],
+    recorded_as_baseline: bool = True,
+) -> None:
+    """Copy a JSON file and inject `baseline_env` if it is a JSON object."""
+    try:
+        obj = json.loads(src.read_text())
+    except Exception:
+        dst.write_text(src.read_text())
+        return
+    if isinstance(obj, dict):
+        obj["baseline_env"] = environment
+        meta = obj.get("meta")
+        if recorded_as_baseline and isinstance(meta, dict):
+            meta.setdefault("recorded_as_baseline", True)
+        dst.write_text(json.dumps(obj, indent=2))
+    else:
+        dst.write_text(src.read_text())
+
+
 # ── Baseline recording ─────────────────────────────────────────────────
 
 
@@ -431,6 +454,24 @@ def main() -> int:
     ap.add_argument("--root-keep-going", action="store_true", help="Keep running the ROOT suite after failures/skips.")
     ap.add_argument("--root-dq-atol", type=float, default=1e-3)
     ap.add_argument("--root-mu-hat-atol", type=float, default=1e-3)
+    ap.add_argument(
+        "--root-suite-existing",
+        type=Path,
+        default=None,
+        help="Path to an already-produced ROOT suite JSON report to register as a baseline (e.g. HTCondor array + aggregation output).",
+    )
+    ap.add_argument(
+        "--root-cases-existing",
+        type=Path,
+        default=None,
+        help="Optional existing cases JSON to register alongside --root-suite-existing.",
+    )
+    ap.add_argument(
+        "--root-prereq-existing",
+        type=Path,
+        default=None,
+        help="Optional existing prereq JSON to register alongside --root-suite-existing.",
+    )
     args = ap.parse_args()
 
     repo = _repo_root()
@@ -502,9 +543,42 @@ def main() -> int:
 
     # Record ROOT suite baseline (optional)
     if args.only is None or args.only == "root":
-        if args.root_search_dir is None:
+        if args.root_suite_existing is not None or args.root_cases_existing is not None or args.root_prereq_existing is not None:
+            # Register already-produced artifacts as baseline (useful for HTCondor arrays).
+            if args.root_suite_existing is None:
+                print("ERROR: when using existing ROOT artifacts, provide --root-suite-existing", file=sys.stderr)
+                return 2
+            if not args.root_suite_existing.exists():
+                print(f"ERROR: missing --root-suite-existing: {args.root_suite_existing}", file=sys.stderr)
+                return 2
+            if args.root_cases_existing is not None and not args.root_cases_existing.exists():
+                print(f"ERROR: missing --root-cases-existing: {args.root_cases_existing}", file=sys.stderr)
+                return 2
+            if args.root_prereq_existing is not None and not args.root_prereq_existing.exists():
+                print(f"ERROR: missing --root-prereq-existing: {args.root_prereq_existing}", file=sys.stderr)
+                return 2
+
+            print("[root] Registering existing suite/cases/prereq artifacts as baseline...")
+            root_suite_path = args.out_dir / f"root_suite_baseline_{stamp}.json"
+            _copy_json_with_baseline_env(
+                src=Path(args.root_suite_existing),
+                dst=root_suite_path,
+                environment=environment,
+            )
+            if args.root_cases_existing is not None:
+                root_cases_path = args.out_dir / f"root_cases_{stamp}.json"
+                root_cases_path.write_text(Path(args.root_cases_existing).read_text())
+            if args.root_prereq_existing is not None:
+                root_prereq_path = args.out_dir / f"root_prereq_{stamp}.json"
+                _copy_json_with_baseline_env(
+                    src=Path(args.root_prereq_existing),
+                    dst=root_prereq_path,
+                    environment=environment,
+                    recorded_as_baseline=False,
+                )
+        elif args.root_search_dir is None:
             if args.only == "root":
-                print("ERROR: --only root requires --root-search-dir", file=sys.stderr)
+                print("ERROR: --only root requires --root-search-dir (or --root-suite-existing)", file=sys.stderr)
                 return 2
             print("[root] Skipping (no --root-search-dir provided).")
         else:

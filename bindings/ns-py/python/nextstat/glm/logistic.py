@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 from ._linalg import add_intercept, as_2d_float_list, mat_vec_mul
 
@@ -104,5 +104,37 @@ def fit(
         warnings=warnings,
     )
 
+def from_formula(
+    formula: str,
+    data: Any,
+    *,
+    categorical: Optional[Sequence[str]] = None,
+    l2: Optional[float] = None,
+    penalize_intercept: bool = False,
+) -> Tuple[LogisticFit, List[str]]:
+    """Fit logistic regression from a minimal formula and tabular data.
 
-__all__ = ["LogisticFit", "fit"]
+    Returns `(fit, column_names)` where `column_names` matches the coefficient order.
+    """
+    import nextstat
+
+    y_name, terms, _include_intercept = nextstat.formula.parse_formula(formula)
+    cols = nextstat.formula.to_columnar(data, [y_name] + terms)
+    y_float, x_full, names_full = nextstat.formula.design_matrices(formula, cols, categorical=categorical)
+
+    y = [int(v) for v in y_float]
+    if names_full and names_full[0] == "Intercept":
+        x = [row[1:] for row in x_full]
+        feature_names = list(names_full[1:])
+        include_intercept = True
+    else:
+        x = x_full
+        feature_names = list(names_full)
+        include_intercept = False
+
+    r = fit(x, y, include_intercept=include_intercept, l2=l2, penalize_intercept=penalize_intercept)
+    colnames = (["Intercept"] if include_intercept else []) + feature_names
+    return r, colnames
+
+
+__all__ = ["LogisticFit", "fit", "from_formula"]

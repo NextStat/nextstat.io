@@ -93,12 +93,13 @@ def _numerical_uncertainties(model, data: np.ndarray, bestfit: np.ndarray) -> np
     return np.sqrt(np.maximum(np.diag(cov), 0.0))
 
 
-def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel():
+def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel(ns_timing):
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow toy regression tests.")
 
     workspace = make_workspace_multichannel(3)
-    model, data_nominal = _pyhf_model_and_data(workspace, measurement_name="m")
+    with ns_timing.time("pyhf"):
+        model, data_nominal = _pyhf_model_and_data(workspace, measurement_name="m")
 
     # Choose "truth" parameters: POI=1, nuisance at suggested init
     pars_true = np.asarray(model.config.suggested_init(), dtype=float)
@@ -113,7 +114,8 @@ def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel():
     cover_pyhf = []
     cover_ns = []
 
-    ns_model = nextstat.from_pyhf(json.dumps(workspace))
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.from_pyhf(json.dumps(workspace))
     ns_poi_idx = ns_model.poi_index()
     assert ns_poi_idx is not None
     ns_poi_idx = int(ns_poi_idx)
@@ -124,8 +126,9 @@ def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel():
         toy[:n_main] = rng.poisson(expected[:n_main])
 
         try:
-            bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
-            unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
+            with ns_timing.time("pyhf"):
+                bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
+                unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
         except Exception:
             continue
 
@@ -135,7 +138,8 @@ def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel():
             continue
 
         try:
-            res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
+            with ns_timing.time("nextstat"):
+                res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
         except Exception:
             continue
 
@@ -166,4 +170,3 @@ def test_pull_mu_regression_vs_pyhf_model_zoo_multichannel():
     assert abs(d_mean) <= PULL_MEAN_DELTA_MAX
     assert abs(d_std) <= PULL_STD_DELTA_MAX
     assert abs(d_cov) <= COVERAGE_1SIGMA_DELTA_MAX
-
