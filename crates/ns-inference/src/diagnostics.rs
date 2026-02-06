@@ -570,25 +570,34 @@ pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
     ess
 }
 
-/// Compute tail ESS (ESS of indicator I(x <= median) or I(x >= median)).
+/// Compute tail ESS as a conservative tail-mixing proxy.
+///
+/// This follows the common Stan/ArviZ convention: compute ESS on indicator chains
+/// for the lower and upper tails, then take the minimum:
+/// `min(ESS(I[x <= q05]), ESS(I[x >= q95]))`.
 pub fn ess_tail(chains: &[&[f64]]) -> f64 {
     if chains.is_empty() {
         return 0.0;
     }
 
-    // Collect all draws and find median
     let mut all: Vec<f64> = chains.iter().flat_map(|c| c.iter().copied()).collect();
-    all.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let median = all[all.len() / 2];
+    all.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+    let q05 = quantile_sorted(&all, 0.05);
+    let q95 = quantile_sorted(&all, 0.95);
 
-    // Compute ESS of the lower tail indicator
-    let tail_chains: Vec<Vec<f64>> = chains
+    let lower: Vec<Vec<f64>> = chains
         .iter()
-        .map(|c| c.iter().map(|&x| if x <= median { 1.0 } else { 0.0 }).collect())
+        .map(|c| c.iter().map(|&x| if x <= q05 { 1.0 } else { 0.0 }).collect())
         .collect();
-    let tail_refs: Vec<&[f64]> = tail_chains.iter().map(|c| c.as_slice()).collect();
+    let upper: Vec<Vec<f64>> = chains
+        .iter()
+        .map(|c| c.iter().map(|&x| if x >= q95 { 1.0 } else { 0.0 }).collect())
+        .collect();
 
-    ess_bulk(&tail_refs)
+    let lower_refs: Vec<&[f64]> = lower.iter().map(|c| c.as_slice()).collect();
+    let upper_refs: Vec<&[f64]> = upper.iter().map(|c| c.as_slice()).collect();
+
+    ess_bulk(&lower_refs).min(ess_bulk(&upper_refs))
 }
 
 /// Compute full diagnostics for a SamplerResult.
@@ -791,5 +800,36 @@ mod tests {
 
         let ess = ess_bulk(&[&chain]);
         assert!(ess < 500.0, "ESS of correlated chain should be << N: {}", ess);
+    }
+
+    #[test]
+    fn test_ess_tail_iid_chain_is_large() {
+        // Tail ESS on IID draws should be close to N (indicator chains have no autocorrelation).
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let chain: Vec<f64> = (0..1000).map(|_| normal.sample(&mut rng)).collect();
+
+        let ess = ess_tail(&[&chain]);
+        assert!(ess > 500.0, "Tail ESS of IID chain should be large: {}", ess);
+    }
+
+    #[test]
+    fn test_ess_tail_correlated_chain_is_smaller() {
+        // Tail indicators on a random walk should show reduced ESS.
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(11);
+        let normal = Normal::new(0.0, 0.01).unwrap();
+        let mut chain = Vec::with_capacity(1000);
+        let mut x = 0.0;
+        for _ in 0..1000 {
+            x += normal.sample(&mut rng);
+            chain.push(x);
+        }
+
+        let ess = ess_tail(&[&chain]);
+        assert!(ess < 500.0, "Tail ESS of correlated chain should be reduced: {}", ess);
     }
 }
