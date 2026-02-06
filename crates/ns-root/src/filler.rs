@@ -138,10 +138,18 @@ fn find_bin(edges: &[f64], val: f64) -> Option<usize> {
     }
     match edges.binary_search_by(|e| e.partial_cmp(&val).unwrap()) {
         Ok(i) => {
-            if i >= edges.len() - 1 { None } else { Some(i) }
+            if i >= edges.len() - 1 {
+                None
+            } else {
+                Some(i)
+            }
         }
         Err(i) => {
-            if i == 0 || i >= edges.len() { None } else { Some(i - 1) }
+            if i == 0 || i >= edges.len() {
+                None
+            } else {
+                Some(i - 1)
+            }
         }
     }
 }
@@ -156,9 +164,10 @@ fn eval_expr_columns(
         .required_branches
         .iter()
         .map(|name| {
-            columns.get(name.as_str()).map(|v| v.as_slice()).ok_or_else(|| {
-                RootError::Expression(format!("missing column: '{}'", name))
-            })
+            columns
+                .get(name.as_str())
+                .map(|v| v.as_slice())
+                .ok_or_else(|| RootError::Expression(format!("missing column: '{}'", name)))
         })
         .collect::<Result<_>>()?;
 

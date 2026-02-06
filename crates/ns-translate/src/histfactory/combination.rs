@@ -65,9 +65,7 @@ pub fn parse_combination(path: &Path) -> Result<CombinationConfig> {
         .collect();
 
     if channel_files.is_empty() {
-        return Err(Error::Xml(
-            "combination.xml has no <Input> elements".into(),
-        ));
+        return Err(Error::Xml("combination.xml has no <Input> elements".into()));
     }
 
     // <Measurement> elements
@@ -78,32 +76,19 @@ pub fn parse_combination(path: &Path) -> Result<CombinationConfig> {
         .collect::<Result<Vec<_>>>()?;
 
     if measurements.is_empty() {
-        return Err(Error::Xml(
-            "combination.xml has no <Measurement> elements".into(),
-        ));
+        return Err(Error::Xml("combination.xml has no <Measurement> elements".into()));
     }
 
-    Ok(CombinationConfig {
-        channel_files,
-        measurements,
-    })
+    Ok(CombinationConfig { channel_files, measurements })
 }
 
 fn parse_measurement(node: roxmltree::Node) -> Result<MeasurementXml> {
-    let name = node
-        .attribute("Name")
-        .unwrap_or("default")
-        .to_string();
+    let name = node.attribute("Name").unwrap_or("default").to_string();
 
-    let lumi: f64 = node
-        .attribute("Lumi")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1.0);
+    let lumi: f64 = node.attribute("Lumi").and_then(|v| v.parse().ok()).unwrap_or(1.0);
 
-    let lumi_rel_err: f64 = node
-        .attribute("LumiRelErr")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0);
+    let lumi_rel_err: f64 =
+        node.attribute("LumiRelErr").and_then(|v| v.parse().ok()).unwrap_or(0.0);
 
     // <POI> element text
     let poi = node
@@ -118,33 +103,17 @@ fn parse_measurement(node: roxmltree::Node) -> Result<MeasurementXml> {
         .children()
         .filter(|n| n.has_tag_name("ParamSetting"))
         .map(|n| {
-            let is_const = n
-                .attribute("Const")
-                .map(|v| v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+            let is_const =
+                n.attribute("Const").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false);
 
             let val = n.attribute("Val").and_then(|v| v.parse().ok());
 
-            let names: Vec<String> = n
-                .text()
-                .unwrap_or("")
-                .split_whitespace()
-                .map(String::from)
-                .collect();
+            let names: Vec<String> =
+                n.text().unwrap_or("").split_whitespace().map(String::from).collect();
 
-            ParamSetting {
-                names,
-                is_const,
-                val,
-            }
+            ParamSetting { names, is_const, val }
         })
         .collect();
 
-    Ok(MeasurementXml {
-        name,
-        poi,
-        lumi,
-        lumi_rel_err,
-        param_settings,
-    })
+    Ok(MeasurementXml { name, poi, lumi, lumi_rel_err, param_settings })
 }

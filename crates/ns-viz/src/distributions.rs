@@ -86,11 +86,7 @@ fn is_near_integer_nonneg(x: f64) -> Option<u64> {
         return None;
     }
     let r = x.round();
-    if (x - r).abs() <= 1e-9 {
-        Some(r as u64)
-    } else {
-        None
-    }
+    if (x - r).abs() <= 1e-9 { Some(r as u64) } else { None }
 }
 
 fn garwood_68_interval(n: u64) -> (f64, f64) {
@@ -181,16 +177,10 @@ pub fn distributions_artifact(
     let mut channels_out: Vec<DistributionsChannelArtifact> = Vec::with_capacity(pre.len());
     for ch_pre in &pre {
         let ch_post = post_map.get(ch_pre.channel_name.as_str()).ok_or_else(|| {
-            ns_core::Error::Validation(format!(
-                "postfit channel missing: {}",
-                ch_pre.channel_name
-            ))
+            ns_core::Error::Validation(format!("postfit channel missing: {}", ch_pre.channel_name))
         })?;
         let data = data_by_channel.get(&ch_pre.channel_name).ok_or_else(|| {
-            ns_core::Error::Validation(format!(
-                "data missing for channel: {}",
-                ch_pre.channel_name
-            ))
+            ns_core::Error::Validation(format!("data missing for channel: {}", ch_pre.channel_name))
         })?;
         let edges = bin_edges_by_channel.get(&ch_pre.channel_name).ok_or_else(|| {
             ns_core::Error::Validation(format!(
@@ -205,17 +195,15 @@ pub fn distributions_artifact(
 
         let mut samples = Vec::with_capacity(ch_pre.samples.len());
         for s_pre in &ch_pre.samples {
-            let s_post = ch_post
-                .samples
-                .iter()
-                .find(|s| s.sample_name == s_pre.sample_name)
-                .ok_or_else(|| {
-                    ns_core::Error::Validation(format!(
-                        "postfit sample missing: channel={} sample={}",
-                        ch_pre.channel_name,
-                        s_pre.sample_name
-                    ))
-                })?;
+            let s_post =
+                ch_post.samples.iter().find(|s| s.sample_name == s_pre.sample_name).ok_or_else(
+                    || {
+                        ns_core::Error::Validation(format!(
+                            "postfit sample missing: channel={} sample={}",
+                            ch_pre.channel_name, s_pre.sample_name
+                        ))
+                    },
+                )?;
             samples.push(DistributionsSampleSeries {
                 name: s_pre.sample_name.clone(),
                 prefit_y: s_pre.y.clone(),
@@ -251,10 +239,7 @@ pub fn distributions_artifact(
             tool: "nextstat".to_string(),
             tool_version: ns_core::VERSION.to_string(),
             created_unix_ms: now_unix_ms()?,
-            parity_mode: ParityMode {
-                threads: threads.max(1),
-                stable_ordering: true,
-            },
+            parity_mode: ParityMode { threads: threads.max(1), stable_ordering: true },
             input: None,
         },
         channels: channels_out,

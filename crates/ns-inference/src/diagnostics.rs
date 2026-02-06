@@ -139,30 +139,14 @@ pub fn quality_summary(
     let total_draws = n_chains.saturating_mul(n_samples);
     let enabled = n_chains >= gates.min_chains && n_samples >= gates.min_draws_per_chain;
 
-    let max_r_hat = diag
-        .r_hat
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f64::NEG_INFINITY, f64::max);
-    let min_ess_bulk = diag
-        .ess_bulk
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f64::INFINITY, f64::min);
-    let min_ess_tail = diag
-        .ess_tail
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f64::INFINITY, f64::min);
-    let min_ebfmi = diag
-        .ebfmi
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f64::INFINITY, f64::min);
+    let max_r_hat =
+        diag.r_hat.iter().copied().filter(|v| v.is_finite()).fold(f64::NEG_INFINITY, f64::max);
+    let min_ess_bulk =
+        diag.ess_bulk.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
+    let min_ess_tail =
+        diag.ess_tail.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
+    let min_ebfmi =
+        diag.ebfmi.iter().copied().filter(|v| v.is_finite()).fold(f64::INFINITY, f64::min);
 
     let mut warnings = Vec::new();
     let mut failures = Vec::new();

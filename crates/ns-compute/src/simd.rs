@@ -153,15 +153,13 @@ pub fn poisson_nll_simd_sparse(
         if all0 {
             acc += exp;
         } else {
-            let all1 =
-                mask_arr[0] == 1.0 && mask_arr[1] == 1.0 && mask_arr[2] == 1.0 && mask_arr[3] == 1.0;
+            let all1 = mask_arr[0] == 1.0
+                && mask_arr[1] == 1.0
+                && mask_arr[2] == 1.0
+                && mask_arr[3] == 1.0;
 
             // Mixed chunks are the key case: avoid calling ln() for lanes where obs==0.
-            let ln_exp = if all1 {
-                ln_f64x4(exp)
-            } else {
-                ln_f64x4_masked(exp, mask_arr)
-            };
+            let ln_exp = if all1 { ln_f64x4(exp) } else { ln_f64x4_masked(exp, mask_arr) };
             let obs_ln_exp = obs * ln_exp;
             let bracket = lnf - obs_ln_exp;
             acc += exp + mask * bracket;

@@ -48,18 +48,9 @@ pub struct SampleXml {
 #[derive(Debug)]
 pub enum ModifierXml {
     /// `<NormFactor>`
-    NormFactor {
-        name: String,
-        val: f64,
-        low: f64,
-        high: f64,
-    },
+    NormFactor { name: String, val: f64, low: f64, high: f64 },
     /// `<OverallSys>`
-    OverallSys {
-        name: String,
-        low: f64,
-        high: f64,
-    },
+    OverallSys { name: String, low: f64, high: f64 },
     /// `<HistoSys>`
     HistoSys {
         name: String,
@@ -79,15 +70,9 @@ pub enum ModifierXml {
         constraint_type: String,
     },
     /// `<ShapeFactor>`
-    ShapeFactor {
-        name: String,
-    },
+    ShapeFactor { name: String },
     /// `<StatError Activate="True" />`
-    StatError {
-        histo_name: Option<String>,
-        histo_path: Option<String>,
-        input_file: Option<String>,
-    },
+    StatError { histo_name: Option<String>, histo_path: Option<String>, input_file: Option<String> },
 }
 
 /// Parse a channel XML file.
@@ -138,13 +123,7 @@ pub fn parse_channel(path: &Path) -> Result<ChannelXml> {
         .map(parse_sample)
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(ChannelXml {
-        name,
-        input_file,
-        histo_path,
-        data,
-        samples,
-    })
+    Ok(ChannelXml { name, input_file, histo_path, data, samples })
 }
 
 fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
@@ -171,13 +150,7 @@ fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
         }
     }
 
-    Ok(SampleXml {
-        name,
-        histo_name,
-        input_file,
-        histo_path,
-        modifiers,
-    })
+    Ok(SampleXml { name, histo_name, input_file, histo_path, modifiers })
 }
 
 fn parse_modifier(node: roxmltree::Node) -> Result<Option<ModifierXml>> {
@@ -211,10 +184,7 @@ fn parse_modifier(node: roxmltree::Node) -> Result<Option<ModifierXml>> {
         }
         "ShapeSys" => {
             let name = attr_string(&node, "Name")?;
-            let constraint_type = node
-                .attribute("ConstraintType")
-                .unwrap_or("Poisson")
-                .to_string();
+            let constraint_type = node.attribute("ConstraintType").unwrap_or("Poisson").to_string();
             Ok(Some(ModifierXml::ShapeSys {
                 name,
                 histo_name: node.attribute("HistoName").map(String::from),
@@ -228,10 +198,8 @@ fn parse_modifier(node: roxmltree::Node) -> Result<Option<ModifierXml>> {
             Ok(Some(ModifierXml::ShapeFactor { name }))
         }
         "StatError" => {
-            let activate = node
-                .attribute("Activate")
-                .map(|v| v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+            let activate =
+                node.attribute("Activate").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false);
 
             if !activate {
                 return Ok(None);
@@ -254,7 +222,5 @@ fn attr_string(node: &roxmltree::Node, name: &str) -> Result<String> {
 }
 
 fn attr_f64(node: &roxmltree::Node, name: &str, default: f64) -> f64 {
-    node.attribute(name)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    node.attribute(name).and_then(|v| v.parse().ok()).unwrap_or(default)
 }

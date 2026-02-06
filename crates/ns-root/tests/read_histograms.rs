@@ -5,9 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
-        .join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures").join(name)
 }
 
 #[derive(serde::Deserialize)]
@@ -117,12 +115,7 @@ fn read_simple_histos() {
             );
         }
 
-        assert_eq!(
-            h.bin_edges.len(),
-            exp.bin_edges.len(),
-            "{}: bin_edges length mismatch",
-            path,
-        );
+        assert_eq!(h.bin_edges.len(), exp.bin_edges.len(), "{}: bin_edges length mismatch", path,);
         for (i, (got, want)) in h.bin_edges.iter().zip(exp.bin_edges.iter()).enumerate() {
             assert!(
                 (got - want).abs() < 1e-10,
@@ -149,7 +142,10 @@ fn read_histfactory_data() {
 
     let f = RootFile::open(&root_path).expect("failed to open ROOT file");
     let keys = f.list_keys().expect("failed to list keys");
-    eprintln!("HF Keys: {:?}", keys.iter().map(|k| format!("{} ({})", k.name, k.class_name)).collect::<Vec<_>>());
+    eprintln!(
+        "HF Keys: {:?}",
+        keys.iter().map(|k| format!("{} ({})", k.name, k.class_name)).collect::<Vec<_>>()
+    );
 
     // Read histograms from subdirectory
     let obs = f.get_histogram("SR/data_obs").expect("failed to read SR/data_obs");

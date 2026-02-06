@@ -6,8 +6,10 @@
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
-use super::kalman::{KalmanFilterResult, KalmanModel, kalman_filter, rts_smoother, reduce_observation};
 use super::internal::symmetrize;
+use super::kalman::{
+    KalmanFilterResult, KalmanModel, kalman_filter, reduce_observation, rts_smoother,
+};
 
 fn ensure_spd(name: &'static str, mut a: DMatrix<f64>, min_diag: f64) -> Result<DMatrix<f64>> {
     a = symmetrize(&a);
@@ -49,9 +51,7 @@ fn ensure_spd(name: &'static str, mut a: DMatrix<f64>, min_diag: f64) -> Result<
         jitter *= 10.0;
     }
 
-    Err(Error::Computation(
-        "failed to make covariance SPD (Cholesky never succeeded)".to_string(),
-    ))
+    Err(Error::Computation("failed to make covariance SPD (Cholesky never succeeded)".to_string()))
 }
 
 /// EM configuration.
@@ -131,18 +131,19 @@ fn smoother_full(model: &KalmanModel, fr: &KalmanFilterResult) -> Result<SmoothF
         gains.push(j);
     }
 
-    Ok(SmoothFull {
-        m: sr.smoothed_means,
-        p: sr.smoothed_covs,
-        gains,
-    })
+    Ok(SmoothFull { m: sr.smoothed_means, p: sr.smoothed_covs, gains })
 }
 
 fn e_xx(m: &DVector<f64>, p: &DMatrix<f64>) -> DMatrix<f64> {
     p + m * m.transpose()
 }
 
-fn e_xnext_x(m_next: &DVector<f64>, m: &DVector<f64>, p_next: &DMatrix<f64>, j: &DMatrix<f64>) -> DMatrix<f64> {
+fn e_xnext_x(
+    m_next: &DVector<f64>,
+    m: &DVector<f64>,
+    p_next: &DMatrix<f64>,
+    j: &DMatrix<f64>,
+) -> DMatrix<f64> {
     // Approximate lag-one smoothed covariance:
     // Cov(x_{t+1}, x_t | Y) ~= P_{t+1|T} J_t^T
     //
@@ -153,7 +154,11 @@ fn e_xnext_x(m_next: &DVector<f64>, m: &DVector<f64>, p_next: &DMatrix<f64>, j: 
 }
 
 /// Fit Q/R with EM while holding F/H/m0/P0 fixed.
-pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) -> Result<KalmanEmResult> {
+pub fn kalman_em(
+    model: &KalmanModel,
+    ys: &[DVector<f64>],
+    cfg: KalmanEmConfig,
+) -> Result<KalmanEmResult> {
     if cfg.max_iter == 0 {
         return Err(Error::Validation("max_iter must be > 0".to_string()));
     }
@@ -221,12 +226,15 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
             let mut den = 0.0;
             for t in 0..ys.len() - 1 {
                 let e_xt_xt = e_xx(&sf.m[t], &sf.p[t])[(0, 0)];
-                let e_xt1_xt = e_xnext_x(&sf.m[t + 1], &sf.m[t], &sf.p[t + 1], &sf.gains[t])[(0, 0)];
+                let e_xt1_xt =
+                    e_xnext_x(&sf.m[t + 1], &sf.m[t], &sf.p[t + 1], &sf.gains[t])[(0, 0)];
                 den += e_xt_xt;
                 num += e_xt1_xt;
             }
             if !den.is_finite() || den <= 0.0 {
-                return Err(Error::Computation("EM estimate_f failed: invalid denominator".to_string()));
+                return Err(Error::Computation(
+                    "EM estimate_f failed: invalid denominator".to_string(),
+                ));
             }
             let a = num / den;
             if !a.is_finite() {
@@ -250,7 +258,9 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
                 den += e_x2;
             }
             if !den.is_finite() || den <= 0.0 {
-                return Err(Error::Computation("EM estimate_h failed: invalid denominator".to_string()));
+                return Err(Error::Computation(
+                    "EM estimate_h failed: invalid denominator".to_string(),
+                ));
             }
             let h = num / den;
             if !h.is_finite() {
@@ -268,8 +278,8 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
                 let e_x1x0 = e_xnext_x(&sf.m[t + 1], &sf.m[t], &sf.p[t + 1], &sf.gains[t]);
                 let e_x0x1 = e_x1x0.transpose();
 
-                let term =
-                    &e_x1x1 - &cur.f * &e_x0x1 - &e_x1x0 * cur.f.transpose() + &cur.f * e_x0x0 * cur.f.transpose();
+                let term = &e_x1x1 - &cur.f * &e_x0x1 - &e_x1x0 * cur.f.transpose()
+                    + &cur.f * e_x0x0 * cur.f.transpose();
                 sum_q += term;
             }
 
@@ -328,12 +338,7 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
         n_iter = iter + 1;
     }
 
-    Ok(KalmanEmResult {
-        model: cur,
-        loglik_trace: trace,
-        converged,
-        n_iter,
-    })
+    Ok(KalmanEmResult { model: cur, loglik_trace: trace, converged, n_iter })
 }
 
 #[cfg(test)]
@@ -361,7 +366,8 @@ mod tests {
         let m0 = DVector::from_row_slice(&[0.0]);
         let p0 = DMatrix::from_row_slice(1, 1, &[1.0]);
 
-        let true_model = KalmanModel::new(f.clone(), q, h.clone(), r, m0.clone(), p0.clone()).unwrap();
+        let true_model =
+            KalmanModel::new(f.clone(), q, h.clone(), r, m0.clone(), p0.clone()).unwrap();
 
         // Deterministic pseudo-random sequence.
         let t_max = 200usize;

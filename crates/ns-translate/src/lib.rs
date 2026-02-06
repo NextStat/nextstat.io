@@ -10,10 +10,10 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-pub mod pyhf;
 pub mod histfactory;
 pub mod ntuple;
+pub mod pyhf;
 pub mod trex;
 
-pub use pyhf::*;
 pub use ntuple::NtupleWorkspaceBuilder;
+pub use pyhf::*;

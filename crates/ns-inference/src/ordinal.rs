@@ -20,11 +20,7 @@ fn log1mexp(x: f64) -> f64 {
     }
     // ln(0.5)
     const LN_HALF: f64 = -0.693_147_180_559_945_3;
-    if x < LN_HALF {
-        (1.0 - x.exp()).ln()
-    } else {
-        (-x.exp_m1()).ln()
-    }
+    if x < LN_HALF { (1.0 - x.exp()).ln() } else { (-x.exp_m1()).ln() }
 }
 
 #[inline]
@@ -189,7 +185,9 @@ impl LogDensityModel for OrderedLogitModel {
             };
 
             if !logp.is_finite() {
-                return Err(Error::Computation("ordered_logit produced non-finite logp".to_string()));
+                return Err(Error::Computation(
+                    "ordered_logit produced non-finite logp".to_string(),
+                ));
             }
             nll += -logp;
         }

@@ -148,8 +148,9 @@ mod tests {
 
     #[test]
     fn rk4_linear_matches_fixture_exp_decay() {
-        let fx: ExpDecayFixture = serde_json::from_str(include_str!("../../../tests/fixtures/ode_rk4_exp_decay.json"))
-            .unwrap();
+        let fx: ExpDecayFixture =
+            serde_json::from_str(include_str!("../../../tests/fixtures/ode_rk4_exp_decay.json"))
+                .unwrap();
         let a = DMatrix::from_row_slice(1, 1, &[-fx.k]);
         let sol = rk4_linear(&a, &[fx.y0], fx.t0, fx.t1, fx.dt, 1_000_000).unwrap();
         let y1 = sol.y.last().unwrap()[0];

@@ -74,9 +74,7 @@ fn decompress_zlib(data: &[u8], expected: usize) -> Result<Vec<u8>> {
 
     let mut decoder = ZlibDecoder::new(data);
     let mut out = Vec::with_capacity(expected);
-    decoder.read_to_end(&mut out).map_err(|e| {
-        RootError::Decompression(format!("zlib: {}", e))
-    })?;
+    decoder.read_to_end(&mut out).map_err(|e| RootError::Decompression(format!("zlib: {}", e)))?;
     Ok(out)
 }
 
@@ -84,14 +82,11 @@ fn decompress_lz4(data: &[u8], expected: usize) -> Result<Vec<u8>> {
     // ROOT LZ4 blocks have an extra 8-byte checksum header before the LZ4 payload.
     // The first 8 bytes are an xxhash64 of the uncompressed data (we skip verification).
     if data.len() < 8 {
-        return Err(RootError::Decompression(
-            "LZ4 block too small for checksum header".into(),
-        ));
+        return Err(RootError::Decompression("LZ4 block too small for checksum header".into()));
     }
     let lz4_data = &data[8..];
-    lz4_flex::decompress(lz4_data, expected).map_err(|e| {
-        RootError::Decompression(format!("lz4: {}", e))
-    })
+    lz4_flex::decompress(lz4_data, expected)
+        .map_err(|e| RootError::Decompression(format!("lz4: {}", e)))
 }
 
 /// Read a 3-byte little-endian unsigned integer.
@@ -112,8 +107,8 @@ mod tests {
 
     #[test]
     fn zlib_round_trip() {
-        use flate2::write::ZlibEncoder;
         use flate2::Compression;
+        use flate2::write::ZlibEncoder;
         use std::io::Write;
 
         let original = b"Hello ROOT compression world! Repeated data: AAAAAAAAAA";

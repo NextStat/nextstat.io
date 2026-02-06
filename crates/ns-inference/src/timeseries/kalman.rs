@@ -490,9 +490,7 @@ pub(crate) fn reduce_observation(
     }
     // Missing observations are represented as NaN. Reject infinities.
     if y.iter().any(|v| !v.is_finite() && !v.is_nan()) {
-        return Err(Error::Validation(
-            "y must be finite or NaN (NaN means missing)".to_string(),
-        ));
+        return Err(Error::Validation("y must be finite or NaN (NaN means missing)".to_string()));
     }
 
     let mut obs_idx: Vec<usize> = Vec::new();
@@ -522,12 +520,7 @@ pub(crate) fn reduce_observation(
         }
     }
 
-    Ok(Some(ReducedObservation {
-        obs_idx,
-        y: y_obs,
-        h: h_obs,
-        r: r_obs,
-    }))
+    Ok(Some(ReducedObservation { obs_idx, y: y_obs, h: h_obs, r: r_obs }))
 }
 
 /// Kalman filter output (per-time-step predicted and filtered states).
@@ -806,8 +799,7 @@ mod tests {
         let p0 = 1.0;
 
         let y = vec![0.9, 1.2, 0.8, 1.1];
-        let (m_ref, p_ref, ll_ref) =
-            scalar_filter(&y, f, q, h, r, m0, p0);
+        let (m_ref, p_ref, ll_ref) = scalar_filter(&y, f, q, h, r, m0, p0);
 
         let model = KalmanModel::new(
             DMatrix::from_row_slice(1, 1, &[f]),
@@ -935,9 +927,8 @@ mod tests {
         // Missing is per-component.
         let y0 = vec![0.9, 1.0, 0.8, f64::NAN];
         let y1 = vec![1.1, f64::NAN, 0.95, 1.05];
-        let ys: Vec<DVector<f64>> = (0..y0.len())
-            .map(|t| DVector::from_row_slice(&[y0[t], y1[t]]))
-            .collect();
+        let ys: Vec<DVector<f64>> =
+            (0..y0.len()).map(|t| DVector::from_row_slice(&[y0[t], y1[t]])).collect();
 
         let fr = kalman_filter(&model, &ys).unwrap();
 

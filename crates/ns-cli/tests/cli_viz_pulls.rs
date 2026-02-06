@@ -78,10 +78,8 @@ fn viz_pulls_smoke_histfactory_fixture() {
         Some("trex_report_pulls_v0")
     );
 
-    let entries = artifact
-        .get("entries")
-        .and_then(|v| v.as_array())
-        .expect("entries should be an array");
+    let entries =
+        artifact.get("entries").and_then(|v| v.as_array()).expect("entries should be an array");
     assert!(!entries.is_empty(), "expected non-empty entries");
 
     let mut names: Vec<String> = entries
@@ -106,4 +104,3 @@ fn viz_pulls_smoke_histfactory_fixture() {
     let _ = std::fs::remove_file(&fit_out);
     let _ = std::fs::remove_file(&pulls_out);
 }
-

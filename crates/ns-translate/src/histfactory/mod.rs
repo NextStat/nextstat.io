@@ -4,9 +4,9 @@
 //! reads histograms from ROOT files, and produces the same `Workspace`
 //! struct as the pyhf JSON path.
 
-mod combination;
-mod channel;
 mod builder;
+mod channel;
+mod combination;
 
-pub use builder::from_xml;
 pub use builder::bin_edges_by_channel_from_xml;
+pub use builder::from_xml;

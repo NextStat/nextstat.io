@@ -6,8 +6,8 @@
 
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rand_distr::{Distribution, StandardNormal};
 
 use super::internal::symmetrize;
@@ -51,9 +51,7 @@ fn sample_mvn_zero(rng: &mut StdRng, cov: &DMatrix<f64>) -> Result<DVector<f64>>
     }
     let tol = 1e-12 * max_ev.max(1.0);
     if min_ev < -tol {
-        return Err(Error::Computation(
-            "covariance not PSD (min eigenvalue < 0)".to_string(),
-        ));
+        return Err(Error::Computation("covariance not PSD (min eigenvalue < 0)".to_string()));
     }
 
     let mut a = eig.eigenvectors;
@@ -204,8 +202,10 @@ mod tests {
         )
         .unwrap();
 
-        let a = kalman_simulate_with_x0(&model, 3, 1, Some(DVector::from_row_slice(&[123.0]))).unwrap();
-        let b = kalman_simulate_with_x0(&model, 3, 2, Some(DVector::from_row_slice(&[123.0]))).unwrap();
+        let a =
+            kalman_simulate_with_x0(&model, 3, 1, Some(DVector::from_row_slice(&[123.0]))).unwrap();
+        let b =
+            kalman_simulate_with_x0(&model, 3, 2, Some(DVector::from_row_slice(&[123.0]))).unwrap();
         assert_eq!(a.xs[0][0], 123.0);
         assert_eq!(b.xs[0][0], 123.0);
     }

@@ -1,9 +1,9 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use ns_inference::regression::NegativeBinomialRegressionModel;
 use ns_inference::{
     LinearRegressionModel, LogisticRegressionModel, MaximumLikelihoodEstimator,
     PoissonRegressionModel,
 };
-use ns_inference::regression::NegativeBinomialRegressionModel;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Gamma, Normal, Poisson};
@@ -195,10 +195,7 @@ fn bench_fit_predict(c: &mut Criterion) {
     fit.sample_size(10);
     fit.measurement_time(Duration::from_secs(10));
 
-    let sizes = [
-        ("small", 200usize, 10usize),
-        ("medium", 2_000usize, 20usize),
-    ];
+    let sizes = [("small", 200usize, 10usize), ("medium", 2_000usize, 20usize)];
 
     for (label, n, p) in sizes {
         let (x, y, include_intercept) = make_linear_dataset(n, p, 1);
@@ -259,10 +256,8 @@ fn bench_fit_predict(c: &mut Criterion) {
     fit_batch.sample_size(10);
     fit_batch.measurement_time(Duration::from_secs(10));
 
-    let batch_sizes = [
-        ("small", 200usize, 10usize, 16usize),
-        ("medium", 2_000usize, 20usize, 8usize),
-    ];
+    let batch_sizes =
+        [("small", 200usize, 10usize, 16usize), ("medium", 2_000usize, 20usize, 8usize)];
 
     for (label, n, p, batch_n) in batch_sizes {
         let mut models_lin = Vec::with_capacity(batch_n);
@@ -302,10 +297,7 @@ fn bench_fit_predict(c: &mut Criterion) {
     predict.sample_size(50);
     predict.measurement_time(Duration::from_secs(10));
 
-    let predict_sizes = [
-        ("medium", 2_000usize, 20usize),
-        ("large", 20_000usize, 20usize),
-    ];
+    let predict_sizes = [("medium", 2_000usize, 20usize), ("large", 20_000usize, 20usize)];
     for (label, n, p) in predict_sizes {
         let (x_lin, y_lin, include_intercept) = make_linear_dataset(n, p, 11);
         let m_lin = LinearRegressionModel::new(x_lin.clone(), y_lin, include_intercept).unwrap();
@@ -350,9 +342,13 @@ fn bench_fit_predict(c: &mut Criterion) {
         });
 
         let (x_nb, y_nb, include_intercept, offset) = make_negbin_dataset(n, p, 14, 0.5);
-        let m_nb =
-            NegativeBinomialRegressionModel::new(x_nb.clone(), y_nb, include_intercept, offset.clone())
-                .unwrap();
+        let m_nb = NegativeBinomialRegressionModel::new(
+            x_nb.clone(),
+            y_nb,
+            include_intercept,
+            offset.clone(),
+        )
+        .unwrap();
         let params_nb = mle.fit(&m_nb).unwrap().parameters;
         predict.bench_with_input(BenchmarkId::new("negbin_mean", label), &(), |b, _| {
             b.iter(|| {

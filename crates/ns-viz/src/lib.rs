@@ -33,10 +33,10 @@ pub mod yields;
 pub mod uncertainty;
 
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
-pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
-pub use ranking::RankingArtifact;
-pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy};
-pub use pulls::{PullsArtifact, PullEntry};
 pub use corr::CorrArtifact;
-pub use yields::YieldsArtifact;
+pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy};
+pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
+pub use pulls::{PullEntry, PullsArtifact};
+pub use ranking::RankingArtifact;
 pub use uncertainty::UncertaintyBreakdownArtifact;
+pub use yields::YieldsArtifact;

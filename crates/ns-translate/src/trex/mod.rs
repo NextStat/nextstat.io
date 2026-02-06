@@ -14,7 +14,7 @@
 //! - `ReadFrom: HIST` and more advanced TRExFitter features (smoothing, pruning,
 //!   symmetrisation, multi-POI, etc.).
 
-use std::collections::{HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
@@ -159,7 +159,9 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             }
             let name = value.trim().to_string();
             if name.is_empty() {
-                return Err(Error::Validation(format!("{key} block missing name (line {line_no})")));
+                return Err(Error::Validation(format!(
+                    "{key} block missing name (line {line_no})"
+                )));
             }
             current = Some(RawBlock { kind: k, name, attrs: Vec::new() });
             continue;
@@ -181,11 +183,7 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
 }
 
 fn last_attr_value(attrs: &[Attr], key: &str) -> Option<String> {
-    attrs
-        .iter()
-        .rev()
-        .find(|a| key_eq(&a.key, key))
-        .map(|a| a.value.clone())
+    attrs.iter().rev().find(|a| key_eq(&a.key, key)).map(|a| a.value.clone())
 }
 
 fn all_attr_values(attrs: &[Attr], key: &str) -> Vec<String> {
@@ -286,7 +284,8 @@ impl TrexConfig {
 
         // Globals (can also be present inside a Job block).
         let mut read_from = last_attr_value(&globals, "ReadFrom");
-        let mut tree_name = last_attr_value(&globals, "TreeName").or_else(|| last_attr_value(&globals, "Tree"));
+        let mut tree_name =
+            last_attr_value(&globals, "TreeName").or_else(|| last_attr_value(&globals, "Tree"));
         let mut measurement = last_attr_value(&globals, "Measurement");
         let mut poi = last_attr_value(&globals, "POI").or_else(|| last_attr_value(&globals, "Poi"));
 
@@ -301,13 +300,17 @@ impl TrexConfig {
                     if let Some(v) = last_attr_value(&b.attrs, "ReadFrom") {
                         read_from = Some(v);
                     }
-                    if let Some(v) = last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree")) {
+                    if let Some(v) = last_attr_value(&b.attrs, "TreeName")
+                        .or_else(|| last_attr_value(&b.attrs, "Tree"))
+                    {
                         tree_name = Some(v);
                     }
                     if let Some(v) = last_attr_value(&b.attrs, "Measurement") {
                         measurement = Some(v);
                     }
-                    if let Some(v) = last_attr_value(&b.attrs, "POI").or_else(|| last_attr_value(&b.attrs, "Poi")) {
+                    if let Some(v) = last_attr_value(&b.attrs, "POI")
+                        .or_else(|| last_attr_value(&b.attrs, "Poi"))
+                    {
                         poi = Some(v);
                     }
                 }
@@ -331,7 +334,12 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
     let name = b.name.clone();
     let variable = last_attr_value(&b.attrs, "Variable")
         .or_else(|| last_attr_value(&b.attrs, "Var"))
-        .ok_or_else(|| Error::Validation(format!("Region '{name}' missing Variable (line {})", b.attrs.first().map(|a| a.line).unwrap_or(0))))?;
+        .ok_or_else(|| {
+            Error::Validation(format!(
+                "Region '{name}' missing Variable (line {})",
+                b.attrs.first().map(|a| a.line).unwrap_or(0)
+            ))
+        })?;
     let binning_str = last_attr_value(&b.attrs, "Binning")
         .or_else(|| last_attr_value(&b.attrs, "BinEdges"))
         .ok_or_else(|| Error::Validation(format!("Region '{name}' missing Binning")))?;
@@ -340,9 +348,11 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
         return Err(Error::Validation(format!("Region '{name}' Binning must have >=2 edges")));
     }
 
-    let selection = last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"));
+    let selection =
+        last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"));
     let data_file = last_attr_value(&b.attrs, "DataFile").map(PathBuf::from);
-    let data_tree_name = last_attr_value(&b.attrs, "DataTreeName").or_else(|| last_attr_value(&b.attrs, "DataTree"));
+    let data_tree_name =
+        last_attr_value(&b.attrs, "DataTreeName").or_else(|| last_attr_value(&b.attrs, "DataTree"));
 
     Ok(TrexRegion { name, variable, binning, selection, data_file, data_tree_name })
 }
@@ -350,11 +360,7 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
 fn parse_sample_kind(value: Option<String>) -> SampleKind {
     let Some(v) = value else { return SampleKind::Mc };
     let v = v.trim().to_ascii_lowercase();
-    if v == "data" {
-        SampleKind::Data
-    } else {
-        SampleKind::Mc
-    }
+    if v == "data" { SampleKind::Data } else { SampleKind::Mc }
 }
 
 fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
@@ -367,7 +373,8 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         .ok_or_else(|| Error::Validation(format!("Sample '{name}' missing File")))?;
     let file = PathBuf::from(file);
 
-    let tree_name = last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
+    let tree_name =
+        last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
     let weight = last_attr_value(&b.attrs, "Weight");
 
     let regions = last_attr_value(&b.attrs, "Regions")
@@ -422,16 +429,21 @@ fn parse_syst_kind(value: &str) -> Option<SystKind> {
 fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
     let name = b.name.clone();
 
-    let type_str = last_attr_value(&b.attrs, "Type").ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Type")))?;
-    let kind = parse_syst_kind(&type_str).ok_or_else(|| Error::Validation(format!("Systematic '{name}' unknown Type: {type_str:?}")))?;
+    let type_str = last_attr_value(&b.attrs, "Type")
+        .ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Type")))?;
+    let kind = parse_syst_kind(&type_str).ok_or_else(|| {
+        Error::Validation(format!("Systematic '{name}' unknown Type: {type_str:?}"))
+    })?;
 
-    let samples_val = last_attr_value(&b.attrs, "Samples").ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Samples")))?;
+    let samples_val = last_attr_value(&b.attrs, "Samples")
+        .ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Samples")))?;
     let samples = parse_list(&samples_val);
     if samples.is_empty() {
         return Err(Error::Validation(format!("Systematic '{name}' Samples list is empty")));
     }
 
-    let regions = last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
+    let regions =
+        last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
 
     let mut out = TrexSystematic {
         name,
@@ -452,29 +464,45 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
             let lo = last_attr_value(&b.attrs, "Lo").or_else(|| last_attr_value(&b.attrs, "Down"));
             let hi = last_attr_value(&b.attrs, "Hi").or_else(|| last_attr_value(&b.attrs, "Up"));
             let (Some(lo), Some(hi)) = (lo, hi) else {
-                return Err(Error::Validation(format!("Systematic '{}' (norm) requires Lo/Hi", out.name)));
+                return Err(Error::Validation(format!(
+                    "Systematic '{}' (norm) requires Lo/Hi",
+                    out.name
+                )));
             };
             out.lo = Some(parse_f64(&lo)?);
             out.hi = Some(parse_f64(&hi)?);
         }
         SystKind::Weight => {
-            let up = last_attr_value(&b.attrs, "WeightUp").or_else(|| last_attr_value(&b.attrs, "Up"));
-            let down = last_attr_value(&b.attrs, "WeightDown").or_else(|| last_attr_value(&b.attrs, "Down"));
+            let up =
+                last_attr_value(&b.attrs, "WeightUp").or_else(|| last_attr_value(&b.attrs, "Up"));
+            let down = last_attr_value(&b.attrs, "WeightDown")
+                .or_else(|| last_attr_value(&b.attrs, "Down"));
             let (Some(up), Some(down)) = (up, down) else {
-                return Err(Error::Validation(format!("Systematic '{}' (weight) requires WeightUp/WeightDown", out.name)));
+                return Err(Error::Validation(format!(
+                    "Systematic '{}' (weight) requires WeightUp/WeightDown",
+                    out.name
+                )));
             };
             out.weight_up = Some(up);
             out.weight_down = Some(down);
         }
         SystKind::Tree => {
-            let up = last_attr_value(&b.attrs, "FileUp").or_else(|| last_attr_value(&b.attrs, "UpFile")).or_else(|| last_attr_value(&b.attrs, "Up"));
-            let down = last_attr_value(&b.attrs, "FileDown").or_else(|| last_attr_value(&b.attrs, "DownFile")).or_else(|| last_attr_value(&b.attrs, "Down"));
+            let up = last_attr_value(&b.attrs, "FileUp")
+                .or_else(|| last_attr_value(&b.attrs, "UpFile"))
+                .or_else(|| last_attr_value(&b.attrs, "Up"));
+            let down = last_attr_value(&b.attrs, "FileDown")
+                .or_else(|| last_attr_value(&b.attrs, "DownFile"))
+                .or_else(|| last_attr_value(&b.attrs, "Down"));
             let (Some(up), Some(down)) = (up, down) else {
-                return Err(Error::Validation(format!("Systematic '{}' (tree) requires FileUp/FileDown", out.name)));
+                return Err(Error::Validation(format!(
+                    "Systematic '{}' (tree) requires FileUp/FileDown",
+                    out.name
+                )));
             };
             out.file_up = Some(PathBuf::from(up));
             out.file_down = Some(PathBuf::from(down));
-            out.tree_name = last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
+            out.tree_name =
+                last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
         }
     }
 
@@ -504,18 +532,30 @@ fn sys_to_modifier(sys: &TrexSystematic) -> Result<NtupleModifier> {
     match sys.kind {
         SystKind::Norm => Ok(NtupleModifier::NormSys {
             name: sys.name.clone(),
-            lo: sys.lo.ok_or_else(|| Error::Validation(format!("Systematic '{}' missing lo", sys.name)))?,
-            hi: sys.hi.ok_or_else(|| Error::Validation(format!("Systematic '{}' missing hi", sys.name)))?,
+            lo: sys.lo.ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing lo", sys.name))
+            })?,
+            hi: sys.hi.ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing hi", sys.name))
+            })?,
         }),
         SystKind::Weight => Ok(NtupleModifier::WeightSys {
             name: sys.name.clone(),
-            weight_up: sys.weight_up.clone().ok_or_else(|| Error::Validation(format!("Systematic '{}' missing weight_up", sys.name)))?,
-            weight_down: sys.weight_down.clone().ok_or_else(|| Error::Validation(format!("Systematic '{}' missing weight_down", sys.name)))?,
+            weight_up: sys.weight_up.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing weight_up", sys.name))
+            })?,
+            weight_down: sys.weight_down.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing weight_down", sys.name))
+            })?,
         }),
         SystKind::Tree => Ok(NtupleModifier::TreeSys {
             name: sys.name.clone(),
-            file_up: sys.file_up.clone().ok_or_else(|| Error::Validation(format!("Systematic '{}' missing file_up", sys.name)))?,
-            file_down: sys.file_down.clone().ok_or_else(|| Error::Validation(format!("Systematic '{}' missing file_down", sys.name)))?,
+            file_up: sys.file_up.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing file_up", sys.name))
+            })?,
+            file_down: sys.file_down.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing file_down", sys.name))
+            })?,
             tree_name: sys.tree_name.clone(),
         }),
     }
@@ -558,12 +598,12 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
         .measurement(measurement, poi);
 
     // Quick index for data sample discovery.
-    let data_samples: Vec<&TrexSample> = cfg.samples.iter().filter(|s| s.kind == SampleKind::Data).collect();
+    let data_samples: Vec<&TrexSample> =
+        cfg.samples.iter().filter(|s| s.kind == SampleKind::Data).collect();
 
     for region in &cfg.regions {
-        let mut ch = ChannelConfig::new(&region.name)
-            .variable(&region.variable)
-            .binning(&region.binning);
+        let mut ch =
+            ChannelConfig::new(&region.name).variable(&region.variable).binning(&region.binning);
 
         if let Some(ref sel) = region.selection {
             ch = ch.selection(sel);
@@ -574,7 +614,8 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
             ch.data_tree_name = region.data_tree_name.clone();
         } else {
             // Optional: infer data file from a DATA sample that applies to this region.
-            let mut data_hits: Vec<&TrexSample> = data_samples.iter().copied().filter(|s| sample_applies(s, &region.name)).collect();
+            let mut data_hits: Vec<&TrexSample> =
+                data_samples.iter().copied().filter(|s| sample_applies(s, &region.name)).collect();
             data_hits.sort_by(|a, b| a.name.cmp(&b.name));
             if data_hits.len() > 1 {
                 return Err(Error::Validation(format!(
@@ -677,8 +718,7 @@ WeightDown: weight_jes_down
         assert_eq!(ws.observations[0].data, ch.samples[0].data);
 
         // Modifiers: normfactor + staterror + histosys (weightsys).
-        let mut kinds: Vec<String> = ch
-            .samples[0]
+        let mut kinds: Vec<String> = ch.samples[0]
             .modifiers
             .iter()
             .map(|m| match m {

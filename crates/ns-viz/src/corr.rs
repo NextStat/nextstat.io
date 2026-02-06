@@ -56,7 +56,9 @@ pub fn corr_artifact(
         )));
     }
     let cov = fit.covariance.as_ref().ok_or_else(|| {
-        ns_core::Error::Validation("fit result covariance is required for correlation artifact".to_string())
+        ns_core::Error::Validation(
+            "fit result covariance is required for correlation artifact".to_string(),
+        )
     })?;
     if cov.len() != n * n {
         return Err(ns_core::Error::Validation(format!(
@@ -69,11 +71,8 @@ pub fn corr_artifact(
     let names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
 
     let mut corr: Vec<Vec<f64>> = vec![vec![0.0; n]; n];
-    let mut cov_out: Option<Vec<Vec<f64>>> = if include_covariance {
-        Some(vec![vec![0.0; n]; n])
-    } else {
-        None
-    };
+    let mut cov_out: Option<Vec<Vec<f64>>> =
+        if include_covariance { Some(vec![vec![0.0; n]; n]) } else { None };
 
     for i in 0..n {
         for j in 0..n {
@@ -97,10 +96,7 @@ pub fn corr_artifact(
             tool: "nextstat".to_string(),
             tool_version: ns_core::VERSION.to_string(),
             created_unix_ms: now_unix_ms()?,
-            parity_mode: CorrParityMode {
-                threads: threads.max(1),
-                stable_ordering: true,
-            },
+            parity_mode: CorrParityMode { threads: threads.max(1), stable_ordering: true },
         },
         parameter_names: names,
         corr,

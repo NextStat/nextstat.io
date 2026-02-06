@@ -36,12 +36,7 @@ fn import_histfactory_writes_workspace_json_to_stdout() {
     assert!(xml.exists(), "missing fixture: {}", xml.display());
     assert!(expected.exists(), "missing fixture: {}", expected.display());
 
-    let out = run(&[
-        "import",
-        "histfactory",
-        "--xml",
-        xml.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["import", "histfactory", "--xml", xml.to_string_lossy().as_ref()]);
     assert!(
         out.status.success(),
         "import histfactory should succeed, stderr={}",
@@ -88,12 +83,6 @@ fn import_histfactory_writes_workspace_json_to_file() {
 #[test]
 fn import_histfactory_errors_on_missing_xml() {
     let missing = tmp_path("does_not_exist_combination.xml");
-    let out = run(&[
-        "import",
-        "histfactory",
-        "--xml",
-        missing.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["import", "histfactory", "--xml", missing.to_string_lossy().as_ref()]);
     assert!(!out.status.success(), "expected failure for missing xml");
 }
-

@@ -91,4 +91,3 @@ fn report_generates_artifacts_dir_without_matplotlib() {
 
     let _ = std::fs::remove_dir_all(&out_dir);
 }
-

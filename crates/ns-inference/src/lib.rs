@@ -32,16 +32,16 @@ pub mod laplace;
 pub mod lmm;
 /// Maximum-likelihood estimation via L-BFGS-B.
 pub mod mle;
-/// Ordinary differential equation (ODE) solvers (Phase 13 baseline).
-pub mod ode;
-/// Pharmacometrics models (Phase 13).
-pub mod pk;
 /// NUTS tree-building and sampling.
 pub mod nuts;
+/// Ordinary differential equation (ODE) solvers (Phase 13 baseline).
+pub mod ode;
 /// Generic numerical optimizer (L-BFGS-B backend).
 pub mod optimizer;
 /// Ordinal regression models (Phase 9 Pack C).
 pub mod ordinal;
+/// Pharmacometrics models (Phase 13).
+pub mod pk;
 /// Posterior API: log-pdf, gradient, transforms.
 pub mod posterior;
 /// Profile likelihood scans.
@@ -67,11 +67,11 @@ pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
-pub use ode::{OdeSolution, rk4_linear};
-pub use pk::{LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel};
 pub use nuts::{NutsConfig, sample_nuts};
+pub use ode::{OdeSolution, rk4_linear};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
 pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
+pub use pk::{LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel};
 pub use posterior::{Posterior, Prior};
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
 pub use regression::{

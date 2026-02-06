@@ -47,7 +47,8 @@ fn now_unix_ms() -> Result<u128> {
 
 fn group_name_prefix_1(param_name: &str) -> String {
     let name = param_name;
-    if name.starts_with("gamma_") || name.starts_with("gammaStat") || name.starts_with("gammaStat_") {
+    if name.starts_with("gamma_") || name.starts_with("gammaStat") || name.starts_with("gammaStat_")
+    {
         return "stat".to_string();
     }
     if name.contains("lumi") || name.contains("Lumi") {
@@ -68,9 +69,7 @@ pub fn uncertainty_breakdown_from_ranking(
 ) -> Result<UncertaintyBreakdownArtifact> {
     let n = ranking.names.len();
     if ranking.delta_mu_up.len() != n || ranking.delta_mu_down.len() != n {
-        return Err(ns_core::Error::Validation(
-            "ranking arrays length mismatch".to_string(),
-        ));
+        return Err(ns_core::Error::Validation("ranking arrays length mismatch".to_string()));
     }
 
     let mut sumsq_by_group: BTreeMap<String, (f64, usize)> = BTreeMap::new();
@@ -100,11 +99,7 @@ pub fn uncertainty_breakdown_from_ranking(
         })
         .collect();
 
-    groups.sort_by(|a, b| {
-        b.impact
-            .partial_cmp(&a.impact)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    groups.sort_by(|a, b| b.impact.partial_cmp(&a.impact).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(UncertaintyBreakdownArtifact {
         schema_version: "trex_report_uncertainty_v0".to_string(),
@@ -112,14 +107,10 @@ pub fn uncertainty_breakdown_from_ranking(
             tool: "nextstat".to_string(),
             tool_version: ns_core::VERSION.to_string(),
             created_unix_ms: now_unix_ms()?,
-            parity_mode: UncertaintyParityMode {
-                threads: threads.max(1),
-                stable_ordering: true,
-            },
+            parity_mode: UncertaintyParityMode { threads: threads.max(1), stable_ordering: true },
         },
         grouping_policy: grouping_policy.to_string(),
         groups,
         total: total_sumsq.sqrt(),
     })
 }
-

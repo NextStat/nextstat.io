@@ -182,20 +182,21 @@ impl HistFactoryModel {
             }
 
             for constraint in &channel.auxiliary_data {
-                let sample = channel
-                    .samples
-                    .get(constraint.sample_idx)
-                    .ok_or_else(|| ns_core::Error::Validation("Aux constraint sample_idx out of range".to_string()))?;
-                let modifier = sample
-                    .modifiers
-                    .get(constraint.modifier_idx)
-                    .ok_or_else(|| ns_core::Error::Validation("Aux constraint modifier_idx out of range".to_string()))?;
+                let sample = channel.samples.get(constraint.sample_idx).ok_or_else(|| {
+                    ns_core::Error::Validation("Aux constraint sample_idx out of range".to_string())
+                })?;
+                let modifier = sample.modifiers.get(constraint.modifier_idx).ok_or_else(|| {
+                    ns_core::Error::Validation(
+                        "Aux constraint modifier_idx out of range".to_string(),
+                    )
+                })?;
                 if let ModelModifier::ShapeSys { param_indices, .. } = modifier {
                     if constraint.tau.len() != param_indices.len()
                         || constraint.observed.len() != param_indices.len()
                     {
                         return Err(ns_core::Error::Validation(
-                            "Aux constraint length mismatch (tau/observed/param_indices)".to_string(),
+                            "Aux constraint length mismatch (tau/observed/param_indices)"
+                                .to_string(),
                         ));
                     }
                 }
@@ -824,7 +825,10 @@ impl HistFactoryModel {
     ///
     /// This is the “numbers-first” surface used for TREx-like stacked distributions:
     /// we need the decomposition into samples, not only the total.
-    pub fn expected_main_by_channel_sample(&self, params: &[f64]) -> Result<Vec<ExpectedChannelSampleYields>> {
+    pub fn expected_main_by_channel_sample(
+        &self,
+        params: &[f64],
+    ) -> Result<Vec<ExpectedChannelSampleYields>> {
         self.validate_params_len(params.len())?;
 
         let mut out: Vec<ExpectedChannelSampleYields> = Vec::with_capacity(self.channels.len());
@@ -832,7 +836,8 @@ impl HistFactoryModel {
         for channel in &self.channels {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
             let mut total: Vec<f64> = vec![0.0; n_bins];
-            let mut samples_out: Vec<ExpectedSampleYields> = Vec::with_capacity(channel.samples.len());
+            let mut samples_out: Vec<ExpectedSampleYields> =
+                Vec::with_capacity(channel.samples.len());
 
             for sample in &channel.samples {
                 // Same semantics as expected_data_generic, but we keep the per-sample vector.
@@ -950,10 +955,7 @@ impl HistFactoryModel {
                     total[bin_idx] += v;
                 }
 
-                samples_out.push(ExpectedSampleYields {
-                    sample_name: sample.name.clone(),
-                    y,
-                });
+                samples_out.push(ExpectedSampleYields { sample_name: sample.name.clone(), y });
             }
 
             out.push(ExpectedChannelSampleYields {
@@ -1666,13 +1668,14 @@ impl HistFactoryModel {
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
-                                        ns_core::Error::Validation(format!(
-                                            "ShapeSys gamma index out of range: idx={} len={}",
-                                            gamma_idx,
-                                            params.len()
-                                        ))
-                                    })?;
+                                    let gamma =
+                                        params.get(gamma_idx).copied().ok_or_else(|| {
+                                            ns_core::Error::Validation(format!(
+                                                "ShapeSys gamma index out of range: idx={} len={}",
+                                                gamma_idx,
+                                                params.len()
+                                            ))
+                                        })?;
                                     sample_factors[bin_idx] =
                                         tape.mul(sample_factors[bin_idx], gamma);
                                 }
@@ -1717,13 +1720,14 @@ impl HistFactoryModel {
                         ModelModifier::StatError { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
-                                        ns_core::Error::Validation(format!(
-                                            "StatError gamma index out of range: idx={} len={}",
-                                            gamma_idx,
-                                            params.len()
-                                        ))
-                                    })?;
+                                    let gamma =
+                                        params.get(gamma_idx).copied().ok_or_else(|| {
+                                            ns_core::Error::Validation(format!(
+                                                "StatError gamma index out of range: idx={} len={}",
+                                                gamma_idx,
+                                                params.len()
+                                            ))
+                                        })?;
                                     sample_factors[bin_idx] =
                                         tape.mul(sample_factors[bin_idx], gamma);
                                 }
@@ -1858,7 +1862,9 @@ impl PreparedModel<'_> {
     ///
     /// Equivalent to [`HistFactoryModel::nll`] but faster for f64 evaluation.
     pub fn nll(&self, params: &[f64]) -> Result<f64> {
-        use ns_compute::simd::{poisson_nll_scalar_sparse, poisson_nll_simd, poisson_nll_simd_sparse};
+        use ns_compute::simd::{
+            poisson_nll_scalar_sparse, poisson_nll_simd, poisson_nll_simd_sparse,
+        };
 
         // 1. Compute expected data (scalar — modifier application is branchy)
         let mut expected = self.model.expected_data(params)?;

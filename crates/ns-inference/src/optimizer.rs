@@ -194,7 +194,8 @@ impl LbfgsbOptimizer {
         let linesearch = MoreThuenteLineSearch::new();
         // Argmin's default cost tolerance is ~EPS, which is too strict for our NLL scales and
         // can lead to unnecessary max-iter terminations on larger HistFactory models.
-        let tol_cost = if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
+        let tol_cost =
+            if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
         let solver = LBFGS::new(linesearch, self.config.m)
             .with_tolerance_grad(self.config.tol)
             .map_err(|e| {
@@ -206,9 +207,7 @@ impl LbfgsbOptimizer {
 
         // Create executor
         let res = Executor::new(problem, solver)
-            .configure(|state| {
-                state.param(init_clamped).max_iters(self.config.max_iter)
-            })
+            .configure(|state| state.param(init_clamped).max_iters(self.config.max_iter))
             .run()
             .map_err(|e| ns_core::Error::Validation(format!("Optimization failed: {}", e)))?;
 

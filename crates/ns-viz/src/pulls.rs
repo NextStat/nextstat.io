@@ -60,7 +60,11 @@ fn now_unix_ms() -> Result<u128> {
 /// Policy:
 /// - Includes POI (if any) and all **constrained** nuisance parameters.
 /// - Ordering is lexicographic by parameter name for reproducibility.
-pub fn pulls_artifact(model: &HistFactoryModel, fit: &FitResult, threads: usize) -> Result<PullsArtifact> {
+pub fn pulls_artifact(
+    model: &HistFactoryModel,
+    fit: &FitResult,
+    threads: usize,
+) -> Result<PullsArtifact> {
     if fit.parameters.len() != model.parameters().len() {
         return Err(ns_core::Error::Validation(format!(
             "fit/model parameter length mismatch: fit={} model={}",
@@ -81,7 +85,8 @@ pub fn pulls_artifact(model: &HistFactoryModel, fit: &FitResult, threads: usize)
     let mut entries: Vec<PullEntry> = Vec::new();
     for (i, p) in model.parameters().iter().enumerate() {
         let is_poi = poi_idx == Some(i);
-        let is_constrained = p.constrained && p.constraint_center.is_some() && p.constraint_width.is_some();
+        let is_constrained =
+            p.constrained && p.constraint_center.is_some() && p.constraint_width.is_some();
         if !(is_poi || is_constrained) {
             continue;
         }
@@ -129,10 +134,7 @@ pub fn pulls_artifact(model: &HistFactoryModel, fit: &FitResult, threads: usize)
             tool: "nextstat".to_string(),
             tool_version: ns_core::VERSION.to_string(),
             created_unix_ms: now_unix_ms()?,
-            parity_mode: PullsParityMode {
-                threads: threads.max(1),
-                stable_ordering: true,
-            },
+            parity_mode: PullsParityMode { threads: threads.max(1), stable_ordering: true },
         },
         ordering_policy: Some("name_lex".to_string()),
         entries,

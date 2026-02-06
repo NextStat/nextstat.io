@@ -55,10 +55,7 @@ fn log_det_pd(h: &DMatrix<f64>) -> Result<f64> {
 
     // Numeric Hessians can be slightly indefinite even at a (local) mode. Try a small diagonal
     // jitter (Levenberg-style) before giving up.
-    let max_abs_diag = (0..n)
-        .map(|i| h[(i, i)].abs())
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
+    let max_abs_diag = (0..n).map(|i| h[(i, i)].abs()).fold(0.0_f64, f64::max).max(1.0);
 
     let mut jitter = 1e-10 * max_abs_diag;
     for attempt in 0..15 {
@@ -75,7 +72,9 @@ fn log_det_pd(h: &DMatrix<f64>) -> Result<f64> {
             for i in 0..l.nrows() {
                 let d = l[(i, i)];
                 if !d.is_finite() || d <= 0.0 {
-                    return Err(Error::Validation("non-finite/negative Cholesky diagonal".to_string()));
+                    return Err(Error::Validation(
+                        "non-finite/negative Cholesky diagonal".to_string(),
+                    ));
                 }
                 sum += d.ln();
             }
@@ -85,13 +84,14 @@ fn log_det_pd(h: &DMatrix<f64>) -> Result<f64> {
         jitter *= 10.0;
     }
 
-    Err(Error::Validation(
-        "Laplace requires a positive-definite Hessian".to_string(),
-    ))
+    Err(Error::Validation("Laplace requires a positive-definite Hessian".to_string()))
 }
 
 /// Compute a Laplace approximation at `params_mode`.
-pub fn laplace_log_marginal(model: &impl LogDensityModel, params_mode: &[f64]) -> Result<LaplaceResult> {
+pub fn laplace_log_marginal(
+    model: &impl LogDensityModel,
+    params_mode: &[f64],
+) -> Result<LaplaceResult> {
     if params_mode.len() != model.dim() {
         return Err(Error::Validation("params length mismatch".to_string()));
     }

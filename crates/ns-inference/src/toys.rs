@@ -41,10 +41,7 @@ pub fn poisson_main_toys(
     let expected_main = model.expected_data_pyhf_main(params)?;
     let mut out: Vec<Vec<f64>> = Vec::with_capacity(n_toys);
     for toy_idx in 0..n_toys {
-        out.push(poisson_main_from_expected(
-            &expected_main,
-            seed.wrapping_add(toy_idx as u64),
-        ));
+        out.push(poisson_main_from_expected(&expected_main, seed.wrapping_add(toy_idx as u64)));
     }
     Ok(out)
 }
@@ -81,4 +78,3 @@ mod tests {
         assert_eq!(toys1, toys2);
     }
 }
-

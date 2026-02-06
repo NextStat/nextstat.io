@@ -70,7 +70,8 @@ pub fn yields_artifact(
     let mut out_channels: Vec<YieldsChannel> = Vec::with_capacity(pre.len());
 
     for ((ch_pre, ch_post), ch_obs) in pre.iter().zip(post.iter()).zip(obs.iter()) {
-        if ch_pre.channel_name != ch_post.channel_name || ch_pre.channel_name != ch_obs.channel_name {
+        if ch_pre.channel_name != ch_post.channel_name || ch_pre.channel_name != ch_obs.channel_name
+        {
             return Err(ns_core::Error::Validation(
                 "channel ordering mismatch (expected stable ordering)".to_string(),
             ));
@@ -82,16 +83,15 @@ pub fn yields_artifact(
 
         let mut samples: Vec<YieldsSample> = Vec::with_capacity(ch_pre.samples.len());
         for s_pre in &ch_pre.samples {
-            let s_post = ch_post
-                .samples
-                .iter()
-                .find(|s| s.sample_name == s_pre.sample_name)
-                .ok_or_else(|| {
-                    ns_core::Error::Validation(format!(
-                        "postfit sample missing: channel={} sample={}",
-                        ch_pre.channel_name, s_pre.sample_name
-                    ))
-                })?;
+            let s_post =
+                ch_post.samples.iter().find(|s| s.sample_name == s_pre.sample_name).ok_or_else(
+                    || {
+                        ns_core::Error::Validation(format!(
+                            "postfit sample missing: channel={} sample={}",
+                            ch_pre.channel_name, s_pre.sample_name
+                        ))
+                    },
+                )?;
             let pre_sum: f64 = s_pre.y.iter().copied().sum();
             let post_sum: f64 = s_post.y.iter().copied().sum();
             samples.push(YieldsSample {
@@ -116,10 +116,7 @@ pub fn yields_artifact(
             tool: "nextstat".to_string(),
             tool_version: ns_core::VERSION.to_string(),
             created_unix_ms: now_unix_ms()?,
-            parity_mode: YieldsParityMode {
-                threads: threads.max(1),
-                stable_ordering: true,
-            },
+            parity_mode: YieldsParityMode { threads: threads.max(1), stable_ordering: true },
         },
         channels: out_channels,
     })

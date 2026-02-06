@@ -190,14 +190,7 @@ impl LmmMarginalModel {
             }
         }
 
-        Ok(Self {
-            x,
-            y,
-            include_intercept,
-            n_groups,
-            re,
-            groups,
-        })
+        Ok(Self { x, y, include_intercept, n_groups, re, groups })
     }
 
     #[inline]
@@ -234,7 +227,13 @@ impl LmmMarginalModel {
         Ok((beta, log_sigma_y, log_tau_alpha, log_tau_u.unwrap_or(0.0), log_tau_u))
     }
 
-    fn nll_internal(&self, beta: &[f64], sigma_y: f64, tau_alpha: f64, tau_u: Option<f64>) -> Result<f64> {
+    fn nll_internal(
+        &self,
+        beta: &[f64],
+        sigma_y: f64,
+        tau_alpha: f64,
+        tau_u: Option<f64>,
+    ) -> Result<f64> {
         if !sigma_y.is_finite() || sigma_y <= 0.0 {
             return Err(Error::Validation("sigma_y must be finite and > 0".to_string()));
         }
@@ -249,8 +248,8 @@ impl LmmMarginalModel {
 
         let inv_a = 1.0 / (sigma_y * sigma_y);
         let log_a = (sigma_y * sigma_y).ln();
-        let log_c = (tau_alpha * tau_alpha).ln()
-            + if let Some(tu) = tau_u { (tu * tu).ln() } else { 0.0 };
+        let log_c =
+            (tau_alpha * tau_alpha).ln() + if let Some(tu) = tau_u { (tu * tu).ln() } else { 0.0 };
 
         let mut nll = 0.0;
         for g in 0..self.n_groups {
@@ -296,7 +295,9 @@ impl LmmMarginalModel {
                     let m11 = inv_tau_u2 + inv_a * gd.s11;
                     let det = m00 * m11 - m01 * m01;
                     if !det.is_finite() || det <= 0.0 {
-                        return Err(Error::Validation("invalid mixed-model determinant".to_string()));
+                        return Err(Error::Validation(
+                            "invalid mixed-model determinant".to_string(),
+                        ));
                     }
                     let log_det_m = det.ln();
                     // u = M^{-1} (inv_a * t)
@@ -325,7 +326,10 @@ impl LmmMarginalModel {
 }
 
 impl LogDensityModel for LmmMarginalModel {
-    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
 
     fn dim(&self) -> usize {
         self.n_beta()
@@ -477,7 +481,8 @@ impl LogDensityModel for LmmMarginalModel {
     }
 
     fn nll(&self, params: &[f64]) -> Result<f64> {
-        let (beta, log_sigma_y, log_tau_alpha, log_tau_u_val, log_tau_u_opt) = self.unpack(params)?;
+        let (beta, log_sigma_y, log_tau_alpha, log_tau_u_val, log_tau_u_opt) =
+            self.unpack(params)?;
         let sigma_y = log_sigma_y.exp();
         let tau_alpha = log_tau_alpha.exp();
         let tau_u = log_tau_u_opt.map(|_| log_tau_u_val.exp());
@@ -485,7 +490,8 @@ impl LogDensityModel for LmmMarginalModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
-        let (beta, log_sigma_y, log_tau_alpha, log_tau_u_val, log_tau_u_opt) = self.unpack(params)?;
+        let (beta, log_sigma_y, log_tau_alpha, log_tau_u_val, log_tau_u_opt) =
+            self.unpack(params)?;
         let sigma_y = log_sigma_y.exp();
         let tau_alpha = log_tau_alpha.exp();
         let tau_u = log_tau_u_opt.map(|_| log_tau_u_val.exp());
@@ -538,7 +544,9 @@ impl LogDensityModel for LmmMarginalModel {
                     let m11 = inv_tau_u2 + inv_a * gd.s11;
                     let det = m00 * m11 - m01 * m01;
                     if !det.is_finite() || det <= 0.0 {
-                        return Err(Error::Validation("invalid mixed-model determinant".to_string()));
+                        return Err(Error::Validation(
+                            "invalid mixed-model determinant".to_string(),
+                        ));
                     }
                     let b0 = inv_a * t0;
                     let b1 = inv_a * t1;
@@ -655,15 +663,7 @@ mod tests {
         let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
         let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
         let group_idx = vec![0usize, 0, 0, 1, 1, 1];
-        let m = LmmMarginalModel::new(
-            x,
-            y,
-            false,
-            group_idx,
-            2,
-            RandomEffects::Intercept,
-        )
-        .unwrap();
+        let m = LmmMarginalModel::new(x, y, false, group_idx, 2, RandomEffects::Intercept).unwrap();
 
         let p = vec![0.1, 0.0, 0.0]; // beta1, log_sigma_y, log_tau_alpha
         let g = m.grad_nll(&p).unwrap();
@@ -678,15 +678,7 @@ mod tests {
         let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
         let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
         let group_idx = vec![0usize, 0, 0, 1, 1, 1];
-        let m = LmmMarginalModel::new(
-            x,
-            y,
-            false,
-            group_idx,
-            2,
-            RandomEffects::Intercept,
-        )
-        .unwrap();
+        let m = LmmMarginalModel::new(x, y, false, group_idx, 2, RandomEffects::Intercept).unwrap();
 
         // beta1, log_sigma_y, log_tau_alpha
         let params = vec![0.2, (0.5f64).ln(), (1.2f64).ln()];

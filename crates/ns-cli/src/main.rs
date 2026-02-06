@@ -607,7 +607,9 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().with_max_level(cli.log_level).with_target(false).init();
 
     match cli.command {
-        Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref()),
+        Commands::Fit { input, output, threads } => {
+            cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref())
+        }
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
         }
@@ -673,7 +675,15 @@ fn main() -> Result<()> {
         ),
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
-                cmd_viz_profile(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
+                cmd_viz_profile(
+                    &input,
+                    start,
+                    stop,
+                    points,
+                    output.as_ref(),
+                    threads,
+                    cli.bundle.as_ref(),
+                )
             }
             VizCommands::Cls {
                 input,
@@ -699,13 +709,7 @@ fn main() -> Result<()> {
             VizCommands::Pulls { input, fit, output, threads } => {
                 cmd_viz_pulls(&input, &fit, output.as_ref(), threads, cli.bundle.as_ref())
             }
-            VizCommands::Corr {
-                input,
-                fit,
-                include_covariance,
-                output,
-                threads,
-            } => cmd_viz_corr(
+            VizCommands::Corr { input, fit, include_covariance, output, threads } => cmd_viz_corr(
                 &input,
                 &fit,
                 include_covariance,
@@ -713,28 +717,27 @@ fn main() -> Result<()> {
                 threads,
                 cli.bundle.as_ref(),
             ),
-            VizCommands::Distributions {
-                input,
-                histfactory_xml,
-                fit,
-                output,
-                threads,
-            } => cmd_viz_distributions(
-                &input,
-                &histfactory_xml,
-                fit.as_ref(),
-                output.as_ref(),
-                threads,
-                cli.bundle.as_ref(),
-            ),
+            VizCommands::Distributions { input, histfactory_xml, fit, output, threads } => {
+                cmd_viz_distributions(
+                    &input,
+                    &histfactory_xml,
+                    fit.as_ref(),
+                    output.as_ref(),
+                    threads,
+                    cli.bundle.as_ref(),
+                )
+            }
         },
         Commands::Import { command } => match command {
             ImportCommands::Histfactory { xml, output } => {
                 cmd_import_histfactory(&xml, output.as_ref(), cli.bundle.as_ref())
             }
-            ImportCommands::TrexConfig { config, base_dir, output } => {
-                cmd_import_trex_config(&config, base_dir.as_ref(), output.as_ref(), cli.bundle.as_ref())
-            }
+            ImportCommands::TrexConfig { config, base_dir, output } => cmd_import_trex_config(
+                &config,
+                base_dir.as_ref(),
+                output.as_ref(),
+                cli.bundle.as_ref(),
+            ),
         },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {
@@ -945,7 +948,28 @@ fn load_workspace_and_model(
     Ok((workspace, model))
 }
 
+fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for k in keys {
+                if let Some(v) = map.get(&k) {
+                    out.insert(k, canonicalize_json(v));
+                }
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(canonicalize_json).collect())
+        }
+        _ => value.clone(),
+    }
+}
+
 fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
+    let value = canonicalize_json(value);
     if let Some(path) = output {
         std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     } else {
@@ -974,11 +998,15 @@ fn write_json_file(path: &std::path::Path, value: &serde_json::Value) -> Result<
             std::fs::create_dir_all(parent)?;
         }
     }
-    std::fs::write(path, serde_json::to_string_pretty(value)?)?;
+    let value = canonicalize_json(value);
+    std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     Ok(())
 }
 
-fn write_yields_tables(yields: &ns_viz::yields::YieldsArtifact, out_dir: &std::path::Path) -> Result<()> {
+fn write_yields_tables(
+    yields: &ns_viz::yields::YieldsArtifact,
+    out_dir: &std::path::Path,
+) -> Result<()> {
     // CSV: channel,row_kind,name,prefit,postfit
     let mut csv = String::new();
     csv.push_str("channel,row_kind,name,prefit,postfit\n");
@@ -1022,7 +1050,12 @@ fn write_yields_tables(yields: &ns_viz::yields::YieldsArtifact, out_dir: &std::p
         tex.push_str("Sample & Prefit & Postfit \\\\\n");
         tex.push_str("\\midrule\n");
         for s in &ch.samples {
-            tex.push_str(&format!("{} & {} & {} \\\\\n", s.name, s.prefit.to_string(), s.postfit.to_string()));
+            tex.push_str(&format!(
+                "{} & {} & {} \\\\\n",
+                s.name,
+                s.prefit.to_string(),
+                s.postfit.to_string()
+            ));
         }
         tex.push_str("\\midrule\n");
         tex.push_str(&format!(
@@ -1412,8 +1445,9 @@ fn load_kalman_input_with_raw(
         .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?;
         (model, KalmanSpecKind::Model)
     } else if let Some(ll) = input.local_level {
-        let model = ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
-            .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?;
+        let model =
+            ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
+                .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?;
         (model, KalmanSpecKind::LocalLevel)
     } else if let Some(lt) = input.local_linear_trend {
         let model = ns_inference::timeseries::kalman::KalmanModel::local_linear_trend(
@@ -1428,8 +1462,9 @@ fn load_kalman_input_with_raw(
         .map_err(|e| anyhow::anyhow!("invalid local_linear_trend model: {e}"))?;
         (model, KalmanSpecKind::LocalLinearTrend)
     } else if let Some(ar) = input.ar1 {
-        let model = ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
-            .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?;
+        let model =
+            ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
+                .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?;
         (model, KalmanSpecKind::Ar1)
     } else if let Some(arma) = input.arma11 {
         if !arma.phi.is_finite() {
@@ -1528,7 +1563,13 @@ fn cmd_ts_kalman_filter(
 
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {
-        report::write_bundle(dir, "timeseries_kalman_filter", serde_json::json!({}), input, &output_json)?;
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_filter",
+            serde_json::json!({}),
+            input,
+            &output_json,
+        )?;
     }
     Ok(())
 }
@@ -1554,7 +1595,13 @@ fn cmd_ts_kalman_smooth(
 
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {
-        report::write_bundle(dir, "timeseries_kalman_smooth", serde_json::json!({}), input, &output_json)?;
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_smooth",
+            serde_json::json!({}),
+            input,
+            &output_json,
+        )?;
     }
     Ok(())
 }
@@ -1714,7 +1761,11 @@ fn z_for_level(level: f64) -> Result<(f64, f64)> {
     Ok((alpha, z))
 }
 
-fn bands_from_means_covs(means: &[DVector<f64>], covs: &[DMatrix<f64>], z: f64) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+fn bands_from_means_covs(
+    means: &[DVector<f64>],
+    covs: &[DMatrix<f64>],
+    z: f64,
+) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<Vec<f64>>)> {
     if means.is_empty() {
         anyhow::bail!("means must be non-empty");
     }
@@ -1887,7 +1938,8 @@ fn cmd_ts_kalman_viz(
     let (obs_mean, obs_lo, obs_hi) =
         obs_bands_from_state(&fitted, &sr.smoothed_means, &sr.smoothed_covs, z)?;
 
-    let default_state_labels: Vec<String> = (0..fitted.n_state()).map(|i| format!("x[{i}]")).collect();
+    let default_state_labels: Vec<String> =
+        (0..fitted.n_state()).map(|i| format!("x[{i}]")).collect();
     let default_obs_labels: Vec<String> = (0..fitted.n_obs()).map(|i| format!("y[{i}]")).collect();
     let mut state_labels: Vec<String> = match kind {
         KalmanSpecKind::LocalLevel => vec!["level".to_string()],
@@ -1994,12 +2046,10 @@ fn cmd_ts_kalman_forecast(
             .map_err(|e| anyhow::anyhow!("kalman_forecast_intervals failed: {e}"))?;
         output_json["alpha"] = serde_json::json!(iv.alpha);
         output_json["z"] = serde_json::json!(iv.z);
-        output_json["obs_lower"] = serde_json::json!(
-            iv.obs_lower.iter().map(dvector_to_vec).collect::<Vec<_>>()
-        );
-        output_json["obs_upper"] = serde_json::json!(
-            iv.obs_upper.iter().map(dvector_to_vec).collect::<Vec<_>>()
-        );
+        output_json["obs_lower"] =
+            serde_json::json!(iv.obs_lower.iter().map(dvector_to_vec).collect::<Vec<_>>());
+        output_json["obs_upper"] =
+            serde_json::json!(iv.obs_upper.iter().map(dvector_to_vec).collect::<Vec<_>>());
     }
 
     write_json(output, &output_json)?;
@@ -2447,7 +2497,8 @@ fn cmd_report(
         let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
         let result = mle.fit(&model)?;
 
-        let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
+        let parameter_names: Vec<String> =
+            model.parameters().iter().map(|p| p.name.clone()).collect();
         let fit_json_out = serde_json::json!({
             "parameter_names": parameter_names,
             "poi_index": model.poi_index(),
@@ -2480,11 +2531,13 @@ fn cmd_report(
     };
 
     // Distributions
-    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
     for obs in &workspace.observations {
         data_by_channel.insert(obs.name.clone(), obs.data.clone());
     }
-    let bin_edges_by_channel = ns_translate::histfactory::bin_edges_by_channel_from_xml(histfactory_xml)?;
+    let bin_edges_by_channel =
+        ns_translate::histfactory::bin_edges_by_channel_from_xml(histfactory_xml)?;
 
     let dist_artifact = ns_viz::distributions::distributions_artifact(
         &model,
@@ -2497,7 +2550,8 @@ fn cmd_report(
     write_json_file(&out_dir.join("distributions.json"), &serde_json::to_value(&dist_artifact)?)?;
 
     // Yields
-    let yields_artifact = ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads)?;
+    let yields_artifact =
+        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads)?;
     write_json_file(&out_dir.join("yields.json"), &serde_json::to_value(&yields_artifact)?)?;
     write_yields_tables(&yields_artifact, out_dir)?;
 
@@ -2507,7 +2561,8 @@ fn cmd_report(
         write_json_file(&out_dir.join("pulls.json"), &serde_json::to_value(&pulls_artifact)?)?;
 
         if fit_result.covariance.is_some() {
-            let corr_artifact = ns_viz::corr::corr_artifact(&model, fit_result, threads, include_covariance)?;
+            let corr_artifact =
+                ns_viz::corr::corr_artifact(&model, fit_result, threads, include_covariance)?;
             write_json_file(&out_dir.join("corr.json"), &serde_json::to_value(&corr_artifact)?)?;
         } else {
             tracing::warn!("fit covariance missing; skipping corr.json");
@@ -2531,11 +2586,7 @@ fn cmd_report(
     if render {
         let default_python = {
             let venv = PathBuf::from(".venv/bin/python");
-            if venv.exists() {
-                venv
-            } else {
-                PathBuf::from("python3")
-            }
+            if venv.exists() { venv } else { PathBuf::from("python3") }
         };
         let python = python.cloned().unwrap_or(default_python);
         let pdf = pdf.cloned().unwrap_or_else(|| out_dir.join("report.pdf"));
@@ -2599,7 +2650,8 @@ fn cmd_viz_distributions(
         params_prefit.clone()
     };
 
-    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
     for obs in &workspace.observations {
         data_by_channel.insert(obs.name.clone(), obs.data.clone());
     }

@@ -48,11 +48,7 @@ pub struct KeyInfo {
 impl KeyInfo {
     /// Create from an internal Key.
     pub fn from_key(key: &Key) -> Self {
-        Self {
-            name: key.name.clone(),
-            class_name: key.class_name.clone(),
-            cycle: key.cycle,
-        }
+        Self { name: key.name.clone(), class_name: key.class_name.clone(), cycle: key.cycle }
     }
 }
 

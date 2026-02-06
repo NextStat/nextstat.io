@@ -3,17 +3,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("repo root")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("repo root")
 }
 
-fn load_histfactory_fixture() -> (ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel) {
+fn load_histfactory_fixture()
+-> (ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel) {
     let root = repo_root();
     let ws_path = root.join("tests/fixtures/histfactory/workspace.json");
     let bytes = std::fs::read(ws_path).expect("read fixture workspace");
-    let ws: ns_translate::pyhf::Workspace = serde_json::from_slice(&bytes).expect("parse workspace");
+    let ws: ns_translate::pyhf::Workspace =
+        serde_json::from_slice(&bytes).expect("parse workspace");
     let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&ws).expect("build model");
     (ws, model)
 }
@@ -32,7 +31,8 @@ fn trex_report_distributions_artifact_contract_smoke() {
 
     let root = repo_root();
     let xml = root.join("tests/fixtures/histfactory/combination.xml");
-    let edges = ns_translate::histfactory::bin_edges_by_channel_from_xml(&xml).expect("bin edges from xml");
+    let edges =
+        ns_translate::histfactory::bin_edges_by_channel_from_xml(&xml).expect("bin edges from xml");
 
     let artifact = ns_viz::distributions::distributions_artifact(
         &model,

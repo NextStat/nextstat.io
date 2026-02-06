@@ -36,13 +36,6 @@ impl From<Vec<RankingEntry>> for RankingArtifact {
             constraint.push(e.constraint);
         }
 
-        Self {
-            names,
-            delta_mu_up,
-            delta_mu_down,
-            pull,
-            constraint,
-        }
+        Self { names, delta_mu_up, delta_mu_down, pull, constraint }
     }
 }
-

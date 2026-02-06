@@ -152,9 +152,8 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
 
     let h = new_state.hamiltonian(inv_mass);
     let energy_error = h - h0;
-    let divergent = !h.is_finite()
-        || !energy_error.is_finite()
-        || energy_error.abs() > DIVERGENCE_THRESHOLD;
+    let divergent =
+        !h.is_finite() || !energy_error.is_finite() || energy_error.abs() > DIVERGENCE_THRESHOLD;
     // Slice: keep only states with log_u <= log p(q,p) where log p = -H.
     // Use weights relative to the start point: log_weight = -(H - H0) = -energy_error.
     let logp = -h;
@@ -669,7 +668,11 @@ mod tests {
         let transition = nuts_transition(&integrator, &state, 10, &inv_mass, &mut rng).unwrap();
 
         assert!(transition.depth <= 10);
-        assert!(transition.accept_prob.is_finite() && transition.accept_prob >= 0.0 && transition.accept_prob <= 1.0);
+        assert!(
+            transition.accept_prob.is_finite()
+                && transition.accept_prob >= 0.0
+                && transition.accept_prob <= 1.0
+        );
         assert!(transition.n_leapfrog > 0);
     }
 

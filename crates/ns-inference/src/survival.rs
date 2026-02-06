@@ -29,9 +29,7 @@ fn validate_right_censoring_data(times: &[f64], events: &[bool]) -> Result<()> {
         )));
     }
     if times.iter().any(|t| !t.is_finite() || *t < 0.0) {
-        return Err(Error::Validation(
-            "times must be finite and >= 0".to_string(),
-        ));
+        return Err(Error::Validation("times must be finite and >= 0".to_string()));
     }
     Ok(())
 }
@@ -91,7 +89,10 @@ impl ExponentialSurvivalModel {
 }
 
 impl LogDensityModel for ExponentialSurvivalModel {
-    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
 
     fn dim(&self) -> usize {
         1
@@ -165,7 +166,10 @@ impl WeibullSurvivalModel {
 }
 
 impl LogDensityModel for WeibullSurvivalModel {
-    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
 
     fn dim(&self) -> usize {
         2
@@ -277,7 +281,10 @@ impl LogNormalAftModel {
 }
 
 impl LogDensityModel for LogNormalAftModel {
-    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
 
     fn dim(&self) -> usize {
         2
@@ -407,14 +414,19 @@ pub struct CoxPhModel {
     n: usize,
     p: usize,
     events: Vec<bool>, // aligned with sorted times
-    x: Vec<f64>,      // row-major, aligned with sorted times
+    x: Vec<f64>,       // row-major, aligned with sorted times
     group_starts: Vec<usize>,
     ties: CoxTies,
 }
 
 impl CoxPhModel {
     /// Create a new Cox PH model from `times`, `events`, and row-wise covariates `x`.
-    pub fn new(times: Vec<f64>, events: Vec<bool>, x: Vec<Vec<f64>>, ties: CoxTies) -> Result<Self> {
+    pub fn new(
+        times: Vec<f64>,
+        events: Vec<bool>,
+        x: Vec<Vec<f64>>,
+        ties: CoxTies,
+    ) -> Result<Self> {
         validate_right_censoring_data(&times, &events)?;
         let n = times.len();
         let p = x.first().map(|r| r.len()).unwrap_or(0);
@@ -485,7 +497,10 @@ impl CoxPhModel {
 }
 
 impl LogDensityModel for CoxPhModel {
-    type Prepared<'a> = PreparedModelRef<'a, Self> where Self: 'a;
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
 
     fn dim(&self) -> usize {
         self.p
@@ -523,11 +538,7 @@ impl LogDensityModel for CoxPhModel {
         let mut risk0 = 0.0;
 
         for (g, &start) in self.group_starts.iter().enumerate() {
-            let end = self
-                .group_starts
-                .get(g + 1)
-                .copied()
-                .unwrap_or(self.n);
+            let end = self.group_starts.get(g + 1).copied().unwrap_or(self.n);
 
             for i in start..end {
                 risk0 += w[i];
@@ -587,11 +598,7 @@ impl LogDensityModel for CoxPhModel {
         let mut risk1 = vec![0.0; self.p];
 
         for (g, &start) in self.group_starts.iter().enumerate() {
-            let end = self
-                .group_starts
-                .get(g + 1)
-                .copied()
-                .unwrap_or(self.n);
+            let end = self.group_starts.get(g + 1).copied().unwrap_or(self.n);
 
             for i in start..end {
                 let wi = w[i];

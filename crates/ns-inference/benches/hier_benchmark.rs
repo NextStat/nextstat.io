@@ -102,4 +102,3 @@ criterion_group!(
     bench_hier_logistic_correlated_intercept_slope
 );
 criterion_main!(benches);
-

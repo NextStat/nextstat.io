@@ -14,7 +14,8 @@ use crate::transforms::ParameterTransform;
 /// - `phi ∈ (-1, 1)` (stationarity-friendly)
 /// - `q > 0` (state noise variance)
 /// - `r > 0` (observation noise variance)
-pub const AR1_PARAMETER_BOUNDS: [(f64, f64); 3] = [(-1.0, 1.0), (0.0, f64::INFINITY), (0.0, f64::INFINITY)];
+pub const AR1_PARAMETER_BOUNDS: [(f64, f64); 3] =
+    [(-1.0, 1.0), (0.0, f64::INFINITY), (0.0, f64::INFINITY)];
 
 /// Build a transform for AR(1) parameters `(phi, q, r)`.
 ///
@@ -90,4 +91,3 @@ mod tests {
         }
     }
 }
-

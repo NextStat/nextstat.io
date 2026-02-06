@@ -87,31 +87,22 @@ fn viz_distributions_smoke_histfactory_fixture() {
         Some("trex_report_distributions_v0")
     );
 
-    let channels = artifact
-        .get("channels")
-        .and_then(|v| v.as_array())
-        .expect("channels should be an array");
+    let channels =
+        artifact.get("channels").and_then(|v| v.as_array()).expect("channels should be an array");
     assert_eq!(channels.len(), 1, "expected 1 channel in fixture");
     let ch = &channels[0];
 
-    let edges = ch
-        .get("bin_edges")
-        .and_then(|v| v.as_array())
-        .expect("bin_edges should be an array");
-    let data_y = ch
-        .get("data_y")
-        .and_then(|v| v.as_array())
-        .expect("data_y should be an array");
+    let edges =
+        ch.get("bin_edges").and_then(|v| v.as_array()).expect("bin_edges should be an array");
+    let data_y = ch.get("data_y").and_then(|v| v.as_array()).expect("data_y should be an array");
     assert_eq!(edges.len(), data_y.len() + 1, "edges length must be n_bins+1");
 
-    let samples = ch
-        .get("samples")
-        .and_then(|v| v.as_array())
-        .expect("samples should be an array");
+    let samples = ch.get("samples").and_then(|v| v.as_array()).expect("samples should be an array");
     assert_eq!(samples.len(), 2, "expected 2 samples in fixture");
 
     // Prefit should match nominal workspace values for this fixture.
-    let mut prefit_by_name: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    let mut prefit_by_name: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
     for s in samples {
         let name = s.get("name").and_then(|v| v.as_str()).unwrap().to_string();
         let prefit = s
@@ -140,4 +131,3 @@ fn viz_distributions_smoke_histfactory_fixture() {
     let _ = std::fs::remove_file(&fit_out);
     let _ = std::fs::remove_file(&artifact_out);
 }
-

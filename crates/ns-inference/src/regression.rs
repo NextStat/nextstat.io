@@ -647,10 +647,7 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
         let (beta, log_alpha) = self.split_params(params)?;
         let alpha = log_alpha.exp();
         if !alpha.is_finite() || alpha <= 0.0 {
-            return Err(Error::Validation(format!(
-                "alpha must be finite and > 0, got {}",
-                alpha
-            )));
+            return Err(Error::Validation(format!("alpha must be finite and > 0, got {}", alpha)));
         }
         let theta = 1.0 / alpha;
 
@@ -674,10 +671,7 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
         let (beta, log_alpha) = self.split_params(params)?;
         let alpha = log_alpha.exp();
         if !alpha.is_finite() || alpha <= 0.0 {
-            return Err(Error::Validation(format!(
-                "alpha must be finite and > 0, got {}",
-                alpha
-            )));
+            return Err(Error::Validation(format!("alpha must be finite and > 0, got {}", alpha)));
         }
         let theta = 1.0 / alpha;
 
@@ -708,9 +702,7 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
 
             // d/dtheta log p:
             // psi(y+theta) - psi(theta) + ln(theta) + 1 - ln(theta+mu) - (theta+y)/(theta+mu)
-            let d_logp_d_theta = digamma(y + theta) - digamma(theta)
-                + theta.ln()
-                + 1.0
+            let d_logp_d_theta = digamma(y + theta) - digamma(theta) + theta.ln() + 1.0
                 - (theta + mu).ln()
                 - (theta + y) / (theta + mu);
             let d_nll_d_theta = -d_logp_d_theta;
@@ -820,8 +812,7 @@ mod tests {
 
     #[test]
     fn test_negbin_regression_nll_and_grad_at_fixture_hat() {
-        let fx =
-            load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
         assert_eq!(fx.kind, "negbin");
         let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
         let log_alpha = fx.log_alpha_hat.expect("negbin fixture must include log_alpha_hat");
@@ -837,11 +828,7 @@ mod tests {
         let nll = m.nll(&params).unwrap();
         assert!((nll - fx.nll_at_hat).abs() < 1e-6);
         let g = m.grad_nll(&params).unwrap();
-        assert!(
-            inf_norm(&g) < 1e-6,
-            "grad inf-norm too large: {}",
-            inf_norm(&g)
-        );
+        assert!(inf_norm(&g) < 1e-6, "grad inf-norm too large: {}", inf_norm(&g));
     }
 
     #[test]
@@ -920,8 +907,7 @@ mod tests {
 
     #[test]
     fn test_mle_negbin_regression_recovers_fixture_hat() {
-        let fx =
-            load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/negbin_small.json"));
         assert_eq!(fx.kind, "negbin");
         let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
         let log_alpha = fx.log_alpha_hat.expect("negbin fixture must include log_alpha_hat");
@@ -946,5 +932,4 @@ mod tests {
             fx.nll_at_hat
         );
     }
-
 }

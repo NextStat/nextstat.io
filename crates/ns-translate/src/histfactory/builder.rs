@@ -18,9 +18,7 @@ use super::combination::{self, CombinationConfig};
 ///
 /// This uses each channel's `data` histogram as the canonical binning source.
 pub fn bin_edges_by_channel_from_xml(combination_path: &Path) -> Result<HashMap<String, Vec<f64>>> {
-    let base_dir = combination_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let base_dir = combination_path.parent().unwrap_or_else(|| Path::new("."));
 
     let config = combination::parse_combination(combination_path)?;
     let channels_xml: Vec<ChannelXml> = config
@@ -44,9 +42,8 @@ pub fn bin_edges_by_channel_from_xml(combination_path: &Path) -> Result<HashMap<
 
         let root_path = base_dir.join(input_file);
         if !root_cache.contains_key(&root_path) {
-            let rf = RootFile::open(&root_path).map_err(|e| {
-                Error::RootFile(format!("opening {}: {}", root_path.display(), e))
-            })?;
+            let rf = RootFile::open(&root_path)
+                .map_err(|e| Error::RootFile(format!("opening {}: {}", root_path.display(), e)))?;
             root_cache.insert(root_path.clone(), rf);
         }
         let rf = root_cache.get(&root_path).unwrap();
@@ -72,9 +69,7 @@ pub fn bin_edges_by_channel_from_xml(combination_path: &Path) -> Result<HashMap<
 /// Parse a HistFactory `combination.xml` and its referenced ROOT files,
 /// producing a `Workspace` identical to the pyhf JSON format.
 pub fn from_xml(combination_path: &Path) -> Result<Workspace> {
-    let base_dir = combination_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let base_dir = combination_path.parent().unwrap_or_else(|| Path::new("."));
 
     let config = combination::parse_combination(combination_path)?;
 
@@ -93,8 +88,7 @@ pub fn from_xml(combination_path: &Path) -> Result<Workspace> {
     let mut ws_observations = Vec::new();
 
     for ch_xml in &channels_xml {
-        let (channel, observation) =
-            build_channel(ch_xml, base_dir, &config, &mut root_cache)?;
+        let (channel, observation) = build_channel(ch_xml, base_dir, &config, &mut root_cache)?;
         ws_channels.push(channel);
         ws_observations.push(observation);
     }
@@ -125,10 +119,7 @@ fn build_channel(
         root_cache,
     )?;
 
-    let observation = Observation {
-        name: ch.name.clone(),
-        data: obs_hist,
-    };
+    let observation = Observation { name: ch.name.clone(), data: obs_hist };
 
     // Build samples
     let mut samples = Vec::new();
@@ -137,10 +128,7 @@ fn build_channel(
         samples.push(sample);
     }
 
-    let channel = Channel {
-        name: ch.name.clone(),
-        samples,
-    };
+    let channel = Channel { name: ch.name.clone(), samples };
 
     Ok((channel, observation))
 }
@@ -164,15 +152,12 @@ fn build_sample(
     // Build modifiers
     let mut modifiers = Vec::new();
     for m in &s.modifiers {
-        let mods = build_modifier(m, histo_path, input_file, base_dir, root_cache, &nominal, &ch.name)?;
+        let mods =
+            build_modifier(m, histo_path, input_file, base_dir, root_cache, &nominal, &ch.name)?;
         modifiers.extend(mods);
     }
 
-    Ok(Sample {
-        name: s.name.clone(),
-        data: nominal,
-        modifiers,
-    })
+    Ok(Sample { name: s.name.clone(), data: nominal, modifiers })
 }
 
 /// Build Modifier(s) from an XML modifier element.
@@ -187,20 +172,12 @@ fn build_modifier(
 ) -> Result<Vec<Modifier>> {
     match m {
         ModifierXml::NormFactor { name, .. } => {
-            Ok(vec![Modifier::NormFactor {
-                name: name.clone(),
-                data: None,
-            }])
+            Ok(vec![Modifier::NormFactor { name: name.clone(), data: None }])
         }
-        ModifierXml::OverallSys { name, low, high } => {
-            Ok(vec![Modifier::NormSys {
-                name: name.clone(),
-                data: NormSysData {
-                    hi: *high,
-                    lo: *low,
-                },
-            }])
-        }
+        ModifierXml::OverallSys { name, low, high } => Ok(vec![Modifier::NormSys {
+            name: name.clone(),
+            data: NormSysData { hi: *high, lo: *low },
+        }]),
         ModifierXml::HistoSys {
             name,
             histo_name_high,
@@ -210,18 +187,10 @@ fn build_modifier(
             input_file_high,
             input_file_low,
         } => {
-            let hp_hi = histo_path_high
-                .as_deref()
-                .or(default_histo_path);
-            let hp_lo = histo_path_low
-                .as_deref()
-                .or(default_histo_path);
-            let if_hi = input_file_high
-                .as_deref()
-                .or(default_input_file);
-            let if_lo = input_file_low
-                .as_deref()
-                .or(default_input_file);
+            let hp_hi = histo_path_high.as_deref().or(default_histo_path);
+            let hp_lo = histo_path_low.as_deref().or(default_histo_path);
+            let if_hi = input_file_high.as_deref().or(default_input_file);
+            let if_lo = input_file_low.as_deref().or(default_input_file);
 
             let hi_data =
                 resolve_and_read_histogram(histo_name_high, hp_hi, if_hi, base_dir, root_cache)?;
@@ -233,13 +202,7 @@ fn build_modifier(
                 data: HistoSysData { hi_data, lo_data },
             }])
         }
-        ModifierXml::ShapeSys {
-            name,
-            histo_name,
-            histo_path,
-            input_file,
-            ..
-        } => {
+        ModifierXml::ShapeSys { name, histo_name, histo_path, input_file, .. } => {
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
@@ -249,22 +212,12 @@ fn build_modifier(
                 nominal.iter().map(|v| v.sqrt()).collect()
             };
 
-            Ok(vec![Modifier::ShapeSys {
-                name: name.clone(),
-                data,
-            }])
+            Ok(vec![Modifier::ShapeSys { name: name.clone(), data }])
         }
         ModifierXml::ShapeFactor { name } => {
-            Ok(vec![Modifier::ShapeFactor {
-                name: name.clone(),
-                data: None,
-            }])
+            Ok(vec![Modifier::ShapeFactor { name: name.clone(), data: None }])
         }
-        ModifierXml::StatError {
-            histo_name,
-            histo_path,
-            input_file,
-        } => {
+        ModifierXml::StatError { histo_name, histo_path, input_file } => {
             // StatError: use sqrt(sumw2) from ROOT histogram, or sqrt(nominal) if not provided
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
@@ -278,10 +231,7 @@ fn build_modifier(
             // StatError name follows pyhf convention: "staterror_{channel_name}"
             let stat_name = format!("staterror_{}", channel_name);
 
-            Ok(vec![Modifier::StatError {
-                name: stat_name,
-                data,
-            }])
+            Ok(vec![Modifier::StatError { name: stat_name, data }])
         }
     }
 }
@@ -308,10 +258,7 @@ fn build_measurements(config: &CombinationConfig) -> Result<Vec<Measurement>> {
 
             Ok(Measurement {
                 name: m.name.clone(),
-                config: MeasurementConfig {
-                    poi: m.poi.clone(),
-                    parameters,
-                },
+                config: MeasurementConfig { poi: m.poi.clone(), parameters },
             })
         })
         .collect()
@@ -326,19 +273,15 @@ fn resolve_and_read_histogram(
     root_cache: &mut HashMap<PathBuf, RootFile>,
 ) -> Result<Vec<f64>> {
     let input_file = input_file.ok_or_else(|| {
-        Error::Xml(format!(
-            "no InputFile specified for histogram '{}'",
-            histo_name
-        ))
+        Error::Xml(format!("no InputFile specified for histogram '{}'", histo_name))
     })?;
 
     let root_path = base_dir.join(input_file);
 
     // Open or reuse cached ROOT file
     if !root_cache.contains_key(&root_path) {
-        let rf = RootFile::open(&root_path).map_err(|e| {
-            Error::RootFile(format!("opening {}: {}", root_path.display(), e))
-        })?;
+        let rf = RootFile::open(&root_path)
+            .map_err(|e| Error::RootFile(format!("opening {}: {}", root_path.display(), e)))?;
         root_cache.insert(root_path.clone(), rf);
     }
 

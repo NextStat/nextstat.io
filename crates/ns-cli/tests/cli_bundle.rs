@@ -62,8 +62,7 @@ fn fit_writes_repro_bundle_with_hashes() {
     );
 
     // Ensure stdout stays pure JSON.
-    let _v: serde_json::Value =
-        serde_json::from_slice(&out.stdout).expect("stdout should be JSON");
+    let _v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout should be JSON");
 
     let meta_path = bundle.join("meta.json");
     let manifest_path = bundle.join("manifest.json");
@@ -101,7 +100,8 @@ fn fit_writes_repro_bundle_with_hashes() {
     // manifest.json hashes must match file contents.
     let manifest_bytes = std::fs::read(&manifest_path).unwrap();
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
-    let files = manifest.get("files").and_then(|v| v.as_array()).expect("manifest.files should be array");
+    let files =
+        manifest.get("files").and_then(|v| v.as_array()).expect("manifest.files should be array");
     assert!(!files.is_empty(), "manifest.files should be non-empty");
 
     for f in files {
@@ -137,4 +137,3 @@ fn bundle_errors_on_non_empty_dir() {
 
     let _ = std::fs::remove_dir_all(&bundle);
 }
-

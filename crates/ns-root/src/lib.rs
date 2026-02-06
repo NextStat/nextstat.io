@@ -25,26 +25,26 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
-pub mod error;
-pub mod rbuffer;
-pub mod datasource;
-pub mod file;
-pub mod key;
-pub mod decompress;
-pub mod directory;
-pub mod objects;
-pub mod histogram;
-pub mod tree;
 pub mod basket;
 pub mod branch_reader;
+pub mod datasource;
+pub mod decompress;
+pub mod directory;
+pub mod error;
 pub mod expr;
+pub mod file;
 pub mod filler;
+pub mod histogram;
+pub mod key;
+pub mod objects;
+pub mod rbuffer;
+pub mod tree;
 
-pub use error::{RootError, Result};
+pub use branch_reader::BranchReader;
+pub use error::{Result, RootError};
+pub use expr::CompiledExpr;
 pub use file::RootFile;
+pub use filler::{FilledHistogram, HistogramSpec, fill_histograms};
 pub use histogram::{Histogram, HistogramWithFlows};
 pub use key::KeyInfo;
-pub use tree::{Tree, BranchInfo, LeafType};
-pub use branch_reader::BranchReader;
-pub use expr::CompiledExpr;
-pub use filler::{HistogramSpec, FilledHistogram, fill_histograms};
+pub use tree::{BranchInfo, LeafType, Tree};

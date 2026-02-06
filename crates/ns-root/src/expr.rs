@@ -21,14 +21,29 @@ enum Expr {
 
 #[derive(Debug, Clone, Copy)]
 enum BinOp {
-    Add, Sub, Mul, Div,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Func {
-    Abs, Sqrt, Log, Exp, Pow, Min, Max,
+    Abs,
+    Sqrt,
+    Log,
+    Exp,
+    Pow,
+    Min,
+    Max,
 }
 
 // ── Compiled expression ────────────────────────────────────────
@@ -53,7 +68,8 @@ impl CompiledExpr {
         let ast = parser.parse_or()?;
         if parser.pos < parser.tokens.len() {
             return Err(RootError::Expression(format!(
-                "unexpected token after expression: {:?}", parser.tokens[parser.pos]
+                "unexpected token after expression: {:?}",
+                parser.tokens[parser.pos]
             )));
         }
         let branches = std::mem::take(&mut parser.branches);
@@ -97,7 +113,11 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
         Expr::Var(i) => vals[*i],
         Expr::UnaryNeg(a) => -eval_expr(a, vals),
         Expr::UnaryNot(a) => {
-            if eval_expr(a, vals) > 0.0 { 0.0 } else { 1.0 }
+            if eval_expr(a, vals) > 0.0 {
+                0.0
+            } else {
+                1.0
+            }
         }
         Expr::BinOp(op, a, b) => {
             let lhs = eval_expr(a, vals);
@@ -107,14 +127,62 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                 BinOp::Sub => lhs - rhs,
                 BinOp::Mul => lhs * rhs,
                 BinOp::Div => lhs / rhs,
-                BinOp::Eq => if (lhs - rhs).abs() < f64::EPSILON { 1.0 } else { 0.0 },
-                BinOp::Ne => if (lhs - rhs).abs() >= f64::EPSILON { 1.0 } else { 0.0 },
-                BinOp::Lt => if lhs < rhs { 1.0 } else { 0.0 },
-                BinOp::Le => if lhs <= rhs { 1.0 } else { 0.0 },
-                BinOp::Gt => if lhs > rhs { 1.0 } else { 0.0 },
-                BinOp::Ge => if lhs >= rhs { 1.0 } else { 0.0 },
-                BinOp::And => if lhs > 0.0 && rhs > 0.0 { 1.0 } else { 0.0 },
-                BinOp::Or => if lhs > 0.0 || rhs > 0.0 { 1.0 } else { 0.0 },
+                BinOp::Eq => {
+                    if (lhs - rhs).abs() < f64::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Ne => {
+                    if (lhs - rhs).abs() >= f64::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Lt => {
+                    if lhs < rhs {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Le => {
+                    if lhs <= rhs {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Gt => {
+                    if lhs > rhs {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Ge => {
+                    if lhs >= rhs {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::And => {
+                    if lhs > 0.0 && rhs > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                BinOp::Or => {
+                    if lhs > 0.0 || rhs > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
             }
         }
         Expr::Call(f, args) => {
@@ -139,10 +207,22 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
 enum Token {
     Num(f64),
     Ident(String),
-    Plus, Minus, Star, Slash,
-    LParen, RParen, Comma,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or, Not,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    LParen,
+    RParen,
+    Comma,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    Not,
 }
 
 fn tokenize(input: &str) -> Result<Vec<Token>> {
@@ -178,26 +258,63 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
         }
 
         match c {
-            '+' => { tokens.push(Token::Plus); i += 1; }
-            '-' => { tokens.push(Token::Minus); i += 1; }
-            '*' => { tokens.push(Token::Star); i += 1; }
-            '/' => { tokens.push(Token::Slash); i += 1; }
-            '(' => { tokens.push(Token::LParen); i += 1; }
-            ')' => { tokens.push(Token::RParen); i += 1; }
-            ',' => { tokens.push(Token::Comma); i += 1; }
-            '<' => { tokens.push(Token::Lt); i += 1; }
-            '>' => { tokens.push(Token::Gt); i += 1; }
-            '!' => { tokens.push(Token::Not); i += 1; }
+            '+' => {
+                tokens.push(Token::Plus);
+                i += 1;
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                i += 1;
+            }
+            '*' => {
+                tokens.push(Token::Star);
+                i += 1;
+            }
+            '/' => {
+                tokens.push(Token::Slash);
+                i += 1;
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                i += 1;
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                i += 1;
+            }
+            ',' => {
+                tokens.push(Token::Comma);
+                i += 1;
+            }
+            '<' => {
+                tokens.push(Token::Lt);
+                i += 1;
+            }
+            '>' => {
+                tokens.push(Token::Gt);
+                i += 1;
+            }
+            '!' => {
+                tokens.push(Token::Not);
+                i += 1;
+            }
             _ if c.is_ascii_digit() || c == '.' => {
                 let start = i;
-                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'e' || chars[i] == 'E'
-                    || ((chars[i] == '+' || chars[i] == '-') && i > start && (chars[i-1] == 'e' || chars[i-1] == 'E'))) {
+                while i < chars.len()
+                    && (chars[i].is_ascii_digit()
+                        || chars[i] == '.'
+                        || chars[i] == 'e'
+                        || chars[i] == 'E'
+                        || ((chars[i] == '+' || chars[i] == '-')
+                            && i > start
+                            && (chars[i - 1] == 'e' || chars[i - 1] == 'E')))
+                {
                     i += 1;
                 }
                 let s = &input[start..i];
-                let n: f64 = s.parse().map_err(|_| {
-                    RootError::Expression(format!("invalid number: '{}'", s))
-                })?;
+                let n: f64 = s
+                    .parse()
+                    .map_err(|_| RootError::Expression(format!("invalid number: '{}'", s)))?;
                 tokens.push(Token::Num(n));
             }
             _ if c.is_ascii_alphabetic() || c == '_' => {
@@ -208,9 +325,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                 tokens.push(Token::Ident(input[start..i].to_string()));
             }
             _ => {
-                return Err(RootError::Expression(format!(
-                    "unexpected character: '{}'", c
-                )));
+                return Err(RootError::Expression(format!("unexpected character: '{}'", c)));
             }
         }
     }
@@ -237,16 +352,18 @@ impl<'a> Parser<'a> {
 
     fn advance(&mut self) -> Option<&Token> {
         let t = self.tokens.get(self.pos);
-        if t.is_some() { self.pos += 1; }
+        if t.is_some() {
+            self.pos += 1;
+        }
         t
     }
 
     fn expect(&mut self, expected: &Token) -> Result<()> {
         match self.advance() {
             Some(t) if t == expected => Ok(()),
-            other => Err(RootError::Expression(format!(
-                "expected {:?}, got {:?}", expected, other
-            ))),
+            other => {
+                Err(RootError::Expression(format!("expected {:?}, got {:?}", expected, other)))
+            }
         }
     }
 
@@ -373,9 +490,12 @@ impl<'a> Parser<'a> {
                         "pow" => Func::Pow,
                         "min" => Func::Min,
                         "max" => Func::Max,
-                        _ => return Err(RootError::Expression(format!(
-                            "unknown function: '{}'", name
-                        ))),
+                        _ => {
+                            return Err(RootError::Expression(format!(
+                                "unknown function: '{}'",
+                                name
+                            )));
+                        }
                     };
                     let mut args = vec![self.parse_or()?];
                     while matches!(self.peek(), Some(Token::Comma)) {
@@ -391,7 +511,8 @@ impl<'a> Parser<'a> {
                 }
             }
             other => Err(RootError::Expression(format!(
-                "expected number, identifier, or '(', got {:?}", other
+                "expected number, identifier, or '(', got {:?}",
+                other
             ))),
         }
     }

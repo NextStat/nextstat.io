@@ -316,7 +316,10 @@ impl ParameterTransform {
     }
 
     /// Create transforms from parameter bounds with custom selection options.
-    pub fn from_bounds_with_options(bounds: &[(f64, f64)], opts: ParameterTransformOptions) -> Self {
+    pub fn from_bounds_with_options(
+        bounds: &[(f64, f64)],
+        opts: ParameterTransformOptions,
+    ) -> Self {
         let bijectors: Vec<Box<dyn Bijector>> = bounds
             .iter()
             .map(|&(lo, hi)| -> Box<dyn Bijector> {
@@ -331,7 +334,9 @@ impl ParameterTransform {
                         } else if lo == 0.0 {
                             match opts.positive_bijector {
                                 PositiveBijectorKind::Exp => Box::new(ExpBijector),
-                                PositiveBijectorKind::Softplus => Box::new(SoftplusBijector::new(0.0)),
+                                PositiveBijectorKind::Softplus => {
+                                    Box::new(SoftplusBijector::new(0.0))
+                                }
                             }
                         } else {
                             Box::new(LowerBoundedBijector::new(lo))
@@ -362,9 +367,7 @@ impl ParameterTransform {
     pub fn from_bounds_softplus(bounds: &[(f64, f64)]) -> Self {
         Self::from_bounds_with_options(
             bounds,
-            ParameterTransformOptions {
-                positive_bijector: PositiveBijectorKind::Softplus,
-            },
+            ParameterTransformOptions { positive_bijector: PositiveBijectorKind::Softplus },
         )
     }
 

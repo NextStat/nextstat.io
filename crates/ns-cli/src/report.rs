@@ -91,7 +91,11 @@ fn try_split_pyhf_workspace(bytes: &[u8]) -> Result<Option<(Vec<u8>, Vec<u8>)>> 
         Err(_) => return Ok(None),
     };
 
-    let spec = PyhfWorkspaceSpec { channels: ws.channels, measurements: ws.measurements, version: ws.version };
+    let spec = PyhfWorkspaceSpec {
+        channels: ws.channels,
+        measurements: ws.measurements,
+        version: ws.version,
+    };
 
     let mut observations = ws.observations;
     observations.sort_by(|a, b| a.name.cmp(&b.name));
@@ -120,15 +124,16 @@ pub fn write_bundle(
     let input_copy = inputs_dir.join("input.json");
     std::fs::write(&input_copy, &input_bytes)?;
 
-    let (data_sha256, model_spec_sha256) = if let Some((spec_bytes, data_bytes)) = try_split_pyhf_workspace(&input_bytes)? {
-        let spec_path = inputs_dir.join("model_spec.json");
-        let data_path = inputs_dir.join("data.json");
-        std::fs::write(&spec_path, &spec_bytes)?;
-        std::fs::write(&data_path, &data_bytes)?;
-        (Some(sha256_hex(&data_bytes)), Some(sha256_hex(&spec_bytes)))
-    } else {
-        (None, None)
-    };
+    let (data_sha256, model_spec_sha256) =
+        if let Some((spec_bytes, data_bytes)) = try_split_pyhf_workspace(&input_bytes)? {
+            let spec_path = inputs_dir.join("model_spec.json");
+            let data_path = inputs_dir.join("data.json");
+            std::fs::write(&spec_path, &spec_bytes)?;
+            std::fs::write(&data_path, &data_bytes)?;
+            (Some(sha256_hex(&data_bytes)), Some(sha256_hex(&spec_bytes)))
+        } else {
+            (None, None)
+        };
 
     let created_unix_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let meta = BundleMeta {

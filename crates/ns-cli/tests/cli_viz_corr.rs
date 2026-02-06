@@ -82,10 +82,7 @@ fn viz_corr_smoke_histfactory_fixture() {
         .get("parameter_names")
         .and_then(|v| v.as_array())
         .expect("parameter_names should be an array");
-    let corr = artifact
-        .get("corr")
-        .and_then(|v| v.as_array())
-        .expect("corr should be an array");
+    let corr = artifact.get("corr").and_then(|v| v.as_array()).expect("corr should be an array");
     assert!(!names.is_empty(), "expected non-empty parameter_names");
     assert_eq!(corr.len(), names.len(), "corr must be NxN");
 
@@ -97,4 +94,3 @@ fn viz_corr_smoke_histfactory_fixture() {
     let _ = std::fs::remove_file(&fit_out);
     let _ = std::fs::remove_file(&corr_out);
 }
-

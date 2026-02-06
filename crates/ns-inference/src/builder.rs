@@ -84,14 +84,9 @@ impl NormalPrior {
 
 #[derive(Debug, Clone)]
 enum Likelihood {
-    GaussianY { y: Vec<f64> },      // sigma fixed to 1
-    GaussianYSigma {
-        y: Vec<f64>,
-        sigma_idx: usize,
-        logsigma_prior_m: f64,
-        logsigma_prior_s: f64,
-    }, // sigma inferred (MAP) with LogNormal prior
-    BernoulliLogitY { y: Vec<u8> }, // y in {0,1}
+    GaussianY { y: Vec<f64> }, // sigma fixed to 1
+    GaussianYSigma { y: Vec<f64>, sigma_idx: usize, logsigma_prior_m: f64, logsigma_prior_s: f64 }, // sigma inferred (MAP) with LogNormal prior
+    BernoulliLogitY { y: Vec<u8> },                     // y in {0,1}
     PoissonY { y: Vec<u64>, offset: Option<Vec<f64>> }, // y >= 0, log link
 }
 
@@ -144,8 +139,8 @@ struct RandomSlope {
     non_centered: bool,
     // Parameter indices in the model parameter vector:
     mu_idx: usize,
-    sigma_idx: usize,    // sigma > 0
-    u_offset: usize,     // u_g at params[u_offset + g] (or z_g if non-centered)
+    sigma_idx: usize, // sigma > 0
+    u_offset: usize,  // u_g at params[u_offset + g] (or z_g if non-centered)
     // Priors:
     mu_prior: NormalPrior,
     logsigma_prior_m: f64,
@@ -197,8 +192,8 @@ struct CorrelatedInterceptSlope {
     mu_u_idx: usize,
     tau_alpha_idx: usize,
     tau_u_idx: usize,
-    rho_idx: usize,     // correlation rho in (-1,1)
-    z_offset: usize,    // z_{g,0}, z_{g,1} packed as 2*n_groups
+    rho_idx: usize,  // correlation rho in (-1,1)
+    z_offset: usize, // z_{g,0}, z_{g,1} packed as 2*n_groups
     // Priors:
     mu_alpha_prior: NormalPrior,
     mu_u_prior: NormalPrior,
@@ -238,7 +233,9 @@ impl CorrelatedInterceptSlope {
             return Err(Error::Validation("logsigma_tau_alpha_m must be finite".to_string()));
         }
         if !self.logsigma_tau_alpha_s.is_finite() || self.logsigma_tau_alpha_s <= 0.0 {
-            return Err(Error::Validation("logsigma_tau_alpha_s must be finite and > 0".to_string()));
+            return Err(Error::Validation(
+                "logsigma_tau_alpha_s must be finite and > 0".to_string(),
+            ));
         }
         if !self.logsigma_tau_u_m.is_finite() {
             return Err(Error::Validation("logsigma_tau_u_m must be finite".to_string()));
@@ -682,9 +679,9 @@ impl LogDensityModel for ComposedGlmModel {
 
         // Likelihood block.
         let (gauss_sigma_idx, gauss_logsigma_prior) = match &self.likelihood {
-            Likelihood::GaussianYSigma { sigma_idx, logsigma_prior_m, logsigma_prior_s, .. } => {
-                (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s)))
-            }
+            Likelihood::GaussianYSigma {
+                sigma_idx, logsigma_prior_m, logsigma_prior_s, ..
+            } => (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s))),
             _ => (None, None),
         };
         if let (Some(idx), Some((m, s))) = (gauss_sigma_idx, gauss_logsigma_prior) {
@@ -941,9 +938,9 @@ impl LogDensityModel for ComposedGlmModel {
 
         // Likelihood contributions.
         let (gauss_sigma_idx, gauss_logsigma_prior) = match &self.likelihood {
-            Likelihood::GaussianYSigma { sigma_idx, logsigma_prior_m, logsigma_prior_s, .. } => {
-                (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s)))
-            }
+            Likelihood::GaussianYSigma {
+                sigma_idx, logsigma_prior_m, logsigma_prior_s, ..
+            } => (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s))),
             _ => (None, None),
         };
         if let (Some(idx), Some((m, s))) = (gauss_sigma_idx, gauss_logsigma_prior) {
@@ -1115,7 +1112,10 @@ impl ModelBuilder {
             + if self.include_intercept { 1 } else { 0 }
             + match &self.likelihood {
                 Likelihood::GaussianYSigma { sigma_idx, .. } => {
-                    debug_assert_eq!(*sigma_idx, self.x.p + if self.include_intercept { 1 } else { 0 });
+                    debug_assert_eq!(
+                        *sigma_idx,
+                        self.x.p + if self.include_intercept { 1 } else { 0 }
+                    );
                     1
                 }
                 _ => 0,
@@ -1193,11 +1193,12 @@ impl ModelBuilder {
                 self.reindex_random_effects();
                 Ok(self)
             }
-            Likelihood::GaussianYSigma { .. } => Err(Error::Validation(
-                "Gaussian observation sigma already enabled".to_string(),
-            )),
+            Likelihood::GaussianYSigma { .. } => {
+                Err(Error::Validation("Gaussian observation sigma already enabled".to_string()))
+            }
             _ => Err(Error::Validation(
-                "with_gaussian_obs_sigma_prior_lognormal is only valid for Gaussian likelihood".to_string(),
+                "with_gaussian_obs_sigma_prior_lognormal is only valid for Gaussian likelihood"
+                    .to_string(),
             )),
         }
     }
@@ -1255,7 +1256,9 @@ impl ModelBuilder {
                 )));
             }
             if off.iter().any(|v| !v.is_finite()) {
-                return Err(Error::Validation("offset must contain only finite values".to_string()));
+                return Err(Error::Validation(
+                    "offset must contain only finite values".to_string(),
+                ));
             }
         }
         Ok(Self {
@@ -1459,7 +1462,9 @@ impl ModelBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::regression::{LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel};
+    use crate::regression::{
+        LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel,
+    };
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]
@@ -1552,7 +1557,8 @@ mod tests {
 
     #[test]
     fn test_builder_poisson_regression_matches_explicit_model_at_hat() {
-        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
         assert_eq!(fx.kind, "poisson");
         let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
 

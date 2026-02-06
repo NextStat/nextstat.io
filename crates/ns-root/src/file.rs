@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::branch_reader::BranchReader;
 use crate::datasource::DataSource;
 use crate::decompress::decompress;
 use crate::directory::Directory;
@@ -12,7 +13,6 @@ use crate::key::{Key, KeyInfo};
 use crate::objects;
 use crate::rbuffer::RBuffer;
 use crate::tree::Tree;
-use crate::branch_reader::BranchReader;
 
 /// Parsed ROOT file header.
 struct FileHeader {
@@ -127,13 +127,7 @@ impl RootFile {
         let (seek_keys, nbytes_keys) =
             Self::parse_top_directory(data, begin as usize, nbytes_name as usize, is_large)?;
 
-        Ok(FileHeader {
-            begin,
-            is_large,
-            nbytes_name,
-            seek_keys,
-            nbytes_keys,
-        })
+        Ok(FileHeader { begin, is_large, nbytes_name, seek_keys, nbytes_keys })
     }
 
     /// Parse the TDirectory streamer at `begin + nbytes_name` to extract seek_keys.
@@ -145,9 +139,7 @@ impl RootFile {
     ) -> Result<(u64, u32)> {
         let dir_offset = begin + nbytes_name;
         if dir_offset >= data.len() {
-            return Err(RootError::Deserialization(
-                "TDirectory offset past end of file".into(),
-            ));
+            return Err(RootError::Deserialization("TDirectory offset past end of file".into()));
         }
 
         let mut r = RBuffer::new(data);
@@ -215,9 +207,9 @@ impl RootFile {
         // Navigate subdirectories
         let mut current_dir = dir.clone();
         for &part in &parts[..parts.len() - 1] {
-            let key = current_dir.find_key(part).ok_or_else(|| {
-                RootError::KeyNotFound(format!("{} (in path {})", part, path))
-            })?;
+            let key = current_dir
+                .find_key(part)
+                .ok_or_else(|| RootError::KeyNotFound(format!("{} (in path {})", part, path)))?;
 
             if key.class_name != "TDirectoryFile" && key.class_name != "TDirectory" {
                 return Err(RootError::Deserialization(format!(
@@ -250,9 +242,9 @@ impl RootFile {
         // Navigate subdirectories
         let mut current_dir = dir.clone();
         for &part in &parts[..parts.len() - 1] {
-            let key = current_dir.find_key(part).ok_or_else(|| {
-                RootError::KeyNotFound(format!("{} (in path {})", part, path))
-            })?;
+            let key = current_dir
+                .find_key(part)
+                .ok_or_else(|| RootError::KeyNotFound(format!("{} (in path {})", part, path)))?;
 
             if key.class_name != "TDirectoryFile" && key.class_name != "TDirectory" {
                 return Err(RootError::Deserialization(format!(
@@ -275,9 +267,7 @@ impl RootFile {
     }
 
     fn read_histogram_from_dir(&self, dir: &Directory, name: &str) -> Result<Histogram> {
-        let key = dir.find_key(name).ok_or_else(|| {
-            RootError::KeyNotFound(name.to_string())
-        })?;
+        let key = dir.find_key(name).ok_or_else(|| RootError::KeyNotFound(name.to_string()))?;
 
         let payload = self.read_key_payload(key)?;
         objects::read_histogram(&payload, &key.class_name)
@@ -314,13 +304,12 @@ impl RootFile {
     /// Read a TTree by name from the top-level directory.
     pub fn get_tree(&self, name: &str) -> Result<Tree> {
         let dir = self.read_top_directory()?;
-        let key = dir.find_key(name).ok_or_else(|| {
-            RootError::TreeNotFound(name.to_string())
-        })?;
+        let key = dir.find_key(name).ok_or_else(|| RootError::TreeNotFound(name.to_string()))?;
 
         if key.class_name != "TTree" {
             return Err(RootError::TreeNotFound(format!(
-                "'{}' is {} not TTree", name, key.class_name
+                "'{}' is {} not TTree",
+                name, key.class_name
             )));
         }
 
@@ -329,12 +318,10 @@ impl RootFile {
     }
 
     /// Create a [`BranchReader`] for the named branch.
-    pub fn branch_reader<'a>(&'a self, tree: &'a Tree, branch: &str)
-        -> Result<BranchReader<'a>>
-    {
-        let info = tree.find_branch(branch).ok_or_else(|| {
-            RootError::BranchNotFound(branch.to_string())
-        })?;
+    pub fn branch_reader<'a>(&'a self, tree: &'a Tree, branch: &str) -> Result<BranchReader<'a>> {
+        let info = tree
+            .find_branch(branch)
+            .ok_or_else(|| RootError::BranchNotFound(branch.to_string()))?;
         Ok(BranchReader::new(&self.data, info, self.header.is_large))
     }
 

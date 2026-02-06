@@ -104,7 +104,8 @@ fn assert_json_near(path: &str, got: &Value, want: &Value, atol: f64, rtol: f64)
 
 fn pseudo_fit_json_for_workspace(workspace_path: &Path) -> Value {
     let bytes = std::fs::read(workspace_path).expect("read workspace");
-    let ws: ns_translate::pyhf::Workspace = serde_json::from_slice(&bytes).expect("parse workspace");
+    let ws: ns_translate::pyhf::Workspace =
+        serde_json::from_slice(&bytes).expect("parse workspace");
     let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&ws).expect("build model");
 
     let n = model.parameters().len();
@@ -202,4 +203,3 @@ fn report_artifacts_match_goldens_histfactory_v0() {
 
     let _ = std::fs::remove_dir_all(&work_dir);
 }
-

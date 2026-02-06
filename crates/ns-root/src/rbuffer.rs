@@ -93,18 +93,14 @@ impl<'a> RBuffer<'a> {
     /// Read a big-endian u64.
     pub fn read_u64(&mut self) -> Result<u64> {
         let b = self.read_bytes(8)?;
-        Ok(u64::from_be_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
+        Ok(u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
     }
 
     /// Read a big-endian i64.
     #[allow(dead_code)]
     pub fn read_i64(&mut self) -> Result<i64> {
         let b = self.read_bytes(8)?;
-        Ok(i64::from_be_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
+        Ok(i64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
     }
 
     /// Read a big-endian f32.
@@ -116,9 +112,7 @@ impl<'a> RBuffer<'a> {
     /// Read a big-endian f64.
     pub fn read_f64(&mut self) -> Result<f64> {
         let b = self.read_bytes(8)?;
-        Ok(f64::from_be_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
+        Ok(f64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
     }
 
     /// Read a null-terminated C string (used by ROOT class reference system).
@@ -132,9 +126,7 @@ impl<'a> RBuffer<'a> {
             }
             self.pos += 1;
         }
-        Err(RootError::Deserialization(
-            "unterminated C string".into(),
-        ))
+        Err(RootError::Deserialization("unterminated C string".into()))
     }
 
     /// Read a ROOT-encoded string.
@@ -142,11 +134,7 @@ impl<'a> RBuffer<'a> {
     /// Format: length byte (if < 255), or 255 + u32 length, then UTF-8 bytes.
     pub fn read_string(&mut self) -> Result<String> {
         let first = self.read_u8()?;
-        let len = if first == 255 {
-            self.read_u32()? as usize
-        } else {
-            first as usize
-        };
+        let len = if first == 255 { self.read_u32()? as usize } else { first as usize };
         if len == 0 {
             return Ok(String::new());
         }

@@ -8,18 +8,10 @@ use crate::rbuffer::RBuffer;
 /// Read and decompress a single basket from the file.
 ///
 /// Returns the decompressed payload (big-endian encoded values).
-pub fn read_basket_data(
-    file_data: &[u8],
-    seek: u64,
-    is_large: bool,
-) -> Result<Vec<u8>> {
+pub fn read_basket_data(file_data: &[u8], seek: u64, is_large: bool) -> Result<Vec<u8>> {
     let pos = seek as usize;
     if pos >= file_data.len() {
-        return Err(RootError::BufferUnderflow {
-            offset: pos,
-            need: 1,
-            have: 0,
-        });
+        return Err(RootError::BufferUnderflow { offset: pos, need: 1, have: 0 });
     }
 
     // Read the TKey header for this basket
@@ -58,11 +50,7 @@ pub fn read_basket_data(
 /// If `entry_offset_len > 0`, the last portion of the payload is an array
 /// of entry offsets (for variable-length data). We strip those for
 /// fixed-size types.
-pub fn strip_entry_offsets(
-    payload: &[u8],
-    n_entries: u64,
-    entry_offset_len: usize,
-) -> &[u8] {
+pub fn strip_entry_offsets(payload: &[u8], n_entries: u64, entry_offset_len: usize) -> &[u8] {
     if entry_offset_len > 0 && n_entries > 0 {
         // Entry offsets are i32 (4 bytes each) at the end
         let offset_bytes = n_entries as usize * 4;

@@ -25,12 +25,7 @@ fn timeseries_kalman_filter_contract() {
     let input = fixture_path("kalman_1d.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -41,7 +36,8 @@ fn timeseries_kalman_filter_contract() {
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
     assert!(v.get("log_likelihood").and_then(|x| x.as_f64()).unwrap().is_finite());
-    let fm = v.get("filtered_means").and_then(|x| x.as_array()).expect("filtered_means should be array");
+    let fm =
+        v.get("filtered_means").and_then(|x| x.as_array()).expect("filtered_means should be array");
     assert_eq!(fm.len(), 4);
 }
 
@@ -50,12 +46,7 @@ fn timeseries_kalman_filter_local_level_contract() {
     let input = fixture_path("kalman_local_level.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -73,12 +64,7 @@ fn timeseries_kalman_filter_local_linear_trend_contract() {
     let input = fixture_path("kalman_local_linear_trend.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -96,12 +82,7 @@ fn timeseries_kalman_filter_ar1_contract() {
     let input = fixture_path("kalman_ar1.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -119,12 +100,7 @@ fn timeseries_kalman_filter_arma11_contract() {
     let input = fixture_path("kalman_arma11.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -142,12 +118,7 @@ fn timeseries_kalman_filter_local_level_seasonal_contract() {
     let input = fixture_path("kalman_local_level_seasonal.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -165,12 +136,7 @@ fn timeseries_kalman_filter_local_linear_trend_seasonal_contract() {
     let input = fixture_path("kalman_local_linear_trend_seasonal.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -188,12 +154,7 @@ fn timeseries_kalman_filter_allows_missing_null() {
     let input = fixture_path("kalman_1d_missing.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -211,12 +172,7 @@ fn timeseries_kalman_filter_partial_missing_2d_contract() {
     let input = fixture_path("kalman_2d_partial_missing.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-filter",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -228,20 +184,16 @@ fn timeseries_kalman_filter_partial_missing_2d_contract() {
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
     assert!(v.get("log_likelihood").and_then(|x| x.as_f64()).unwrap().is_finite());
 
-    let fm = v
-        .get("filtered_means")
-        .and_then(|x| x.as_array())
-        .expect("filtered_means should be array");
+    let fm =
+        v.get("filtered_means").and_then(|x| x.as_array()).expect("filtered_means should be array");
     assert_eq!(fm.len(), 4);
     for t in 0..fm.len() {
         let row = fm[t].as_array().expect("filtered_means[t] should be array");
         assert_eq!(row.len(), 2);
     }
 
-    let fc = v
-        .get("filtered_covs")
-        .and_then(|x| x.as_array())
-        .expect("filtered_covs should be array");
+    let fc =
+        v.get("filtered_covs").and_then(|x| x.as_array()).expect("filtered_covs should be array");
     assert_eq!(fc.len(), 4);
     for t in 0..fc.len() {
         let rows = fc[t].as_array().expect("filtered_covs[t] should be array");
@@ -258,12 +210,7 @@ fn timeseries_kalman_smooth_contract() {
     let input = fixture_path("kalman_1d.json");
     assert!(input.exists(), "missing fixture: {}", input.display());
 
-    let out = run(&[
-        "timeseries",
-        "kalman-smooth",
-        "--input",
-        input.to_string_lossy().as_ref(),
-    ]);
+    let out = run(&["timeseries", "kalman-smooth", "--input", input.to_string_lossy().as_ref()]);
 
     assert!(
         out.status.success(),
@@ -273,7 +220,8 @@ fn timeseries_kalman_smooth_contract() {
 
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
-    let sm = v.get("smoothed_means").and_then(|x| x.as_array()).expect("smoothed_means should be array");
+    let sm =
+        v.get("smoothed_means").and_then(|x| x.as_array()).expect("smoothed_means should be array");
     assert_eq!(sm.len(), 4);
 }
 
@@ -359,14 +307,7 @@ fn timeseries_kalman_fit_contract() {
     assert_eq!(sm.len(), 4);
 
     let forecast = v.get("forecast").expect("forecast should exist");
-    assert_eq!(
-        forecast
-            .get("obs_means")
-            .and_then(|x| x.as_array())
-            .unwrap()
-            .len(),
-        2
-    );
+    assert_eq!(forecast.get("obs_means").and_then(|x| x.as_array()).unwrap().len(), 2);
 }
 
 #[test]
@@ -408,15 +349,11 @@ fn timeseries_kalman_viz_contract() {
     let ys = v.get("ys").and_then(|x| x.as_array()).expect("ys should be array");
     assert_eq!(ys.len(), 4);
 
-    let state_labels = v
-        .get("state_labels")
-        .and_then(|x| x.as_array())
-        .expect("state_labels should be array");
+    let state_labels =
+        v.get("state_labels").and_then(|x| x.as_array()).expect("state_labels should be array");
     assert_eq!(state_labels.len(), 1);
-    let obs_labels = v
-        .get("obs_labels")
-        .and_then(|x| x.as_array())
-        .expect("obs_labels should be array");
+    let obs_labels =
+        v.get("obs_labels").and_then(|x| x.as_array()).expect("obs_labels should be array");
     assert_eq!(obs_labels.len(), 1);
 
     let smooth = v.get("smooth").expect("smooth should exist");
@@ -425,21 +362,12 @@ fn timeseries_kalman_viz_contract() {
         .and_then(|x| x.as_array())
         .expect("smooth.state_mean should be array");
     assert_eq!(state_mean.len(), 4);
-    let obs_mean = smooth
-        .get("obs_mean")
-        .and_then(|x| x.as_array())
-        .expect("smooth.obs_mean should be array");
+    let obs_mean =
+        smooth.get("obs_mean").and_then(|x| x.as_array()).expect("smooth.obs_mean should be array");
     assert_eq!(obs_mean.len(), 4);
 
     let forecast = v.get("forecast").expect("forecast should exist");
-    assert_eq!(
-        forecast
-            .get("t")
-            .and_then(|x| x.as_array())
-            .unwrap()
-            .len(),
-        2
-    );
+    assert_eq!(forecast.get("t").and_then(|x| x.as_array()).unwrap().len(), 2);
 }
 
 #[test]
@@ -464,10 +392,7 @@ fn timeseries_kalman_forecast_contract() {
 
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
-    assert_eq!(
-        v.get("obs_means").and_then(|x| x.as_array()).unwrap().len(),
-        3
-    );
+    assert_eq!(v.get("obs_means").and_then(|x| x.as_array()).unwrap().len(), 3);
 }
 
 #[test]
@@ -494,14 +419,8 @@ fn timeseries_kalman_forecast_intervals_contract() {
 
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
-    assert_eq!(
-        v.get("obs_lower").and_then(|x| x.as_array()).unwrap().len(),
-        3
-    );
-    assert_eq!(
-        v.get("obs_upper").and_then(|x| x.as_array()).unwrap().len(),
-        3
-    );
+    assert_eq!(v.get("obs_lower").and_then(|x| x.as_array()).unwrap().len(), 3);
+    assert_eq!(v.get("obs_upper").and_then(|x| x.as_array()).unwrap().len(), 3);
     assert!(v.get("z").and_then(|x| x.as_f64()).unwrap().is_finite());
     assert_eq!(v.get("alpha").and_then(|x| x.as_f64()).unwrap(), 0.05);
 }

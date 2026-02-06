@@ -194,10 +194,7 @@ impl MaximumLikelihoodEstimator {
         let identity = DMatrix::identity(n, n);
 
         // Scale damping to the Hessian diagonal to be unit-ish across models.
-        let diag_scale = (0..n)
-            .map(|i| hessian[(i, i)].abs())
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+        let diag_scale = (0..n).map(|i| hessian[(i, i)].abs()).fold(0.0_f64, f64::max).max(1.0);
 
         let mut h_damped = hessian.clone();
         let mut damping = 0.0_f64;

@@ -26,11 +26,7 @@ fn conc_oral(dose: f64, bioavailability: f64, cl: f64, v: f64, ka: f64, t: f64) 
     let eke = (-ke * t).exp();
     // Stable form for (eke - eka) / (ka - ke)
     // eke - eka = eke * (1 - exp(-(ka-ke)t)) = eke * (-expm1(-d t))
-    let s = if d.abs() < 1e-10 {
-        t
-    } else {
-        (-(-d * t).exp_m1()) / d
-    };
+    let s = if d.abs() < 1e-10 { t } else { (-(-d * t).exp_m1()) / d };
     // C(t) = (D/V) * ka * eke * s
     pref * ka * eke * s
 }
@@ -168,15 +164,7 @@ impl OneCompartmentOralPkModel {
                 return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
             }
         }
-        Ok(Self {
-            times,
-            y,
-            dose,
-            bioavailability,
-            sigma,
-            lloq,
-            lloq_policy,
-        })
+        Ok(Self { times, y, dose, bioavailability, sigma, lloq, lloq_policy })
     }
 
     /// Predicted concentration at time `t` for parameters `(cl, v, ka)`.
@@ -350,7 +338,8 @@ impl OneCompartmentOralPkNlmeModel {
         let cl = cl_pop * ecl;
         let v = v_pop * ev;
         let ka = ka_pop * eka;
-        let (c, dc_dcl, dc_dv, dc_dka) = conc_oral_and_grad(self.dose, self.bioavailability, cl, v, ka, t);
+        let (c, dc_dcl, dc_dv, dc_dka) =
+            conc_oral_and_grad(self.dose, self.bioavailability, cl, v, ka, t);
         (c, dc_dcl, dc_dv, dc_dka, cl, v, ka)
     }
 
@@ -370,7 +359,8 @@ impl OneCompartmentOralPkNlmeModel {
 
     /// Predict for a single subject at observation times.
     pub fn predict_subject(&self, params: &[f64], subject: usize) -> Result<Vec<f64>> {
-        let (cl_pop, v_pop, ka_pop, _ocl, _ov, _oka, eta_cl, eta_v, eta_ka) = self.unpack(params)?;
+        let (cl_pop, v_pop, ka_pop, _ocl, _ov, _oka, eta_cl, eta_v, eta_ka) =
+            self.unpack(params)?;
         if subject >= self.n_subjects {
             return Err(Error::Validation("subject out of range".to_string()));
         }
@@ -380,7 +370,9 @@ impl OneCompartmentOralPkNlmeModel {
             .zip(self.subject_idx.iter())
             .filter_map(|(&t, &s)| {
                 if s == subject {
-                    Some(self.conc_subject(cl_pop, v_pop, ka_pop, eta_cl[s], eta_v[s], eta_ka[s], t))
+                    Some(
+                        self.conc_subject(cl_pop, v_pop, ka_pop, eta_cl[s], eta_v[s], eta_ka[s], t),
+                    )
                 } else {
                     None
                 }
@@ -445,15 +437,26 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
     }
 
     fn nll(&self, params: &[f64]) -> Result<f64> {
-        let (cl_pop, v_pop, ka_pop, omega_cl, omega_v, omega_ka, eta_cl, eta_v, eta_ka) = self.unpack(params)?;
+        let (cl_pop, v_pop, ka_pop, omega_cl, omega_v, omega_ka, eta_cl, eta_v, eta_ka) =
+            self.unpack(params)?;
 
         let s = self.sigma;
         let inv_s2 = 1.0 / (s * s);
         let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
 
         let mut nll = 0.0;
-        for ((&t, &yobs), &subj) in self.times.iter().zip(self.y.iter()).zip(self.subject_idx.iter()) {
-            let c = self.conc_subject(cl_pop, v_pop, ka_pop, eta_cl[subj], eta_v[subj], eta_ka[subj], t);
+        for ((&t, &yobs), &subj) in
+            self.times.iter().zip(self.y.iter()).zip(self.subject_idx.iter())
+        {
+            let c = self.conc_subject(
+                cl_pop,
+                v_pop,
+                ka_pop,
+                eta_cl[subj],
+                eta_v[subj],
+                eta_ka[subj],
+                t,
+            );
 
             if let Some(lloq) = self.lloq {
                 if yobs < lloq {
@@ -493,7 +496,8 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
-        let (cl_pop, v_pop, ka_pop, omega_cl, omega_v, omega_ka, eta_cl, eta_v, eta_ka) = self.unpack(params)?;
+        let (cl_pop, v_pop, ka_pop, omega_cl, omega_v, omega_ka, eta_cl, eta_v, eta_ka) =
+            self.unpack(params)?;
 
         let n = self.n_subjects;
         let s = self.sigma;
@@ -502,7 +506,9 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
 
         let mut g = vec![0.0_f64; self.dim()];
 
-        for ((&t, &yobs), &subj) in self.times.iter().zip(self.y.iter()).zip(self.subject_idx.iter()) {
+        for ((&t, &yobs), &subj) in
+            self.times.iter().zip(self.y.iter()).zip(self.subject_idx.iter())
+        {
             let (c, dc_dcl, dc_dv, dc_dka, cl_i, v_i, ka_i) = self.conc_subject_and_grad(
                 cl_pop,
                 v_pop,
@@ -720,8 +726,8 @@ impl LogDensityModel for OneCompartmentOralPkModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mle::MaximumLikelihoodEstimator;
     use crate::laplace::laplace_log_marginal;
+    use crate::mle::MaximumLikelihoodEstimator;
     use rand::SeedableRng;
     use rand_distr::{Distribution, Normal as RandNormal};
 
@@ -755,8 +761,9 @@ mod tests {
             y.push((c + noise.sample(&mut rng)).max(0.0));
         }
 
-        let model = OneCompartmentOralPkModel::new(times, y, dose, f, sigma, None, LloqPolicy::Censored)
-            .unwrap();
+        let model =
+            OneCompartmentOralPkModel::new(times, y, dose, f, sigma, None, LloqPolicy::Censored)
+                .unwrap();
 
         let mle = MaximumLikelihoodEstimator::new();
         let fit = mle.fit(&model).unwrap();
@@ -798,8 +805,16 @@ mod tests {
         let mut subject_idx = Vec::new();
 
         // Reuse the same closed-form concentration as the model implementation.
-        let base = OneCompartmentOralPkModel::new(vec![0.25], vec![0.0], dose, f, sigma, None, LloqPolicy::Censored)
-            .unwrap();
+        let base = OneCompartmentOralPkModel::new(
+            vec![0.25],
+            vec![0.0],
+            dose,
+            f,
+            sigma,
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
 
         for sid in 0..n_subjects {
             let eta_cl: f64 = eta_cl_dist.sample(&mut rng);

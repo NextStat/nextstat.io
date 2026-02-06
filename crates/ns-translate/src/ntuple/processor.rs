@@ -5,14 +5,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
-use ns_root::{
-    CompiledExpr, FilledHistogram, HistogramSpec, RootFile,
-    fill_histograms,
-};
+use ns_root::{CompiledExpr, FilledHistogram, HistogramSpec, RootFile, fill_histograms};
 
 use crate::pyhf::schema::{
-    Channel, HistoSysData, Measurement, MeasurementConfig, Modifier,
-    NormSysData, Observation, Sample, Workspace,
+    Channel, HistoSysData, Measurement, MeasurementConfig, Modifier, NormSysData, Observation,
+    Sample, Workspace,
 };
 
 use super::config::{ChannelConfig, NtupleModifier, SampleConfig};
@@ -99,10 +96,7 @@ impl NtupleWorkspaceBuilder {
 
         let measurement = Measurement {
             name: self.measurement_name.clone(),
-            config: MeasurementConfig {
-                poi: self.poi.clone(),
-                parameters: Vec::new(),
-            },
+            config: MeasurementConfig { poi: self.poi.clone(), parameters: Vec::new() },
         };
 
         Ok(Workspace {
@@ -153,15 +147,9 @@ impl NtupleWorkspaceBuilder {
             asimov
         };
 
-        let observation = Observation {
-            name: ch.name.clone(),
-            data: obs_data,
-        };
+        let observation = Observation { name: ch.name.clone(), data: obs_data };
 
-        let channel = Channel {
-            name: ch.name.clone(),
-            samples,
-        };
+        let channel = Channel { name: ch.name.clone(), samples };
 
         Ok((channel, observation))
     }
@@ -192,10 +180,7 @@ impl NtupleWorkspaceBuilder {
         for modifier in &sample.modifiers {
             match modifier {
                 NtupleModifier::NormFactor { name } => {
-                    modifiers.push(Modifier::NormFactor {
-                        name: name.clone(),
-                        data: None,
-                    });
+                    modifiers.push(Modifier::NormFactor { name: name.clone(), data: None });
                 }
                 NtupleModifier::NormSys { name, lo, hi } => {
                     modifiers.push(Modifier::NormSys {
@@ -261,9 +246,7 @@ impl NtupleWorkspaceBuilder {
                 }
                 NtupleModifier::StatError => {
                     // Use sqrt(sumw2) from nominal
-                    let stat_data: Vec<f64> = nominal.sumw2.iter()
-                        .map(|&s| s.sqrt())
-                        .collect();
+                    let stat_data: Vec<f64> = nominal.sumw2.iter().map(|&s| s.sqrt()).collect();
                     modifiers.push(Modifier::StatError {
                         name: format!("staterror_{}", ch.name),
                         data: stat_data,
@@ -272,11 +255,7 @@ impl NtupleWorkspaceBuilder {
             }
         }
 
-        Ok(Sample {
-            name: sample.name.clone(),
-            data: nominal.bin_content,
-            modifiers,
-        })
+        Ok(Sample { name: sample.name.clone(), data: nominal.bin_content, modifiers })
     }
 
     /// Fill a single histogram from a ROOT file + TTree.
@@ -293,9 +272,8 @@ impl NtupleWorkspaceBuilder {
         // Open or reuse cached ROOT file
         let canonical = root_path.to_path_buf();
         if !root_cache.contains_key(&canonical) {
-            let rf = RootFile::open(root_path).map_err(|e| {
-                Error::RootFile(format!("opening {}: {}", root_path.display(), e))
-            })?;
+            let rf = RootFile::open(root_path)
+                .map_err(|e| Error::RootFile(format!("opening {}: {}", root_path.display(), e)))?;
             root_cache.insert(canonical.clone(), rf);
         }
         let rf = root_cache.get(&canonical).unwrap();
@@ -303,26 +281,24 @@ impl NtupleWorkspaceBuilder {
         // Read tree
         let tree = rf.get_tree(tree_name).map_err(|e| {
             Error::RootFile(format!(
-                "reading tree '{}' from {}: {}", tree_name, root_path.display(), e
+                "reading tree '{}' from {}: {}",
+                tree_name,
+                root_path.display(),
+                e
             ))
         })?;
 
         // Compile expressions
-        let var_expr = CompiledExpr::compile(variable).map_err(|e| {
-            Error::RootFile(format!("compiling variable '{}': {}", variable, e))
-        })?;
+        let var_expr = CompiledExpr::compile(variable)
+            .map_err(|e| Error::RootFile(format!("compiling variable '{}': {}", variable, e)))?;
         let weight_expr = weight
             .map(|w| CompiledExpr::compile(w))
             .transpose()
-            .map_err(|e| {
-                Error::RootFile(format!("compiling weight: {}", e))
-            })?;
+            .map_err(|e| Error::RootFile(format!("compiling weight: {}", e)))?;
         let sel_expr = selection
             .map(|s| CompiledExpr::compile(s))
             .transpose()
-            .map_err(|e| {
-                Error::RootFile(format!("compiling selection: {}", e))
-            })?;
+            .map_err(|e| Error::RootFile(format!("compiling selection: {}", e)))?;
 
         // Collect all required branches
         let mut all_branches: Vec<String> = var_expr.required_branches.clone();
@@ -346,7 +322,10 @@ impl NtupleWorkspaceBuilder {
         for branch_name in &all_branches {
             let data = rf.branch_data(&tree, branch_name).map_err(|e| {
                 Error::RootFile(format!(
-                    "reading branch '{}' from {}: {}", branch_name, root_path.display(), e
+                    "reading branch '{}' from {}: {}",
+                    branch_name,
+                    root_path.display(),
+                    e
                 ))
             })?;
             columns.insert(branch_name.clone(), data);
@@ -361,13 +340,10 @@ impl NtupleWorkspaceBuilder {
             bin_edges: bin_edges.to_vec(),
         };
 
-        let mut results = fill_histograms(&[spec], &columns).map_err(|e| {
-            Error::RootFile(format!("filling histogram: {}", e))
-        })?;
+        let mut results = fill_histograms(&[spec], &columns)
+            .map_err(|e| Error::RootFile(format!("filling histogram: {}", e)))?;
 
-        results.pop().ok_or_else(|| {
-            Error::RootFile("fill_histograms returned empty".into())
-        })
+        results.pop().ok_or_else(|| Error::RootFile("fill_histograms returned empty".into()))
     }
 }
 

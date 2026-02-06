@@ -595,6 +595,8 @@ def main() -> int:
         ]
         if args.nuts_quality_strict:
             nuts_cmd.append("--strict")
+        if args.deterministic:
+            nuts_cmd.append("--deterministic")
         rc_nuts, out_nuts = _run_json(nuts_cmd, cwd=cwd, env=env)
         nuts_report = _read_json(args.nuts_quality_out) if args.nuts_quality_out.exists() else None
         nuts_declared = (nuts_report or {}).get("status") if isinstance(nuts_report, dict) else None
@@ -639,6 +641,8 @@ def main() -> int:
         ]
         if args.p6_glm_bench_baseline is not None:
             p6_cmd += ["--baseline", str(args.p6_glm_bench_baseline)]
+        if args.deterministic:
+            p6_cmd.append("--deterministic")
 
         rc_p6, out_p6 = _run_json(p6_cmd, cwd=cwd, env=env)
         p6_report = _read_json(args.p6_glm_bench_report_out) if args.p6_glm_bench_report_out.exists() else None

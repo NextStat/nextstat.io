@@ -40,10 +40,7 @@ pub fn read_th1d_with_flows(data: &[u8]) -> Result<HistogramWithFlows> {
     // TH1D version header
     let (th1d_ver, _end) = r.read_version()?;
     if th1d_ver < 1 {
-        return Err(RootError::Deserialization(format!(
-            "unsupported TH1D version: {}",
-            th1d_ver
-        )));
+        return Err(RootError::Deserialization(format!("unsupported TH1D version: {}", th1d_ver)));
     }
 
     // TH1 base
@@ -75,10 +72,7 @@ pub fn read_th1f_with_flows(data: &[u8]) -> Result<HistogramWithFlows> {
     // TH1F version header
     let (th1f_ver, _end) = r.read_version()?;
     if th1f_ver < 1 {
-        return Err(RootError::Deserialization(format!(
-            "unsupported TH1F version: {}",
-            th1f_ver
-        )));
+        return Err(RootError::Deserialization(format!("unsupported TH1F version: {}", th1f_ver)));
     }
 
     // TH1 base
@@ -158,11 +152,7 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
 
     // fSumw2 (TArrayD)
     let sumw2_n = r.read_u32()? as usize;
-    let sumw2 = if sumw2_n > 0 {
-        Some(r.read_array_f64(sumw2_n)?)
-    } else {
-        None
-    };
+    let sumw2 = if sumw2_n > 0 { Some(r.read_array_f64(sumw2_n)?) } else { None };
 
     // fOption (TString)
     let _option = r.read_string()?;
@@ -213,11 +203,7 @@ fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
 
     // fXbins (TArrayD) — variable bin edges
     let xbins_n = r.read_u32()? as usize;
-    let bin_edges = if xbins_n > 0 {
-        r.read_array_f64(xbins_n)?
-    } else {
-        Vec::new()
-    };
+    let bin_edges = if xbins_n > 0 { r.read_array_f64(xbins_n)? } else { Vec::new() };
 
     // Skip remaining axis fields to end
     if let Some(e) = end {
@@ -226,12 +212,7 @@ fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
         }
     }
 
-    Ok(AxisInfo {
-        n_bins,
-        x_min,
-        x_max,
-        bin_edges,
-    })
+    Ok(AxisInfo { n_bins, x_min, x_max, bin_edges })
 }
 
 /// Skip a versioned ROOT object by jumping to its end_pos.
@@ -286,11 +267,7 @@ fn build_histogram_with_flows(
         None => (None, None, None),
         Some(sw2) => {
             if sw2.len() == n_cells as usize {
-                (
-                    Some(sw2[1..1 + n_bins].to_vec()),
-                    Some(sw2[0]),
-                    Some(sw2[1 + n_bins]),
-                )
+                (Some(sw2[1..1 + n_bins].to_vec()), Some(sw2[0]), Some(sw2[1 + n_bins]))
             } else if sw2.len() == n_bins {
                 (Some(sw2), None, None)
             } else {
@@ -304,9 +281,7 @@ fn build_histogram_with_flows(
         axis.bin_edges.clone()
     } else {
         let width = (axis.x_max - axis.x_min) / n_bins as f64;
-        (0..=n_bins)
-            .map(|i| axis.x_min + i as f64 * width)
-            .collect()
+        (0..=n_bins).map(|i| axis.x_min + i as f64 * width).collect()
     };
 
     let entries: f64 = bin_content.iter().sum();

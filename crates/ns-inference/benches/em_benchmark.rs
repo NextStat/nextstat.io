@@ -42,12 +42,17 @@ fn bench_kalman_em_local_level_n_scaling(c: &mut Criterion) {
         let ys = sim.ys;
 
         for iters in [1usize, 5] {
-            group.bench_with_input(BenchmarkId::new(format!("iters={}", iters), n), &ys, |b, ys| {
-                b.iter(|| {
-                    let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters)).unwrap();
-                    black_box(res.n_iter);
-                });
-            });
+            group.bench_with_input(
+                BenchmarkId::new(format!("iters={}", iters), n),
+                &ys,
+                |b, ys| {
+                    b.iter(|| {
+                        let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters))
+                            .unwrap();
+                        black_box(res.n_iter);
+                    });
+                },
+            );
         }
     }
     group.finish();
@@ -64,12 +69,17 @@ fn bench_kalman_em_local_level_dim_scaling(c: &mut Criterion) {
         let ys = sim.ys;
 
         for iters in [1usize, 5] {
-            group.bench_with_input(BenchmarkId::new(format!("iters={}", iters), dim), &ys, |b, ys| {
-                b.iter(|| {
-                    let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters)).unwrap();
-                    black_box(res.n_iter);
-                });
-            });
+            group.bench_with_input(
+                BenchmarkId::new(format!("iters={}", iters), dim),
+                &ys,
+                |b, ys| {
+                    b.iter(|| {
+                        let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters))
+                            .unwrap();
+                        black_box(res.n_iter);
+                    });
+                },
+            );
         }
     }
 
@@ -88,12 +98,17 @@ fn bench_kalman_em_ar1_n_scaling(c: &mut Criterion) {
         let ys = sim.ys;
 
         for iters in [1usize, 5] {
-            group.bench_with_input(BenchmarkId::new(format!("iters={}", iters), n), &ys, |b, ys| {
-                b.iter(|| {
-                    let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters)).unwrap();
-                    black_box(res.n_iter);
-                });
-            });
+            group.bench_with_input(
+                BenchmarkId::new(format!("iters={}", iters), n),
+                &ys,
+                |b, ys| {
+                    b.iter(|| {
+                        let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters))
+                            .unwrap();
+                        black_box(res.n_iter);
+                    });
+                },
+            );
         }
     }
     group.finish();
@@ -111,12 +126,17 @@ fn bench_kalman_em_ar1_dim_scaling(c: &mut Criterion) {
         let ys = sim.ys;
 
         for iters in [1usize, 5] {
-            group.bench_with_input(BenchmarkId::new(format!("iters={}", iters), dim), &ys, |b, ys| {
-                b.iter(|| {
-                    let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters)).unwrap();
-                    black_box(res.n_iter);
-                });
-            });
+            group.bench_with_input(
+                BenchmarkId::new(format!("iters={}", iters), dim),
+                &ys,
+                |b, ys| {
+                    b.iter(|| {
+                        let res = kalman_em(black_box(&init_model), black_box(ys), cfg_qr(iters))
+                            .unwrap();
+                        black_box(res.n_iter);
+                    });
+                },
+            );
         }
     }
 

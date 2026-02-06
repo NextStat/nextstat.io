@@ -8,8 +8,8 @@ use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 use statrs::distribution::{ContinuousCDF, Normal};
 
-use super::kalman::{KalmanFilterResult, KalmanModel};
 use super::internal::symmetrize;
+use super::kalman::{KalmanFilterResult, KalmanModel};
 
 /// Forecast output.
 #[derive(Debug, Clone)]
@@ -38,7 +38,10 @@ pub struct KalmanForecastIntervals {
 }
 
 /// Compute marginal normal prediction intervals for the observation forecasts in `fc`.
-pub fn kalman_forecast_intervals(fc: &KalmanForecastResult, alpha: f64) -> Result<KalmanForecastIntervals> {
+pub fn kalman_forecast_intervals(
+    fc: &KalmanForecastResult,
+    alpha: f64,
+) -> Result<KalmanForecastIntervals> {
     if !(alpha.is_finite() && alpha > 0.0 && alpha < 1.0) {
         return Err(Error::Validation("alpha must be in (0, 1)".to_string()));
     }
@@ -98,12 +101,7 @@ pub fn kalman_forecast_intervals(fc: &KalmanForecastResult, alpha: f64) -> Resul
         obs_upper.push(hi);
     }
 
-    Ok(KalmanForecastIntervals {
-        alpha,
-        z,
-        obs_lower,
-        obs_upper,
-    })
+    Ok(KalmanForecastIntervals { alpha, z, obs_lower, obs_upper })
 }
 
 /// Forecast K steps ahead starting from a filtered state `(m_last, p_last)` at time T-1.
@@ -148,16 +146,15 @@ pub fn kalman_forecast_from_last(
         obs_covs.push(symmetrize(&y_cov));
     }
 
-    Ok(KalmanForecastResult {
-        state_means,
-        state_covs,
-        obs_means,
-        obs_covs,
-    })
+    Ok(KalmanForecastResult { state_means, state_covs, obs_means, obs_covs })
 }
 
 /// Forecast K steps ahead starting from the last filtered state in `fr`.
-pub fn kalman_forecast(model: &KalmanModel, fr: &KalmanFilterResult, steps: usize) -> Result<KalmanForecastResult> {
+pub fn kalman_forecast(
+    model: &KalmanModel,
+    fr: &KalmanFilterResult,
+    steps: usize,
+) -> Result<KalmanForecastResult> {
     let t_max = fr.filtered_means.len();
     if t_max == 0 {
         return Err(Error::Validation("filter result must be non-empty".to_string()));
@@ -165,7 +162,12 @@ pub fn kalman_forecast(model: &KalmanModel, fr: &KalmanFilterResult, steps: usiz
     if fr.filtered_covs.len() != t_max {
         return Err(Error::Validation("filter result has inconsistent lengths".to_string()));
     }
-    kalman_forecast_from_last(model, &fr.filtered_means[t_max - 1], &fr.filtered_covs[t_max - 1], steps)
+    kalman_forecast_from_last(
+        model,
+        &fr.filtered_means[t_max - 1],
+        &fr.filtered_covs[t_max - 1],
+        steps,
+    )
 }
 
 #[cfg(test)]

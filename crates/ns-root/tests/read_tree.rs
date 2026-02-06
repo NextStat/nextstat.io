@@ -5,9 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
-        .join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures").join(name)
 }
 
 #[derive(serde::Deserialize)]
@@ -82,7 +80,8 @@ fn read_branch_data() {
     // Test each branch
     for (branch_name, exp) in &expected.branches {
         eprintln!("Testing branch: {}", branch_name);
-        let data = f.branch_data(&tree, branch_name)
+        let data = f
+            .branch_data(&tree, branch_name)
             .unwrap_or_else(|e| panic!("failed to read branch '{}': {}", branch_name, e));
 
         assert_eq!(
@@ -98,7 +97,11 @@ fn read_branch_data() {
             assert!(
                 (got - want).abs() < tol,
                 "branch '{}' [{}]: got {} want {} (tol={})",
-                branch_name, i, got, want, tol
+                branch_name,
+                i,
+                got,
+                want,
+                tol
             );
         }
 
@@ -112,7 +115,10 @@ fn read_branch_data() {
         assert!(
             (sum - exp.sum).abs() < tol,
             "branch '{}' sum: got {} want {} (tol={})",
-            branch_name, sum, exp.sum, tol
+            branch_name,
+            sum,
+            exp.sum,
+            tol
         );
     }
 }
@@ -150,15 +156,10 @@ fn histogram_from_tree() {
     let results = ns_root::fill_histograms(&[spec_unweighted], &columns).unwrap();
     let h = &results[0];
 
-    for (i, (&got, &want)) in h.bin_content.iter()
-        .zip(expected.mbb_histogram.bin_content_unweighted.iter())
-        .enumerate()
+    for (i, (&got, &want)) in
+        h.bin_content.iter().zip(expected.mbb_histogram.bin_content_unweighted.iter()).enumerate()
     {
-        assert!(
-            (got - want).abs() < 0.5,
-            "unweighted bin[{}]: got {} want {}",
-            i, got, want
-        );
+        assert!((got - want).abs() < 0.5, "unweighted bin[{}]: got {} want {}", i, got, want);
     }
 
     // Weighted histogram
@@ -173,15 +174,10 @@ fn histogram_from_tree() {
     let results = ns_root::fill_histograms(&[spec_weighted], &columns).unwrap();
     let h = &results[0];
 
-    for (i, (&got, &want)) in h.bin_content.iter()
-        .zip(expected.mbb_histogram.bin_content_weighted.iter())
-        .enumerate()
+    for (i, (&got, &want)) in
+        h.bin_content.iter().zip(expected.mbb_histogram.bin_content_weighted.iter()).enumerate()
     {
-        assert!(
-            (got - want).abs() < 0.5,
-            "weighted bin[{}]: got {} want {}",
-            i, got, want
-        );
+        assert!((got - want).abs() < 0.5, "weighted bin[{}]: got {} want {}", i, got, want);
     }
 
     // Weighted + selected histogram
@@ -196,14 +192,12 @@ fn histogram_from_tree() {
     let results = ns_root::fill_histograms(&[spec_sel], &columns).unwrap();
     let h = &results[0];
 
-    for (i, (&got, &want)) in h.bin_content.iter()
+    for (i, (&got, &want)) in h
+        .bin_content
+        .iter()
         .zip(expected.mbb_histogram_selected.bin_content_weighted.iter())
         .enumerate()
     {
-        assert!(
-            (got - want).abs() < 0.5,
-            "selected bin[{}]: got {} want {}",
-            i, got, want
-        );
+        assert!((got - want).abs() < 0.5, "selected bin[{}]: got {} want {}", i, got, want);
     }
 }

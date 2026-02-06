@@ -84,9 +84,6 @@ impl Directory {
 
     /// Find a key by name (returns the last cycle — highest version).
     pub fn find_key(&self, name: &str) -> Option<&Key> {
-        self.keys
-            .iter()
-            .filter(|k| k.name == name)
-            .max_by_key(|k| k.cycle)
+        self.keys.iter().filter(|k| k.name == name).max_by_key(|k| k.cycle)
     }
 }
