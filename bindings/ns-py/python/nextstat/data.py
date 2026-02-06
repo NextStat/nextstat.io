@@ -94,6 +94,9 @@ class GlmSpec:
     offset: Optional[List[float]] = None
     coef_prior_mu: float = 0.0
     coef_prior_sigma: float = 10.0
+    # Phase 9: Gaussian observation sigma (for linear/mixed models).
+    obs_sigma_prior_m: Optional[float] = None
+    obs_sigma_prior_s: Optional[float] = None
     # Phase 7 hierarchical extensions (kept optional for backward compat).
     random_intercept_non_centered: bool = False
     random_slope_feature_idx: Optional[int] = None
@@ -111,6 +114,8 @@ class GlmSpec:
         n_groups: Optional[int] = None,
         coef_prior_mu: float = 0.0,
         coef_prior_sigma: float = 10.0,
+        obs_sigma_prior_m: Optional[float] = None,
+        obs_sigma_prior_s: Optional[float] = None,
         random_intercept_non_centered: bool = False,
         random_slope_feature_idx: Optional[int] = None,
         random_slope_non_centered: bool = False,
@@ -126,6 +131,8 @@ class GlmSpec:
             n_groups=n_groups,
             coef_prior_mu=float(coef_prior_mu),
             coef_prior_sigma=float(coef_prior_sigma),
+            obs_sigma_prior_m=(None if obs_sigma_prior_m is None else float(obs_sigma_prior_m)),
+            obs_sigma_prior_s=(None if obs_sigma_prior_s is None else float(obs_sigma_prior_s)),
             random_intercept_non_centered=bool(random_intercept_non_centered),
             random_slope_feature_idx=random_slope_feature_idx,
             random_slope_non_centered=bool(random_slope_non_centered),
@@ -212,6 +219,8 @@ class GlmSpec:
                 "offset": self.offset,
                 "coef_prior_mu": self.coef_prior_mu,
                 "coef_prior_sigma": self.coef_prior_sigma,
+                "obs_sigma_prior_m": self.obs_sigma_prior_m,
+                "obs_sigma_prior_s": self.obs_sigma_prior_s,
                 "random_intercept_non_centered": self.random_intercept_non_centered,
                 "random_slope_feature_idx": self.random_slope_feature_idx,
                 "random_slope_non_centered": self.random_slope_non_centered,
@@ -242,6 +251,8 @@ class GlmSpec:
             offset=(None if d.get("offset") is None else _as_1d_float_list(d.get("offset"))),
             coef_prior_mu=float(d.get("coef_prior_mu", 0.0)),
             coef_prior_sigma=float(d.get("coef_prior_sigma", 10.0)),
+            obs_sigma_prior_m=(None if d.get("obs_sigma_prior_m") is None else float(d.get("obs_sigma_prior_m"))),
+            obs_sigma_prior_s=(None if d.get("obs_sigma_prior_s") is None else float(d.get("obs_sigma_prior_s"))),
             random_intercept_non_centered=bool(d.get("random_intercept_non_centered", False)),
             random_slope_feature_idx=(
                 None if d.get("random_slope_feature_idx") is None else int(d.get("random_slope_feature_idx"))
@@ -264,6 +275,12 @@ class GlmSpec:
             raise ValueError("offset is only supported for poisson")
         if self.lkj_eta <= 0.0:
             raise ValueError("lkj_eta must be > 0")
+        if (self.obs_sigma_prior_m is None) != (self.obs_sigma_prior_s is None):
+            raise ValueError("obs_sigma_prior_m and obs_sigma_prior_s must be set together")
+        if self.obs_sigma_prior_s is not None and self.obs_sigma_prior_s <= 0.0:
+            raise ValueError("obs_sigma_prior_s must be > 0")
+        if self.kind != "linear" and (self.obs_sigma_prior_m is not None or self.obs_sigma_prior_s is not None):
+            raise ValueError("obs_sigma_prior_* is only supported for linear models")
 
         has_hier = (
             self.random_intercept_non_centered
@@ -308,6 +325,8 @@ class GlmSpec:
                 random_slope_non_centered=self.random_slope_non_centered,
                 correlated_feature_idx=self.correlated_feature_idx,
                 lkj_eta=self.lkj_eta,
+                obs_sigma_prior_m=self.obs_sigma_prior_m,
+                obs_sigma_prior_s=self.obs_sigma_prior_s,
             )
         if self.kind == "logistic":
             return _core.ComposedGlmModel.logistic_regression(

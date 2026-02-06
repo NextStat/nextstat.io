@@ -85,6 +85,12 @@ impl NormalPrior {
 #[derive(Debug, Clone)]
 enum Likelihood {
     GaussianY { y: Vec<f64> },      // sigma fixed to 1
+    GaussianYSigma {
+        y: Vec<f64>,
+        sigma_idx: usize,
+        logsigma_prior_m: f64,
+        logsigma_prior_s: f64,
+    }, // sigma inferred (MAP) with LogNormal prior
     BernoulliLogitY { y: Vec<u8> }, // y in {0,1}
     PoissonY { y: Vec<u64>, offset: Option<Vec<f64>> }, // y >= 0, log link
 }
@@ -264,9 +270,17 @@ pub struct ComposedGlmModel {
 }
 
 impl ComposedGlmModel {
+    fn base_dim(&self) -> usize {
+        self.x.p
+            + if self.include_intercept { 1 } else { 0 }
+            + match &self.likelihood {
+                Likelihood::GaussianYSigma { .. } => 1,
+                _ => 0,
+            }
+    }
+
     fn dim_internal(&self) -> usize {
-        let base = self.x.p + if self.include_intercept { 1 } else { 0 };
-        let mut dim = base;
+        let mut dim = self.base_dim();
         if let Some(ri) = &self.random_intercept {
             dim += 2 + ri.n_groups;
         }
@@ -293,6 +307,26 @@ impl ComposedGlmModel {
                 }
                 if y.iter().any(|v| !v.is_finite()) {
                     return Err(Error::Validation("y must contain only finite values".to_string()));
+                }
+            }
+            Likelihood::GaussianYSigma { y, logsigma_prior_m, logsigma_prior_s, .. } => {
+                if y.len() != n {
+                    return Err(Error::Validation(format!(
+                        "y length must match n: expected {}, got {}",
+                        n,
+                        y.len()
+                    )));
+                }
+                if y.iter().any(|v| !v.is_finite()) {
+                    return Err(Error::Validation("y must contain only finite values".to_string()));
+                }
+                if !logsigma_prior_m.is_finite() {
+                    return Err(Error::Validation("logsigma_y_prior_m must be finite".to_string()));
+                }
+                if !logsigma_prior_s.is_finite() || *logsigma_prior_s <= 0.0 {
+                    return Err(Error::Validation(
+                        "logsigma_y_prior_s must be finite and > 0".to_string(),
+                    ));
                 }
             }
             Likelihood::BernoulliLogitY { y } => {
@@ -387,6 +421,9 @@ impl LogDensityModel for ComposedGlmModel {
         for j in 0..self.x.p {
             out.push(format!("beta{}", j + 1));
         }
+        if let Likelihood::GaussianYSigma { .. } = &self.likelihood {
+            out.push("sigma_y".to_string());
+        }
         if let Some(ri) = &self.random_intercept {
             out.push("mu_alpha".to_string());
             out.push("sigma_alpha".to_string());
@@ -426,10 +463,10 @@ impl LogDensityModel for ComposedGlmModel {
     }
 
     fn parameter_bounds(&self) -> Vec<(f64, f64)> {
-        let mut out = vec![
-            (f64::NEG_INFINITY, f64::INFINITY);
-            self.x.p + if self.include_intercept { 1 } else { 0 }
-        ];
+        let mut out = vec![(f64::NEG_INFINITY, f64::INFINITY); self.base_dim()];
+        if let Likelihood::GaussianYSigma { sigma_idx, .. } = &self.likelihood {
+            out[*sigma_idx] = (0.0, f64::INFINITY);
+        }
         if let Some(ri) = &self.random_intercept {
             out.push((f64::NEG_INFINITY, f64::INFINITY)); // mu_alpha
             out.push((0.0, f64::INFINITY)); // sigma_alpha
@@ -452,7 +489,10 @@ impl LogDensityModel for ComposedGlmModel {
     }
 
     fn parameter_init(&self) -> Vec<f64> {
-        let mut out = vec![0.0; self.x.p + if self.include_intercept { 1 } else { 0 }];
+        let mut out = vec![0.0; self.base_dim()];
+        if let Likelihood::GaussianYSigma { sigma_idx, .. } = &self.likelihood {
+            out[*sigma_idx] = 1.0;
+        }
         if let Some(ri) = &self.random_intercept {
             out.push(0.0); // mu_alpha
             out.push(1.0); // sigma_alpha
@@ -641,6 +681,24 @@ impl LogDensityModel for ComposedGlmModel {
         }
 
         // Likelihood block.
+        let (gauss_sigma_idx, gauss_logsigma_prior) = match &self.likelihood {
+            Likelihood::GaussianYSigma { sigma_idx, logsigma_prior_m, logsigma_prior_s, .. } => {
+                (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s)))
+            }
+            _ => (None, None),
+        };
+        if let (Some(idx), Some((m, s))) = (gauss_sigma_idx, gauss_logsigma_prior) {
+            let sigma = params[idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_y must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+            let t = sigma.ln();
+            let z = (t - m) / s;
+            nll += 0.5 * z * z + t;
+        }
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
             if let Some(ri) = &self.random_intercept {
@@ -689,6 +747,12 @@ impl LogDensityModel for ComposedGlmModel {
                 Likelihood::GaussianY { y } => {
                     let r = y[i] - eta;
                     nll += 0.5 * r * r;
+                }
+                Likelihood::GaussianYSigma { y, sigma_idx, .. } => {
+                    let sigma = params[*sigma_idx];
+                    let r = y[i] - eta;
+                    let inv_sig2 = 1.0 / (sigma * sigma);
+                    nll += 0.5 * r * r * inv_sig2 + sigma.ln();
                 }
                 Likelihood::BernoulliLogitY { y } => {
                     let yi = y[i] as f64;
@@ -876,6 +940,25 @@ impl LogDensityModel for ComposedGlmModel {
         }
 
         // Likelihood contributions.
+        let (gauss_sigma_idx, gauss_logsigma_prior) = match &self.likelihood {
+            Likelihood::GaussianYSigma { sigma_idx, logsigma_prior_m, logsigma_prior_s, .. } => {
+                (Some(*sigma_idx), Some((*logsigma_prior_m, *logsigma_prior_s)))
+            }
+            _ => (None, None),
+        };
+        if let (Some(idx), Some((m, s))) = (gauss_sigma_idx, gauss_logsigma_prior) {
+            let sigma = params[idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_y must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+            let t = sigma.ln();
+            let z = (t - m) / s;
+            let ddt = z / s + 1.0;
+            grad[idx] += ddt * (1.0 / sigma);
+        }
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
             let ri_group = if let Some(ri) = &self.random_intercept {
@@ -934,6 +1017,10 @@ impl LogDensityModel for ComposedGlmModel {
 
             let d_eta = match &self.likelihood {
                 Likelihood::GaussianY { y } => eta - y[i],
+                Likelihood::GaussianYSigma { y, sigma_idx, .. } => {
+                    let sigma = params[*sigma_idx];
+                    (eta - y[i]) / (sigma * sigma)
+                }
                 Likelihood::BernoulliLogitY { y } => sigmoid(eta) - (y[i] as f64),
                 Likelihood::PoissonY { y, offset } => {
                     let mut eta2 = eta;
@@ -951,6 +1038,13 @@ impl LogDensityModel for ComposedGlmModel {
             for j in 0..self.x.p {
                 grad[beta_offset + j] += d_eta * row[j];
             }
+
+            if let Likelihood::GaussianYSigma { y, sigma_idx, .. } = &self.likelihood {
+                let sigma = params[*sigma_idx];
+                let r = y[i] - eta;
+                grad[*sigma_idx] += 1.0 / sigma - (r * r) / (sigma * sigma * sigma);
+            }
+
             if let (Some(ri), Some(g)) = (&self.random_intercept, ri_group) {
                 if ri.non_centered {
                     let sigma = params[ri.sigma_idx];
@@ -1017,7 +1111,15 @@ pub struct ModelBuilder {
 
 impl ModelBuilder {
     fn reindex_random_effects(&mut self) {
-        let base = self.x.p + if self.include_intercept { 1 } else { 0 };
+        let base = self.x.p
+            + if self.include_intercept { 1 } else { 0 }
+            + match &self.likelihood {
+                Likelihood::GaussianYSigma { sigma_idx, .. } => {
+                    debug_assert_eq!(*sigma_idx, self.x.p + if self.include_intercept { 1 } else { 0 });
+                    1
+                }
+                _ => 0,
+            };
         let mut offset = base;
 
         if let Some(c) = &mut self.correlated {
@@ -1068,6 +1170,36 @@ impl ModelBuilder {
             random_slope: None,
             correlated: None,
         })
+    }
+
+    /// Enable an inferred observation sigma for the Gaussian likelihood.
+    ///
+    /// This turns the baseline linear regression into an LMM-ready likelihood:
+    /// `y_i ~ Normal(eta_i, sigma_y)` with a LogNormal prior on `sigma_y`.
+    pub fn with_gaussian_obs_sigma_prior_lognormal(
+        mut self,
+        logsigma_prior: (f64, f64),
+    ) -> Result<Self> {
+        match &self.likelihood {
+            Likelihood::GaussianY { y } => {
+                let sigma_idx = self.x.p + if self.include_intercept { 1 } else { 0 };
+                self.likelihood = Likelihood::GaussianYSigma {
+                    y: y.clone(),
+                    sigma_idx,
+                    logsigma_prior_m: logsigma_prior.0,
+                    logsigma_prior_s: logsigma_prior.1,
+                };
+                // Reindex random effects after expanding the base parameter block.
+                self.reindex_random_effects();
+                Ok(self)
+            }
+            Likelihood::GaussianYSigma { .. } => Err(Error::Validation(
+                "Gaussian observation sigma already enabled".to_string(),
+            )),
+            _ => Err(Error::Validation(
+                "with_gaussian_obs_sigma_prior_lognormal is only valid for Gaussian likelihood".to_string(),
+            )),
+        }
     }
 
     /// Start a Bernoulli-logit (logistic regression) builder.
@@ -1582,6 +1714,29 @@ mod tests {
         let g = m.grad_nll(&p).unwrap();
         let g_fd = finite_diff_grad(&m, &p, 1e-6);
 
+        assert_vec_close(&g, &g_fd, 5e-4);
+    }
+
+    #[test]
+    fn test_builder_gaussian_sigma_grad_finite_diff_smoke() {
+        let x = vec![vec![1.0, 0.5], vec![1.0, -0.3], vec![1.0, 1.2], vec![1.0, 0.1]];
+        let y = vec![0.1, -0.2, 1.3, 0.7];
+
+        let m = ModelBuilder::linear_regression(x, y, false)
+            .unwrap()
+            .with_coef_prior_normal(0.0, 1e9)
+            .unwrap()
+            .with_gaussian_obs_sigma_prior_lognormal((0.0, 2.0))
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut p = m.parameter_init();
+        let sigma_idx = m.parameter_names().iter().position(|s| s == "sigma_y").unwrap();
+        p[sigma_idx] = 1.2;
+
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
         assert_vec_close(&g, &g_fd, 5e-4);
     }
 }

@@ -51,4 +51,6 @@ def test_plot_helpers_require_matplotlib():
     with pytest.raises(ImportError):
         nextstat.viz.plot_cls_curve({"alpha": 0.05, "points": []})
     with pytest.raises(ImportError):
+        nextstat.viz.plot_brazil_limits({"alpha": 0.05, "points": []})
+    with pytest.raises(ImportError):
         nextstat.viz.plot_profile_curve({"points": []})

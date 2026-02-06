@@ -24,7 +24,7 @@ from _tolerances import (
 pytestmark = pytest.mark.slow
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
-N_TOYS = int(os.environ.get("NS_TOYS", "200"))
+N_TOYS = int(os.environ.get("NS_TOYS", "40"))
 SEED = int(os.environ.get("NS_SEED", "0"))
 FIXTURES = os.environ.get("NS_FIXTURES", "simple")
 

@@ -46,6 +46,10 @@ Two practical execution templates:
 
 See the Cookbook section below for copy-paste examples for both.
 
+Repo templates (recommended starting point):
+- `scripts/condor/apex2_root_suite_single.sub` + `scripts/condor/run_apex2_root_suite_single.sh`
+- `scripts/condor/apex2_root_suite_array.sub` + `scripts/condor/run_apex2_root_suite_case.sh`
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
@@ -136,6 +140,15 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_repor
   --cases tmp/apex2_root_cases.json \
   --keep-going \
   --out tmp/apex2_root_suite_report.json
+```
+
+To run a single case (useful for HTCondor job arrays):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --case-index 0 \
+  --out tmp/apex2_root_suite_case_0.json
 ```
 
 #### Option C: pyhf parity + speed only (no ROOT)
@@ -324,6 +337,10 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
 
 12) HTCondor: one job for the whole suite (simple template)
 
+Preferred: start from the repo templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_single.sub`
+- `scripts/condor/run_apex2_root_suite_single.sh`
+
 Create a submit file `root_suite.sub` next to the repository (or in a separate directory):
 
 ```ini
@@ -353,7 +370,25 @@ Notes:
 
 13) HTCondor: job array (one case per job)
 
-Idea: generate `tmp/apex2_root_cases.json` ahead of time, then split into a case list (by export folder names) and run `tests/apex2_root_profile_report.py` for a single input XML at a time.
+Preferred: use the suite runner's per-case mode (`--case-index`) with the templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_array.sub`
+- `scripts/condor/run_apex2_root_suite_case.sh`
+
+This keeps the report format identical to the single-job suite (just `n_cases=1` per job), which makes
+post-aggregation straightforward.
+
+Aggregation (preferred array mode):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir /path/to/results \
+  --glob "apex2_root_case_*.json" \
+  --out /path/to/results/apex2_root_suite_aggregate.json \
+  --exit-nonzero-on-fail
+```
+
+Alternative: if you want full control and/or do not want to depend on `--case-index`, you can run the low-level
+engine (`tests/validate_root_profile_scan.py`) in an array keyed by case name (example below).
 
 Minimal path without a custom split script:
 1) Generate cases (this also gives you the list of `name` values in JSON):

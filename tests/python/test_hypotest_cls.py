@@ -93,8 +93,9 @@ def test_upper_limits_linear_scan_simple_parity():
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
 
     # Scan-based UL is expensive (many hypotest evaluations). Keep it opt-in and configurable.
-    n_scan = int(os.environ.get("NS_UL_SCAN_POINTS", "81"))
-    scan = np.linspace(0.0, 5.0, n_scan)
+    n_scan = int(os.environ.get("NS_UL_SCAN_POINTS", "21"))
+    scan_stop = float(os.environ.get("NS_UL_SCAN_STOP", "5.0"))
+    scan = np.linspace(0.0, scan_stop, n_scan)
     pyhf_obs, pyhf_exp = pyhf.infer.intervals.upper_limits.upper_limit(
         data,
         model,

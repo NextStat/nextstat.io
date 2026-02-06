@@ -61,6 +61,16 @@ fast, deterministic NUTS/HMC diagnostics smoke test on a small non-HEP model
 (GaussianMeanModel). This is intended to catch catastrophic sampling regressions without
 requiring `NS_RUN_SLOW=1`.
 
+Optional: embed the full NUTS/HMC quality report into the master report JSON.
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --nuts-quality \
+  --nuts-quality-warmup 200 \
+  --nuts-quality-samples 200 \
+  --out tmp/apex2_master_report.json
+```
+
 ### 0.2) NUTS/HMC quality report (JSON, thresholds)
 
 This runner produces a standalone JSON artifact focused on Posterior/HMC/NUTS quality:

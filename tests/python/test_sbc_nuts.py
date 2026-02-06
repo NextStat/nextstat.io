@@ -3,7 +3,7 @@
 These tests are intentionally slow and opt-in.
 
 Run with:
-  NS_RUN_SLOW=1 NS_SBC_RUNS=30 NS_SBC_WARMUP=300 NS_SBC_SAMPLES=300 \
+  NS_RUN_SLOW=1 NS_RUN_SBC=1 NS_SBC_RUNS=30 NS_SBC_WARMUP=300 NS_SBC_SAMPLES=300 \
     PYTHONPATH=bindings/ns-py/python ./.venv/bin/python -m pytest -q -m slow tests/python/test_sbc_nuts.py
 """
 
@@ -18,7 +18,7 @@ import pytest
 
 import nextstat
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.sbc]
 
 
 def _mean(xs: Sequence[float]) -> float:
@@ -68,6 +68,8 @@ def _assert_sbc_u01(samples_u: Sequence[float], *, max_mean_delta: float, max_va
 def _require_slow() -> Tuple[int, int, int, int]:
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow SBC tests.")
+    if os.environ.get("NS_RUN_SBC") != "1":
+        pytest.skip("Set NS_RUN_SBC=1 to run SBC tests (they are very slow).")
     n_runs = int(os.environ.get("NS_SBC_RUNS", "20"))
     n_warmup = int(os.environ.get("NS_SBC_WARMUP", "200"))
     n_samples = int(os.environ.get("NS_SBC_SAMPLES", "200"))

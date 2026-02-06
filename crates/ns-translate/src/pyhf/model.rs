@@ -627,6 +627,11 @@ impl HistFactoryModel {
             });
         }
 
+        // pyhf orders channels lexicographically (see `model.config.channels`), and the flattened
+        // main-data vector follows that order. Sort here so `with_observed_main(...)` can accept
+        // pyhf-ordered observations without requiring callers to permute.
+        channels.sort_by(|a, b| a.name.cmp(&b.name));
+
         let model = Self { parameters, poi_index, channels };
         model.validate_internal_indices()?;
         Ok(model)
@@ -2157,14 +2162,18 @@ mod tests {
         // Should have data for SR (2 bins) + CR (2 bins) = 4 bins
         assert_eq!(expected.len(), 4);
 
-        // SR expected depends on modifiers applied
-        // For now, just check that we have reasonable values
-        assert!(expected[0] > 100.0 && expected[0] < 150.0, "SR bin 0: {}", expected[0]);
-        assert!(expected[1] > 100.0 && expected[1] < 150.0, "SR bin 1: {}", expected[1]);
+        // `HistFactoryModel` uses pyhf ordering for main bins: channels are sorted
+        // lexicographically, so CR comes before SR for this fixture.
+        assert_eq!(model.channels[0].name, "CR");
+        assert_eq!(model.channels[1].name, "SR");
 
         // CR: background(500,510) at nominal with shapefactor
-        assert!(expected[2] > 450.0 && expected[2] < 550.0, "CR bin 0: {}", expected[2]);
-        assert!(expected[3] > 450.0 && expected[3] < 550.0, "CR bin 1: {}", expected[3]);
+        assert!(expected[0] > 450.0 && expected[0] < 550.0, "CR bin 0: {}", expected[0]);
+        assert!(expected[1] > 450.0 && expected[1] < 550.0, "CR bin 1: {}", expected[1]);
+
+        // SR expected depends on modifiers applied; check reasonable values.
+        assert!(expected[2] > 100.0 && expected[2] < 150.0, "SR bin 0: {}", expected[2]);
+        assert!(expected[3] > 100.0 && expected[3] < 150.0, "SR bin 1: {}", expected[3]);
     }
 
     #[test]

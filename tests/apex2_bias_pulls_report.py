@@ -138,6 +138,7 @@ def _run_case(
     workspace = _load_workspace(fixture)
     model, data_nominal = _pyhf_model_and_data(workspace, measurement_name=measurement)
     pyhf_names = list(model.config.par_names)
+    pyhf_index = {name: i for i, name in enumerate(pyhf_names)}
 
     pars_true = np.asarray(model.config.suggested_init(), dtype=float)
     poi_idx = int(model.config.poi_index)
@@ -207,7 +208,7 @@ def _run_case(
         unc_ns = np.asarray(res_ns.uncertainties, dtype=float)
 
         for name in param_names:
-            i_py = pyhf_names.index(name)
+            i_py = pyhf_index[name]
             i_ns = ns_index[name]
 
             th_true = float(truth_by_name[name])
@@ -232,6 +233,12 @@ def _run_case(
     per_param: Dict[str, Any] = {}
     any_failed = False
     any_ran = False
+    max_abs_delta_mean = 0.0
+    max_abs_delta_std = 0.0
+    max_abs_delta_cov = 0.0
+    n_param_ok = 0
+    n_param_fail = 0
+    n_param_skipped = 0
     for name in param_names:
         n_used = min(len(pulls_pyhf[name]), len(pulls_ns[name]))
         if n_used < min_used:
@@ -240,6 +247,7 @@ def _run_case(
                 "reason": f"insufficient_valid_toys:{n_used}<{min_used}",
                 "n_toys_used": int(n_used),
             }
+            n_param_skipped += 1
             continue
 
         any_ran = True
@@ -260,6 +268,13 @@ def _run_case(
         )
         if not ok:
             any_failed = True
+            n_param_fail += 1
+        else:
+            n_param_ok += 1
+
+        max_abs_delta_mean = max(max_abs_delta_mean, abs(d_mean))
+        max_abs_delta_std = max(max_abs_delta_std, abs(d_std))
+        max_abs_delta_cov = max(max_abs_delta_cov, abs(d_cov))
 
         per_param[name] = {
             "status": "ok" if ok else "fail",
@@ -297,6 +312,15 @@ def _run_case(
         "min_used_frac": float(min_used_frac),
         "min_used": int(min_used),
         "counters": counters,
+        "summary": {
+            "n_params": int(len(param_names)),
+            "n_params_ok": int(n_param_ok),
+            "n_params_fail": int(n_param_fail),
+            "n_params_skipped": int(n_param_skipped),
+            "max_abs_delta_mean": float(max_abs_delta_mean),
+            "max_abs_delta_std": float(max_abs_delta_std),
+            "max_abs_delta_coverage_1sigma": float(max_abs_delta_cov),
+        },
         "per_param": per_param,
     }
 

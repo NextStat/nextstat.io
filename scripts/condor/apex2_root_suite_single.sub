@@ -1,0 +1,31 @@
+# HTCondor submit file: run the full Apex2 ROOT parity suite (single job).
+#
+# Edit `initialdir` to point at your NextStat checkout on a shared filesystem.
+#
+# Required env vars on the submit node:
+# - APEX2_ROOT_CASES_JSON: path to cases JSON (relative to initialdir or absolute)
+# - APEX2_RESULTS_DIR: output directory (relative to initialdir or absolute)
+#
+# Optional:
+# - APEX2_ROOT_SETUP: command to set up ROOT environment (see scripts/condor/README.md)
+# - APEX2_PYTHON: python executable to use (e.g. from a venv/conda env)
+
+universe = vanilla
+
+initialdir = /path/to/nextstat.io
+executable = scripts/condor/run_apex2_root_suite_single.sh
+
+output = scripts/condor/logs/apex2_root_suite_$(Cluster).out
+error  = scripts/condor/logs/apex2_root_suite_$(Cluster).err
+log    = scripts/condor/logs/apex2_root_suite_$(Cluster).log
+
+request_cpus   = 4
+request_memory = 8GB
+request_disk   = 20GB
+
+getenv = True
+
+requirements = (TARGET.Arch == "X86_64") && (TARGET.OpSys == "LINUX")
+
+queue 1
+
