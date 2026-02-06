@@ -6,6 +6,8 @@
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
+use super::internal::{LN_2PI, symmetrize};
+
 fn validate_covariance_spd(name: &str, a: &DMatrix<f64>) -> Result<()> {
     let n = a.nrows();
     if n == 0 || a.ncols() != n {
@@ -506,10 +508,6 @@ pub struct KalmanSmootherResult {
     pub smoothed_covs: Vec<DMatrix<f64>>,
 }
 
-fn symmetrize(p: &DMatrix<f64>) -> DMatrix<f64> {
-    0.5 * (p + p.transpose())
-}
-
 /// Run Kalman filtering on a full observation sequence.
 ///
 /// Returns per-step predicted and filtered state distributions, plus the total log-likelihood.
@@ -542,7 +540,7 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
     let mut filtered_means = Vec::with_capacity(ys.len());
     let mut filtered_covs = Vec::with_capacity(ys.len());
 
-    let ln_2pi = (2.0 * std::f64::consts::PI).ln();
+    let ln_2pi = LN_2PI;
 
     // Prior for x_0.
     let mut m_pred = model.m0.clone();

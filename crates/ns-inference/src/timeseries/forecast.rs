@@ -9,10 +9,7 @@ use ns_core::{Error, Result};
 use statrs::distribution::{ContinuousCDF, Normal};
 
 use super::kalman::{KalmanFilterResult, KalmanModel};
-
-fn symmetrize(p: &DMatrix<f64>) -> DMatrix<f64> {
-    0.5 * (p + p.transpose())
-}
+use super::internal::symmetrize;
 
 /// Forecast output.
 #[derive(Debug, Clone)]

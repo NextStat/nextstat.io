@@ -56,6 +56,11 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --out tmp/apex2_master_report.json
 ```
 
+In addition to the pyhf + golden regression checks, the master report also includes a
+fast, deterministic NUTS/HMC diagnostics smoke test on a small non-HEP model
+(GaussianMeanModel). This is intended to catch catastrophic sampling regressions without
+requiring `NS_RUN_SLOW=1`.
+
 Optional: include the slow bias/pulls regression suite (NextStat vs pyhf).
 
 ```bash

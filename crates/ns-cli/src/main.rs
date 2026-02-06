@@ -715,6 +715,16 @@ struct KalmanInputJson {
     ys: Vec<Vec<Option<f64>>>,
 }
 
+#[derive(Debug, Clone)]
+enum KalmanSpecKind {
+    Model,
+    LocalLevel,
+    LocalLinearTrend,
+    Ar1,
+    LocalLevelSeasonal { period: usize },
+    LocalLinearTrendSeasonal { period: usize },
+}
+
 fn default_m0() -> f64 {
     0.0
 }
@@ -893,6 +903,7 @@ fn load_kalman_input_with_raw(
     ns_inference::timeseries::kalman::KalmanModel,
     Vec<DVector<f64>>,
     Vec<Vec<Option<f64>>>,
+    KalmanSpecKind,
 )> {
     let bytes = std::fs::read(path)?;
     let input: KalmanInputJson = serde_json::from_slice(&bytes)?;
@@ -910,8 +921,8 @@ fn load_kalman_input_with_raw(
         );
     }
 
-    let model = if let Some(mj) = input.model {
-        ns_inference::timeseries::kalman::KalmanModel::new(
+    let (model, kind) = if let Some(mj) = input.model {
+        let model = ns_inference::timeseries::kalman::KalmanModel::new(
             dmatrix_from_nested("F", mj.f)?,
             dmatrix_from_nested("Q", mj.q)?,
             dmatrix_from_nested("H", mj.h)?,
@@ -919,12 +930,14 @@ fn load_kalman_input_with_raw(
             dvector_from_vec("m0", mj.m0)?,
             dmatrix_from_nested("P0", mj.p0)?,
         )
-        .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?
+        .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?;
+        (model, KalmanSpecKind::Model)
     } else if let Some(ll) = input.local_level {
-        ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
-            .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
+            .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?;
+        (model, KalmanSpecKind::LocalLevel)
     } else if let Some(lt) = input.local_linear_trend {
-        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend(
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_linear_trend(
             lt.q_level,
             lt.q_slope,
             lt.r,
@@ -933,12 +946,15 @@ fn load_kalman_input_with_raw(
             lt.p0_level,
             lt.p0_slope,
         )
-        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend model: {e}"))?
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend model: {e}"))?;
+        (model, KalmanSpecKind::LocalLinearTrend)
     } else if let Some(ar) = input.ar1 {
-        ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
-            .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?
+        let model = ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
+            .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?;
+        (model, KalmanSpecKind::Ar1)
     } else if let Some(seas) = input.local_level_seasonal {
-        ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
+        let period = seas.period;
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
             seas.period,
             seas.q_level,
             seas.q_season,
@@ -947,9 +963,11 @@ fn load_kalman_input_with_raw(
             seas.p0_level,
             seas.p0_season,
         )
-        .map_err(|e| anyhow::anyhow!("invalid local_level_seasonal model: {e}"))?
+        .map_err(|e| anyhow::anyhow!("invalid local_level_seasonal model: {e}"))?;
+        (model, KalmanSpecKind::LocalLevelSeasonal { period })
     } else if let Some(seas) = input.local_linear_trend_seasonal {
-        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_seasonal(
+        let period = seas.period;
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_seasonal(
             seas.period,
             seas.q_level,
             seas.q_slope,
@@ -961,7 +979,8 @@ fn load_kalman_input_with_raw(
             seas.p0_slope,
             seas.p0_season,
         )
-        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?;
+        (model, KalmanSpecKind::LocalLinearTrendSeasonal { period })
     } else {
         anyhow::bail!("unreachable: model spec missing");
     };
@@ -974,7 +993,7 @@ fn load_kalman_input_with_raw(
         .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
         .collect::<Result<Vec<_>>>()?;
 
-    Ok((model, ys, ys_raw))
+    Ok((model, ys, ys_raw, kind))
 }
 
 fn cmd_ts_kalman_filter(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
@@ -1285,7 +1304,7 @@ fn cmd_ts_kalman_viz(
     forecast_steps: usize,
     output: Option<&PathBuf>,
 ) -> Result<()> {
-    let (model0, ys, ys_raw) = load_kalman_input_with_raw(input)?;
+    let (model0, ys, ys_raw, kind) = load_kalman_input_with_raw(input)?;
     let t_max = ys.len();
     if t_max == 0 {
         anyhow::bail!("ys must be non-empty");
@@ -1316,6 +1335,33 @@ fn cmd_ts_kalman_viz(
     let (obs_mean, obs_lo, obs_hi) =
         obs_bands_from_state(&fitted, &sr.smoothed_means, &sr.smoothed_covs, z)?;
 
+    let default_state_labels: Vec<String> = (0..fitted.n_state()).map(|i| format!("x[{i}]")).collect();
+    let default_obs_labels: Vec<String> = (0..fitted.n_obs()).map(|i| format!("y[{i}]")).collect();
+    let mut state_labels: Vec<String> = match kind {
+        KalmanSpecKind::LocalLevel => vec!["level".to_string()],
+        KalmanSpecKind::Ar1 => vec!["x".to_string()],
+        KalmanSpecKind::LocalLinearTrend => vec!["level".to_string(), "slope".to_string()],
+        KalmanSpecKind::LocalLevelSeasonal { period } => {
+            let mut out = vec!["level".to_string()];
+            for k in 1..period {
+                out.push(format!("season{k}"));
+            }
+            out
+        }
+        KalmanSpecKind::LocalLinearTrendSeasonal { period } => {
+            let mut out = vec!["level".to_string(), "slope".to_string()];
+            for k in 1..period {
+                out.push(format!("season{k}"));
+            }
+            out
+        }
+        KalmanSpecKind::Model => default_state_labels.clone(),
+    };
+    if state_labels.len() != fitted.n_state() {
+        state_labels = default_state_labels.clone();
+    }
+    let obs_labels = default_obs_labels;
+
     let forecast_json = if forecast_steps == 0 {
         serde_json::Value::Null
     } else {
@@ -1343,6 +1389,8 @@ fn cmd_ts_kalman_viz(
         "z": z,
         "t_obs": (0..t_max).collect::<Vec<_>>(),
         "ys": ys_raw,
+        "state_labels": state_labels,
+        "obs_labels": obs_labels,
         "log_likelihood": fr.log_likelihood,
         "smooth": {
             "state_mean": state_mean,

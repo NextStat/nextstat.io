@@ -7,10 +7,7 @@ use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
 use super::kalman::{KalmanFilterResult, KalmanModel, kalman_filter, rts_smoother, reduce_observation};
-
-fn symmetrize(p: &DMatrix<f64>) -> DMatrix<f64> {
-    0.5 * (p + p.transpose())
-}
+use super::internal::symmetrize;
 
 fn ensure_spd(name: &'static str, mut a: DMatrix<f64>, min_diag: f64) -> Result<DMatrix<f64>> {
     a = symmetrize(&a);

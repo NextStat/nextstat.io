@@ -262,6 +262,8 @@ def kalman_viz_artifact(
     ys: Sequence[Sequence[float | None]],
     *,
     level: float = 0.95,
+    state_labels: Sequence[str] | None = None,
+    obs_labels: Sequence[str] | None = None,
 ) -> Mapping[str, Any]:
     """Build a plot-friendly artifact from `kalman_fit(...)` output.
 
@@ -271,10 +273,14 @@ def kalman_viz_artifact(
       Off-diagonal observation-noise correlations in `R` are intentionally ignored.
     """
     z = _z_for_level(float(level))
+    alpha = 1.0 - float(level)
     ys_out = [[None if v is None else float(v) for v in row] for row in ys]
     t_max = len(ys_out)
     if t_max == 0:
         raise ValueError("ys must be non-empty")
+    n_obs = len(ys_out[0]) if ys_out and ys_out[0] else 0
+    if n_obs <= 0:
+        raise ValueError("ys rows must be non-empty")
 
     em = fit_out.get("em") if isinstance(fit_out, Mapping) else None
     h = None
@@ -285,6 +291,7 @@ def kalman_viz_artifact(
 
     smooth_in = fit_out.get("smooth") if isinstance(fit_out, Mapping) else None
     smooth_art = None
+    inferred_state_labels = None
     if isinstance(smooth_in, Mapping):
         sm = smooth_in.get("smoothed_means")
         sp = smooth_in.get("smoothed_covs")
@@ -293,6 +300,8 @@ def kalman_viz_artifact(
 
         state_mean = [[float(x) for x in row] for row in sm]
         state_covs = [[[float(x) for x in row] for row in mat] for mat in sp]
+        n_state = len(state_mean[0]) if state_mean else 0
+        inferred_state_labels = [f"x[{i}]" for i in range(n_state)]
         state_lo, state_hi = _bands_from_means_covs(state_mean, state_covs, z)
         obs_mean, obs_lo, obs_hi = _obs_bands_from_state(
             means=state_mean,
@@ -341,11 +350,23 @@ def kalman_viz_artifact(
 
     out = {
         "level": float(level),
+        "alpha": float(alpha),
+        "z": float(z),
         "t_obs": list(range(t_max)),
         "ys": ys_out,
+        "state_labels": None,
+        "obs_labels": None,
         "smooth": smooth_art,
         "forecast": forecast_art,
     }
+    if state_labels is not None:
+        out["state_labels"] = [str(s) for s in state_labels]
+    elif inferred_state_labels is not None:
+        out["state_labels"] = inferred_state_labels
+    if obs_labels is not None:
+        out["obs_labels"] = [str(s) for s in obs_labels]
+    else:
+        out["obs_labels"] = [f"y[{i}]" for i in range(n_obs)]
     if isinstance(smooth_in, Mapping) and "log_likelihood" in smooth_in:
         out["log_likelihood"] = float(smooth_in["log_likelihood"])
     return out
@@ -400,7 +421,11 @@ def plot_kalman_obs(
             ax.fill_between(t_fc, lo, hi, color="#6EE7B7", alpha=0.25, label="Forecast band")
 
     ax.set_xlabel("t")
-    ax.set_ylabel(f"y[{int(obs_index)}]")
+    obs_labels = artifact.get("obs_labels")
+    if isinstance(obs_labels, (list, tuple)) and 0 <= int(obs_index) < len(obs_labels):
+        ax.set_ylabel(str(obs_labels[int(obs_index)]))
+    else:
+        ax.set_ylabel(f"y[{int(obs_index)}]")
     ax.grid(True, alpha=0.25)
     if title:
         ax.set_title(title)

@@ -1,5 +1,7 @@
 //! Time series and state space models (Phase 8).
 
+mod internal;
+
 /// Linear-Gaussian Kalman filter / smoother.
 pub mod kalman;
 

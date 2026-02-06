@@ -61,3 +61,7 @@ harness = false
 [[bench]]
 name = "hier_benchmark"
 harness = false
+
+[[bench]]
+name = "em_benchmark"
+harness = false

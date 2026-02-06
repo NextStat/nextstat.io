@@ -215,6 +215,97 @@ def _run_regression_golden() -> Dict[str, Any]:
     return out
 
 
+def _run_nuts_quality_smoke() -> Dict[str, Any]:
+    """Fast deterministic NUTS/HMC quality smoke (generic, non-HEP).
+
+    This is intentionally lightweight (no pyhf, no HistFactory) and is meant to
+    catch catastrophic regressions in sampling/diagnostics without requiring
+    NS_RUN_SLOW=1.
+    """
+    try:
+        import nextstat  # type: ignore
+    except ModuleNotFoundError as e:
+        return {"status": "skipped", "reason": f"import_nextstat_failed:{e}"}
+
+    model = nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
+    r = nextstat.sample(
+        model,
+        n_chains=2,
+        n_warmup=50,
+        n_samples=30,
+        seed=123,
+        init_jitter_rel=0.10,
+    )
+    diag = r.get("diagnostics") or {}
+    q = diag.get("quality") or {}
+
+    def _safe_f(v: Any) -> float:
+        try:
+            return float(v)
+        except Exception:
+            return float("nan")
+
+    rhat_vals = [_safe_f(v) for v in (diag.get("r_hat") or {}).values()]
+    ess_bulk_vals = [_safe_f(v) for v in (diag.get("ess_bulk") or {}).values()]
+    ess_tail_vals = [_safe_f(v) for v in (diag.get("ess_tail") or {}).values()]
+    ebfmi_vals = [_safe_f(v) for v in (diag.get("ebfmi") or [])]
+
+    out: Dict[str, Any] = {
+        # Treat this as a "catastrophic regression" smoke check.
+        # The Rust-side `quality.status` can be "warn" for short chains; we record it separately.
+        "status": "ok",
+        "meta": {
+            "model": "GaussianMeanModel",
+            "n_chains": int(r.get("n_chains", 0)),
+            "n_warmup": int(r.get("n_warmup", 0)),
+            "n_samples": int(r.get("n_samples", 0)),
+            "seed": 123,
+        },
+        "diagnostics": {
+            "divergence_rate": _safe_f(diag.get("divergence_rate")),
+            "max_treedepth_rate": _safe_f(diag.get("max_treedepth_rate")),
+            "max_r_hat": max(rhat_vals) if rhat_vals else float("nan"),
+            "min_ess_bulk": min(ess_bulk_vals) if ess_bulk_vals else float("nan"),
+            "min_ess_tail": min(ess_tail_vals) if ess_tail_vals else float("nan"),
+            "min_ebfmi": min(ebfmi_vals) if ebfmi_vals else float("nan"),
+        },
+        "quality": q,
+        "quality_status": str(q.get("status") or "unknown"),
+    }
+
+    # Hard floor: if diagnostics contain NaNs, treat as failure regardless of quality label.
+    critical = [
+        out["diagnostics"]["divergence_rate"],
+        out["diagnostics"]["max_treedepth_rate"],
+        out["diagnostics"]["max_r_hat"],
+        out["diagnostics"]["min_ess_bulk"],
+        out["diagnostics"]["min_ess_tail"],
+        out["diagnostics"]["min_ebfmi"],
+    ]
+    if any(not (float(v) == float(v)) for v in critical):
+        out["status"] = "fail"
+        out["quality"] = dict(q)
+        out["quality"]["failures"] = list(out["quality"].get("failures") or []) + [
+            "diagnostics_contains_nan"
+        ]
+        return out
+
+    # Additional minimal sanity floors.
+    if out["diagnostics"]["divergence_rate"] > 0.20:
+        out["status"] = "fail"
+        out["quality"] = dict(q)
+        out["quality"]["failures"] = list(out["quality"].get("failures") or []) + [
+            "divergence_rate_too_high_for_smoke"
+        ]
+    if out["diagnostics"]["max_treedepth_rate"] > 0.50:
+        out["status"] = "fail"
+        out["quality"] = dict(q)
+        out["quality"]["failures"] = list(out["quality"].get("failures") or []) + [
+            "max_treedepth_rate_too_high_for_smoke"
+        ]
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
@@ -323,6 +414,7 @@ def main() -> int:
         },
         "pyhf": None,
         "regression_golden": None,
+        "nuts_quality": None,
         "p6_glm_bench": None,
         "bias_pulls": None,
         "sbc": None,
@@ -361,6 +453,11 @@ def main() -> int:
     # Regression golden fixtures (GLM surface)
     # ------------------------------------------------------------------
     report["regression_golden"] = _run_regression_golden()
+
+    # ------------------------------------------------------------------
+    # NUTS quality smoke (fast, deterministic, non-HEP)
+    # ------------------------------------------------------------------
+    report["nuts_quality"] = _run_nuts_quality_smoke()
 
     # ------------------------------------------------------------------
     # P6 benchmarks (optional)
