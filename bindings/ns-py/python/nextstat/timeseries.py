@@ -491,6 +491,107 @@ def plot_kalman_states(
     axs[0].legend(frameon=False, ncol=2)
     return axs
 
+def plot_kalman_obs_grid(
+    artifact: Mapping[str, Any],
+    *,
+    obs_indices: Sequence[int] | None = None,
+    labels: Sequence[str] | None = None,
+    ax=None,
+    title: str | None = None,
+    show_bands: bool = True,
+    show_forecast: bool = True,
+):
+    """Plot observation components y[t] (one subplot per component)."""
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    ys = artifact.get("ys") or []
+    if not isinstance(ys, list) or not ys:
+        raise ValueError("artifact.ys must be a non-empty list")
+    if not isinstance(ys[0], list) or not ys[0]:
+        raise ValueError("artifact.ys rows must be non-empty lists")
+
+    n_obs = len(ys[0])
+    if obs_indices is None:
+        idxs = list(range(n_obs))
+    else:
+        idxs = [int(i) for i in obs_indices]
+        for i in idxs:
+            if i < 0 or i >= n_obs:
+                raise ValueError(f"obs index out of range: {i} (n_obs={n_obs})")
+
+    if labels is not None and len(labels) != len(idxs):
+        raise ValueError("labels length must match obs_indices")
+
+    n = len(idxs)
+    if ax is None:
+        _, axs = plt.subplots(n, 1, figsize=(7.2, 2.2 * n), sharex=True)
+        if n == 1:
+            axs = [axs]
+    else:
+        axs = ax
+        if not isinstance(axs, (list, tuple)):
+            axs = [axs]
+        if len(axs) != n:
+            raise ValueError("ax must be None or a list of axes matching the number of obs components")
+
+    t_obs = artifact.get("t_obs") or list(range(len(ys)))
+    if len(t_obs) != len(ys):
+        raise ValueError("artifact.t_obs length mismatch")
+    t_obs_f = [float(t) for t in t_obs]
+
+    smooth = artifact.get("smooth") or None
+    fc = artifact.get("forecast") or None
+    fc_t = None
+    if show_forecast and isinstance(fc, Mapping):
+        fc_t = [float(t) for t in fc.get("t") or []]
+
+    for k, j in enumerate(idxs):
+        a = axs[k]
+        lab = labels[k] if labels is not None else f"y[{j}]"
+
+        y_obs = []
+        for row in ys:
+            v = None
+            try:
+                v = row[int(j)]
+            except Exception:
+                v = None
+            y_obs.append(v if v is None else float(v))
+
+        a.plot(
+            t_obs_f,
+            [float("nan") if v is None else float(v) for v in y_obs],
+            color="#111827",
+            lw=1.25,
+            label="Observed",
+        )
+
+        if isinstance(smooth, Mapping) and smooth.get("obs_mean") is not None:
+            mu = [float(row[int(j)]) for row in smooth["obs_mean"]]
+            a.plot(t_obs_f, mu, color="#1D4ED8", lw=2.0, label="Smoothed")
+            if show_bands and smooth.get("obs_lo") is not None and smooth.get("obs_hi") is not None:
+                lo = [float(row[int(j)]) for row in smooth["obs_lo"]]
+                hi = [float(row[int(j)]) for row in smooth["obs_hi"]]
+                a.fill_between(t_obs_f, lo, hi, color="#93C5FD", alpha=0.35, label="Smoothed band")
+
+        if fc_t is not None and isinstance(fc, Mapping) and fc.get("obs_mean") is not None:
+            fmu = [float(row[int(j)]) for row in fc["obs_mean"]]
+            a.plot(fc_t, fmu, color="#059669", lw=2.0, ls="--", label="Forecast")
+            if show_bands and fc.get("obs_lo") is not None and fc.get("obs_hi") is not None:
+                flo = [float(row[int(j)]) for row in fc["obs_lo"]]
+                fhi = [float(row[int(j)]) for row in fc["obs_hi"]]
+                a.fill_between(fc_t, flo, fhi, color="#6EE7B7", alpha=0.25, label="Forecast band")
+
+        a.set_ylabel(lab)
+        a.grid(True, alpha=0.25)
+
+    axs[-1].set_xlabel("t")
+    if title:
+        axs[0].set_title(title)
+    axs[0].legend(frameon=False, ncol=2)
+    return axs
+
 
 def kalman_forecast(
     model,
@@ -652,6 +753,7 @@ __all__ = [
     "kalman_viz_artifact",
     "plot_kalman_obs",
     "plot_kalman_states",
+    "plot_kalman_obs_grid",
     "kalman_forecast",
     "kalman_simulate",
     "local_level_model",

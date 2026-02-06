@@ -60,3 +60,6 @@ def test_timeseries_plot_helpers_optional_matplotlib():
 
         axs = nextstat.timeseries.plot_kalman_states(art, state_indices=[0], title="Smoke")
         assert axs is not None
+
+        axs2 = nextstat.timeseries.plot_kalman_obs_grid(art, obs_indices=[0], title="Smoke")
+        assert axs2 is not None

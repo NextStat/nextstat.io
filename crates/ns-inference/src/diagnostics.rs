@@ -501,8 +501,11 @@ pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
     let w = vars.iter().sum::<f64>() / m_f;
     let var_hat_plus = (n_f - 1.0) / n_f * w + b / n_f;
 
+    // Constant (or near-constant) chains have near-zero marginal variance; in that case
+    // ESS is not meaningful and reporting total_draws is misleading (it looks "perfect").
+    // Return 0 to surface the pathological chain behavior to the caller/gates.
     if !var_hat_plus.is_finite() || var_hat_plus < 1e-30 {
-        return total_draws;
+        return 0.0;
     }
 
     // Autocorrelation estimates via variogram:
@@ -563,7 +566,7 @@ pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
         tau += 2.0 * g;
     }
     if !tau.is_finite() || tau <= 0.0 {
-        return total_draws;
+        return 0.0;
     }
 
     let ess = (total_draws / tau).clamp(1.0, total_draws);
@@ -765,10 +768,11 @@ mod tests {
 
     #[test]
     fn test_ess_constant_chain() {
-        // Constant chain -> ESS = N (no autocorrelation, but var=0 => ESS=N)
+        // Constant chain -> ESS is not meaningful (zero variance); report 0 instead of a
+        // misleading "perfect ESS".
         let chain = vec![1.0; 100];
         let ess = ess_bulk(&[&chain]);
-        assert!(ess >= 99.0, "ESS of constant chain should be ~N: {}", ess);
+        assert_eq!(ess, 0.0);
     }
 
     #[test]
