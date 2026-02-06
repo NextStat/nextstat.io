@@ -64,16 +64,25 @@ def _validate(spec: Any, schema: Any) -> None:
     raise SystemExit(2)
 
 
-def _discover_combination_xml(export_dir: Path) -> Path:
+def _discover_combination_xml(export_dir: Path, *, dry_run: bool) -> Path:
     if not export_dir.exists():
+        if dry_run:
+            # For docs/CI dry-runs we still want to print the command sequence.
+            return export_dir / "combination.xml"
         raise SystemExit(f"Missing HistFactory export_dir: {export_dir}")
     if not export_dir.is_dir():
+        if dry_run:
+            return export_dir / "combination.xml"
         raise SystemExit(f"HistFactory export_dir is not a directory: {export_dir}")
 
     hits = sorted(p for p in export_dir.rglob("combination.xml") if p.is_file())
     if not hits:
+        if dry_run:
+            return export_dir / "combination.xml"
         raise SystemExit(f"Could not auto-discover combination.xml under: {export_dir}")
     if len(hits) > 1:
+        if dry_run:
+            return hits[0]
         rendered = "\n".join(f"  - {p}" for p in hits[:10])
         extra = "" if len(hits) <= 10 else f"\n  ... ({len(hits) - 10} more)"
         raise SystemExit(
@@ -233,7 +242,7 @@ def main() -> int:
         if hf.get("combination_xml") is not None:
             hf_xml = Path(hf["combination_xml"])
         else:
-            hf_xml = _discover_combination_xml(Path(hf["export_dir"]))
+            hf_xml = _discover_combination_xml(Path(hf["export_dir"]), dry_run=args.dry_run)
     if bool(report_cfg["enabled"]):
         if report_cfg.get("histfactory_xml") is not None:
             hf_xml = Path(report_cfg["histfactory_xml"])
@@ -262,7 +271,8 @@ def main() -> int:
         if bool(import_cfg["enabled"]):
             cfg = inputs["trex_config_yaml"]
             generated = workspace_path.parent / "generated_trex_config.txt"
-            _write_text(generated, _trex_yaml_to_txt(cfg))
+            if not args.dry_run:
+                _write_text(generated, _trex_yaml_to_txt(cfg))
             cmd = [nextstat, "import", "trex-config", "--config", str(generated)]
             if cfg.get("base_dir") is not None:
                 cmd.extend(["--base-dir", str(cfg["base_dir"])])
@@ -347,4 +357,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

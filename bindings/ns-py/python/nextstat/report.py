@@ -58,6 +58,10 @@ def _save_figure(fig, name: str, targets: _SaveTargets, pdf_pages):
 def _apply_pub_style():
     import matplotlib as mpl
 
+    # Report rendering is a headless operation; forcing a non-interactive backend
+    # avoids crashes in environments without a GUI (e.g. CI, remote shells).
+    mpl.use("Agg", force=True)
+
     mpl.rcParams.update(
         {
             "figure.constrained_layout.use": True,
@@ -273,10 +277,10 @@ def _plot_uncertainty(artifact: Mapping[str, Any]):
 
 
 def render_report(
-    input_dir: Path,
+    input_dir: Path | str,
     *,
-    pdf: Path,
-    svg_dir: Path | None,
+    pdf: Path | str,
+    svg_dir: Path | str | None,
     corr_include: str | None = None,
     corr_exclude: str | None = None,
     corr_top_n: int | None = None,
@@ -287,10 +291,10 @@ def render_report(
     from matplotlib.backends.backend_pdf import PdfPages
     import matplotlib.pyplot as plt
 
-    input_dir = input_dir.resolve()
-    pdf = pdf.resolve()
+    input_dir = Path(input_dir).resolve()
+    pdf = Path(pdf).resolve()
     if svg_dir is not None:
-        svg_dir = svg_dir.resolve()
+        svg_dir = Path(svg_dir).resolve()
 
     targets = _SaveTargets(pdf=pdf, svg_dir=svg_dir)
 
@@ -301,13 +305,20 @@ def render_report(
     uncertainty_path = input_dir / "uncertainty.json"
 
     with PdfPages(pdf) as pages:
+        n_saved = 0
+
+        def save(fig, name: str):
+            nonlocal n_saved
+            _save_figure(fig, name, targets, pages)
+            n_saved += 1
+
         # Distributions: one page per channel.
         if distributions_path.exists():
             d = _read_json(distributions_path)
             for ch in d.get("channels") or []:
                 fig = _plot_distributions_channel(ch)
                 ch_name = str(ch.get("channel_name", "channel"))
-                _save_figure(fig, f"distributions__{ch_name}", targets, pages)
+                save(fig, f"distributions__{ch_name}")
                 plt.close(fig)
 
         # Pulls: split into pages if long.
@@ -320,7 +331,7 @@ def render_report(
                 for i in range(n_pages):
                     chunk = entries[i * page_size : (i + 1) * page_size]
                     fig = _plot_pulls(chunk, title="Pulls + constraints", page=i + 1, n_pages=n_pages)
-                    _save_figure(fig, f"pulls__p{i+1}", targets, pages)
+                    save(fig, f"pulls__p{i+1}")
                     plt.close(fig)
 
         # Correlation matrix.
@@ -334,7 +345,7 @@ def render_report(
                 fig = _plot_corr(c_view)
             else:
                 fig = _plot_corr(c)
-            _save_figure(fig, "corr", targets, pages)
+            save(fig, "corr")
             plt.close(fig)
 
         # Yields: one page per channel.
@@ -343,14 +354,22 @@ def render_report(
             for ch in y.get("channels") or []:
                 fig = _plot_yields_channel(ch)
                 ch_name = str(ch.get("channel_name", "channel"))
-                _save_figure(fig, f"yields__{ch_name}", targets, pages)
+                save(fig, f"yields__{ch_name}")
                 plt.close(fig)
 
         # Uncertainty breakdown (groups).
         if uncertainty_path.exists():
             u = _read_json(uncertainty_path)
             fig = _plot_uncertainty(u)
-            _save_figure(fig, "uncertainty", targets, pages)
+            save(fig, "uncertainty")
+            plt.close(fig)
+
+        # Always emit a valid PDF even if no artifacts were present.
+        if n_saved == 0:
+            fig, ax = plt.subplots(figsize=(7.6, 2.8))
+            ax.text(0.5, 0.5, f"No report artifacts found in: {input_dir}", ha="center", va="center")
+            ax.axis("off")
+            save(fig, "empty_report")
             plt.close(fig)
 
 

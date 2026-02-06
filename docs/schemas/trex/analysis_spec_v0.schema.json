@@ -4,7 +4,25 @@
   "title": "TREx Analysis Spec v0 (NextStat)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "analysis", "inputs", "execution", "reports", "gates"],
+  "required": ["schema_version", "analysis", "inputs", "execution", "gates"],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Filesystem path (absolute or relative to the working directory)."
+    },
+    "nullable_path": {
+      "type": ["string", "null"],
+      "description": "Filesystem path (or null)."
+    },
+    "nullable_string": {
+      "type": ["string", "null"]
+    },
+    "string_list": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
   "properties": {
     "$schema": {
       "type": "string",
@@ -35,8 +53,8 @@
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["histfactory_xml", "hist", "ntuple"],
-          "description": "Input mode. v0 focuses on histfactory_xml (TREx export directory)."
+          "enum": ["histfactory_xml", "trex_config_txt", "trex_config_yaml", "workspace_json"],
+          "description": "Input mode for building/loading the workspace."
         },
         "histfactory": {
           "type": "object",
@@ -44,147 +62,268 @@
           "required": ["export_dir", "combination_xml", "measurement"],
           "properties": {
             "export_dir": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "#/$defs/path",
               "description": "Directory containing HistFactory exports (e.g. TRExFitter output)."
             },
             "combination_xml": {
-              "type": ["string", "null"],
+              "$ref": "#/$defs/nullable_path",
               "description": "Optional explicit path to combination.xml. If null, auto-discover under export_dir."
             },
             "measurement": {
               "type": "string",
               "minLength": 1,
-              "description": "Measurement name inside the HistFactory workspace."
+              "description": "Measurement name inside the HistFactory workspace (reserved; informational in v0)."
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "combination_xml": { "type": "null" } }, "required": ["combination_xml"] },
+              "then": { "required": ["export_dir"] }
+            }
+          ]
+        },
+        "trex_config_txt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["config_path", "base_dir"],
+          "properties": {
+            "config_path": {
+              "$ref": "#/$defs/path",
+              "description": "Path to TRExFitter-style config text (subset supported by `nextstat import trex-config`)."
+            },
+            "base_dir": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Base directory for resolving relative ROOT file paths (defaults to config parent when null)."
             }
           }
         },
-        "hist": {
+        "trex_config_yaml": {
           "type": "object",
-          "additionalProperties": true,
-          "description": "Reserved for M1 (binned ROOT histograms)."
+          "additionalProperties": false,
+          "required": ["read_from", "tree_name", "measurement", "poi", "regions", "samples", "systematics"],
+          "properties": {
+            "base_dir": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Base directory for resolving relative ROOT file paths (optional)."
+            },
+            "read_from": {
+              "type": "string",
+              "enum": ["NTUP"],
+              "description": "TREx ReadFrom mode. v0 supports only NTUP."
+            },
+            "tree_name": { "type": "string", "minLength": 1, "description": "Default TTree name." },
+            "measurement": { "type": "string", "minLength": 1, "description": "Measurement name." },
+            "poi": { "type": "string", "minLength": 1, "description": "Parameter of interest name." },
+            "regions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "variable", "binning_edges", "selection"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "variable": { "type": "string", "minLength": 1 },
+                  "binning_edges": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": { "type": "number" },
+                    "description": "Explicit bin edges (length >= 2)."
+                  },
+                  "selection": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional selection/cut expression."
+                  }
+                }
+              }
+            },
+            "samples": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "kind",
+                  "file",
+                  "tree_name",
+                  "weight",
+                  "regions",
+                  "norm_factors",
+                  "norm_sys",
+                  "stat_error"
+                ],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "kind": { "type": "string", "enum": ["data", "mc"] },
+                  "file": { "$ref": "#/$defs/path", "description": "ROOT file path." },
+                  "tree_name": { "$ref": "#/$defs/nullable_path", "description": "Optional per-sample TTree override." },
+                  "weight": { "$ref": "#/$defs/nullable_string", "description": "Optional weight expression." },
+                  "regions": { "$ref": "#/$defs/string_list", "description": "Optional region filter list." },
+                  "norm_factors": { "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+                  "norm_sys": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["name", "lo", "hi"],
+                      "properties": {
+                        "name": { "type": "string", "minLength": 1 },
+                        "lo": { "type": "number" },
+                        "hi": { "type": "number" }
+                      }
+                    }
+                  },
+                  "stat_error": { "type": "boolean", "default": false }
+                }
+              }
+            },
+            "systematics": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "type", "samples", "regions"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "type": { "type": "string", "enum": ["norm", "weight", "tree"] },
+                  "samples": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+                  "regions": { "$ref": "#/$defs/string_list" },
+                  "lo": { "type": "number" },
+                  "hi": { "type": "number" },
+                  "weight_up": { "type": "string", "minLength": 1 },
+                  "weight_down": { "type": "string", "minLength": 1 },
+                  "file_up": { "$ref": "#/$defs/path" },
+                  "file_down": { "$ref": "#/$defs/path" },
+                  "tree_name": { "$ref": "#/$defs/nullable_path" }
+                },
+                "allOf": [
+                  {
+                    "if": { "properties": { "type": { "const": "norm" } }, "required": ["type"] },
+                    "then": { "required": ["lo", "hi"] }
+                  },
+                  {
+                    "if": { "properties": { "type": { "const": "weight" } }, "required": ["type"] },
+                    "then": { "required": ["weight_up", "weight_down"] }
+                  },
+                  {
+                    "if": { "properties": { "type": { "const": "tree" } }, "required": ["type"] },
+                    "then": { "required": ["file_up", "file_down"] }
+                  }
+                ]
+              }
+            }
+          }
         },
-        "ntuple": {
+        "workspace_json": {
           "type": "object",
-          "additionalProperties": true,
-          "description": "Reserved for M2 (ROOT ntuples)."
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path", "description": "Path to an existing pyhf JSON workspace." }
+          }
         }
       },
       "allOf": [
         {
           "if": { "properties": { "mode": { "const": "histfactory_xml" } }, "required": ["mode"] },
           "then": { "required": ["histfactory"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "trex_config_txt" } }, "required": ["mode"] },
+          "then": { "required": ["trex_config_txt"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "trex_config_yaml" } }, "required": ["mode"] },
+          "then": { "required": ["trex_config_yaml"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "workspace_json" } }, "required": ["mode"] },
+          "then": { "required": ["workspace_json"] }
         }
       ]
     },
     "execution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["determinism", "fit", "profile_scan"],
+      "required": ["determinism", "import", "fit", "profile_scan", "report"],
       "properties": {
         "determinism": {
           "type": "object",
           "additionalProperties": false,
           "required": ["threads"],
           "properties": {
-            "threads": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Deterministic parity mode should use threads=1."
-            }
+            "threads": { "type": "integer", "minimum": 1, "description": "Use threads=1 for parity mode." }
+          }
+        },
+        "import": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "$ref": "#/$defs/path", "description": "Workspace output path for import step." }
           }
         },
         "fit": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "poi", "data"],
+          "required": ["enabled", "output_json"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "poi": { "type": "string", "minLength": 1 },
-            "data": { "type": "string", "enum": ["observed", "asimov"] }
+            "output_json": { "$ref": "#/$defs/path", "description": "Fit result output path (JSON)." }
           }
         },
         "profile_scan": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "poi", "grid", "tolerances"],
+          "required": ["enabled", "start", "stop", "points", "output_json"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "poi": { "type": "string", "minLength": 1 },
-            "grid": {
+            "start": { "type": "number" },
+            "stop": { "type": "number" },
+            "points": { "type": "integer", "minimum": 2 },
+            "output_json": { "$ref": "#/$defs/path", "description": "Profile scan output path (JSON)." }
+          }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "out_dir",
+            "overwrite",
+            "include_covariance",
+            "histfactory_xml",
+            "render",
+            "skip_uncertainty",
+            "uncertainty_grouping"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "out_dir": { "$ref": "#/$defs/path", "description": "Output directory for report artifacts." },
+            "overwrite": { "type": "boolean", "default": false },
+            "include_covariance": { "type": "boolean", "default": false },
+            "histfactory_xml": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Explicit combination.xml path. If null and inputs.mode=histfactory_xml, reuse inputs.histfactory."
+            },
+            "render": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["start", "stop", "points"],
+              "required": ["enabled", "pdf", "svg_dir", "python"],
               "properties": {
-                "start": { "type": "number" },
-                "stop": { "type": "number" },
-                "points": { "type": "integer", "minimum": 2 }
+                "enabled": { "type": "boolean", "default": false },
+                "pdf": { "$ref": "#/$defs/nullable_path" },
+                "svg_dir": { "$ref": "#/$defs/nullable_path" },
+                "python": { "$ref": "#/$defs/nullable_path" }
               }
             },
-            "tolerances": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["dq_atol", "mu_hat_atol"],
-              "properties": {
-                "dq_atol": { "type": "number", "minimum": 0.0 },
-                "mu_hat_atol": { "type": "number", "minimum": 0.0 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "reports": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["distributions", "pulls", "corr", "yields"],
-      "properties": {
-        "distributions": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["enabled", "output_json", "ratio"],
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "output_json": { "type": "string", "minLength": 1 },
-            "ratio": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["kind"],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": ["data_over_total", "data_over_bkg"],
-                  "description": "Ratio policy (must be explicit for reproducible rendering)."
-                }
-              }
-            }
-          }
-        },
-        "pulls": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["enabled", "output_json"],
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "output_json": { "type": "string", "minLength": 1 }
-          }
-        },
-        "corr": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["enabled", "output_json"],
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "output_json": { "type": "string", "minLength": 1 }
-          }
-        },
-        "yields": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["enabled", "output_json"],
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "output_json": { "type": "string", "minLength": 1 }
+            "skip_uncertainty": { "type": "boolean", "default": false },
+            "uncertainty_grouping": { "type": "string", "enum": ["prefix_1"], "default": "prefix_1" }
           }
         }
       }
@@ -200,13 +339,36 @@
           "required": ["enabled", "baseline_dir", "require_same_host", "max_slowdown"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "baseline_dir": { "type": "string", "minLength": 1 },
+            "baseline_dir": { "$ref": "#/$defs/path" },
             "require_same_host": { "type": "boolean" },
             "max_slowdown": { "type": "number", "minimum": 0.0 }
           }
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "inputs": { "properties": { "mode": { "const": "workspace_json" } } } } },
+      "then": {
+        "properties": {
+          "execution": { "properties": { "import": { "properties": { "enabled": { "const": false } } } } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": { "properties": { "report": { "properties": { "enabled": { "const": true } } } } },
+          "inputs": { "properties": { "mode": { "enum": ["trex_config_txt", "trex_config_yaml", "workspace_json"] } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "execution": { "properties": { "report": { "properties": { "histfactory_xml": { "type": "string", "minLength": 1 } } } } }
+        }
+      }
+    }
+  ]
 }
 
