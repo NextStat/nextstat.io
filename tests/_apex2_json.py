@@ -15,6 +15,11 @@ _DROP_KEYS_DETERMINISTIC = {
     "created_unix_ms",
     # Performance/timing breakdowns (vary by machine/load).
     "timing_s",
+    "perf",
+    "speedup",
+    # Benchmark-style reports.
+    "bench",
+    "compare",
     "pyhf_wall_s",
     "nextstat_wall_s",
     "pyhf_nll_wall_s",
@@ -63,4 +68,3 @@ def dumps_report_json(report: Any, *, deterministic: bool) -> str:
 def write_report_json(path: Path, report: Any, *, deterministic: bool) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(dumps_report_json(report, deterministic=deterministic), encoding="utf-8")
-
