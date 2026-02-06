@@ -170,6 +170,12 @@ Reports are written to:
 - `tmp/pyhf_parity_audit.json` / `tmp/pyhf_parity_audit.md`
 - `tmp/pyhf_parity_audit_fit.json` / `tmp/pyhf_parity_audit_fit.md`
 
+If you need to tweak fit settings (e.g. increase NextStat iterations for very large models), pass extra args via:
+
+```bash
+PY=./.venv/bin/python make pyhf-audit-fit PYHF_AUDIT_FIT_ARGS="--nextstat-max-iter 3000"
+```
+
 If you want a snapshot you can commit/review later, copy the report into `audit/`:
 
 ```bash

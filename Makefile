@@ -34,6 +34,8 @@ ROOT_CURRENT_SUITE ?=
 ROOT_PERF_OUT ?= tmp/root_suite_perf_compare.json
 ROOT_PERF_ARGS ?=
 ROOT_ROOT_MANIFEST ?= tmp/baselines/latest_root_manifest.json
+PYHF_AUDIT_ARGS ?=
+PYHF_AUDIT_FIT_ARGS ?=
 
 apex2-baseline-record:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py $(RECORD_ARGS)
@@ -51,11 +53,11 @@ hepdata-pytest:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" -m pytest -k hepdata_workspaces
 
 pyhf-audit:
-	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py --out-json tmp/pyhf_parity_audit.json --out-md tmp/pyhf_parity_audit.md
+	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py $(PYHF_AUDIT_ARGS) --out-json tmp/pyhf_parity_audit.json --out-md tmp/pyhf_parity_audit.md
 
 .PHONY: pyhf-audit-fit
 pyhf-audit-fit:
-	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py --fit --fit-max-params 600 --out-json tmp/pyhf_parity_audit_fit.json --out-md tmp/pyhf_parity_audit_fit.md
+	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py $(PYHF_AUDIT_FIT_ARGS) --fit --fit-max-params 600 --out-json tmp/pyhf_parity_audit_fit.json --out-md tmp/pyhf_parity_audit_fit.md
 
 apex2-root-prereq:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/apex2_root_suite_report.py --prereq-only --out tmp/apex2_root_prereq.json

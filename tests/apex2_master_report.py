@@ -425,6 +425,12 @@ def main() -> int:
         default=None,
         help="Optional override for number of toys for model-zoo cases (requires --bias-pulls-include-zoo).",
     )
+    ap.add_argument(
+        "--bias-pulls-shard-count",
+        type=int,
+        default=None,
+        help="Optional sharding for bias/pulls (runs shards then merges a single JSON).",
+    )
     ap.add_argument("--bias-pulls-seed", type=int, default=0)
     ap.add_argument("--bias-pulls-fixtures", type=str, default="simple")
     ap.add_argument("--bias-pulls-params", type=str, default="poi", help="poi or all (passed to bias/pulls runner)")
@@ -632,11 +638,10 @@ def main() -> int:
     # ------------------------------------------------------------------
     if args.bias_pulls:
         bias_runner = repo / "tests" / "apex2_bias_pulls_report.py"
+        bias_merger = repo / "tests" / "merge_bias_pulls_shards.py"
         bias_cmd = [
             sys.executable,
             str(bias_runner),
-            "--out",
-            str(args.bias_pulls_out),
             "--n-toys",
             str(args.bias_pulls_n_toys),
             "--seed",
@@ -656,7 +661,35 @@ def main() -> int:
                 bias_cmd += ["--zoo-sizes", str(args.bias_pulls_zoo_sizes)]
             if args.bias_pulls_zoo_n_toys is not None:
                 bias_cmd += ["--zoo-n-toys", str(int(args.bias_pulls_zoo_n_toys))]
-        rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
+        out_bias = ""
+        rc_bias = 0
+        shard_count = None
+        try:
+            shard_count = int(args.bias_pulls_shard_count) if args.bias_pulls_shard_count is not None else None
+        except Exception:
+            shard_count = None
+        if shard_count is not None and shard_count < 2:
+            shard_count = None
+
+        if shard_count is not None:
+            shard_paths = []
+            for i in range(int(shard_count)):
+                shard_out = args.bias_pulls_out.with_name(
+                    f\"{args.bias_pulls_out.stem}_shard{i}{args.bias_pulls_out.suffix}\"
+                )
+                cmd_i = [*bias_cmd, \"--out\", str(shard_out), \"--shard-count\", str(int(shard_count)), \"--shard-index\", str(int(i))]
+                rc_i, out_i = _run_json(cmd_i, cwd=cwd, env=env)
+                out_bias = out_i
+                if rc_i not in (0, 2) or not shard_out.exists():
+                    rc_bias = rc_i
+                    break
+                shard_paths.append(shard_out)
+            else:
+                cmd_merge = [sys.executable, str(bias_merger), \"--out\", str(args.bias_pulls_out), *[str(p) for p in shard_paths]]
+                rc_bias, out_bias = _run_json(cmd_merge, cwd=cwd, env=env)
+        else:
+            rc_bias, out_bias = _run_json([*bias_cmd, \"--out\", str(args.bias_pulls_out)], cwd=cwd, env=env)
+
         bias_report = _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None
         bias_declared = ((bias_report or {}).get("summary") or {}).get("status") if isinstance(bias_report, dict) else None
         if bias_declared in ("ok", "fail", "skipped", "error"):

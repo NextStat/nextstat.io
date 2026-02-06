@@ -68,7 +68,7 @@ pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
 pub use ode::{OdeSolution, rk4_linear};
-pub use pk::{LloqPolicy, OneCompartmentOralPkModel};
+pub use pk::{LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel};
 pub use nuts::{NutsConfig, sample_nuts};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
 pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
