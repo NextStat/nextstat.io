@@ -174,6 +174,42 @@ def _case_gaussian_posterior_with_prior(
     }
 
 
+def _case_funnel_stress(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
+    """Stress geometry check: Neal's funnel (2D).
+
+    This is not an SBC test. The goal is to catch catastrophic sampler regressions:
+    NaN/inf energies, extreme divergence rates, or treedepth saturation.
+    """
+    model = nextstat_mod._core.FunnelModel()
+    r = nextstat_mod.sample(
+        model,
+        n_chains=2,
+        n_warmup=n_warmup,
+        n_samples=n_samples,
+        seed=seed,
+        init_jitter_rel=0.50,
+        target_accept=0.90,
+        max_treedepth=10,
+    )
+    energy = (r.get("sample_stats") or {}).get("energy")
+    energies_all_finite = False
+    if isinstance(energy, list):
+        try:
+            energies_all_finite = all(math.isfinite(float(v)) for chain in energy for v in chain)
+        except Exception:
+            energies_all_finite = False
+
+    return {
+        "name": "funnel_stress",
+        "model": "FunnelModel (Neal's funnel, 2D)",
+        "raw_quality": (r.get("diagnostics") or {}).get("quality"),
+        "summary": _diag_summary(r["diagnostics"]),
+        "checks": {
+            "energies_all_finite": bool(energies_all_finite),
+        },
+    }
+
+
 def _case_linear_regression(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
     x = [[1.0] for _ in range(30)]
     y = [1.0, 1.3, 0.9, 1.1, 1.2] * 6
@@ -248,12 +284,16 @@ def main() -> int:
     ap.add_argument("--cases", type=str, default="gaussian,linear,histfactory")
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--samples", type=int, default=200)
+    ap.add_argument("--funnel-warmup", type=int, default=300)
+    ap.add_argument("--funnel-samples", type=int, default=300)
     ap.add_argument("--histfactory-warmup", type=int, default=None)
     ap.add_argument("--histfactory-samples", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--rhat-max", type=float, default=1.10)
     ap.add_argument("--divergence-rate-max", type=float, default=0.05)
     ap.add_argument("--max-treedepth-rate-max", type=float, default=0.10)
+    ap.add_argument("--funnel-divergence-rate-max", type=float, default=0.30)
+    ap.add_argument("--funnel-max-treedepth-rate-max", type=float, default=0.50)
     ap.add_argument("--ess-bulk-min", type=float, default=10.0)
     ap.add_argument("--ess-tail-min", type=float, default=10.0)
     ap.add_argument("--ebfmi-min", type=float, default=0.20)
@@ -272,6 +312,8 @@ def main() -> int:
             "cases": args.cases,
             "warmup": int(args.warmup),
             "samples": int(args.samples),
+            "funnel_warmup": int(args.funnel_warmup),
+            "funnel_samples": int(args.funnel_samples),
             "histfactory_warmup": int(args.histfactory_warmup) if args.histfactory_warmup is not None else None,
             "histfactory_samples": int(args.histfactory_samples) if args.histfactory_samples is not None else None,
             "seed": int(args.seed),
@@ -279,6 +321,8 @@ def main() -> int:
                 "rhat_max": float(args.rhat_max),
                 "divergence_rate_max": float(args.divergence_rate_max),
                 "max_treedepth_rate_max": float(args.max_treedepth_rate_max),
+                "funnel_divergence_rate_max": float(args.funnel_divergence_rate_max),
+                "funnel_max_treedepth_rate_max": float(args.funnel_max_treedepth_rate_max),
                 "ess_bulk_min": float(args.ess_bulk_min),
                 "ess_tail_min": float(args.ess_tail_min),
                 "ebfmi_min": float(args.ebfmi_min),
@@ -316,6 +360,15 @@ def main() -> int:
                     nextstat, seed=args.seed + 4, n_warmup=args.warmup, n_samples=args.samples
                 )
             )
+        elif c == "funnel":
+            cases.append(
+                _case_funnel_stress(
+                    nextstat,
+                    seed=args.seed + 5,
+                    n_warmup=int(args.funnel_warmup),
+                    n_samples=int(args.funnel_samples),
+                )
+            )
         elif c == "linear":
             cases.append(_case_linear_regression(nextstat, seed=args.seed + 2, n_warmup=args.warmup, n_samples=args.samples))
         elif c == "histfactory":
@@ -342,6 +395,7 @@ def main() -> int:
             continue
 
         is_hf = str(row.get("name") or "").startswith("histfactory")
+        is_funnel = str(row.get("name") or "").startswith("funnel")
         thresholds_used = {
             "rhat_max": hf_rhat_max if is_hf else float(args.rhat_max),
             "divergence_rate_max": float(args.divergence_rate_max),
@@ -350,6 +404,14 @@ def main() -> int:
             "ess_tail_min": hf_ess_tail_min if is_hf else float(args.ess_tail_min),
             "ebfmi_min": float(args.ebfmi_min),
         }
+        if is_funnel:
+            # Stress gate: don't require tight R-hat/ESS; focus on divergence/treedepth/finite plumbing.
+            thresholds_used["rhat_max"] = 1e9
+            thresholds_used["ess_bulk_min"] = 0.0
+            thresholds_used["ess_tail_min"] = 0.0
+            thresholds_used["ebfmi_min"] = 0.0
+            thresholds_used["divergence_rate_max"] = float(args.funnel_divergence_rate_max)
+            thresholds_used["max_treedepth_rate_max"] = float(args.funnel_max_treedepth_rate_max)
         ok, failures = _eval_thresholds(
             summary,
             rhat_max=float(thresholds_used["rhat_max"]),

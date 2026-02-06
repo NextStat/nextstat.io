@@ -11,7 +11,8 @@ pub struct FitResult {
     /// Parameter uncertainties (sqrt of covariance diagonal)
     pub uncertainties: Vec<f64>,
 
-    /// Covariance matrix (row-major, N×N). `None` if Hessian inversion failed.
+    /// Covariance matrix (row-major, N×N). `None` if inversion failed or the
+    /// resulting covariance is numerically invalid (e.g., non-positive variances).
     pub covariance: Option<Vec<f64>>,
 
     /// Negative log-likelihood at minimum

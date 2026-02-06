@@ -221,7 +221,7 @@ NextStat performs MLE via the L-BFGS-B algorithm (through the `argmin` crate [9]
 | `tol` | $10^{-6}$ | Gradient norm tolerance |
 | `m` | 10 | L-BFGS history depth (corrections to approximate inverse Hessian) |
 
-The fit output includes best-fit parameters $\hat{\boldsymbol{\theta}}$, NLL at minimum, Hessian-based covariance $\hat{\Sigma} = H^{-1}$ (via Cholesky or LU decomposition of the numerical Hessian), parameter uncertainties $\hat{\sigma}_i = \sqrt{\hat{\Sigma}_{ii}}$, convergence flag, and evaluation count.
+The fit output includes best-fit parameters $\hat{\boldsymbol{\theta}}$, NLL at minimum, and Hessian-based parameter uncertainties. The covariance is computed as $\hat{\Sigma} = H^{-1}$ using a damped Cholesky solve of the numerical Hessian when possible; if inversion is unstable or yields non-positive variances, NextStat omits the covariance matrix and falls back to a diagonal-curvature uncertainty estimate. The output also includes a convergence flag and evaluation counts.
 
 **Gradients** are computed via forward-mode AD (see Section 5). A numerical gradient fallback using central differences with adaptive step size is available.
 

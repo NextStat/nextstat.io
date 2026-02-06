@@ -10,7 +10,7 @@ NextStat is a high-performance statistical fitting toolkit for High Energy Physi
 
 - pyhf JSON compatibility (HistFactory-style workspaces)
 - Negative log-likelihood (Poisson + constraints), including Barlow-Beeston auxiliary terms
-- Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via Hessian-based covariance
+- Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via (damped) Hessian-based covariance + diagonal fallback
 - SIMD kernels and Rayon parallelism where it matters
 - Rust library, Python package (PyO3/maturin), and a CLI
 

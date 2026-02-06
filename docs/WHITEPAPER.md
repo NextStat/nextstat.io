@@ -96,7 +96,7 @@ NextStat performs MLE with bounded parameters using a quasi-Newton method (L-BFG
 - Gradient-based optimization when analytic gradients are available
 - A fallback path when gradients are unavailable (early development or feature-gated backends)
 
-The fit output exposes best-fit parameters, objective at the minimum, and (when requested) Hessian-based covariance and parameter uncertainties.
+The fit output exposes best-fit parameters, objective at the minimum, and Hessian-based parameter uncertainties. When the full covariance is numerically stable (positive variances), it is returned; otherwise NextStat falls back to a diagonal-curvature estimate for uncertainties and omits the covariance matrix.
 
 ### 5.2 Profile Likelihood Scan and Test Statistics
 
