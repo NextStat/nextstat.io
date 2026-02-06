@@ -17,7 +17,7 @@
   "kind": "lmm_marginal",
   "n": 12,
   "n_groups": 3,
-  "nll_at_hat": -23.016603306115464,
+  "nll_at_hat": -23.016603306115414,
   "p": 1,
   "parameter_names": [
     "intercept",
@@ -27,17 +27,17 @@
     "log_tau_u_beta1"
   ],
   "params_hat": [
-    1.3018749393422215,
-    0.6381183601854838,
-    -3.715478958954691,
-    -1.1948683754651979,
-    -2.323584861132193
+    1.3018749641166298,
+    0.6381183660864441,
+    -3.7154789762406395,
+    -1.194868406325043,
+    -2.323584858820665
   ],
   "random_effects": "intercept_slope",
   "random_slope_feature_idx": 0,
   "source": {
     "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
-    "python": "3.13.11",
+    "python": "3.14.2",
     "tool": "nextstat",
     "version": "0.1.0"
   },

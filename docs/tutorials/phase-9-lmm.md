@@ -59,3 +59,16 @@ print(fit.parameters)
 - For fully Bayesian hierarchical modeling, prefer `nextstat.hier.*` builders
   and `nextstat.bayes.sample(...)` (NUTS) for posterior inference.
 
+## External parity (lme4)
+
+The Phase 9 acceptance criteria includes precomputed goldens against external
+mixed-model tooling. The repo contains helper scripts to generate lme4 numbers
+for the committed fixtures:
+
+```bash
+Rscript tests/external/generate_lmm_goldens_lme4.R tests/fixtures/lmm/lmm_intercept_small.json > /tmp/lme4.json
+python3 tests/external/merge_lmm_external_goldens.py tests/fixtures/lmm/lmm_intercept_small.json /tmp/lme4.json
+```
+
+This environment may not have R installed; the scripts are meant to be run in
+an external R environment and the resulting JSON committed.
