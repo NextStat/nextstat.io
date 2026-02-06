@@ -385,6 +385,17 @@ fn timeseries_kalman_viz_contract() {
     let ys = v.get("ys").and_then(|x| x.as_array()).expect("ys should be array");
     assert_eq!(ys.len(), 4);
 
+    let state_labels = v
+        .get("state_labels")
+        .and_then(|x| x.as_array())
+        .expect("state_labels should be array");
+    assert_eq!(state_labels.len(), 1);
+    let obs_labels = v
+        .get("obs_labels")
+        .and_then(|x| x.as_array())
+        .expect("obs_labels should be array");
+    assert_eq!(obs_labels.len(), 1);
+
     let smooth = v.get("smooth").expect("smooth should exist");
     let state_mean = smooth
         .get("state_mean")

@@ -10,10 +10,28 @@ def test_kalman_viz_artifact_contract_smoke():
     fit = nextstat.timeseries.kalman_fit(model, ys, max_iter=5, tol=1e-9, forecast_steps=2)
     art = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.9)
 
-    assert set(art.keys()) >= {"level", "t_obs", "ys", "smooth", "forecast"}
+    assert set(art.keys()) >= {
+        "level",
+        "alpha",
+        "z",
+        "t_obs",
+        "ys",
+        "state_labels",
+        "obs_labels",
+        "smooth",
+        "forecast",
+    }
+    assert abs(art["level"] - 0.9) < 1e-12
+    assert abs(art["alpha"] - 0.1) < 1e-12
+    assert art["z"] > 0.0
     assert len(art["t_obs"]) == len(ys)
     assert len(art["ys"]) == len(ys)
     assert art["ys"][2][0] is None
+
+    assert art["state_labels"] is not None
+    assert len(art["state_labels"]) == 1
+    assert art["obs_labels"] is not None
+    assert len(art["obs_labels"]) == 1
 
     smooth = art["smooth"]
     assert smooth is not None

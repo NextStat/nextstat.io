@@ -8,16 +8,16 @@ timestamped baseline files under ``tmp/baselines/``.
 Usage (from repo root, after ``maturin develop --release``):
 
   # Record both baselines (default):
-  PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
 
   # Record only pyhf baseline:
-  PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py --only pyhf
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only pyhf
 
   # Record only P6 GLM baseline:
-  PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py --only p6
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only p6
 
   # Custom output directory:
-  PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py --out-dir tmp/baselines
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --out-dir tmp/baselines
 
 The resulting files are named:
   <out-dir>/pyhf_baseline_<host>_<date>.json
@@ -42,6 +42,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+def _ensure_nextstat_import_path(repo: Path) -> None:
+    """Ensure `import nextstat` works in this process (not just subprocesses)."""
+    add = repo / "bindings" / "ns-py" / "python"
+    add_s = str(add)
+    if add_s not in sys.path:
+        sys.path.insert(0, add_s)
 
 
 # ── Environment fingerprint ────────────────────────────────────────────
@@ -101,6 +108,7 @@ def _cpu_brand() -> str:
 
 def collect_environment(repo: Path) -> Dict[str, Any]:
     """Full environment fingerprint for baseline reproducibility."""
+    _ensure_nextstat_import_path(repo)
     env: Dict[str, Any] = {
         "timestamp": int(time.time()),
         "datetime_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -308,6 +316,7 @@ def main() -> int:
 
     repo = _repo_root()
     env_dict = _with_py_path(os.environ.copy())
+    _ensure_nextstat_import_path(repo)
 
     # Collect environment fingerprint
     environment = collect_environment(repo)
@@ -409,13 +418,13 @@ def main() -> int:
     # Print usage hint for comparing against these baselines
     print("To compare P6 GLM against this baseline:")
     if p6_path:
-        print(f"  python tests/apex2_p6_glm_benchmark_report.py \\")
+        print(f"  PYTHONPATH=bindings/ns-py/python {sys.executable} tests/apex2_p6_glm_benchmark_report.py \\")
         print(f"    --baseline {p6_path} \\")
         print(f"    --out tmp/apex2_p6_glm_bench_report.json")
     print()
     print("To run full master report with P6 baseline:")
     if p6_path:
-        print(f"  python tests/apex2_master_report.py \\")
+        print(f"  PYTHONPATH=bindings/ns-py/python {sys.executable} tests/apex2_master_report.py \\")
         print(f"    --p6-glm-bench --p6-glm-bench-baseline {p6_path}")
 
     return 0

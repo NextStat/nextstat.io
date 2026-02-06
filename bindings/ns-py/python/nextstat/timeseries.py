@@ -285,13 +285,22 @@ def kalman_viz_artifact(
     em = fit_out.get("em") if isinstance(fit_out, Mapping) else None
     h = None
     r = None
+    inferred_state_labels = None
     if isinstance(em, Mapping):
         h = em.get("h")
         r = em.get("r")
+        f = em.get("f")
+        if (
+            inferred_state_labels is None
+            and isinstance(f, (list, tuple))
+            and len(f) > 0
+            and isinstance(f[0], (list, tuple))
+        ):
+            # Best-effort: infer state dimension from F even if smoothing is disabled.
+            inferred_state_labels = [f"x[{i}]" for i in range(len(f))]
 
     smooth_in = fit_out.get("smooth") if isinstance(fit_out, Mapping) else None
     smooth_art = None
-    inferred_state_labels = None
     if isinstance(smooth_in, Mapping):
         sm = smooth_in.get("smoothed_means")
         sp = smooth_in.get("smoothed_covs")
