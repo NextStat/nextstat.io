@@ -10,8 +10,9 @@ This page summarizes the main Rust crates and their public entry points.
 ## Crates
 
 - `ns-core`: core types and traits (model interface, `FitResult`, error handling).
+- `ns-root`: native ROOT file I/O (TH1 histograms, TTree columnar access, expression engine, histogram filler).
 - `ns-inference`: inference algorithms and model packs (MLE, NUTS, CLs, time series, PK/NLME, etc.).
-- `ns-translate`: ingestion and translation layers (pyhf/HistFactory).
+- `ns-translate`: ingestion and translation layers (pyhf JSON, HistFactory XML, ntuple-to-workspace builder).
 - `ns-viz`: plot-friendly artifacts (CLs curves, profile scans).
 - `ns-cli`: `nextstat` CLI.
 

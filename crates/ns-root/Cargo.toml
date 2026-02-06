@@ -9,7 +9,7 @@ repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Native ROOT file reader for NextStat (TH1D/TH1F histograms)"
+description = "Native ROOT file reader for NextStat (TH1D/TH1F histograms, TTree/TBranch columnar access, expression engine, histogram filler)"
 
 [dependencies]
 thiserror.workspace = true

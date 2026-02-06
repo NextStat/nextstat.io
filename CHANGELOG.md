@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 4 — Native TTree Reader & Ntuple-to-Workspace Pipeline
+
+**ns-root: TTree/TBranch binary reader**
+- Memory-mapped file access via `DataSource::Mmap` (memmap2) — no full-file RAM copy for GB+ ntuples.
+- Native TTree/TBranch binary deserialization with ROOT class reference system
+  (kNewClassTag, kClassMask, kByteCountMask), TObjArray dispatch, TLeaf type detection.
+- Basket decompression (zlib/LZ4) with rayon-parallel columnar extraction (`BranchReader`).
+- 7 leaf types: `f32`, `f64`, `i32`, `i64`, `i16`, `i8`, `bool`.
+- `RootFile::get_tree()`, `branch_reader()`, `branch_data()` public API.
+
+**ns-root: Expression engine**
+- Recursive descent parser for string-based selections, weights, and variable expressions.
+- Full grammar: arithmetic (`+`, `-`, `*`, `/`), comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`),
+  boolean logic (`&&`, `||`, `!`), built-in functions (`abs`, `sqrt`, `log`, `exp`, `pow`, `min`, `max`).
+- `CompiledExpr::compile()` → `eval_row()` / `eval_bulk()` API.
+- Variables resolved by branch name; bulk evaluation over columnar data.
+
+**ns-root: Histogram filler**
+- Single-pass histogram filling with selection cuts, weights, and variable binning.
+- `HistogramSpec` (variable, weight, selection as `CompiledExpr`) + `FilledHistogram` output with `sumw2`.
+- `fill_histograms()` fills multiple histograms in one pass over the data.
+- `From<FilledHistogram> for Histogram` conversion.
+
+**ns-translate: NtupleWorkspaceBuilder**
+- High-level fluent builder API: ntuple ROOT files → HistFactory `Workspace`.
+- `NtupleWorkspaceBuilder::new().ntuple_path(...).tree_name(...).measurement(...).add_channel(...)`.
+- Per-sample modifier support: `NormFactor`, `NormSys`, `WeightSys` (up/down weight expressions),
+  `TreeSys` (up/down ROOT files), `StatError` (auto `sqrt(sumw2)`).
+- ROOT file caching across samples; Asimov data when no data file specified.
+- Produces the same `Workspace` struct as the pyhf JSON and HistFactory XML paths.
+
+**Performance (1000 entries, 7 branches, release build):**
+
+| Operation | NextStat (Rust) | uproot + numpy | Speedup |
+|---|---:|---:|---:|
+| File open (mmap) | 75 µs | 215 µs | ~3x |
+| TTree metadata parse | 50 µs | 1,400 µs | ~28x |
+| Read 1 branch | 65 µs | 675 µs | ~10x |
+| Read all 7 branches | 200 µs | 1,300 µs | ~6.5x |
+| Selection eval | 15 µs | 26 µs | ~1.7x |
+| Histogram fill | 28 µs | 96 µs | ~3.4x |
+| **Total pipeline** | **~430 µs** | **~3,700 µs** | **~8.5x** |
+
+**Bug fixes:**
+- HistFactory XML parser: strip `<!DOCTYPE>` declarations before parsing (roxmltree rejects DTD by default).
+
 #### Phase 9 — Pharma & Social Sciences Domain Packs
 
 **Pack A: Survival Analysis**

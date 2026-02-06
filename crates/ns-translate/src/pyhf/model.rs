@@ -57,6 +57,15 @@ pub struct ExpectedSampleYields {
     pub y: Vec<f64>,
 }
 
+/// Observed main-bin data for one channel.
+#[derive(Debug, Clone)]
+pub struct ObservedChannelData {
+    /// Channel name (as provided in the input workspace).
+    pub channel_name: String,
+    /// Observed counts per bin (main bins only).
+    pub y: Vec<f64>,
+}
+
 /// Model channel
 #[derive(Debug, Clone)]
 struct ModelChannel {
@@ -701,6 +710,18 @@ impl HistFactoryModel {
     /// Get parameters
     pub fn parameters(&self) -> &[Parameter] {
         &self.parameters
+    }
+
+    /// Observed main-bin data per channel (channels are ordered lexicographically by name).
+    pub fn observed_main_by_channel(&self) -> Vec<ObservedChannelData> {
+        let mut out: Vec<ObservedChannelData> = Vec::with_capacity(self.channels.len());
+        for channel in &self.channels {
+            out.push(ObservedChannelData {
+                channel_name: channel.name.clone(),
+                y: channel.observed.clone(),
+            });
+        }
+        out
     }
 
     /// Create a copy with one parameter fixed at a given value.

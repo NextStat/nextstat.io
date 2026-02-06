@@ -263,6 +263,29 @@ enum VizCommands {
         threads: usize,
     },
 
+    /// Correlation matrix artifact (TREx-style)
+    Corr {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Fit result JSON (from `nextstat fit`) providing covariance.
+        #[arg(long)]
+        fit: PathBuf,
+
+        /// Also include the raw covariance matrix in the output artifact.
+        #[arg(long)]
+        include_covariance: bool,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
     /// TREx-like stacked distributions artifact (prefit/postfit + ratio)
     Distributions {
         /// Input workspace (pyhf JSON)
@@ -572,6 +595,20 @@ fn main() -> Result<()> {
             VizCommands::Pulls { input, fit, output, threads } => {
                 cmd_viz_pulls(&input, &fit, output.as_ref(), threads, cli.bundle.as_ref())
             }
+            VizCommands::Corr {
+                input,
+                fit,
+                include_covariance,
+                output,
+                threads,
+            } => cmd_viz_corr(
+                &input,
+                &fit,
+                include_covariance,
+                output.as_ref(),
+                threads,
+                cli.bundle.as_ref(),
+            ),
             VizCommands::Distributions {
                 input,
                 histfactory_xml,
@@ -2083,6 +2120,18 @@ struct FitResultJson {
     bestfit: Vec<f64>,
     #[serde(default)]
     uncertainties: Vec<f64>,
+    #[serde(default)]
+    covariance: Option<Vec<f64>>,
+    #[serde(default)]
+    nll: f64,
+    #[serde(default)]
+    converged: bool,
+    #[serde(default)]
+    n_iter: usize,
+    #[serde(default)]
+    n_fev: usize,
+    #[serde(default)]
+    n_gev: usize,
 }
 
 fn params_from_fit_result(
@@ -2199,7 +2248,80 @@ fn cmd_viz_pulls(
         out
     };
 
-    let artifact = ns_viz::pulls::pulls_artifact(&model, &params_postfit, &uncs_postfit, threads)?;
+    let fit_result = ns_core::FitResult {
+        parameters: params_postfit,
+        uncertainties: uncs_postfit,
+        covariance: fit_json.covariance,
+        nll: fit_json.nll,
+        converged: fit_json.converged,
+        n_iter: fit_json.n_iter,
+        n_fev: fit_json.n_fev,
+        n_gev: fit_json.n_gev,
+    };
+    let artifact = ns_viz::pulls::pulls_artifact(&model, &fit_result, threads)?;
+    let output_json = serde_json::to_value(&artifact)?;
+    write_json(output, &output_json)?;
+    Ok(())
+}
+
+fn cmd_viz_corr(
+    input: &PathBuf,
+    fit: &PathBuf,
+    include_covariance: bool,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for `nextstat viz corr` yet");
+    }
+
+    let model = load_model(input, threads)?;
+
+    let bytes = std::fs::read(fit)?;
+    let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
+    if fit_json.uncertainties.is_empty() {
+        anyhow::bail!("fit result missing `uncertainties` (required for corr)");
+    }
+    if fit_json.covariance.is_none() {
+        anyhow::bail!("fit result missing `covariance` (required for corr)");
+    }
+
+    let params_postfit = params_from_fit_result(&model, &fit_json)?;
+    let uncs_postfit = {
+        if fit_json.parameter_names.len() != fit_json.uncertainties.len() {
+            anyhow::bail!(
+                "fit result length mismatch: parameter_names={} uncertainties={}",
+                fit_json.parameter_names.len(),
+                fit_json.uncertainties.len()
+            );
+        }
+        let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+        for (n, v) in fit_json.parameter_names.iter().zip(fit_json.uncertainties.iter()) {
+            map.insert(n.as_str(), *v);
+        }
+        let mut out = Vec::with_capacity(model.parameters().len());
+        for p in model.parameters() {
+            let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
+                ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+            })?;
+            out.push(v);
+        }
+        out
+    };
+
+    let fit_result = ns_core::FitResult {
+        parameters: params_postfit,
+        uncertainties: uncs_postfit,
+        covariance: fit_json.covariance,
+        nll: fit_json.nll,
+        converged: fit_json.converged,
+        n_iter: fit_json.n_iter,
+        n_fev: fit_json.n_fev,
+        n_gev: fit_json.n_gev,
+    };
+
+    let artifact = ns_viz::corr::corr_artifact(&model, &fit_result, threads, include_covariance)?;
     let output_json = serde_json::to_value(&artifact)?;
     write_json(output, &output_json)?;
     Ok(())

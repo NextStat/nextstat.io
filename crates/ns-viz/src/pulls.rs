@@ -1,8 +1,8 @@
-//! Pulls + constraints artifacts (TREx-style, numbers-first).
+//! TREx-like pulls/constraints artifact (numbers-first).
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ns_core::Result;
+use ns_core::{FitResult, Result};
 use serde::Serialize;
 
 use ns_translate::pyhf::HistFactoryModel;
@@ -40,8 +40,10 @@ pub struct PullEntry {
     pub prefit_center: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefit_sigma: Option<f64>,
-    pub postfit_center: f64,
-    pub postfit_sigma: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postfit_center: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postfit_sigma: Option<f64>,
     pub pull: f64,
     pub constraint: f64,
 }
@@ -53,67 +55,73 @@ fn now_unix_ms() -> Result<u128> {
     Ok(d.as_millis())
 }
 
-fn base_group(name: &str) -> Option<String> {
-    name.split_once('[').map(|(b, _)| b.to_string())
-}
-
-pub fn pulls_artifact(
-    model: &HistFactoryModel,
-    postfit_params: &[f64],
-    postfit_uncertainties: &[f64],
-    threads: usize,
-) -> Result<PullsArtifact> {
-    if postfit_params.len() != model.parameters().len() {
+/// Build a TREx-like pulls/constraints artifact from a `FitResult` and the model parameter metadata.
+///
+/// Policy:
+/// - Includes POI (if any) and all **constrained** nuisance parameters.
+/// - Ordering is lexicographic by parameter name for reproducibility.
+pub fn pulls_artifact(model: &HistFactoryModel, fit: &FitResult, threads: usize) -> Result<PullsArtifact> {
+    if fit.parameters.len() != model.parameters().len() {
         return Err(ns_core::Error::Validation(format!(
-            "postfit_params length mismatch: expected {}, got {}",
-            model.parameters().len(),
-            postfit_params.len()
+            "fit/model parameter length mismatch: fit={} model={}",
+            fit.parameters.len(),
+            model.parameters().len()
         )));
     }
-    if postfit_uncertainties.len() != model.parameters().len() {
+    if fit.uncertainties.len() != model.parameters().len() {
         return Err(ns_core::Error::Validation(format!(
-            "postfit_uncertainties length mismatch: expected {}, got {}",
-            model.parameters().len(),
-            postfit_uncertainties.len()
+            "fit uncertainties length mismatch: got={} expected={}",
+            fit.uncertainties.len(),
+            model.parameters().len()
         )));
     }
 
-    let poi_index = model.poi_index();
+    let poi_idx = model.poi_index();
 
-    let mut entries = Vec::new();
+    let mut entries: Vec<PullEntry> = Vec::new();
     for (i, p) in model.parameters().iter().enumerate() {
-        if !p.constrained {
+        let is_poi = poi_idx == Some(i);
+        let is_constrained = p.constrained && p.constraint_center.is_some() && p.constraint_width.is_some();
+        if !(is_poi || is_constrained) {
             continue;
         }
-        let pre_center = p.constraint_center.unwrap_or(p.init);
-        let pre_sigma = p.constraint_width.unwrap_or(1.0);
-        let post_center = postfit_params[i];
-        let post_sigma = postfit_uncertainties[i];
 
-        let pull = if pre_sigma.is_finite() && pre_sigma > 0.0 {
-            (post_center - pre_center) / pre_sigma
-        } else {
-            f64::NAN
-        };
-        let constraint = if pre_sigma.is_finite() && pre_sigma > 0.0 && post_sigma.is_finite() {
-            post_sigma / pre_sigma
-        } else {
-            f64::NAN
-        };
+        let post_center = fit.parameters[i];
+        let post_sigma = fit.uncertainties[i];
 
-        let kind = if poi_index == Some(i) { "poi" } else { "nuisance" };
-        entries.push(PullEntry {
-            name: p.name.clone(),
-            kind: kind.to_string(),
-            group: base_group(&p.name),
-            prefit_center: Some(pre_center),
-            prefit_sigma: Some(pre_sigma),
-            postfit_center: post_center,
-            postfit_sigma: post_sigma,
-            pull,
-            constraint,
-        });
+        if is_constrained {
+            let pre_center = p.constraint_center.unwrap();
+            let pre_sigma = p.constraint_width.unwrap();
+            let pull = (post_center - pre_center) / pre_sigma;
+            let constraint = post_sigma / pre_sigma;
+            entries.push(PullEntry {
+                name: p.name.clone(),
+                kind: if is_poi { "poi".to_string() } else { "nuisance".to_string() },
+                group: None,
+                prefit_center: Some(pre_center),
+                prefit_sigma: Some(pre_sigma),
+                postfit_center: Some(post_center),
+                postfit_sigma: Some(post_sigma),
+                pull,
+                constraint,
+            });
+        } else {
+            // POI: not constrained.
+            entries.push(PullEntry {
+                name: p.name.clone(),
+                kind: "poi".to_string(),
+                group: Some("poi".to_string()),
+                prefit_center: None,
+                prefit_sigma: None,
+                postfit_center: Some(post_center),
+                postfit_sigma: Some(post_sigma),
+                pull: 0.0,
+                constraint: 1.0,
+            });
+        }
     }
+
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(PullsArtifact {
         schema_version: "trex_report_pulls_v0".to_string(),
@@ -126,8 +134,7 @@ pub fn pulls_artifact(
                 stable_ordering: true,
             },
         },
-        ordering_policy: Some("input".to_string()),
+        ordering_policy: Some("name_lex".to_string()),
         entries,
     })
 }
-

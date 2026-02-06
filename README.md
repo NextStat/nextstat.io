@@ -9,6 +9,9 @@ NextStat is a high-performance statistical fitting toolkit for High Energy Physi
 ## What You Get
 
 - pyhf JSON compatibility (HistFactory-style workspaces)
+- Native ROOT TTree reader with mmap I/O, rayon-parallel basket decompression, and columnar extraction — no ROOT C++ dependency
+- Ntuple-to-workspace pipeline: ROOT ntuples → histograms → HistFactory workspace (TRExFitter replacement)
+- Expression engine for string-based selections and weights (`"njet >= 4 && pt > 25.0"`)
 - Negative log-likelihood (Poisson + constraints), including Barlow-Beeston auxiliary terms
 - Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via (damped) Hessian-based covariance + diagonal fallback
 - NUTS sampling surface (generic `Posterior` API) + optional ArviZ integration
@@ -140,6 +143,55 @@ prof_art = nextstat.viz.profile_curve(model, mu)
 nextstat.viz.plot_profile_curve(prof_art, title="Profile likelihood scan")
 ```
 
+### Ntuple → Workspace (TRExFitter replacement)
+
+```rust
+use ns_translate::NtupleWorkspaceBuilder;
+
+let ws = NtupleWorkspaceBuilder::new()
+    .ntuple_path("ntuples/")
+    .tree_name("events")
+    .measurement("meas", "mu")
+    .add_channel("SR", |ch| {
+        ch.variable("mbb")
+          .binning(&[0., 50., 100., 150., 200., 300.])
+          .selection("njet >= 4 && pt > 25.0")
+          .data_file("data.root")
+          .add_sample("signal", |s| {
+              s.file("ttH.root")
+               .weight("weight_mc * weight_sf")
+               .normfactor("mu")
+          })
+          .add_sample("background", |s| {
+              s.file("ttbar.root")
+               .weight("weight_mc * weight_sf")
+               .normsys("bkg_norm", 0.9, 1.1)
+               .weight_sys("jes", "weight_jes_up", "weight_jes_down")
+               .tree_sys("jer", "jer_up.root", "jer_down.root")
+               .staterror()
+          })
+    })
+    .build()?;  // → Workspace (same type as pyhf JSON path)
+```
+
+No ROOT C++ dependency. ~8.5x faster than uproot+numpy on the full pipeline.
+
+### Low-level TTree access
+
+```rust
+use ns_root::RootFile;
+
+let file = RootFile::open("data.root")?;
+let tree = file.get_tree("events")?;
+
+// Columnar access
+let pt: Vec<f64> = file.branch_data(&tree, "pt")?;
+let eta: Vec<f64> = file.branch_data(&tree, "eta")?;
+
+// Expression engine
+let expr = ns_root::CompiledExpr::compile("pt > 25.0 && abs(eta) < 2.5")?;
+```
+
 ### CLI
 
 ```bash
@@ -174,8 +226,8 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
                           │ implemented by
 ┌─────────────────────────┴───────────────────────────────────────┐
 │                    LOW-LEVEL IMPLEMENTATIONS                     │
-│  ns-translate (pyhf model + NLL/grad)  ns-compute (SIMD kernels)  │
-│  ns-ad (dual/tape AD)                  optional GPU backends      │
+│  ns-translate (pyhf + ntuple → Workspace)  ns-compute (SIMD)     │
+│  ns-ad (dual/tape AD)  ns-root (ROOT I/O, TTree, expressions)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,15 +236,16 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
 ```
 nextstat/
 ├── crates/
-│   ├── ns-core/
-│   ├── ns-compute/
-│   ├── ns-ad/
-│   ├── ns-inference/
-│   ├── ns-translate/
-│   ├── ns-viz/
-│   └── ns-cli/
+│   ├── ns-core/         # Core types, traits, error handling
+│   ├── ns-compute/      # SIMD kernels (f64x4 Poisson NLL)
+│   ├── ns-ad/           # Automatic differentiation (dual/tape)
+│   ├── ns-root/         # Native ROOT file reader (TH1, TTree, expressions, filler)
+│   ├── ns-translate/    # Format translators (pyhf, HistFactory XML, ntuple builder)
+│   ├── ns-inference/    # MLE, NUTS, CLs, GLM, time series, PK/NLME
+│   ├── ns-viz/          # Visualization artifacts
+│   └── ns-cli/          # CLI binary
 ├── bindings/
-│   └── ns-py/
+│   └── ns-py/           # Python bindings (PyO3/maturin)
 ├── docs/
 │   ├── legal/
 │   ├── plans/

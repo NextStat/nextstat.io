@@ -45,7 +45,10 @@ pub struct YieldsSample {
 }
 
 fn now_unix_ms() -> Result<u128> {
-    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
+    let d = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| ns_core::Error::Computation(format!("system time error: {}", e)))?;
+    Ok(d.as_millis())
 }
 
 pub fn yields_artifact(
@@ -121,4 +124,3 @@ pub fn yields_artifact(
         channels: out_channels,
     })
 }
-
