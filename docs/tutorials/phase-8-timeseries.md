@@ -43,6 +43,14 @@ nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10
 nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 ```
 
+## EM options
+
+`kalman-em` can also estimate scalar `F`/`H` for 1D models (`n_state=1`, `n_obs=1`):
+
+- CLI: `--estimate-f true` to estimate `F[0,0]`.
+- CLI: `--estimate-h true` to estimate `H[0,0]`.
+- Python: `nextstat.timeseries.kalman_em(..., estimate_f=True, estimate_h=True)`.
+
 ## Missing observations
 
 - Python: use `None` inside `ys` (per component).

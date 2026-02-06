@@ -1,6 +1,6 @@
 ---
 title: "Phase 3.1 Frequentist Tutorial (Profile Likelihood + CLs)"
-status: draft
+status: stable
 ---
 
 # Phase 3.1 Frequentist Tutorial (Profile Likelihood + CLs)
@@ -28,8 +28,7 @@ cargo test
 Optional (Python surface):
 
 ```bash
-cd bindings/ns-py
-maturin develop
+./.venv/bin/maturin develop -m bindings/ns-py/Cargo.toml
 ```
 
 ## Validation Harness (Apex2)

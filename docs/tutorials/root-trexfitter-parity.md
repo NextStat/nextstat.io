@@ -5,59 +5,74 @@ status: draft
 
 # ROOT/TRExFitter Parity (HistFactory) — NextStat Validation
 
-Цель: прогнать одни и те же HistFactory модели через **ROOT/HistFactory** (эталон в HEP‑экосистеме) и через **NextStat**, сравнить расхождения и померить скорость.
+Goal: run the same HistFactory models through **ROOT/HistFactory** (a common reference in the HEP ecosystem) and through **NextStat**, compare differences, and measure performance.
 
-На практике TRExFitter обычно является *генератором* HistFactory XML + ROOT histograms и/или RooWorkspace, а математика “движка” живёт в ROOT/RooFit/RooStats. Поэтому минимальный “эталонный” контур — это ROOT `hist2workspace` + RooFit профилирование.
+In practice, TRExFitter is usually a *generator* of HistFactory XML + ROOT histograms and/or RooWorkspace, while the "engine" math lives in ROOT/RooFit/RooStats. So the minimal "reference loop" is ROOT `hist2workspace` + RooFit profiling.
 
 ## Prerequisites
 
-1) ROOT (с HistFactory/RooStats) доступен в PATH:
+1) ROOT (with HistFactory/RooStats) is available in PATH:
 
 ```bash
 command -v root
 command -v hist2workspace
 ```
 
-2) Python bindings NextStat собраны/установлены:
+2) NextStat Python bindings are built/installed (or a release wheel is installed):
 
 ```bash
 cd bindings/ns-py
 maturin develop --release
 ```
 
-3) Для конвертации HistFactory XML ↔ pyhf JSON нужен `uproot`:
+3) To convert HistFactory XML ↔ pyhf JSON you need `uproot`:
 
 ```bash
 pip install -e "bindings/ns-py[validation]"
 ```
 
+## Cluster notes (CERN lxplus + HTCondor)
+
+These runs are easiest where ROOT and TRExFitter are already available. At CERN this usually means:
+- log in to `lxplus` (or another submit host)
+- run on batch via HTCondor
+
+Environment and submit-file docs: [HTCondor usage (ABP Computing @ CERN)](https://abpcomputing.web.cern.ch/computing_resources/cernbatch/).
+
+Two practical execution templates:
+
+1) **One job = one suite** (runs all cases sequentially; easier to debug, worse parallelism).
+2) **Job-array: one job = one case** (maximum parallelism; aggregate JSON afterward).
+
+See the Cookbook section below for copy-paste examples for both.
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
-Ниже самый воспроизводимый путь, который удобно запускать на кластере (где есть ROOT и TRExFitter).
+Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
 
-### Planning (окружение и зависимости)
+### Planning (environment and dependencies)
 
-Минимально нужно:
-- `root` + `hist2workspace` в `PATH`
-- Python 3 + зависимости для валидации (`pyhf`, `uproot`, и python bindings NextStat)
+Minimum requirements:
+- `root` + `hist2workspace` in `PATH`
+- Python 3 + validation dependencies (`pyhf`, `uproot`, and the NextStat Python bindings)
 
-Рекомендуемая проверка prereqs (быстро, без прогонов):
+Recommended prereq check (fast, without running the suite):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
 ```
 
-Если в кластере нет `.venv`, используй любой эквивалентный Python (conda/venv/модуль), но важно:
+If the cluster does not have `.venv`, use any equivalent Python (conda/venv/module), but make sure:
 - `PYTHONPATH=bindings/ns-py/python`
-- `pip install -e "bindings/ns-py[validation]"` выполнен в этом env
+- `pip install -e "bindings/ns-py[validation]"` has been run in this env
 
-### Exploration (найти тестовые модели)
+### Exploration (find test models)
 
-Тестовые модели для ROOT/TRExFitter в этом контуре это HistFactory экспорты с `combination.xml`.
+Test models for ROOT/TRExFitter in this loop are HistFactory exports that contain `combination.xml`.
 
-Если у тебя есть директория с экспортами TRExFitter (или любыми HistFactory export-ами), можно:
+If you have a directory with TRExFitter exports (or any HistFactory exports), you can:
 
-1) Сгенерировать cases JSON (наиболее контролируемо, удобно для CI/архива):
+1) Generate a cases JSON (most controlled; convenient for CI/archive):
 
 ```bash
 ./.venv/bin/python tests/generate_apex2_root_cases.py \
@@ -67,13 +82,13 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --absolute-paths
 ```
 
-`name` каждого кейса генерится как относительный путь папки экспорта (от `--search-dir`), чтобы избежать коллизий (в больших наборах часто повторяются одинаковые имена подпапок).
+Each case `name` is generated as the export directory path relative to `--search-dir` to avoid collisions (large datasets often reuse the same subfolder names).
 
-2) Либо не генерировать вручную, а дать директорию прямо мастер-раннеру (см. Execution).
+2) Or skip manual generation and pass the directory directly to the master runner (see Execution).
 
-### Execution (прогоны)
+### Execution (runs)
 
-#### Вариант A: один master-report (pyhf + ROOT-suite)
+#### Option A: single master report (pyhf + ROOT suite)
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
@@ -82,15 +97,15 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --root-cases-absolute-paths
 ```
 
-Артефакт:
+Artifact:
 - `tmp/apex2_master_report.json`
 
-Внутри будет:
+Contains:
 - `pyhf.status` (`ok`/`fail`)
 - `root.status` (`ok`/`fail`/`skipped`)
-- ссылки на `tmp/apex2_pyhf_report.json` и `tmp/apex2_root_suite_report.json`
+- links to `tmp/apex2_pyhf_report.json` and `tmp/apex2_root_suite_report.json`
 
-#### Вариант B: отдельно ROOT-suite (если нужно фокусно)
+#### Option B: ROOT suite only (if you want to focus)
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
@@ -99,9 +114,9 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_repor
   --out tmp/apex2_root_suite_report.json
 ```
 
-#### Вариант C: только pyhf parity + speed (без ROOT)
+#### Option C: pyhf parity + speed only (no ROOT)
 
-Этот прогон не требует ROOT/TRExFitter и полезен как быстрый “эталон” на любом окружении:
+This run does not require ROOT/TRExFitter and is useful as a fast "reference" on any environment:
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
@@ -111,7 +126,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_
   --seed 0
 ```
 
-Если нужно дополнительно прогнать fit (может быть медленнее):
+If you also need to run the fit (can be slower):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
@@ -119,46 +134,46 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_
   --fit
 ```
 
-### Verification (интерпретация и “почему”)
+### Verification (interpretation and "why")
 
-1) Первичный “зеленый/красный” сигнал:
-- `pyhf.status == ok` значит NLL/expected_data совпадают с эталоном `pyhf`
-- `root.status == ok` значит q(mu) профиль совпал с ROOT в заданных допусках
-- `root.status == skipped` значит не было prereqs (например, нет `hist2workspace` или `uproot`)
+1) First-pass "green/red" signal:
+- `pyhf.status == ok` means NLL/expected_data match the `pyhf` reference
+- `root.status == ok` means the q(mu) profile matched ROOT within the configured tolerances
+- `root.status == skipped` means prereqs were missing (e.g. no `hist2workspace` or `uproot`)
 
-2) Если ROOT-suite дал `fail`, в `tmp/apex2_root_suite_report.json` для каждого кейса есть:
-- `run_dir` (папка с артефактами одного прогона)
+2) If the ROOT suite returns `fail`, `tmp/apex2_root_suite_report.json` contains (per case):
+- `run_dir` (folder containing artifacts for a single run)
 - `summary_path`
-- `diff.max_abs_dq_mu` и `diff.d_mu_hat`
+- `diff.max_abs_dq_mu` and `diff.d_mu_hat`
 
-3) Для разбора расхождений по конкретному `run_dir` (без ROOT) используй:
+3) To analyze differences for a specific `run_dir` (without ROOT), use:
 
 ```bash
 ./.venv/bin/python tests/explain_root_vs_nextstat_profile_diff.py \
   --run-dir /abs/path/to/tmp/root_parity_suite/<case>/run_<timestamp>
 ```
 
-4) Для профилировки:
-- pyhf speedup смотри в `tmp/apex2_pyhf_report.json` (и в `tmp/apex2_master_report.json` в `pyhf.stdout_tail`/`pyhf.report`)
-- ROOT-suite speedup смотри в `tmp/apex2_root_suite_report.json` по ключу `cases[*].perf.speedup_nextstat_vs_root_scan` (это `root_profile_scan_wall / nextstat_profile_scan`)
+4) For performance profiling:
+- for pyhf speedups see `tmp/apex2_pyhf_report.json` (and in `tmp/apex2_master_report.json` under `pyhf.stdout_tail`/`pyhf.report`)
+- for ROOT suite speedups see `tmp/apex2_root_suite_report.json` under `cases[*].perf.speedup_nextstat_vs_root_scan` (this is `root_profile_scan_wall / nextstat_profile_scan`)
 
-### Cookbook: примеры для всех вариантов
+### Cookbook: examples for all options
 
-Ниже набор “копипаст” команд для кластера/локально.
+Below is a set of "copy-paste" commands for cluster/local runs.
 
-1) Быстрый prereq-check только для ROOT-suite (без прогонов):
+1) Fast prereq check for ROOT suite only (no runs):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py --prereq-only
 ```
 
-2) Master-report, но ROOT часть только prereq-check (pyhf прогонится полностью):
+2) Master report, but ROOT part is prereq-only (pyhf runs fully):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
 ```
 
-3) Master-report с автопоиском `combination.xml` (TRExFitter export dir):
+3) Master report with auto-discovery of `combination.xml` (TRExFitter export dir):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
@@ -167,7 +182,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --root-cases-absolute-paths
 ```
 
-4) Master-report с кастомным glob (если `combination.xml` лежит иначе):
+4) Master report with a custom glob (if `combination.xml` is located differently):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
@@ -176,7 +191,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --root-cases-absolute-paths
 ```
 
-5) Master-report с кастомной сеткой mu (влияет на auto-generated cases):
+5) Master report with a custom mu grid (affects auto-generated cases):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
@@ -186,7 +201,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --root-mu-points 101
 ```
 
-6) Master-report с заранее сгенерированным cases JSON:
+6) Master report using a pre-generated cases JSON:
 
 ```bash
 ./.venv/bin/python tests/generate_apex2_root_cases.py \
@@ -200,7 +215,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --out tmp/apex2_master_report.json
 ```
 
-7) Только ROOT-suite с кастомными thresholds и workdir:
+7) ROOT suite only with custom thresholds and workdir:
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
@@ -212,9 +227,9 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_repor
   --out tmp/apex2_root_suite_report.json
 ```
 
-8) Один ROOT кейс “fail-fast” через Apex2 wrapper (удобно для дебага):
+8) Single ROOT case "fail-fast" via the Apex2 wrapper (handy for debugging):
 
-Старт от `pyhf` JSON:
+Starting from `pyhf` JSON:
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_report.py \
@@ -223,7 +238,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_rep
   --out tmp/apex2_root_profile_report.json
 ```
 
-Старт от HistFactory XML (экспорт TRExFitter):
+Starting from HistFactory XML (TRExFitter export):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_report.py \
@@ -232,7 +247,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_rep
   --out tmp/apex2_root_profile_report.json
 ```
 
-9) Сгенерировать cases JSON с кастомным glob и сеткой mu (и оставить пути относительными):
+9) Generate a cases JSON with a custom glob and mu grid (and keep paths relative):
 
 ```bash
 ./.venv/bin/python tests/generate_apex2_root_cases.py \
@@ -242,14 +257,14 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_rep
   --start 0.0 --stop 5.0 --points 51
 ```
 
-10) ROOT-suite без `--cases` (только встроенный smoke fixture):
+10) ROOT suite without `--cases` (built-in smoke fixture only):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
   --out tmp/apex2_root_suite_report.json
 ```
 
-11) Низкоуровневый прогон одного кейса (пишет полный `summary.json` + артефакты в workdir):
+11) Low-level run of a single case (writes full `summary.json` + artifacts to workdir):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
@@ -260,7 +275,194 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
   --keep
 ```
 
-12) Master-report с кастомными путями для артефактов (удобно на кластере в `$SCRATCH`):
+12) HTCondor: one job for the whole suite (simple template)
+
+Create a submit file `root_suite.sub` next to the repository (or in a separate directory):
+
+```ini
+executable              = /bin/bash
+arguments               = -lc "cd /path/to/nextstat.io && PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py --cases /path/to/apex2_root_cases.json --keep-going --out /path/to/out/apex2_root_suite_report.json"
+output                  = /path/to/logs/root_suite.$(ClusterId).out
+error                   = /path/to/logs/root_suite.$(ClusterId).err
+log                     = /path/to/logs/root_suite.$(ClusterId).log
+
+request_cpus            = 2
+request_memory          = 4GB
++MaxRunTime             = 14400
+
+queue
+```
+
+Submit:
+
+```bash
+condor_submit root_suite.sub
+```
+
+Notes:
+- If ROOT/`hist2workspace` are available only after `source .../setup.sh`, add that into `arguments` before the Python command.
+- For "big memory" on CERN HTCondor people often use `RequestCpus = 24` and `+BigMemJob = True` (see the link above).
+- If jobs sit in the queue for a long time due to priorities, it can help to explicitly set the accounting group in the `.sub`, e.g. `+AccountingGroup = "group_u_BE.ABP.NORMAL"` (see the link above).
+
+13) HTCondor: job array (one case per job)
+
+Idea: generate `tmp/apex2_root_cases.json` ahead of time, then split into a case list (by export folder names) and run `tests/apex2_root_profile_report.py` for a single input XML at a time.
+
+Minimal path without a custom split script:
+1) Generate cases (this also gives you the list of `name` values in JSON):
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/apex2_root_cases.json \
+  --absolute-paths
+```
+
+2) Manually prepare `cases.list` (one `name` per line). Typically these are relative paths of subfolders that contain `combination.xml`.
+
+Convenient auto-generator for `cases.list` from `tmp/apex2_root_cases.json`:
+
+```bash
+./.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+
+cases_json = Path("tmp/apex2_root_cases.json")
+out = Path("cases.list")
+
+data = json.loads(cases_json.read_text())
+names = []
+for c in data.get("cases", []):
+    if c.get("mode") == "histfactory-xml" and c.get("name"):
+        names.append(str(c["name"]))
+
+out.write_text("\n".join(names) + ("\n" if names else ""))
+print(f"Wrote {len(names)} case name(s) to: {out}")
+PY
+```
+
+3) Submit file `root_case_array.sub`:
+
+```ini
+executable              = /bin/bash
+arguments               = -lc "cd /path/to/nextstat.io && PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py --histfactory-xml /abs/path/to/trex/output/$(CaseName)/combination.xml --rootdir /abs/path/to/trex/output/$(CaseName) --start 0.0 --stop 5.0 --points 51 --workdir /path/to/out/workdir/$(CaseName) --keep"
+output                  = /path/to/logs/root_case.$(ClusterId).$(ProcId).out
+error                   = /path/to/logs/root_case.$(ClusterId).$(ProcId).err
+log                     = /path/to/logs/root_case.$(ClusterId).log
+
+request_cpus            = 2
+request_memory          = 4GB
++MaxRunTime             = 14400
+
+queue CaseName from cases.list
+```
+
+Submit:
+
+```bash
+condor_submit root_case_array.sub
+```
+
+After completion, you can aggregate results by collecting `summary.json` across `workdir` (manually) or using a small script (example below).
+
+Practical minimal aggregator (picks the latest `run_*` in each case directory):
+
+```bash
+./.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+
+workdir = Path("/path/to/out/workdir").resolve()
+out = Path("/path/to/out/apex2_root_array_aggregate.json").resolve()
+
+cases = []
+for case_dir in sorted([p for p in workdir.iterdir() if p.is_dir()]):
+    runs = sorted(case_dir.glob("run_*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not runs:
+        continue
+    summary_path = runs[0] / "summary.json"
+    if not summary_path.exists():
+        continue
+    summary = json.loads(summary_path.read_text())
+    diff = summary.get("diff", {}) or {}
+    timing_s = summary.get("timing_s", {}) or {}
+    cases.append(
+        {
+            "name": case_dir.name,
+            "status": "ok",
+            "run_dir": str(runs[0]),
+            "summary_path": str(summary_path),
+            "diff": {
+                "max_abs_dq_mu": float(diff.get("max_abs_dq_mu", float("nan"))),
+                "d_mu_hat": float(diff.get("mu_hat", float("nan"))),
+            },
+            "timing_s": timing_s,
+        }
+    )
+
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps({"cases": cases}, indent=2))
+print(f"Wrote: {out}")
+PY
+```
+
+If you need full "pass/fail" by tolerances and speedup computation like the suite, it is easier to run `tests/apex2_root_suite_report.py` (single job) or extend this aggregator to your report format.
+
+14) HTCondor: institute example (TRExFitter bootstrap, file transfer + remaps)
+
+This pattern is useful when:
+- you want to run many independent replicas (e.g. bootstrap),
+- workers do not have shared/fast access to your filesystem,
+- you need strict control over what is returned to the submit side and where it lands.
+
+Key points in the submit file:
+- `should_transfer_files = YES` + `transfer_input_files = ...` so the job runs from worker scratch
+- `transfer_output_remaps = ...` to remap outputs into a convenient results folder structure
+- `max_materialize = ...` to avoid overloading shared FS (especially with `queue 2000`)
+- `getenv = True` to pass `TREX_INPUT_DIR` (inputs must be visible from worker nodes)
+
+An adapted example lives at: `docs/examples/htcondor/trex_hwfsdp.sub`.
+
+How this ties into NextStat parity:
+1) the job array generates/runs TRExFitter replicas and produces HistFactory exports (one `combination.xml` per replica)
+2) then you run the parity suite (`tests/apex2_root_suite_report.py` or the master report) on the export directory via `--root-search-dir ...`
+
+## P6 benchmarks: end-to-end fit/predict baselines (GLM)
+
+What already exists in the codebase:
+- Python end-to-end benchmark: `tests/benchmark_glm_fit_predict.py` (linear/logistic/poisson/negbin; fit + predict; writes JSON via `--out`).
+- Apex2 P6 report wrapper: `tests/apex2_p6_glm_benchmark_report.py` (compares against a baseline JSON).
+- Integrated into the master report: `tests/apex2_master_report.py --p6-glm-bench ...`.
+- Rust Criterion bench: `cargo bench -p ns-inference --bench glm_fit_predict_benchmark`.
+
+Examples:
+
+1) Generate a baseline JSON (once on a reference machine):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/benchmark_glm_fit_predict.py \
+  --sizes 200,2000,20000 --p 20 --out tmp/p6_glm_fit_predict_baseline.json
+```
+
+2) Run a current benchmark and compare to the baseline:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
+  --baseline tmp/p6_glm_fit_predict_baseline.json \
+  --bench-out tmp/p6_glm_fit_predict_current.json \
+  --out tmp/apex2_p6_glm_bench_report.json
+```
+
+3) Via the master report (in one run: pyhf parity + ROOT suite (if prereqs exist) + P6):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --p6-glm-bench \
+  --p6-glm-bench-baseline tmp/p6_glm_fit_predict_baseline.json \
+  --p6-glm-bench-out tmp/p6_glm_fit_predict_current.json
+```
+
+4) Master report with custom artifact paths (convenient on clusters using `$SCRATCH`):
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
@@ -273,13 +475,13 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
 
 ### Cluster job templates (SLURM / PBS / HTCondor)
 
-Ниже шаблоны job-скриптов. Они предполагают shared filesystem (репозиторий доступен на compute nodes) и что Python окружение уже содержит зависимости (`pyhf`, `uproot`) и установленный/собранный NextStat python binding.
+Below are job script templates. They assume a shared filesystem (the repository is visible on compute nodes) and that the Python environment already contains dependencies (`pyhf`, `uproot`) and an installed/built NextStat Python binding.
 
-Если в кластере ты работаешь через `module`, заменяй строки `module load ...` на ваши реальные имена модулей/версии.
+If you use environment modules on your cluster, replace the `module load ...` lines with your actual module names/versions.
 
 #### SLURM (`sbatch`)
 
-Файл `apex2_root_parity.slurm`:
+File `apex2_root_parity.slurm`:
 
 ```bash
 #!/usr/bin/env bash
@@ -323,7 +525,7 @@ python3 tests/apex2_master_report.py \
 echo "Artifacts written to: ${OUTDIR}"
 ```
 
-Запуск:
+Run:
 
 ```bash
 sbatch apex2_root_parity.slurm
@@ -331,7 +533,7 @@ sbatch apex2_root_parity.slurm
 
 #### PBS/Torque (`qsub`)
 
-Файл `apex2_root_parity.pbs`:
+File `apex2_root_parity.pbs`:
 
 ```bash
 #!/usr/bin/env bash
@@ -372,7 +574,7 @@ python3 tests/apex2_master_report.py \
 echo "Artifacts written to: ${OUTDIR}"
 ```
 
-Запуск:
+Run:
 
 ```bash
 qsub apex2_root_parity.pbs
@@ -380,9 +582,9 @@ qsub apex2_root_parity.pbs
 
 #### HTCondor
 
-HTCondor обычно требует `.sub` файл и исполняемый скрипт. Ниже shared-filesystem вариант (репо уже доступно на worker node).
+HTCondor typically requires a `.sub` file and an executable script. Below is a shared-filesystem variant (the repo is already available on the worker node).
 
-Файл `apex2_root_parity.sh`:
+File `apex2_root_parity.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -410,7 +612,7 @@ python3 tests/apex2_master_report.py \
 echo "Artifacts written to: ${OUTDIR}"
 ```
 
-Файл `apex2_root_parity.sub`:
+File `apex2_root_parity.sub`:
 
 ```ini
 universe = vanilla
@@ -424,21 +626,21 @@ request_memory = 8GB
 queue 1
 ```
 
-Запуск:
+Run:
 
 ```bash
 chmod +x apex2_root_parity.sh
 condor_submit apex2_root_parity.sub
 ```
 
-##### CERN lxbatch / HTCondor notes (пример под batchdocs)
+##### CERN lxbatch / HTCondor notes (batchdocs-style example)
 
-На CERN batch (lxbatch) в целом тот же `condor_submit`, но часто полезно:
-- задавать `+MaxRunTime` (секунды)
-- при необходимости зафиксировать `+AccountingGroup` (если у вас есть high-priority group)
-- если scheduler “не отвечает”, можно явно выбрать `schedd` (через env vars или `-name`)
+On CERN batch (lxbatch) it is still `condor_submit`, but it is often useful to:
+- set `+MaxRunTime` (seconds)
+- pin `+AccountingGroup` when needed (if you have a high-priority group)
+- if the scheduler is "not responding", explicitly select a `schedd` (via env vars or `-name`)
 
-Пример `.sub` (shared filesystem, репо доступно на worker через AFS/EOS):
+Example `.sub` (shared filesystem, repo visible on workers via AFS/EOS):
 
 ```ini
 universe = vanilla
@@ -452,15 +654,15 @@ request_CPUs   = 4
 request_memory = 8GB
 +MaxRunTime    = 7200
 
-# Optional (если ваш e-group дает доступ):
+# Optional (if your e-group has access):
 # +AccountingGroup = "group_u_BE.ABP.NORMAL"
 
 queue
 ```
 
-Если репо не доступно на worker node, можно использовать `transfer_input_files`, но это обычно дорого для большого репозитория. Минимальный вариант: упаковать только нужное (например, `tests/`, `bindings/ns-py/python/`, и собранные артефакты), либо держать репо на AFS/EOS.
+If the repo is not available on worker nodes, you can use `transfer_input_files`, but this is usually expensive for a large repository. Minimal option: package only what you need (e.g. `tests/`, `bindings/ns-py/python/`, and built artifacts), or keep the repo on AFS/EOS.
 
-Если scheduler не отвечает, на lxplus можно временно сменить schedd (пример):
+If the scheduler is not responding, on lxplus you can temporarily switch schedd (example):
 
 ```bash
 export _condor_SCHEDD_HOST="bigbird02.cern.ch"
@@ -468,16 +670,16 @@ export _condor_CREDD_HOST="bigbird02.cern.ch"
 condor_q
 ```
 
-Или адресовать команды напрямую:
+Or address commands directly:
 
 ```bash
 condor_q -name bigbird15.cern.ch
 condor_submit -name bigbird15.cern.ch apex2_root_parity.sub
 ```
 
-## 1) Проверка профилирования q(mu) vs ROOT
+## 1) q(mu) profiling parity vs ROOT
 
-### Вариант A: стартуем от pyhf JSON (fixtures)
+### Option A: start from pyhf JSON (fixtures)
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
@@ -486,16 +688,16 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
   --start 0.0 --stop 5.0 --points 51
 ```
 
-Скрипт:
-- экспортирует workspace в HistFactory XML + `data.root` через `pyhf.writexml`
-- строит RooWorkspace через `hist2workspace`
-- делает free fit и fixed‑POI fits в ROOT → q(mu)
-- делает `nextstat.infer.profile_scan` на той же сетке mu
-- печатает JSON summary и пишет артефакты в `tmp/root_parity/...`
+Script behavior:
+- exports the workspace to HistFactory XML + `data.root` via `pyhf.writexml`
+- builds a RooWorkspace via `hist2workspace`
+- runs a free fit and fixed-POI fits in ROOT → q(mu)
+- runs `nextstat.infer.profile_scan` on the same mu grid
+- prints a JSON summary and writes artifacts under `tmp/root_parity/...`
 
-### Вариант B: стартуем от HistFactory Combination XML (например, экспорт TRExFitter)
+### Option B: start from HistFactory Combination XML (e.g. TRExFitter export)
 
-Если у тебя есть `combination.xml`, который ссылается на XML каналов и ROOT histograms (часто `data.root`), можно прогнать так:
+If you have a `combination.xml` that references channel XML files and ROOT histograms (often `data.root`), you can run:
 
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
@@ -503,30 +705,30 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_
   --start 0.0 --stop 5.0 --points 51
 ```
 
-Опция `--rootdir` нужна только если в XML относительные пути должны резолвиться не от папки с `combination.xml`.
+The `--rootdir` option is needed only if relative paths in XML should be resolved from a directory other than where `combination.xml` lives.
 
-## 2) Что считать “совпадением”
+## 2) What counts as a "match"
 
-Ожидаемые источники отличий ROOT vs pyhf/NextStat:
-- разные минимизаторы/стратегии и критерии остановки
-- разные дефолтные ограничения/параметризации (особенно на границах)
-- нюансы включения константных членов в NLL (offsets/normalization)
+Expected sources of differences between ROOT vs pyhf/NextStat:
+- different minimizers/strategies and stopping criteria
+- different default constraints/parameterizations (especially near boundaries)
+- subtle differences in constant terms in the NLL (offsets/normalization)
 
-Рекомендуемая метрика на первом проходе:
+Recommended first-pass metrics:
 - `mu_hat` (best fit POI)
-- `max_abs_dq_mu` по сетке mu (q(mu) разница)
-- стабильность статуса минимизации (ROOT status codes)
+- `max_abs_dq_mu` over the mu grid (q(mu) difference)
+- minimizer status stability (ROOT status codes)
 
 ## 3) Performance / profiling
 
-`tests/validate_root_profile_scan.py` печатает wall‑time для:
-- `hist2workspace` (построение RooWorkspace)
+`tests/validate_root_profile_scan.py` prints wall time for:
+- `hist2workspace` (build RooWorkspace)
 - ROOT profile scan
 - NextStat profile scan
 
-Для честной профилировки “движка” обычно отдельно сравнивают:
-- время *построения модели* (парсинг/инициализация)
-- время *одного NLL eval*
-- время *одного fit* и *скана из N фиксированных fit’ов*
+For fair "engine" profiling people typically compare separately:
+- *model build* time (parsing/initialization)
+- *single NLL eval* time
+- *single fit* time and *a scan of N fixed fits*
 
-Следующий шаг — добавить отдельный бенч “NLL eval в ROOT vs NextStat” и “fit time”, но сначала важно зафиксировать паритет математики на q(mu).
+Next step: add dedicated benchmarks for "NLL eval in ROOT vs NextStat" and "fit time", but first it is important to lock down math parity for q(mu).
