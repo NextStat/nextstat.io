@@ -1629,7 +1629,8 @@ impl HistFactoryModel {
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
                 observed_flat.push(obs);
-                ln_factorials.push(Self::ln_factorial(obs));
+                // `ln_factorial(0) = 0`, so avoid a `ln_gamma` call for sparse observations.
+                ln_factorials.push(if obs == 0.0 { 0.0 } else { Self::ln_factorial(obs) });
                 obs_mask.push(if obs > 0.0 { 1.0 } else { 0.0 });
             }
         }
