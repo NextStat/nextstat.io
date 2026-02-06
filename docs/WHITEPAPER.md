@@ -203,6 +203,8 @@ Performance goals focus on the dominant costs in typical workflows:
 
 Benchmarks are implemented using Criterion for Rust components and a Python benchmark script for direct comparisons against pyhf.
 
+### 8.1 Benchmark Suites and Entry Points
+
 Recommended benchmarking practices:
 
 - Pin CPU frequency scaling where possible
@@ -216,7 +218,160 @@ Benchmark entry points (non-exhaustive):
 - Hierarchical benches: `cargo bench -p ns-inference --bench hier_benchmark`
 - Python microbench (no external deps): `.venv/bin/python tests/bench/python_microbench.py`
 
-## 9. Reproducibility
+### 8.2 Indicative Results (Reference Machine)
+
+The numbers below are intended as an **indicative baseline** and a regression target. They are not a performance contract.
+
+Reference machine (Apex2 baseline env):
+
+- CPU: Apple M5 (arm64)
+- OS: macOS 26.2
+- Rust: 1.93.0
+- Python: 3.13.11
+- pyhf: 0.7.6
+- nextstat: 0.1.0
+
+Data sources:
+
+- HistFactory and GLM tables: `tests/record_baseline.py` (writes machine-readable JSON under `tmp/baselines/` with full environment + git commit).
+- EM table: `cargo bench -p ns-inference --bench em_benchmark -- --quick --exact ...`
+
+#### HistFactory NLL Throughput (Python API)
+
+These timings include Python overhead (pyhf and NextStat extension calls). For Rust-only micro-benchmarks, use `cargo bench`.
+
+| Model | Main bins | pyhf NLL (us) | NextStat NLL (us) | Speedup | max abs delta NLL |
+|------:|----------:|--------------:|------------------:|--------:|------------------:|
+| fixture_simple | 2 | 28.22 | 2.48 | 11.36x | 5.68e-13 |
+| fixture_complex | 4 | 67.17 | 4.94 | 13.59x | 9.09e-13 |
+| zoo_multichannel_3 | 9 | 30.51 | 7.97 | 3.83x | 2.73e-12 |
+| synthetic_shapesys_16 | 16 | 27.71 | 10.81 | 2.56x | 5.00e-12 |
+| synthetic_shapesys_256 | 256 | 50.92 | 155.62 | 0.33x | 1.71e-10 |
+
+Notes:
+
+- `synthetic_shapesys_*` is dominated by ShapeSys gamma terms; optimization is ongoing and performance may be sensitive to modifier mix.
+- All rows above satisfy the deterministic parity contract (delta shown is absolute NLL delta).
+
+#### GLM Fit/Predict Timing (Python High-Level API, p=20)
+
+| Family | n | fit (ms) | predict (ms) |
+|------:|--:|---------:|-------------:|
+| linear | 200 | 7.67 | 0.28 |
+| logistic | 200 | 16.83 | 0.30 |
+| poisson | 200 | 11.07 | 0.26 |
+| negbin | 200 | 48.85 | 0.26 |
+| linear | 20000 | 450.86 | 25.40 |
+| logistic | 20000 | 1469.55 | 25.11 |
+| poisson | 20000 | 322.32 | 24.72 |
+| negbin | 20000 | 373.19 | 25.71 |
+
+#### State-Space EM Timing (Rust Criterion, Fixed Iterations)
+
+Criterion reports total time for the configured iteration count. Approximate per-iteration time is derived as `total / iters`.
+
+| Model | n | d | iters | total (ms) | approx per iter (ms) |
+|------:|--:|--:|-----:|-----------:|----------------------:|
+| local level | 100 | 1 | 5 | 0.662 | 0.132 |
+| local level | 1000 | 1 | 5 | 6.529 | 1.306 |
+| AR(1) | 100 | 1 | 5 | 0.684 | 0.137 |
+| AR(1) | 1000 | 1 | 5 | 6.621 | 1.324 |
+
+These numbers were collected with Criterion `--quick` and should be used for smoke/regression detection, not publication-quality comparisons.
+
+## 9. Domain Packs and Applied Workflows
+
+NextStat is designed as a core inference engine plus domain-oriented packs. The near-term goal is not to cover every model, but to deliver a small set of **high-quality, reproducible primitives per domain**, with a shared validation and benchmark harness.
+
+### 9.1 Statistics and ML Workflows (Available)
+
+**Regression and GLMs.** NextStat provides a production-usable GLM surface in Python for common families, with deterministic golden fixtures and optional parity checks against external references:
+
+```python
+from nextstat import glm
+
+fit = glm.linear.fit(x, y, include_intercept=True)
+pred = fit.predict(x_new)
+
+fit = glm.logistic.fit(x, y01, l2=1.0)  # ridge/MAP recommended for separability
+proba = fit.predict_proba(x_new)
+```
+
+**Multilevel / hierarchical models.** Hierarchical models are exposed via compositional model building blocks and a shared `LogDensityModel` contract, enabling MLE/MAP and NUTS sampling without model-specific inference code.
+
+```python
+import nextstat
+
+model = nextstat._core.ComposedGlmModel.logistic_regression(
+    x, y01, include_intercept=True,
+    coef_prior_mu=0.0, coef_prior_sigma=1.0,
+)
+fit = nextstat.fit(model)
+```
+
+**Time series / state space.** For linear-Gaussian models, NextStat provides Kalman filtering/smoothing, EM parameter estimation for standard models, and forecasting with prediction intervals.
+
+```python
+import nextstat
+
+model = nextstat.timeseries.local_level_model(d=1, sigma_level=0.1, sigma_obs=0.2)
+fit = nextstat.timeseries.kalman_fit(model, ys, max_iter=5, tol=1e-9, forecast_steps=12)
+artifact = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.9)
+```
+
+### 9.2 Pharma Pack (Phase 9.A, Planned)
+
+Primary target: **time-to-event endpoints** with censoring/truncation and a clear reproducibility contract suitable for regulated workflows.
+
+Planned baseline scope:
+
+- Parametric survival models with right censoring (and a path to left truncation): exponential, Weibull, log-normal.
+- Cox proportional hazards (partial likelihood) with explicit ties policy (Breslow/Efron) and stability guidance.
+
+Explicit assumptions (v1):
+
+- Deterministic handling of ties and censoring policy is part of the public contract (documented and tested).
+- Validation includes golden fixtures and simulation-based checks (bias/pull/coverage), plus parity comparisons where an independent reference exists.
+
+API sketch (proposed):
+
+```python
+from nextstat import survival
+
+aft = survival.weibull_aft.fit(time, event, x, include_intercept=True)
+cox = survival.cox_ph.fit(time, event, x, ties="efron")
+```
+
+### 9.3 Social Sciences Pack (Phase 9.C, Planned)
+
+Primary target: **ordinal outcomes**, missing data policies, and causal diagnostics that make common applied workflows easier to reproduce and review.
+
+Planned baseline scope:
+
+- Ordinal logistic/probit (ordered outcomes) with clear link functions and diagnostics.
+- Missing data policy and measurement error baseline (explicit assumptions; deterministic behavior).
+- Causal helpers: propensity score estimation + weighting/matching diagnostics (as a convenience layer, not a claim of causal identification).
+
+API sketch (proposed):
+
+```python
+from nextstat import ordinal
+
+fit = ordinal.ordered_logit.fit(x, y_ord, n_levels=5)
+proba = fit.predict_proba(x_new)
+```
+
+### 9.4 Reproducible Reporting Artifacts (Phase 9.R, Planned)
+
+Beyond numeric parity, regulated and cross-team workflows need **auditable artifacts**. The intent is to provide a minimal, open-core-compatible baseline:
+
+- Model spec artifact: parameter names/bounds, objective contract, algorithm settings
+- Data fingerprint: hashes and shape summaries (no raw data required)
+- Environment fingerprint: versions, git commit, platform, CPU, determinism settings, seeds
+
+This package is designed to pair naturally with Apex2 baselines and validation reports, and to support a future audit trail layer (open-core boundary aware).
+
+## 10. Reproducibility
 
 Reproducibility is treated as a first-class feature:
 
@@ -224,7 +379,7 @@ Reproducibility is treated as a first-class feature:
 - Explicit seeds for toy generation and sampling
 - Version-pinned toolchain and dependencies (Rust toolchain pin + `Cargo.lock`)
 
-## 10. Licensing and Open-Core Boundaries
+## 11. Licensing and Open-Core Boundaries
 
 NextStat uses dual licensing:
 
@@ -236,7 +391,7 @@ The intended open-core boundary is documented in `docs/legal/open-core-boundarie
 - OSS includes everything required for correct statistical inference, reproducibility, and baseline workflows
 - Commercial features add enterprise value around auditability, orchestration, compliance reporting, and collaboration
 
-## 11. Roadmap (High Level)
+## 12. Roadmap (High Level)
 
 At a high level (implementation phases):
 
