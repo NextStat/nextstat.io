@@ -242,6 +242,8 @@ cargo bench -p ns-ad --bench ad_benchmark
 cargo bench -p ns-core --bench core_benchmark
 ```
 
+Details (quick mode, baselines, CI workflows): `docs/benchmarks.md`.
+
 ## Documentation
 
 - White paper: `docs/WHITEPAPER.md`
