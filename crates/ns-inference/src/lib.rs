@@ -48,6 +48,8 @@ pub mod regression;
 pub mod survival;
 /// Time series and state space models (Phase 8).
 pub mod timeseries;
+/// Toy data generation (Asimov + Poisson).
+pub mod toys;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -72,6 +74,7 @@ pub use regression::{
 pub use survival::{
     CoxPhModel, CoxTies, ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel,
 };
+pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

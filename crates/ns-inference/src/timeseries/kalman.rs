@@ -3,7 +3,7 @@
 //! This module provides a small, dependency-light baseline for Phase 8.
 //! It is intentionally focused on correctness and stable numerics.
 
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, linalg::SymmetricEigen};
 use ns_core::{Error, Result};
 
 use super::internal::{LN_2PI, symmetrize};
@@ -42,6 +42,51 @@ fn validate_covariance_spd(name: &str, a: &DMatrix<f64>) -> Result<()> {
             "{name} must be symmetric positive definite (Cholesky failed)"
         )));
     }
+    Ok(())
+}
+
+fn validate_covariance_psd(name: &str, a: &DMatrix<f64>) -> Result<()> {
+    let n = a.nrows();
+    if n == 0 || a.ncols() != n {
+        return Err(Error::Validation(format!("{name} must be square with dim>0")));
+    }
+    if a.iter().any(|v| !v.is_finite()) {
+        return Err(Error::Validation(format!("{name} must contain only finite values")));
+    }
+
+    // Enforce symmetry up to a relative tolerance.
+    let mut scale = 0.0f64;
+    for v in a.iter() {
+        scale = scale.max(v.abs());
+    }
+    let tol = 1e-10 * scale.max(1.0);
+    for i in 0..n {
+        let d = a[(i, i)];
+        if d < 0.0 {
+            return Err(Error::Validation(format!("{name} must have non-negative diagonal")));
+        }
+        for j in (i + 1)..n {
+            if (a[(i, j)] - a[(j, i)]).abs() > tol {
+                return Err(Error::Validation(format!(
+                    "{name} must be symmetric (|a_ij - a_ji| > {tol:e})"
+                )));
+            }
+        }
+    }
+
+    // PSD check via eigenvalues (allows rank-deficient Q, which is common for ARMA innovations form).
+    let eig = SymmetricEigen::new(symmetrize(a));
+    let mut min_ev = f64::INFINITY;
+    for &ev in eig.eigenvalues.iter() {
+        min_ev = min_ev.min(ev);
+    }
+    let ev_tol = 1e-12 * scale.max(1.0);
+    if min_ev < -ev_tol {
+        return Err(Error::Validation(format!(
+            "{name} must be symmetric positive semidefinite (min eigenvalue {min_ev:e} < -{ev_tol:e})"
+        )));
+    }
+
     Ok(())
 }
 
@@ -113,7 +158,8 @@ impl KalmanModel {
         }
 
         // Covariances are core invariants: enforce SPD early to avoid fragile runtime failures.
-        validate_covariance_spd("Q", &q)?;
+        // Q may be rank-deficient (PSD) for some models (e.g. ARMA innovations form).
+        validate_covariance_psd("Q", &q)?;
         validate_covariance_spd("R", &r)?;
         validate_covariance_spd("P0", &p0)?;
 

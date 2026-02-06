@@ -73,8 +73,14 @@ nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 
 ## Standard models
 
-- CLI: specify exactly one of `model`, `local_level`, `local_linear_trend`, `ar1`, `local_level_seasonal`, `local_linear_trend_seasonal`.
-- Python: use `nextstat.timeseries.local_level_model(...)`, `nextstat.timeseries.local_linear_trend_model(...)`, `nextstat.timeseries.ar1_model(...)`, `nextstat.timeseries.local_level_seasonal_model(...)`, or `nextstat.timeseries.local_linear_trend_seasonal_model(...)`.
+- CLI: specify exactly one of `model`, `local_level`, `local_linear_trend`, `ar1`, `arma11`, `local_level_seasonal`, `local_linear_trend_seasonal`.
+- Python: use `nextstat.timeseries.local_level_model(...)`, `nextstat.timeseries.local_linear_trend_model(...)`, `nextstat.timeseries.ar1_model(...)`, `nextstat.timeseries.arma11_model(...)`, `nextstat.timeseries.local_level_seasonal_model(...)`, or `nextstat.timeseries.local_linear_trend_seasonal_model(...)`.
+
+ARMA(1,1) baseline:
+
+- CLI: `{"arma11": {"phi": ..., "theta": ..., "sigma2": ..., "r": 1e-12}, "ys": ...}`
+- Python: `nextstat.timeseries.arma11_model(phi=..., theta=..., sigma2=..., r=1e-12, ...)`
+- Limitation: the baseline Kalman implementation requires `r > 0` (use a tiny value like `1e-12` to approximate `r=0`).
 
 ## JSON contract (Python)
 

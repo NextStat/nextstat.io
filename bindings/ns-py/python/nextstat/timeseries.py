@@ -706,6 +706,35 @@ def ar1_model(*, phi: float, q: float, r: float, m0: float = 0.0, p0: float = 1.
 
     return _core.KalmanModel([[float(phi)]], [[float(q)]], [[1.0]], [[float(r)]], [float(m0)], [[float(p0)]])
 
+def arma11_model(
+    *,
+    phi: float,
+    theta: float,
+    sigma2: float,
+    r: float = 1e-12,
+    m0_x: float = 0.0,
+    m0_eps: float = 0.0,
+    p0_x: float = 1.0,
+    p0_eps: float = 1.0,
+):
+    """Construct an ARMA(1,1) model as a linear-Gaussian state space model.
+
+    Notes
+    - This is a minimal baseline, intended mainly for filtering / likelihood checks.
+    - `sigma2` is the innovation variance of epsilon_t.
+    - `r` is a tiny observation noise term; it must be > 0 for numerical stability in the
+      baseline Kalman implementation (use something like 1e-12 to approximate r=0).
+    """
+    from . import _core
+
+    f = [[float(phi), float(theta)], [0.0, 0.0]]
+    q = [[float(sigma2), float(sigma2)], [float(sigma2), float(sigma2)]]
+    h = [[1.0, 0.0]]
+    rr = [[float(r)]]
+    m0 = [float(m0_x), float(m0_eps)]
+    p0 = [[float(p0_x), 0.0], [0.0, float(p0_eps)]]
+    return _core.KalmanModel(f, q, h, rr, m0, p0)
+
 def local_level_seasonal_model(
     *,
     period: int,

@@ -61,13 +61,12 @@ beta <- lme4::fixef(fit)
 sigma_y <- sigma(fit)
 
 vc <- lme4::VarCorr(fit)
-sd_group <- attr(vc$group, "stddev")
 
-tau_alpha <- as.numeric(sd_group[[1]])
+tau_alpha <- as.numeric(attr(vc[["group"]], "stddev")[[1]])
 tau_u <- NA
 if (re == "intercept_slope") {
-  # With (1 + x1 || group), stddev should contain intercept + slope in order.
-  tau_u <- as.numeric(sd_group[[2]])
+  # With (1 + x1 || group), lme4 creates a second term "group.1" for the slope.
+  tau_u <- as.numeric(attr(vc[["group.1"]], "stddev")[[1]])
 }
 
 out <- list(

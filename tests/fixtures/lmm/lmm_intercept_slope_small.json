@@ -1,4 +1,17 @@
 {
+  "external_reference": {
+    "estimates": {
+      "beta1": 0.6381,
+      "intercept": 1.3019,
+      "log_sigma_y": -3.7155,
+      "log_tau_alpha": -1.1949,
+      "log_tau_u_beta1": -2.3236
+    },
+    "formula": "y ~ 1 + x1 + (1 + x1 || group)",
+    "reml": false,
+    "tool": "lme4",
+    "tool_version": "1.1.38"
+  },
   "group_idx": [
     0,
     0,

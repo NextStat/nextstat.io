@@ -10,6 +10,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rand_distr::{Distribution, StandardNormal};
 
+use super::internal::symmetrize;
 use super::kalman::KalmanModel;
 
 /// Simulation output.
@@ -27,16 +28,47 @@ fn sample_mvn_zero(rng: &mut StdRng, cov: &DMatrix<f64>) -> Result<DVector<f64>>
         return Err(Error::Validation("cov must be square and non-empty".to_string()));
     }
 
-    let chol = cov.clone().cholesky().ok_or_else(|| {
-        Error::Computation("covariance not SPD (Cholesky failed)".to_string())
-    })?;
-    let l = chol.l();
+    // Fast path: SPD (Cholesky).
+    if let Some(chol) = cov.clone().cholesky() {
+        let l = chol.l();
+        let mut z = DVector::<f64>::zeros(n);
+        for i in 0..n {
+            z[i] = StandardNormal.sample(rng);
+        }
+        return Ok(l * z);
+    }
+
+    // Fallback: PSD (e.g. ARMA innovations form can yield rank-deficient Q).
+    let cov = symmetrize(cov);
+    let eig = nalgebra::linalg::SymmetricEigen::new(cov);
+    let mut max_ev = 0.0f64;
+    let mut min_ev = f64::INFINITY;
+    for &ev in eig.eigenvalues.iter() {
+        if ev.is_finite() {
+            max_ev = max_ev.max(ev.abs());
+            min_ev = min_ev.min(ev);
+        }
+    }
+    let tol = 1e-12 * max_ev.max(1.0);
+    if min_ev < -tol {
+        return Err(Error::Computation(
+            "covariance not PSD (min eigenvalue < 0)".to_string(),
+        ));
+    }
+
+    let mut a = eig.eigenvectors;
+    for i in 0..n {
+        let s = eig.eigenvalues[i].max(0.0).sqrt();
+        for r in 0..n {
+            a[(r, i)] *= s;
+        }
+    }
 
     let mut z = DVector::<f64>::zeros(n);
     for i in 0..n {
         z[i] = StandardNormal.sample(rng);
     }
-    Ok(l * z)
+    Ok(a * z)
 }
 
 /// Simulate T steps from the model, drawing `x_0 ~ N(m0, P0)` and then evolving.
@@ -120,6 +152,26 @@ mod tests {
         assert_eq!(sim.xs.len(), 5);
         assert_eq!(sim.ys.len(), 5);
         assert_eq!(sim.xs[0].len(), 1);
+        assert_eq!(sim.ys[0].len(), 1);
+    }
+
+    #[test]
+    fn test_simulate_psd_q_smoke() {
+        // Q is rank-deficient (PSD), which should still be simulatable.
+        let model = KalmanModel::new(
+            DMatrix::from_row_slice(2, 2, &[0.9, 0.1, 0.0, 0.0]),
+            DMatrix::from_row_slice(2, 2, &[0.3, 0.3, 0.3, 0.3]),
+            DMatrix::from_row_slice(1, 2, &[1.0, 0.0]),
+            DMatrix::from_row_slice(1, 1, &[1e-6]),
+            DVector::from_row_slice(&[0.0, 0.0]),
+            DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]),
+        )
+        .unwrap();
+
+        let sim = kalman_simulate(&model, 5, 123).unwrap();
+        assert_eq!(sim.xs.len(), 5);
+        assert_eq!(sim.ys.len(), 5);
+        assert_eq!(sim.xs[0].len(), 2);
         assert_eq!(sim.ys[0].len(), 1);
     }
 

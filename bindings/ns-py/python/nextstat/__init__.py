@@ -50,6 +50,8 @@ LogNormalAftModel = _get("LogNormalAftModel")
 CoxPhModel = _get("CoxPhModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
+asimov_data = _get("asimov_data")
+poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
 
 # Optional convenience wrappers (use optional deps like arviz).
@@ -110,6 +112,8 @@ __all__ = [
     "Posterior",
     "ols_fit",
     "fit_toys",
+    "asimov_data",
+    "poisson_toys",
     "ranking",
     "from_pyhf",
     "profile_scan",

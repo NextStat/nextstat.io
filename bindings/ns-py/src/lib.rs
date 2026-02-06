@@ -303,6 +303,81 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.grad_nll(params),
         }
     }
+
+    fn fit_mle(&self, mle: &RustMLE) -> NsResult<ns_core::FitResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => mle.fit(m),
+            PosteriorModel::GaussianMean(m) => mle.fit(m),
+            PosteriorModel::LinearRegression(m) => mle.fit(m),
+            PosteriorModel::LogisticRegression(m) => mle.fit(m),
+            PosteriorModel::OrderedLogit(m) => mle.fit(m),
+            PosteriorModel::OrderedProbit(m) => mle.fit(m),
+            PosteriorModel::PoissonRegression(m) => mle.fit(m),
+            PosteriorModel::NegativeBinomialRegression(m) => mle.fit(m),
+            PosteriorModel::ComposedGlm(m) => mle.fit(m),
+            PosteriorModel::LmmMarginal(m) => mle.fit(m),
+            PosteriorModel::ExponentialSurvival(m) => mle.fit(m),
+            PosteriorModel::WeibullSurvival(m) => mle.fit(m),
+            PosteriorModel::LogNormalAft(m) => mle.fit(m),
+            PosteriorModel::CoxPh(m) => mle.fit(m),
+        }
+    }
+
+    fn sample_nuts_multichain(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: NutsConfig,
+    ) -> NsResult<RustSamplerResult> {
+        let seeds: Vec<u64> =
+            (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+        match self {
+            PosteriorModel::HistFactory(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::GaussianMean(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LinearRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedLogit(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::OrderedProbit(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ComposedGlm(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LmmMarginal(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ExponentialSurvival(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::WeibullSurvival(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::LogNormalAft(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::CoxPh(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+        }
+    }
 }
 
 fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel> {
@@ -338,6 +413,27 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Err(PyValueError::new_err(
             "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
         ))
+    }
+}
+
+fn extract_posterior_model_with_data(
+    model: &Bound<'_, PyAny>,
+    data: Option<Vec<f64>>,
+) -> PyResult<PosteriorModel> {
+    if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+        let m = if let Some(obs_main) = data {
+            hf.inner
+                .with_observed_main(&obs_main)
+                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+        } else {
+            hf.inner.clone()
+        };
+        Ok(PosteriorModel::HistFactory(m))
+    } else {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        extract_posterior_model(model)
     }
 }
 
@@ -1952,177 +2048,12 @@ impl PyMaximumLikelihoodEstimator {
         model: &Bound<'py, PyAny>,
         data: Option<Vec<f64>>,
     ) -> PyResult<PyFitResult> {
-        // Extract a Rust-owned model before releasing the GIL.
-        enum FitModel {
-            HistFactory(RustModel),
-            GaussianMean(GaussianMeanModel),
-            LinearRegression(RustLinearRegressionModel),
-            LogisticRegression(RustLogisticRegressionModel),
-            OrderedLogit(RustOrderedLogitModel),
-            OrderedProbit(RustOrderedProbitModel),
-            PoissonRegression(RustPoissonRegressionModel),
-            NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
-            ComposedGlm(RustComposedGlmModel),
-            LmmMarginal(RustLmmMarginalModel),
-            ExponentialSurvival(RustExponentialSurvivalModel),
-            WeibullSurvival(RustWeibullSurvivalModel),
-            LogNormalAft(RustLogNormalAftModel),
-            CoxPh(RustCoxPhModel),
-        }
-
-        let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
-            let m = if let Some(obs_main) = data {
-                hf.inner.with_observed_main(&obs_main).map_err(|e| {
-                    PyValueError::new_err(format!("Failed to set observed data: {}", e))
-                })?
-            } else {
-                hf.inner.clone()
-            };
-            FitModel::HistFactory(m)
-        } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::GaussianMean(gm.inner.clone())
-        } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LinearRegression(lr.inner.clone())
-        } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LogisticRegression(logit.inner.clone())
-        } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedLogitModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::OrderedLogit(ord.inner.clone())
-        } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::OrderedProbit(ord.inner.clone())
-        } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::PoissonRegression(pois.inner.clone())
-        } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::NegativeBinomialRegression(nb.inner.clone())
-        } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::ComposedGlm(glm.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LmmMarginal(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::ExponentialSurvival(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::WeibullSurvival(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::LogNormalAft(m.inner.clone())
-        } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
-            if data.is_some() {
-                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-            }
-            FitModel::CoxPh(m.inner.clone())
-        } else {
-            return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
-            ));
-        };
+        let fit_model = extract_posterior_model_with_data(model, data)?;
 
         let mle = self.inner.clone();
-        let result = match fit_model {
-            FitModel::HistFactory(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::GaussianMean(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LinearRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LogisticRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::OrderedLogit(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::OrderedProbit(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::PoissonRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::NegativeBinomialRegression(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::ComposedGlm(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LmmMarginal(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::ExponentialSurvival(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::WeibullSurvival(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::LogNormalAft(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-            FitModel::CoxPh(m) => {
-                let mle = mle.clone();
-                py.detach(move || mle.fit(&m))
-                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
-            }
-        };
+        let result = py
+            .detach(move || fit_model.fit_mle(&mle))
+            .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
 
         Ok(PyFitResult {
             parameters: result.parameters,
@@ -2737,6 +2668,31 @@ fn fit_toys(
     mle.fit_toys(py, model, params, n_toys, seed)
 }
 
+/// Generate an Asimov (deterministic expected) **main** dataset for a HistFactory model.
+///
+/// Returns a flat vector of main-bin expectations (no auxdata), suitable for passing to
+/// `nextstat.fit(model, data=...)` or `model.with_observed_main(...)`.
+#[pyfunction]
+fn asimov_data(model: &PyHistFactoryModel, params: Vec<f64>) -> PyResult<Vec<f64>> {
+    ns_inference::toys::asimov_main(&model.inner, &params)
+        .map_err(|e| PyValueError::new_err(format!("asimov_data failed: {}", e)))
+}
+
+/// Generate Poisson-fluctuated **main** toy datasets for a HistFactory model.
+///
+/// Returns `n_toys` flat vectors of main-bin observations (no auxdata).
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+fn poisson_toys(
+    model: &PyHistFactoryModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+) -> PyResult<Vec<Vec<f64>>> {
+    ns_inference::toys::poisson_main_toys(&model.inner, &params, n_toys, seed)
+        .map_err(|e| PyValueError::new_err(format!("poisson_toys failed: {}", e)))
+}
+
 /// Convenience wrapper: nuisance-parameter ranking (impact on POI).
 #[pyfunction]
 fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
@@ -2955,234 +2911,12 @@ fn sample<'py>(
         init_overdispersed_rel,
         ..Default::default()
     };
-
-    // Extract a Rust-owned model before releasing the GIL.
-    enum SampleModel {
-        HistFactory(RustModel),
-        GaussianMean(GaussianMeanModel),
-        LinearRegression(RustLinearRegressionModel),
-        LogisticRegression(RustLogisticRegressionModel),
-        OrderedLogit(RustOrderedLogitModel),
-        OrderedProbit(RustOrderedProbitModel),
-        PoissonRegression(RustPoissonRegressionModel),
-        NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
-        ComposedGlm(RustComposedGlmModel),
-        LmmMarginal(RustLmmMarginalModel),
-        ExponentialSurvival(RustExponentialSurvivalModel),
-        WeibullSurvival(RustWeibullSurvivalModel),
-        LogNormalAft(RustLogNormalAftModel),
-        CoxPh(RustCoxPhModel),
-    }
-
-    let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
-        let m = if let Some(obs_main) = data {
-            hf.inner
-                .with_observed_main(&obs_main)
-                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
-        } else {
-            hf.inner.clone()
-        };
-        SampleModel::HistFactory(m)
-    } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::GaussianMean(gm.inner.clone())
-    } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LinearRegression(lr.inner.clone())
-    } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LogisticRegression(logit.inner.clone())
-    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedLogitModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::OrderedLogit(ord.inner.clone())
-    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::OrderedProbit(ord.inner.clone())
-    } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::PoissonRegression(pois.inner.clone())
-    } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::NegativeBinomialRegression(nb.inner.clone())
-    } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::ComposedGlm(glm.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LmmMarginal(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::ExponentialSurvival(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::WeibullSurvival(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::LogNormalAft(m.inner.clone())
-    } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
-        }
-        SampleModel::CoxPh(m.inner.clone())
-    } else {
-        return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
-        ));
-    };
+    let sample_model = extract_posterior_model_with_data(model, data)?;
 
     // Release GIL during sampling (Rayon-parallel for multi-chain).
-    let result = match sample_model {
-        SampleModel::HistFactory(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::GaussianMean(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LinearRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LogisticRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::OrderedLogit(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::OrderedProbit(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::PoissonRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::NegativeBinomialRegression(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::ComposedGlm(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LmmMarginal(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::ExponentialSurvival(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::WeibullSurvival(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::LogNormalAft(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-        SampleModel::CoxPh(m) => {
-            let config = config.clone();
-            py.detach(move || {
-                let seeds: Vec<u64> =
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
-                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
-            })
-            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-        }
-    };
+    let result = py
+        .detach(move || sample_model.sample_nuts_multichain(n_chains, n_warmup, n_samples, seed, config))
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
 
     let diag = compute_diagnostics(&result);
     let param_names = &result.param_names;
@@ -3367,6 +3101,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
+    m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;

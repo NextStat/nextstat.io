@@ -536,6 +536,14 @@ def fit_toys(
     n_toys: int = ...,
     seed: int = ...,
 ) -> List[FitResult]: ...
+def asimov_data(model: HistFactoryModel, params: List[float]) -> List[float]: ...
+def poisson_toys(
+    model: HistFactoryModel,
+    params: List[float],
+    *,
+    n_toys: int = ...,
+    seed: int = ...,
+) -> List[List[float]]: ...
 def ranking(
     model: HistFactoryModel,
 ) -> List[Dict[str, Any]]: ...
