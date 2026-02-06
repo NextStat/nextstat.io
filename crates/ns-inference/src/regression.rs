@@ -529,3 +529,105 @@ impl LogDensityModel for PoissonRegressionModel {
         PreparedModelRef::new(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct Fixture {
+        kind: String,
+        include_intercept: bool,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        offset: Option<Vec<f64>>,
+        beta_hat: Vec<f64>,
+        nll_at_hat: f64,
+    }
+
+    fn load_fixture(json: &'static str) -> Fixture {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn inf_norm(v: &[f64]) -> f64 {
+        v.iter().map(|x| x.abs()).fold(0.0, f64::max)
+    }
+
+    fn assert_vec_close(a: &[f64], b: &[f64], tol: f64) {
+        assert_eq!(a.len(), b.len());
+        for (i, (&ai, &bi)) in a.iter().zip(b.iter()).enumerate() {
+            let diff = (ai - bi).abs();
+            let scale = ai.abs().max(bi.abs()).max(1.0);
+            assert!(
+                diff / scale <= tol,
+                "index {}: {} vs {} (diff={}, tol={})",
+                i,
+                ai,
+                bi,
+                diff,
+                tol
+            );
+        }
+    }
+
+    #[test]
+    fn test_ols_fit_matches_fixture_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
+        assert_eq!(fx.kind, "ols");
+        let beta = ols_fit(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
+        assert_vec_close(&beta, &fx.beta_hat, 1e-8);
+    }
+
+    #[test]
+    fn test_linear_regression_nll_and_grad_at_fixture_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
+        let m = LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
+        let nll = m.nll(&fx.beta_hat).unwrap();
+        assert!((nll - fx.nll_at_hat).abs() < 1e-8);
+        let g = m.grad_nll(&fx.beta_hat).unwrap();
+        assert!(inf_norm(&g) < 1e-6, "grad inf-norm too large: {}", inf_norm(&g));
+    }
+
+    #[test]
+    fn test_logistic_regression_nll_and_grad_at_fixture_hat() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+        assert_eq!(fx.kind, "logistic");
+        let y: Vec<u8> = fx
+            .y
+            .iter()
+            .map(|&v| if v >= 0.5 { 1u8 } else { 0u8 })
+            .collect();
+        let m = LogisticRegressionModel::new(fx.x.clone(), y, fx.include_intercept).unwrap();
+        let nll = m.nll(&fx.beta_hat).unwrap();
+        assert!((nll - fx.nll_at_hat).abs() < 1e-6);
+        let g = m.grad_nll(&fx.beta_hat).unwrap();
+        assert!(inf_norm(&g) < 1e-6, "grad inf-norm too large: {}", inf_norm(&g));
+    }
+
+    #[test]
+    fn test_poisson_regression_nll_and_grad_at_fixture_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        assert_eq!(fx.kind, "poisson");
+        let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
+        let m = PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
+            .unwrap();
+        let nll = m.nll(&fx.beta_hat).unwrap();
+        assert!((nll - fx.nll_at_hat).abs() < 1e-6);
+        let g = m.grad_nll(&fx.beta_hat).unwrap();
+        assert!(inf_norm(&g) < 1e-6, "grad inf-norm too large: {}", inf_norm(&g));
+    }
+
+    #[test]
+    fn test_fixture_contract_shapes() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+        assert!(fx.include_intercept);
+        assert!(!fx.x.is_empty());
+        assert_eq!(fx.x.len(), fx.y.len());
+        let p = fx.x[0].len();
+        assert!(p > 0);
+        assert_eq!(fx.beta_hat.len(), p + 1);
+    }
+}

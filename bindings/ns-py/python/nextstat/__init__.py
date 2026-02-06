@@ -38,6 +38,10 @@ except ImportError:  # pragma: no cover
 import nextstat._core as _core  # type: ignore  # noqa: E402
 
 GaussianMeanModel = getattr(_core, "GaussianMeanModel", None)  # type: ignore
+LinearRegressionModel = getattr(_core, "LinearRegressionModel", None)  # type: ignore
+LogisticRegressionModel = getattr(_core, "LogisticRegressionModel", None)  # type: ignore
+PoissonRegressionModel = getattr(_core, "PoissonRegressionModel", None)  # type: ignore
+ols_fit = getattr(_core, "ols_fit", None)  # type: ignore
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
@@ -60,8 +64,12 @@ __all__ = [
     "viz",
     "HistFactoryModel",
     "GaussianMeanModel",
+    "LinearRegressionModel",
+    "LogisticRegressionModel",
+    "PoissonRegressionModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
+    "ols_fit",
     "from_pyhf",
     "profile_scan",
     "upper_limit",

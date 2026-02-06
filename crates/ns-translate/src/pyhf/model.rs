@@ -703,6 +703,158 @@ impl HistFactoryModel {
         self.expected_data_generic(params)
     }
 
+    /// Expected data in pyhf ordering: `main_data + auxdata`.
+    ///
+    /// pyhf orders main data by channel name (lexicographically), and appends auxiliary data
+    /// in the order constrained parameters are first encountered while scanning channels
+    /// (also ordered by name), then samples/modifiers in workspace order.
+    pub fn expected_data_pyhf(&self, params: &[f64]) -> Result<Vec<f64>> {
+        // Main expected (internal order), then reorder channels to match pyhf.
+        let expected_main_flat: Vec<f64> = self.expected_data(params)?;
+
+        let mut per_channel: Vec<(&str, Vec<f64>)> = Vec::with_capacity(self.channels.len());
+        let mut offset = 0usize;
+        for channel in &self.channels {
+            let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            let slice = expected_main_flat
+                .get(offset..offset + n_bins)
+                .ok_or_else(|| ns_core::Error::Validation("expected_data length mismatch".to_string()))?
+                .to_vec();
+            offset += n_bins;
+            per_channel.push((channel.name.as_str(), slice));
+        }
+        per_channel.sort_by(|a, b| a.0.cmp(b.0));
+
+        let mut out: Vec<f64> = Vec::with_capacity(expected_main_flat.len());
+        for (_name, bins) in per_channel {
+            out.extend(bins);
+        }
+
+        // Aux expectations keyed by parameter index.
+        let mut aux_by_param: Vec<Option<f64>> = vec![None; self.parameters.len()];
+
+        // Normal constraints: expectation is the constraint center.
+        for (pidx, p) in self.parameters.iter().enumerate() {
+            if p.constrained {
+                if let (Some(center), Some(width)) = (p.constraint_center, p.constraint_width)
+                    && width > 0.0
+                {
+                    aux_by_param[pidx] = Some(center);
+                }
+            }
+        }
+
+        // ShapeSys (Barlow-Beeston) Poisson constraints: expectation is gamma * tau.
+        for channel in &self.channels {
+            for constraint in &channel.auxiliary_data {
+                if let Some(sample) = channel.samples.get(constraint.sample_idx)
+                    && let Some(ModelModifier::ShapeSys { param_indices, .. }) =
+                        sample.modifiers.get(constraint.modifier_idx)
+                {
+                    for (&tau, &gamma_idx) in constraint.tau.iter().zip(param_indices.iter()) {
+                        let gamma = params.get(gamma_idx).copied().unwrap_or(1.0);
+                        let exp_aux = (gamma * tau).max(1e-10);
+                        match aux_by_param.get_mut(gamma_idx) {
+                            Some(slot @ None) => *slot = Some(exp_aux),
+                            Some(Some(prev)) => {
+                                if (*prev - exp_aux).abs() > 1e-12 {
+                                    return Err(ns_core::Error::Validation(format!(
+                                        "Inconsistent ShapeSys aux expectation for param index {}: {} vs {}",
+                                        gamma_idx, prev, exp_aux
+                                    )));
+                                }
+                            }
+                            None => {
+                                return Err(ns_core::Error::Validation(format!(
+                                    "ShapeSys gamma index {} out of bounds",
+                                    gamma_idx
+                                )));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // pyhf parameter encounter order.
+        let mut channel_refs: Vec<&ModelChannel> = self.channels.iter().collect();
+        channel_refs.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut seen = vec![false; self.parameters.len()];
+
+        for channel in channel_refs {
+            for sample in &channel.samples {
+                // pyhf orders modifiers by kind (roughly) and then by modifier name.
+                // This ordering affects `model.config.par_names` and therefore auxdata order.
+                let mut modifiers: Vec<&ModelModifier> = sample.modifiers.iter().collect();
+                modifiers.sort_by(|a, b| {
+                    fn rank(m: &ModelModifier) -> u8 {
+                        match m {
+                            ModelModifier::HistoSys { .. } => 0,
+                            ModelModifier::NormSys { .. } => 1,
+                            ModelModifier::Lumi { .. } => 2,
+                            ModelModifier::NormFactor { .. } => 3,
+                            ModelModifier::ShapeFactor { .. } => 4,
+                            ModelModifier::StatError { .. } => 5,
+                            ModelModifier::ShapeSys { .. } => 6,
+                        }
+                    }
+
+                    fn name_key<'a>(m: &ModelModifier, params: &'a [Parameter]) -> &'a str {
+                        match m {
+                            ModelModifier::NormFactor { param_idx }
+                            | ModelModifier::NormSys { param_idx, .. }
+                            | ModelModifier::HistoSys { param_idx, .. }
+                            | ModelModifier::Lumi { param_idx } => {
+                                params.get(*param_idx).map(|p| p.name.as_str()).unwrap_or("")
+                            }
+                            ModelModifier::ShapeSys { param_indices, .. }
+                            | ModelModifier::ShapeFactor { param_indices }
+                            | ModelModifier::StatError { param_indices, .. } => params
+                                .get(*param_indices.first().unwrap_or(&usize::MAX))
+                                .map(|p| p.name.as_str())
+                                .unwrap_or(""),
+                        }
+                    }
+
+                    let ra = rank(a);
+                    let rb = rank(b);
+                    ra.cmp(&rb).then_with(|| name_key(a, &self.parameters).cmp(name_key(b, &self.parameters)))
+                });
+
+                for modifier in modifiers {
+                    match modifier {
+                        ModelModifier::NormFactor { param_idx }
+                        | ModelModifier::NormSys { param_idx, .. }
+                        | ModelModifier::HistoSys { param_idx, .. }
+                        | ModelModifier::Lumi { param_idx } => {
+                            let idx = *param_idx;
+                            if idx < seen.len() && !seen[idx] {
+                                seen[idx] = true;
+                                if let Some(v) = aux_by_param[idx] {
+                                    out.push(v);
+                                }
+                            }
+                        }
+                        ModelModifier::ShapeSys { param_indices, .. }
+                        | ModelModifier::ShapeFactor { param_indices }
+                        | ModelModifier::StatError { param_indices, .. } => {
+                            for &idx in param_indices {
+                                if idx < seen.len() && !seen[idx] {
+                                    seen[idx] = true;
+                                    if let Some(v) = aux_by_param[idx] {
+                                        out.push(v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(out)
+    }
+
     /// Generic NLL that works with any [`Scalar`] type (f64 or Dual).
     pub fn nll_generic<T: Scalar>(&self, params: &[T]) -> Result<T> {
         let expected = self.expected_data_generic(params)?;

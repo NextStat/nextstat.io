@@ -9,10 +9,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import pyhf
 import pytest
 
 import nextstat
+
+from _tolerances import TWICE_NLL_ATOL, TWICE_NLL_RTOL
+
+
+pyhf = pytest.importorskip("pyhf")
 
 
 def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
@@ -28,9 +32,8 @@ def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
     return model, data
 
 
-def _pyhf_nll(model, data, params) -> float:
-    # pyhf returns twice_nll (=-2 log L). NextStat returns NLL (=-log L).
-    return float(pyhf.infer.mle.twice_nll(params, data, model).item()) / 2.0
+def _pyhf_twice_nll(model, data, params) -> float:
+    return float(pyhf.infer.mle.twice_nll(params, data, model).item())
 
 
 def _map_params_by_name(src_names, src_params, dst_names, dst_init):
@@ -70,27 +73,27 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str):
     assert set(ns_names) == set(pyhf_model.config.par_names)
 
     # 1) Nominal suggested init
-    pyhf_val = _pyhf_nll(pyhf_model, pyhf_data, pyhf_init)
+    pyhf_val = _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_init)
     ns_params = _map_params_by_name(
         pyhf_model.config.par_names,
         pyhf_init,
         ns_names,
         ns_init,
     )
-    ns_val = float(ns_model.nll(ns_params))
-    assert ns_val == pytest.approx(pyhf_val, rel=0.0, abs=1e-10)
+    ns_val = 2.0 * float(ns_model.nll(ns_params))
+    assert ns_val == pytest.approx(pyhf_val, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
     # 2) Shifted vector (exercises non-trivial nuisance values)
     pyhf_shift = _shift_params(pyhf_init, pyhf_bounds, shift=0.123)
-    pyhf_val_shift = _pyhf_nll(pyhf_model, pyhf_data, pyhf_shift)
+    pyhf_val_shift = _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_shift)
     ns_params_shift = _map_params_by_name(
         pyhf_model.config.par_names,
         pyhf_shift,
         ns_names,
         ns_init,
     )
-    ns_val_shift = float(ns_model.nll(ns_params_shift))
-    assert ns_val_shift == pytest.approx(pyhf_val_shift, rel=0.0, abs=1e-10)
+    ns_val_shift = 2.0 * float(ns_model.nll(ns_params_shift))
+    assert ns_val_shift == pytest.approx(pyhf_val_shift, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
     # 3) POI variations when present
     poi_idx = pyhf_model.config.poi_index
@@ -99,15 +102,15 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str):
             break
         pyhf_var = list(pyhf_init)
         pyhf_var[poi_idx] = poi
-        pyhf_val_var = _pyhf_nll(pyhf_model, pyhf_data, pyhf_var)
+        pyhf_val_var = _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_var)
         ns_params_var = _map_params_by_name(
             pyhf_model.config.par_names,
             pyhf_var,
             ns_names,
             ns_init,
         )
-        ns_val_var = float(ns_model.nll(ns_params_var))
-        assert ns_val_var == pytest.approx(pyhf_val_var, rel=0.0, abs=1e-10)
+        ns_val_var = 2.0 * float(ns_model.nll(ns_params_var))
+        assert ns_val_var == pytest.approx(pyhf_val_var, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
 
 def _make_workspace_shapefactor(n_bins: int) -> dict[str, Any]:
@@ -196,4 +199,3 @@ def _make_workspace_histo_normsys(n_bins: int) -> dict[str, Any]:
 )
 def test_generated_workspaces_nll_parity(workspace, measurement_name):
     _assert_nll_parity(workspace, measurement_name)
-

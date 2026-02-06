@@ -4,9 +4,14 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pyhf
+import pytest
 
 import nextstat
+
+from _tolerances import TWICE_NLL_ATOL, TWICE_NLL_RTOL
+
+
+pyhf = pytest.importorskip("pyhf")
 
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
@@ -29,8 +34,8 @@ def pyhf_model_and_data(workspace: dict, measurement_name: str):
     return model, data
 
 
-def pyhf_nll(model, data, params) -> float:
-    return float(pyhf.infer.mle.twice_nll(params, data, model).item()) / 2.0
+def pyhf_twice_nll(model, data, params) -> float:
+    return float(pyhf.infer.mle.twice_nll(params, data, model).item())
 
 
 def map_params_by_name(src_names, src_params, dst_names, dst_init):
@@ -48,7 +53,7 @@ def test_simple_nll_parity_nominal_and_poi():
     model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
 
     pyhf_params = model.config.suggested_init()
-    pyhf_val = pyhf_nll(model, data, pyhf_params)
+    pyhf_val = pyhf_twice_nll(model, data, pyhf_params)
 
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
     ns_params = map_params_by_name(
@@ -57,16 +62,16 @@ def test_simple_nll_parity_nominal_and_poi():
         ns_model.parameter_names(),
         ns_model.suggested_init(),
     )
-    ns_val = ns_model.nll(ns_params)
+    ns_val = 2.0 * float(ns_model.nll(ns_params))
 
-    assert abs(ns_val - pyhf_val) < 1e-10
+    assert ns_val == pytest.approx(pyhf_val, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
     # POI variations
     poi_idx = model.config.poi_index
     for poi in [0.0, 2.0]:
         pyhf_params_var = list(pyhf_params)
         pyhf_params_var[poi_idx] = poi
-        pyhf_val_var = pyhf_nll(model, data, pyhf_params_var)
+        pyhf_val_var = pyhf_twice_nll(model, data, pyhf_params_var)
 
         ns_params_var = map_params_by_name(
             model.config.par_names,
@@ -74,8 +79,8 @@ def test_simple_nll_parity_nominal_and_poi():
             ns_model.parameter_names(),
             ns_model.suggested_init(),
         )
-        ns_val_var = ns_model.nll(ns_params_var)
-        assert abs(ns_val_var - pyhf_val_var) < 1e-10
+        ns_val_var = 2.0 * float(ns_model.nll(ns_params_var))
+        assert ns_val_var == pytest.approx(pyhf_val_var, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
 
 def test_complex_nll_parity_nominal_and_poi():
@@ -83,7 +88,7 @@ def test_complex_nll_parity_nominal_and_poi():
     model, data = pyhf_model_and_data(workspace, measurement_name="measurement")
 
     pyhf_params = model.config.suggested_init()
-    pyhf_val = pyhf_nll(model, data, pyhf_params)
+    pyhf_val = pyhf_twice_nll(model, data, pyhf_params)
 
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
     ns_names = ns_model.parameter_names()
@@ -95,14 +100,14 @@ def test_complex_nll_parity_nominal_and_poi():
         ns_names,
         ns_model.suggested_init(),
     )
-    ns_val = ns_model.nll(ns_params)
-    assert abs(ns_val - pyhf_val) < 1e-10
+    ns_val = 2.0 * float(ns_model.nll(ns_params))
+    assert ns_val == pytest.approx(pyhf_val, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
     poi_idx = model.config.poi_index
     for poi in [0.0, 2.0]:
         pyhf_params_var = list(pyhf_params)
         pyhf_params_var[poi_idx] = poi
-        pyhf_val_var = pyhf_nll(model, data, pyhf_params_var)
+        pyhf_val_var = pyhf_twice_nll(model, data, pyhf_params_var)
 
         ns_params_var = map_params_by_name(
             model.config.par_names,
@@ -110,8 +115,8 @@ def test_complex_nll_parity_nominal_and_poi():
             ns_names,
             ns_model.suggested_init(),
         )
-        ns_val_var = ns_model.nll(ns_params_var)
-        assert abs(ns_val_var - pyhf_val_var) < 1e-10
+        ns_val_var = 2.0 * float(ns_model.nll(ns_params_var))
+        assert ns_val_var == pytest.approx(pyhf_val_var, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
 
 def test_simple_mle_parity_bestfit_uncertainties():
@@ -119,11 +124,11 @@ def test_simple_mle_parity_bestfit_uncertainties():
     model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
 
     pyhf_bestfit = np.asarray(pyhf.infer.mle.fit(data, model), dtype=float)
-    pyhf_bestfit_nll = pyhf_nll(model, data, pyhf_bestfit)
+    pyhf_bestfit_nll = pyhf_twice_nll(model, data, pyhf_bestfit) / 2.0
 
     # Numerical Hessian for uncertainties (NLL, not twice_nll)
     def nll_func(x: np.ndarray) -> float:
-        return pyhf_nll(model, data, x)
+        return pyhf_twice_nll(model, data, x) / 2.0
 
     n = len(pyhf_bestfit)
     h_step = 1e-4

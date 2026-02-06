@@ -4,10 +4,12 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pyhf
+import pytest
 
 import nextstat
 import nextstat.infer as ns_infer
+
+pyhf = pytest.importorskip("pyhf")
 
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"

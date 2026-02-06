@@ -19,6 +19,7 @@ use ns_inference::{
     LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel,
     PoissonRegressionModel as RustPoissonRegressionModel,
+    ols_fit as rust_ols_fit,
 };
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
@@ -53,6 +54,17 @@ impl PyHistFactoryModel {
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn ping(&self) -> &'static str {
+        "pong"
+    }
+
+    /// Expected data in pyhf ordering: `main_data + auxdata`.
+    fn expected_data(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .expected_data_pyhf(&params)
+            .map_err(|e| PyValueError::new_err(format!("expected_data failed: {}", e)))
     }
 
     /// Return a copy of the model with overridden **main observations** (main bins only).
@@ -468,6 +480,13 @@ fn fit(model: &PyHistFactoryModel, data: Option<Vec<f64>>) -> PyResult<PyFitResu
     })
 }
 
+/// Closed-form OLS fit for linear regression fixtures and baselines.
+#[pyfunction]
+#[pyo3(signature = (x, y, *, include_intercept=true))]
+fn ols_fit(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> PyResult<Vec<f64>> {
+    rust_ols_fit(x, y, include_intercept).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Frequentist hypotest (asymptotics, qtilde) returning CLs (pyhf-compatible).
 #[pyfunction]
 #[pyo3(signature = (poi_test, model, *, data=None, return_tail_probs=false))]
@@ -675,6 +694,9 @@ fn sample<'py>(
     enum SampleModel {
         HistFactory(RustModel),
         GaussianMean(GaussianMeanModel),
+        LinearRegression(RustLinearRegressionModel),
+        LogisticRegression(RustLogisticRegressionModel),
+        PoissonRegression(RustPoissonRegressionModel),
     }
 
     let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -691,9 +713,24 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::GaussianMean(gm.inner.clone())
+    } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::LinearRegression(lr.inner.clone())
+    } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::LogisticRegression(logit.inner.clone())
+    } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::PoissonRegression(pois.inner.clone())
     } else {
         return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel or GaussianMeanModel.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, or a regression model.",
         ));
     };
 
@@ -705,6 +742,21 @@ fn sample<'py>(
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::GaussianMean(m) => {
+            let config = config.clone();
+            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::LinearRegression(m) => {
+            let config = config.clone();
+            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::LogisticRegression(m) => {
+            let config = config.clone();
+            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::PoissonRegression(m) => {
             let config = config.clone();
             py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
                 .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -877,6 +929,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
+    m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
@@ -889,6 +942,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
+    m.add_class::<PyLinearRegressionModel>()?;
+    m.add_class::<PyLogisticRegressionModel>()?;
+    m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

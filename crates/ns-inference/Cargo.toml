@@ -31,6 +31,7 @@ statrs.workspace = true
 approx.workspace = true
 criterion.workspace = true
 env_logger.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [[bench]]
@@ -39,4 +40,8 @@ harness = false
 
 [[bench]]
 name = "hypotest_benchmark"
+harness = false
+
+[[bench]]
+name = "regression_benchmark"
 harness = false

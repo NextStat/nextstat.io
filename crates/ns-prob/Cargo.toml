@@ -18,3 +18,8 @@ statrs.workspace = true
 [dev-dependencies]
 approx.workspace = true
 proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "distributions_benchmark"
+harness = false

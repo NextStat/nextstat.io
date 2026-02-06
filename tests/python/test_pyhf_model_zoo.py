@@ -15,10 +15,14 @@ import json
 import random
 from typing import Any
 
-import pyhf
 import pytest
 
 import nextstat
+
+from _tolerances import TWICE_NLL_ATOL, TWICE_NLL_RTOL
+
+
+pyhf = pytest.importorskip("pyhf")
 
 
 def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
@@ -34,8 +38,8 @@ def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
     return model, data
 
 
-def _pyhf_nll(model, data, params) -> float:
-    return float(pyhf.infer.mle.twice_nll(params, data, model).item()) / 2.0
+def _pyhf_twice_nll(model, data, params) -> float:
+    return float(pyhf.infer.mle.twice_nll(params, data, model).item())
 
 
 def _map_params_by_name(src_names, src_params, dst_names, dst_init):
@@ -77,21 +81,29 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
 
     assert set(ns_names) == set(pyhf_model.config.par_names)
 
-    def nll_ns(pyhf_params: list[float]) -> float:
+    def twice_nll_ns(pyhf_params: list[float]) -> float:
         ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
-        return float(ns_model.nll(ns_params))
+        return 2.0 * float(ns_model.nll(ns_params))
 
-    def nll_pyhf(pyhf_params: list[float]) -> float:
-        return _pyhf_nll(pyhf_model, pyhf_data, pyhf_params)
+    def twice_nll_pyhf(pyhf_params: list[float]) -> float:
+        return _pyhf_twice_nll(pyhf_model, pyhf_data, pyhf_params)
 
     # suggested init
-    assert nll_ns(pyhf_init) == pytest.approx(nll_pyhf(pyhf_init), rel=0.0, abs=1e-10)
+    assert twice_nll_ns(pyhf_init) == pytest.approx(
+        twice_nll_pyhf(pyhf_init),
+        rel=TWICE_NLL_RTOL,
+        abs=TWICE_NLL_ATOL,
+    )
 
     # random points
     rng = random.Random(seed)
     for _ in range(n_random):
         p = _sample_params(rng, pyhf_init, pyhf_bounds)
-        assert nll_ns(p) == pytest.approx(nll_pyhf(p), rel=0.0, abs=1e-10)
+        assert twice_nll_ns(p) == pytest.approx(
+            twice_nll_pyhf(p),
+            rel=TWICE_NLL_RTOL,
+            abs=TWICE_NLL_ATOL,
+        )
 
     # POI variations (if present)
     poi_idx = pyhf_model.config.poi_index
@@ -99,7 +111,11 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
         for mu in [0.0, 0.5, 2.0]:
             p = list(pyhf_init)
             p[poi_idx] = mu
-            assert nll_ns(p) == pytest.approx(nll_pyhf(p), rel=0.0, abs=1e-10)
+            assert twice_nll_ns(p) == pytest.approx(
+                twice_nll_pyhf(p),
+                rel=TWICE_NLL_RTOL,
+                abs=TWICE_NLL_ATOL,
+            )
 
 
 def _make_workspace_multichannel(n_bins: int) -> dict[str, Any]:
@@ -220,4 +236,3 @@ def _make_workspace_shapefactor_control_region(n_bins: int) -> dict[str, Any]:
 )
 def test_model_zoo_nll_parity(workspace, measurement, seed, n_random):
     _assert_nll_parity(workspace, measurement, seed=seed, n_random=n_random)
-
