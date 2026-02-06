@@ -227,6 +227,27 @@ class ComposedGlmModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class LmmMarginalModel:
+    def __init__(
+        self,
+        x: List[List[float]],
+        y: List[float],
+        *,
+        include_intercept: bool = ...,
+        group_idx: List[int],
+        n_groups: Optional[int] = ...,
+        random_slope_feature_idx: Optional[int] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class KalmanModel:
     def __init__(
         self,
@@ -276,6 +297,7 @@ class MaximumLikelihoodEstimator:
             PoissonRegressionModel,
             NegativeBinomialRegressionModel,
             ComposedGlmModel,
+            LmmMarginalModel,
             ExponentialSurvivalModel,
             WeibullSurvivalModel,
             LogNormalAftModel,
@@ -324,6 +346,12 @@ class MaximumLikelihoodEstimator:
     def fit_batch(
         self,
         models_or_model: List[ComposedGlmModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[LmmMarginalModel],
         datasets: Literal[None] = ...,
     ) -> List[FitResult]: ...
     @overload
@@ -382,6 +410,7 @@ def fit(
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,
+        LmmMarginalModel,
         ExponentialSurvivalModel,
         WeibullSurvivalModel,
         LogNormalAftModel,
@@ -404,6 +433,8 @@ def fit_batch(models_or_model: List[PoissonRegressionModel], datasets: Literal[N
 def fit_batch(models_or_model: List[NegativeBinomialRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[ComposedGlmModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[LmmMarginalModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[ExponentialSurvivalModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
@@ -501,6 +532,7 @@ def sample(
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,
+        LmmMarginalModel,
         ExponentialSurvivalModel,
         WeibullSurvivalModel,
         LogNormalAftModel,
@@ -577,4 +609,6 @@ def kalman_simulate(
     *,
     t_max: int,
     seed: int = ...,
+    init: str = ...,
+    x0: Optional[List[float]] = ...,
 ) -> Dict[str, Any]: ...

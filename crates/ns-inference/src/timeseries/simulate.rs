@@ -43,6 +43,19 @@ fn sample_mvn_zero(rng: &mut StdRng, cov: &DMatrix<f64>) -> Result<DVector<f64>>
 ///
 /// Returns (xs, ys) of length T.
 pub fn kalman_simulate(model: &KalmanModel, t_max: usize, seed: u64) -> Result<KalmanSimResult> {
+    kalman_simulate_with_x0(model, t_max, seed, None)
+}
+
+/// Simulate T steps from the model with an explicit initial state `x0`.
+///
+/// - If `x0` is `None`, draws `x_0 ~ N(m0, P0)` (same as [`kalman_simulate`]).
+/// - If `x0` is `Some`, uses it as the initial state deterministically.
+pub fn kalman_simulate_with_x0(
+    model: &KalmanModel,
+    t_max: usize,
+    seed: u64,
+    x0: Option<DVector<f64>>,
+) -> Result<KalmanSimResult> {
     if t_max == 0 {
         return Err(Error::Validation("t_max must be > 0".to_string()));
     }
@@ -53,7 +66,21 @@ pub fn kalman_simulate(model: &KalmanModel, t_max: usize, seed: u64) -> Result<K
     let mut ys = Vec::with_capacity(t_max);
 
     // Initial state: x0 ~ N(m0, P0)
-    let mut x = &model.m0 + sample_mvn_zero(&mut rng, &model.p0)?;
+    let mut x = if let Some(x0) = x0 {
+        if x0.len() != model.n_state() {
+            return Err(Error::Validation(format!(
+                "x0 has wrong length: expected {}, got {}",
+                model.n_state(),
+                x0.len()
+            )));
+        }
+        if x0.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("x0 must contain only finite values".to_string()));
+        }
+        x0
+    } else {
+        &model.m0 + sample_mvn_zero(&mut rng, &model.p0)?
+    };
 
     for t in 0..t_max {
         // State evolution for t>=1: x_t = F x_{t-1} + w_t
@@ -111,6 +138,24 @@ mod tests {
         let a = kalman_simulate(&model, 3, 1).unwrap();
         let b = kalman_simulate(&model, 3, 2).unwrap();
         assert_ne!(a.xs[0][0], b.xs[0][0]);
+    }
+
+    #[test]
+    fn test_simulate_can_fix_x0() {
+        let model = KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[2.0]),
+            DMatrix::from_row_slice(1, 1, &[0.1]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[0.2]),
+            DVector::from_row_slice(&[10.0]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+        )
+        .unwrap();
+
+        let a = kalman_simulate_with_x0(&model, 3, 1, Some(DVector::from_row_slice(&[123.0]))).unwrap();
+        let b = kalman_simulate_with_x0(&model, 3, 2, Some(DVector::from_row_slice(&[123.0]))).unwrap();
+        assert_eq!(a.xs[0][0], 123.0);
+        assert_eq!(b.xs[0][0], 123.0);
     }
 
     #[test]

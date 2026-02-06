@@ -40,7 +40,10 @@ use ns_inference::timeseries::em::{
 use ns_inference::timeseries::forecast::{
     kalman_forecast as rust_kalman_forecast, kalman_forecast_intervals as rust_kalman_forecast_intervals,
 };
-use ns_inference::timeseries::simulate::kalman_simulate as rust_kalman_simulate;
+use ns_inference::timeseries::simulate::{
+    kalman_simulate as rust_kalman_simulate,
+    kalman_simulate_with_x0 as rust_kalman_simulate_with_x0,
+};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -447,9 +450,34 @@ fn kalman_forecast(
 }
 
 #[pyfunction]
-#[pyo3(signature = (model, *, t_max, seed=42))]
-fn kalman_simulate(py: Python<'_>, model: &PyKalmanModel, t_max: usize, seed: u64) -> PyResult<Py<PyAny>> {
-    let sim = rust_kalman_simulate(&model.inner, t_max, seed)
+#[pyo3(signature = (model, *, t_max, seed=42, init="sample", x0=None))]
+fn kalman_simulate(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    t_max: usize,
+    seed: u64,
+    init: &str,
+    x0: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let x0 = if let Some(x0) = x0 {
+        Some(dvector_from_vec("x0", x0)?)
+    } else {
+        match init {
+            "sample" => None,
+            "mean" => Some(model.inner.m0.clone()),
+            _ => {
+                return Err(PyValueError::new_err(
+                    "init must be one of {'sample','mean'} (or pass x0=...)",
+                ));
+            }
+        }
+    };
+
+    let sim = if let Some(x0) = x0 {
+        rust_kalman_simulate_with_x0(&model.inner, t_max, seed, Some(x0))
+    } else {
+        rust_kalman_simulate(&model.inner, t_max, seed)
+    }
         .map_err(|e| PyValueError::new_err(format!("kalman_simulate failed: {}", e)))?;
 
     let out = PyDict::new(py);
@@ -1417,6 +1445,7 @@ impl PyMaximumLikelihoodEstimator {
             PoissonRegression(RustPoissonRegressionModel),
             NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
             ComposedGlm(RustComposedGlmModel),
+            LmmMarginal(RustLmmMarginalModel),
             ExponentialSurvival(RustExponentialSurvivalModel),
             WeibullSurvival(RustWeibullSurvivalModel),
             LogNormalAft(RustLogNormalAftModel),
@@ -1462,6 +1491,11 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::ComposedGlm(glm.inner.clone())
+        } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::LmmMarginal(m.inner.clone())
         } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
             if data.is_some() {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -1484,7 +1518,7 @@ impl PyMaximumLikelihoodEstimator {
             FitModel::CoxPh(m.inner.clone())
         } else {
             return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
             ));
         };
 
@@ -1521,6 +1555,11 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::ComposedGlm(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::LmmMarginal(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -1848,8 +1887,148 @@ impl PyMaximumLikelihoodEstimator {
                     .collect();
             }
 
+            if first.extract::<PyRef<'_, PyLmmMarginalModel>>().is_ok() {
+                let mut models: Vec<RustLmmMarginalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyLmmMarginalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be LmmMarginalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyExponentialSurvivalModel>>().is_ok() {
+                let mut models: Vec<RustExponentialSurvivalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyExponentialSurvivalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be ExponentialSurvivalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyWeibullSurvivalModel>>().is_ok() {
+                let mut models: Vec<RustWeibullSurvivalModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyWeibullSurvivalModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be WeibullSurvivalModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyLogNormalAftModel>>().is_ok() {
+                let mut models: Vec<RustLogNormalAftModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyLogNormalAftModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be LogNormalAftModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyCoxPhModel>>().is_ok() {
+                let mut models: Vec<RustCoxPhModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let m = item.extract::<PyRef<'_, PyCoxPhModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be CoxPhModel")
+                    })?;
+                    models.push(m.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
             Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
             ))
         }
     }
@@ -2192,6 +2371,7 @@ fn sample<'py>(
         PoissonRegression(RustPoissonRegressionModel),
         NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
         ComposedGlm(RustComposedGlmModel),
+        LmmMarginal(RustLmmMarginalModel),
         ExponentialSurvival(RustExponentialSurvivalModel),
         WeibullSurvival(RustWeibullSurvivalModel),
         LogNormalAft(RustLogNormalAftModel),
@@ -2237,6 +2417,11 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::ComposedGlm(glm.inner.clone())
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::LmmMarginal(m.inner.clone())
     } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
         if data.is_some() {
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
@@ -2259,7 +2444,7 @@ fn sample<'py>(
         SampleModel::CoxPh(m.inner.clone())
     } else {
         return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, LmmMarginalModel, or a survival model.",
         ));
     };
 
@@ -2320,6 +2505,15 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::ComposedGlm(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::LmmMarginal(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
@@ -2574,6 +2768,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyNegativeBinomialRegressionModel>()?;
     m.add_class::<PyComposedGlmModel>()?;
+    m.add_class::<PyLmmMarginalModel>()?;
     m.add_class::<PyExponentialSurvivalModel>()?;
     m.add_class::<PyWeibullSurvivalModel>()?;
     m.add_class::<PyLogNormalAftModel>()?;

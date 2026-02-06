@@ -39,6 +39,7 @@ LogisticRegressionModel = _get("LogisticRegressionModel")
 PoissonRegressionModel = _get("PoissonRegressionModel")
 NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
+LmmMarginalModel = _get("LmmMarginalModel")
 KalmanModel = _get("KalmanModel")
 ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
@@ -87,6 +88,7 @@ __all__ = [
     "PoissonRegressionModel",
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
+    "LmmMarginalModel",
     "KalmanModel",
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",

@@ -480,6 +480,7 @@ impl LogDensityModel for LmmMarginalModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nalgebra::{DMatrix, DVector};
 
     fn finite_diff_grad<M: LogDensityModel>(m: &M, params: &[f64], eps: f64) -> Vec<f64> {
         let mut g = vec![0.0; params.len()];
@@ -493,6 +494,44 @@ mod tests {
             g[i] = (f_hi - f_lo) / (2.0 * eps);
         }
         g
+    }
+
+    fn dense_group_nll(
+        r: &[f64],
+        sigma_y: f64,
+        tau_alpha: f64,
+        tau_u: Option<(f64, &[f64])>,
+    ) -> f64 {
+        let m = r.len();
+        let sigma2 = sigma_y * sigma_y;
+        let tau_a2 = tau_alpha * tau_alpha;
+
+        let mut v = DMatrix::zeros(m, m);
+        for i in 0..m {
+            for j in 0..m {
+                let mut val = tau_a2;
+                if let Some((tu, z)) = tau_u {
+                    val += (tu * tu) * z[i] * z[j];
+                }
+                if i == j {
+                    val += sigma2;
+                }
+                v[(i, j)] = val;
+            }
+        }
+
+        let chol = nalgebra::linalg::Cholesky::new(v).unwrap();
+        let l = chol.l();
+        let mut log_det = 0.0;
+        for i in 0..m {
+            log_det += 2.0 * l[(i, i)].ln();
+        }
+
+        let rv = DVector::from_row_slice(r);
+        let x = chol.solve(&rv);
+        let quad = rv.dot(&x);
+
+        0.5 * (log_det + quad)
     }
 
     #[test]
@@ -516,6 +555,45 @@ mod tests {
         for i in 0..p.len() {
             assert!((g[i] - g_fd[i]).abs() < 5e-4);
         }
+    }
+
+    #[test]
+    fn lmm_nll_matches_dense_covariance_intercept() {
+        let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
+        let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+        let m = LmmMarginalModel::new(
+            x,
+            y,
+            false,
+            group_idx,
+            2,
+            RandomEffects::Intercept,
+        )
+        .unwrap();
+
+        // beta1, log_sigma_y, log_tau_alpha
+        let params = vec![0.2, (0.5f64).ln(), (1.2f64).ln()];
+        let nll = m.nll(&params).unwrap();
+
+        let beta = params[0];
+        let sigma_y = params[1].exp();
+        let tau_alpha = params[2].exp();
+
+        let mut nll_dense = 0.0;
+        for gd in &m.groups {
+            if gd.indices.is_empty() {
+                continue;
+            }
+            let mut r = Vec::with_capacity(gd.indices.len());
+            for &i in &gd.indices {
+                let eta = row_dot(m.x.row(i), &[beta]);
+                r.push(m.y[i] - eta);
+            }
+            nll_dense += dense_group_nll(&r, sigma_y, tau_alpha, None);
+        }
+
+        assert!((nll - nll_dense).abs() < 1e-10);
     }
 
     #[test]
@@ -547,5 +625,54 @@ mod tests {
         for i in 0..p.len() {
             assert!((g[i] - g_fd[i]).abs() < 5e-4);
         }
+    }
+
+    #[test]
+    fn lmm_nll_matches_dense_covariance_intercept_slope() {
+        let x = vec![
+            vec![1.0, 0.1],
+            vec![1.0, 0.2],
+            vec![1.0, 0.3],
+            vec![1.0, 0.1],
+            vec![1.0, 0.2],
+            vec![1.0, 0.3],
+        ];
+        let y = vec![1.0, 1.1, 0.9, 1.4, 1.6, 1.3];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+        let m = LmmMarginalModel::new(
+            x,
+            y,
+            true,
+            group_idx,
+            2,
+            RandomEffects::InterceptSlope { feature_idx: 1 },
+        )
+        .unwrap();
+
+        // intercept, beta1, beta2, log_sigma_y, log_tau_alpha, log_tau_u
+        let params = vec![0.2, 0.1, -0.3, (0.7f64).ln(), (1.1f64).ln(), (0.6f64).ln()];
+        let nll = m.nll(&params).unwrap();
+
+        let sigma_y = params[3].exp();
+        let tau_alpha = params[4].exp();
+        let tau_u = params[5].exp();
+
+        let mut nll_dense = 0.0;
+        for gd in &m.groups {
+            if gd.indices.is_empty() {
+                continue;
+            }
+            let mut r = Vec::with_capacity(gd.indices.len());
+            let mut z = Vec::with_capacity(gd.indices.len());
+            for &i in &gd.indices {
+                let row = m.x.row(i);
+                let eta = params[0] + row_dot(row, &params[1..3]);
+                r.push(m.y[i] - eta);
+                z.push(row[1]);
+            }
+            nll_dense += dense_group_nll(&r, sigma_y, tau_alpha, Some((tau_u, &z)));
+        }
+
+        assert!((nll - nll_dense).abs() < 1e-10);
     }
 }

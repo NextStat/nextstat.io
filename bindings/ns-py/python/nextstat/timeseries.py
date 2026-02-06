@@ -654,11 +654,23 @@ def kalman_forecast(
     return _core.kalman_forecast(model, [list(y) for y in ys], steps=steps, alpha=alpha)
 
 
-def kalman_simulate(model, *, t_max: int, seed: int = 42) -> Mapping[str, Any]:
-    """Simulate (xs, ys) from the model."""
+def kalman_simulate(
+    model,
+    *,
+    t_max: int,
+    seed: int = 42,
+    init: str = "sample",
+    x0: Sequence[float] | None = None,
+) -> Mapping[str, Any]:
+    """Simulate (xs, ys) from the model.
+
+    Parameters
+    - init: "sample" (default) draws x0 ~ N(m0, P0); "mean" uses x0 = m0
+    - x0: optional explicit initial state (overrides init)
+    """
     from . import _core
 
-    return _core.kalman_simulate(model, t_max=t_max, seed=seed)
+    return _core.kalman_simulate(model, t_max=t_max, seed=seed, init=init, x0=None if x0 is None else list(x0))
 
 def local_level_model(*, q: float, r: float, m0: float = 0.0, p0: float = 1.0):
     """Construct a 1D local level (random walk) Kalman model."""
