@@ -133,8 +133,12 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
                 y.len()
             )));
         }
-        if y.iter().any(|v| !v.is_finite()) {
-            return Err(Error::Validation(format!("y[{}] must be finite", t)));
+        // Missing observations are represented as NaN. Reject infinities.
+        if y.iter().any(|v| !v.is_finite() && !v.is_nan()) {
+            return Err(Error::Validation(format!(
+                "y[{}] must be finite or NaN (NaN means missing)",
+                t
+            )));
         }
     }
 
@@ -154,12 +158,49 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
         predicted_means.push(m_pred.clone());
         predicted_covs.push(p_pred.clone());
 
-        // Innovation: v = y - H m_pred
-        let y_hat = &model.h * &m_pred;
-        let v = y - y_hat;
+        // Select observed dimensions (NaN means missing).
+        let mut obs_idx: Vec<usize> = Vec::new();
+        for i in 0..m {
+            if y[i].is_finite() {
+                obs_idx.push(i);
+            }
+        }
+
+        // If nothing is observed at this timestep: skip the update.
+        if obs_idx.is_empty() {
+            filtered_means.push(m_pred.clone());
+            filtered_covs.push(p_pred.clone());
+
+            // Predict next prior: (m_pred, p_pred) <- (F m, F P F^T + Q)
+            m_pred = &model.f * &m_pred;
+            p_pred = &model.f * &p_pred * model.f.transpose() + &model.q;
+            p_pred = symmetrize(&p_pred);
+            continue;
+        }
+
+        // Build reduced observation system for observed indices.
+        let mo = obs_idx.len();
+        let mut y_obs = DVector::<f64>::zeros(mo);
+        let mut h_obs = DMatrix::<f64>::zeros(mo, n);
+        let mut r_obs = DMatrix::<f64>::zeros(mo, mo);
+        for (ii, &i) in obs_idx.iter().enumerate() {
+            y_obs[ii] = y[i];
+            for j in 0..n {
+                h_obs[(ii, j)] = model.h[(i, j)];
+            }
+        }
+        for (ii, &i) in obs_idx.iter().enumerate() {
+            for (jj, &j) in obs_idx.iter().enumerate() {
+                r_obs[(ii, jj)] = model.r[(i, j)];
+            }
+        }
+
+        // Innovation: v = y_obs - H_obs m_pred
+        let y_hat = &h_obs * &m_pred;
+        let v = y_obs - y_hat;
 
         // Innovation covariance: S = H P_pred H^T + R
-        let s = &model.h * &p_pred * model.h.transpose() + &model.r;
+        let s = &h_obs * &p_pred * h_obs.transpose() + &r_obs;
 
         let chol = s.cholesky().ok_or_else(|| {
             Error::Computation("Kalman update failed: innovation covariance not SPD".to_string())
@@ -172,7 +213,7 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
         // logdet(S) = 2 * sum(log(diag(L)))
         let l = chol.l();
         let mut logdet = 0.0;
-        for i in 0..m {
+        for i in 0..mo {
             let d = l[(i, i)];
             if d <= 0.0 || !d.is_finite() {
                 return Err(Error::Computation(
@@ -182,12 +223,12 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
             logdet += 2.0 * d.ln();
         }
 
-        loglik += -0.5 * ((m as f64) * ln_2pi + logdet + quad);
+        loglik += -0.5 * ((mo as f64) * ln_2pi + logdet + quad);
 
         // Kalman gain: K = P_pred H^T S^{-1}
-        let ph_t = &p_pred * model.h.transpose(); // n x m
+        let ph_t = &p_pred * h_obs.transpose(); // n x mo
         let x = chol.solve(&ph_t.transpose()); // m x n
-        let k = x.transpose(); // n x m
+        let k = x.transpose(); // n x mo
 
         // Filtered mean: m = m_pred + K v
         let m_filt = &m_pred + &k * v;
@@ -195,8 +236,8 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
         // Joseph form covariance update:
         // P = (I - K H) P_pred (I - K H)^T + K R K^T
         let i = DMatrix::<f64>::identity(n, n);
-        let i_minus_kh = &i - &k * &model.h;
-        let p_filt = &i_minus_kh * &p_pred * i_minus_kh.transpose() + &k * &model.r * k.transpose();
+        let i_minus_kh = &i - &k * &h_obs;
+        let p_filt = &i_minus_kh * &p_pred * i_minus_kh.transpose() + &k * &r_obs * k.transpose();
         let p_filt = symmetrize(&p_filt);
 
         filtered_means.push(m_filt.clone());
@@ -373,5 +414,34 @@ mod tests {
             assert!(sr.smoothed_covs[t][0].is_finite());
             assert!(sr.smoothed_covs[t][0] >= 0.0);
         }
+    }
+
+    #[test]
+    fn test_kalman_filter_allows_missing_obs_as_nan() {
+        // Same model as the scalar reference test, but with a missing y at t=1.
+        let model = KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[0.1]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[0.2]),
+            DVector::from_row_slice(&[0.0]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+        )
+        .unwrap();
+
+        let ys = vec![
+            DVector::from_row_slice(&[0.9]),
+            DVector::from_row_slice(&[f64::NAN]),
+            DVector::from_row_slice(&[0.8]),
+        ];
+
+        let fr = kalman_filter(&model, &ys).unwrap();
+        assert!(fr.log_likelihood.is_finite());
+        assert_eq!(fr.filtered_means.len(), 3);
+        assert_eq!(fr.filtered_covs.len(), 3);
+
+        // Missing observation should not crash and should keep finiteness.
+        assert!(fr.filtered_means[1][0].is_finite());
+        assert!(fr.filtered_covs[1][0].is_finite());
     }
 }

@@ -30,6 +30,8 @@ use ns_inference::timeseries::kalman::{
 use ns_inference::timeseries::em::{
     KalmanEmConfig as RustKalmanEmConfig, kalman_em as rust_kalman_em,
 };
+use ns_inference::timeseries::forecast::kalman_forecast as rust_kalman_forecast;
+use ns_inference::timeseries::simulate::kalman_simulate as rust_kalman_simulate;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -90,6 +92,25 @@ fn dvector_from_vec(name: &str, v: Vec<f64>) -> PyResult<DVector<f64>> {
         return Err(PyValueError::new_err(format!("{name} must contain only finite values")));
     }
     Ok(DVector::from_vec(v))
+}
+
+fn dvector_from_opt_vec(name: &str, v: Vec<Option<f64>>) -> PyResult<DVector<f64>> {
+    if v.is_empty() {
+        return Err(PyValueError::new_err(format!("{name} must be non-empty")));
+    }
+    let mut out = Vec::with_capacity(v.len());
+    for x in v {
+        match x {
+            Some(v) if v.is_finite() => out.push(v),
+            Some(_) => {
+                return Err(PyValueError::new_err(format!(
+                    "{name} must contain only finite values or None"
+                )));
+            }
+            None => out.push(f64::NAN),
+        }
+    }
+    Ok(DVector::from_vec(out))
 }
 
 fn dvector_to_vec(v: &DVector<f64>) -> Vec<f64> {
@@ -235,13 +256,15 @@ impl PyKalmanModel {
 }
 
 #[pyfunction]
-fn kalman_filter(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> PyResult<Py<PyAny>> {
+fn kalman_filter(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    ys: Vec<Vec<Option<f64>>>,
+) -> PyResult<Py<PyAny>> {
     let ys: Vec<DVector<f64>> = ys
         .into_iter()
         .enumerate()
-        .map(|(t, y)| {
-            dvector_from_vec(&format!("y[{t}]"), y)
-        })
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
         .collect::<PyResult<Vec<_>>>()?;
 
     let fr = rust_kalman_filter(&model.inner, &ys)
@@ -270,13 +293,15 @@ fn kalman_filter(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> Py
 }
 
 #[pyfunction]
-fn kalman_smooth(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> PyResult<Py<PyAny>> {
+fn kalman_smooth(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    ys: Vec<Vec<Option<f64>>>,
+) -> PyResult<Py<PyAny>> {
     let ys: Vec<DVector<f64>> = ys
         .into_iter()
         .enumerate()
-        .map(|(t, y)| {
-            dvector_from_vec(&format!("y[{t}]"), y)
-        })
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
         .collect::<PyResult<Vec<_>>>()?;
 
     let fr = rust_kalman_filter(&model.inner, &ys)
@@ -311,7 +336,7 @@ fn kalman_smooth(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> Py
 fn kalman_em(
     py: Python<'_>,
     model: &PyKalmanModel,
-    ys: Vec<Vec<f64>>,
+    ys: Vec<Vec<Option<f64>>>,
     max_iter: usize,
     tol: f64,
     estimate_q: bool,
@@ -321,7 +346,7 @@ fn kalman_em(
     let ys: Vec<DVector<f64>> = ys
         .into_iter()
         .enumerate()
-        .map(|(t, y)| dvector_from_vec(&format!("y[{t}]"), y))
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
         .collect::<PyResult<Vec<_>>>()?;
 
     let cfg = RustKalmanEmConfig {
@@ -343,6 +368,46 @@ fn kalman_em(
     out.set_item("r", dmatrix_to_nested(&res.model.r))?;
     out.set_item("model", Py::new(py, PyKalmanModel { inner: res.model })?)?;
 
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (model, ys, *, steps=1))]
+fn kalman_forecast(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    ys: Vec<Vec<Option<f64>>>,
+    steps: usize,
+) -> PyResult<Py<PyAny>> {
+    let ys: Vec<DVector<f64>> = ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let fr = rust_kalman_filter(&model.inner, &ys)
+        .map_err(|e| PyValueError::new_err(format!("kalman_filter failed: {}", e)))?;
+    let fc = rust_kalman_forecast(&model.inner, &fr, steps)
+        .map_err(|e| PyValueError::new_err(format!("kalman_forecast failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("state_means", fc.state_means.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+    out.set_item("state_covs", fc.state_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>())?;
+    out.set_item("obs_means", fc.obs_means.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+    out.set_item("obs_covs", fc.obs_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>())?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (model, *, t_max, seed=42))]
+fn kalman_simulate(py: Python<'_>, model: &PyKalmanModel, t_max: usize, seed: u64) -> PyResult<Py<PyAny>> {
+    let sim = rust_kalman_simulate(&model.inner, t_max, seed)
+        .map_err(|e| PyValueError::new_err(format!("kalman_simulate failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("xs", sim.xs.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+    out.set_item("ys", sim.ys.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
     Ok(out.into_any().unbind())
 }
 
@@ -1698,6 +1763,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
+    m.add_function(wrap_pyfunction!(kalman_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(kalman_simulate, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;

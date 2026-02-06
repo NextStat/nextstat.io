@@ -55,7 +55,14 @@ Then run:
 nextstat timeseries kalman-filter --input kalman_1d.json
 nextstat timeseries kalman-smooth --input kalman_1d.json
 nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
+nextstat timeseries kalman-forecast --input kalman_1d.json --steps 10
+nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 ```
+
+## Missing observations
+
+- Python: use `None` inside `ys` (per component).
+- CLI JSON: use `null` inside `ys` (per component).
 
 ## JSON contract (Python)
 

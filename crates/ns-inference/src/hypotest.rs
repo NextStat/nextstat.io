@@ -18,10 +18,118 @@ fn poi_index(model: &HistFactoryModel) -> Result<usize> {
     model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
 
+const CLB_MIN: f64 = 1e-300;
+
 fn normal_cdf(x: f64) -> f64 {
     // Use erfc for better numerical behavior in the tails:
     // Φ(x) = 0.5 * erfc(-x / sqrt(2))
     0.5 * statrs::function::erf::erfc(-x / std::f64::consts::SQRT_2)
+}
+
+#[inline]
+fn safe_cls(clsb: f64, clb: f64) -> f64 {
+    // CLs = CLsb / CLb, but CLb can underflow to 0 in the far tails.
+    // In that regime CLsb also underflows, and the physically meaningful ratio tends to 0.
+    if !(clsb.is_finite() && clb.is_finite()) {
+        return 0.0;
+    }
+    if clb <= CLB_MIN {
+        return if clsb <= CLB_MIN { 0.0 } else { 1.0 };
+    }
+    (clsb / clb).clamp(0.0, 1.0)
+}
+
+fn interp_limit(alpha: f64, xs: &[f64], ys: &[f64]) -> Result<f64> {
+    // Robust linear interpolation for the limit, matching numpy.interp behavior when ys is monotone.
+    //
+    // For typical upper-limit scans, `xs` are mu scan points in ascending order and `ys` (CLs)
+    // is (approximately) non-increasing. Numerical noise can break monotonicity; in that case we
+    // pick the *first* crossing of alpha as mu increases.
+    if xs.len() != ys.len() {
+        return Err(Error::Validation("interp input length mismatch".to_string()));
+    }
+    let n = xs.len();
+    if n < 2 {
+        return Err(Error::Validation("interp requires >=2 points".to_string()));
+    }
+
+    // Clamp outside the observed range in the scan direction (mirrors numpy.interp clamp).
+    let decreasing = ys[0] >= ys[n - 1];
+    if decreasing {
+        if alpha >= ys[0] {
+            return Ok(xs[0]);
+        }
+        if alpha <= ys[n - 1] {
+            return Ok(xs[n - 1]);
+        }
+        // First crossing from above to below.
+        for i in 0..(n - 1) {
+            let y0 = ys[i];
+            let y1 = ys[i + 1];
+            if (y0 - alpha).abs() < 1e-18 {
+                return Ok(xs[i]);
+            }
+            if y0 >= alpha && y1 <= alpha && (y1 - y0).abs() >= 1e-18 {
+                let x0 = xs[i];
+                let x1 = xs[i + 1];
+                let t = (alpha - y0) / (y1 - y0);
+                return Ok(x0 + t * (x1 - x0));
+            }
+        }
+    } else {
+        if alpha <= ys[0] {
+            return Ok(xs[0]);
+        }
+        if alpha >= ys[n - 1] {
+            return Ok(xs[n - 1]);
+        }
+        for i in 0..(n - 1) {
+            let y0 = ys[i];
+            let y1 = ys[i + 1];
+            if (y0 - alpha).abs() < 1e-18 {
+                return Ok(xs[i]);
+            }
+            if y0 <= alpha && y1 >= alpha && (y1 - y0).abs() >= 1e-18 {
+                let x0 = xs[i];
+                let x1 = xs[i + 1];
+                let t = (alpha - y0) / (y1 - y0);
+                return Ok(x0 + t * (x1 - x0));
+            }
+        }
+    }
+
+    // If we didn't find a bracket due to non-monotonic noise or flats, fall back to any sign change.
+    log::warn!("hypotest: non-monotonic CLs scan; using first sign-change fallback");
+    for i in 0..(n - 1) {
+        let y0 = ys[i] - alpha;
+        let y1 = ys[i + 1] - alpha;
+        if y0 == 0.0 {
+            return Ok(xs[i]);
+        }
+        if (y0 > 0.0 && y1 < 0.0) || (y0 < 0.0 && y1 > 0.0) {
+            let x0 = xs[i];
+            let x1 = xs[i + 1];
+            let yy0 = ys[i];
+            let yy1 = ys[i + 1];
+            if (yy1 - yy0).abs() < 1e-18 {
+                return Ok(x0);
+            }
+            let t = (alpha - yy0) / (yy1 - yy0);
+            return Ok(x0 + t * (x1 - x0));
+        }
+    }
+
+    // Total failure: return the end closest to alpha.
+    let mut best_i = 0usize;
+    let mut best_d = (ys[0] - alpha).abs();
+    for i in 1..n {
+        let d = (ys[i] - alpha).abs();
+        if d < best_d {
+            best_d = d;
+            best_i = i;
+        }
+    }
+    Ok(xs[best_i])
 }
 
 /// Compute the expected CLs "Brazil band" for a given Asimov `sqrt(q_mu,A)`.
@@ -32,7 +140,7 @@ pub fn expected_cls_band_from_sqrtq_a(sqrtq_a: f64) -> [f64; 5] {
     for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {
         let clsb = normal_cdf(-(t + sqrtq_a));
         let clb = normal_cdf(-t);
-        out[i] = clsb / clb;
+        out[i] = safe_cls(clsb, clb);
     }
     out
 }
@@ -204,7 +312,7 @@ impl AsymptoticCLsContext {
         // sb: shift = -sqrtq_a, b: shift = 0, and right-tail pvalues as normal_cdf(-(...)).
         let clsb = normal_cdf(-(teststat + sqrtq_a));
         let clb = normal_cdf(-teststat);
-        let cls = clsb / clb;
+        let cls = safe_cls(clsb, clb);
 
         Ok(HypotestResult {
             mu_test,
@@ -317,54 +425,10 @@ impl AsymptoticCLsContext {
 
             let clsb = normal_cdf(-(teststat + sqrtq_a));
             let clb = normal_cdf(-teststat);
-            let cls = clsb / clb;
+            let cls = safe_cls(clsb, clb);
 
             observed_cls.push(cls);
             expected_cls.push(expected_cls_band_from_sqrtq_a(sqrtq_a));
-        }
-
-        fn interp_limit(alpha: f64, xs: &[f64], ys: &[f64]) -> Result<f64> {
-            // Match `numpy.interp(alpha, ys[::-1], xs[::-1])` used by pyhf.
-            if xs.len() != ys.len() {
-                return Err(Error::Validation("interp input length mismatch".to_string()));
-            }
-            let n = xs.len();
-            if n < 2 {
-                return Err(Error::Validation("interp requires >=2 points".to_string()));
-            }
-
-            let mut xp: Vec<f64> = ys.to_vec();
-            xp.reverse();
-            let mut fp: Vec<f64> = xs.to_vec();
-            fp.reverse();
-
-            // numpy.interp clamps outside the xp range.
-            if alpha <= xp[0] {
-                return Ok(fp[0]);
-            }
-            if alpha >= xp[n - 1] {
-                return Ok(fp[n - 1]);
-            }
-
-            // Find i s.t. xp[i] <= alpha < xp[i+1]
-            let pos = xp.partition_point(|v| *v <= alpha);
-            if pos == 0 {
-                return Ok(fp[0]);
-            }
-            if pos >= n {
-                return Ok(fp[n - 1]);
-            }
-            let i = pos - 1;
-
-            let x0 = xp[i];
-            let x1 = xp[i + 1];
-            let y0 = fp[i];
-            let y1 = fp[i + 1];
-            if (x1 - x0).abs() < 1e-18 {
-                return Ok(y0);
-            }
-            let t = (alpha - x0) / (x1 - x0);
-            Ok(y0 + t * (y1 - y0))
         }
 
         let obs_limit = interp_limit(alpha, scan, &observed_cls)?;
@@ -571,5 +635,28 @@ mod tests {
             let diff = (r.cls - expected_cls).abs();
             assert!(diff < 5e-6, "mu={} cls={} expected={} diff={}", mu, r.cls, expected_cls, diff);
         }
+    }
+
+    #[test]
+    fn test_safe_cls_underflow_is_finite() {
+        // Force clb=0 underflow and ensure we don't produce NaN/inf for CLs.
+        let clb = normal_cdf(-1e6);
+        let clsb = normal_cdf(-1e6 - 1.0);
+        assert_eq!(clb, 0.0);
+        assert_eq!(clsb, 0.0);
+        let cls = safe_cls(clsb, clb);
+        assert!(cls.is_finite());
+        assert_eq!(cls, 0.0);
+    }
+
+    #[test]
+    fn test_interp_limit_nonmonotonic_picks_first_crossing() {
+        let xs = [0.0, 1.0, 2.0, 3.0];
+        let ys = [1.0, 0.2, 0.8, 0.0];
+        let alpha = 0.5;
+        let x = interp_limit(alpha, &xs, &ys).unwrap();
+        // First crossing is between (0,1): y=1 -> 0.2
+        let expected = 0.0 + (alpha - 1.0) / (0.2 - 1.0) * (1.0 - 0.0);
+        assert!((x - expected).abs() < 1e-12, "x={} expected={}", x, expected);
     }
 }

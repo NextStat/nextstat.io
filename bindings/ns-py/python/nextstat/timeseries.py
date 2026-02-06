@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 
-def kalman_filter(model, ys: Sequence[Sequence[float]]) -> Mapping[str, Any]:
+def kalman_filter(model, ys: Sequence[Sequence[float | None]]) -> Mapping[str, Any]:
     """Run Kalman filtering.
 
     Parameters
@@ -29,7 +29,7 @@ def kalman_filter(model, ys: Sequence[Sequence[float]]) -> Mapping[str, Any]:
     return _core.kalman_filter(model, [list(y) for y in ys])
 
 
-def kalman_smooth(model, ys: Sequence[Sequence[float]]) -> Mapping[str, Any]:
+def kalman_smooth(model, ys: Sequence[Sequence[float | None]]) -> Mapping[str, Any]:
     """Run Kalman filtering + RTS smoothing.
 
     Returns
@@ -45,7 +45,7 @@ def kalman_smooth(model, ys: Sequence[Sequence[float]]) -> Mapping[str, Any]:
 
 def kalman_em(
     model,
-    ys: Sequence[Sequence[float]],
+    ys: Sequence[Sequence[float | None]],
     *,
     max_iter: int = 50,
     tol: float = 1e-6,
@@ -67,8 +67,24 @@ def kalman_em(
     )
 
 
+def kalman_forecast(model, ys: Sequence[Sequence[float | None]], *, steps: int = 1) -> Mapping[str, Any]:
+    """Forecast future states/observations after ingesting `ys`."""
+    from . import _core
+
+    return _core.kalman_forecast(model, [list(y) for y in ys], steps=steps)
+
+
+def kalman_simulate(model, *, t_max: int, seed: int = 42) -> Mapping[str, Any]:
+    """Simulate (xs, ys) from the model."""
+    from . import _core
+
+    return _core.kalman_simulate(model, t_max=t_max, seed=seed)
+
+
 __all__ = [
     "kalman_filter",
     "kalman_smooth",
     "kalman_em",
+    "kalman_forecast",
+    "kalman_simulate",
 ]

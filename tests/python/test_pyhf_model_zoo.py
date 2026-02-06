@@ -19,7 +19,7 @@ import pytest
 
 import nextstat
 
-from _tolerances import TWICE_NLL_ATOL, TWICE_NLL_RTOL
+from _tolerances import EXPECTED_DATA_ATOL, TWICE_NLL_ATOL, TWICE_NLL_RTOL
 
 
 pyhf = pytest.importorskip("pyhf")
@@ -81,6 +81,20 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
 
     assert set(ns_names) == set(pyhf_model.config.par_names)
 
+    def expected_data_full_ns(pyhf_params: list[float]) -> list[float]:
+        ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
+        return [float(x) for x in ns_model.expected_data(ns_params)]
+
+    def expected_data_main_ns(pyhf_params: list[float]) -> list[float]:
+        ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
+        return [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
+
+    def expected_data_full_pyhf(pyhf_params: list[float]) -> list[float]:
+        return [float(x) for x in pyhf_model.expected_data(pyhf_params)]
+
+    def expected_data_main_pyhf(pyhf_params: list[float]) -> list[float]:
+        return [float(x) for x in pyhf_model.expected_data(pyhf_params, include_auxdata=False)]
+
     def twice_nll_ns(pyhf_params: list[float]) -> float:
         ns_params = _map_params_by_name(pyhf_model.config.par_names, pyhf_params, ns_names, ns_init)
         return 2.0 * float(ns_model.nll(ns_params))
@@ -94,6 +108,16 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
         rel=TWICE_NLL_RTOL,
         abs=TWICE_NLL_ATOL,
     )
+    assert expected_data_full_ns(pyhf_init) == pytest.approx(
+        expected_data_full_pyhf(pyhf_init),
+        rel=0.0,
+        abs=EXPECTED_DATA_ATOL,
+    )
+    assert expected_data_main_ns(pyhf_init) == pytest.approx(
+        expected_data_main_pyhf(pyhf_init),
+        rel=0.0,
+        abs=EXPECTED_DATA_ATOL,
+    )
 
     # random points
     rng = random.Random(seed)
@@ -103,6 +127,16 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
             twice_nll_pyhf(p),
             rel=TWICE_NLL_RTOL,
             abs=TWICE_NLL_ATOL,
+        )
+        assert expected_data_full_ns(p) == pytest.approx(
+            expected_data_full_pyhf(p),
+            rel=0.0,
+            abs=EXPECTED_DATA_ATOL,
+        )
+        assert expected_data_main_ns(p) == pytest.approx(
+            expected_data_main_pyhf(p),
+            rel=0.0,
+            abs=EXPECTED_DATA_ATOL,
         )
 
     # POI variations (if present)
@@ -115,6 +149,16 @@ def _assert_nll_parity(workspace: dict[str, Any], measurement_name: str, *, seed
                 twice_nll_pyhf(p),
                 rel=TWICE_NLL_RTOL,
                 abs=TWICE_NLL_ATOL,
+            )
+            assert expected_data_full_ns(p) == pytest.approx(
+                expected_data_full_pyhf(p),
+                rel=0.0,
+                abs=EXPECTED_DATA_ATOL,
+            )
+            assert expected_data_main_ns(p) == pytest.approx(
+                expected_data_main_pyhf(p),
+                rel=0.0,
+                abs=EXPECTED_DATA_ATOL,
             )
 
 

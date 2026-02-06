@@ -271,6 +271,40 @@ enum TimeseriesCommands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Forecast K steps ahead after filtering the provided `ys`
+    KalmanForecast {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Number of forecast steps (>0)
+        #[arg(long, default_value = "1")]
+        steps: usize,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Simulate (xs, ys) from the model in the input JSON
+    KalmanSimulate {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Number of timesteps (>0)
+        #[arg(long)]
+        t_max: usize,
+
+        /// RNG seed
+        #[arg(long, default_value = "42")]
+        seed: u64,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -347,6 +381,12 @@ fn main() -> Result<()> {
                 min_diag,
                 output,
             } => cmd_ts_kalman_em(&input, max_iter, tol, estimate_q, estimate_r, min_diag, output.as_ref()),
+            TimeseriesCommands::KalmanForecast { input, steps, output } => {
+                cmd_ts_kalman_forecast(&input, steps, output.as_ref())
+            }
+            TimeseriesCommands::KalmanSimulate { input, t_max, seed, output } => {
+                cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref())
+            }
         },
         Commands::Version => {
             println!("nextstat {}", ns_core::VERSION);
@@ -419,7 +459,7 @@ struct KalmanModelJson {
 #[derive(Debug, Clone, Deserialize)]
 struct KalmanInputJson {
     model: KalmanModelJson,
-    ys: Vec<Vec<f64>>,
+    ys: Vec<Vec<Option<f64>>>,
 }
 
 fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> Result<DMatrix<f64>> {
@@ -458,6 +498,21 @@ fn dvector_from_vec(name: &str, v: Vec<f64>) -> Result<DVector<f64>> {
         anyhow::bail!("{name} must contain only finite values");
     }
     Ok(DVector::from_vec(v))
+}
+
+fn dvector_from_opt_vec(name: &str, v: Vec<Option<f64>>) -> Result<DVector<f64>> {
+    if v.is_empty() {
+        anyhow::bail!("{name} must be non-empty");
+    }
+    let mut out = Vec::with_capacity(v.len());
+    for x in v {
+        match x {
+            Some(v) if v.is_finite() => out.push(v),
+            Some(_) => anyhow::bail!("{name} must contain only finite values or null"),
+            None => out.push(f64::NAN),
+        }
+    }
+    Ok(DVector::from_vec(out))
 }
 
 fn dvector_to_vec(v: &DVector<f64>) -> Vec<f64> {
@@ -499,7 +554,7 @@ fn load_kalman_input(
         .ys
         .into_iter()
         .enumerate()
-        .map(|(t, y)| dvector_from_vec(&format!("y[{t}]"), y))
+        .map(|(t, y)| dvector_from_opt_vec(&format!("y[{t}]"), y))
         .collect::<Result<Vec<_>>>()?;
 
     Ok((model, ys))
@@ -568,6 +623,35 @@ fn cmd_ts_kalman_em(
         "r": dmatrix_to_nested(&res.model.r),
     });
 
+    write_json(output, output_json)
+}
+
+fn cmd_ts_kalman_forecast(input: &PathBuf, steps: usize, output: Option<&PathBuf>) -> Result<()> {
+    let (model, ys) = load_kalman_input(input)?;
+    let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
+        .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+    let fc = ns_inference::timeseries::forecast::kalman_forecast(&model, &fr, steps)
+        .map_err(|e| anyhow::anyhow!("kalman_forecast failed: {e}"))?;
+
+    let output_json = serde_json::json!({
+        "state_means": fc.state_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "state_covs": fc.state_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+        "obs_means": fc.obs_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "obs_covs": fc.obs_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    });
+
+    write_json(output, output_json)
+}
+
+fn cmd_ts_kalman_simulate(input: &PathBuf, t_max: usize, seed: u64, output: Option<&PathBuf>) -> Result<()> {
+    let (model, _ys) = load_kalman_input(input)?;
+    let sim = ns_inference::timeseries::simulate::kalman_simulate(&model, t_max, seed)
+        .map_err(|e| anyhow::anyhow!("kalman_simulate failed: {e}"))?;
+
+    let output_json = serde_json::json!({
+        "xs": sim.xs.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "ys": sim.ys.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+    });
     write_json(output, output_json)
 }
 

@@ -88,3 +88,34 @@ def test_kalman_em_smoke():
     assert len(out["loglik_trace"]) >= 2
     assert float(out["q"][0][0]) > 0.0
     assert float(out["r"][0][0]) > 0.0
+
+
+def test_kalman_forecast_shapes_smoke():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [0.0], [[1.0]])
+    ys = [[0.9], [1.2], [0.8], [1.1]]
+    out = nextstat.timeseries.kalman_forecast(model, ys, steps=3)
+
+    assert len(out["state_means"]) == 3
+    assert len(out["state_covs"]) == 3
+    assert len(out["obs_means"]) == 3
+    assert len(out["obs_covs"]) == 3
+
+
+def test_kalman_simulate_shapes_smoke():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [0.0], [[1.0]])
+    out = nextstat.timeseries.kalman_simulate(model, t_max=5, seed=123)
+    assert len(out["xs"]) == 5
+    assert len(out["ys"]) == 5
+
+
+def test_kalman_filter_allows_missing_none():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [0.0], [[1.0]])
+    ys = [[0.9], [None], [0.8], [1.1]]
+    out = nextstat.timeseries.kalman_filter(model, ys)
+    assert float(out["log_likelihood"]) == float(out["log_likelihood"])

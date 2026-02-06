@@ -119,6 +119,62 @@ impl HistFactoryModel {
         Ok(())
     }
 
+    fn validate_internal_indices(&self) -> Result<()> {
+        let n = self.parameters.len();
+        for channel in &self.channels {
+            for sample in &channel.samples {
+                for m in &sample.modifiers {
+                    match m {
+                        ModelModifier::NormFactor { param_idx }
+                        | ModelModifier::NormSys { param_idx, .. }
+                        | ModelModifier::HistoSys { param_idx, .. }
+                        | ModelModifier::Lumi { param_idx } => {
+                            if *param_idx >= n {
+                                return Err(ns_core::Error::Validation(format!(
+                                    "Modifier param index out of range: idx={} len={}",
+                                    param_idx, n
+                                )));
+                            }
+                        }
+                        ModelModifier::ShapeSys { param_indices, .. }
+                        | ModelModifier::ShapeFactor { param_indices }
+                        | ModelModifier::StatError { param_indices, .. } => {
+                            for &idx in param_indices {
+                                if idx >= n {
+                                    return Err(ns_core::Error::Validation(format!(
+                                        "Modifier param index out of range: idx={} len={}",
+                                        idx, n
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            for constraint in &channel.auxiliary_data {
+                let sample = channel
+                    .samples
+                    .get(constraint.sample_idx)
+                    .ok_or_else(|| ns_core::Error::Validation("Aux constraint sample_idx out of range".to_string()))?;
+                let modifier = sample
+                    .modifiers
+                    .get(constraint.modifier_idx)
+                    .ok_or_else(|| ns_core::Error::Validation("Aux constraint modifier_idx out of range".to_string()))?;
+                if let ModelModifier::ShapeSys { param_indices, .. } = modifier {
+                    if constraint.tau.len() != param_indices.len()
+                        || constraint.observed.len() != param_indices.len()
+                    {
+                        return Err(ns_core::Error::Validation(
+                            "Aux constraint length mismatch (tau/observed/param_indices)".to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Compute `ln Γ(n+1)` (generalized factorial).
     fn ln_factorial(n: f64) -> f64 {
         ln_gamma(n + 1.0)
@@ -571,7 +627,9 @@ impl HistFactoryModel {
             });
         }
 
-        Ok(Self { parameters, poi_index, channels })
+        let model = Self { parameters, poi_index, channels };
+        model.validate_internal_indices()?;
+        Ok(model)
     }
 
     /// Number of parameters
@@ -870,43 +928,43 @@ impl HistFactoryModel {
             let idx = *histosys.get(&name).ok_or_else(|| {
                 ns_core::Error::Validation(format!("Missing Histosys index for '{}'", name))
             })?;
-            if idx >= params.len() {
-                return Err(ns_core::Error::Validation(format!(
+            let val = params.get(idx).copied().ok_or_else(|| {
+                ns_core::Error::Validation(format!(
                     "Histosys param index out of range for '{}': idx={} len={}",
                     name,
                     idx,
                     params.len()
-                )));
-            }
-            out.push(params[idx]);
+                ))
+            })?;
+            out.push(val);
         }
         for name in sorted_keys(&lumi) {
             let idx = *lumi.get(&name).ok_or_else(|| {
                 ns_core::Error::Validation(format!("Missing Lumi index for '{}'", name))
             })?;
-            if idx >= params.len() {
-                return Err(ns_core::Error::Validation(format!(
+            let val = params.get(idx).copied().ok_or_else(|| {
+                ns_core::Error::Validation(format!(
                     "Lumi param index out of range for '{}': idx={} len={}",
                     name,
                     idx,
                     params.len()
-                )));
-            }
-            out.push(params[idx]);
+                ))
+            })?;
+            out.push(val);
         }
         for name in sorted_keys(&normsys) {
             let idx = *normsys.get(&name).ok_or_else(|| {
                 ns_core::Error::Validation(format!("Missing NormSys index for '{}'", name))
             })?;
-            if idx >= params.len() {
-                return Err(ns_core::Error::Validation(format!(
+            let val = params.get(idx).copied().ok_or_else(|| {
+                ns_core::Error::Validation(format!(
                     "NormSys param index out of range for '{}': idx={} len={}",
                     name,
                     idx,
                     params.len()
-                )));
-            }
-            out.push(params[idx]);
+                ))
+            })?;
+            out.push(val);
         }
         for name in sorted_keys(&shapesys) {
             let (param_indices, tau) = shapesys.get(&name).ok_or_else(|| {
@@ -921,15 +979,15 @@ impl HistFactoryModel {
                 )));
             }
             for (&pidx, &tau_i) in param_indices.iter().zip(tau.iter()) {
-                if pidx >= params.len() {
-                    return Err(ns_core::Error::Validation(format!(
+                let gamma = params.get(pidx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
                         "ShapeSys param index out of range for '{}': idx={} len={}",
                         name,
                         pidx,
                         params.len()
-                    )));
-                }
-                out.push((params[pidx] * tau_i).max(1e-10));
+                    ))
+                })?;
+                out.push((gamma * tau_i).max(1e-10));
             }
         }
         for name in sorted_keys(&staterror) {
@@ -937,15 +995,15 @@ impl HistFactoryModel {
                 ns_core::Error::Validation(format!("Missing StatError indices for '{}'", name))
             })?;
             for &pidx in idxs {
-                if pidx >= params.len() {
-                    return Err(ns_core::Error::Validation(format!(
+                let gamma = params.get(pidx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
                         "StatError param index out of range for '{}': idx={} len={}",
                         name,
                         pidx,
                         params.len()
-                    )));
-                }
-                out.push(params[pidx]);
+                    ))
+                })?;
+                out.push(gamma);
             }
         }
 
@@ -990,7 +1048,13 @@ impl HistFactoryModel {
                         .zip(constraint.observed.iter())
                         .zip(param_indices.iter())
                     {
-                        let gamma = params.get(gamma_idx).copied().unwrap_or(T::from_f64(1.0));
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range in aux constraint: idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
                         let exp_aux = (gamma * T::from_f64(tau)).max_s(T::from_f64(1e-10));
 
                         if obs_aux > 0.0 {
@@ -1013,7 +1077,13 @@ impl HistFactoryModel {
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
-                let value = params.get(param_idx).copied().unwrap_or(T::from_f64(param.init));
+                let value = params.get(param_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "Constrained parameter index out of range: idx={} len={}",
+                        param_idx,
+                        params.len()
+                    ))
+                })?;
                 let pull = (value - T::from_f64(center)) * T::from_f64(1.0 / width);
                 nll = nll
                     + T::from_f64(0.5) * pull * pull
@@ -1630,7 +1700,13 @@ impl PreparedModel<'_> {
                         .zip(constraint.observed.iter())
                         .zip(param_indices.iter())
                     {
-                        let gamma = params.get(gamma_idx).copied().unwrap_or(1.0);
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range in aux constraint: idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
                         let exp_aux = (gamma * tau).max(1e-10);
 
                         if obs_aux > 0.0 {
@@ -1652,7 +1728,13 @@ impl PreparedModel<'_> {
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
-                let value = params.get(param_idx).copied().unwrap_or(param.init);
+                let value = params.get(param_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "Constrained parameter index out of range: idx={} len={}",
+                        param_idx,
+                        params.len()
+                    ))
+                })?;
                 let pull = (value - center) / width;
                 nll += 0.5 * pull * pull;
             }
@@ -1959,6 +2041,46 @@ mod tests {
         assert!(model.gradient(&long).is_err());
         assert!(model.gradient_ad(&long).is_err());
         assert!(model.gradient_reverse(&long).is_err());
+    }
+
+    #[test]
+    fn test_runtime_rejects_corrupted_internal_param_indices() {
+        let json = include_str!("../../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+
+        // Deliberately corrupt an internal modifier index to ensure runtime paths return
+        // a validation error (never panic, never silently fall back).
+        let mut corrupted = model.clone();
+        let bad = corrupted.n_params() + 10;
+
+        let mut changed = false;
+        for channel in &mut corrupted.channels {
+            for sample in &mut channel.samples {
+                for m in &mut sample.modifiers {
+                    if let ModelModifier::ShapeSys { param_indices, .. } = m {
+                        if !param_indices.is_empty() {
+                            param_indices[0] = bad;
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+                if changed {
+                    break;
+                }
+            }
+            if changed {
+                break;
+            }
+        }
+        assert!(changed, "expected to find a ShapeSys modifier to corrupt");
+
+        let params = vec![1.0; model.n_params()];
+        assert!(corrupted.expected_data(&params).is_err());
+        assert!(corrupted.nll(&params).is_err());
+        assert!(corrupted.expected_data_pyhf(&params).is_err());
+        assert!(corrupted.prepared().nll(&params).is_err());
     }
 
     #[test]

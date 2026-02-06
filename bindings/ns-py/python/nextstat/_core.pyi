@@ -359,23 +359,39 @@ def profile_curve(
 
 def kalman_filter(
     model: KalmanModel,
-    ys: List[List[float]],
+    ys: List[List[Optional[float]]],
 ) -> Dict[str, Any]: ...
 
 
 def kalman_smooth(
     model: KalmanModel,
-    ys: List[List[float]],
+    ys: List[List[Optional[float]]],
 ) -> Dict[str, Any]: ...
 
 
 def kalman_em(
     model: KalmanModel,
-    ys: List[List[float]],
+    ys: List[List[Optional[float]]],
     *,
     max_iter: int = ...,
     tol: float = ...,
     estimate_q: bool = ...,
     estimate_r: bool = ...,
     min_diag: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def kalman_forecast(
+    model: KalmanModel,
+    ys: List[List[Optional[float]]],
+    *,
+    steps: int = ...,
+) -> Dict[str, Any]: ...
+
+
+def kalman_simulate(
+    model: KalmanModel,
+    *,
+    t_max: int,
+    seed: int = ...,
 ) -> Dict[str, Any]: ...

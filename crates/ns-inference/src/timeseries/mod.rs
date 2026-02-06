@@ -5,3 +5,9 @@ pub mod kalman;
 
 /// EM parameter estimation for linear-Gaussian state space models.
 pub mod em;
+
+/// Forecasting utilities for linear-Gaussian state space models.
+pub mod forecast;
+
+/// Simulation utilities for linear-Gaussian state space models.
+pub mod simulate;
