@@ -10,7 +10,10 @@ from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, o
 
 __version__: str
 
-ParamsLike = Union[Sequence[float], Any]
+# `HistFactoryModel` accepts Python sequences (list/tuple/array('d')) and also
+# buffer-protocol objects for performance. Type stubs stay conservative and
+# describe the common supported surfaces without using `Any`.
+ParamsLike = Union[Sequence[float], memoryview]
 
 
 class HistFactoryModel:
