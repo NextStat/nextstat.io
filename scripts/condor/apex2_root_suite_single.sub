@@ -13,7 +13,9 @@
 universe = vanilla
 
 initialdir = /path/to/nextstat.io
-executable = scripts/condor/run_apex2_root_suite_single.sh
+# Use bash explicitly so the wrapper does not need executable permissions.
+executable = /bin/bash
+arguments  = scripts/condor/run_apex2_root_suite_single.sh
 
 output = scripts/condor/logs/apex2_root_suite_$(Cluster).out
 error  = scripts/condor/logs/apex2_root_suite_$(Cluster).err
@@ -28,4 +30,3 @@ getenv = True
 requirements = (TARGET.Arch == "X86_64") && (TARGET.OpSys == "LINUX")
 
 queue 1
-

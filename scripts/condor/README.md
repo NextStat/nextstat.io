@@ -13,6 +13,9 @@ Files:
 - Aggregate per-case JSONs back into one suite report:
   - `tests/aggregate_apex2_root_suite_reports.py`
 
+Note: the `.sub` templates use `executable = /bin/bash` and pass the wrapper script as an argument, so the
+wrapper `.sh` files do not need executable permissions.
+
 Before submitting:
 - edit `initialdir = ...` to point at your checkout of this repo
 - export the variables noted in each `.sub` file (e.g. `APEX2_ROOT_CASES_JSON`, `APEX2_TREX_SEARCH_DIR`)

@@ -50,6 +50,40 @@ Repo templates (recommended starting point):
 - `scripts/condor/apex2_root_suite_single.sub` + `scripts/condor/run_apex2_root_suite_single.sh`
 - `scripts/condor/apex2_root_suite_array.sub` + `scripts/condor/run_apex2_root_suite_case.sh`
 
+HTCondor template quickstart:
+
+```bash
+mkdir -p scripts/condor/logs
+
+export APEX2_ROOT_CASES_JSON=/abs/path/to/apex2_root_cases.json
+export APEX2_RESULTS_DIR=/abs/path/to/results
+
+# Optional: source ROOT setup on worker nodes
+# export APEX2_ROOT_SETUP='source /cvmfs/sft.cern.ch/lcg/views/LCG_*/x86_64-el9-gcc*/setup.sh'
+
+# Optional: choose a python (venv/conda)
+# export APEX2_PYTHON=/abs/path/to/python3
+```
+
+Submit (single job):
+
+```bash
+condor_submit scripts/condor/apex2_root_suite_single.sub
+```
+
+Submit (job array): set `queue <N>` in `scripts/condor/apex2_root_suite_array.sub`, where `<N>` is the number of
+cases in your JSON (0-based `--case-index` uses `$(Process)`).
+
+After the array finishes, aggregate:
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir "${APEX2_RESULTS_DIR}" \
+  --glob "apex2_root_case_*.json" \
+  --out "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --exit-nonzero-on-fail
+```
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).

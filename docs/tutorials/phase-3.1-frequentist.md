@@ -25,10 +25,20 @@ From the repo root:
 cargo test
 ```
 
-Optional (Python surface):
+Optional (Python surface + Apex2 validation runners):
 
 ```bash
-./.venv/bin/maturin develop -m bindings/ns-py/Cargo.toml
+# Install Python deps used by the validation harness (pyhf, numpy, etc.)
+./.venv/bin/pip install -e "bindings/ns-py[validation]"
+
+# Build the `nextstat._core` extension into the active venv (recommended: release build)
+./.venv/bin/maturin develop --release -m bindings/ns-py/Cargo.toml
+```
+
+Optional (plots in this doc):
+
+```bash
+./.venv/bin/pip install -e "bindings/ns-py[viz]"
 ```
 
 ## Validation Harness (Apex2)
