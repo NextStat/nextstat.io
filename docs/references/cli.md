@@ -19,6 +19,10 @@ HEP / HistFactory:
 - `nextstat viz profile --input workspace.json ...`
 - `nextstat viz cls --input workspace.json ...`
 - `nextstat viz ranking --input workspace.json`
+- `nextstat viz pulls --input workspace.json --fit fit.json`
+- `nextstat viz corr --input workspace.json --fit fit.json`
+- `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json]`
+- `nextstat report --input workspace.json --histfactory-xml combination.xml --fit fit.json --out-dir report/ [--render]`
 
 Time series (Phase 8):
 - `nextstat timeseries kalman-filter --input kalman_1d.json`
@@ -47,9 +51,10 @@ Scan mode is useful for:
 
 The CLI outputs pretty JSON to stdout by default, or to `--output`.
 
+`nextstat report` writes multiple JSON artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`). When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs (requires `matplotlib`, see `nextstat[viz]` extra).
+
 For time series input formats, see:
 - `docs/tutorials/phase-8-timeseries.md`
 
 For the frequentist (CLs) workflow, see:
 - `docs/tutorials/phase-3.1-frequentist.md`
-
