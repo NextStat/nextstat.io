@@ -17,7 +17,9 @@ set -euo pipefail
 #   - APEX2_SKIP_CARGO: set to 1 to skip cargo build/test
 #   - APEX2_SKIP_PYTEST: set to 1 to skip pytest
 #   - APEX2_SKIP_MATURIN: set to 1 to skip `maturin develop --release`
-#   - APEX2_PYTEST_ARGS: override pytest args (default: "-q -m not slow tests/python")
+#   - APEX2_PYTEST_MARKER: pytest -m expression (default: "not slow")
+#   - APEX2_PYTEST_PATHS: space-separated paths (default: "tests/python")
+#   - APEX2_PYTEST_EXTRA_ARGS: extra pytest args (default: empty)
 #   - APEX2_CARGO_BUILD_ARGS: override cargo build args (default: "--workspace --release")
 #   - APEX2_CARGO_TEST_ARGS: override cargo test args (default: "--workspace --all-features")
 
@@ -31,7 +33,9 @@ allow_dirty="${APEX2_ALLOW_DIRTY:-0}"
 skip_cargo="${APEX2_SKIP_CARGO:-0}"
 skip_pytest="${APEX2_SKIP_PYTEST:-0}"
 skip_maturin="${APEX2_SKIP_MATURIN:-0}"
-pytest_args="${APEX2_PYTEST_ARGS:--q -m not slow tests/python}"
+pytest_marker="${APEX2_PYTEST_MARKER:-not slow}"
+pytest_paths="${APEX2_PYTEST_PATHS:-tests/python}"
+pytest_extra_args="${APEX2_PYTEST_EXTRA_ARGS:-}"
 cargo_build_args="${APEX2_CARGO_BUILD_ARGS:---workspace --release}"
 cargo_test_args="${APEX2_CARGO_TEST_ARGS:---workspace --all-features}"
 
@@ -76,8 +80,15 @@ if [[ "${skip_pytest}" != "1" ]]; then
     echo "Missing ./.venv/bin/pytest; set APEX2_SKIP_PYTEST=1 to skip." >&2
     exit 8
   fi
-  echo "Running pytest (${pytest_args})..."
-  PYTHONPATH="${py_path}" "${py}" -m pytest ${pytest_args}
+  echo "Running pytest (-m \"${pytest_marker}\")..."
+  pytest_argv=(-q -m "${pytest_marker}")
+  if [[ -n "${pytest_extra_args}" ]]; then
+    read -r -a extra_argv <<<"${pytest_extra_args}"
+    pytest_argv+=("${extra_argv[@]}")
+  fi
+  read -r -a paths_argv <<<"${pytest_paths}"
+  pytest_argv+=("${paths_argv[@]}")
+  PYTHONPATH="${py_path}" "${py}" -m pytest "${pytest_argv[@]}"
   echo
 fi
 

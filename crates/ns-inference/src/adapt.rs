@@ -204,7 +204,11 @@ impl WindowedAdaptation {
 
 /// Compute Stan-style adaptation windows.
 fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
-    if n_warmup < 20 {
+    // For very short warmup runs (common in unit tests / smoke checks), full
+    // Stan-style windowed mass-matrix adaptation is too unstable: the variance
+    // estimate can become extremely small, yielding a huge inverse mass and
+    // numerical blow-ups. In that regime we adapt step size only.
+    if n_warmup < 50 {
         return vec![(0, n_warmup)];
     }
 

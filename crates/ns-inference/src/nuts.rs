@@ -126,7 +126,29 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     let mut new_state = state.clone();
 
     // Integrate forward/backward by taking a step with +/- eps.
-    integrator.step_dir(&mut new_state, direction)?;
+    if integrator.step_dir(&mut new_state, direction).is_err() {
+        // If the leapfrog step fails (e.g. non-finite logpdf/grad, or q blows up),
+        // treat it as an immediate divergence with zero weight. This mirrors Stan's
+        // behavior: invalid proposals should be rejected and drive step size down,
+        // not abort the entire sampling run.
+        return Ok(NutsTree {
+            q_left: state.q.clone(),
+            p_left: state.p.clone(),
+            grad_left: state.grad_potential.clone(),
+            q_right: state.q.clone(),
+            p_right: state.p.clone(),
+            grad_right: state.grad_potential.clone(),
+            q_proposal: state.q.clone(),
+            potential_proposal: state.potential,
+            grad_proposal: state.grad_potential.clone(),
+            log_sum_weight: f64::NEG_INFINITY,
+            depth: 0,
+            n_leapfrog: 1,
+            divergent: true,
+            turning: true,
+            sum_accept_prob: 0.0,
+        });
+    }
 
     let h = new_state.hamiltonian(inv_mass);
     let energy_error = h - h0;
