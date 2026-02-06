@@ -3,6 +3,10 @@
 High-level surface:
 - builds `_core.LogisticRegressionModel`
 - fits via `nextstat.fit(...)` (Rust MLE)
+
+Robustness notes:
+- Perfect separation can make the unregularized MLE ill-defined (coefficients diverge).
+  Use `l2=...` (ridge/MAP) to stabilize.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ class LogisticFit:
     nll: float
     converged: bool
     include_intercept: bool
+    warnings: List[str]
 
     def predict_proba(self, x: Sequence[Sequence[float]]) -> List[float]:
         x2 = as_2d_float_list(x)
@@ -58,6 +63,8 @@ def fit(
             raise ValueError("y must contain only 0/1 for logistic regression")
         y2.append(iv)
 
+    warnings: List[str] = []
+
     if l2 is None or float(l2) <= 0.0:
         model = nextstat._core.LogisticRegressionModel(x2, y2, include_intercept=include_intercept)
         r = nextstat.fit(model)
@@ -74,12 +81,22 @@ def fit(
         )
         r = nextstat.fit(model)
 
+    if not bool(r.converged):
+        warnings.append("not_converged")
+        if l2 is None or float(l2) <= 0.0:
+            warnings.append("possible_separation_use_l2")
+    else:
+        if l2 is None or float(l2) <= 0.0:
+            if any(abs(float(v)) > 30.0 for v in r.parameters):
+                warnings.append("large_coefficients_possible_separation")
+
     return LogisticFit(
         coef=list(r.parameters),
         standard_errors=list(r.uncertainties),
         nll=float(r.nll),
         converged=bool(r.converged),
         include_intercept=include_intercept,
+        warnings=warnings,
     )
 
 

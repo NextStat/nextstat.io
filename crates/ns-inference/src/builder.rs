@@ -5,7 +5,7 @@
 
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
-use ns_prob::math::{log1pexp, sigmoid};
+use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
 
 #[inline]
 fn validate_xy_rectangular(x: &[Vec<f64>]) -> Result<(usize, usize)> {
@@ -362,7 +362,7 @@ impl LogDensityModel for ComposedGlmModel {
                     if let Some(off) = offset {
                         eta2 += off[i];
                     }
-                    let mu = eta2.exp();
+                    let mu = exp_clamped(eta2);
                     nll += mu - (y[i] as f64) * eta2;
                 }
             }
@@ -454,7 +454,7 @@ impl LogDensityModel for ComposedGlmModel {
                     if let Some(off) = offset {
                         eta2 += off[i];
                     }
-                    eta2.exp() - (y[i] as f64)
+                    exp_clamped(eta2) - (y[i] as f64)
                 }
             };
 

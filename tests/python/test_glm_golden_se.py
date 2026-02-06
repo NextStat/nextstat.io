@@ -45,6 +45,7 @@ def test_glm_logistic_fit_matches_fixture_beta_and_se():
 
     _assert_vec_close(r.coef, fx["beta_hat"], rtol=2e-3, atol=1e-6)
     _assert_vec_close(r.standard_errors, fx["se_hat"], rtol=2e-2, atol=1e-6)
+    assert isinstance(r.warnings, list)
 
     p = r.predict_proba(fx["x"][:5])
     assert len(p) == 5

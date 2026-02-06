@@ -33,6 +33,16 @@ pub fn softplus(x: f64) -> f64 {
     log1pexp(x)
 }
 
+/// Exponential with a conservative clamp to avoid overflow.
+///
+/// For `x > 700`, `exp(x)` can overflow to `inf` on some platforms. For count-model
+/// likelihoods (Poisson / NegBin) this typically yields `inf` NLL and breaks line
+/// searches; clamping keeps the objective finite so optimizers can recover.
+#[inline]
+pub fn exp_clamped(x: f64) -> f64 {
+    x.min(700.0).exp()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +86,17 @@ mod tests {
             let stable = log_sigmoid(x);
             assert!((naive - stable).abs() < 1e-12, "x={}: {} vs {}", x, naive, stable);
         }
+    }
+
+    #[test]
+    fn test_exp_clamped_is_finite_extremes() {
+        let xs: [f64; 4] = [-1e6, -100.0, 100.0, 1e6];
+        for x in xs {
+            let y = exp_clamped(x);
+            assert!(y.is_finite(), "x={} produced {}", x, y);
+            assert!(y >= 0.0);
+        }
+        // Clamp is active at very large x.
+        assert!((exp_clamped(1e6).ln() - 700.0).abs() < 1e-12);
     }
 }

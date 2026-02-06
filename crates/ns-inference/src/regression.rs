@@ -7,7 +7,7 @@
 use nalgebra::{DMatrix, DVector};
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
-use ns_prob::math::{log1pexp, sigmoid};
+use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
 use statrs::function::gamma::{digamma, ln_gamma};
 
 #[inline]
@@ -487,7 +487,7 @@ impl LogDensityModel for PoissonRegressionModel {
         let mut nll = 0.0;
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
-            let mu = eta.exp();
+            let mu = exp_clamped(eta);
             nll += mu - (self.y[i] as f64) * eta;
         }
         Ok(nll)
@@ -508,7 +508,7 @@ impl LogDensityModel for PoissonRegressionModel {
         let mut grad = vec![0.0; self.dim_internal()];
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
-            let mu = eta.exp();
+            let mu = exp_clamped(eta);
             let err = mu - (self.y[i] as f64);
             if self.include_intercept {
                 grad[0] += err;
@@ -657,7 +657,7 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
         let mut nll = 0.0;
         for i in 0..self.x.n {
             let eta = self.eta(i, beta);
-            let mu = eta.exp();
+            let mu = exp_clamped(eta);
             let y = self.y[i] as f64;
 
             // logpmf (NB2 mean/disp) ignoring constant -ln(y!)
@@ -687,7 +687,7 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
 
         for i in 0..self.x.n {
             let eta = self.eta(i, beta);
-            let mu = eta.exp();
+            let mu = exp_clamped(eta);
             let y_u = self.y[i];
             let y = y_u as f64;
 
