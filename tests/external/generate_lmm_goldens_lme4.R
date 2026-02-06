@@ -58,7 +58,7 @@ if (re == "intercept") {
 fit <- lme4::lmer(fml, data = df, REML = FALSE)
 
 beta <- lme4::fixef(fit)
-sigma_y <- lme4::sigma(fit)
+sigma_y <- sigma(fit)
 
 vc <- lme4::VarCorr(fit)
 sd_group <- attr(vc$group, "stddev")
