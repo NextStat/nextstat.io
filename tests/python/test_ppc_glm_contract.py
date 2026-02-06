@@ -67,6 +67,72 @@ def test_ppc_replicate_glm_linear_smoke():
     assert len(y_rep) == len(y)
 
 
+def test_ppc_replicate_glm_logistic_random_slope_deterministic():
+    # Deterministic because eta is +/-1000 => sigmoid is exactly 1/0 in float.
+    x = [[1.0], [1.0], [1.0], [1.0]]
+    y = [0, 0, 0, 0]
+    group_idx = [0, 1, 0, 1]
+
+    spec = nextstat.data.GlmSpec(
+        kind="logistic",
+        x=x,
+        y=y,
+        include_intercept=False,
+        group_idx=group_idx,
+        n_groups=2,
+        random_slope_feature_idx=0,
+    )
+
+    # Centered random intercept + centered random slope (feature 1).
+    draw = {
+        "beta1": 0.0,
+        "mu_alpha": 0.0,
+        "sigma_alpha": 1.0,
+        "alpha1": 0.0,
+        "alpha2": 0.0,
+        "mu_u_beta1": 0.0,
+        "sigma_u_beta1": 1.0,
+        "u_beta1_1": 1000.0,
+        "u_beta1_2": -1000.0,
+    }
+
+    y_rep = nextstat.ppc.replicate_glm(spec, draw, seed=1)
+    assert y_rep == [1.0, 0.0, 1.0, 0.0]
+
+
+def test_ppc_replicate_glm_logistic_correlated_random_intercept_slope_deterministic():
+    # Deterministic because eta is +/-1000 => sigmoid is exactly 1/0 in float.
+    x = [[0.0], [0.0], [0.0], [0.0]]
+    y = [0, 0, 0, 0]
+    group_idx = [0, 1, 0, 1]
+
+    spec = nextstat.data.GlmSpec(
+        kind="logistic",
+        x=x,
+        y=y,
+        include_intercept=False,
+        group_idx=group_idx,
+        n_groups=2,
+        correlated_feature_idx=0,
+    )
+
+    draw = {
+        "beta1": 0.0,
+        "mu_alpha": 0.0,
+        "mu_u_beta1": 0.0,
+        "tau_alpha": 1.0,
+        "tau_u_beta1": 1.0,
+        "rho_alpha_u_beta1": 0.0,
+        "z_alpha_g1": 1000.0,
+        "z_u_beta1_g1": 0.0,
+        "z_alpha_g2": -1000.0,
+        "z_u_beta1_g2": 0.0,
+    }
+
+    y_rep = nextstat.ppc.replicate_glm(spec, draw, seed=1)
+    assert y_rep == [1.0, 0.0, 1.0, 0.0]
+
+
 def test_ppc_replicate_glm_linear_random_slope_centered_matches_manual_eta():
     # This locks in that PPC accounts for varying slopes (critical for Phase 7).
     x = [[1.0], [1.0], [2.0], [2.0]]
