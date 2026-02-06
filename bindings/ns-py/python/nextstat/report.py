@@ -186,23 +186,19 @@ def _plot_pulls(entries: Sequence[Mapping[str, Any]], *, title: str, page: int, 
 def _plot_corr(artifact: Mapping[str, Any]):
     import matplotlib.pyplot as plt
 
-    names = [str(x) for x in (artifact.get("parameter_names") or [])]
+    # Reuse the pure-view plot helper (vector-friendly via pcolormesh).
+    from .viz import plot_corr_matrix
+
+    names = artifact.get("parameter_names") or []
     corr = artifact.get("corr") or []
-    n = len(names)
-    if not (isinstance(corr, list) and n > 0):
+    if not (isinstance(names, list) and isinstance(corr, list) and names):
         fig, ax = plt.subplots(figsize=(7.6, 3.0))
         ax.text(0.5, 0.5, "Missing/empty corr artifact", ha="center", va="center")
         ax.axis("off")
         return fig
 
     fig, ax = plt.subplots(figsize=(7.6, 6.2))
-    im = ax.imshow(corr, vmin=-1.0, vmax=1.0, cmap="RdBu_r", interpolation="nearest")
-    ax.set_title("Correlation matrix")
-    ax.set_xticks(list(range(n)))
-    ax.set_yticks(list(range(n)))
-    ax.set_xticklabels(names, rotation=90, fontsize=6)
-    ax.set_yticklabels(names, fontsize=6)
-    fig.colorbar(im, ax=ax, shrink=0.75, pad=0.02)
+    plot_corr_matrix(artifact, ax=ax, title="Correlation matrix", order="group_base", show_colorbar=True)
     return fig
 
 
@@ -243,7 +239,15 @@ def _plot_yields_channel(channel: Mapping[str, Any]):
     return fig
 
 
-def render_report(input_dir: Path, *, pdf: Path, svg_dir: Path | None) -> None:
+def render_report(
+    input_dir: Path,
+    *,
+    pdf: Path,
+    svg_dir: Path | None,
+    corr_include: str | None = None,
+    corr_exclude: str | None = None,
+    corr_top_n: int | None = None,
+) -> None:
     _require_matplotlib()
     _apply_pub_style()
 
@@ -288,7 +292,14 @@ def render_report(input_dir: Path, *, pdf: Path, svg_dir: Path | None) -> None:
         # Correlation matrix.
         if corr_path.exists():
             c = _read_json(corr_path)
-            fig = _plot_corr(c)
+            if corr_include or corr_exclude or corr_top_n is not None:
+                from .viz import corr_subset
+
+                c_view = dict(c)
+                c_view.update(corr_subset(c, include=corr_include, exclude=corr_exclude, top_n=corr_top_n, order="group_base"))
+                fig = _plot_corr(c_view)
+            else:
+                fig = _plot_corr(c)
             _save_figure(fig, "corr", targets, pages)
             plt.close(fig)
 
@@ -303,7 +314,14 @@ def render_report(input_dir: Path, *, pdf: Path, svg_dir: Path | None) -> None:
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
-    render_report(Path(args.input_dir), pdf=Path(args.pdf), svg_dir=Path(args.svg_dir) if args.svg_dir else None)
+    render_report(
+        Path(args.input_dir),
+        pdf=Path(args.pdf),
+        svg_dir=Path(args.svg_dir) if args.svg_dir else None,
+        corr_include=args.corr_include,
+        corr_exclude=args.corr_exclude,
+        corr_top_n=int(args.corr_top_n) if args.corr_top_n is not None else None,
+    )
     return 0
 
 
@@ -315,6 +333,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     r.add_argument("--input-dir", required=True, help="Directory containing artifacts JSON files")
     r.add_argument("--pdf", required=True, help="Output PDF path")
     r.add_argument("--svg-dir", default=None, help="Optional directory for per-plot SVGs")
+    r.add_argument("--corr-include", default=None, help="Regex: include parameters for corr plot")
+    r.add_argument("--corr-exclude", default=None, help="Regex: exclude parameters for corr plot")
+    r.add_argument("--corr-top-n", default=None, help="Keep top-N parameters by max |corr| (after filters)")
     r.set_defaults(fn=_cmd_render)
 
     args = p.parse_args(list(argv) if argv is not None else None)
@@ -323,4 +344,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

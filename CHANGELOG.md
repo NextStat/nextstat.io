@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Memory-mapped file access via `DataSource::Mmap` (memmap2) — no full-file RAM copy for GB+ ntuples.
 - Native TTree/TBranch binary deserialization with ROOT class reference system
   (kNewClassTag, kClassMask, kByteCountMask), TObjArray dispatch, TLeaf type detection.
-- Basket decompression (zlib/LZ4) with rayon-parallel columnar extraction (`BranchReader`).
-- 7 leaf types: `f32`, `f64`, `i32`, `i64`, `i16`, `i8`, `bool`.
+- Basket decompression (zlib/LZ4/ZSTD) with rayon-parallel columnar extraction (`BranchReader`).
+- 9 leaf types: `f32`, `f64`, `i32`, `i64`, `u32`, `u64`, `i16`, `i8`, `bool`.
 - `RootFile::get_tree()`, `branch_reader()`, `branch_data()` public API.
 
 **ns-root: Expression engine**
@@ -70,6 +70,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Laplace approximation utilities for approximate posteriors (`ns-inference::laplace`).
 - Python surface: `nextstat.LmmMarginalModel(...)` with `fit()` / `sample()` integration.
 - LMM parameter recovery smoke tests and tutorial (`docs/tutorials/phase-9-lmm.md`).
+
+**Pack C: Ordinal Models**
+- Ordered logit/probit models (`OrderedLogitModel`, `OrderedProbitModel`), with a stable cutpoint parameterization.
+- Python surface: `nextstat.ordinal.ordered_logit.fit(...)`, `nextstat.ordinal.ordered_probit.fit(...)`.
+
+**Pack D: Missing Data**
+- Explicit missing-data policies for `(X, y)` (`drop_rows`, `impute_mean`) via `nextstat.missing.apply_policy(...)`.
+
+**Pack E: Causal Convenience Helpers**
+- Propensity score estimation, IPW weights, and overlap/balance diagnostics via `nextstat.causal.propensity`.
+
+#### Phase 11 — Applied Statistics API (Formula, Summary, Robust SE, sklearn)
+
+**Formula + design matrices**
+- Minimal formula parsing + deterministic design matrices: `nextstat.formula.parse_formula()` and `design_matrices()`.
+- Tabular adapter: `nextstat.formula.to_columnar()` supports dict-of-columns, list-of-dicts, and pandas DataFrame (if installed).
+- Categoricals: explicit `categorical=[...]` one-hot encoding with deterministic column naming/order.
+
+**Regression surfaces**
+- `from_formula` wrappers for GLM fits: `nextstat.glm.linear.from_formula`, `.logistic.from_formula`, `.poisson.from_formula`, `.negbin.from_formula`.
+- Formula helpers for hierarchical random-intercept builders: `nextstat.hier.linear_random_intercept_from_formula`, `.logistic_random_intercept_from_formula`, `.poisson_random_intercept_from_formula`.
+
+**Summaries + robust covariance**
+- Dependency-light Wald summaries (coef/SE/CI/p-values): `nextstat.summary.fit_summary(...)` + `summary_to_str(...)`.
+- Robust covariance estimators for OLS (HC0–HC3, 1-way cluster) + baseline GLM sandwich: `nextstat.robust`.
+
+**Interoperability**
+- Optional scikit-learn adapters: `nextstat.sklearn.NextStatLinearRegression`, `NextStatLogisticRegression`, `NextStatPoissonRegressor`.
+
+#### Phase 12 — Econometrics & Causal Inference Pack
+
+**Panel + DiD + IV**
+- Panel FE (within estimator) baseline + 1-way cluster SE: `nextstat.econometrics.panel_fe_fit(...)` and `panel_fe_from_formula(...)`.
+- DiD TWFE + event-study helpers: `nextstat.econometrics.did_twfe_fit/from_formula`, `event_study_twfe_fit/from_formula`.
+- IV / 2SLS baseline with weak-IV diagnostics (first-stage F, partial R²): `nextstat.econometrics.iv_2sls_fit/from_formula`
+  with covariance options `homoskedastic|hc1|cluster`.
+
+**Doubly robust**
+- AIPW baseline for ATE/ATT + E-value helper: `nextstat.causal.aipw`.
+
+#### Phase 13 — Pharmacometrics Pack (ODE + PK/NLME)
+
+**ODE baseline**
+- Deterministic RK4 integrator for linear systems `dy/dt = A y`: `nextstat.rk4_linear(...)` and `nextstat.ode.rk4_linear(...)`.
+
+**PK / NLME**
+- One-compartment oral PK model (`OneCompartmentOralPkModel`) with LLOQ handling (censoring).
+- NLME extension with per-subject random effects (`OneCompartmentOralPkNlmeModel`).
 
 #### Infrastructure
 - Release pipeline hardening: test gate, version validation, multi-arch wheels, sdist,

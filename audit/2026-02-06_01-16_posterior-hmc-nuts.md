@@ -45,7 +45,7 @@ None found in this scope.
 
 ### [Transforms] Upper-bounded-only parameters use a heuristic sigmoid window, not the specified bijector
 - File: `crates/ns-prob/src/transforms.rs:194-201`
-- Evidence: for bounds `(-inf, b)` it uses `SigmoidBijector::new(hi - 100.0, hi)` as an approximation (“for simplicity”) instead of the canonical `theta = b - exp(z)` mapping from `docs/plans/standards.md` section “Unconstrained parameterization (обязательно)”.
+- Evidence: for bounds `(-inf, b)` it uses `SigmoidBijector::new(hi - 100.0, hi)` as an approximation (“for simplicity”) instead of the canonical `theta = b - exp(z)` mapping from `docs/plans/standards.md` section “Unconstrained parameterization (required)”.
 - Impact: incorrect geometry / implicit prior in unconstrained space for upper-bounded parameters; can materially affect sampling and MAP/MLE sanity. Also makes behavior depend on an arbitrary constant `100.0`.
 - Fix:
   - Implement `UpperBoundedBijector` with `theta = upper - exp(z)`, `log|J| = z`, `d/dz log|J| = 1`.
@@ -118,4 +118,3 @@ None found in this scope.
 1. Priority 1: fix treedepth semantics + `max_treedepth_rate` correctness and add explicit comments about 0-based depth meaning.
 2. Priority 2: add dimension/prior validation in `Posterior` and eliminate `assert_eq!` from public API.
 3. Priority 3: implement `UpperBoundedBijector` and remove heuristic sigmoid approximation for upper-only bounds.
-

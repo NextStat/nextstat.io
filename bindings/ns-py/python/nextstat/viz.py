@@ -102,6 +102,110 @@ def _require_matplotlib():
         raise ImportError("Missing dependency: matplotlib. Install via `pip install matplotlib`.") from e
 
 
+def _base_name(s: str) -> str:
+    return str(s).split("[", 1)[0]
+
+
+def corr_arrays(artifact: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return plot-friendly arrays for a correlation artifact.
+
+    Accepts:
+    - `trex_report_corr_v0` artifact dict (must contain `parameter_names` and `corr`), or
+    - a dict already containing `parameter_names` and `corr`.
+    """
+    names = artifact.get("parameter_names")
+    corr = artifact.get("corr")
+    if not (isinstance(names, list) and isinstance(corr, list)):
+        raise ValueError("corr_arrays expects a dict with `parameter_names` (list) and `corr` (2D list)")
+    return {"parameter_names": [str(x) for x in names], "corr": corr}
+
+
+def corr_subset(
+    artifact: Mapping[str, Any],
+    *,
+    include: Optional[str] = None,
+    exclude: Optional[str] = None,
+    top_n: Optional[int] = None,
+    order: str = "input",
+) -> Mapping[str, Any]:
+    """Return a filtered/re-ordered correlation artifact view (numbers unchanged).
+
+    This is intended for publication plots where showing the full NxN matrix is unreadable.
+
+    Parameters
+    - include/exclude: regex filters applied to parameter names (in that order).
+    - top_n: keep the top-N parameters by maximum absolute off-diagonal correlation.
+    - order:
+      - `"input"`: keep input ordering after filtering
+      - `"max_abs_corr"`: order by max |corr(i,j)| (tie-break by name)
+      - `"group_base"`: order by base name then full name (helps block structure)
+    """
+    import re
+
+    arrays = corr_arrays(artifact)
+    names = list(arrays["parameter_names"])
+    corr = arrays["corr"]
+
+    n = len(names)
+    if not (isinstance(corr, list) and len(corr) == n and all(isinstance(r, list) and len(r) == n for r in corr)):
+        raise ValueError("corr matrix must be square and aligned with parameter_names")
+
+    keep: list[int] = list(range(n))
+    if include:
+        rx = re.compile(str(include))
+        keep = [i for i in keep if rx.search(names[i])]
+    if exclude:
+        rx = re.compile(str(exclude))
+        keep = [i for i in keep if not rx.search(names[i])]
+
+    order = str(order)
+    if top_n is not None:
+        k = int(top_n)
+        if k < 0:
+            raise ValueError("top_n must be >= 0")
+        if k == 0:
+            keep = []
+        else:
+            scores: list[tuple[float, str, int]] = []
+            keep_set = set(keep)
+            for i in keep:
+                best = 0.0
+                for j in keep:
+                    if i == j:
+                        continue
+                    v = corr[i][j]
+                    if isinstance(v, (int, float)):
+                        best = max(best, abs(float(v)))
+                scores.append((best, names[i], i))
+            scores.sort(key=lambda t: (-t[0], t[1]))
+            keep = [i for (_s, _name, i) in scores[: min(k, len(scores))] if i in keep_set]
+            # `max_abs_corr` implies ranked ordering.
+            if order == "input":
+                order = "max_abs_corr"
+
+    if order == "max_abs_corr":
+        scores2: list[tuple[float, str, int]] = []
+        for i in keep:
+            best = 0.0
+            for j in keep:
+                if i == j:
+                    continue
+                v = corr[i][j]
+                if isinstance(v, (int, float)):
+                    best = max(best, abs(float(v)))
+            scores2.append((best, names[i], i))
+        scores2.sort(key=lambda t: (-t[0], t[1]))
+        keep = [i for (_s, _name, i) in scores2]
+    elif order == "group_base":
+        keep = sorted(keep, key=lambda i: (_base_name(names[i]), names[i]))
+    elif order != "input":
+        raise ValueError("order must be one of: 'input', 'max_abs_corr', 'group_base'")
+
+    out_names = [names[i] for i in keep]
+    out_corr = [[float(corr[i][j]) for j in keep] for i in keep]
+    return {"parameter_names": out_names, "corr": out_corr}
+
+
 def _nsigma_index(nsigma_order: Sequence[int] | None, sigma: int) -> Optional[int]:
     if nsigma_order is None:
         return None
@@ -489,12 +593,80 @@ def plot_ranking(
     return ax_impact, ax_pull
 
 
+def plot_corr_matrix(
+    artifact: Mapping[str, Any],
+    *,
+    ax=None,
+    title: Optional[str] = None,
+    include: Optional[str] = None,
+    exclude: Optional[str] = None,
+    top_n: Optional[int] = None,
+    order: str = "group_base",
+    show_colorbar: bool = True,
+    cmap: str = "RdBu_r",
+):
+    """Plot a correlation matrix heatmap from a `trex_report_corr_v0` artifact.
+
+    This is a pure view: it must not recompute correlations; it only filters/reorders the matrix.
+    """
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    view = corr_subset(artifact, include=include, exclude=exclude, top_n=top_n, order=order)
+    names = list(view["parameter_names"])
+    corr = view["corr"]
+
+    n = len(names)
+    if ax is None:
+        size = max(4.2, 0.18 * float(n) + 2.2)
+        _, ax = plt.subplots(figsize=(size, size))
+
+    # Use pcolormesh instead of imshow to keep SVG/PDF vector-friendly (no embedded raster).
+    # Coordinates: cells span [i, i+1] with centers at i+0.5.
+    im = ax.pcolormesh(
+        corr,
+        vmin=-1.0,
+        vmax=1.0,
+        cmap=str(cmap),
+        shading="nearest",
+        rasterized=False,
+    )
+    ax.set_xlim(0.0, float(n))
+    ax.set_ylim(0.0, float(n))
+    ax.invert_yaxis()
+
+    ticks = [i + 0.5 for i in range(n)]
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+
+    # Avoid unreadable labels for huge matrices.
+    if n <= 40:
+        ax.set_xticklabels(names, rotation=90, fontsize=7)
+        ax.set_yticklabels(names, fontsize=7)
+    else:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+
+    ax.set_xlabel("parameter")
+    ax.set_ylabel("parameter")
+    if title:
+        ax.set_title(title)
+
+    if show_colorbar:
+        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="corr")
+
+    return ax
+
+
 __all__ = [
     "cls_curve",
     "profile_curve",
     "ranking_artifact",
+    "corr_arrays",
+    "corr_subset",
     "plot_cls_curve",
     "plot_brazil_limits",
     "plot_profile_curve",
     "plot_ranking",
+    "plot_corr_matrix",
 ]

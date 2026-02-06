@@ -65,3 +65,5 @@ def test_plot_helpers_require_matplotlib():
         nextstat.viz.plot_profile_curve({"points": []})
     with pytest.raises(ImportError):
         nextstat.viz.plot_ranking({"entries": []})
+    with pytest.raises(ImportError):
+        nextstat.viz.plot_corr_matrix({"parameter_names": [], "corr": []})

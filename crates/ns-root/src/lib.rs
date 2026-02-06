@@ -42,7 +42,7 @@ pub mod filler;
 
 pub use error::{RootError, Result};
 pub use file::RootFile;
-pub use histogram::Histogram;
+pub use histogram::{Histogram, HistogramWithFlows};
 pub use key::KeyInfo;
 pub use tree::{Tree, BranchInfo, LeafType};
 pub use branch_reader::BranchReader;

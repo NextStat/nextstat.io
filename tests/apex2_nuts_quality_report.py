@@ -114,11 +114,13 @@ def _eval_thresholds(
     return (len(failures) == 0), failures
 
 
-def _case_gaussian_mean(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
+def _case_gaussian_mean(
+    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
+) -> Dict[str, Any]:
     model = nextstat_mod.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
     r = nextstat_mod.sample(
         model,
-        n_chains=2,
+        n_chains=int(n_chains),
         n_warmup=n_warmup,
         n_samples=n_samples,
         seed=seed,
@@ -138,7 +140,7 @@ def _case_gaussian_mean(nextstat_mod, *, seed: int, n_warmup: int, n_samples: in
 
 
 def _case_gaussian_posterior_with_prior(
-    nextstat_mod, *, seed: int, n_warmup: int, n_samples: int
+    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
 ) -> Dict[str, Any]:
     """Posterior sampling smoke: ensure priors are actually plumbed into NUTS.
 
@@ -151,7 +153,7 @@ def _case_gaussian_posterior_with_prior(
 
     r = nextstat_mod.sample(
         post,
-        n_chains=2,
+        n_chains=int(n_chains),
         n_warmup=n_warmup,
         n_samples=n_samples,
         seed=seed,
@@ -174,7 +176,9 @@ def _case_gaussian_posterior_with_prior(
     }
 
 
-def _case_funnel_stress(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
+def _case_funnel_stress(
+    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
+) -> Dict[str, Any]:
     """Stress geometry check: Neal's funnel (2D).
 
     This is not an SBC test. The goal is to catch catastrophic sampler regressions:
@@ -183,7 +187,7 @@ def _case_funnel_stress(nextstat_mod, *, seed: int, n_warmup: int, n_samples: in
     model = nextstat_mod._core.FunnelModel()
     r = nextstat_mod.sample(
         model,
-        n_chains=2,
+        n_chains=int(n_chains),
         n_warmup=n_warmup,
         n_samples=n_samples,
         seed=seed,
@@ -210,7 +214,9 @@ def _case_funnel_stress(nextstat_mod, *, seed: int, n_warmup: int, n_samples: in
     }
 
 
-def _case_linear_regression(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
+def _case_linear_regression(
+    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
+) -> Dict[str, Any]:
     x = [[1.0] for _ in range(30)]
     y = [1.0, 1.3, 0.9, 1.1, 1.2] * 6
     model = nextstat_mod.ComposedGlmModel.linear_regression(
@@ -222,7 +228,7 @@ def _case_linear_regression(nextstat_mod, *, seed: int, n_warmup: int, n_samples
     )
     r = nextstat_mod.sample(
         model,
-        n_chains=2,
+        n_chains=int(n_chains),
         n_warmup=n_warmup,
         n_samples=n_samples,
         seed=seed,
@@ -242,12 +248,14 @@ def _case_linear_regression(nextstat_mod, *, seed: int, n_warmup: int, n_samples
     }
 
 
-def _case_histfactory_simple(nextstat_mod, *, seed: int, n_warmup: int, n_samples: int) -> Dict[str, Any]:
+def _case_histfactory_simple(
+    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
+) -> Dict[str, Any]:
     ws = json.loads((FIXTURES_DIR / "simple_workspace.json").read_text())
     model = nextstat_mod.HistFactoryModel.from_workspace(json.dumps(ws))
     r = nextstat_mod.sample(
         model,
-        n_chains=2,
+        n_chains=int(n_chains),
         n_warmup=n_warmup,
         n_samples=n_samples,
         seed=seed,
@@ -282,6 +290,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_nuts_quality_report.json"))
     ap.add_argument("--cases", type=str, default="gaussian,linear,histfactory")
+    ap.add_argument("--n-chains", type=int, default=2)
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--samples", type=int, default=200)
     ap.add_argument("--funnel-warmup", type=int, default=300)
@@ -316,13 +325,15 @@ def main() -> int:
         # If the user didn't override the smoke defaults, bump the run length to make strict mode
         # realistically passable on simple toy models.
         if int(args.warmup) == 200:
-            args.warmup = 400
+            args.warmup = 800
         if int(args.samples) == 200:
-            args.samples = 400
+            args.samples = 800
         if int(args.funnel_warmup) == 300:
             args.funnel_warmup = 600
         if int(args.funnel_samples) == 300:
             args.funnel_samples = 600
+        if int(args.n_chains) == 2:
+            args.n_chains = 4
 
     t0 = time.time()
     report: Dict[str, Any] = {
@@ -331,6 +342,7 @@ def main() -> int:
             "python": sys.version.split()[0],
             "platform": platform.platform(),
             "cases": args.cases,
+            "n_chains": int(args.n_chains),
             "warmup": int(args.warmup),
             "samples": int(args.samples),
             "funnel_warmup": int(args.funnel_warmup),
@@ -375,11 +387,23 @@ def main() -> int:
     cases: List[Dict[str, Any]] = []
     for c in requested:
         if c == "gaussian":
-            cases.append(_case_gaussian_mean(nextstat, seed=args.seed + 1, n_warmup=args.warmup, n_samples=args.samples))
+            cases.append(
+                _case_gaussian_mean(
+                    nextstat,
+                    seed=args.seed + 1,
+                    n_chains=int(args.n_chains),
+                    n_warmup=args.warmup,
+                    n_samples=args.samples,
+                )
+            )
         elif c == "posterior":
             cases.append(
                 _case_gaussian_posterior_with_prior(
-                    nextstat, seed=args.seed + 4, n_warmup=args.warmup, n_samples=args.samples
+                    nextstat,
+                    seed=args.seed + 4,
+                    n_chains=int(args.n_chains),
+                    n_warmup=args.warmup,
+                    n_samples=args.samples,
                 )
             )
         elif c == "funnel":
@@ -387,16 +411,33 @@ def main() -> int:
                 _case_funnel_stress(
                     nextstat,
                     seed=args.seed + 5,
+                    n_chains=int(args.n_chains),
                     n_warmup=int(args.funnel_warmup),
                     n_samples=int(args.funnel_samples),
                 )
             )
         elif c == "linear":
-            cases.append(_case_linear_regression(nextstat, seed=args.seed + 2, n_warmup=args.warmup, n_samples=args.samples))
+            cases.append(
+                _case_linear_regression(
+                    nextstat,
+                    seed=args.seed + 2,
+                    n_chains=int(args.n_chains),
+                    n_warmup=args.warmup,
+                    n_samples=args.samples,
+                )
+            )
         elif c == "histfactory":
             hf_warmup = int(args.histfactory_warmup) if args.histfactory_warmup is not None else int(args.warmup)
             hf_samples = int(args.histfactory_samples) if args.histfactory_samples is not None else int(args.samples)
-            cases.append(_case_histfactory_simple(nextstat, seed=args.seed + 3, n_warmup=hf_warmup, n_samples=hf_samples))
+            cases.append(
+                _case_histfactory_simple(
+                    nextstat,
+                    seed=args.seed + 3,
+                    n_chains=int(args.n_chains),
+                    n_warmup=hf_warmup,
+                    n_samples=hf_samples,
+                )
+            )
         else:
             cases.append({"name": c, "ok": False, "reason": f"unknown_case:{c}"})
 

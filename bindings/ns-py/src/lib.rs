@@ -52,6 +52,7 @@ use ns_inference::timeseries::simulate::{
     kalman_simulate as rust_kalman_simulate,
     kalman_simulate_with_x0 as rust_kalman_simulate_with_x0,
 };
+use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
@@ -3602,6 +3603,41 @@ fn from_histfactory(xml_path: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_xml(xml_path)
 }
 
+/// Read a TH1 histogram from a ROOT file, including sumw2 and under/overflow bins.
+///
+/// Returns a dict with keys:
+/// - name, title
+/// - bin_edges, bin_content, sumw2
+/// - underflow, overflow, underflow_sumw2, overflow_sumw2
+#[pyfunction]
+fn read_root_histogram<'py>(
+    py: Python<'py>,
+    root_path: &str,
+    hist_path: &str,
+) -> PyResult<Py<PyAny>> {
+    let root_path = root_path.to_string();
+    let hist_path = hist_path.to_string();
+
+    let wf = py
+        .detach(move || {
+            let f = RootFile::open(&root_path)?;
+            f.get_histogram_with_flows(&hist_path)
+        })
+        .map_err(|e| PyValueError::new_err(format!("ROOT histogram read failed: {}", e)))?;
+
+    let d = PyDict::new(py);
+    d.set_item("name", wf.histogram.name)?;
+    d.set_item("title", wf.histogram.title)?;
+    d.set_item("bin_edges", wf.histogram.bin_edges)?;
+    d.set_item("bin_content", wf.histogram.bin_content)?;
+    d.set_item("sumw2", wf.histogram.sumw2)?;
+    d.set_item("underflow", wf.underflow)?;
+    d.set_item("overflow", wf.overflow)?;
+    d.set_item("underflow_sumw2", wf.underflow_sumw2)?;
+    d.set_item("overflow_sumw2", wf.overflow_sumw2)?;
+    Ok(d.into_any().unbind())
+}
+
 /// Convenience wrapper: fit model with optional overridden observations.
 #[pyfunction]
 #[pyo3(signature = (model, *, data=None))]
@@ -4084,6 +4120,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
+    m.add_function(wrap_pyfunction!(read_root_histogram, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;

@@ -7,7 +7,7 @@ use crate::datasource::DataSource;
 use crate::decompress::decompress;
 use crate::directory::Directory;
 use crate::error::{Result, RootError};
-use crate::histogram::Histogram;
+use crate::histogram::{Histogram, HistogramWithFlows};
 use crate::key::{Key, KeyInfo};
 use crate::objects;
 use crate::rbuffer::RBuffer;
@@ -186,6 +186,12 @@ impl RootFile {
         self.resolve_histogram(&dir, path)
     }
 
+    /// Get a histogram by its full path, preserving under/overflow bins.
+    pub fn get_histogram_with_flows(&self, path: &str) -> Result<HistogramWithFlows> {
+        let dir = self.read_top_directory()?;
+        self.resolve_histogram_with_flows(&dir, path)
+    }
+
     fn read_top_directory(&self) -> Result<Directory> {
         Directory::read_key_list(
             &self.data,
@@ -226,6 +232,41 @@ impl RootFile {
         self.read_histogram_from_dir(&current_dir, parts[parts.len() - 1])
     }
 
+    fn resolve_histogram_with_flows(
+        &self,
+        dir: &Directory,
+        path: &str,
+    ) -> Result<HistogramWithFlows> {
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+
+        if parts.is_empty() {
+            return Err(RootError::KeyNotFound(path.to_string()));
+        }
+
+        if parts.len() == 1 {
+            return self.read_histogram_from_dir_with_flows(dir, parts[0]);
+        }
+
+        // Navigate subdirectories
+        let mut current_dir = dir.clone();
+        for &part in &parts[..parts.len() - 1] {
+            let key = current_dir.find_key(part).ok_or_else(|| {
+                RootError::KeyNotFound(format!("{} (in path {})", part, path))
+            })?;
+
+            if key.class_name != "TDirectoryFile" && key.class_name != "TDirectory" {
+                return Err(RootError::Deserialization(format!(
+                    "'{}' is not a directory (class: {})",
+                    part, key.class_name
+                )));
+            }
+
+            current_dir = self.read_subdirectory(key)?;
+        }
+
+        self.read_histogram_from_dir_with_flows(&current_dir, parts[parts.len() - 1])
+    }
+
     fn read_subdirectory(&self, key: &Key) -> Result<Directory> {
         // For TDirectoryFile, the seek_keys is stored in the directory payload.
         // We need to read the key payload, then parse the TDirectory streamer.
@@ -240,6 +281,17 @@ impl RootFile {
 
         let payload = self.read_key_payload(key)?;
         objects::read_histogram(&payload, &key.class_name)
+    }
+
+    fn read_histogram_from_dir_with_flows(
+        &self,
+        dir: &Directory,
+        name: &str,
+    ) -> Result<HistogramWithFlows> {
+        let key = dir.find_key(name).ok_or_else(|| RootError::KeyNotFound(name.to_string()))?;
+
+        let payload = self.read_key_payload(key)?;
+        objects::read_histogram_with_flows(&payload, &key.class_name)
     }
 
     /// Read and decompress the payload of a TKey.

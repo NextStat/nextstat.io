@@ -6,7 +6,7 @@ created: 2026-02-06
 
 # TREx Replacement Parity Contract (v0)
 
-Этот документ формализует, что означает “**идентичные числа**” для полной замены TRExFitter.
+This document formalizes what “**identical numbers**” means for a full TRExFitter replacement.
 
 **Source of truth for numeric tolerances:** `docs/plans/standards.md` and `tests/python/_tolerances.py`.
 
@@ -60,12 +60,12 @@ Schemas (v0):
 
 ### 2.0 Plotting correctness contract (why this exists)
 
-TRExFitter “точность графиков” на практике = корректные числа + корректная геометрия бинов + корректные ошибки.
-Поэтому для любых distribution‑плотов артефакт обязан содержать **всё**, что нужно для отрисовки:
-- edges (не только индексы бинов),
-- per-sample stacking order (явно),
-- error model (явно),
-- ratio definition + policy (явно).
+In practice, TRExFitter “plot accuracy” means: correct numbers + correct bin geometry + correct uncertainties.
+Therefore, for any distributions plot, the artifact must contain **everything** needed for rendering:
+- edges (not just bin indices),
+- per-sample stacking order (explicit),
+- error model (explicit),
+- ratio definition + policy (explicit).
 
 ### 2.1 Distributions (prefit/postfit)
 
@@ -121,9 +121,9 @@ Parity mode must fix:
 
 ## 5) Publication-ready vector outputs (PDF/SVG)
 
-Эта часть — acceptance criteria для renderer’ов (числа всё равно сравниваем по JSON):
-- PDF/SVG генерируются как **векторные** (без rasterization по умолчанию).
-- Рендерер пишет в метаданные:
-  - hash входного артефакта,
-  - версию схемы,
+This section is acceptance criteria for renderers (numbers are still compared via JSON):
+- PDF/SVG are generated as **vector** outputs (no rasterization by default).
+- The renderer writes to metadata:
+  - input artifact hash,
+  - schema version,
   - policy flags (ratio policy, error model).

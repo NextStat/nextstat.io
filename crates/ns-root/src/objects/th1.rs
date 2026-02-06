@@ -24,11 +24,17 @@
 //! ```
 
 use crate::error::{Result, RootError};
-use crate::histogram::Histogram;
+use crate::histogram::{Histogram, HistogramWithFlows};
 use crate::rbuffer::RBuffer;
 
 /// Read a TH1D from decompressed object bytes.
 pub fn read_th1d(data: &[u8]) -> Result<Histogram> {
+    let wf = read_th1d_with_flows(data)?;
+    Ok(wf.histogram)
+}
+
+/// Read a TH1D from decompressed object bytes, preserving under/overflow bins.
+pub fn read_th1d_with_flows(data: &[u8]) -> Result<HistogramWithFlows> {
     let mut r = RBuffer::new(data);
 
     // TH1D version header
@@ -53,11 +59,17 @@ pub fn read_th1d(data: &[u8]) -> Result<Histogram> {
     }
     let bin_content_raw = r.read_array_f64(arr_n)?;
 
-    build_histogram(name, title, n_cells, &axis, &bin_content_raw, sumw2)
+    build_histogram_with_flows(name, title, n_cells, &axis, &bin_content_raw, sumw2)
 }
 
 /// Read a TH1F from decompressed object bytes.
 pub fn read_th1f(data: &[u8]) -> Result<Histogram> {
+    let wf = read_th1f_with_flows(data)?;
+    Ok(wf.histogram)
+}
+
+/// Read a TH1F from decompressed object bytes, preserving under/overflow bins.
+pub fn read_th1f_with_flows(data: &[u8]) -> Result<HistogramWithFlows> {
     let mut r = RBuffer::new(data);
 
     // TH1F version header
@@ -83,7 +95,7 @@ pub fn read_th1f(data: &[u8]) -> Result<Histogram> {
     let bin_content_f32 = r.read_array_f32(arr_n)?;
     let bin_content_raw: Vec<f64> = bin_content_f32.iter().map(|&v| v as f64).collect();
 
-    build_histogram(name, title, n_cells, &axis, &bin_content_raw, sumw2)
+    build_histogram_with_flows(name, title, n_cells, &axis, &bin_content_raw, sumw2)
 }
 
 /// Axis info extracted from TAxis.
@@ -239,14 +251,14 @@ fn skip_versioned_object(r: &mut RBuffer) -> Result<()> {
 }
 
 /// Convert raw bin array (with under/overflow) to a Histogram.
-fn build_histogram(
+fn build_histogram_with_flows(
     name: String,
     title: String,
     n_cells: i32,
     axis: &AxisInfo,
     bin_content_raw: &[f64],
     sumw2_raw: Option<Vec<f64>>,
-) -> Result<Histogram> {
+) -> Result<HistogramWithFlows> {
     let n_bins = axis.n_bins as usize;
 
     if bin_content_raw.len() != n_cells as usize {
@@ -257,16 +269,36 @@ fn build_histogram(
         )));
     }
 
+    // For 1D histograms, fNcells = n_bins + 2 (underflow + overflow).
+    if n_cells as usize != n_bins + 2 {
+        return Err(RootError::Deserialization(format!(
+            "unexpected fNcells for TH1: n_cells={} n_bins={} (expected n_bins+2)",
+            n_cells, n_bins
+        )));
+    }
+
     // Extract main bins (skip underflow=0 and overflow=last)
     let bin_content: Vec<f64> = bin_content_raw[1..1 + n_bins].to_vec();
+    let underflow = bin_content_raw[0];
+    let overflow = bin_content_raw[1 + n_bins];
 
-    let sumw2 = sumw2_raw.map(|sw2| {
-        if sw2.len() == n_cells as usize {
-            sw2[1..1 + n_bins].to_vec()
-        } else {
-            sw2
+    let (sumw2, underflow_sumw2, overflow_sumw2) = match sumw2_raw {
+        None => (None, None, None),
+        Some(sw2) => {
+            if sw2.len() == n_cells as usize {
+                (
+                    Some(sw2[1..1 + n_bins].to_vec()),
+                    Some(sw2[0]),
+                    Some(sw2[1 + n_bins]),
+                )
+            } else if sw2.len() == n_bins {
+                (Some(sw2), None, None)
+            } else {
+                // Preserve data, but we cannot reliably infer flow bins.
+                (Some(sw2), None, None)
+            }
         }
-    });
+    };
 
     let bin_edges = if !axis.bin_edges.is_empty() {
         axis.bin_edges.clone()
@@ -279,15 +311,21 @@ fn build_histogram(
 
     let entries: f64 = bin_content.iter().sum();
 
-    Ok(Histogram {
-        name,
-        title,
-        n_bins,
-        x_min: axis.x_min,
-        x_max: axis.x_max,
-        bin_edges,
-        bin_content,
-        sumw2,
-        entries,
+    Ok(HistogramWithFlows {
+        histogram: Histogram {
+            name,
+            title,
+            n_bins,
+            x_min: axis.x_min,
+            x_max: axis.x_max,
+            bin_edges,
+            bin_content,
+            sumw2,
+            entries,
+        },
+        underflow,
+        overflow,
+        underflow_sumw2,
+        overflow_sumw2,
     })
 }

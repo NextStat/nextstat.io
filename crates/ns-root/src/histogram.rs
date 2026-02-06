@@ -22,3 +22,18 @@ pub struct Histogram {
     /// Total number of entries.
     pub entries: f64,
 }
+
+/// A 1D histogram plus explicit underflow/overflow bin values.
+#[derive(Debug, Clone)]
+pub struct HistogramWithFlows {
+    /// Main histogram (excluding under/overflow).
+    pub histogram: Histogram,
+    /// Underflow bin content.
+    pub underflow: f64,
+    /// Overflow bin content.
+    pub overflow: f64,
+    /// Underflow sumw2, if stored.
+    pub underflow_sumw2: Option<f64>,
+    /// Overflow sumw2, if stored.
+    pub overflow_sumw2: Option<f64>,
+}

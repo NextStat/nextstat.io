@@ -6,6 +6,7 @@ use nalgebra::{DMatrix, DVector};
 use serde::Deserialize;
 use statrs::distribution::ContinuousCDF;
 use std::path::PathBuf;
+use std::process::Command;
 
 mod report;
 
@@ -141,6 +142,56 @@ enum Commands {
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// TREx-like report artifacts (+ optional PDF/SVG rendering)
+    Report {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// HistFactory `combination.xml` (used to extract bin edges from ROOT histograms).
+        #[arg(long)]
+        histfactory_xml: PathBuf,
+
+        /// Fit result JSON (from `nextstat fit`) providing postfit parameters (+ uncertainties/covariance).
+        ///
+        /// If omitted, postfit is set equal to prefit (init parameters) and artifacts requiring
+        /// uncertainties/covariance are skipped.
+        #[arg(long)]
+        fit: Option<PathBuf>,
+
+        /// Output directory for artifacts (JSON). Will be created if missing.
+        #[arg(long)]
+        out_dir: PathBuf,
+
+        /// Allow writing into a non-empty `--out-dir` (overwrites known filenames).
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
+
+        /// Also include the raw covariance matrix in the correlation artifact (if available).
+        #[arg(long, default_value_t = false)]
+        include_covariance: bool,
+
+        /// Render publication-ready PDF + per-plot SVGs via Python (`python -m nextstat.report ...`).
+        #[arg(long, default_value_t = false)]
+        render: bool,
+
+        /// Path to output PDF (defaults to `--out-dir/report.pdf` when `--render`).
+        #[arg(long)]
+        pdf: Option<PathBuf>,
+
+        /// Directory for per-plot SVGs (defaults to `--out-dir/svg` when `--render`).
+        #[arg(long)]
+        svg_dir: Option<PathBuf>,
+
+        /// Python executable used for rendering (defaults to `.venv/bin/python` if it exists, else `python3`).
+        #[arg(long)]
+        python: Option<PathBuf>,
 
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
@@ -567,6 +618,31 @@ fn main() -> Result<()> {
         Commands::Scan { input, start, stop, points, output, threads } => {
             cmd_scan(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
         }
+        Commands::Report {
+            input,
+            histfactory_xml,
+            fit,
+            out_dir,
+            overwrite,
+            include_covariance,
+            render,
+            pdf,
+            svg_dir,
+            python,
+            threads,
+        } => cmd_report(
+            &input,
+            &histfactory_xml,
+            fit.as_ref(),
+            &out_dir,
+            overwrite,
+            include_covariance,
+            render,
+            pdf.as_ref(),
+            svg_dir.as_ref(),
+            python.as_ref(),
+            threads,
+        ),
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
                 cmd_viz_profile(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
@@ -820,6 +896,30 @@ fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()>
     } else {
         println!("{}", serde_json::to_string_pretty(&value)?);
     }
+    Ok(())
+}
+
+fn ensure_out_dir(out_dir: &std::path::Path, overwrite: bool) -> Result<()> {
+    if out_dir.exists() {
+        if !out_dir.is_dir() {
+            anyhow::bail!("out dir exists but is not a directory: {}", out_dir.display());
+        }
+        if !overwrite && out_dir.read_dir()?.next().is_some() {
+            anyhow::bail!("out dir must be empty (or use --overwrite): {}", out_dir.display());
+        }
+    } else {
+        std::fs::create_dir_all(out_dir)?;
+    }
+    Ok(())
+}
+
+fn write_json_file(path: &std::path::Path, value: &serde_json::Value) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, serde_json::to_string_pretty(value)?)?;
     Ok(())
 }
 
@@ -2159,6 +2259,157 @@ fn params_from_fit_result(
         out.push(v);
     }
     Ok(out)
+}
+
+fn cmd_report(
+    input: &PathBuf,
+    histfactory_xml: &PathBuf,
+    fit: Option<&PathBuf>,
+    out_dir: &PathBuf,
+    overwrite: bool,
+    include_covariance: bool,
+    render: bool,
+    pdf: Option<&PathBuf>,
+    svg_dir: Option<&PathBuf>,
+    python: Option<&PathBuf>,
+    threads: usize,
+) -> Result<()> {
+    ensure_out_dir(out_dir, overwrite)?;
+
+    let (workspace, model) = load_workspace_and_model(input, threads)?;
+    let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+    let (params_postfit, fit_result) = if let Some(fit_path) = fit {
+        let bytes = std::fs::read(fit_path)?;
+        let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
+        let params_postfit = params_from_fit_result(&model, &fit_json)?;
+
+        let uncs_postfit = if fit_json.uncertainties.is_empty() {
+            Vec::new()
+        } else {
+            if fit_json.parameter_names.len() != fit_json.uncertainties.len() {
+                anyhow::bail!(
+                    "fit result length mismatch: parameter_names={} uncertainties={}",
+                    fit_json.parameter_names.len(),
+                    fit_json.uncertainties.len()
+                );
+            }
+            let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+            for (n, v) in fit_json.parameter_names.iter().zip(fit_json.uncertainties.iter()) {
+                map.insert(n.as_str(), *v);
+            }
+            let mut out = Vec::with_capacity(model.parameters().len());
+            for p in model.parameters() {
+                let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+                })?;
+                out.push(v);
+            }
+            out
+        };
+
+        let fit_result = if uncs_postfit.is_empty() {
+            None
+        } else {
+            Some(ns_core::FitResult {
+                parameters: params_postfit.clone(),
+                uncertainties: uncs_postfit,
+                covariance: fit_json.covariance,
+                nll: fit_json.nll,
+                converged: fit_json.converged,
+                n_iter: fit_json.n_iter,
+                n_fev: fit_json.n_fev,
+                n_gev: fit_json.n_gev,
+            })
+        };
+
+        (params_postfit, fit_result)
+    } else {
+        (params_prefit.clone(), None)
+    };
+
+    // Distributions
+    let mut data_by_channel: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    for obs in &workspace.observations {
+        data_by_channel.insert(obs.name.clone(), obs.data.clone());
+    }
+    let bin_edges_by_channel = ns_translate::histfactory::bin_edges_by_channel_from_xml(histfactory_xml)?;
+
+    let dist_artifact = ns_viz::distributions::distributions_artifact(
+        &model,
+        &data_by_channel,
+        &bin_edges_by_channel,
+        &params_prefit,
+        &params_postfit,
+        threads,
+    )?;
+    write_json_file(&out_dir.join("distributions.json"), &serde_json::to_value(&dist_artifact)?)?;
+
+    // Yields
+    let yields_artifact = ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads)?;
+    write_json_file(&out_dir.join("yields.json"), &serde_json::to_value(&yields_artifact)?)?;
+
+    // Pulls + Corr depend on fit uncertainties/covariance.
+    if let Some(fit_result) = fit_result.as_ref() {
+        let pulls_artifact = ns_viz::pulls::pulls_artifact(&model, fit_result, threads)?;
+        write_json_file(&out_dir.join("pulls.json"), &serde_json::to_value(&pulls_artifact)?)?;
+
+        if fit_result.covariance.is_some() {
+            let corr_artifact = ns_viz::corr::corr_artifact(&model, fit_result, threads, include_covariance)?;
+            write_json_file(&out_dir.join("corr.json"), &serde_json::to_value(&corr_artifact)?)?;
+        } else {
+            tracing::warn!("fit covariance missing; skipping corr.json");
+        }
+    } else {
+        tracing::warn!("fit uncertainties missing/omitted; skipping pulls.json and corr.json");
+    }
+
+    if render {
+        let default_python = {
+            let venv = PathBuf::from(".venv/bin/python");
+            if venv.exists() {
+                venv
+            } else {
+                PathBuf::from("python3")
+            }
+        };
+        let python = python.cloned().unwrap_or(default_python);
+        let pdf = pdf.cloned().unwrap_or_else(|| out_dir.join("report.pdf"));
+        let svg_dir = svg_dir.cloned().unwrap_or_else(|| out_dir.join("svg"));
+        std::fs::create_dir_all(&svg_dir)?;
+
+        let mut pythonpath = std::ffi::OsString::new();
+        pythonpath.push("bindings/ns-py/python");
+        if let Some(existing) = std::env::var_os("PYTHONPATH") {
+            if !existing.is_empty() {
+                pythonpath.push(":");
+                pythonpath.push(existing);
+            }
+        }
+
+        let status = Command::new(&python)
+            .env("PYTHONPATH", pythonpath)
+            .arg("-m")
+            .arg("nextstat.report")
+            .arg("render")
+            .arg("--input-dir")
+            .arg(out_dir)
+            .arg("--pdf")
+            .arg(&pdf)
+            .arg("--svg-dir")
+            .arg(&svg_dir)
+            .status()?;
+
+        if !status.success() {
+            anyhow::bail!(
+                "report renderer failed (python={}, status={})",
+                python.display(),
+                status
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn cmd_viz_distributions(

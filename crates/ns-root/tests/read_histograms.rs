@@ -48,6 +48,42 @@ fn read_simple_histos() {
             panic!("failed to read '{}': {}", path, e);
         });
 
+        let wf = f.get_histogram_with_flows(path).unwrap_or_else(|e| {
+            panic!("failed to read (with flows) '{}': {}", path, e);
+        });
+        assert!(
+            (wf.underflow - 0.0).abs() < 1e-10,
+            "{}: expected zero underflow in fixture, got {}",
+            path,
+            wf.underflow
+        );
+        assert!(
+            (wf.overflow - 0.0).abs() < 1e-10,
+            "{}: expected zero overflow in fixture, got {}",
+            path,
+            wf.overflow
+        );
+
+        assert_eq!(
+            wf.histogram.bin_edges, h.bin_edges,
+            "{}: bin_edges mismatch between get_histogram and get_histogram_with_flows",
+            path
+        );
+        assert_eq!(
+            wf.histogram.bin_content, h.bin_content,
+            "{}: bin_content mismatch between get_histogram and get_histogram_with_flows",
+            path
+        );
+
+        if let Some(sw2) = wf.histogram.sumw2.as_ref() {
+            assert_eq!(
+                sw2.len(),
+                wf.histogram.n_bins,
+                "{}: sumw2 length mismatch (expected n_bins)",
+                path
+            );
+        }
+
         assert_eq!(h.n_bins, exp.n_bins, "{}: n_bins mismatch", path);
         assert!(
             (h.x_min - exp.x_min).abs() < 1e-10,

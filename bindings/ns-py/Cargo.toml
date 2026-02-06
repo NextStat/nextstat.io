@@ -26,6 +26,7 @@ nalgebra = { workspace = true }
 ns-core.workspace = true
 ns-compute.workspace = true
 ns-inference.workspace = true
+ns-root.workspace = true
 ns-translate.workspace = true
 ns-viz.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
