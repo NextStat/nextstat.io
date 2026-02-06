@@ -1,0 +1,719 @@
+#!/usr/bin/env python3
+"""Repeat MLE fits for pyhf-style JSON workspaces and log stability + speed.
+
+This is a research-grade runner intended to answer:
+- Are pyhf and NextStat deterministic across repeated fits on the same workspace?
+- If not, what is the run-to-run variance (params + NLL)?
+- How do fit wall-times compare (distribution, not just a single run)?
+
+It writes a raw JSONL log (one record per run per workspace) and a summary JSON/MD
+with means/stddevs and name-aligned parameter diffs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import math
+import os
+import platform
+import statistics
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+
+def _is_pyhf_workspace(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    required = {"channels", "observations", "measurements", "version"}
+    if not required.issubset(set(obj.keys())):
+        return False
+    if not isinstance(obj.get("channels"), list):
+        return False
+    if not isinstance(obj.get("observations"), list):
+        return False
+    if not isinstance(obj.get("measurements"), list) or not obj["measurements"]:
+        return False
+    return True
+
+
+def _measurement_name(ws: dict[str, Any]) -> str:
+    ms = ws.get("measurements", [])
+    if not ms:
+        raise ValueError("workspace has no measurements")
+    name = ms[0].get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError("workspace measurement has no name")
+    return name
+
+
+def _load_json(path: Path) -> Any:
+    return json.loads(path.read_text())
+
+
+def _iter_default_workspace_paths() -> Iterable[Path]:
+    fixtures = Path("tests/fixtures")
+    if fixtures.exists():
+        for p in sorted(fixtures.glob("*.json")):
+            yield p
+
+
+def _map_params_by_name(
+    src_names: List[str],
+    src_params: List[float],
+    dst_names: List[str],
+    dst_init: List[float],
+) -> List[float]:
+    dst_index = {name: i for i, name in enumerate(dst_names)}
+    out = list(dst_init)
+    for name, value in zip(src_names, src_params):
+        if name not in dst_index:
+            raise KeyError(f"Destination missing parameter '{name}'")
+        out[dst_index[name]] = float(value)
+    return out
+
+
+def _remap_params(src_names: List[str], src_params: List[float], dst_names: List[str]) -> List[float]:
+    dst_index = {name: i for i, name in enumerate(dst_names)}
+    out = [0.0] * len(dst_names)
+    for name, value in zip(src_names, src_params):
+        if name not in dst_index:
+            raise KeyError(f"Destination missing parameter '{name}'")
+        out[dst_index[name]] = float(value)
+    if len(out) != len(dst_names):
+        raise AssertionError("internal remap error")
+    return out
+
+
+def _max_abs_diff_by_name(
+    pyhf_names: List[str],
+    pyhf_params: List[float],
+    ns_names: List[str],
+    ns_params: List[float],
+) -> Tuple[float, Optional[str]]:
+    ns_index = {n: i for i, n in enumerate(ns_names)}
+    worst = 0.0
+    worst_name: Optional[str] = None
+    for n, pv in zip(pyhf_names, pyhf_params):
+        i = ns_index.get(n)
+        if i is None:
+            continue
+        dv = abs(float(pv) - float(ns_params[i]))
+        if dv > worst:
+            worst = dv
+            worst_name = n
+    return (float(worst), worst_name)
+
+
+def _percentiles(xs: List[float], ps: List[float]) -> Dict[str, float]:
+    if not xs:
+        return {f"p{int(p)}": float("nan") for p in ps}
+    xs_sorted = sorted(xs)
+    out: Dict[str, float] = {}
+    for p in ps:
+        if p <= 0:
+            out[f"p{int(p)}"] = float(xs_sorted[0])
+            continue
+        if p >= 100:
+            out[f"p{int(p)}"] = float(xs_sorted[-1])
+            continue
+        k = int(math.floor((p / 100.0) * (len(xs_sorted) - 1)))
+        out[f"p{int(p)}"] = float(xs_sorted[k])
+    return out
+
+
+@dataclasses.dataclass
+class FitRun:
+    ok: bool
+    fit_wall_s: float
+    fit_cpu_s: float
+    nll: float
+    params: List[float]
+    converged: Optional[bool] = None
+    n_iter: Optional[int] = None
+    n_fev: Optional[int] = None
+    n_gev: Optional[int] = None
+    n_eval: Optional[int] = None
+    error: Optional[str] = None
+
+
+@dataclasses.dataclass
+class PreparedPyhf:
+    model: Any
+    data: Any
+    names: List[str]
+
+
+@dataclasses.dataclass
+class PreparedNextStat:
+    model: Any
+    names: List[str]
+
+
+def _prepare_pyhf(
+    *,
+    pyhf,
+    ws_dict: dict[str, Any],
+    measurement_name: str,
+) -> PreparedPyhf:
+    ws = pyhf.Workspace(ws_dict)
+    model = ws.model(
+        measurement_name=measurement_name,
+        modifier_settings={
+            "normsys": {"interpcode": "code4"},
+            "histosys": {"interpcode": "code4p"},
+        },
+    )
+    data = ws.data(model)
+    names = list(model.config.par_names)
+    return PreparedPyhf(model=model, data=data, names=names)
+
+
+def _prepare_nextstat(*, nextstat, ws_dict: dict[str, Any]) -> PreparedNextStat:
+    model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws_dict))
+    names = list(model.parameter_names())
+    return PreparedNextStat(model=model, names=names)
+
+
+def _fit_pyhf_prepared(
+    *,
+    pyhf,
+    prepared: PreparedPyhf,
+    fit_options: dict[str, Any],
+) -> FitRun:
+    t0_wall = time.perf_counter()
+    t0_cpu = time.process_time()
+    try:
+        bestfit = pyhf.infer.mle.fit(prepared.data, prepared.model, **fit_options)
+        nll = float(pyhf.infer.mle.twice_nll(bestfit, prepared.data, prepared.model).item()) / 2.0
+        return FitRun(
+            ok=True,
+            fit_wall_s=float(time.perf_counter() - t0_wall),
+            fit_cpu_s=float(time.process_time() - t0_cpu),
+            nll=float(nll),
+            params=[float(x) for x in list(bestfit)],
+        )
+    except Exception:
+        return FitRun(
+            ok=False,
+            fit_wall_s=float(time.perf_counter() - t0_wall),
+            fit_cpu_s=float(time.process_time() - t0_cpu),
+            nll=float("nan"),
+            params=[],
+            error=traceback.format_exc(),
+        )
+
+
+def _fit_nextstat_prepared(
+    *,
+    nextstat,
+    prepared: PreparedNextStat,
+    mle_config: dict[str, Any],
+) -> FitRun:
+    t0_wall = time.perf_counter()
+    t0_cpu = time.process_time()
+    try:
+        mle = nextstat.MaximumLikelihoodEstimator(**mle_config)
+        res = mle.fit(prepared.model)
+        return FitRun(
+            ok=True,
+            fit_wall_s=float(time.perf_counter() - t0_wall),
+            fit_cpu_s=float(time.process_time() - t0_cpu),
+            nll=float(res.nll),
+            params=[float(x) for x in list(res.parameters)],
+            converged=bool(getattr(res, "converged", True)),
+            n_iter=int(getattr(res, "n_iter", 0)) if hasattr(res, "n_iter") else None,
+            n_fev=int(getattr(res, "n_fev", 0)) if hasattr(res, "n_fev") else None,
+            n_gev=int(getattr(res, "n_gev", 0)) if hasattr(res, "n_gev") else None,
+            n_eval=int(getattr(res, "n_evaluations", 0)) if hasattr(res, "n_evaluations") else None,
+        )
+    except Exception:
+        return FitRun(
+            ok=False,
+            fit_wall_s=float(time.perf_counter() - t0_wall),
+            fit_cpu_s=float(time.process_time() - t0_cpu),
+            nll=float("nan"),
+            params=[],
+            error=traceback.format_exc(),
+        )
+
+
+def _write_jsonl_line(fp, obj: Any) -> None:
+    fp.write(json.dumps(obj, sort_keys=True) + "\n")
+    fp.flush()
+
+
+def _workspace_id(path: Path, ws: dict[str, Any]) -> str:
+    # Lightweight stable id for publishable logs: file name + version + measurement.
+    # (Avoid hashing huge JSON by default.)
+    version = ws.get("version")
+    meas = ws.get("measurements", [{}])[0].get("name")
+    return f"{path.name}::v={version}::m={meas}"
+
+
+def _summarize_runs(
+    rows: List[dict[str, Any]],
+    *,
+    pyhf_names: List[str],
+    nextstat_names: List[str],
+    pyhf_build_s: float,
+    nextstat_build_s: float,
+) -> dict[str, Any]:
+    # rows: only non-warmup, ok runs, single workspace
+    pyhf_rows = [r for r in rows if r.get("pyhf", {}).get("ok")]
+    ns_rows = [r for r in rows if r.get("nextstat", {}).get("ok")]
+
+    def tool_stats(tool_rows: List[dict[str, Any]], tool_key: str) -> dict[str, Any]:
+        wall = [float(r[tool_key]["fit_wall_s"]) for r in tool_rows]
+        cpu = [float(r[tool_key]["fit_cpu_s"]) for r in tool_rows]
+        nll = [float(r[tool_key]["nll"]) for r in tool_rows]
+        out = {
+            "n_ok": len(tool_rows),
+            "fit_wall_s": {
+                "mean": float(statistics.mean(wall)) if wall else float("nan"),
+                "stdev": float(statistics.pstdev(wall)) if len(wall) >= 2 else 0.0,
+                **_percentiles(wall, [50, 90, 99]),
+            },
+            "fit_cpu_s": {
+                "mean": float(statistics.mean(cpu)) if cpu else float("nan"),
+                "stdev": float(statistics.pstdev(cpu)) if len(cpu) >= 2 else 0.0,
+                **_percentiles(cpu, [50, 90, 99]),
+            },
+            "nll": {
+                "mean": float(statistics.mean(nll)) if nll else float("nan"),
+                "stdev": float(statistics.pstdev(nll)) if len(nll) >= 2 else 0.0,
+                "min": float(min(nll)) if nll else float("nan"),
+                "max": float(max(nll)) if nll else float("nan"),
+            },
+        }
+        if tool_key == "nextstat" and tool_rows:
+            conv = [bool(r[tool_key].get("converged")) for r in tool_rows if r[tool_key].get("converged") is not None]
+            out["converged_rate"] = float(sum(1 for c in conv if c) / len(conv)) if conv else float("nan")
+        return out
+
+    def param_stats(tool_rows: List[dict[str, Any]], *, names: List[str], tool_key: str) -> dict[str, Any]:
+        if not tool_rows or not names:
+            return {"names": names, "mean": [], "stdev": []}
+        n = len(names)
+        sums = [0.0] * n
+        sumsq = [0.0] * n
+        used = 0
+        for r in tool_rows:
+            ps = r[tool_key].get("params")
+            if not isinstance(ps, list) or len(ps) != n:
+                continue
+            used += 1
+            for i, v in enumerate(ps):
+                fv = float(v)
+                sums[i] += fv
+                sumsq[i] += fv * fv
+        if used == 0:
+            return {"names": names, "mean": [float("nan")] * n, "stdev": [float("nan")] * n, "n_used": 0}
+        means = [s / used for s in sums]
+        stdevs: List[float] = []
+        for i in range(n):
+            m = means[i]
+            var = max((sumsq[i] / used) - (m * m), 0.0)
+            stdevs.append(float(math.sqrt(var)))
+        return {"names": names, "mean": means, "stdev": stdevs, "n_used": used}
+
+    # Cross-eval stats: these validate "same objective" even if optimizers land elsewhere.
+    cross_pyhf_at_ns = [
+        float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
+        for r in rows
+        if r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat") is not None
+    ]
+    cross_ns_at_pyhf = [
+        float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
+        for r in rows
+        if r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat") is not None
+    ]
+
+    # Name-aligned mean diffs (in pyhf order).
+    py_params = param_stats(pyhf_rows, names=pyhf_names, tool_key="pyhf")
+    ns_params = param_stats(ns_rows, names=nextstat_names, tool_key="nextstat")
+    ns_index = {n: i for i, n in enumerate(nextstat_names)}
+    ns_mean_in_pyhf: List[float] = []
+    ns_stdev_in_pyhf: List[float] = []
+    abs_mean_diff: List[float] = []
+    for i, name in enumerate(pyhf_names):
+        j = ns_index.get(name)
+        if j is None or j >= len(ns_params["mean"]):
+            ns_mean_in_pyhf.append(float("nan"))
+            ns_stdev_in_pyhf.append(float("nan"))
+            abs_mean_diff.append(float("nan"))
+            continue
+        nm = float(ns_params["mean"][j])
+        nsd = float(ns_params["stdev"][j])
+        pm = float(py_params["mean"][i]) if i < len(py_params["mean"]) else float("nan")
+        ns_mean_in_pyhf.append(nm)
+        ns_stdev_in_pyhf.append(nsd)
+        abs_mean_diff.append(abs(pm - nm) if (math.isfinite(pm) and math.isfinite(nm)) else float("nan"))
+
+    # Top mean-diff params.
+    rows_mean = []
+    for name, d in zip(pyhf_names, abs_mean_diff):
+        if math.isfinite(float(d)):
+            rows_mean.append((float(d), name))
+    rows_mean.sort(reverse=True)
+
+    return {
+        "build_s": {"pyhf": float(pyhf_build_s), "nextstat": float(nextstat_build_s)},
+        "pyhf": tool_stats(pyhf_rows, "pyhf"),
+        "nextstat": tool_stats(ns_rows, "nextstat"),
+        "cross_eval": {
+            "pyhf_nll_at_nextstat_hat": {
+                "mean": float(statistics.mean(cross_pyhf_at_ns)) if cross_pyhf_at_ns else float("nan"),
+                "stdev": float(statistics.pstdev(cross_pyhf_at_ns)) if len(cross_pyhf_at_ns) >= 2 else 0.0,
+            },
+            "nextstat_nll_at_pyhf_hat": {
+                "mean": float(statistics.mean(cross_ns_at_pyhf)) if cross_ns_at_pyhf else float("nan"),
+                "stdev": float(statistics.pstdev(cross_ns_at_pyhf)) if len(cross_ns_at_pyhf) >= 2 else 0.0,
+            },
+        },
+        "params": {
+            "pyhf": py_params,
+            "nextstat": ns_params,
+            "nextstat_in_pyhf_order": {
+                "names": pyhf_names,
+                "mean": ns_mean_in_pyhf,
+                "stdev": ns_stdev_in_pyhf,
+            },
+            "abs_mean_diff_pyhf_order": {
+                "names": pyhf_names,
+                "abs_diff": abs_mean_diff,
+                "top": [{"name": n, "abs_diff": float(d)} for d, n in rows_mean[:20]],
+            },
+        },
+    }
+
+
+def _write_summary(
+    *,
+    out_json: Path,
+    out_md: Path,
+    header: dict[str, Any],
+    records: List[dict[str, Any]],
+    exclude_workspace_ids: List[str],
+) -> None:
+    # Group by workspace id, then compute summary stats.
+    by_ws: Dict[str, List[dict[str, Any]]] = {}
+    metas: Dict[str, dict[str, Any]] = {}
+    for r in records:
+        if r.get("type") == "workspace_meta":
+            metas[str(r["workspace_id"])] = r
+            continue
+        if r.get("type") == "run":
+            by_ws.setdefault(str(r["workspace_id"]), []).append(r)
+
+    ws_summaries: List[dict[str, Any]] = []
+    for ws_id, rows in sorted(by_ws.items(), key=lambda kv: kv[0]):
+        if ws_id in exclude_workspace_ids:
+            continue
+        rows = [r for r in rows if not r.get("warmup")]
+        meta = metas.get(ws_id, {})
+        pyhf_names = list(meta.get("pyhf", {}).get("names") or [])
+        ns_names = list(meta.get("nextstat", {}).get("names") or [])
+        pyhf_build_s = float(meta.get("pyhf", {}).get("build_s", float("nan")))
+        ns_build_s = float(meta.get("nextstat", {}).get("build_s", float("nan")))
+        ws_summaries.append(
+            {
+                "workspace_id": ws_id,
+                "path": rows[0].get("path") if rows else None,
+                "n_runs": len(rows),
+                "summary": _summarize_runs(
+                    rows,
+                    pyhf_names=pyhf_names,
+                    nextstat_names=ns_names,
+                    pyhf_build_s=pyhf_build_s,
+                    nextstat_build_s=ns_build_s,
+                ),
+            }
+        )
+
+    report = {"header": header, "workspaces": ws_summaries}
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+
+    # Markdown: keep short; raw data lives in JSONL.
+    lines: List[str] = []
+    lines.append("# Repeated MLE fits (pyhf vs NextStat)")
+    lines.append("")
+    lines.append(f"Generated: `{time.strftime('%Y-%m-%d %H:%M:%S')}`")
+    lines.append("")
+    lines.append("## Config")
+    lines.append("")
+    lines.append(f"- n_runs: {header.get('n_runs')}, n_warmup: {header.get('n_warmup')}")
+    lines.append(f"- excluded: {header.get('excluded')}")
+    lines.append(f"- pyhf_fit_options: `{header.get('pyhf_fit_options')}`")
+    lines.append(f"- nextstat_mle_config: `{header.get('nextstat_mle_config')}`")
+    lines.append("")
+    lines.append("## Results (timing + NLL)")
+    lines.append("")
+    lines.append("| Workspace | pyhf fit mean/p50/p90 (s) | NextStat fit mean/p50/p90 (s) | Speedup (mean) | pyhf nll mean | NextStat nll mean | Notes |")
+    lines.append("|---|---:|---:|---:|---:|---:|---|")
+    for ws in ws_summaries:
+        s = ws["summary"]
+        py = s["pyhf"]
+        ns = s["nextstat"]
+        py_t = float(py["fit_wall_s"]["mean"])
+        ns_t = float(ns["fit_wall_s"]["mean"])
+        speed = (py_t / ns_t) if (math.isfinite(py_t) and math.isfinite(ns_t) and ns_t > 0) else float("nan")
+        py_nll = float(py["nll"]["mean"])
+        ns_nll = float(ns["nll"]["mean"])
+        py_p50 = float(py["fit_wall_s"]["p50"])
+        py_p90 = float(py["fit_wall_s"]["p90"])
+        ns_p50 = float(ns["fit_wall_s"]["p50"])
+        ns_p90 = float(ns["fit_wall_s"]["p90"])
+        notes = ""
+        if math.isfinite(py_nll) and math.isfinite(ns_nll):
+            if ns_nll < py_nll:
+                notes = "nextstat nll < pyhf"
+            elif py_nll < ns_nll:
+                notes = "pyhf nll < nextstat"
+        lines.append(
+            f"| `{ws['path']}` | {py_t:.6f}/{py_p50:.6f}/{py_p90:.6f} | {ns_t:.6f}/{ns_p50:.6f}/{ns_p90:.6f} | {speed:.2f}x | {py_nll:.6g} | {ns_nll:.6g} | {notes} |"
+        )
+
+    # Include top mean-diff params for the most divergent workspaces.
+    worst = []
+    for ws in ws_summaries:
+        top = ws["summary"].get("params", {}).get("abs_mean_diff_pyhf_order", {}).get("top") or []
+        if top:
+            worst.append((float(top[0]["abs_diff"]), ws, top))
+    worst.sort(reverse=True, key=lambda t: t[0])
+    for _, ws, top in worst[:5]:
+        lines.append("")
+        lines.append(f"### Mean best-fit diffs (top 10): `{ws['path']}`")
+        lines.append("")
+        for row in top[:10]:
+            lines.append(f"- `{row['name']}`: |Δmean|={float(row['abs_diff']):.6g}")
+
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    out_md.write_text("\n".join(lines) + "\n")
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workspace", action="append", default=[], help="Workspace JSON path (repeatable). Default: tests/fixtures/*.json")
+    ap.add_argument("--exclude", action="append", default=[], help="Exclude if substring matches path (repeatable).")
+    ap.add_argument("--n-runs", type=int, default=3)
+    ap.add_argument("--n-warmup", type=int, default=1, help="Warmup runs per workspace (not counted in summary).")
+    ap.add_argument("--out-jsonl", type=Path, default=Path("tmp/repeat_mle_fits.jsonl"))
+    ap.add_argument("--out-summary-json", type=Path, default=Path("tmp/repeat_mle_fits_summary.json"))
+    ap.add_argument("--out-summary-md", type=Path, default=Path("tmp/repeat_mle_fits_summary.md"))
+    ap.add_argument("--threads", type=int, default=1, help="Set thread env vars (RAYON/OMP/MKL/OPENBLAS/VECLIB).")
+    ap.add_argument("--pyhf-method", default="SLSQP")
+    ap.add_argument("--pyhf-maxiter", type=int, default=100000)
+    ap.add_argument("--pyhf-tolerance", type=float, default=float("nan"))
+    ap.add_argument("--pyhf-do-grad", type=int, default=-1, help="Set to 0/1 to override pyhf do_grad, or -1 to keep default.")
+    ap.add_argument("--pyhf-do-stitch", type=int, default=0, help="Set to 1 to enable pyhf do_stitch (helps some SciPy methods like L-BFGS-B).")
+    ap.add_argument("--nextstat-max-iter", type=int, default=1000)
+    ap.add_argument("--nextstat-tol", type=float, default=1e-6)
+    ap.add_argument("--nextstat-m", type=int, default=10)
+    args = ap.parse_args(argv)
+
+    if int(args.n_runs) <= 0:
+        raise SystemExit("--n-runs must be >= 1")
+    if int(args.n_warmup) < 0:
+        raise SystemExit("--n-warmup must be >= 0")
+
+    # Determinism / fairness knobs.
+    threads = int(args.threads)
+    if threads >= 1:
+        for k in [
+            "RAYON_NUM_THREADS",
+            "OMP_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+        ]:
+            os.environ[k] = str(threads)
+
+    import nextstat  # noqa: WPS433
+
+    pyhf = None
+    try:
+        import pyhf as _pyhf  # noqa: WPS433
+
+        pyhf = _pyhf
+    except Exception:
+        raise SystemExit("pyhf is required. Install: pip install -e 'bindings/ns-py[validation]'")
+
+    pyhf_fit_options: dict[str, Any] = {"method": str(args.pyhf_method), "maxiter": int(args.pyhf_maxiter)}
+    if math.isfinite(float(args.pyhf_tolerance)):
+        pyhf_fit_options["tolerance"] = float(args.pyhf_tolerance)
+    if args.pyhf_do_grad in (0, 1):
+        pyhf_fit_options["do_grad"] = bool(args.pyhf_do_grad)
+    if args.pyhf_do_stitch in (0, 1):
+        pyhf_fit_options["do_stitch"] = bool(args.pyhf_do_stitch)
+
+    nextstat_mle_config = {"max_iter": int(args.nextstat_max_iter), "tol": float(args.nextstat_tol), "m": int(args.nextstat_m)}
+
+    paths = [Path(p) for p in args.workspace] if args.workspace else list(_iter_default_workspace_paths())
+    excludes_raw = list(args.exclude) + ["tchannel_workspace.json"]  # default exclusion per user request
+    excludes: List[str] = []
+    for x in excludes_raw:
+        if x not in excludes:
+            excludes.append(x)
+
+    header = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "pyhf_version": getattr(pyhf, "__version__", "unknown"),
+        "nextstat_version": getattr(nextstat, "__version__", "unknown"),
+        "n_runs": int(args.n_runs),
+        "n_warmup": int(args.n_warmup),
+        "threads": threads,
+        "excluded": excludes,
+        "pyhf_fit_options": pyhf_fit_options,
+        "nextstat_mle_config": nextstat_mle_config,
+    }
+
+    args.out_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    records: List[dict[str, Any]] = []
+    excluded_ws_ids: List[str] = []
+
+    with args.out_jsonl.open("w", encoding="utf-8") as fp:
+        _write_jsonl_line(fp, {"type": "header", **header})
+
+        for p in paths:
+            if any(ex in str(p) for ex in excludes):
+                continue
+
+            try:
+                t_load0 = time.perf_counter()
+                ws = _load_json(p)
+                load_s = float(time.perf_counter() - t_load0)
+            except Exception:
+                err = traceback.format_exc()
+                rec = {"type": "workspace_error", "path": str(p), "where": "load_json", "error": err}
+                _write_jsonl_line(fp, rec)
+                continue
+
+            if not _is_pyhf_workspace(ws):
+                excluded_ws_ids.append(_workspace_id(p, ws) if isinstance(ws, dict) else p.name)
+                rec = {"type": "skipped", "path": str(p), "reason": "not_pyhf_workspace"}
+                _write_jsonl_line(fp, rec)
+                continue
+
+            try:
+                meas = _measurement_name(ws)
+            except Exception:
+                excluded_ws_ids.append(_workspace_id(p, ws))
+                rec = {"type": "skipped", "path": str(p), "reason": "no_measurement_name"}
+                _write_jsonl_line(fp, rec)
+                continue
+
+            ws_id = _workspace_id(p, ws)
+            print(f"[repeat] {p} ({ws_id})", flush=True)
+
+            # Build models once per workspace (exclude build from per-fit timing).
+            try:
+                t_py0 = time.perf_counter()
+                prep_py = _prepare_pyhf(pyhf=pyhf, ws_dict=ws, measurement_name=meas)
+                pyhf_build_s = float(time.perf_counter() - t_py0)
+            except Exception:
+                err = traceback.format_exc()
+                rec = {"type": "workspace_error", "path": str(p), "where": "pyhf_prepare", "error": err}
+                _write_jsonl_line(fp, rec)
+                continue
+
+            try:
+                t_ns0 = time.perf_counter()
+                prep_ns = _prepare_nextstat(nextstat=nextstat, ws_dict=ws)
+                nextstat_build_s = float(time.perf_counter() - t_ns0)
+            except Exception:
+                err = traceback.format_exc()
+                rec = {"type": "workspace_error", "path": str(p), "where": "nextstat_prepare", "error": err}
+                _write_jsonl_line(fp, rec)
+                continue
+
+            _write_jsonl_line(
+                fp,
+                meta_rec := {
+                    "type": "workspace_meta",
+                    "workspace_id": ws_id,
+                    "path": str(p),
+                    "measurement": meas,
+                    "load_json_s": load_s,
+                    "pyhf": {"build_s": pyhf_build_s, "n_params": len(prep_py.names), "names": prep_py.names},
+                    "nextstat": {
+                        "build_s": nextstat_build_s,
+                        "n_params": len(prep_ns.names),
+                        "names": prep_ns.names,
+                    },
+                },
+            )
+            records.append(meta_rec)
+
+            # Warmup + measured runs.
+            for run_idx in range(int(args.n_warmup) + int(args.n_runs)):
+                is_warmup = run_idx < int(args.n_warmup)
+
+                py_run = _fit_pyhf_prepared(pyhf=pyhf, prepared=prep_py, fit_options=pyhf_fit_options)
+                ns_run = _fit_nextstat_prepared(nextstat=nextstat, prepared=prep_ns, mle_config=nextstat_mle_config)
+
+                diffs: Dict[str, Any] = {}
+                py_names = prep_py.names
+                ns_names = prep_ns.names
+                if py_run.ok and ns_run.ok and py_names and ns_names and len(py_run.params) == len(py_names) and len(ns_run.params) == len(ns_names):
+                    diffs["param_set_equal"] = bool(set(py_names) == set(ns_names))
+                    max_d, worst_name = _max_abs_diff_by_name(py_names, py_run.params, ns_names, ns_run.params)
+                    diffs["bestfit_max_abs_diff"] = float(max_d)
+                    diffs["worst_param"] = worst_name
+                    diffs["nll_delta"] = float(ns_run.nll - py_run.nll) if (math.isfinite(py_run.nll) and math.isfinite(ns_run.nll)) else float("nan")
+
+                cross_eval: Dict[str, Any] = {}
+                if py_run.ok and ns_run.ok and diffs.get("param_set_equal") is True:
+                    try:
+                        ns_in_pyhf = _remap_params(ns_names, ns_run.params, py_names)
+                        pyhf_nll_at_ns = float(pyhf.infer.mle.twice_nll(ns_in_pyhf, prep_py.data, prep_py.model).item()) / 2.0
+                        py_in_ns = _remap_params(py_names, py_run.params, ns_names)
+                        ns_nll_at_py = float(prep_ns.model.nll(py_in_ns))
+                        cross_eval = {
+                            "pyhf_nll_at_nextstat_hat": float(pyhf_nll_at_ns),
+                            "nextstat_nll_at_pyhf_hat": float(ns_nll_at_py),
+                        }
+                    except Exception:
+                        cross_eval = {"error": traceback.format_exc()}
+
+                rec = {
+                    "type": "run",
+                    "workspace_id": ws_id,
+                    "path": str(p),
+                    "measurement": meas,
+                    "warmup": bool(is_warmup),
+                    "run_idx": int(run_idx),
+                    "pyhf": dataclasses.asdict(py_run),
+                    "nextstat": dataclasses.asdict(ns_run),
+                    "diffs": diffs,
+                    "cross_eval": cross_eval,
+                }
+                _write_jsonl_line(fp, rec)
+                records.append(rec)
+
+    _write_summary(
+        out_json=args.out_summary_json,
+        out_md=args.out_summary_md,
+        header=header,
+        records=records,
+        exclude_workspace_ids=excluded_ws_ids,
+    )
+
+    print(f"Wrote: {args.out_jsonl}")
+    print(f"Wrote: {args.out_summary_json}")
+    print(f"Wrote: {args.out_summary_md}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

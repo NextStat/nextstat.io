@@ -176,6 +176,30 @@ If you need to tweak fit settings (e.g. increase NextStat iterations for very la
 PY=./.venv/bin/python make pyhf-audit-fit PYHF_AUDIT_FIT_ARGS="--nextstat-max-iter 3000"
 ```
 
+## Repeated MLE fits (stability + speed)
+
+To measure run-to-run stability and timing distributions, use:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py --n-runs 3
+```
+
+This writes:
+
+- `tmp/repeat_mle_fits.jsonl` (raw per-run log)
+- `tmp/repeat_mle_fits_summary.json` and `tmp/repeat_mle_fits_summary.md` (aggregates)
+
+When the 3-run smoke works, run a full 100-run sweep:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py --n-runs 100
+```
+
+Notes:
+
+- `tchannel_workspace.json` is excluded by default (it is covered by a separate test).
+- The runner builds each model once per workspace and measures fit timing separately.
+
 If you want a snapshot you can commit/review later, copy the report into `audit/`:
 
 ```bash

@@ -213,6 +213,30 @@ class OneCompartmentOralPkModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class OneCompartmentOralPkNlmeModel:
+    def __init__(
+        self,
+        times: List[float],
+        y: List[float],
+        subject_idx: List[int],
+        n_subjects: int,
+        *,
+        dose: float,
+        bioavailability: float = ...,
+        sigma: float = ...,
+        lloq: Optional[float] = ...,
+        lloq_policy: Literal["ignore", "replace_half", "censored"] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class NegativeBinomialRegressionModel:
     def __init__(
         self,
@@ -372,6 +396,8 @@ class Posterior:
             WeibullSurvivalModel,
             LogNormalAftModel,
             CoxPhModel,
+            OneCompartmentOralPkModel,
+            OneCompartmentOralPkNlmeModel,
         ],
     ) -> None: ...
 
@@ -415,6 +441,8 @@ class MaximumLikelihoodEstimator:
             WeibullSurvivalModel,
             LogNormalAftModel,
             CoxPhModel,
+            OneCompartmentOralPkModel,
+            OneCompartmentOralPkNlmeModel,
         ],
         *,
         data: Literal[None] = ...,
@@ -506,6 +534,18 @@ class MaximumLikelihoodEstimator:
     @overload
     def fit_batch(
         self,
+        models_or_model: List[OneCompartmentOralPkModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[OneCompartmentOralPkNlmeModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
         models_or_model: HistFactoryModel,
         datasets: List[List[float]],
     ) -> List[FitResult]: ...
@@ -543,6 +583,7 @@ def fit(
         LogNormalAftModel,
         CoxPhModel,
         OneCompartmentOralPkModel,
+        OneCompartmentOralPkNlmeModel,
     ],
     *,
     data: Literal[None] = ...,
@@ -577,6 +618,16 @@ def fit_batch(models_or_model: List[WeibullSurvivalModel], datasets: Literal[Non
 def fit_batch(models_or_model: List[LogNormalAftModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[CoxPhModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[OneCompartmentOralPkModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[OneCompartmentOralPkNlmeModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: HistFactoryModel, datasets: List[List[float]]) -> List[FitResult]: ...
 def fit_toys(
@@ -705,6 +756,8 @@ def sample(
         WeibullSurvivalModel,
         LogNormalAftModel,
         CoxPhModel,
+        OneCompartmentOralPkModel,
+        OneCompartmentOralPkNlmeModel,
     ],
     *,
     n_chains: int = ...,

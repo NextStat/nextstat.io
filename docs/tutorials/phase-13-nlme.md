@@ -29,7 +29,7 @@ This baseline is intentionally minimal:
 - No correlated random effects (Omega is diagonal).
 - No rich dosing regimens (baseline assumes a single oral dose at `t=0` with fixed `dose` and `F`).
 - Observation noise is additive Normal with fixed `sigma` (no proportional/combined error model yet).
-- Not exposed in the Python bindings yet (Rust-only baseline).
+- Exposed in the Python bindings as `nextstat.OneCompartmentOralPkNlmeModel` (and `OneCompartmentOralPkModel`).
 
 ## Rust usage (MAP + Laplace)
 
@@ -69,4 +69,3 @@ let fit = mle.fit(&model).unwrap(); // MAP for this NLME objective
 let lap = laplace_log_marginal(&model, &fit.parameters).unwrap();
 println!("nll(mode)={} logZ~={}", lap.nll_at_mode, lap.log_marginal);
 ```
-

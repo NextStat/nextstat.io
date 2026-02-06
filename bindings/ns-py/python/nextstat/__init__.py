@@ -49,6 +49,8 @@ ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
 LogNormalAftModel = _get("LogNormalAftModel")
 CoxPhModel = _get("CoxPhModel")
+OneCompartmentOralPkModel = _get("OneCompartmentOralPkModel")
+OneCompartmentOralPkNlmeModel = _get("OneCompartmentOralPkNlmeModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
 asimov_data = _get("asimov_data")
@@ -124,6 +126,8 @@ __all__ = [
     "WeibullSurvivalModel",
     "LogNormalAftModel",
     "CoxPhModel",
+    "OneCompartmentOralPkModel",
+    "OneCompartmentOralPkNlmeModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "Posterior",
@@ -144,4 +148,6 @@ __all__ = [
     "WeibullSurvivalModel",
     "LogNormalAftModel",
     "CoxPhModel",
+    "OneCompartmentOralPkModel",
+    "OneCompartmentOralPkNlmeModel",
 ]

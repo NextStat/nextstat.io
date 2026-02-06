@@ -802,9 +802,9 @@ mod tests {
             .unwrap();
 
         for sid in 0..n_subjects {
-            let eta_cl = eta_cl_dist.sample(&mut rng);
-            let eta_v = eta_v_dist.sample(&mut rng);
-            let eta_ka = eta_ka_dist.sample(&mut rng);
+            let eta_cl: f64 = eta_cl_dist.sample(&mut rng);
+            let eta_v: f64 = eta_v_dist.sample(&mut rng);
+            let eta_ka: f64 = eta_ka_dist.sample(&mut rng);
 
             let cl_i = cl_pop_true * eta_cl.exp();
             let v_i = v_pop_true * eta_v.exp();
