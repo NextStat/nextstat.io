@@ -263,7 +263,13 @@ def kalman_viz_artifact(
     *,
     level: float = 0.95,
 ) -> Mapping[str, Any]:
-    """Build a plot-friendly artifact from `kalman_fit(...)` output."""
+    """Build a plot-friendly artifact from `kalman_fit(...)` output.
+
+    Notes:
+    - State bands use the diagonal of the state covariance at each timestep.
+    - Observation bands are computed as `h_i P h_i^T + R_ii` (diagonal-only `R`).
+      Off-diagonal observation-noise correlations in `R` are intentionally ignored.
+    """
     z = _z_for_level(float(level))
     ys_out = [[None if v is None else float(v) for v in row] for row in ys]
     t_max = len(ys_out)
