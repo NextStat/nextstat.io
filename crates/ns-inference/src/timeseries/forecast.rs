@@ -89,6 +89,11 @@ pub fn kalman_forecast_intervals(fc: &KalmanForecastResult, alpha: f64) -> Resul
                 ));
             }
             let sd = var.sqrt();
+            if !sd.is_finite() {
+                return Err(Error::Computation(
+                    "forecast intervals failed: non-finite marginal sd".to_string(),
+                ));
+            }
             lo[i] = mu - z * sd;
             hi[i] = mu + z * sd;
         }

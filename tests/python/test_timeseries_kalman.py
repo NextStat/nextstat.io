@@ -113,6 +113,31 @@ def test_kalman_em_allows_missing_none():
     assert float(out["r"][0][0]) > 0.0
 
 
+def test_kalman_em_allows_partial_missing_multivariate():
+    import nextstat
+
+    # One latent state, two observation dims with independent noise.
+    model = nextstat.KalmanModel(
+        [[1.0]],
+        [[0.1]],
+        [[1.0], [1.0]],
+        [[0.5, 0.0], [0.0, 0.7]],
+        [0.0],
+        [[1.0]],
+    )
+    ys = [
+        [0.9, None],
+        [None, 1.2],
+        [0.8, 1.1],
+        [None, 1.05],
+        [0.95, None],
+        [1.05, 1.0],
+    ]
+    out = nextstat.timeseries.kalman_em(model, ys, max_iter=5, tol=1e-9)
+    assert float(out["r"][0][0]) > 0.0
+    assert float(out["r"][1][1]) > 0.0
+
+
 def test_kalman_fit_smoke():
     import nextstat
 
@@ -163,6 +188,15 @@ def test_kalman_simulate_shapes_smoke():
     out = nextstat.timeseries.kalman_simulate(model, t_max=5, seed=123)
     assert len(out["xs"]) == 5
     assert len(out["ys"]) == 5
+
+
+def test_kalman_simulate_x0_depends_on_seed():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.1]], [[1.0]], [[0.2]], [0.0], [[1.0]])
+    a = nextstat.timeseries.kalman_simulate(model, t_max=3, seed=1)
+    b = nextstat.timeseries.kalman_simulate(model, t_max=3, seed=2)
+    assert float(a["xs"][0][0]) != float(b["xs"][0][0])
 
 
 def test_kalman_filter_allows_missing_none():

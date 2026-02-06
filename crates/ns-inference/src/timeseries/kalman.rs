@@ -420,6 +420,68 @@ impl KalmanModel {
     }
 }
 
+pub(crate) struct ReducedObservation {
+    pub(crate) obs_idx: Vec<usize>,
+    pub(crate) y: DVector<f64>,
+    pub(crate) h: DMatrix<f64>,
+    pub(crate) r: DMatrix<f64>,
+}
+
+pub(crate) fn reduce_observation(
+    model: &KalmanModel,
+    y: &DVector<f64>,
+) -> Result<Option<ReducedObservation>> {
+    let n = model.n_state();
+    let m = model.n_obs();
+    if y.len() != m {
+        return Err(Error::Validation(format!(
+            "y has wrong length: expected {}, got {}",
+            m,
+            y.len()
+        )));
+    }
+    // Missing observations are represented as NaN. Reject infinities.
+    if y.iter().any(|v| !v.is_finite() && !v.is_nan()) {
+        return Err(Error::Validation(
+            "y must be finite or NaN (NaN means missing)".to_string(),
+        ));
+    }
+
+    let mut obs_idx: Vec<usize> = Vec::new();
+    for i in 0..m {
+        if y[i].is_finite() {
+            obs_idx.push(i);
+        }
+    }
+    if obs_idx.is_empty() {
+        return Ok(None);
+    }
+
+    // Build reduced observation system for observed indices.
+    let mo = obs_idx.len();
+    let mut y_obs = DVector::<f64>::zeros(mo);
+    let mut h_obs = DMatrix::<f64>::zeros(mo, n);
+    let mut r_obs = DMatrix::<f64>::zeros(mo, mo);
+    for (ii, &i) in obs_idx.iter().enumerate() {
+        y_obs[ii] = y[i];
+        for j in 0..n {
+            h_obs[(ii, j)] = model.h[(i, j)];
+        }
+    }
+    for (ii, &i) in obs_idx.iter().enumerate() {
+        for (jj, &j) in obs_idx.iter().enumerate() {
+            r_obs[(ii, jj)] = model.r[(i, j)];
+        }
+    }
+
+    Ok(Some(ReducedObservation {
+        obs_idx,
+        y: y_obs,
+        h: h_obs,
+        r: r_obs,
+    }))
+}
+
 /// Kalman filter output (per-time-step predicted and filtered states).
 #[derive(Debug, Clone)]
 pub struct KalmanFilterResult {
@@ -491,16 +553,10 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
         predicted_means.push(m_pred.clone());
         predicted_covs.push(p_pred.clone());
 
-        // Select observed dimensions (NaN means missing).
-        let mut obs_idx: Vec<usize> = Vec::new();
-        for i in 0..m {
-            if y[i].is_finite() {
-                obs_idx.push(i);
-            }
-        }
+        let red = reduce_observation(model, y)?;
 
         // If nothing is observed at this timestep: skip the update.
-        if obs_idx.is_empty() {
+        let Some(red) = red else {
             filtered_means.push(m_pred.clone());
             filtered_covs.push(p_pred.clone());
 
@@ -509,31 +565,14 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
             p_pred = &model.f * &p_pred * model.f.transpose() + &model.q;
             p_pred = symmetrize(&p_pred);
             continue;
-        }
-
-        // Build reduced observation system for observed indices.
-        let mo = obs_idx.len();
-        let mut y_obs = DVector::<f64>::zeros(mo);
-        let mut h_obs = DMatrix::<f64>::zeros(mo, n);
-        let mut r_obs = DMatrix::<f64>::zeros(mo, mo);
-        for (ii, &i) in obs_idx.iter().enumerate() {
-            y_obs[ii] = y[i];
-            for j in 0..n {
-                h_obs[(ii, j)] = model.h[(i, j)];
-            }
-        }
-        for (ii, &i) in obs_idx.iter().enumerate() {
-            for (jj, &j) in obs_idx.iter().enumerate() {
-                r_obs[(ii, jj)] = model.r[(i, j)];
-            }
-        }
+        };
 
         // Innovation: v = y_obs - H_obs m_pred
-        let y_hat = &h_obs * &m_pred;
-        let v = y_obs - y_hat;
+        let y_hat = &red.h * &m_pred;
+        let v = &red.y - y_hat;
 
         // Innovation covariance: S = H P_pred H^T + R
-        let s = &h_obs * &p_pred * h_obs.transpose() + &r_obs;
+        let s = &red.h * &p_pred * red.h.transpose() + &red.r;
 
         let chol = s.cholesky().ok_or_else(|| {
             Error::Computation("Kalman update failed: innovation covariance not SPD".to_string())
@@ -546,7 +585,7 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
         // logdet(S) = 2 * sum(log(diag(L)))
         let l = chol.l();
         let mut logdet = 0.0;
-        for i in 0..mo {
+        for i in 0..red.y.len() {
             let d = l[(i, i)];
             if d <= 0.0 || !d.is_finite() {
                 return Err(Error::Computation(
@@ -556,21 +595,21 @@ pub fn kalman_filter(model: &KalmanModel, ys: &[DVector<f64>]) -> Result<KalmanF
             logdet += 2.0 * d.ln();
         }
 
-        loglik += -0.5 * ((mo as f64) * ln_2pi + logdet + quad);
+        loglik += -0.5 * ((red.y.len() as f64) * ln_2pi + logdet + quad);
 
         // Kalman gain: K = P_pred H^T S^{-1}
-        let ph_t = &p_pred * h_obs.transpose(); // n x mo
+        let ph_t = &p_pred * red.h.transpose(); // n x mo
         let x = chol.solve(&ph_t.transpose()); // m x n
         let k = x.transpose(); // n x mo
 
         // Filtered mean: m = m_pred + K v
-        let m_filt = &m_pred + &k * v;
+        let m_filt = &m_pred + &k * &v;
 
         // Joseph form covariance update:
         // P = (I - K H) P_pred (I - K H)^T + K R K^T
         let i = DMatrix::<f64>::identity(n, n);
-        let i_minus_kh = &i - &k * &h_obs;
-        let p_filt = &i_minus_kh * &p_pred * i_minus_kh.transpose() + &k * &r_obs * k.transpose();
+        let i_minus_kh = &i - &k * &red.h;
+        let p_filt = &i_minus_kh * &p_pred * i_minus_kh.transpose() + &k * &red.r * k.transpose();
         let p_filt = symmetrize(&p_filt);
 
         filtered_means.push(m_filt.clone());

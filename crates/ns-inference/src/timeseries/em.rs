@@ -6,7 +6,7 @@
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
-use super::kalman::{KalmanFilterResult, KalmanModel, kalman_filter, rts_smoother};
+use super::kalman::{KalmanFilterResult, KalmanModel, kalman_filter, rts_smoother, reduce_observation};
 
 fn symmetrize(p: &DMatrix<f64>) -> DMatrix<f64> {
     0.5 * (p + p.transpose())
@@ -278,33 +278,17 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
             for t in 0..ys.len() {
                 let y = &ys[t];
 
-                // Select observed dims for this timestep.
-                let mut obs_idx: Vec<usize> = Vec::new();
-                for i in 0..m_obs {
-                    if y[i].is_finite() {
-                        obs_idx.push(i);
-                    }
-                }
-                if obs_idx.is_empty() {
+                let red = reduce_observation(&cur, y)?;
+                let Some(red) = red else {
                     continue;
-                }
+                };
 
-                let mo = obs_idx.len();
-                let mut y_obs = DVector::<f64>::zeros(mo);
-                let mut h_obs = DMatrix::<f64>::zeros(mo, n);
-                for (ii, &i) in obs_idx.iter().enumerate() {
-                    y_obs[ii] = y[i];
-                    for j in 0..n {
-                        h_obs[(ii, j)] = cur.h[(i, j)];
-                    }
-                }
+                let hm = &red.h * &sf.m[t];
+                let v = &red.y - hm;
+                let term = &v * v.transpose() + &red.h * &sf.p[t] * red.h.transpose();
 
-                let hm = &h_obs * &sf.m[t];
-                let v = y_obs - hm;
-                let term = &v * v.transpose() + &h_obs * &sf.p[t] * h_obs.transpose();
-
-                for (ii, &i) in obs_idx.iter().enumerate() {
-                    for (jj, &j) in obs_idx.iter().enumerate() {
+                for (ii, &i) in red.obs_idx.iter().enumerate() {
+                    for (jj, &j) in red.obs_idx.iter().enumerate() {
                         sum_r[(i, j)] += term[(ii, jj)];
                         counts[(i, j)] += 1;
                     }
@@ -516,5 +500,54 @@ mod tests {
 
         let fr_fit = kalman_filter(&res.model, &ys).unwrap();
         assert!(fr_fit.log_likelihood.is_finite());
+    }
+
+    #[test]
+    fn test_em_estimate_r_partial_missing_multivariate_does_not_drop_timesteps() {
+        // Regression test: EM should handle partial missing observations the same way as
+        // `kalman_filter` (NaN means missing per-dimension), i.e. it must not drop the entire
+        // timestep just because one dimension is missing.
+        //
+        // This catches the failure mode where estimate_r would skip timesteps with ANY NaN,
+        // effectively discarding information for multivariate series with partial missing.
+        let f = DMatrix::from_row_slice(1, 1, &[1.0]);
+        let q = DMatrix::from_row_slice(1, 1, &[0.1]);
+        let h = DMatrix::from_row_slice(2, 1, &[1.0, 1.0]);
+        let r = DMatrix::from_row_slice(2, 2, &[0.5, 0.0, 0.0, 0.5]);
+        let m0 = DVector::from_row_slice(&[0.0]);
+        let p0 = DMatrix::from_row_slice(1, 1, &[1.0]);
+
+        let init_model = KalmanModel::new(f, q, h, r, m0, p0).unwrap();
+
+        // Construct partial-missing observations:
+        // - even t: y0 observed, y1 missing
+        // - odd t:  y0 missing, y1 observed
+        let t_max = 50usize;
+        let mut ys: Vec<DVector<f64>> = Vec::with_capacity(t_max);
+        for t in 0..t_max {
+            if t % 2 == 0 {
+                ys.push(DVector::from_row_slice(&[1.0, f64::NAN]));
+            } else {
+                ys.push(DVector::from_row_slice(&[f64::NAN, -1.0]));
+            }
+        }
+
+        let res = kalman_em(
+            &init_model,
+            &ys,
+            KalmanEmConfig {
+                max_iter: 2,
+                tol: 1e-9,
+                estimate_q: false,
+                estimate_r: true,
+                estimate_f: false,
+                estimate_h: false,
+                min_diag: 1e-9,
+            },
+        )
+        .unwrap();
+
+        assert!(res.model.r[(0, 0)].is_finite() && res.model.r[(0, 0)] > 0.0);
+        assert!(res.model.r[(1, 1)].is_finite() && res.model.r[(1, 1)] > 0.0);
     }
 }
