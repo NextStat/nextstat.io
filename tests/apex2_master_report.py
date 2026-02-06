@@ -396,6 +396,17 @@ def main() -> int:
     ap.add_argument("--bias-pulls-min-used-abs", type=int, default=10)
     ap.add_argument("--bias-pulls-min-used-frac", type=float, default=0.50)
     ap.add_argument(
+        "--bias-pulls-include-zoo",
+        action="store_true",
+        help="Pass --include-zoo to the bias/pulls runner (adds synthetic model-zoo cases).",
+    )
+    ap.add_argument(
+        "--bias-pulls-zoo-sizes",
+        type=str,
+        default="",
+        help="Comma-separated synthetic shapesys bin counts for bias/pulls (requires --bias-pulls-include-zoo).",
+    )
+    ap.add_argument(
         "--sbc",
         action="store_true",
         help="Also run slow SBC (NUTS) report and embed report (requires NS_RUN_SLOW=1).",
@@ -422,6 +433,9 @@ def main() -> int:
     repo = _repo_root()
     cwd = repo
     env = _with_py_path(os.environ.copy())
+
+    if args.bias_pulls_zoo_sizes and not args.bias_pulls_include_zoo:
+        raise SystemExit("--bias-pulls-zoo-sizes requires --bias-pulls-include-zoo")
 
     t0 = time.time()
     report: Dict[str, Any] = {
@@ -584,6 +598,10 @@ def main() -> int:
             "--min-used-frac",
             str(float(args.bias_pulls_min_used_frac)),
         ]
+        if args.bias_pulls_include_zoo:
+            bias_cmd.append("--include-zoo")
+            if str(args.bias_pulls_zoo_sizes).strip():
+                bias_cmd += ["--zoo-sizes", str(args.bias_pulls_zoo_sizes)]
         rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
         bias_report = _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None
         bias_declared = ((bias_report or {}).get("summary") or {}).get("status") if isinstance(bias_report, dict) else None

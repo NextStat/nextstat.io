@@ -111,6 +111,17 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --out tmp/apex2_master_report.json
 ```
 
+Optional: include synthetic "model zoo" cases in bias/pulls (still slow; intended for nightly).
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --bias-pulls \
+  --bias-pulls-include-zoo \
+  --bias-pulls-fixtures zoo_multichannel_3 \
+  --bias-pulls-n-toys 200 \
+  --out tmp/apex2_master_report.json
+```
+
 Optional: include the slow SBC (NUTS) report (Phase 5.4.2).
 
 ```bash
