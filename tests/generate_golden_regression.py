@@ -197,6 +197,93 @@ def poisson_nll_grad_hess(
     return nll, grad, hess
 
 
+def negbin_nll(
+    xd: Matrix,
+    y: Vector,
+    beta: Vector,
+    log_alpha: float,
+    offset: Optional[Vector],
+) -> float:
+    """
+    NB2 negative log-likelihood (mean/dispersion alpha) ignoring constant log(y!).
+
+    Parameterization:
+      mu = exp(eta), alpha = exp(log_alpha), theta = 1/alpha
+      log p = lgamma(y+theta) - lgamma(theta) + theta ln(theta/(theta+mu)) + y ln(mu/(theta+mu))
+    """
+    alpha = math.exp(log_alpha)
+    if not (alpha > 0.0) or not math.isfinite(alpha):
+        return float("inf")
+    theta = 1.0 / alpha
+
+    nll = 0.0
+    for i in range(len(y)):
+        eta = sum(xd[i][j] * beta[j] for j in range(len(beta)))
+        if offset is not None:
+            eta += offset[i]
+        mu = math.exp(eta)
+        yi = float(y[i])
+        # Ignore constant -lgamma(y+1).
+        logp = (
+            math.lgamma(yi + theta)
+            - math.lgamma(theta)
+            + theta * (math.log(theta) - math.log(theta + mu))
+            + yi * (math.log(mu) - math.log(theta + mu))
+        )
+        nll -= logp
+    return nll
+
+
+def negbin_nll_grad_hess_beta(
+    xd: Matrix,
+    y: Vector,
+    beta: Vector,
+    log_alpha: float,
+    offset: Optional[Vector],
+) -> Tuple[float, Vector, Matrix]:
+    """NB2 nll/grad/hess with respect to beta only (log_alpha treated as fixed)."""
+    alpha = math.exp(log_alpha)
+    if not (alpha > 0.0) or not math.isfinite(alpha):
+        n = len(y)
+        p = len(beta)
+        return float("inf"), [float("nan")] * p, [[float("nan")] * p for _ in range(p)]
+    theta = 1.0 / alpha
+
+    n = len(y)
+    p = len(beta)
+    nll = 0.0
+    grad = [0.0] * p
+    hess = [[0.0] * p for _ in range(p)]
+    for i in range(n):
+        eta = sum(xd[i][j] * beta[j] for j in range(p))
+        if offset is not None:
+            eta += offset[i]
+        mu = math.exp(eta)
+        yi = float(y[i])
+
+        # nll contribution (ignore constant -lgamma(y+1))
+        logp = (
+            math.lgamma(yi + theta)
+            - math.lgamma(theta)
+            + theta * (math.log(theta) - math.log(theta + mu))
+            + yi * (math.log(mu) - math.log(theta + mu))
+        )
+        nll -= logp
+
+        # d/deta nll = mu * (theta + y) / (theta + mu) - y
+        err = mu * (theta + yi) / (theta + mu) - yi
+        for j in range(p):
+            grad[j] += xd[i][j] * err
+
+        # d/deta err = mu * theta * (theta + y) / (theta + mu)^2
+        w = mu * theta * (theta + yi) / ((theta + mu) ** 2)
+        for a in range(p):
+            xa = xd[i][a]
+            for b in range(p):
+                hess[a][b] += w * xa * xd[i][b]
+    return nll, grad, hess
+
+
 def newton_solve(
     nll_grad_hess_fn,
     beta0: Vector,
@@ -261,6 +348,8 @@ class Fixture:
     beta_true: Vector
     beta_hat: Vector
     nll_at_hat: float
+    log_alpha_true: Optional[float] = None
+    log_alpha_hat: Optional[float] = None
     offset: Optional[Vector] = None
     se_hat: Optional[Vector] = None
     cov_hat: Optional[Matrix] = None
@@ -279,6 +368,12 @@ class Fixture:
             "beta_hat": self.beta_hat,
             "nll_at_hat": self.nll_at_hat,
         }
+        if self.log_alpha_true is not None:
+            out["log_alpha_true"] = self.log_alpha_true
+            out["alpha_true"] = math.exp(self.log_alpha_true)
+        if self.log_alpha_hat is not None:
+            out["log_alpha_hat"] = self.log_alpha_hat
+            out["alpha_hat"] = math.exp(self.log_alpha_hat)
         if self.offset is not None:
             out["offset"] = self.offset
         if self.se_hat is not None:
@@ -401,6 +496,83 @@ def build_fixtures() -> List[Fixture]:
             nll_at_hat=nll_pois,
             se_hat=se_pois,
             cov_hat=cov_pois,
+        )
+    )
+
+    # Negative binomial regression (NB2 mean/dispersion) without offset.
+    n_nb = 80
+    p_nb = 2
+    x_nb = [[rng.uniform(-1.0, 1.0) for _ in range(p_nb)] for _ in range(n_nb)]
+    beta_true_nb = [0.1, 0.6, -0.4]  # intercept + 2 weights
+    alpha_true_nb = 0.7
+    y_nb = []
+    for row in x_nb:
+        eta = beta_true_nb[0] + sum(b * x for b, x in zip(beta_true_nb[1:], row))
+        mu = math.exp(eta)
+        # NB2 via Gamma-Poisson mixture:
+        # lambda ~ Gamma(shape=1/alpha, scale=alpha*mu), y ~ Poisson(lambda).
+        shape = 1.0 / alpha_true_nb
+        scale = alpha_true_nb * mu
+        lam = rng.gammavariate(shape, scale)
+        y_nb.append(float(poisson_knuth(lam, rng)))
+    xd_nb = add_intercept(x_nb)
+
+    # Alternating Newton (beta) + 1D Newton (log_alpha with numeric derivatives).
+    beta0_nb = [0.0] * (p_nb + 1)
+    log_alpha_nb = math.log(alpha_true_nb)
+    beta_nb = beta0_nb[:]
+    for _ in range(25):
+        def nb_obj(beta: Vector):
+            return negbin_nll_grad_hess_beta(xd_nb, y_nb, beta, log_alpha_nb, offset=None)
+
+        beta_nb, _nll_beta = newton_solve(nb_obj, beta_nb, max_iter=80, tol=1e-10)
+
+        # Numeric derivatives in log_alpha.
+        h = 1e-4
+        f0 = negbin_nll(xd_nb, y_nb, beta_nb, log_alpha_nb, offset=None)
+        fp = negbin_nll(xd_nb, y_nb, beta_nb, log_alpha_nb + h, offset=None)
+        fm = negbin_nll(xd_nb, y_nb, beta_nb, log_alpha_nb - h, offset=None)
+        g = (fp - fm) / (2.0 * h)
+        hh = (fp - 2.0 * f0 + fm) / (h * h)
+        if not math.isfinite(g) or not math.isfinite(hh) or abs(hh) < 1e-12:
+            break
+        step = g / hh
+        # Backtracking line search on nll.
+        alpha_ls = 1.0
+        while alpha_ls > 1e-6:
+            cand = log_alpha_nb - alpha_ls * step
+            fc = negbin_nll(xd_nb, y_nb, beta_nb, cand, offset=None)
+            if fc <= f0:
+                log_alpha_nb = cand
+                break
+            alpha_ls *= 0.5
+        else:
+            break
+        if abs(step) < 1e-10:
+            break
+
+    nll_nb = negbin_nll(xd_nb, y_nb, beta_nb, log_alpha_nb, offset=None)
+
+    _nll, _grad, hess_beta_nb = negbin_nll_grad_hess_beta(
+        xd_nb, y_nb, beta_nb, log_alpha_nb, offset=None
+    )
+    cov_nb = mat_inv(hess_beta_nb)
+    se_nb = [math.sqrt(cov_nb[i][i]) for i in range(len(cov_nb))]
+
+    fixtures.append(
+        Fixture(
+            name="negbin_small",
+            kind="negbin",
+            x=x_nb,
+            y=y_nb,
+            include_intercept=True,
+            beta_true=beta_true_nb,
+            beta_hat=beta_nb,
+            log_alpha_true=math.log(alpha_true_nb),
+            log_alpha_hat=log_alpha_nb,
+            nll_at_hat=nll_nb,
+            se_hat=se_nb,
+            cov_hat=cov_nb,
         )
     )
 

@@ -52,3 +52,14 @@ def test_glm_poisson_fit_matches_fixture_beta_hat():
     assert len(mu) == fx["n"]
     assert all(float(v) > 0.0 for v in mu)
 
+
+def test_glm_negbin_fit_matches_fixture_beta_hat():
+    import nextstat
+
+    fx = _load("negbin_small")
+    r = nextstat.glm.negbin.fit(fx["x"], fx["y"], include_intercept=fx["include_intercept"])
+    _assert_close_list(r.coef, fx["beta_hat"], atol=2e-3)
+
+    mu = r.predict_mean(fx["x"])
+    assert len(mu) == fx["n"]
+    assert all(float(v) > 0.0 for v in mu)

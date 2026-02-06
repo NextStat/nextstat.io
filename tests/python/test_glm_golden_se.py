@@ -66,3 +66,19 @@ def test_glm_poisson_fit_matches_fixture_beta_and_se():
     assert len(rate) == 5
     assert all(ri > 0.0 for ri in rate)
 
+
+def test_glm_negbin_fit_matches_fixture_beta_and_se():
+    import nextstat
+
+    fx = _load("negbin_small.json")
+    assert fx["kind"] == "negbin"
+    y = [int(round(float(v))) for v in fx["y"]]
+    r = nextstat.glm.negbin.fit(fx["x"], y, include_intercept=True)
+
+    _assert_vec_close(r.coef, fx["beta_hat"], rtol=3e-3, atol=1e-6)
+    _assert_vec_close(r.standard_errors, fx["se_hat"], rtol=5e-2, atol=1e-6)
+    assert abs(float(r.log_alpha) - float(fx["log_alpha_hat"])) < 5e-3
+
+    mu = r.predict_mean(fx["x"][:5])
+    assert len(mu) == 5
+    assert all(mi > 0.0 for mi in mu)
