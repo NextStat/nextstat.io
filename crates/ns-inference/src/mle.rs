@@ -99,6 +99,74 @@ impl MaximumLikelihoodEstimator {
         }
     }
 
+    /// Fit from an explicit starting point (warm-start) with full Hessian/covariance.
+    ///
+    /// Like [`fit`], but uses `initial_params` instead of `model.parameter_init()`.
+    pub fn fit_from<M: LogDensityModel>(
+        &self,
+        model: &M,
+        initial_params: &[f64],
+    ) -> Result<FitResult> {
+        let result = self.fit_minimum_from(model, initial_params)?;
+
+        let hessian = self.compute_hessian(model, &result.parameters)?;
+        let n = result.parameters.len();
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    Ok(FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                } else {
+                    log::warn!("Invalid covariance diagonal; omitting covariance matrix");
+                    Ok(FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                }
+            }
+            None => {
+                log::warn!("Hessian inversion failed, using diagonal approximation");
+                let uncertainties = self.diagonal_uncertainties(&hessian, n);
+                Ok(FitResult::new(
+                    result.parameters,
+                    uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                ))
+            }
+        }
+    }
+
     /// Minimize NLL and return the optimizer result.
     ///
     /// Fast path: does not compute Hessian/covariance. Intended for repeated minimizations

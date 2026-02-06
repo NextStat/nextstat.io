@@ -437,6 +437,29 @@ impl PosteriorModel {
         }
     }
 
+    fn fit_mle_from(&self, mle: &RustMLE, init_pars: &[f64]) -> NsResult<ns_core::FitResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::GaussianMean(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::Funnel(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::StdNormal(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::LinearRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::LogisticRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::OrderedLogit(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::OrderedProbit(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::PoissonRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::NegativeBinomialRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ComposedGlm(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::LmmMarginal(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ExponentialSurvival(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::WeibullSurvival(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::LogNormalAft(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::CoxPh(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::OneCompartmentOralPk(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit_from(m, init_pars),
+        }
+    }
+
     fn sample_nuts_multichain(
         &self,
         n_chains: usize,
@@ -2937,18 +2960,30 @@ impl PyMaximumLikelihoodEstimator {
     /// Fit any supported model (generic `LogDensityModel`) using MLE.
     ///
     /// `data=` is only supported for `HistFactoryModel` (overrides main-bin observations).
-    #[pyo3(signature = (model, *, data=None))]
+    /// `init_pars=` overrides the model's default initial parameters (warm-start).
+    #[pyo3(signature = (model, *, data=None, init_pars=None))]
     fn fit<'py>(
         &self,
         py: Python<'py>,
         model: &Bound<'py, PyAny>,
         data: Option<Vec<f64>>,
+        init_pars: Option<Vec<f64>>,
     ) -> PyResult<PyFitResult> {
         let fit_model = extract_posterior_model_with_data(model, data)?;
 
+        if let Some(ref ip) = init_pars {
+            validate_f64_vec("init_pars", ip, fit_model.dim())?;
+        }
+
         let mle = self.inner.clone();
         let result = py
-            .detach(move || fit_model.fit_mle(&mle))
+            .detach(move || {
+                if let Some(ip) = init_pars {
+                    fit_model.fit_mle_from(&mle, &ip)
+                } else {
+                    fit_model.fit_mle(&mle)
+                }
+            })
             .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
 
         Ok(PyFitResult {
