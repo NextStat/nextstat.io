@@ -1366,6 +1366,8 @@ pub struct PreparedModel<'a> {
     obs_mask: Vec<f64>,
     /// Whether any main-bin observation is zero (enables sparse Poisson fast-path).
     has_zero_obs: bool,
+    /// Number of main bins with `obs == 0`.
+    n_zero_obs: usize,
     /// Sum of Gaussian constraint normalization constants:
     /// `Σ [ln(σ) + 0.5·ln(2π)]` over all constrained parameters.
     constraint_const: f64,
@@ -1391,7 +1393,8 @@ impl HistFactoryModel {
         }
 
         let n_main_bins = observed_flat.len();
-        let has_zero_obs = obs_mask.iter().any(|&m| m == 0.0);
+        let n_zero_obs = obs_mask.iter().filter(|&&m| m == 0.0).count();
+        let has_zero_obs = n_zero_obs > 0;
 
         // Pre-compute Gaussian constraint normalization constant
         let half_ln_2pi = 0.5 * (2.0 * std::f64::consts::PI).ln();
@@ -1413,6 +1416,7 @@ impl HistFactoryModel {
             ln_factorials,
             obs_mask,
             has_zero_obs,
+            n_zero_obs,
             constraint_const,
             n_main_bins,
         }
@@ -1424,7 +1428,7 @@ impl PreparedModel<'_> {
     ///
     /// Equivalent to [`HistFactoryModel::nll`] but faster for f64 evaluation.
     pub fn nll(&self, params: &[f64]) -> Result<f64> {
-        use ns_compute::simd::{poisson_nll_scalar_sparse, poisson_nll_simd};
+        use ns_compute::simd::{poisson_nll_scalar_sparse, poisson_nll_simd, poisson_nll_simd_sparse};
 
         // 1. Compute expected data (scalar — modifier application is branchy)
         let mut expected = self.model.expected_data(params)?;
@@ -1441,16 +1445,25 @@ impl PreparedModel<'_> {
 
         // 3. SIMD Poisson NLL for main bins
         let mut nll = if self.has_zero_obs {
-            // For sparse observations, scalar is often faster because it can skip `ln(exp)`
-            // lane-by-lane, while SIMD would still compute `ln()` for mixed chunks.
+            // Sparse observations: avoid computing ln(exp) where obs==0.
             //
-            // This guarantees we do not compute `ln(exp)` when `obs == 0`.
-            poisson_nll_scalar_sparse(
-                &expected,
-                &self.observed_flat,
-                &self.ln_factorials,
-                &self.obs_mask,
-            )
+            // Heuristic: for very sparse datasets, scalar can still win due to lower SIMD overhead.
+            let zero_frac = (self.n_zero_obs as f64) / (self.n_main_bins as f64).max(1.0);
+            if zero_frac >= 0.50 {
+                poisson_nll_scalar_sparse(
+                    &expected,
+                    &self.observed_flat,
+                    &self.ln_factorials,
+                    &self.obs_mask,
+                )
+            } else {
+                poisson_nll_simd_sparse(
+                    &expected,
+                    &self.observed_flat,
+                    &self.ln_factorials,
+                    &self.obs_mask,
+                )
+            }
         } else {
             poisson_nll_simd(&expected, &self.observed_flat, &self.ln_factorials, &self.obs_mask)
         };

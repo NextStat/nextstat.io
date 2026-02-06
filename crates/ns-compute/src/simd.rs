@@ -19,6 +19,22 @@ fn ln_f64x4(v: f64x4) -> f64x4 {
     f64x4::from([arr[0].ln(), arr[1].ln(), arr[2].ln(), arr[3].ln()])
 }
 
+/// Masked lane-by-lane `ln()` using scalar `f64::ln()`.
+///
+/// For lanes where `mask[i] == 0.0` we return `0.0` and do not call `ln()`.
+/// This is safe for our Poisson kernels because those lanes are multiplied by `mask`
+/// and therefore do not contribute to the final NLL.
+#[inline(always)]
+fn ln_f64x4_masked(v: f64x4, mask: [f64; 4]) -> f64x4 {
+    let arr: [f64; 4] = v.into();
+    f64x4::from([
+        if mask[0] == 0.0 { 0.0 } else { arr[0].ln() },
+        if mask[1] == 0.0 { 0.0 } else { arr[1].ln() },
+        if mask[2] == 0.0 { 0.0 } else { arr[2].ln() },
+        if mask[3] == 0.0 { 0.0 } else { arr[3].ln() },
+    ])
+}
+
 #[inline(always)]
 fn poisson_nll_bin_scalar_branchless(exp: f64, obs: f64, ln_factorial: f64, mask: f64) -> f64 {
     exp + mask * (ln_factorial - obs * exp.ln())
@@ -132,10 +148,20 @@ pub fn poisson_nll_simd_sparse(
         let mask = f64x4::from(&obs_mask[offset..offset + 4]);
 
         let mask_arr: [f64; 4] = mask.into();
-        if mask_arr[0] == 0.0 && mask_arr[1] == 0.0 && mask_arr[2] == 0.0 && mask_arr[3] == 0.0 {
+        let all0 =
+            mask_arr[0] == 0.0 && mask_arr[1] == 0.0 && mask_arr[2] == 0.0 && mask_arr[3] == 0.0;
+        if all0 {
             acc += exp;
         } else {
-            let ln_exp = ln_f64x4(exp);
+            let all1 =
+                mask_arr[0] == 1.0 && mask_arr[1] == 1.0 && mask_arr[2] == 1.0 && mask_arr[3] == 1.0;
+
+            // Mixed chunks are the key case: avoid calling ln() for lanes where obs==0.
+            let ln_exp = if all1 {
+                ln_f64x4(exp)
+            } else {
+                ln_f64x4_masked(exp, mask_arr)
+            };
             let obs_ln_exp = obs * ln_exp;
             let bracket = lnf - obs_ln_exp;
             acc += exp + mask * bracket;

@@ -661,13 +661,12 @@ mod tests {
 
         let expected = model.expected_data(&truth).unwrap();
 
-        // Use limited max_iter to keep runtime bounded (~60s total in release)
-        let config = OptimizerConfig { max_iter: 100, ..OptimizerConfig::default() };
+        // Cap iterations to bound runtime on pathological toys
+        let config = OptimizerConfig { max_iter: 50, ..OptimizerConfig::default() };
         let mle = MaximumLikelihoodEstimator::with_config(config);
         let n_toys = 100;
         let seed = 0u64;
 
-        // Run toys sequentially to avoid rayon hangs on some platforms
         let mut pulls = Vec::new();
         let mut n_converged = 0usize;
         let mut n_covered = 0usize;

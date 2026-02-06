@@ -38,6 +38,8 @@ pub mod posterior;
 pub mod profile_likelihood;
 /// Regression models (general statistics).
 pub mod regression;
+/// Time series and state space models (Phase 8).
+pub mod timeseries;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
