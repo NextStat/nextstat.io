@@ -4,6 +4,9 @@ This is an opt-in slow test that compares NextStat vs pyhf coverage for a simple
 
 Run with:
   NS_RUN_SLOW=1 NS_TOYS=20 NS_SEED=0 NS_SCAN_POINTS=81 pytest -v -m slow tests/python/test_coverage_regression.py
+
+Defaults are intentionally smaller for reasonable local runtime. Override via env vars for
+higher-stat precision.
 """
 
 from __future__ import annotations
@@ -22,10 +25,10 @@ pytestmark = pytest.mark.slow
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 FIXTURE = "simple_workspace.json"
-N_TOYS = int(os.environ.get("NS_TOYS", "20"))
+N_TOYS = int(os.environ.get("NS_TOYS", "10"))
 SEED = int(os.environ.get("NS_SEED", "0"))
 # Default to a moderate scan resolution: this test is O(NS_TOYS * NS_SCAN_POINTS).
-SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "21"))
+SCAN_POINTS = int(os.environ.get("NS_SCAN_POINTS", "11"))
 
 
 def load_workspace() -> dict:

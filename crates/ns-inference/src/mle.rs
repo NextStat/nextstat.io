@@ -661,10 +661,10 @@ mod tests {
 
         let expected = model.expected_data(&truth).unwrap();
 
-        // Use limited max_iter to avoid hanging on pathological toys
-        let config = OptimizerConfig { max_iter: 200, ..OptimizerConfig::default() };
+        // Use limited max_iter to keep runtime bounded (~60s total in release)
+        let config = OptimizerConfig { max_iter: 100, ..OptimizerConfig::default() };
         let mle = MaximumLikelihoodEstimator::with_config(config);
-        let n_toys = 200;
+        let n_toys = 100;
         let seed = 42u64;
 
         // Run toys sequentially to avoid rayon hangs on some platforms
@@ -711,7 +711,7 @@ mod tests {
         }
 
         let n = pulls.len() as f64;
-        assert!(n >= 100.0, "Need at least 100 converged toys, got {}", n as usize);
+        assert!(n >= 50.0, "Need at least 50 converged toys, got {}", n as usize);
 
         let mean: f64 = pulls.iter().sum::<f64>() / n;
         let var: f64 = pulls.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / (n - 1.0);

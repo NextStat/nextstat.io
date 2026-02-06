@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any, List, Literal, Optional, Sequence, Tuple, Union, cast
+from typing import Any, List, Literal, Optional, Sequence, Union, cast
 
 
 def _tolist(x: Any) -> Any:
@@ -158,19 +158,18 @@ class GlmSpec:
             coef_prior_sigma=float(d.get("coef_prior_sigma", 10.0)),
         )
 
-    def build(self):
+    def build(self) -> Any:
         from . import _core  # local import
 
-        if self.group_idx is None:
-            if self.n_groups is not None:
-                raise ValueError("n_groups requires group_idx")
-            if self.kind == "linear":
-                return _core.LinearRegressionModel(self.x, cast(List[float], self.y), include_intercept=self.include_intercept)
-            return _core.LogisticRegressionModel(self.x, cast(List[int], self.y), include_intercept=self.include_intercept)
+        if self.group_idx is None and self.n_groups is not None:
+            raise ValueError("n_groups requires group_idx")
+        if self.group_idx is not None and not self.group_idx:
+            raise ValueError("group_idx must be non-empty if provided")
 
         ng = self.n_groups
-        if ng is None:
-            ng = (max(self.group_idx) + 1) if self.group_idx else 0
+        if self.group_idx is not None and ng is None:
+            ng = max(self.group_idx) + 1
+
         if self.kind == "linear":
             return _core.ComposedGlmModel.linear_regression(
                 self.x,
@@ -193,4 +192,3 @@ class GlmSpec:
 
 
 __all__ = ["GlmSpec"]
-

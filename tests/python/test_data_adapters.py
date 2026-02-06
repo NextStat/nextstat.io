@@ -37,7 +37,6 @@ def test_glm_spec_build_logistic_with_groups_smoke():
     assert "mu_alpha" in names
     assert "sigma_alpha" in names
 
-    raw = nextstat._core.sample(m, n_chains=1, n_warmup=5, n_samples=10, seed=3)
+    raw = nextstat.sample(m, n_chains=1, n_warmup=5, n_samples=10, seed=3)
     assert "posterior" in raw
     assert "diagnostics" in raw
-

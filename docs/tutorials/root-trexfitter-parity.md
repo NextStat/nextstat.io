@@ -31,6 +31,91 @@ maturin develop --release
 pip install -e "bindings/ns-py[validation]"
 ```
 
+## Apex2 workflow (Planning → Exploration → Execution → Verification)
+
+Ниже самый воспроизводимый путь, который удобно запускать на кластере (где есть ROOT и TRExFitter).
+
+### Planning (окружение и зависимости)
+
+Минимально нужно:
+- `root` + `hist2workspace` в `PATH`
+- Python 3 + зависимости для валидации (`pyhf`, `uproot`, и python bindings NextStat)
+
+Рекомендуемая проверка prereqs (быстро, без прогонов):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
+```
+
+Если в кластере нет `.venv`, используй любой эквивалентный Python (conda/venv/модуль), но важно:
+- `PYTHONPATH=bindings/ns-py/python`
+- `pip install -e "bindings/ns-py[validation]"` выполнен в этом env
+
+### Exploration (найти тестовые модели)
+
+Тестовые модели для ROOT/TRExFitter в этом контуре это HistFactory экспорты с `combination.xml`.
+
+Если у тебя есть директория с экспортами TRExFitter (или любыми HistFactory export-ами), можно:
+
+1) Сгенерировать cases JSON (наиболее контролируемо, удобно для CI/архива):
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/apex2_root_cases.json \
+  --include-fixtures \
+  --absolute-paths
+```
+
+2) Либо не генерировать вручную, а дать директорию прямо мастер-раннеру (см. Execution).
+
+### Execution (прогоны)
+
+#### Вариант A: один master-report (pyhf + ROOT-suite)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+```
+
+Артефакт:
+- `tmp/apex2_master_report.json`
+
+Внутри будет:
+- `pyhf.status` (`ok`/`fail`)
+- `root.status` (`ok`/`fail`/`skipped`)
+- ссылки на `tmp/apex2_pyhf_report.json` и `tmp/apex2_root_suite_report.json`
+
+#### Вариант B: отдельно ROOT-suite (если нужно фокусно)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --keep-going \
+  --out tmp/apex2_root_suite_report.json
+```
+
+### Verification (интерпретация и “почему”)
+
+1) Первичный “зеленый/красный” сигнал:
+- `pyhf.status == ok` значит NLL/expected_data совпадают с эталоном `pyhf`
+- `root.status == ok` значит q(mu) профиль совпал с ROOT в заданных допусках
+- `root.status == skipped` значит не было prereqs (например, нет `hist2workspace` или `uproot`)
+
+2) Если ROOT-suite дал `fail`, в `tmp/apex2_root_suite_report.json` для каждого кейса есть:
+- `run_dir` (папка с артефактами одного прогона)
+- `summary_path`
+- `diff.max_abs_dq_mu` и `diff.d_mu_hat`
+
+3) Для разбора расхождений по конкретному `run_dir` (без ROOT) используй:
+
+```bash
+./.venv/bin/python tests/explain_root_vs_nextstat_profile_diff.py \
+  --run-dir /abs/path/to/tmp/root_parity_suite/<case>/run_<timestamp>
+```
+
 ## 1) Проверка профилирования q(mu) vs ROOT
 
 ### Вариант A: стартуем от pyhf JSON (fixtures)

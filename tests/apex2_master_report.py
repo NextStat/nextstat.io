@@ -58,6 +58,37 @@ def main() -> int:
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
     ap.add_argument("--root-out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--root-cases", type=Path, default=None, help="Cases JSON for ROOT suite.")
+    ap.add_argument(
+        "--root-search-dir",
+        type=Path,
+        default=None,
+        help="Auto-discover TRExFitter/HistFactory exports by scanning for combination.xml under this directory.",
+    )
+    ap.add_argument(
+        "--root-glob",
+        type=str,
+        default="**/combination.xml",
+        help="Glob relative to --root-search-dir (used only when auto-generating cases).",
+    )
+    ap.add_argument(
+        "--root-cases-out",
+        type=Path,
+        default=Path("tmp/apex2_root_cases.json"),
+        help="Where to write auto-generated ROOT cases JSON (used only with --root-search-dir).",
+    )
+    ap.add_argument(
+        "--root-cases-absolute-paths",
+        action="store_true",
+        help="Write absolute paths in auto-generated ROOT cases JSON.",
+    )
+    ap.add_argument(
+        "--root-include-fixtures",
+        action="store_true",
+        help="Include built-in fixture case(s) in auto-generated ROOT cases JSON.",
+    )
+    ap.add_argument("--root-mu-start", type=float, default=0.0)
+    ap.add_argument("--root-mu-stop", type=float, default=5.0)
+    ap.add_argument("--root-mu-points", type=int, default=51)
     ap.add_argument("--pyhf-sizes", type=str, default="2,16,64,256")
     ap.add_argument("--pyhf-n-random", type=int, default=8)
     ap.add_argument("--pyhf-seed", type=int, default=0)
@@ -101,6 +132,7 @@ def main() -> int:
 
     rc_pyhf, out_pyhf = _run_json(pyhf_cmd, cwd=cwd, env=env)
     report["pyhf"] = {
+        "status": "ok" if rc_pyhf == 0 else "fail",
         "returncode": int(rc_pyhf),
         "stdout_tail": out_pyhf[-4000:],
         "report_path": str(args.pyhf_out),
@@ -110,6 +142,50 @@ def main() -> int:
     # ------------------------------------------------------------------
     # ROOT suite runner (may be skipped)
     # ------------------------------------------------------------------
+    root_cases_used = args.root_cases
+    root_cases_generation: Optional[Dict[str, Any]] = None
+    if root_cases_used is None and args.root_search_dir is not None:
+        gen = repo / "tests" / "generate_apex2_root_cases.py"
+        root_cases_used = args.root_cases_out
+        gen_cmd = [
+            sys.executable,
+            str(gen),
+            "--search-dir",
+            str(args.root_search_dir),
+            "--glob",
+            args.root_glob,
+            "--out",
+            str(root_cases_used),
+            "--start",
+            str(args.root_mu_start),
+            "--stop",
+            str(args.root_mu_stop),
+            "--points",
+            str(args.root_mu_points),
+        ]
+        if args.root_include_fixtures:
+            gen_cmd.append("--include-fixtures")
+        if args.root_cases_absolute_paths:
+            gen_cmd.append("--absolute-paths")
+
+        rc_gen, out_gen = _run_json(gen_cmd, cwd=cwd, env=env)
+        root_cases_generation = {
+            "returncode": int(rc_gen),
+            "stdout_tail": out_gen[-4000:],
+            "cases_path": str(root_cases_used),
+        }
+        if rc_gen != 0:
+            report["root"] = {
+                "status": "error",
+                "reason": "case_generation_failed",
+                "cases_generation": root_cases_generation,
+            }
+            report["meta"]["wall_s"] = float(time.time() - t0)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(report, indent=2))
+            print(f"Wrote: {args.out}")
+            return 2
+
     root_runner = repo / "tests" / "apex2_root_suite_report.py"
     root_cmd = [
         sys.executable,
@@ -117,19 +193,36 @@ def main() -> int:
         "--out",
         str(args.root_out),
     ]
-    if args.root_cases:
-        root_cmd += ["--cases", str(args.root_cases)]
+    if root_cases_used is not None:
+        root_cmd += ["--cases", str(root_cases_used)]
     if args.root_prereq_only:
         root_cmd.append("--prereq-only")
 
     rc_root, out_root = _run_json(root_cmd, cwd=cwd, env=env)
     root_report = _read_json(args.root_out) if args.root_out.exists() else None
+    prereqs = (root_report or {}).get("meta", {}).get("prereqs") if root_report else None
+    prereqs_ok = (
+        isinstance(prereqs, dict)
+        and bool(prereqs.get("hist2workspace"))
+        and bool(prereqs.get("root"))
+        and (prereqs.get("uproot") is not False)
+    )
+    if root_report and not prereqs_ok:
+        root_status = "skipped"
+    elif rc_root == 0:
+        root_status = "ok"
+    else:
+        root_status = "fail" if root_report else "error"
+
     report["root"] = {
+        "status": root_status,
         "returncode": int(rc_root),
         "stdout_tail": out_root[-4000:],
         "report_path": str(args.root_out),
+        "cases_path_used": str(root_cases_used) if root_cases_used is not None else None,
+        "cases_generation": root_cases_generation,
         "report": root_report,
-        "prereqs": (root_report or {}).get("meta", {}).get("prereqs") if root_report else None,
+        "prereqs": prereqs,
     }
 
     report["meta"]["wall_s"] = float(time.time() - t0)
@@ -137,9 +230,9 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2))
 
-    # Exit code policy: non-zero if pyhf parity fails or ROOT suite fails (if it ran).
+    # Exit code policy: fail on pyhf mismatch; fail on ROOT mismatch only if prereqs exist.
     pyhf_ok = (rc_pyhf == 0)
-    root_ok_or_skipped = (rc_root == 0) or (root_report and root_report.get("meta", {}).get("prereqs", {}).get("hist2workspace") is False)
+    root_ok_or_skipped = root_status in ("ok", "skipped")
 
     print(f"Wrote: {args.out}")
     if not pyhf_ok:
@@ -151,4 +244,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
