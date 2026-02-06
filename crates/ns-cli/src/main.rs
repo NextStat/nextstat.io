@@ -7,6 +7,8 @@ use serde::Deserialize;
 use statrs::distribution::ContinuousCDF;
 use std::path::PathBuf;
 
+mod report;
+
 #[derive(Parser)]
 #[command(name = "nextstat")]
 #[command(about = "NextStat - High-performance statistical fitting")]
@@ -15,6 +17,10 @@ struct Cli {
     /// Log verbosity level (trace, debug, info, warn, error)
     #[arg(long, global = true, default_value = "warn")]
     log_level: tracing::Level,
+
+    /// Write an immutable run bundle (inputs + hashes + outputs) into this empty directory.
+    #[arg(long, global = true)]
+    bundle: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -424,9 +430,9 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().with_max_level(cli.log_level).with_target(false).init();
 
     match cli.command {
-        Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads),
+        Commands::Fit { input, output, threads } => cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref()),
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
-            cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads)
+            cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
         }
         Commands::UpperLimit {
             input,
@@ -454,13 +460,14 @@ fn main() -> Result<()> {
             max_iter,
             output.as_ref(),
             threads,
+            cli.bundle.as_ref(),
         ),
         Commands::Scan { input, start, stop, points, output, threads } => {
-            cmd_scan(&input, start, stop, points, output.as_ref(), threads)
+            cmd_scan(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
         }
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
-                cmd_viz_profile(&input, start, stop, points, output.as_ref(), threads)
+                cmd_viz_profile(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
             }
             VizCommands::Cls {
                 input,
@@ -478,11 +485,16 @@ fn main() -> Result<()> {
                 scan_points,
                 output.as_ref(),
                 threads,
+                cli.bundle.as_ref(),
             ),
         },
         Commands::Timeseries { command } => match command {
-            TimeseriesCommands::KalmanFilter { input, output } => cmd_ts_kalman_filter(&input, output.as_ref()),
-            TimeseriesCommands::KalmanSmooth { input, output } => cmd_ts_kalman_smooth(&input, output.as_ref()),
+            TimeseriesCommands::KalmanFilter { input, output } => {
+                cmd_ts_kalman_filter(&input, output.as_ref(), cli.bundle.as_ref())
+            }
+            TimeseriesCommands::KalmanSmooth { input, output } => {
+                cmd_ts_kalman_smooth(&input, output.as_ref(), cli.bundle.as_ref())
+            }
             TimeseriesCommands::KalmanEm {
                 input,
                 max_iter,
@@ -503,6 +515,7 @@ fn main() -> Result<()> {
                 estimate_h,
                 min_diag,
                 output.as_ref(),
+                cli.bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanFit {
                 input,
@@ -528,6 +541,7 @@ fn main() -> Result<()> {
                 forecast_steps,
                 no_smooth,
                 output.as_ref(),
+                cli.bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanViz {
                 input,
@@ -553,12 +567,13 @@ fn main() -> Result<()> {
                 level,
                 forecast_steps,
                 output.as_ref(),
+                cli.bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanForecast { input, steps, alpha, output } => {
-                cmd_ts_kalman_forecast(&input, steps, alpha, output.as_ref())
+                cmd_ts_kalman_forecast(&input, steps, alpha, output.as_ref(), cli.bundle.as_ref())
             }
             TimeseriesCommands::KalmanSimulate { input, t_max, seed, output } => {
-                cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref())
+                cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref(), cli.bundle.as_ref())
             }
         },
         Commands::Version => {
@@ -568,7 +583,12 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_fit(input: &PathBuf, output: Option<&PathBuf>, threads: usize) -> Result<()> {
+fn cmd_fit(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
     let model = load_model(input, threads)?;
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
@@ -593,7 +613,17 @@ fn cmd_fit(input: &PathBuf, output: Option<&PathBuf>, threads: usize) -> Result<
         "covariance": result.covariance,
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "fit",
+            serde_json::json!({ "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::HistFactoryModel> {
@@ -610,7 +640,7 @@ fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::His
     Ok(model)
 }
 
-fn write_json(output: Option<&PathBuf>, value: serde_json::Value) -> Result<()> {
+fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
     if let Some(path) = output {
         std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     } else {
