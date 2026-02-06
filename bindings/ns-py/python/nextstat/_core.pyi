@@ -68,6 +68,18 @@ class LogisticRegressionModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class OrderedLogitModel:
+    def __init__(self, x: List[List[float]], y: List[int], *, n_levels: int) -> None: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class PoissonRegressionModel:
     def __init__(
         self,
@@ -294,6 +306,7 @@ class MaximumLikelihoodEstimator:
             GaussianMeanModel,
             LinearRegressionModel,
             LogisticRegressionModel,
+            OrderedLogitModel,
             PoissonRegressionModel,
             NegativeBinomialRegressionModel,
             ComposedGlmModel,
@@ -328,6 +341,12 @@ class MaximumLikelihoodEstimator:
     def fit_batch(
         self,
         models_or_model: List[LogisticRegressionModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[OrderedLogitModel],
         datasets: Literal[None] = ...,
     ) -> List[FitResult]: ...
     @overload
@@ -407,6 +426,7 @@ def fit(
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
+        OrderedLogitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
         ComposedGlmModel,
@@ -427,6 +447,8 @@ def fit_batch(models_or_model: List[GaussianMeanModel], datasets: Literal[None] 
 def fit_batch(models_or_model: List[LinearRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[LogisticRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[OrderedLogitModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[PoissonRegressionModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload

@@ -155,6 +155,7 @@ the compare runner will attempt to recover missing entries by scanning newer `ba
 Note on performance noise:
 - `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons where the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`), because sub-microsecond timings are dominated by timer noise.
 - The GLM benchmark (`tests/benchmark_glm_fit_predict.py`) reports median timings (not min) to make regressions less sensitive to transient CPU load.
+- The P6 GLM compare wrapper (`tests/apex2_p6_glm_benchmark_report.py`) skips predict comparisons when baseline `predict_s` is below `1e-3` seconds by default (`--min-baseline-predict-s`), mirroring the existing `--min-baseline-fit-s`.
 
 For strict performance gating, require the same host as the baseline:
 

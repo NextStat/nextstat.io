@@ -37,6 +37,7 @@ GaussianMeanModel = _get("GaussianMeanModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
 PoissonRegressionModel = _get("PoissonRegressionModel")
+OrderedLogitModel = _get("OrderedLogitModel")
 NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
 LmmMarginalModel = _get("LmmMarginalModel")
@@ -58,6 +59,7 @@ from . import timeseries as timeseries  # noqa: E402
 from . import hier as hier  # noqa: E402
 from . import ppc as ppc  # noqa: E402
 from . import survival as survival  # noqa: E402
+from . import ordinal as ordinal  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -81,11 +83,13 @@ __all__ = [
     "hier",
     "ppc",
     "survival",
+    "ordinal",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
     "PoissonRegressionModel",
+    "OrderedLogitModel",
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
     "LmmMarginalModel",

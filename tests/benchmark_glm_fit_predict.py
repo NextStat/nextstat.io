@@ -41,16 +41,16 @@ def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat
     return float(statistics.median(times))
 
 
-def bench_fit_time(fn: Callable[[], Any], *, warmup: int = 1, repeat: int = 5) -> float:
-    # Warm up once to reduce one-time effects (allocs, code paths, caches).
-    for _ in range(warmup):
-        fn()
-    times: list[float] = []
-    for _ in range(repeat):
-        t0 = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - t0)
-    # Median is more stable than min when CPU frequency/background load fluctuates.
+def bench_fit_time(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 7) -> float:
+    # Calibrated timeit loop: for faster fits we run multiple iterations per measurement to
+    # reduce timer/CPU noise. For slower fits, `number` naturally stays at 1.
+    number = 1
+    while True:
+        t = timeit.timeit(fn, number=number)
+        if t >= target_s or number >= 128:
+            break
+        number *= 2
+    times = [timeit.timeit(fn, number=number) / number for _ in range(repeat)]
     return float(statistics.median(times))
 
 

@@ -628,6 +628,7 @@ in the same `tmp/baselines/` directory.
 Performance noise notes (local dev machines):
 - `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons when the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`).
 - `tests/benchmark_glm_fit_predict.py` uses median timings to reduce false regressions when CPU load/frequency changes.
+- `tests/apex2_p6_glm_benchmark_report.py` skips predict comparisons when baseline `predict_s < 1e-3` seconds by default (`--min-baseline-predict-s`), mirroring `--min-baseline-fit-s`.
 
 For performance gating, use the same machine as the baseline and enable:
 

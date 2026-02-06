@@ -11,7 +11,7 @@ use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
 use statrs::function::gamma::{digamma, ln_gamma};
 
 #[inline]
-fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()> {
+pub(crate) fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()> {
     if n == 0 {
         return Err(Error::Validation("X/y must be non-empty".to_string()));
     }
@@ -35,21 +35,21 @@ fn validate_xy_dims(n: usize, p: usize, x_len: usize, y_len: usize) -> Result<()
 }
 
 #[inline]
-fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
+pub(crate) fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
     debug_assert_eq!(x_row.len(), beta.len());
     x_row.iter().zip(beta).map(|(&x, &b)| x * b).sum()
 }
 
 /// Dense row-major design matrix.
 #[derive(Debug, Clone)]
-struct DenseX {
-    n: usize,
-    p: usize,
-    data: Vec<f64>, // length n*p, row-major
+pub(crate) struct DenseX {
+    pub(crate) n: usize,
+    pub(crate) p: usize,
+    pub(crate) data: Vec<f64>, // length n*p, row-major
 }
 
 impl DenseX {
-    fn from_rows(x: Vec<Vec<f64>>) -> Result<Self> {
+    pub(crate) fn from_rows(x: Vec<Vec<f64>>) -> Result<Self> {
         let n = x.len();
         let p = x.first().map(|r| r.len()).unwrap_or(0);
         if n == 0 || p == 0 {
@@ -76,7 +76,7 @@ impl DenseX {
     }
 
     #[inline]
-    fn row(&self, i: usize) -> &[f64] {
+    pub(crate) fn row(&self, i: usize) -> &[f64] {
         let start = i * self.p;
         &self.data[start..start + self.p]
     }
@@ -375,6 +375,423 @@ impl LogDensityModel for LogisticRegressionModel {
                 }
             }
         }
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ordinal regression (ordered outcomes).
+// ---------------------------------------------------------------------------
+
+/// Ordinal logistic regression (proportional odds) with ordered cutpoints.
+///
+/// Model:
+/// - `y_i ∈ {0, 1, ..., K-1}` (ordered categories)
+/// - `eta_i = X_i * beta` (no intercept; cutpoints absorb the location shift)
+/// - `P(y_i <= k) = sigmoid(cut[k] - eta_i)`, with `K-1` ordered cutpoints
+///
+/// Parameterization:
+/// - `beta[0..p)`
+/// - `cut_raw[0]` is the first cutpoint (unconstrained)
+/// - `cut_raw[j]` for `j>=1` are unconstrained and mapped via `softplus` increments:
+///   `cut[j] = cut[j-1] + softplus(cut_raw[j])`, ensuring strict ordering.
+#[derive(Debug, Clone)]
+pub struct OrdinalLogitModel {
+    x: DenseX,
+    y: Vec<usize>,
+    n_classes: usize,
+}
+
+impl OrdinalLogitModel {
+    /// Create a new ordinal logistic regression model.
+    pub fn new(x: Vec<Vec<f64>>, y: Vec<usize>, n_classes: usize) -> Result<Self> {
+        let x = DenseX::from_rows(x)?;
+        validate_xy_dims(x.n, x.p, x.data.len(), y.len())?;
+        if n_classes < 2 {
+            return Err(Error::Validation("n_classes must be >= 2".to_string()));
+        }
+        if y.iter().any(|&k| k >= n_classes) {
+            return Err(Error::Validation(
+                "y values must be in [0, n_classes)".to_string(),
+            ));
+        }
+        Ok(Self { x, y, n_classes })
+    }
+
+    #[inline]
+    fn n_cut(&self) -> usize {
+        self.n_classes - 1
+    }
+
+    #[inline]
+    fn dim_internal(&self) -> usize {
+        self.x.p + self.n_cut()
+    }
+}
+
+impl LogDensityModel for OrdinalLogitModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.dim_internal()
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut out = Vec::with_capacity(p + n_cut);
+        for j in 0..p {
+            out.push(format!("beta{}", j + 1));
+        }
+        if n_cut >= 1 {
+            out.push("cut1".to_string());
+            for k in 2..=n_cut {
+                out.push(format!("cut{}_delta", k));
+            }
+        }
+        out
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut out = vec![(f64::NEG_INFINITY, f64::INFINITY); p];
+        out.extend(vec![(-30.0, 30.0); n_cut]);
+        out
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut init = vec![0.0; p + n_cut];
+        if n_cut >= 1 {
+            // Roughly centered cutpoints with ~unit spacing.
+            let cut1 = -0.5 * ((n_cut as f64) - 1.0);
+            init[p] = cut1;
+            // softplus^{-1}(1) = ln(exp(1)-1)
+            let inv_sp1 = (1.0f64.exp() - 1.0).ln();
+            for j in 1..n_cut {
+                init[p + j] = inv_sp1;
+            }
+        }
+        init
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+
+        let p = self.x.p;
+        let beta = &params[..p];
+        let cut_raw = &params[p..];
+        let cuts = build_ordered_cutpoints(cut_raw)?;
+
+        let last = self.n_classes - 1;
+        let mut nll = 0.0;
+        for i in 0..self.x.n {
+            let eta = row_dot(self.x.row(i), beta);
+            let k = self.y[i];
+            let lp = if k == 0 {
+                let u0 = cuts[0] - eta;
+                log_sigmoid(u0)
+            } else if k == last {
+                let u = cuts[cuts.len() - 1] - eta;
+                log_sigmoid(-u)
+            } else {
+                let u_hi = cuts[k] - eta;
+                let u_lo = cuts[k - 1] - eta;
+                log_diff_exp(log_sigmoid(u_hi), log_sigmoid(u_lo))
+            };
+            nll -= lp;
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+
+        let p = self.x.p;
+        let beta = &params[..p];
+        let cut_raw = &params[p..];
+        let cuts = build_ordered_cutpoints(cut_raw)?;
+        let n_cut = cuts.len();
+
+        let last = self.n_classes - 1;
+        let mut grad_beta = vec![0.0; p];
+        let mut grad_cut = vec![0.0; n_cut];
+
+        for i in 0..self.x.n {
+            let row = self.x.row(i);
+            let eta = row_dot(row, beta);
+            let k = self.y[i];
+
+            let d_eta = if k == 0 {
+                let u0 = cuts[0] - eta;
+                let d = sigmoid(-u0);
+                grad_cut[0] += -d;
+                d
+            } else if k == last {
+                let u = cuts[n_cut - 1] - eta;
+                let f = sigmoid(u);
+                grad_cut[n_cut - 1] += f;
+                -f
+            } else {
+                let u_hi = cuts[k] - eta;
+                let u_lo = cuts[k - 1] - eta;
+                let f_hi = sigmoid(u_hi);
+                let f_lo = sigmoid(u_lo);
+                let p_k = (f_hi - f_lo).max(MIN_TAIL);
+                let pdf_hi = f_hi * (1.0 - f_hi);
+                let pdf_lo = f_lo * (1.0 - f_lo);
+
+                grad_cut[k] += -pdf_hi / p_k;
+                grad_cut[k - 1] += pdf_lo / p_k;
+
+                (pdf_hi - pdf_lo) / p_k
+            };
+
+            for j in 0..p {
+                grad_beta[j] += d_eta * row[j];
+            }
+        }
+
+        let mut suffix = vec![0.0; n_cut];
+        let mut acc = 0.0;
+        for j in (0..n_cut).rev() {
+            acc += grad_cut[j];
+            suffix[j] = acc;
+        }
+        let mut grad_raw = vec![0.0; n_cut];
+        grad_raw[0] = suffix[0];
+        for j in 1..n_cut {
+            grad_raw[j] = sigmoid(cut_raw[j]) * suffix[j];
+        }
+
+        let mut grad = Vec::with_capacity(p + n_cut);
+        grad.extend_from_slice(&grad_beta);
+        grad.extend_from_slice(&grad_raw);
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
+/// Ordinal probit regression with ordered cutpoints (same parameterization as [`OrdinalLogitModel`]).
+#[derive(Debug, Clone)]
+pub struct OrdinalProbitModel {
+    x: DenseX,
+    y: Vec<usize>,
+    n_classes: usize,
+}
+
+impl OrdinalProbitModel {
+    /// Create a new ordinal probit regression model.
+    pub fn new(x: Vec<Vec<f64>>, y: Vec<usize>, n_classes: usize) -> Result<Self> {
+        let x = DenseX::from_rows(x)?;
+        validate_xy_dims(x.n, x.p, x.data.len(), y.len())?;
+        if n_classes < 2 {
+            return Err(Error::Validation("n_classes must be >= 2".to_string()));
+        }
+        if y.iter().any(|&k| k >= n_classes) {
+            return Err(Error::Validation(
+                "y values must be in [0, n_classes)".to_string(),
+            ));
+        }
+        Ok(Self { x, y, n_classes })
+    }
+
+    #[inline]
+    fn n_cut(&self) -> usize {
+        self.n_classes - 1
+    }
+
+    #[inline]
+    fn dim_internal(&self) -> usize {
+        self.x.p + self.n_cut()
+    }
+}
+
+impl LogDensityModel for OrdinalProbitModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.dim_internal()
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut out = Vec::with_capacity(p + n_cut);
+        for j in 0..p {
+            out.push(format!("beta{}", j + 1));
+        }
+        if n_cut >= 1 {
+            out.push("cut1".to_string());
+            for k in 2..=n_cut {
+                out.push(format!("cut{}_delta", k));
+            }
+        }
+        out
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut out = vec![(f64::NEG_INFINITY, f64::INFINITY); p];
+        out.extend(vec![(-30.0, 30.0); n_cut]);
+        out
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        let p = self.x.p;
+        let n_cut = self.n_cut();
+        let mut init = vec![0.0; p + n_cut];
+        if n_cut >= 1 {
+            let cut1 = -0.5 * ((n_cut as f64) - 1.0);
+            init[p] = cut1;
+            let inv_sp1 = (1.0f64.exp() - 1.0).ln();
+            for j in 1..n_cut {
+                init[p + j] = inv_sp1;
+            }
+        }
+        init
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+
+        let p = self.x.p;
+        let beta = &params[..p];
+        let cut_raw = &params[p..];
+        let cuts = build_ordered_cutpoints(cut_raw)?;
+
+        let last = self.n_classes - 1;
+        let mut nll = 0.0;
+        for i in 0..self.x.n {
+            let eta = row_dot(self.x.row(i), beta);
+            let k = self.y[i];
+            let prob = if k == 0 {
+                normal_cdf(cuts[0] - eta)
+            } else if k == last {
+                1.0 - normal_cdf(cuts[cuts.len() - 1] - eta)
+            } else {
+                normal_cdf(cuts[k] - eta) - normal_cdf(cuts[k - 1] - eta)
+            };
+            nll -= prob.max(MIN_TAIL).ln();
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+
+        let p = self.x.p;
+        let beta = &params[..p];
+        let cut_raw = &params[p..];
+        let cuts = build_ordered_cutpoints(cut_raw)?;
+        let n_cut = cuts.len();
+
+        let last = self.n_classes - 1;
+        let mut grad_beta = vec![0.0; p];
+        let mut grad_cut = vec![0.0; n_cut];
+
+        for i in 0..self.x.n {
+            let row = self.x.row(i);
+            let eta = row_dot(row, beta);
+            let k = self.y[i];
+
+            let d_eta = if k == 0 {
+                let u0 = cuts[0] - eta;
+                let f0 = normal_phi(u0);
+                let p0 = normal_cdf(u0).max(MIN_TAIL);
+                grad_cut[0] += -f0 / p0;
+                f0 / p0
+            } else if k == last {
+                let u = cuts[n_cut - 1] - eta;
+                let f = normal_phi(u);
+                let p_s = (1.0 - normal_cdf(u)).max(MIN_TAIL);
+                grad_cut[n_cut - 1] += f / p_s;
+                -f / p_s
+            } else {
+                let u_hi = cuts[k] - eta;
+                let u_lo = cuts[k - 1] - eta;
+                let f_hi = normal_phi(u_hi);
+                let f_lo = normal_phi(u_lo);
+                let p_k = (normal_cdf(u_hi) - normal_cdf(u_lo)).max(MIN_TAIL);
+
+                grad_cut[k] += -f_hi / p_k;
+                grad_cut[k - 1] += f_lo / p_k;
+
+                (f_hi - f_lo) / p_k
+            };
+
+            for j in 0..p {
+                grad_beta[j] += d_eta * row[j];
+            }
+        }
+
+        let mut suffix = vec![0.0; n_cut];
+        let mut acc = 0.0;
+        for j in (0..n_cut).rev() {
+            acc += grad_cut[j];
+            suffix[j] = acc;
+        }
+        let mut grad_raw = vec![0.0; n_cut];
+        grad_raw[0] = suffix[0];
+        for j in 1..n_cut {
+            grad_raw[j] = sigmoid(cut_raw[j]) * suffix[j];
+        }
+
+        let mut grad = Vec::with_capacity(p + n_cut);
+        grad.extend_from_slice(&grad_beta);
+        grad.extend_from_slice(&grad_raw);
         Ok(grad)
     }
 
@@ -945,5 +1362,69 @@ mod tests {
             r.nll,
             fx.nll_at_hat
         );
+    }
+
+    fn finite_diff_grad<M: LogDensityModel>(m: &M, params: &[f64], eps: f64) -> Vec<f64> {
+        let mut g = vec![0.0; params.len()];
+        for i in 0..params.len() {
+            let mut p_hi = params.to_vec();
+            let mut p_lo = params.to_vec();
+            p_hi[i] += eps;
+            p_lo[i] -= eps;
+            let f_hi = m.nll(&p_hi).unwrap();
+            let f_lo = m.nll(&p_lo).unwrap();
+            g[i] = (f_hi - f_lo) / (2.0 * eps);
+        }
+        g
+    }
+
+    #[test]
+    fn test_ordinal_cutpoints_are_strictly_increasing() {
+        let raw = vec![-0.7, 0.0, 1.2, -2.0];
+        let cuts = build_ordered_cutpoints(&raw).unwrap();
+        assert_eq!(cuts.len(), raw.len());
+        for j in 1..cuts.len() {
+            assert!(cuts[j] > cuts[j - 1]);
+        }
+    }
+
+    #[test]
+    fn test_ordinal_logit_grad_matches_finite_diff_smoke() {
+        let x = vec![
+            vec![0.0],
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],
+            vec![5.0],
+        ];
+        let y = vec![0usize, 0, 1, 1, 2, 2];
+        let m = OrdinalLogitModel::new(x, y, 3).unwrap();
+        let p = vec![0.3, -0.2, 0.1]; // beta1, cut1, cut2_delta
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+        for i in 0..p.len() {
+            assert!((g[i] - g_fd[i]).abs() < 5e-5);
+        }
+    }
+
+    #[test]
+    fn test_ordinal_probit_grad_matches_finite_diff_smoke() {
+        let x = vec![
+            vec![0.0],
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],
+            vec![5.0],
+        ];
+        let y = vec![0usize, 0, 1, 1, 2, 2];
+        let m = OrdinalProbitModel::new(x, y, 3).unwrap();
+        let p = vec![0.25, -0.1, 0.2]; // beta1, cut1, cut2_delta
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+        for i in 0..p.len() {
+            assert!((g[i] - g_fd[i]).abs() < 5e-5);
+        }
     }
 }
