@@ -194,3 +194,39 @@ def test_golden_lmm_fixtures_have_near_zero_fixed_effects_gradients():
         g_inf = max(abs(v) for v in g) if g else 0.0
         # L-BFGS termination tolerances + float noise: keep this loose but meaningful.
         assert g_inf < 1e-5, f"{path.name}: fixed-effects gradient too large: {g_inf}"
+
+
+def test_golden_lmm_external_reference_matches_params_hat_when_present():
+    """If a fixture includes external_reference, require it to agree with params_hat.
+
+    This enables committing precomputed lme4/Stan numbers while keeping test-time
+    dependencies to the Python stdlib only.
+    """
+
+    for path in sorted(FIXTURES_DIR.glob("*.json")):
+        data = json.loads(path.read_text())
+        ext = data.get("external_reference")
+        if not isinstance(ext, dict):
+            continue
+        est = ext.get("estimates")
+        if not isinstance(est, dict):
+            raise AssertionError(f"{path.name}: external_reference.estimates missing")
+
+        names = data["parameter_names"]
+        params = list(map(float, data["params_hat"]))
+        if len(names) != len(params):
+            raise AssertionError(f"{path.name}: parameter_names/params_hat length mismatch")
+
+        # Build an external vector in the same order. Missing tau_u is allowed for intercept-only.
+        ext_vec = []
+        for nm in names:
+            if nm not in est:
+                raise AssertionError(f"{path.name}: external estimate missing {nm!r}")
+            ext_vec.append(float(est[nm]))
+
+        # Tolerance: external tools may differ slightly on small problems.
+        # This is a golden/parity check, not a strict numerical identity.
+        tol = 5e-3
+        for nm, a, b in zip(names, params, ext_vec):
+            if abs(a - b) > tol:
+                raise AssertionError(f"{path.name}: {nm} mismatch: {a} vs {b} (tol={tol})")
