@@ -23,6 +23,7 @@ from .glm._linalg import as_2d_float_list, mat_vec_mul
 
 
 ClusterKind = Literal["entity", "time", "none"]
+_GS_TOL = 1e-12
 
 
 def _validate_lengths(n: int, *seqs: Sequence[Any]) -> None:
@@ -143,6 +144,65 @@ def _two_way_demean(y: List[float], x: List[List[float]], entity: Sequence[Any],
         x_dd.append([float(xi[j]) - float(mxg[j]) - float(mxt[j]) + float(mean_x_all[j]) for j in range(k)])
 
     return y_dd, x_dd, n_ent, n_time
+
+
+def _dot(a: Sequence[float], b: Sequence[float]) -> float:
+    if len(a) != len(b):
+        raise ValueError("length mismatch")
+    return sum(float(x) * float(y) for x, y in zip(a, b))
+
+
+def _col_as_vec(x: Sequence[Sequence[float]], j: int) -> List[float]:
+    return [float(row[j]) for row in x]
+
+
+def _select_independent_columns(
+    x: List[List[float]],
+    names: List[str],
+    *,
+    mandatory: Optional[Sequence[int]] = None,
+    tol: float = _GS_TOL,
+) -> Tuple[List[List[float]], List[str]]:
+    """Select a numerically linearly independent subset of columns from X.
+
+    This prevents singular XtX in small samples and drops columns absorbed by FE.
+    Uses a simple modified Gram-Schmidt on columns.
+    """
+    if not x:
+        raise ValueError("X must be non-empty")
+    k = len(x[0])
+    if k == 0:
+        raise ValueError("X must have at least 1 column")
+    if len(names) != k:
+        raise ValueError("column_names length mismatch")
+    if any(len(row) != k for row in x):
+        raise ValueError("X must be rectangular")
+
+    mand = sorted(set(int(i) for i in (mandatory or []) if 0 <= int(i) < k))
+    order = mand + [j for j in range(k) if j not in set(mand)]
+
+    basis: List[List[float]] = []
+    kept: List[int] = []
+    tol2 = float(tol) * float(tol)
+    n = len(x)
+
+    for j in order:
+        v = _col_as_vec(x, j)
+        for b in basis:
+            proj = _dot(v, b)
+            if proj != 0.0:
+                for i in range(n):
+                    v[i] -= proj * b[i]
+        norm2 = _dot(v, v)
+        if norm2 > tol2:
+            norm = norm2 ** 0.5
+            basis.append([vi / norm for vi in v])
+            kept.append(j)
+
+    kept_sorted = sorted(kept)
+    x2 = [[row[j] for j in kept_sorted] for row in x]
+    names2 = [names[j] for j in kept_sorted]
+    return x2, names2
 
 
 @dataclass(frozen=True)
@@ -294,10 +354,20 @@ def _twfe_fit_ols(
 
     y_dd, x_dd, n_ent, n_time = _two_way_demean(y, x, entity, time)
 
-    fit = nextstat.glm.linear.fit(x_dd, y_dd, include_intercept=False)
+    mandatory_idx: List[int] = []
+    if "treat_post" in column_names:
+        mandatory_idx = [column_names.index("treat_post")]
+
+    x_sel, names_sel = _select_independent_columns(x_dd, list(column_names), mandatory=mandatory_idx)
+    if mandatory_idx and "treat_post" not in names_sel:
+        raise ValueError("treat_post is not identifiable (absorbed by FE or has no variation)")
+    if n <= len(names_sel):
+        raise ValueError("Need n > n_params after TWFE transformation; reduce controls or narrow event-study window")
+
+    fit = nextstat.glm.linear.fit(x_sel, y_dd, include_intercept=False)
     coef = [float(v) for v in fit.coef]
 
-    yhat = mat_vec_mul(x_dd, coef)
+    yhat = mat_vec_mul(x_sel, coef)
     resid = [obs - pred for obs, pred in zip(y_dd, yhat)]
 
     cluster = str(cluster).lower()  # type: ignore[assignment]
@@ -310,7 +380,7 @@ def _twfe_fit_ols(
     else:
         groups = entity if cluster == "entity" else time
         cov = nextstat.robust.ols_cluster_covariance(
-            x_dd,
+            x_sel,
             resid,
             groups,
             include_intercept=False,
@@ -322,7 +392,7 @@ def _twfe_fit_ols(
         coef=coef,
         standard_errors=[float(v) for v in se],
         covariance=[[float(v) for v in row] for row in cov],
-        column_names=list(column_names),
+        column_names=list(names_sel),
         n_obs=n,
         n_entities=n_ent,
         n_times=n_time,
@@ -425,18 +495,7 @@ def did_twfe_from_formula(
         time=cols[time],
         cluster=cluster,
     )
-    # Keep nicer names in returned fit.
-    twfe = TwfeFit(
-        coef=did.twfe.coef,
-        standard_errors=did.twfe.standard_errors,
-        covariance=did.twfe.covariance,
-        column_names=["treat_post"] + control_names,
-        n_obs=did.twfe.n_obs,
-        n_entities=did.twfe.n_entities,
-        n_times=did.twfe.n_times,
-        cluster=did.twfe.cluster,
-    )
-    return DidTwfeFit(att=did.att, att_se=did.att_se, twfe=twfe)
+    return did
 
 
 def relative_time(time: Sequence[Any], event_time: Union[int, float, Sequence[Any]]) -> List[int]:
@@ -475,9 +534,17 @@ def event_study_regressors(
         for j, k in enumerate(ks):
             cols[j].append(ta * (1.0 if int(rt) == int(k) else 0.0))
 
-    x = [[cols[j][i] for j in range(len(ks))] for i in range(len(rel_time))]
-    names = [f"event[{k}]" for k in ks]
-    return x, names, ks
+    # Drop bins with no support to avoid singular designs in small samples.
+    keep: List[int] = []
+    for j, col in enumerate(cols):
+        if any(float(v) != 0.0 for v in col):
+            keep.append(j)
+
+    cols2 = [cols[j] for j in keep]
+    ks2 = [ks[j] for j in keep]
+    x = [[cols2[j][i] for j in range(len(ks2))] for i in range(len(rel_time))]
+    names = [f"event[{k}]" for k in ks2]
+    return x, names, ks2
 
 
 @dataclass(frozen=True)
@@ -517,6 +584,8 @@ def event_study_twfe_fit(
 
     rel = relative_time(time, event_time)
     x_ev, names_ev, ks = event_study_regressors(treat, rel, window=window, reference=reference)
+    if not ks:
+        raise ValueError("no supported event-study bins in the requested window")
 
     if x is None:
         x_all = x_ev
@@ -529,11 +598,20 @@ def event_study_twfe_fit(
         names = names_ev + [f"x{i}" for i in range(len(x_raw[0]))]
 
     twfe = _twfe_fit_ols(x_all, y2, entity=entity, time=time, cluster=cluster, column_names=names)
+    n_ev = 0
+    for nm in twfe.column_names:
+        if nm.startswith("event[") and nm.endswith("]"):
+            n_ev += 1
+        else:
+            break
+    rel_kept: List[int] = []
+    for nm in twfe.column_names[:n_ev]:
+        rel_kept.append(int(nm[len("event[") : -1]))
     return EventStudyTwfeFit(
-        rel_times=list(ks),
-        coef=list(twfe.coef[: len(ks)]),
-        standard_errors=list(twfe.standard_errors[: len(ks)]),
-        covariance=[list(r[: len(ks)]) for r in twfe.covariance[: len(ks)]],
+        rel_times=rel_kept,
+        coef=list(twfe.coef[:n_ev]),
+        standard_errors=list(twfe.standard_errors[:n_ev]),
+        covariance=[list(r[:n_ev]) for r in twfe.covariance[:n_ev]],
         reference=int(reference),
         n_obs=twfe.n_obs,
         n_entities=twfe.n_entities,
