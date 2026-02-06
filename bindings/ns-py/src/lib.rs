@@ -507,6 +507,78 @@ impl Prior {
     }
 }
 
+#[derive(Debug, Clone)]
+struct WithPriors<M> {
+    model: M,
+    priors: Vec<Prior>,
+}
+
+impl<M: LogDensityModel> LogDensityModel for WithPriors<M> {
+    type Prepared<'a>
+        = ns_core::traits::PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.model.dim()
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.model.parameter_names()
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        self.model.parameter_bounds()
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        self.model.parameter_init()
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        let mut out = self.model.nll(params)?;
+        for (i, pr) in self.priors.iter().enumerate() {
+            match pr {
+                Prior::Flat => {}
+                Prior::Normal { center, width } => {
+                    if !width.is_finite() || *width <= 0.0 {
+                        return Err(NsError::Validation(format!(
+                            "Normal prior width must be finite and > 0, got {}",
+                            width
+                        )));
+                    }
+                    let pull = (params[i] - center) / width;
+                    out += 0.5 * pull * pull;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        let mut g = self.model.grad_nll(params)?;
+        for (i, pr) in self.priors.iter().enumerate() {
+            match pr {
+                Prior::Flat => {}
+                Prior::Normal { center, width } => {
+                    if !width.is_finite() || *width <= 0.0 {
+                        return Err(NsError::Validation(format!(
+                            "Normal prior width must be finite and > 0, got {}",
+                            width
+                        )));
+                    }
+                    g[i] += (params[i] - center) / (width * width);
+                }
+            }
+        }
+        Ok(g)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        ns_core::traits::PreparedModelRef::new(self)
+    }
+}
+
 #[pymethods]
 impl PyPosterior {
     #[new]

@@ -14,5 +14,9 @@ pub mod cls;
 /// Profile likelihood artifacts (q_mu curves).
 pub mod profile;
 
+/// Nuisance-parameter ranking artifacts (impact on POI).
+pub mod ranking;
+
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
 pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
+pub use ranking::RankingArtifact;

@@ -222,6 +222,21 @@ enum VizCommands {
         #[arg(long, default_value = "1")]
         threads: usize,
     },
+
+    /// Nuisance-parameter ranking artifact (impact on POI)
+    Ranking {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -487,6 +502,9 @@ fn main() -> Result<()> {
                 threads,
                 cli.bundle.as_ref(),
             ),
+            VizCommands::Ranking { input, output, threads } => {
+                cmd_viz_ranking(&input, output.as_ref(), threads, cli.bundle.as_ref())
+            }
         },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {

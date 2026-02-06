@@ -46,6 +46,15 @@ def test_viz_artifacts_contracts():
     assert len(prof["q_mu_values"]) == 2
     assert len(prof["twice_delta_nll"]) == 2
 
+    rank = nextstat.viz.ranking_artifact(model, top_n=5)
+    assert {"entries", "n_total", "n_returned"} <= set(rank.keys())
+    assert isinstance(rank["entries"], list)
+    assert int(rank["n_total"]) >= int(rank["n_returned"])
+    assert int(rank["n_returned"]) == len(rank["entries"])
+    assert int(rank["n_total"]) > 0
+    assert len(rank["entries"]) > 0
+    assert {"name", "delta_mu_up", "delta_mu_down", "pull", "constraint"} <= set(rank["entries"][0].keys())
+
 
 def test_plot_helpers_require_matplotlib():
     with pytest.raises(ImportError):
@@ -54,3 +63,5 @@ def test_plot_helpers_require_matplotlib():
         nextstat.viz.plot_brazil_limits({"alpha": 0.05, "points": []})
     with pytest.raises(ImportError):
         nextstat.viz.plot_profile_curve({"points": []})
+    with pytest.raises(ImportError):
+        nextstat.viz.plot_ranking({"entries": []})

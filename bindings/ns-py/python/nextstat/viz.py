@@ -25,6 +25,28 @@ def profile_curve(model, mu_values: Sequence[float], *, data: Optional[list[floa
     return _core.profile_curve(model, list(mu_values), data=data)
 
 
+def ranking_artifact(model, *, top_n: Optional[int] = None) -> Mapping[str, Any]:
+    """Compute nuisance-parameter ranking artifact (impact on POI).
+
+    Returns a dict with:
+    - entries: list of {name, delta_mu_up, delta_mu_down, pull, constraint}
+    - n_total: total number of entries (after internal fit failures are dropped)
+    - n_returned: number of entries returned (after `top_n`)
+    """
+    from . import _core
+
+    entries = list(_core.ranking(model))
+    n_total = len(entries)
+
+    if top_n is not None:
+        n = int(top_n)
+        if n < 0:
+            raise ValueError("top_n must be >= 0")
+        entries = entries[:n]
+
+    return {"entries": entries, "n_total": n_total, "n_returned": len(entries)}
+
+
 def _require_matplotlib():
     try:
         import matplotlib.pyplot as plt  # noqa: F401
@@ -260,10 +282,97 @@ def plot_profile_curve(
     return ax
 
 
+def plot_ranking(
+    artifact: Mapping[str, Any] | Sequence[Mapping[str, Any]],
+    *,
+    ax_impact=None,
+    ax_pull=None,
+    top_n: Optional[int] = None,
+    poi_label: str = "mu",
+    title: Optional[str] = None,
+):
+    """Plot a standard ranking plot (NP impacts + pulls/constraints).
+
+    Input can be:
+    - the output of `ranking_artifact(...)`, or
+    - a list of ranking entries (dict-like).
+    """
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    if isinstance(artifact, Mapping) and "entries" in artifact:
+        entries = list(artifact.get("entries") or [])
+    else:
+        entries = list(artifact)  # type: ignore[arg-type]
+
+    if top_n is not None:
+        n = int(top_n)
+        if n < 0:
+            raise ValueError("top_n must be >= 0")
+        entries = entries[:n]
+
+    if not entries:
+        raise ValueError("ranking plot requires at least 1 entry")
+
+    names = [str(e.get("name", "")) for e in entries]
+    d_up = [float(e.get("delta_mu_up", 0.0)) for e in entries]
+    d_dn = [float(e.get("delta_mu_down", 0.0)) for e in entries]
+    pull = [float(e.get("pull", 0.0)) for e in entries]
+    constr = [abs(float(e.get("constraint", 0.0))) for e in entries]
+
+    y = list(range(len(entries)))
+
+    if ax_impact is None or ax_pull is None:
+        fig, (ax_impact, ax_pull) = plt.subplots(
+            ncols=2,
+            sharey=True,
+            figsize=(9.6, max(3.2, 0.28 * len(entries) + 1.4)),
+            gridspec_kw={"width_ratios": [3.2, 1.6], "wspace": 0.05},
+        )
+    else:
+        fig = ax_impact.figure
+
+    # Impact panel
+    ax_impact.barh(y, d_dn, color="#93C5FD", alpha=0.85, label=f"Δ{poi_label} (NP −1σ)")
+    ax_impact.barh(y, d_up, color="#1D4ED8", alpha=0.85, label=f"Δ{poi_label} (NP +1σ)")
+    ax_impact.axvline(0.0, color="#111827", lw=1.0)
+    ax_impact.grid(True, axis="x", alpha=0.25)
+    ax_impact.set_xlabel(f"Δ{poi_label}")
+
+    # Pull panel (in units of prefit σ, with postfit constraint as errorbar)
+    ax_pull.errorbar(
+        pull,
+        y,
+        xerr=constr,
+        fmt="o",
+        ms=4.5,
+        lw=1.0,
+        capsize=2.0,
+        color="#111827",
+    )
+    ax_pull.axvline(0.0, color="#111827", lw=1.0)
+    ax_pull.axvline(1.0, color="#6B7280", lw=1.0, ls=":")
+    ax_pull.axvline(-1.0, color="#6B7280", lw=1.0, ls=":")
+    ax_pull.grid(True, axis="x", alpha=0.25)
+    ax_pull.set_xlabel("pull (± constraint)")
+
+    ax_impact.set_yticks(y)
+    ax_impact.set_yticklabels(names)
+    ax_impact.invert_yaxis()
+
+    if title:
+        fig.suptitle(title)
+
+    ax_impact.legend(frameon=False, loc="lower right")
+    return ax_impact, ax_pull
+
+
 __all__ = [
     "cls_curve",
     "profile_curve",
+    "ranking_artifact",
     "plot_cls_curve",
     "plot_brazil_limits",
     "plot_profile_curve",
+    "plot_ranking",
 ]
