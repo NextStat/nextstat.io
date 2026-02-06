@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "simple_fixture",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/simple_workspace.json",
+      "measurement": "GaussExample",
+      "mu_grid": { "start": 0.0, "stop": 5.0, "points": 51 }
+    },
+    {
+      "name": "histfactory_fixture",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/histfactory/combination.xml",
+      "rootdir": "tests/fixtures/histfactory",
+      "mu_grid": { "start": 0.0, "stop": 5.0, "points": 51 }
+    }
+  ]
+}
+

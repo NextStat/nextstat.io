@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 mod report;
+mod run;
 
 #[derive(Parser)]
 #[command(name = "nextstat")]
@@ -29,6 +30,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// One-command workflow: HistFactory export → workspace → fit → artifacts
+    Run {
+        /// Run config (YAML by default; JSON if extension is .json)
+        #[arg(long)]
+        config: PathBuf,
+    },
+
     /// Perform MLE fit
     Fit {
         /// Input workspace (pyhf JSON)
@@ -607,6 +615,7 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().with_max_level(cli.log_level).with_target(false).init();
 
     match cli.command {
+        Commands::Run { config } => cmd_run(&config, cli.bundle.as_ref()),
         Commands::Fit { input, output, threads } => {
             cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref())
         }
@@ -832,6 +841,51 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
+    let cfg = run::read_run_config(config_path)?;
+    let paths = run::derive_paths(&cfg.out_dir);
+
+    ensure_out_dir(&paths.out_dir, cfg.overwrite)?;
+    std::fs::create_dir_all(&paths.inputs_dir)?;
+    std::fs::create_dir_all(&paths.artifacts_dir)?;
+
+    tracing::info!(path = %cfg.histfactory_xml.display(), "importing HistFactory export");
+    let ws = ns_translate::histfactory::from_xml(&cfg.histfactory_xml)?;
+    write_json_file(&paths.workspace_json, &serde_json::to_value(&ws)?)?;
+
+    cmd_report(
+        &paths.workspace_json,
+        &cfg.histfactory_xml,
+        None,
+        &paths.artifacts_dir,
+        /*overwrite*/ true,
+        cfg.include_covariance,
+        cfg.render,
+        cfg.pdf.as_ref(),
+        cfg.svg_dir.as_ref(),
+        cfg.python.as_ref(),
+        cfg.skip_uncertainty,
+        cfg.uncertainty_grouping.as_str(),
+        cfg.threads,
+    )?;
+
+    if let Some(dir) = bundle {
+        run::write_run_bundle(dir, config_path, &cfg)?;
+    }
+
+    let summary = serde_json::json!({
+        "out_dir": paths.out_dir,
+        "inputs": {
+            "histfactory_xml": cfg.histfactory_xml,
+            "workspace_json": paths.workspace_json,
+        },
+        "artifacts_dir": paths.artifacts_dir,
+    });
+    println!("{}", serde_json::to_string_pretty(&summary)?);
+
+    Ok(())
 }
 
 fn cmd_import_histfactory(

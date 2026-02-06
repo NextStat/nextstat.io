@@ -3,8 +3,8 @@ schema_version: trex_analysis_spec_v0
 
 analysis:
   name: Example HEP Fit
-  description: Minimal TREx-style analysis spec for HistFactory exports (M0).
-  tags: ["example", "histfactory", "trex"]
+  description: TREx-style analysis spec for one-command deterministic workflows.
+  tags: ["example", "histfactory", "trex", "analysis-spec"]
 
 inputs:
   mode: histfactory_xml
@@ -12,42 +12,42 @@ inputs:
     export_dir: /abs/path/to/trex/output
     # If null, NextStat should auto-discover combination.xml under export_dir.
     combination_xml: null
-    # Measurement name inside the workspace/model.
+    # Measurement name inside the workspace/model (reserved; informational in v0).
     measurement: measurement
 
 execution:
   determinism:
     threads: 1
-  fit:
+
+  import:
     enabled: true
-    poi: mu
-    data: observed
+    output_json: tmp/trex_workspace.json
+
+  fit:
+    enabled: false
+    output_json: tmp/trex_fit.json
+
   profile_scan:
     enabled: true
-    poi: mu
-    grid:
-      start: 0.0
-      stop: 5.0
-      points: 51
-    tolerances:
-      dq_atol: 1.0e-3
-      mu_hat_atol: 1.0e-3
+    start: 0.0
+    stop: 5.0
+    points: 51
+    output_json: tmp/trex_scan.json
 
-reports:
-  distributions:
+  report:
     enabled: true
-    output_json: tmp/trex_report_distributions.json
-    ratio:
-      kind: data_over_total
-  pulls:
-    enabled: true
-    output_json: tmp/trex_report_pulls.json
-  corr:
-    enabled: true
-    output_json: tmp/trex_report_corr.json
-  yields:
-    enabled: true
-    output_json: tmp/trex_report_yields.json
+    out_dir: tmp/trex_report
+    overwrite: true
+    include_covariance: false
+    # If null and mode=histfactory_xml, use inputs.histfactory.combination_xml (or its auto-discovered value).
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
 
 gates:
   baseline_compare:
@@ -55,4 +55,3 @@ gates:
     baseline_dir: tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

@@ -65,12 +65,24 @@ def main() -> int:
     cases: List[Dict[str, Any]] = []
 
     if args.include_fixtures:
+        fixture_ws = Path("tests/fixtures/simple_workspace.json")
         cases.append(
             {
                 "name": "simple_fixture",
                 "mode": "pyhf-json",
-                "pyhf_json": "tests/fixtures/simple_workspace.json",
+                "pyhf_json": _rel_or_abs(fixture_ws, base=Path.cwd(), absolute=args.absolute_paths),
                 "measurement": "GaussExample",
+                "mu_grid": {"start": args.start, "stop": args.stop, "points": args.points},
+            }
+        )
+        fixture_hf_xml = Path("tests/fixtures/histfactory/combination.xml")
+        fixture_hf_rootdir = Path("tests/fixtures/histfactory")
+        cases.append(
+            {
+                "name": "histfactory_fixture",
+                "mode": "histfactory-xml",
+                "histfactory_xml": _rel_or_abs(fixture_hf_xml, base=Path.cwd(), absolute=args.absolute_paths),
+                "rootdir": _rel_or_abs(fixture_hf_rootdir, base=Path.cwd(), absolute=args.absolute_paths),
                 "mu_grid": {"start": args.start, "stop": args.stop, "points": args.points},
             }
         )
