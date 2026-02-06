@@ -178,6 +178,72 @@ impl RandomSlope {
     }
 }
 
+#[derive(Debug, Clone)]
+struct CorrelatedInterceptSlope {
+    feature_idx: usize,
+    n_groups: usize,
+    group_idx: Vec<usize>, // length n
+    // LKJ prior strength (eta). For 2x2 correlation matrix, density is
+    // proportional to (1 - rho^2)^(eta-1).
+    lkj_eta: f64,
+    // Parameter indices in the model parameter vector:
+    mu_alpha_idx: usize,
+    mu_u_idx: usize,
+    tau_alpha_idx: usize,
+    tau_u_idx: usize,
+    rho_idx: usize,     // correlation rho in (-1,1)
+    z_offset: usize,    // z_{g,0}, z_{g,1} packed as 2*n_groups
+    // Priors:
+    mu_alpha_prior: NormalPrior,
+    mu_u_prior: NormalPrior,
+    logsigma_tau_alpha_m: f64,
+    logsigma_tau_alpha_s: f64,
+    logsigma_tau_u_m: f64,
+    logsigma_tau_u_s: f64,
+}
+
+impl CorrelatedInterceptSlope {
+    fn validate(&self, n: usize, p: usize) -> Result<()> {
+        if self.feature_idx >= p {
+            return Err(Error::Validation(format!(
+                "correlated slope feature_idx must be in [0, p), got {} (p={})",
+                self.feature_idx, p
+            )));
+        }
+        if self.n_groups == 0 {
+            return Err(Error::Validation("n_groups must be > 0".to_string()));
+        }
+        if self.group_idx.len() != n {
+            return Err(Error::Validation(format!(
+                "group_idx length must match n: expected {}, got {}",
+                n,
+                self.group_idx.len()
+            )));
+        }
+        if self.group_idx.iter().any(|&g| g >= self.n_groups) {
+            return Err(Error::Validation("group_idx must be in [0, n_groups)".to_string()));
+        }
+        if !self.lkj_eta.is_finite() || self.lkj_eta <= 0.0 {
+            return Err(Error::Validation("lkj_eta must be finite and > 0".to_string()));
+        }
+        self.mu_alpha_prior.validate()?;
+        self.mu_u_prior.validate()?;
+        if !self.logsigma_tau_alpha_m.is_finite() {
+            return Err(Error::Validation("logsigma_tau_alpha_m must be finite".to_string()));
+        }
+        if !self.logsigma_tau_alpha_s.is_finite() || self.logsigma_tau_alpha_s <= 0.0 {
+            return Err(Error::Validation("logsigma_tau_alpha_s must be finite and > 0".to_string()));
+        }
+        if !self.logsigma_tau_u_m.is_finite() {
+            return Err(Error::Validation("logsigma_tau_u_m must be finite".to_string()));
+        }
+        if !self.logsigma_tau_u_s.is_finite() || self.logsigma_tau_u_s <= 0.0 {
+            return Err(Error::Validation("logsigma_tau_u_s must be finite and > 0".to_string()));
+        }
+        Ok(())
+    }
+}
+
 /// A composed GLM-style model: linear predictor + likelihood + priors.
 ///
 /// Supported:
@@ -194,6 +260,7 @@ pub struct ComposedGlmModel {
     penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
     random_slope: Option<RandomSlope>,
+    correlated: Option<CorrelatedInterceptSlope>,
 }
 
 impl ComposedGlmModel {
@@ -205,6 +272,9 @@ impl ComposedGlmModel {
         }
         if let Some(rs) = &self.random_slope {
             dim += 2 + rs.n_groups;
+        }
+        if let Some(c) = &self.correlated {
+            dim += 5 + 2 * c.n_groups;
         }
         dim
     }
@@ -266,6 +336,15 @@ impl ComposedGlmModel {
         }
         if let Some(rs) = &self.random_slope {
             rs.validate(n, self.x.p)?;
+        }
+        if let Some(c) = &self.correlated {
+            if self.random_intercept.is_some() || self.random_slope.is_some() {
+                return Err(Error::Validation(
+                    "correlated random effects cannot be combined with random_intercept/random_slope"
+                        .to_string(),
+                ));
+            }
+            c.validate(n, self.x.p)?;
         }
         Ok(())
     }
@@ -331,6 +410,18 @@ impl LogDensityModel for ComposedGlmModel {
                 }
             }
         }
+        if let Some(c) = &self.correlated {
+            let k = c.feature_idx + 1;
+            out.push("mu_alpha".to_string());
+            out.push(format!("mu_u_beta{}", k));
+            out.push("tau_alpha".to_string());
+            out.push(format!("tau_u_beta{}", k));
+            out.push(format!("rho_alpha_u_beta{}", k));
+            for g in 0..c.n_groups {
+                out.push(format!("z_alpha_g{}", g + 1));
+                out.push(format!("z_u_beta{}_g{}", k, g + 1));
+            }
+        }
         out
     }
 
@@ -349,6 +440,14 @@ impl LogDensityModel for ComposedGlmModel {
             out.push((0.0, f64::INFINITY)); // sigma_u_beta
             out.extend(vec![(f64::NEG_INFINITY, f64::INFINITY); rs.n_groups]);
         }
+        if let Some(c) = &self.correlated {
+            out.push((f64::NEG_INFINITY, f64::INFINITY)); // mu_alpha
+            out.push((f64::NEG_INFINITY, f64::INFINITY)); // mu_u_beta
+            out.push((0.0, f64::INFINITY)); // tau_alpha
+            out.push((0.0, f64::INFINITY)); // tau_u_beta
+            out.push((-1.0, 1.0)); // rho
+            out.extend(vec![(f64::NEG_INFINITY, f64::INFINITY); 2 * c.n_groups]);
+        }
         out
     }
 
@@ -363,6 +462,14 @@ impl LogDensityModel for ComposedGlmModel {
             out.push(0.0); // mu_u_beta
             out.push(1.0); // sigma_u_beta
             out.extend(vec![0.0; rs.n_groups]);
+        }
+        if let Some(c) = &self.correlated {
+            out.push(0.0); // mu_alpha
+            out.push(0.0); // mu_u_beta
+            out.push(1.0); // tau_alpha
+            out.push(1.0); // tau_u_beta
+            out.push(0.0); // rho
+            out.extend(vec![0.0; 2 * c.n_groups]);
         }
         out
     }
@@ -469,6 +576,70 @@ impl LogDensityModel for ComposedGlmModel {
             }
         }
 
+        // Correlated random effects prior block (non-centered).
+        if let Some(c) = &self.correlated {
+            let mu_alpha = params[c.mu_alpha_idx];
+            let mu_u = params[c.mu_u_idx];
+            let tau_alpha = params[c.tau_alpha_idx];
+            let tau_u = params[c.tau_u_idx];
+            let rho = params[c.rho_idx];
+
+            if !tau_alpha.is_finite() || tau_alpha <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "tau_alpha must be finite and > 0, got {}",
+                    tau_alpha
+                )));
+            }
+            if !tau_u.is_finite() || tau_u <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "tau_u_beta must be finite and > 0, got {}",
+                    tau_u
+                )));
+            }
+            if !rho.is_finite() || rho <= -1.0 || rho >= 1.0 {
+                return Err(Error::Validation(format!(
+                    "rho must be finite and in (-1, 1), got {}",
+                    rho
+                )));
+            }
+
+            // mu_alpha prior: Normal
+            let mu_sig2 = c.mu_alpha_prior.sigma * c.mu_alpha_prior.sigma;
+            let v = mu_alpha - c.mu_alpha_prior.mu;
+            nll += 0.5 * v * v / mu_sig2;
+
+            // mu_u prior: Normal
+            let mu_sig2 = c.mu_u_prior.sigma * c.mu_u_prior.sigma;
+            let v = mu_u - c.mu_u_prior.mu;
+            nll += 0.5 * v * v / mu_sig2;
+
+            // tau priors: LogNormal (up to constant)
+            let t = tau_alpha.ln();
+            let z = (t - c.logsigma_tau_alpha_m) / c.logsigma_tau_alpha_s;
+            nll += 0.5 * z * z + t;
+
+            let t = tau_u.ln();
+            let z = (t - c.logsigma_tau_u_m) / c.logsigma_tau_u_s;
+            nll += 0.5 * z * z + t;
+
+            // LKJ(eta) for 2x2 correlation matrix: logp ∝ (eta-1) * ln(1 - rho^2).
+            // Add negative log density.
+            let one_minus_r2 = 1.0 - rho * rho;
+            if one_minus_r2 <= 0.0 {
+                return Err(Error::Validation("rho must satisfy 1 - rho^2 > 0".to_string()));
+            }
+            nll += -(c.lkj_eta - 1.0) * one_minus_r2.ln();
+
+            // z ~ Normal(0, I) for each group (2 dims).
+            let mut sum_sq = 0.0;
+            for g in 0..c.n_groups {
+                let z1 = params[c.z_offset + 2 * g];
+                let z2 = params[c.z_offset + 2 * g + 1];
+                sum_sq += z1 * z1 + z2 * z2;
+            }
+            nll += 0.5 * sum_sq;
+        }
+
         // Likelihood block.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
@@ -494,6 +665,24 @@ impl LogDensityModel for ComposedGlmModel {
                 } else {
                     eta += params[rs.u_offset + g] * xk;
                 }
+            }
+            if let Some(c) = &self.correlated {
+                let g = c.group_idx[i];
+                let xk = self.x.row(i)[c.feature_idx];
+
+                let mu_alpha = params[c.mu_alpha_idx];
+                let mu_u = params[c.mu_u_idx];
+                let tau_alpha = params[c.tau_alpha_idx];
+                let tau_u = params[c.tau_u_idx];
+                let rho = params[c.rho_idx];
+                let s = (1.0 - rho * rho).sqrt();
+
+                let z1 = params[c.z_offset + 2 * g];
+                let z2 = params[c.z_offset + 2 * g + 1];
+
+                let alpha_g = mu_alpha + tau_alpha * z1;
+                let u_g = mu_u + tau_u * (rho * z1 + s * z2);
+                eta += alpha_g + u_g * xk;
             }
 
             match &self.likelihood {
@@ -626,6 +815,66 @@ impl LogDensityModel for ComposedGlmModel {
             }
         }
 
+        // Correlated random effects contributions (priors + z ~ Normal(0,1)).
+        if let Some(c) = &self.correlated {
+            let mu_alpha = params[c.mu_alpha_idx];
+            let mu_u = params[c.mu_u_idx];
+            let tau_alpha = params[c.tau_alpha_idx];
+            let tau_u = params[c.tau_u_idx];
+            let rho = params[c.rho_idx];
+
+            if !tau_alpha.is_finite() || tau_alpha <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "tau_alpha must be finite and > 0, got {}",
+                    tau_alpha
+                )));
+            }
+            if !tau_u.is_finite() || tau_u <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "tau_u_beta must be finite and > 0, got {}",
+                    tau_u
+                )));
+            }
+            if !rho.is_finite() || rho <= -1.0 || rho >= 1.0 {
+                return Err(Error::Validation(format!(
+                    "rho must be finite and in (-1, 1), got {}",
+                    rho
+                )));
+            }
+            let one_minus_r2 = 1.0 - rho * rho;
+            if one_minus_r2 <= 0.0 {
+                return Err(Error::Validation("rho must satisfy 1 - rho^2 > 0".to_string()));
+            }
+
+            // mu priors.
+            let mu_sig2 = c.mu_alpha_prior.sigma * c.mu_alpha_prior.sigma;
+            grad[c.mu_alpha_idx] += (mu_alpha - c.mu_alpha_prior.mu) / mu_sig2;
+            let mu_sig2 = c.mu_u_prior.sigma * c.mu_u_prior.sigma;
+            grad[c.mu_u_idx] += (mu_u - c.mu_u_prior.mu) / mu_sig2;
+
+            // tau priors (LogNormal).
+            let t = tau_alpha.ln();
+            let z = (t - c.logsigma_tau_alpha_m) / c.logsigma_tau_alpha_s;
+            let ddt = z / (c.logsigma_tau_alpha_s) + 1.0;
+            grad[c.tau_alpha_idx] += ddt * (1.0 / tau_alpha);
+
+            let t = tau_u.ln();
+            let z = (t - c.logsigma_tau_u_m) / c.logsigma_tau_u_s;
+            let ddt = z / (c.logsigma_tau_u_s) + 1.0;
+            grad[c.tau_u_idx] += ddt * (1.0 / tau_u);
+
+            // LKJ(eta): NLL = -(eta-1) * ln(1-rho^2) + const.
+            grad[c.rho_idx] += 2.0 * (c.lkj_eta - 1.0) * rho / one_minus_r2;
+
+            // z ~ Normal(0,1)
+            for g in 0..c.n_groups {
+                let z1 = params[c.z_offset + 2 * g];
+                let z2 = params[c.z_offset + 2 * g + 1];
+                grad[c.z_offset + 2 * g] += z1;
+                grad[c.z_offset + 2 * g + 1] += z2;
+            }
+        }
+
         // Likelihood contributions.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
@@ -656,6 +905,29 @@ impl LogDensityModel for ComposedGlmModel {
                     eta += params[rs.u_offset + g] * xk;
                 }
                 Some((g, xk))
+            } else {
+                None
+            };
+
+            let corr_state = if let Some(c) = &self.correlated {
+                let g = c.group_idx[i];
+                let xk = self.x.row(i)[c.feature_idx];
+
+                let mu_alpha = params[c.mu_alpha_idx];
+                let mu_u = params[c.mu_u_idx];
+                let tau_alpha = params[c.tau_alpha_idx];
+                let tau_u = params[c.tau_u_idx];
+                let rho = params[c.rho_idx];
+                let s = (1.0 - rho * rho).sqrt();
+
+                let z1 = params[c.z_offset + 2 * g];
+                let z2 = params[c.z_offset + 2 * g + 1];
+
+                let alpha_g = mu_alpha + tau_alpha * z1;
+                let u_g = mu_u + tau_u * (rho * z1 + s * z2);
+                eta += alpha_g + u_g * xk;
+
+                Some((g, xk, z1, z2))
             } else {
                 None
             };
@@ -701,6 +973,25 @@ impl LogDensityModel for ComposedGlmModel {
                     grad[rs.u_offset + g] += d_eta * xk;
                 }
             }
+            if let (Some(c), Some((g, xk, z1, z2))) = (&self.correlated, corr_state) {
+                let tau_alpha = params[c.tau_alpha_idx];
+                let tau_u = params[c.tau_u_idx];
+                let rho = params[c.rho_idx];
+                let one_minus_r2 = 1.0 - rho * rho;
+                let s = one_minus_r2.sqrt();
+                let ds_drho = -rho / s;
+
+                grad[c.mu_alpha_idx] += d_eta;
+                grad[c.mu_u_idx] += d_eta * xk;
+
+                grad[c.tau_alpha_idx] += d_eta * z1;
+                grad[c.tau_u_idx] += d_eta * (rho * z1 + s * z2) * xk;
+
+                grad[c.rho_idx] += d_eta * tau_u * (z1 + ds_drho * z2) * xk;
+
+                grad[c.z_offset + 2 * g] += d_eta * (tau_alpha + tau_u * rho * xk);
+                grad[c.z_offset + 2 * g + 1] += d_eta * (tau_u * s * xk);
+            }
         }
 
         Ok(grad)
@@ -721,12 +1012,23 @@ pub struct ModelBuilder {
     penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
     random_slope: Option<RandomSlope>,
+    correlated: Option<CorrelatedInterceptSlope>,
 }
 
 impl ModelBuilder {
     fn reindex_random_effects(&mut self) {
         let base = self.x.p + if self.include_intercept { 1 } else { 0 };
         let mut offset = base;
+
+        if let Some(c) = &mut self.correlated {
+            c.mu_alpha_idx = offset;
+            c.mu_u_idx = offset + 1;
+            c.tau_alpha_idx = offset + 2;
+            c.tau_u_idx = offset + 3;
+            c.rho_idx = offset + 4;
+            c.z_offset = offset + 5;
+            return;
+        }
 
         // Fixed ordering: random intercept block first, then random slope block.
         if let Some(ri) = &mut self.random_intercept {
@@ -764,6 +1066,7 @@ impl ModelBuilder {
             penalize_intercept: false,
             random_intercept: None,
             random_slope: None,
+            correlated: None,
         })
     }
 
@@ -792,6 +1095,7 @@ impl ModelBuilder {
             penalize_intercept: false,
             random_intercept: None,
             random_slope: None,
+            correlated: None,
         })
     }
 
@@ -830,6 +1134,7 @@ impl ModelBuilder {
             penalize_intercept: false,
             random_intercept: None,
             random_slope: None,
+            correlated: None,
         })
     }
 
@@ -943,6 +1248,65 @@ impl ModelBuilder {
         Ok(self)
     }
 
+    /// Add correlated random intercept + random slope using an LKJ prior on correlation.
+    ///
+    /// This uses a non-centered parameterization with per-group `z ~ Normal(0, I2)`,
+    /// and a 2x2 Cholesky construction:
+    /// - alpha_g = mu_alpha + tau_alpha * z1
+    /// - u_g     = mu_u + tau_u * (rho*z1 + sqrt(1-rho^2)*z2)
+    pub fn with_correlated_random_intercept_slope(
+        mut self,
+        feature_idx: usize,
+        group_idx: Vec<usize>,
+        n_groups: usize,
+    ) -> Result<Self> {
+        if self.random_intercept.is_some() || self.random_slope.is_some() {
+            return Err(Error::Validation(
+                "correlated random effects cannot be combined with random_intercept/random_slope"
+                    .to_string(),
+            ));
+        }
+        if self.correlated.is_some() {
+            return Err(Error::Validation("correlated random effects already enabled".to_string()));
+        }
+
+        let c = CorrelatedInterceptSlope {
+            feature_idx,
+            n_groups,
+            group_idx,
+            lkj_eta: 1.0,
+            mu_alpha_idx: 0,
+            mu_u_idx: 0,
+            tau_alpha_idx: 0,
+            tau_u_idx: 0,
+            rho_idx: 0,
+            z_offset: 0,
+            mu_alpha_prior: NormalPrior { mu: 0.0, sigma: 1.0 },
+            mu_u_prior: NormalPrior { mu: 0.0, sigma: 1.0 },
+            logsigma_tau_alpha_m: 0.0,
+            logsigma_tau_alpha_s: 0.5,
+            logsigma_tau_u_m: 0.0,
+            logsigma_tau_u_s: 0.5,
+        };
+        c.validate(self.x.n, self.x.p)?;
+        self.correlated = Some(c);
+        self.reindex_random_effects();
+        Ok(self)
+    }
+
+    /// Set LKJ(eta) parameter for the correlated intercept+slope block.
+    pub fn with_correlated_lkj_eta(mut self, eta: f64) -> Result<Self> {
+        let Some(c) = &mut self.correlated else {
+            return Err(Error::Validation(
+                "correlated random effects not enabled; call with_correlated_random_intercept_slope first"
+                    .to_string(),
+            ));
+        };
+        c.lkj_eta = eta;
+        c.validate(self.x.n, self.x.p)?;
+        Ok(self)
+    }
+
     /// Build the composed model.
     pub fn build(self) -> Result<ComposedGlmModel> {
         let m = ComposedGlmModel {
@@ -953,6 +1317,7 @@ impl ModelBuilder {
             penalize_intercept: self.penalize_intercept,
             random_intercept: self.random_intercept,
             random_slope: self.random_slope,
+            correlated: self.correlated,
         };
         m.validate()?;
         Ok(m)
@@ -1181,6 +1546,38 @@ mod tests {
         let sigma_u_idx = names.iter().position(|s| s == "sigma_u_beta1").unwrap();
         p[sigma_alpha_idx] = 0.7;
         p[sigma_u_idx] = 0.6;
+
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+
+        assert_vec_close(&g, &g_fd, 5e-4);
+    }
+
+    #[test]
+    fn test_builder_correlated_intercept_slope_grad_finite_diff_smoke() {
+        let x = vec![vec![1.0, 0.5], vec![1.0, -0.3], vec![1.0, 1.2], vec![1.0, 0.1]];
+        let y = vec![0u8, 1u8, 1u8, 0u8];
+        let group_idx = vec![0usize, 1usize, 0usize, 1usize];
+
+        let m = ModelBuilder::logistic_regression(x, y, false)
+            .unwrap()
+            .with_coef_prior_normal(0.0, 1e9)
+            .unwrap()
+            .with_correlated_random_intercept_slope(0, group_idx, 2)
+            .unwrap()
+            .with_correlated_lkj_eta(2.0)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut p = m.parameter_init();
+        let names = m.parameter_names();
+        let tau_alpha_idx = names.iter().position(|s| s == "tau_alpha").unwrap();
+        let tau_u_idx = names.iter().position(|s| s == "tau_u_beta1").unwrap();
+        let rho_idx = names.iter().position(|s| s == "rho_alpha_u_beta1").unwrap();
+        p[tau_alpha_idx] = 0.7;
+        p[tau_u_idx] = 0.6;
+        p[rho_idx] = 0.3;
 
         let g = m.grad_nll(&p).unwrap();
         let g_fd = finite_diff_grad(&m, &p, 1e-6);
