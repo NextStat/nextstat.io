@@ -54,6 +54,7 @@ from . import viz as viz  # noqa: E402
 from . import data as data  # noqa: E402
 from . import glm as glm  # noqa: E402
 from . import timeseries as timeseries  # noqa: E402
+from . import hier as hier  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -73,6 +74,7 @@ __all__ = [
     "data",
     "glm",
     "timeseries",
+    "hier",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
