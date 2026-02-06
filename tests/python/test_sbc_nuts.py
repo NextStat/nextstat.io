@@ -87,6 +87,7 @@ def _sample_posterior_u(
     seed: int,
     n_warmup: int,
     n_samples: int,
+    target_accept: float = 0.8,
     rhat_max: float,
     divergence_rate_max: float,
 ) -> Dict[str, float]:
@@ -97,6 +98,7 @@ def _sample_posterior_u(
         n_samples=n_samples,
         seed=seed,
         init_jitter_rel=0.10,
+        target_accept=target_accept,
     )
     diag = r["diagnostics"]
     assert float(diag["divergence_rate"]) <= divergence_rate_max, (
@@ -259,6 +261,71 @@ def test_sbc_random_intercept_gaussian_smoke():
     # sigma_alpha is heavy-tailed under a lognormal prior; keep thresholds looser.
     tol_mu = 0.30 if n_runs < 20 else 0.15
     tol_sig = 0.35 if n_runs < 20 else 0.20
+    _assert_sbc_u01(u_mu_alpha, max_mean_delta=tol_mu, max_var_delta=tol_mu)
+    _assert_sbc_u01(u_sigma_alpha, max_mean_delta=tol_sig, max_var_delta=tol_sig)
+
+
+def test_sbc_random_intercept_bernoulli_smoke():
+    n_runs, n_warmup, n_samples, seed0 = _require_slow()
+
+    # Random intercept priors are hard-coded in Rust:
+    # mu_alpha ~ Normal(0, 1)
+    # sigma_alpha ~ LogNormal(m=0, s=0.5)
+    mu_prior = (0.0, 1.0)
+    logsigma_prior = (0.0, 0.5)
+
+    # Coef prior for beta's.
+    coef_prior_mu = 0.0
+    coef_prior_sigma = 1.0
+
+    n_groups = 4
+    n_per = 12
+    n = n_groups * n_per
+    group_idx = [g for g in range(n_groups) for _ in range(n_per)]
+    z = [(-1.0 + 2.0 * i / (n - 1)) for i in range(n)]
+    x = [[float(v)] for v in z]
+
+    u_mu_alpha: List[float] = []
+    u_sigma_alpha: List[float] = []
+
+    for run in range(n_runs):
+        rng = random.Random(seed0 + 2_000 + run)
+        beta1 = _sample_normal(rng, coef_prior_mu, coef_prior_sigma)
+        mu_alpha = _sample_normal(rng, mu_prior[0], mu_prior[1])
+        sigma_alpha = _sample_lognormal(rng, logsigma_prior[0], logsigma_prior[1])
+        alphas = [_sample_normal(rng, mu_alpha, sigma_alpha) for _ in range(n_groups)]
+
+        y: List[int] = []
+        for i in range(n):
+            eta = beta1 * float(z[i]) + alphas[group_idx[i]]
+            p = 1.0 / (1.0 + math.exp(-eta))
+            y.append(1 if rng.random() < p else 0)
+
+        model = nextstat.ComposedGlmModel.logistic_regression(
+            x,
+            y,
+            include_intercept=False,
+            group_idx=group_idx,
+            n_groups=n_groups,
+            coef_prior_mu=coef_prior_mu,
+            coef_prior_sigma=coef_prior_sigma,
+        )
+
+        u = _sample_posterior_u(
+            model,
+            {"beta1": beta1, "mu_alpha": mu_alpha, "sigma_alpha": sigma_alpha},
+            seed=seed0 + 40_000 + run,
+            n_warmup=n_warmup,
+            n_samples=n_samples,
+            target_accept=0.90,
+            rhat_max=1.60,
+            divergence_rate_max=0.05,
+        )
+        u_mu_alpha.append(u["mu_alpha"])
+        u_sigma_alpha.append(u["sigma_alpha"])
+
+    tol_mu = 0.35 if n_runs < 20 else 0.18
+    tol_sig = 0.40 if n_runs < 20 else 0.22
     _assert_sbc_u01(u_mu_alpha, max_mean_delta=tol_mu, max_var_delta=tol_mu)
     _assert_sbc_u01(u_sigma_alpha, max_mean_delta=tol_sig, max_var_delta=tol_sig)
 
