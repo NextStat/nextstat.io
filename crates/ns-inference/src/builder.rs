@@ -130,12 +130,61 @@ impl RandomIntercept {
     }
 }
 
+#[derive(Debug, Clone)]
+struct RandomSlope {
+    feature_idx: usize, // which column of X
+    n_groups: usize,
+    group_idx: Vec<usize>, // length n
+    non_centered: bool,
+    // Parameter indices in the model parameter vector:
+    mu_idx: usize,
+    sigma_idx: usize,    // sigma > 0
+    u_offset: usize,     // u_g at params[u_offset + g] (or z_g if non-centered)
+    // Priors:
+    mu_prior: NormalPrior,
+    logsigma_prior_m: f64,
+    logsigma_prior_s: f64,
+}
+
+impl RandomSlope {
+    fn validate(&self, n: usize, p: usize) -> Result<()> {
+        if self.feature_idx >= p {
+            return Err(Error::Validation(format!(
+                "random slope feature_idx must be in [0, p), got {} (p={})",
+                self.feature_idx, p
+            )));
+        }
+        if self.n_groups == 0 {
+            return Err(Error::Validation("n_groups must be > 0".to_string()));
+        }
+        if self.group_idx.len() != n {
+            return Err(Error::Validation(format!(
+                "group_idx length must match n: expected {}, got {}",
+                n,
+                self.group_idx.len()
+            )));
+        }
+        if self.group_idx.iter().any(|&g| g >= self.n_groups) {
+            return Err(Error::Validation("group_idx must be in [0, n_groups)".to_string()));
+        }
+        self.mu_prior.validate()?;
+        if !self.logsigma_prior_m.is_finite() {
+            return Err(Error::Validation("logsigma_prior_m must be finite".to_string()));
+        }
+        if !self.logsigma_prior_s.is_finite() || self.logsigma_prior_s <= 0.0 {
+            return Err(Error::Validation("logsigma_prior_s must be finite and > 0".to_string()));
+        }
+        Ok(())
+    }
+}
+
 /// A composed GLM-style model: linear predictor + likelihood + priors.
 ///
 /// Supported:
 /// - Linear regression: Gaussian likelihood with sigma fixed to 1
 /// - Logistic regression: Bernoulli likelihood with logit link
 /// - Optional Normal random intercept with (mu, sigma_alpha) hyperparameters
+/// - Optional Normal random slope on one covariate with (mu, sigma) hyperparameters
 #[derive(Debug, Clone)]
 pub struct ComposedGlmModel {
     x: DenseX,
@@ -144,15 +193,20 @@ pub struct ComposedGlmModel {
     coef_prior: NormalPrior, // applied to intercept (if present) + all beta_j
     penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
+    random_slope: Option<RandomSlope>,
 }
 
 impl ComposedGlmModel {
     fn dim_internal(&self) -> usize {
         let base = self.x.p + if self.include_intercept { 1 } else { 0 };
-        match &self.random_intercept {
-            None => base,
-            Some(ri) => base + 2 + ri.n_groups,
+        let mut dim = base;
+        if let Some(ri) = &self.random_intercept {
+            dim += 2 + ri.n_groups;
         }
+        if let Some(rs) = &self.random_slope {
+            dim += 2 + rs.n_groups;
+        }
+        dim
     }
 
     fn validate(&self) -> Result<()> {
@@ -210,6 +264,9 @@ impl ComposedGlmModel {
         if let Some(ri) = &self.random_intercept {
             ri.validate(n)?;
         }
+        if let Some(rs) = &self.random_slope {
+            rs.validate(n, self.x.p)?;
+        }
         Ok(())
     }
 
@@ -262,6 +319,18 @@ impl LogDensityModel for ComposedGlmModel {
                 }
             }
         }
+        if let Some(rs) = &self.random_slope {
+            let k = rs.feature_idx + 1;
+            out.push(format!("mu_u_beta{}", k));
+            out.push(format!("sigma_u_beta{}", k));
+            for g in 0..rs.n_groups {
+                if rs.non_centered {
+                    out.push(format!("z_u_beta{}_{}", k, g + 1));
+                } else {
+                    out.push(format!("u_beta{}_{}", k, g + 1));
+                }
+            }
+        }
         out
     }
 
@@ -275,6 +344,11 @@ impl LogDensityModel for ComposedGlmModel {
             out.push((0.0, f64::INFINITY)); // sigma_alpha
             out.extend(vec![(f64::NEG_INFINITY, f64::INFINITY); ri.n_groups]);
         }
+        if let Some(rs) = &self.random_slope {
+            out.push((f64::NEG_INFINITY, f64::INFINITY)); // mu_u_beta
+            out.push((0.0, f64::INFINITY)); // sigma_u_beta
+            out.extend(vec![(f64::NEG_INFINITY, f64::INFINITY); rs.n_groups]);
+        }
         out
     }
 
@@ -284,6 +358,11 @@ impl LogDensityModel for ComposedGlmModel {
             out.push(0.0); // mu_alpha
             out.push(1.0); // sigma_alpha
             out.extend(vec![0.0; ri.n_groups]);
+        }
+        if let Some(rs) = &self.random_slope {
+            out.push(0.0); // mu_u_beta
+            out.push(1.0); // sigma_u_beta
+            out.extend(vec![0.0; rs.n_groups]);
         }
         out
     }
@@ -350,6 +429,46 @@ impl LogDensityModel for ComposedGlmModel {
             }
         }
 
+        // Random slope prior block.
+        if let Some(rs) = &self.random_slope {
+            let mu = params[rs.mu_idx];
+            let sigma = params[rs.sigma_idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_u_beta must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+
+            // mu prior: Normal(0, mu_prior.sigma)
+            let mu_sig2 = rs.mu_prior.sigma * rs.mu_prior.sigma;
+            let v = mu - rs.mu_prior.mu;
+            nll += 0.5 * v * v / mu_sig2;
+
+            // sigma prior: LogNormal(m, s) in terms of sigma (up to constant).
+            let t = sigma.ln();
+            let z = (t - rs.logsigma_prior_m) / rs.logsigma_prior_s;
+            nll += 0.5 * z * z + t;
+
+            if rs.non_centered {
+                let mut sum_sq = 0.0;
+                for g in 0..rs.n_groups {
+                    let zg = params[rs.u_offset + g];
+                    sum_sq += zg * zg;
+                }
+                nll += 0.5 * sum_sq;
+            } else {
+                let mut sum_sq = 0.0;
+                for g in 0..rs.n_groups {
+                    let u = params[rs.u_offset + g];
+                    let d = u - mu;
+                    sum_sq += d * d;
+                }
+                nll += 0.5 * sum_sq / (sigma * sigma);
+                nll += (rs.n_groups as f64) * sigma.ln();
+            }
+        }
+
         // Likelihood block.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
@@ -362,6 +481,18 @@ impl LogDensityModel for ComposedGlmModel {
                     eta += mu + sigma * zj;
                 } else {
                     eta += params[ri.alpha_offset + g];
+                }
+            }
+            if let Some(rs) = &self.random_slope {
+                let g = rs.group_idx[i];
+                let xk = self.x.row(i)[rs.feature_idx];
+                if rs.non_centered {
+                    let mu = params[rs.mu_idx];
+                    let sigma = params[rs.sigma_idx];
+                    let zg = params[rs.u_offset + g];
+                    eta += (mu + sigma * zg) * xk;
+                } else {
+                    eta += params[rs.u_offset + g] * xk;
                 }
             }
 
@@ -454,6 +585,47 @@ impl LogDensityModel for ComposedGlmModel {
             }
         }
 
+        // Random slope contributions.
+        if let Some(rs) = &self.random_slope {
+            let mu = params[rs.mu_idx];
+            let sigma = params[rs.sigma_idx];
+            if !sigma.is_finite() || sigma <= 0.0 {
+                return Err(Error::Validation(format!(
+                    "sigma_u_beta must be finite and > 0, got {}",
+                    sigma
+                )));
+            }
+
+            // mu prior.
+            let mu_sig2 = rs.mu_prior.sigma * rs.mu_prior.sigma;
+            grad[rs.mu_idx] += (mu - rs.mu_prior.mu) / mu_sig2;
+
+            // sigma prior (LogNormal).
+            let t = sigma.ln();
+            let z = (t - rs.logsigma_prior_m) / rs.logsigma_prior_s;
+            let ddt = z / (rs.logsigma_prior_s) + 1.0;
+            grad[rs.sigma_idx] += ddt * (1.0 / sigma);
+
+            if rs.non_centered {
+                for g in 0..rs.n_groups {
+                    let zg = params[rs.u_offset + g];
+                    grad[rs.u_offset + g] += zg;
+                }
+            } else {
+                let inv_var_u = 1.0 / (sigma * sigma);
+                let mut sum_sq = 0.0;
+                for g in 0..rs.n_groups {
+                    let u = params[rs.u_offset + g];
+                    let d = u - mu;
+                    sum_sq += d * d;
+                    grad[rs.u_offset + g] += d * inv_var_u;
+                    grad[rs.mu_idx] += (mu - u) * inv_var_u;
+                }
+                grad[rs.sigma_idx] += (rs.n_groups as f64) / sigma;
+                grad[rs.sigma_idx] += -sum_sq / (sigma * sigma * sigma);
+            }
+        }
+
         // Likelihood contributions.
         for i in 0..self.x.n {
             let mut eta = b0 + row_dot(self.x.row(i), beta);
@@ -468,6 +640,22 @@ impl LogDensityModel for ComposedGlmModel {
                     eta += params[ri.alpha_offset + g];
                 }
                 Some(g)
+            } else {
+                None
+            };
+
+            let rs_group = if let Some(rs) = &self.random_slope {
+                let g = rs.group_idx[i];
+                let xk = self.x.row(i)[rs.feature_idx];
+                if rs.non_centered {
+                    let mu = params[rs.mu_idx];
+                    let sigma = params[rs.sigma_idx];
+                    let zg = params[rs.u_offset + g];
+                    eta += (mu + sigma * zg) * xk;
+                } else {
+                    eta += params[rs.u_offset + g] * xk;
+                }
+                Some((g, xk))
             } else {
                 None
             };
@@ -502,6 +690,17 @@ impl LogDensityModel for ComposedGlmModel {
                     grad[ri.alpha_offset + g] += d_eta;
                 }
             }
+            if let (Some(rs), Some((g, xk))) = (&self.random_slope, rs_group) {
+                if rs.non_centered {
+                    let sigma = params[rs.sigma_idx];
+                    let zg = params[rs.u_offset + g];
+                    grad[rs.mu_idx] += d_eta * xk;
+                    grad[rs.sigma_idx] += d_eta * zg * xk;
+                    grad[rs.u_offset + g] += d_eta * sigma * xk;
+                } else {
+                    grad[rs.u_offset + g] += d_eta * xk;
+                }
+            }
         }
 
         Ok(grad)
@@ -521,9 +720,28 @@ pub struct ModelBuilder {
     coef_prior: NormalPrior,
     penalize_intercept: bool,
     random_intercept: Option<RandomIntercept>,
+    random_slope: Option<RandomSlope>,
 }
 
 impl ModelBuilder {
+    fn reindex_random_effects(&mut self) {
+        let base = self.x.p + if self.include_intercept { 1 } else { 0 };
+        let mut offset = base;
+
+        // Fixed ordering: random intercept block first, then random slope block.
+        if let Some(ri) = &mut self.random_intercept {
+            ri.mu_idx = offset;
+            ri.sigma_idx = offset + 1;
+            ri.alpha_offset = offset + 2;
+            offset += 2 + ri.n_groups;
+        }
+        if let Some(rs) = &mut self.random_slope {
+            rs.mu_idx = offset;
+            rs.sigma_idx = offset + 1;
+            rs.u_offset = offset + 2;
+        }
+    }
+
     /// Start a Gaussian linear regression builder (sigma fixed to 1).
     pub fn linear_regression(
         x: Vec<Vec<f64>>,
@@ -545,6 +763,7 @@ impl ModelBuilder {
             coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
             penalize_intercept: false,
             random_intercept: None,
+            random_slope: None,
         })
     }
 
@@ -572,6 +791,7 @@ impl ModelBuilder {
             coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
             penalize_intercept: false,
             random_intercept: None,
+            random_slope: None,
         })
     }
 
@@ -609,6 +829,7 @@ impl ModelBuilder {
             coef_prior: NormalPrior { mu: 0.0, sigma: 10.0 },
             penalize_intercept: false,
             random_intercept: None,
+            random_slope: None,
         })
     }
 
@@ -630,20 +851,20 @@ impl ModelBuilder {
     ///
     /// `group_idx[i]` selects which intercept applies to observation `i`.
     pub fn with_random_intercept(mut self, group_idx: Vec<usize>, n_groups: usize) -> Result<Self> {
-        let base = self.x.p + if self.include_intercept { 1 } else { 0 };
         let ri = RandomIntercept {
             n_groups,
             group_idx,
             non_centered: false,
-            mu_idx: base,
-            sigma_idx: base + 1,
-            alpha_offset: base + 2,
+            mu_idx: 0,
+            sigma_idx: 0,
+            alpha_offset: 0,
             mu_prior: NormalPrior { mu: 0.0, sigma: 1.0 },
             logsigma_prior_m: 0.0,
             logsigma_prior_s: 0.5,
         };
         ri.validate(self.x.n)?;
         self.random_intercept = Some(ri);
+        self.reindex_random_effects();
         Ok(self)
     }
 
@@ -659,6 +880,7 @@ impl ModelBuilder {
         };
         ri.non_centered = non_centered;
         ri.validate(self.x.n)?;
+        self.reindex_random_effects();
         Ok(self)
     }
 
@@ -677,6 +899,47 @@ impl ModelBuilder {
         ri.logsigma_prior_m = logsigma_prior.0;
         ri.logsigma_prior_s = logsigma_prior.1;
         ri.validate(self.x.n)?;
+        self.reindex_random_effects();
+        Ok(self)
+    }
+
+    /// Add a Normal random slope (group-indexed coefficient) on a single covariate.
+    ///
+    /// The varying slope multiplies `X[i][feature_idx]`.
+    pub fn with_random_slope(
+        mut self,
+        feature_idx: usize,
+        group_idx: Vec<usize>,
+        n_groups: usize,
+    ) -> Result<Self> {
+        let rs = RandomSlope {
+            feature_idx,
+            n_groups,
+            group_idx,
+            non_centered: false,
+            mu_idx: 0,
+            sigma_idx: 0,
+            u_offset: 0,
+            mu_prior: NormalPrior { mu: 0.0, sigma: 1.0 },
+            logsigma_prior_m: 0.0,
+            logsigma_prior_s: 0.5,
+        };
+        rs.validate(self.x.n, self.x.p)?;
+        self.random_slope = Some(rs);
+        self.reindex_random_effects();
+        Ok(self)
+    }
+
+    /// Toggle a non-centered parameterization for the random slope block.
+    pub fn with_random_slope_non_centered(mut self, non_centered: bool) -> Result<Self> {
+        let Some(rs) = &mut self.random_slope else {
+            return Err(Error::Validation(
+                "random slope not enabled; call with_random_slope first".to_string(),
+            ));
+        };
+        rs.non_centered = non_centered;
+        rs.validate(self.x.n, self.x.p)?;
+        self.reindex_random_effects();
         Ok(self)
     }
 
@@ -689,6 +952,7 @@ impl ModelBuilder {
             coef_prior: self.coef_prior.validate()?,
             penalize_intercept: self.penalize_intercept,
             random_intercept: self.random_intercept,
+            random_slope: self.random_slope,
         };
         m.validate()?;
         Ok(m)
@@ -887,6 +1151,36 @@ mod tests {
         // Make sigma_alpha slightly away from 0 to avoid singularities.
         let sigma_idx = m.parameter_names().iter().position(|s| s == "sigma_alpha").unwrap();
         p[sigma_idx] = 0.7;
+
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+
+        assert_vec_close(&g, &g_fd, 5e-4);
+    }
+
+    #[test]
+    fn test_builder_random_slope_grad_finite_diff_smoke() {
+        let x = vec![vec![1.0, 0.5], vec![1.0, -0.3], vec![1.0, 1.2], vec![1.0, 0.1]];
+        let y = vec![0u8, 1u8, 1u8, 0u8];
+        let group_idx = vec![0usize, 1usize, 0usize, 1usize];
+
+        let m = ModelBuilder::logistic_regression(x, y, false)
+            .unwrap()
+            .with_coef_prior_normal(0.0, 1e9)
+            .unwrap()
+            .with_random_intercept(group_idx.clone(), 2)
+            .unwrap()
+            .with_random_slope(0, group_idx, 2)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let mut p = m.parameter_init();
+        let names = m.parameter_names();
+        let sigma_alpha_idx = names.iter().position(|s| s == "sigma_alpha").unwrap();
+        let sigma_u_idx = names.iter().position(|s| s == "sigma_u_beta1").unwrap();
+        p[sigma_alpha_idx] = 0.7;
+        p[sigma_u_idx] = 0.6;
 
         let g = m.grad_nll(&p).unwrap();
         let g_fd = finite_diff_grad(&m, &p, 1e-6);
