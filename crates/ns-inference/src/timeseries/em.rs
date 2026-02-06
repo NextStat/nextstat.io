@@ -57,6 +57,10 @@ pub struct KalmanEmConfig {
     pub estimate_q: bool,
     /// Whether to update R.
     pub estimate_r: bool,
+    /// Whether to update F (currently only supports 1D: n_state=1).
+    pub estimate_f: bool,
+    /// Whether to update H (currently only supports 1D: n_obs=1 and n_state=1).
+    pub estimate_h: bool,
     /// Minimum diagonal value applied to Q/R to avoid degeneracy.
     pub min_diag: f64,
 }
@@ -68,6 +72,8 @@ impl Default for KalmanEmConfig {
             tol: 1e-6,
             estimate_q: true,
             estimate_r: true,
+            estimate_f: false,
+            estimate_h: false,
             min_diag: 1e-12,
         }
     }
@@ -156,6 +162,13 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
     let n = model.n_state();
     let m_obs = model.n_obs();
 
+    // Current implementation of estimating F/H is scalar-only (1D).
+    if (cfg.estimate_f || cfg.estimate_h) && !(n == 1 && m_obs == 1) {
+        return Err(Error::Validation(
+            "estimate_f/estimate_h currently require n_state=1 and n_obs=1".to_string(),
+        ));
+    }
+
     let mut cur = model.clone();
     let mut trace = Vec::with_capacity(cfg.max_iter + 1);
     let mut converged = false;
@@ -187,6 +200,50 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
         let sf = smoother_full(&cur, &fr)?;
 
         // M-step updates.
+        if cfg.estimate_f {
+            // a = sum E[x_t x_{t-1}] / sum E[x_{t-1}^2]
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for t in 0..ys.len() - 1 {
+                let e_xt_xt = e_xx(&sf.m[t], &sf.p[t])[(0, 0)];
+                let e_xt1_xt = e_xnext_x(&sf.m[t + 1], &sf.m[t], &sf.p[t + 1], &sf.gains[t])[(0, 0)];
+                den += e_xt_xt;
+                num += e_xt1_xt;
+            }
+            if !den.is_finite() || den <= 0.0 {
+                return Err(Error::Computation("EM estimate_f failed: invalid denominator".to_string()));
+            }
+            let a = num / den;
+            if !a.is_finite() {
+                return Err(Error::Computation("EM estimate_f failed: non-finite a".to_string()));
+            }
+            cur.f[(0, 0)] = a;
+        }
+
+        if cfg.estimate_h {
+            // h = sum y_t E[x_t] / sum E[x_t^2] over observed y_t (skip NaN).
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for t in 0..ys.len() {
+                let y = ys[t][0];
+                if y.is_nan() {
+                    continue;
+                }
+                let e_x = sf.m[t][0];
+                let e_x2 = e_xx(&sf.m[t], &sf.p[t])[(0, 0)];
+                num += y * e_x;
+                den += e_x2;
+            }
+            if !den.is_finite() || den <= 0.0 {
+                return Err(Error::Computation("EM estimate_h failed: invalid denominator".to_string()));
+            }
+            let h = num / den;
+            if !h.is_finite() {
+                return Err(Error::Computation("EM estimate_h failed: non-finite h".to_string()));
+            }
+            cur.h[(0, 0)] = h;
+        }
+
         if cfg.estimate_q {
             let mut sum_q = DMatrix::<f64>::zeros(n, n);
 
@@ -207,14 +264,23 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
 
         if cfg.estimate_r {
             let mut sum_r = DMatrix::<f64>::zeros(m_obs, m_obs);
+            let mut n_used = 0usize;
             for t in 0..ys.len() {
                 let y = &ys[t];
+                // For now treat any NaN in y_t as "missing full observation" for EM updates.
+                if y.iter().any(|v| v.is_nan()) {
+                    continue;
+                }
                 let hm = &cur.h * &sf.m[t];
                 let v = y - hm;
                 let term = &v * v.transpose() + &cur.h * &sf.p[t] * cur.h.transpose();
                 sum_r += term;
+                n_used += 1;
             }
-            let r_new = sum_r / (ys.len() as f64);
+            if n_used == 0 {
+                return Err(Error::Validation("cannot estimate R: all observations are missing".to_string()));
+            }
+            let r_new = sum_r / (n_used as f64);
             cur.r = ensure_spd(r_new, cfg.min_diag)?;
         }
 
@@ -319,5 +385,86 @@ mod tests {
         assert!(fr_fit.log_likelihood.is_finite());
         assert!(fr_true.log_likelihood.is_finite());
     }
-}
 
+    #[test]
+    fn test_em_estimates_f_h_1d_ar1_smoke() {
+        // Truth AR(1): x_t = a x_{t-1} + w; y_t = h x_t + v
+        let a_true = 0.8;
+        let h_true = 1.3;
+        let q_true = 0.05;
+        let r_true = 0.20;
+
+        let true_model = KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[a_true]),
+            DMatrix::from_row_slice(1, 1, &[q_true]),
+            DMatrix::from_row_slice(1, 1, &[h_true]),
+            DMatrix::from_row_slice(1, 1, &[r_true]),
+            DVector::from_row_slice(&[0.0]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+        )
+        .unwrap();
+
+        // Simulate deterministically (Box-Muller with LCG-ish uniforms).
+        let t_max = 300usize;
+        let mut xs = vec![0.0f64; t_max];
+        let mut ys = Vec::with_capacity(t_max);
+
+        let mut u = 0.1234567f64;
+        let mut v = 0.7654321f64;
+        for t in 0..t_max {
+            u = (u * 16807.0).fract();
+            v = (v * 48271.0).fract();
+            let w = sample_gaussian(0.0, q_true.sqrt(), u.max(1e-9), v.max(1e-9));
+            let x = if t == 0 { w } else { a_true * xs[t - 1] + w };
+            xs[t] = x;
+
+            u = (u * 69621.0).fract();
+            v = (v * 1013904223.0).fract();
+            let e = sample_gaussian(0.0, r_true.sqrt(), u.max(1e-9), v.max(1e-9));
+            ys.push(DVector::from_row_slice(&[h_true * x + e]));
+        }
+
+        // Init far from truth for f/h; keep q/r also wrong but positive.
+        let init_model = KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[0.2]),
+            DMatrix::from_row_slice(1, 1, &[0.5]),
+            DMatrix::from_row_slice(1, 1, &[0.7]),
+            DMatrix::from_row_slice(1, 1, &[0.5]),
+            DVector::from_row_slice(&[0.0]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+        )
+        .unwrap();
+
+        let res = kalman_em(
+            &init_model,
+            &ys,
+            KalmanEmConfig {
+                max_iter: 50,
+                tol: 1e-7,
+                estimate_q: true,
+                estimate_r: true,
+                estimate_f: true,
+                estimate_h: true,
+                min_diag: 1e-9,
+            },
+        )
+        .unwrap();
+
+        // Log-likelihood should be non-decreasing up to numerical jitter.
+        for w in res.loglik_trace.windows(2) {
+            assert!(w[1] + 1e-6 >= w[0]);
+        }
+
+        let a_hat = res.model.f[(0, 0)];
+        let h_hat = res.model.h[(0, 0)];
+        assert!(a_hat.is_finite());
+        assert!(h_hat.is_finite());
+
+        // Smoke-level closeness.
+        assert!((a_hat - a_true).abs() <= 0.2, "a_hat={} a_true={}", a_hat, a_true);
+        assert!((h_hat - h_true).abs() <= 0.3, "h_hat={} h_true={}", h_hat, h_true);
+
+        let fr_fit = kalman_filter(&res.model, &ys).unwrap();
+        assert!(fr_fit.log_likelihood.is_finite());
+    }
+}

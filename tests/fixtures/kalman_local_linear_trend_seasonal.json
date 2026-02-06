@@ -1,0 +1,11 @@
+{
+  "local_linear_trend_seasonal": {
+    "period": 4,
+    "q_level": 0.1,
+    "q_slope": 0.05,
+    "q_season": 0.2,
+    "r": 0.3
+  },
+  "ys": [[0.9], [1.2], [0.8], [1.1]]
+}
+

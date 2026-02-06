@@ -119,3 +119,45 @@ def test_kalman_filter_allows_missing_none():
     ys = [[0.9], [None], [0.8], [1.1]]
     out = nextstat.timeseries.kalman_filter(model, ys)
     assert float(out["log_likelihood"]) == float(out["log_likelihood"])
+
+
+def test_local_level_builder_smoke():
+    import nextstat
+
+    m = nextstat.timeseries.local_level_model(q=0.1, r=0.2, m0=0.0, p0=1.0)
+    assert int(m.n_state()) == 1
+    assert int(m.n_obs()) == 1
+
+
+def test_local_linear_trend_builder_smoke():
+    import nextstat
+
+    m = nextstat.timeseries.local_linear_trend_model(q_level=0.1, q_slope=0.05, r=0.2)
+    assert int(m.n_state()) == 2
+    assert int(m.n_obs()) == 1
+
+
+def test_ar1_builder_smoke():
+    import nextstat
+
+    m = nextstat.timeseries.ar1_model(phi=0.9, q=0.1, r=0.2)
+    assert int(m.n_state()) == 1
+    assert int(m.n_obs()) == 1
+
+
+def test_local_level_seasonal_builder_smoke():
+    import nextstat
+
+    m = nextstat.timeseries.local_level_seasonal_model(period=4, q_level=0.1, q_season=0.2, r=0.3)
+    assert int(m.n_state()) == 4
+    assert int(m.n_obs()) == 1
+
+
+def test_local_linear_trend_seasonal_builder_smoke():
+    import nextstat
+
+    m = nextstat.timeseries.local_linear_trend_seasonal_model(
+        period=4, q_level=0.1, q_slope=0.05, q_season=0.2, r=0.3
+    )
+    assert int(m.n_state()) == 5
+    assert int(m.n_obs()) == 1

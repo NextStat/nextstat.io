@@ -76,6 +76,297 @@ impl KalmanModel {
         Ok(Self { f, q, h, r, m0, p0 })
     }
 
+    /// Local level model (random walk) with 1D state and 1D observations.
+    ///
+    /// State:
+    /// `x_t = x_{t-1} + w_t`, `w_t ~ N(0, q)`
+    ///
+    /// Observation:
+    /// `y_t = x_t + v_t`, `v_t ~ N(0, r)`
+    pub fn local_level(q: f64, r: f64, m0: f64, p0: f64) -> Result<Self> {
+        if !q.is_finite() || q <= 0.0 {
+            return Err(Error::Validation("q must be finite and > 0".to_string()));
+        }
+        if !r.is_finite() || r <= 0.0 {
+            return Err(Error::Validation("r must be finite and > 0".to_string()));
+        }
+        if !m0.is_finite() {
+            return Err(Error::Validation("m0 must be finite".to_string()));
+        }
+        if !p0.is_finite() || p0 <= 0.0 {
+            return Err(Error::Validation("p0 must be finite and > 0".to_string()));
+        }
+
+        KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[q]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[r]),
+            DVector::from_row_slice(&[m0]),
+            DMatrix::from_row_slice(1, 1, &[p0]),
+        )
+    }
+
+    /// Local linear trend model (level + slope) with 2D state and 1D observations.
+    ///
+    /// State:
+    /// `level_t = level_{t-1} + slope_{t-1} + w_level`
+    /// `slope_t = slope_{t-1} + w_slope`
+    ///
+    /// Observation:
+    /// `y_t = level_t + v_t`
+    pub fn local_linear_trend(
+        q_level: f64,
+        q_slope: f64,
+        r: f64,
+        level0: f64,
+        slope0: f64,
+        p0_level: f64,
+        p0_slope: f64,
+    ) -> Result<Self> {
+        if !q_level.is_finite() || q_level <= 0.0 {
+            return Err(Error::Validation("q_level must be finite and > 0".to_string()));
+        }
+        if !q_slope.is_finite() || q_slope <= 0.0 {
+            return Err(Error::Validation("q_slope must be finite and > 0".to_string()));
+        }
+        if !r.is_finite() || r <= 0.0 {
+            return Err(Error::Validation("r must be finite and > 0".to_string()));
+        }
+        if !level0.is_finite() || !slope0.is_finite() {
+            return Err(Error::Validation("initial state must be finite".to_string()));
+        }
+        if !p0_level.is_finite() || p0_level <= 0.0 {
+            return Err(Error::Validation("p0_level must be finite and > 0".to_string()));
+        }
+        if !p0_slope.is_finite() || p0_slope <= 0.0 {
+            return Err(Error::Validation("p0_slope must be finite and > 0".to_string()));
+        }
+
+        KalmanModel::new(
+            DMatrix::from_row_slice(2, 2, &[1.0, 1.0, 0.0, 1.0]),
+            DMatrix::from_row_slice(2, 2, &[q_level, 0.0, 0.0, q_slope]),
+            DMatrix::from_row_slice(1, 2, &[1.0, 0.0]),
+            DMatrix::from_row_slice(1, 1, &[r]),
+            DVector::from_row_slice(&[level0, slope0]),
+            DMatrix::from_row_slice(2, 2, &[p0_level, 0.0, 0.0, p0_slope]),
+        )
+    }
+
+    /// AR(1) state with 1D observations.
+    ///
+    /// State:
+    /// `x_t = phi * x_{t-1} + w_t`, `w_t ~ N(0, q)`
+    ///
+    /// Observation:
+    /// `y_t = x_t + v_t`, `v_t ~ N(0, r)`
+    pub fn ar1(phi: f64, q: f64, r: f64, m0: f64, p0: f64) -> Result<Self> {
+        if !phi.is_finite() {
+            return Err(Error::Validation("phi must be finite".to_string()));
+        }
+        if !q.is_finite() || q <= 0.0 {
+            return Err(Error::Validation("q must be finite and > 0".to_string()));
+        }
+        if !r.is_finite() || r <= 0.0 {
+            return Err(Error::Validation("r must be finite and > 0".to_string()));
+        }
+        if !m0.is_finite() {
+            return Err(Error::Validation("m0 must be finite".to_string()));
+        }
+        if !p0.is_finite() || p0 <= 0.0 {
+            return Err(Error::Validation("p0 must be finite and > 0".to_string()));
+        }
+
+        KalmanModel::new(
+            DMatrix::from_row_slice(1, 1, &[phi]),
+            DMatrix::from_row_slice(1, 1, &[q]),
+            DMatrix::from_row_slice(1, 1, &[1.0]),
+            DMatrix::from_row_slice(1, 1, &[r]),
+            DVector::from_row_slice(&[m0]),
+            DMatrix::from_row_slice(1, 1, &[p0]),
+        )
+    }
+
+    /// Local level + seasonal model (periodic component) with 1D observations.
+    ///
+    /// State is `[level, s1, s2, ..., s_{period-1}]` (dimension = `period`).
+    ///
+    /// Level:
+    /// `level_t = level_{t-1} + w_level`, `w_level ~ N(0, q_level)`
+    ///
+    /// Seasonal (sum-to-zero constraint via (period-1)-dim representation):
+    /// The seasonal block uses the standard dummy-seasonal transition:
+    /// `s1_t = -sum(s_i_{t-1}) + w_season`
+    /// `s(i+1)_t = s(i)_{t-1}`
+    ///
+    /// Observation:
+    /// `y_t = level_t + s1_t + v_t`, `v_t ~ N(0, r)`
+    pub fn local_level_seasonal(
+        period: usize,
+        q_level: f64,
+        q_season: f64,
+        r: f64,
+        level0: f64,
+        p0_level: f64,
+        p0_season: f64,
+    ) -> Result<Self> {
+        if period < 2 {
+            return Err(Error::Validation("period must be >= 2".to_string()));
+        }
+        if !q_level.is_finite() || q_level <= 0.0 {
+            return Err(Error::Validation("q_level must be finite and > 0".to_string()));
+        }
+        if !q_season.is_finite() || q_season <= 0.0 {
+            return Err(Error::Validation("q_season must be finite and > 0".to_string()));
+        }
+        if !r.is_finite() || r <= 0.0 {
+            return Err(Error::Validation("r must be finite and > 0".to_string()));
+        }
+        if !level0.is_finite() {
+            return Err(Error::Validation("level0 must be finite".to_string()));
+        }
+        if !p0_level.is_finite() || p0_level <= 0.0 {
+            return Err(Error::Validation("p0_level must be finite and > 0".to_string()));
+        }
+        if !p0_season.is_finite() || p0_season <= 0.0 {
+            return Err(Error::Validation("p0_season must be finite and > 0".to_string()));
+        }
+
+        let sdim = period - 1;
+        let dim = 1 + sdim;
+
+        // Build transition F.
+        let mut f = DMatrix::<f64>::zeros(dim, dim);
+        // level_t = level_{t-1}
+        f[(0, 0)] = 1.0;
+
+        // seasonal block
+        // first row: [-1, -1, ..., -1]
+        for j in 0..sdim {
+            f[(1, 1 + j)] = -1.0;
+        }
+        // subdiagonal shift for s2..s_{sdim}
+        for i in 1..sdim {
+            f[(1 + i, 1 + (i - 1))] = 1.0;
+        }
+
+        // Q: diagonal for simplicity (keeps SPD for simulation).
+        let mut q = DMatrix::<f64>::zeros(dim, dim);
+        q[(0, 0)] = q_level;
+        for j in 0..sdim {
+            q[(1 + j, 1 + j)] = q_season;
+        }
+
+        // H: y = level + s1
+        let mut h = DMatrix::<f64>::zeros(1, dim);
+        h[(0, 0)] = 1.0;
+        h[(0, 1)] = 1.0;
+
+        let r = DMatrix::from_row_slice(1, 1, &[r]);
+
+        let mut m0 = DVector::<f64>::zeros(dim);
+        m0[0] = level0;
+
+        let mut p0 = DMatrix::<f64>::zeros(dim, dim);
+        p0[(0, 0)] = p0_level;
+        for j in 0..sdim {
+            p0[(1 + j, 1 + j)] = p0_season;
+        }
+
+        KalmanModel::new(f, q, h, r, m0, p0)
+    }
+
+    /// Local linear trend + seasonal model with 1D observations.
+    ///
+    /// State is `[level, slope, s1, s2, ..., s_{period-1}]`
+    /// (dimension = `period + 1`).
+    ///
+    /// Level/slope follow the local linear trend model, and the seasonal block
+    /// uses the same dummy-seasonal transition as [`local_level_seasonal`].
+    pub fn local_linear_trend_seasonal(
+        period: usize,
+        q_level: f64,
+        q_slope: f64,
+        q_season: f64,
+        r: f64,
+        level0: f64,
+        slope0: f64,
+        p0_level: f64,
+        p0_slope: f64,
+        p0_season: f64,
+    ) -> Result<Self> {
+        if period < 2 {
+            return Err(Error::Validation("period must be >= 2".to_string()));
+        }
+        if !q_level.is_finite() || q_level <= 0.0 {
+            return Err(Error::Validation("q_level must be finite and > 0".to_string()));
+        }
+        if !q_slope.is_finite() || q_slope <= 0.0 {
+            return Err(Error::Validation("q_slope must be finite and > 0".to_string()));
+        }
+        if !q_season.is_finite() || q_season <= 0.0 {
+            return Err(Error::Validation("q_season must be finite and > 0".to_string()));
+        }
+        if !r.is_finite() || r <= 0.0 {
+            return Err(Error::Validation("r must be finite and > 0".to_string()));
+        }
+        if !level0.is_finite() || !slope0.is_finite() {
+            return Err(Error::Validation("initial state must be finite".to_string()));
+        }
+        if !p0_level.is_finite() || p0_level <= 0.0 {
+            return Err(Error::Validation("p0_level must be finite and > 0".to_string()));
+        }
+        if !p0_slope.is_finite() || p0_slope <= 0.0 {
+            return Err(Error::Validation("p0_slope must be finite and > 0".to_string()));
+        }
+        if !p0_season.is_finite() || p0_season <= 0.0 {
+            return Err(Error::Validation("p0_season must be finite and > 0".to_string()));
+        }
+
+        let sdim = period - 1;
+        let dim = 2 + sdim;
+
+        let mut f = DMatrix::<f64>::zeros(dim, dim);
+        // local linear trend block
+        f[(0, 0)] = 1.0;
+        f[(0, 1)] = 1.0;
+        f[(1, 1)] = 1.0;
+
+        // seasonal block starts at index 2
+        for j in 0..sdim {
+            f[(2, 2 + j)] = -1.0;
+        }
+        for i in 1..sdim {
+            f[(2 + i, 2 + (i - 1))] = 1.0;
+        }
+
+        let mut q = DMatrix::<f64>::zeros(dim, dim);
+        q[(0, 0)] = q_level;
+        q[(1, 1)] = q_slope;
+        for j in 0..sdim {
+            q[(2 + j, 2 + j)] = q_season;
+        }
+
+        // y = level + s1
+        let mut h = DMatrix::<f64>::zeros(1, dim);
+        h[(0, 0)] = 1.0;
+        h[(0, 2)] = 1.0;
+        let r = DMatrix::from_row_slice(1, 1, &[r]);
+
+        let mut m0 = DVector::<f64>::zeros(dim);
+        m0[0] = level0;
+        m0[1] = slope0;
+
+        let mut p0 = DMatrix::<f64>::zeros(dim, dim);
+        p0[(0, 0)] = p0_level;
+        p0[(1, 1)] = p0_slope;
+        for j in 0..sdim {
+            p0[(2 + j, 2 + j)] = p0_season;
+        }
+
+        KalmanModel::new(f, q, h, r, m0, p0)
+    }
+
     /// Number of latent state dimensions.
     pub fn n_state(&self) -> usize {
         self.f.nrows()
@@ -443,5 +734,40 @@ mod tests {
         // Missing observation should not crash and should keep finiteness.
         assert!(fr.filtered_means[1][0].is_finite());
         assert!(fr.filtered_covs[1][0].is_finite());
+    }
+
+    #[test]
+    fn test_local_level_seasonal_builder_smoke() {
+        let model = KalmanModel::local_level_seasonal(4, 0.1, 0.2, 0.3, 0.0, 1.0, 1.0).unwrap();
+        assert_eq!(model.n_state(), 4);
+        assert_eq!(model.n_obs(), 1);
+
+        let ys = vec![
+            DVector::from_row_slice(&[0.9]),
+            DVector::from_row_slice(&[1.2]),
+            DVector::from_row_slice(&[0.8]),
+            DVector::from_row_slice(&[1.1]),
+        ];
+        let fr = kalman_filter(&model, &ys).unwrap();
+        assert!(fr.log_likelihood.is_finite());
+    }
+
+    #[test]
+    fn test_local_linear_trend_seasonal_builder_smoke() {
+        let model = KalmanModel::local_linear_trend_seasonal(
+            4, 0.1, 0.05, 0.2, 0.3, 0.0, 0.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+        assert_eq!(model.n_state(), 5);
+        assert_eq!(model.n_obs(), 1);
+
+        let ys = vec![
+            DVector::from_row_slice(&[0.9]),
+            DVector::from_row_slice(&[1.2]),
+            DVector::from_row_slice(&[0.8]),
+            DVector::from_row_slice(&[1.1]),
+        ];
+        let fr = kalman_filter(&model, &ys).unwrap();
+        assert!(fr.log_likelihood.is_finite());
     }
 }

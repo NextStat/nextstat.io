@@ -457,9 +457,105 @@ struct KalmanModelJson {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLevelJson {
+    q: f64,
+    r: f64,
+    #[serde(default = "default_m0")]
+    m0: f64,
+    #[serde(default = "default_p0")]
+    p0: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLinearTrendJson {
+    q_level: f64,
+    q_slope: f64,
+    r: f64,
+    #[serde(default = "default_level0")]
+    level0: f64,
+    #[serde(default = "default_slope0")]
+    slope0: f64,
+    #[serde(default = "default_p0")]
+    p0_level: f64,
+    #[serde(default = "default_p0")]
+    p0_slope: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanAr1Json {
+    phi: f64,
+    q: f64,
+    r: f64,
+    #[serde(default = "default_m0")]
+    m0: f64,
+    #[serde(default = "default_p0")]
+    p0: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLevelSeasonalJson {
+    period: usize,
+    q_level: f64,
+    q_season: f64,
+    r: f64,
+    #[serde(default = "default_level0")]
+    level0: f64,
+    #[serde(default = "default_p0")]
+    p0_level: f64,
+    #[serde(default = "default_p0")]
+    p0_season: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLinearTrendSeasonalJson {
+    period: usize,
+    q_level: f64,
+    q_slope: f64,
+    q_season: f64,
+    r: f64,
+    #[serde(default = "default_level0")]
+    level0: f64,
+    #[serde(default = "default_slope0")]
+    slope0: f64,
+    #[serde(default = "default_p0")]
+    p0_level: f64,
+    #[serde(default = "default_p0")]
+    p0_slope: f64,
+    #[serde(default = "default_p0")]
+    p0_season: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct KalmanInputJson {
-    model: KalmanModelJson,
+    #[serde(default)]
+    model: Option<KalmanModelJson>,
+    #[serde(default)]
+    local_level: Option<KalmanLocalLevelJson>,
+    #[serde(default)]
+    local_linear_trend: Option<KalmanLocalLinearTrendJson>,
+    #[serde(default)]
+    ar1: Option<KalmanAr1Json>,
+    #[serde(default)]
+    local_level_seasonal: Option<KalmanLocalLevelSeasonalJson>,
+    #[serde(default)]
+    local_linear_trend_seasonal: Option<KalmanLocalLinearTrendSeasonalJson>,
     ys: Vec<Vec<Option<f64>>>,
+}
+
+fn default_m0() -> f64 {
+    0.0
+}
+
+fn default_level0() -> f64 {
+    0.0
+}
+
+fn default_slope0() -> f64 {
+    0.0
+}
+
+fn default_p0() -> f64 {
+    1.0
 }
 
 fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> Result<DMatrix<f64>> {
@@ -539,16 +635,74 @@ fn load_kalman_input(
     let bytes = std::fs::read(path)?;
     let input: KalmanInputJson = serde_json::from_slice(&bytes)?;
 
-    let mj = input.model;
-    let model = ns_inference::timeseries::kalman::KalmanModel::new(
-        dmatrix_from_nested("F", mj.f)?,
-        dmatrix_from_nested("Q", mj.q)?,
-        dmatrix_from_nested("H", mj.h)?,
-        dmatrix_from_nested("R", mj.r)?,
-        dvector_from_vec("m0", mj.m0)?,
-        dmatrix_from_nested("P0", mj.p0)?,
-    )
-    .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?;
+    let mut model_count = 0usize;
+    model_count += input.model.is_some() as usize;
+    model_count += input.local_level.is_some() as usize;
+    model_count += input.local_linear_trend.is_some() as usize;
+    model_count += input.ar1.is_some() as usize;
+    model_count += input.local_level_seasonal.is_some() as usize;
+    model_count += input.local_linear_trend_seasonal.is_some() as usize;
+    if model_count != 1 {
+        anyhow::bail!(
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, local_level_seasonal, local_linear_trend_seasonal"
+        );
+    }
+
+    let model = if let Some(mj) = input.model {
+        ns_inference::timeseries::kalman::KalmanModel::new(
+            dmatrix_from_nested("F", mj.f)?,
+            dmatrix_from_nested("Q", mj.q)?,
+            dmatrix_from_nested("H", mj.h)?,
+            dmatrix_from_nested("R", mj.r)?,
+            dvector_from_vec("m0", mj.m0)?,
+            dmatrix_from_nested("P0", mj.p0)?,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?
+    } else if let Some(ll) = input.local_level {
+        ns_inference::timeseries::kalman::KalmanModel::local_level(ll.q, ll.r, ll.m0, ll.p0)
+            .map_err(|e| anyhow::anyhow!("invalid local_level model: {e}"))?
+    } else if let Some(lt) = input.local_linear_trend {
+        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend(
+            lt.q_level,
+            lt.q_slope,
+            lt.r,
+            lt.level0,
+            lt.slope0,
+            lt.p0_level,
+            lt.p0_slope,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend model: {e}"))?
+    } else if let Some(ar) = input.ar1 {
+        ns_inference::timeseries::kalman::KalmanModel::ar1(ar.phi, ar.q, ar.r, ar.m0, ar.p0)
+            .map_err(|e| anyhow::anyhow!("invalid ar1 model: {e}"))?
+    } else if let Some(seas) = input.local_level_seasonal {
+        ns_inference::timeseries::kalman::KalmanModel::local_level_seasonal(
+            seas.period,
+            seas.q_level,
+            seas.q_season,
+            seas.r,
+            seas.level0,
+            seas.p0_level,
+            seas.p0_season,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_level_seasonal model: {e}"))?
+    } else if let Some(seas) = input.local_linear_trend_seasonal {
+        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_seasonal(
+            seas.period,
+            seas.q_level,
+            seas.q_slope,
+            seas.q_season,
+            seas.r,
+            seas.level0,
+            seas.slope0,
+            seas.p0_level,
+            seas.p0_slope,
+            seas.p0_season,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?
+    } else {
+        anyhow::bail!("unreachable: model spec missing");
+    };
 
     let ys: Vec<DVector<f64>> = input
         .ys

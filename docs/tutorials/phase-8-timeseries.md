@@ -10,17 +10,8 @@ NextStat Phase 8 introduces time series and state space models. The current base
 ```python
 import nextstat
 
-# 1D local level model:
-# x_t = x_{t-1} + w_t,  w_t ~ N(0, q)
-# y_t = x_t     + v_t,  v_t ~ N(0, r)
-f = [[1.0]]
-q = [[0.1]]
-h = [[1.0]]
-r = [[0.2]]
-m0 = [0.0]
-p0 = [[1.0]]
-
-model = nextstat.KalmanModel(f, q, h, r, m0, p0)
+# 1D local level model
+model = nextstat.timeseries.local_level_model(q=0.1, r=0.2, m0=0.0, p0=1.0)
 ys = [[0.9], [1.2], [0.8], [1.1]]
 
 fr = nextstat.timeseries.kalman_filter(model, ys)
@@ -37,14 +28,7 @@ Create an input JSON like:
 
 ```json
 {
-  "model": {
-    "f": [[1.0]],
-    "q": [[0.1]],
-    "h": [[1.0]],
-    "r": [[0.2]],
-    "m0": [0.0],
-    "p0": [[1.0]]
-  },
+  "local_level": { "q": 0.1, "r": 0.2, "m0": 0.0, "p0": 1.0 },
   "ys": [[0.9], [1.2], [0.8], [1.1]]
 }
 ```
@@ -63,6 +47,11 @@ nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 
 - Python: use `None` inside `ys` (per component).
 - CLI JSON: use `null` inside `ys` (per component).
+
+## Standard models
+
+- CLI: specify exactly one of `model`, `local_level`, `local_linear_trend`, `ar1`, `local_level_seasonal`, `local_linear_trend_seasonal`.
+- Python: use `nextstat.timeseries.local_level_model(...)`, `nextstat.timeseries.local_linear_trend_model(...)`, `nextstat.timeseries.ar1_model(...)`, `nextstat.timeseries.local_level_seasonal_model(...)`, or `nextstat.timeseries.local_linear_trend_seasonal_model(...)`.
 
 ## JSON contract (Python)
 
