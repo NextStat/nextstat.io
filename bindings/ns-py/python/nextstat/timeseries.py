@@ -51,6 +51,8 @@ def kalman_em(
     tol: float = 1e-6,
     estimate_q: bool = True,
     estimate_r: bool = True,
+    estimate_f: bool = False,
+    estimate_h: bool = False,
     min_diag: float = 1e-12,
 ) -> Mapping[str, Any]:
     """Fit Q/R with EM while keeping F/H/m0/P0 fixed."""
@@ -63,6 +65,8 @@ def kalman_em(
         tol=tol,
         estimate_q=estimate_q,
         estimate_r=estimate_r,
+        estimate_f=estimate_f,
+        estimate_h=estimate_h,
         min_diag=min_diag,
     )
 

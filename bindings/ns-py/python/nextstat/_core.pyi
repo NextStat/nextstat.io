@@ -218,10 +218,53 @@ class MaximumLikelihoodEstimator:
         *,
         data: Literal[None] = ...,
     ) -> FitResult: ...
+    @overload
     def fit_batch(
         self,
-        models_or_model: Union[List[HistFactoryModel], HistFactoryModel],
-        datasets: Optional[List[List[float]]] = ...,
+        models_or_model: List[HistFactoryModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[GaussianMeanModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[LinearRegressionModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[LogisticRegressionModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[PoissonRegressionModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[NegativeBinomialRegressionModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[ComposedGlmModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: HistFactoryModel,
+        datasets: List[List[float]],
     ) -> List[FitResult]: ...
     def fit_toys(
         self,
@@ -392,6 +435,8 @@ def kalman_em(
     tol: float = ...,
     estimate_q: bool = ...,
     estimate_r: bool = ...,
+    estimate_f: bool = ...,
+    estimate_h: bool = ...,
     min_diag: float = ...,
 ) -> Dict[str, Any]: ...
 

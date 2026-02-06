@@ -192,9 +192,8 @@ impl MaximumLikelihoodEstimator {
 
     /// Run multiple independent fits in parallel using Rayon.
     ///
-    /// Each fit gets a different model (e.g., with different observed data from toys).
     /// Returns one `FitResult` per model.
-    pub fn fit_batch(&self, models: &[HistFactoryModel]) -> Vec<Result<FitResult>> {
+    pub fn fit_batch<M: LogDensityModel + Sync>(&self, models: &[M]) -> Vec<Result<FitResult>> {
         use rayon::prelude::*;
 
         models.par_iter().map(|model| self.fit(model)).collect()

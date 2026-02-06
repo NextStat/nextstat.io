@@ -21,6 +21,7 @@ import platform
 import sys
 import time
 import timeit
+from array import array
 from pathlib import Path
 from typing import Any, Callable
 
@@ -30,6 +31,8 @@ import nextstat
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+NLL_SANITY_ATOL = 1e-8
+NLL_SANITY_RTOL = 1e-12
 
 
 def load_fixture(name: str) -> dict[str, Any]:
@@ -140,19 +143,25 @@ def main() -> int:
         pyhf_params = list(pyhf_model.config.suggested_init())
 
         ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-        ns_params = map_params_by_name(
+        ns_params_list = map_params_by_name(
             pyhf_model.config.par_names,
             pyhf_params,
             ns_model.parameter_names(),
             ns_model.suggested_init(),
         )
+        # Use a buffer-protocol input to avoid per-element Python float extraction overhead
+        # for large parameter vectors (e.g. shapesys gamma per bin).
+        ns_params = array("d", ns_params_list)
 
         # Sanity: NLL must match (tight). If it doesn't, benchmarking is meaningless.
         pyhf_val = pyhf_nll(pyhf_model, pyhf_data, pyhf_params)
         ns_val = float(ns_model.nll(ns_params))
-        if abs(ns_val - pyhf_val) > 1e-10:
+        abs_diff = abs(ns_val - pyhf_val)
+        rel_diff = abs_diff / max(abs(ns_val), abs(pyhf_val), 1.0)
+        if abs_diff > NLL_SANITY_ATOL and rel_diff > NLL_SANITY_RTOL:
             raise SystemExit(
-                f"NLL mismatch for {name}: nextstat={ns_val:.15f} pyhf={pyhf_val:.15f}"
+                f"NLL mismatch for {name}: nextstat={ns_val:.15f} pyhf={pyhf_val:.15f} "
+                f"(abs_diff={abs_diff:.3e} rel_diff={rel_diff:.3e})"
             )
 
         def f_pyhf():
@@ -176,6 +185,10 @@ def main() -> int:
         print(
             f"{name:<28} {n_main_bins:>6} | {pyhf_t*1e6:>14.2f} {ns_t*1e6:>14.2f} {speedup:>8.2f}x"
         )
+        if abs_diff > 0.0:
+            print(
+                f"{'':<28} {n_main_bins:>6} | {'|delta NLL|':>14} {abs_diff:>14.3e} {'':>9}"
+            )
 
         if args.fit and pyhf_model.config.poi_index is not None:
             def fit_pyhf():

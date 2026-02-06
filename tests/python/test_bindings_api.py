@@ -215,6 +215,61 @@ def test_fit_batch_contract_model_and_datasets():
         assert isinstance(r.nll, float)
         assert isinstance(r.success, bool)
 
+def test_fit_batch_contract_list_of_gaussian_models():
+    m0 = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+    m1 = nextstat.GaussianMeanModel([0.2, 1.2, 2.2], 1.0)
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    results = mle.fit_batch([m0, m1])
+    assert isinstance(results, list)
+    assert len(results) == 2
+    for r in results:
+        assert isinstance(r.bestfit, list)
+        assert isinstance(r.uncertainties, list)
+        assert isinstance(r.nll, float)
+        assert isinstance(r.success, bool)
+
+
+def test_fit_batch_contract_list_of_linear_regression_models():
+    x = [[0.0], [1.0], [2.0]]
+    y0 = [1.0, 3.0, 5.0]
+    y1 = [1.5, 3.5, 5.5]
+    m0 = nextstat.LinearRegressionModel(x, y0, include_intercept=True)
+    m1 = nextstat.LinearRegressionModel(x, y1, include_intercept=True)
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    results = mle.fit_batch([m0, m1])
+    assert isinstance(results, list)
+    assert len(results) == 2
+    for r in results:
+        assert isinstance(r.bestfit, list)
+        assert isinstance(r.uncertainties, list)
+        assert isinstance(r.nll, float)
+        assert isinstance(r.success, bool)
+
+
+def test_fit_batch_rejects_mixed_model_list():
+    ws = load_fixture("simple_workspace.json")
+    hf = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+    gm = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    with pytest.raises(ValueError, match="All items in the list must be HistFactoryModel"):
+        mle.fit_batch([hf, gm])
+
+
+def test_fit_batch_rejects_datasets_for_non_histfactory_model():
+    gm = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+    mle = nextstat.MaximumLikelihoodEstimator()
+    with pytest.raises(ValueError, match="first argument must be a HistFactoryModel"):
+        mle.fit_batch(gm, datasets=[[1.0, 2.0, 3.0]])
+
+
+def test_fit_batch_rejects_empty_model_list():
+    mle = nextstat.MaximumLikelihoodEstimator()
+    with pytest.raises(ValueError, match="models list must be non-empty"):
+        mle.fit_batch([])
+
 
 def test_ranking_contract():
     ws = load_fixture("simple_workspace.json")

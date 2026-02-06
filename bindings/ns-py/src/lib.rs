@@ -2,6 +2,7 @@
 
 use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PyValueError;
+use pyo3::buffer::PyBuffer;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
@@ -34,6 +35,26 @@ use ns_inference::timeseries::forecast::kalman_forecast as rust_kalman_forecast;
 use ns_inference::timeseries::simulate::kalman_simulate as rust_kalman_simulate;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
+
+fn extract_f64_vec(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+    // Fast-path: accept any object supporting the Python buffer protocol (e.g. array('d'),
+    // memoryview, numpy.ndarray). This avoids per-element Python float extraction for large
+    // parameter vectors (e.g. shapesys gamma parameters per bin).
+    if let Ok(buf) = PyBuffer::<f64>::get(obj) {
+        if buf.dimensions() > 1 {
+            return Err(PyValueError::new_err(
+                "params buffer must be 1D (or scalar), got ndim > 1",
+            ));
+        }
+        let n = buf.item_count();
+        let mut out = vec![0.0f64; n];
+        buf.copy_to_slice(obj.py(), &mut out)?;
+        return Ok(out);
+    }
+
+    // Fallback: accept any Python sequence of floats.
+    obj.extract::<Vec<f64>>()
+}
 
 fn sample_nuts_multichain_with_seeds(
     model: &(impl LogDensityModel + Sync),
@@ -157,14 +178,16 @@ impl PyHistFactoryModel {
     }
 
     /// Compute negative log-likelihood
-    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+    fn nll(&self, params: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let params = extract_f64_vec(params)?;
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
     }
 
     /// Gradient of negative log-likelihood.
-    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+    fn grad_nll(&self, params: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
         self.inner
             .grad_nll(&params)
             .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
@@ -172,7 +195,8 @@ impl PyHistFactoryModel {
 
     /// Expected data matching `pyhf.Model.expected_data`.
     #[pyo3(signature = (params, *, include_auxdata=true))]
-    fn expected_data(&self, params: Vec<f64>, include_auxdata: bool) -> PyResult<Vec<f64>> {
+    fn expected_data(&self, params: &Bound<'_, PyAny>, include_auxdata: bool) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
         let out = if include_auxdata {
             self.inner.expected_data_pyhf(&params)
         } else {
@@ -332,7 +356,7 @@ fn kalman_smooth(
 }
 
 #[pyfunction]
-#[pyo3(signature = (model, ys, *, max_iter=50, tol=1e-6, estimate_q=true, estimate_r=true, min_diag=1e-12))]
+#[pyo3(signature = (model, ys, *, max_iter=50, tol=1e-6, estimate_q=true, estimate_r=true, estimate_f=false, estimate_h=false, min_diag=1e-12))]
 fn kalman_em(
     py: Python<'_>,
     model: &PyKalmanModel,
@@ -341,6 +365,8 @@ fn kalman_em(
     tol: f64,
     estimate_q: bool,
     estimate_r: bool,
+    estimate_f: bool,
+    estimate_h: bool,
     min_diag: f64,
 ) -> PyResult<Py<PyAny>> {
     let ys: Vec<DVector<f64>> = ys
@@ -354,6 +380,8 @@ fn kalman_em(
         tol,
         estimate_q,
         estimate_r,
+        estimate_f,
+        estimate_h,
         min_diag,
     };
 
@@ -364,6 +392,8 @@ fn kalman_em(
     out.set_item("converged", res.converged)?;
     out.set_item("n_iter", res.n_iter)?;
     out.set_item("loglik_trace", res.loglik_trace)?;
+    out.set_item("f", dmatrix_to_nested(&res.model.f))?;
+    out.set_item("h", dmatrix_to_nested(&res.model.h))?;
     out.set_item("q", dmatrix_to_nested(&res.model.q))?;
     out.set_item("r", dmatrix_to_nested(&res.model.r))?;
     out.set_item("model", Py::new(py, PyKalmanModel { inner: res.model })?)?;
@@ -1200,11 +1230,15 @@ impl PyMaximumLikelihoodEstimator {
         })
     }
 
-    /// Fit multiple HistFactoryModel instances in parallel (Rayon).
+    /// Fit multiple models in parallel (Rayon).
     ///
     /// Two call forms:
     /// - `fit_batch(models)` — list of models, each with its own observations
-    /// - `fit_batch(model, datasets)` — single model + list of observation vectors
+    /// - `fit_batch(model, datasets)` — HistFactoryModel + list of observation vectors
+    ///
+    /// Notes:
+    /// - Lists must be homogeneous (all items of the same supported model type).
+    /// - `datasets=` is only supported for HistFactoryModel.
     #[pyo3(signature = (models_or_model, datasets=None))]
     fn fit_batch<'py>(
         &self,
@@ -1214,7 +1248,7 @@ impl PyMaximumLikelihoodEstimator {
     ) -> PyResult<Vec<PyFitResult>> {
         let mle = self.inner.clone();
 
-        let models: Vec<RustModel> = if let Some(datasets) = datasets {
+        if let Some(datasets) = datasets {
             // Single model + multiple datasets
             let hf = models_or_model
                 .extract::<PyRef<'_, PyHistFactoryModel>>()
@@ -1224,50 +1258,272 @@ impl PyMaximumLikelihoodEstimator {
                     )
                 })?;
             let base = hf.inner.clone();
-            datasets
+            let models: Vec<RustModel> = datasets
                 .into_iter()
                 .map(|ds| {
                     base.with_observed_main(&ds).map_err(|e| {
                         PyValueError::new_err(format!("Failed to set observed data: {}", e))
                     })
                 })
-                .collect::<PyResult<Vec<_>>>()?
+                .collect::<PyResult<Vec<_>>>()?;
+
+            let results = py.detach(move || mle.fit_batch(&models));
+
+            return results
+                .into_iter()
+                .map(|r| {
+                    let r = r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                    Ok(PyFitResult {
+                        parameters: r.parameters,
+                        uncertainties: r.uncertainties,
+                        nll: r.nll,
+                        converged: r.converged,
+                        n_iter: r.n_iter,
+                        n_fev: r.n_fev,
+                        n_gev: r.n_gev,
+                    })
+                })
+                .collect();
         } else {
             // List of models
             let list = models_or_model
                 .cast::<PyList>()
                 .map_err(|_| {
                     PyValueError::new_err(
-                        "Expected a list of HistFactoryModel or (model, datasets=...)",
+                        "Expected a list of models or (HistFactoryModel, datasets=...)",
                     )
                 })?;
-            let mut ms = Vec::with_capacity(list.len());
-            for item in list.iter() {
-                let hf = item.extract::<PyRef<'_, PyHistFactoryModel>>().map_err(|_| {
-                    PyValueError::new_err("All items in the list must be HistFactoryModel")
-                })?;
-                ms.push(hf.inner.clone());
+
+            if list.is_empty() {
+                return Err(PyValueError::new_err("models list must be non-empty"));
             }
-            ms
-        };
 
-        let results = py.detach(move || mle.fit_batch(&models));
+            let first = list.get_item(0)?;
 
-        results
-            .into_iter()
-            .map(|r| {
-                let r = r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                Ok(PyFitResult {
-                    parameters: r.parameters,
-                    uncertainties: r.uncertainties,
-                    nll: r.nll,
-                    converged: r.converged,
-                    n_iter: r.n_iter,
-                    n_fev: r.n_fev,
-                    n_gev: r.n_gev,
-                })
-            })
-            .collect()
+            // Determine the concrete model type from the first item, then enforce homogeneity.
+            if first.extract::<PyRef<'_, PyHistFactoryModel>>().is_ok() {
+                let mut models: Vec<RustModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let hf = item.extract::<PyRef<'_, PyHistFactoryModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be HistFactoryModel")
+                    })?;
+                    models.push(hf.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyGaussianMeanModel>>().is_ok() {
+                let mut models: Vec<GaussianMeanModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let gm = item.extract::<PyRef<'_, PyGaussianMeanModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be GaussianMeanModel")
+                    })?;
+                    models.push(gm.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first
+                .extract::<PyRef<'_, PyLinearRegressionModel>>()
+                .is_ok()
+            {
+                let mut models: Vec<RustLinearRegressionModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let lr = item.extract::<PyRef<'_, PyLinearRegressionModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be LinearRegressionModel")
+                    })?;
+                    models.push(lr.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first
+                .extract::<PyRef<'_, PyLogisticRegressionModel>>()
+                .is_ok()
+            {
+                let mut models: Vec<RustLogisticRegressionModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let logit =
+                        item.extract::<PyRef<'_, PyLogisticRegressionModel>>().map_err(|_| {
+                            PyValueError::new_err(
+                                "All items in the list must be LogisticRegressionModel",
+                            )
+                        })?;
+                    models.push(logit.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first
+                .extract::<PyRef<'_, PyPoissonRegressionModel>>()
+                .is_ok()
+            {
+                let mut models: Vec<RustPoissonRegressionModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let pois =
+                        item.extract::<PyRef<'_, PyPoissonRegressionModel>>().map_err(|_| {
+                            PyValueError::new_err(
+                                "All items in the list must be PoissonRegressionModel",
+                            )
+                        })?;
+                    models.push(pois.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first
+                .extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>()
+                .is_ok()
+            {
+                let mut models: Vec<RustNegativeBinomialRegressionModel> =
+                    Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let nb = item
+                        .extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>()
+                        .map_err(|_| {
+                            PyValueError::new_err(
+                                "All items in the list must be NegativeBinomialRegressionModel",
+                            )
+                        })?;
+                    models.push(nb.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyComposedGlmModel>>().is_ok() {
+                let mut models: Vec<RustComposedGlmModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let glm = item.extract::<PyRef<'_, PyComposedGlmModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be ComposedGlmModel")
+                    })?;
+                    models.push(glm.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult {
+                            parameters: r.parameters,
+                            uncertainties: r.uncertainties,
+                            nll: r.nll,
+                            converged: r.converged,
+                            n_iter: r.n_iter,
+                            n_fev: r.n_fev,
+                            n_gev: r.n_gev,
+                        })
+                    })
+                    .collect();
+            }
+
+            Err(PyValueError::new_err(
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
+            ))
+        }
     }
 
     /// Generate Poisson toy pseudo-experiments and fit each in parallel.

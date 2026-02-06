@@ -378,8 +378,11 @@ impl AsymptoticCLsContext {
                     mu,
                     fixed_data.message
                 );
+            } else {
+                // Only warm-start from a converged fit. Using non-converged parameters can
+                // destabilize later scan points and make the scan much slower.
+                last_fixed_data_params = Some(fixed_data.parameters.clone());
             }
-            last_fixed_data_params = Some(fixed_data.parameters.clone());
 
             let llr = 2.0 * (fixed_data.fval - self.free_data_nll);
             let mut q_mu = llr.max(0.0);
@@ -404,8 +407,10 @@ impl AsymptoticCLsContext {
                     mu,
                     fixed_asimov.message
                 );
+            } else {
+                // Same warm-start policy as observed scan.
+                last_fixed_asimov_params = Some(fixed_asimov.parameters.clone());
             }
-            last_fixed_asimov_params = Some(fixed_asimov.parameters.clone());
 
             let llr_a = 2.0 * (fixed_asimov.fval - self.free_asimov_nll);
             let mut q_mu_a = llr_a.max(0.0);

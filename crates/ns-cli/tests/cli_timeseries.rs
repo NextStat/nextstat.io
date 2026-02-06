@@ -236,6 +236,10 @@ fn timeseries_kalman_em_contract() {
     assert!(v.get("loglik_trace").and_then(|x| x.as_array()).unwrap().len() >= 2);
     let q = v.get("q").and_then(|x| x.as_array()).expect("q should be array");
     assert_eq!(q.len(), 1);
+    let f = v.get("f").and_then(|x| x.as_array()).expect("f should be array");
+    assert_eq!(f.len(), 1);
+    let h = v.get("h").and_then(|x| x.as_array()).expect("h should be array");
+    assert_eq!(h.len(), 1);
 }
 
 #[test]

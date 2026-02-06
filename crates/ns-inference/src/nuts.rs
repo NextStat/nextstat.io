@@ -94,10 +94,18 @@ fn is_turning(dq: &[f64], p_left: &[f64], p_right: &[f64], inv_mass: &[f64]) -> 
         dq.iter().zip(p_left.iter()).zip(inv_mass.iter()).map(|((&d, &p), &m)| d * p * m).sum();
     let dot_right: f64 =
         dq.iter().zip(p_right.iter()).zip(inv_mass.iter()).map(|((&d, &p), &m)| d * p * m).sum();
+    if !dot_left.is_finite() || !dot_right.is_finite() {
+        // Defensive: if momenta or positions blow up numerically, stop building the tree.
+        return true;
+    }
     dot_left < 0.0 || dot_right < 0.0
 }
 
 fn log_sum_exp(a: f64, b: f64) -> f64 {
+    // Defensive: treat NaN/+inf as "missing weight" to avoid propagating NaNs
+    // into acceptance probabilities and diagnostics.
+    let a = if a.is_finite() || a == f64::NEG_INFINITY { a } else { f64::NEG_INFINITY };
+    let b = if b.is_finite() || b == f64::NEG_INFINITY { b } else { f64::NEG_INFINITY };
     let max = a.max(b);
     if max == f64::NEG_INFINITY {
         f64::NEG_INFINITY
@@ -122,16 +130,18 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
 
     let h = new_state.hamiltonian(inv_mass);
     let energy_error = h - h0;
-    let divergent = energy_error.abs() > DIVERGENCE_THRESHOLD;
+    let divergent = !h.is_finite()
+        || !energy_error.is_finite()
+        || energy_error.abs() > DIVERGENCE_THRESHOLD;
     // Slice: keep only states with log_u <= log p(q,p) where log p = -H.
     // Use weights relative to the start point: log_weight = -(H - H0) = -energy_error.
     let logp = -h;
     let in_slice = log_u <= logp;
     // Slice-based NUTS: select uniformly among states in the slice.
     // (Stan's multinomial-weighted variant does not use an explicit slice threshold.)
-    let log_weight = if in_slice { 0.0 } else { f64::NEG_INFINITY };
+    let log_weight = if in_slice && !divergent { 0.0 } else { f64::NEG_INFINITY };
 
-    let accept_prob = (-energy_error).exp().min(1.0);
+    let accept_prob = if !energy_error.is_finite() { 0.0 } else { (-energy_error).exp().min(1.0) };
 
     Ok(NutsTree {
         q_left: new_state.q.clone(),
@@ -200,7 +210,15 @@ fn build_tree<M: LogDensityModel + ?Sized>(
 
     // Multinomial selection: accept outer proposal with probability
     // exp(outer.log_sum_weight - new_log_sum_weight)
-    let accept_outer = (outer.log_sum_weight - new_log_sum_weight).exp();
+    let mut accept_outer = if new_log_sum_weight == f64::NEG_INFINITY {
+        0.0
+    } else {
+        (outer.log_sum_weight - new_log_sum_weight).exp()
+    };
+    if !accept_outer.is_finite() {
+        accept_outer = 0.0;
+    }
+    accept_outer = accept_outer.clamp(0.0, 1.0);
     let u: f64 = rng.random();
     if u < accept_outer {
         inner.q_proposal = outer.q_proposal;
@@ -255,6 +273,11 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
     }
 
     let h0 = state.hamiltonian(inv_mass);
+    if !h0.is_finite() {
+        return Err(ns_core::Error::Validation(
+            "non-finite initial Hamiltonian in NUTS transition".to_string(),
+        ));
+    }
     // Slice variable: log(u) where u ~ Uniform(0, exp(-H0)).
     // Equivalent: log_u = ln(rand()) - H0.
     let log_u: f64 = rng.random::<f64>().ln() - h0;
@@ -311,7 +334,15 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         // Multinomial merge: accept subtree proposal with probability
         // exp(subtree.log_sum_weight - new_log_sum_weight)
         let new_log_sum_weight = log_sum_exp(tree.log_sum_weight, subtree.log_sum_weight);
-        let accept_subtree = (subtree.log_sum_weight - new_log_sum_weight).exp();
+        let mut accept_subtree = if new_log_sum_weight == f64::NEG_INFINITY {
+            0.0
+        } else {
+            (subtree.log_sum_weight - new_log_sum_weight).exp()
+        };
+        if !accept_subtree.is_finite() {
+            accept_subtree = 0.0;
+        }
+        accept_subtree = accept_subtree.clamp(0.0, 1.0);
         let u: f64 = rng.random();
         if u < accept_subtree {
             tree.q_proposal = subtree.q_proposal;
@@ -351,7 +382,11 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
     }
 
     let n_total = tree.n_leapfrog.max(1) as f64;
-    let accept_prob = tree.sum_accept_prob / n_total;
+    let mut accept_prob = tree.sum_accept_prob / n_total;
+    if !accept_prob.is_finite() {
+        accept_prob = 0.0;
+    }
+    accept_prob = accept_prob.clamp(0.0, 1.0);
 
     Ok(NutsTransition {
         q: tree.q_proposal,
@@ -589,8 +624,17 @@ mod tests {
         let transition = nuts_transition(&integrator, &state, 10, &inv_mass, &mut rng).unwrap();
 
         assert!(transition.depth <= 10);
-        assert!(transition.accept_prob >= 0.0);
+        assert!(transition.accept_prob.is_finite() && transition.accept_prob >= 0.0 && transition.accept_prob <= 1.0);
         assert!(transition.n_leapfrog > 0);
+    }
+
+    #[test]
+    fn test_log_sum_exp_handles_neg_inf_and_nan() {
+        assert_eq!(log_sum_exp(f64::NEG_INFINITY, f64::NEG_INFINITY), f64::NEG_INFINITY);
+        assert_eq!(log_sum_exp(f64::NAN, f64::NEG_INFINITY), f64::NEG_INFINITY);
+        assert_eq!(log_sum_exp(f64::NEG_INFINITY, f64::NAN), f64::NEG_INFINITY);
+        let v = log_sum_exp(0.0, 0.0);
+        assert!(v.is_finite() && (v - (2.0_f64).ln()).abs() < 1e-12);
     }
 
     #[test]

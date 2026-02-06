@@ -263,6 +263,14 @@ enum TimeseriesCommands {
         #[arg(long, default_value_t = true)]
         estimate_r: bool,
 
+        /// Update F (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_f: bool,
+
+        /// Update H (currently only supports 1D: n_state=1, n_obs=1)
+        #[arg(long, default_value_t = false)]
+        estimate_h: bool,
+
         /// Minimum diagonal value applied to Q/R
         #[arg(long, default_value = "1e-12")]
         min_diag: f64,
@@ -378,9 +386,21 @@ fn main() -> Result<()> {
                 tol,
                 estimate_q,
                 estimate_r,
+                estimate_f,
+                estimate_h,
                 min_diag,
                 output,
-            } => cmd_ts_kalman_em(&input, max_iter, tol, estimate_q, estimate_r, min_diag, output.as_ref()),
+            } => cmd_ts_kalman_em(
+                &input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                estimate_f,
+                estimate_h,
+                min_diag,
+                output.as_ref(),
+            ),
             TimeseriesCommands::KalmanForecast { input, steps, output } => {
                 cmd_ts_kalman_forecast(&input, steps, output.as_ref())
             }
@@ -754,6 +774,8 @@ fn cmd_ts_kalman_em(
     tol: f64,
     estimate_q: bool,
     estimate_r: bool,
+    estimate_f: bool,
+    estimate_h: bool,
     min_diag: f64,
     output: Option<&PathBuf>,
 ) -> Result<()> {
@@ -763,6 +785,8 @@ fn cmd_ts_kalman_em(
         tol,
         estimate_q,
         estimate_r,
+        estimate_f,
+        estimate_h,
         min_diag,
     };
 
@@ -773,6 +797,8 @@ fn cmd_ts_kalman_em(
         "converged": res.converged,
         "n_iter": res.n_iter,
         "loglik_trace": res.loglik_trace,
+        "f": dmatrix_to_nested(&res.model.f),
+        "h": dmatrix_to_nested(&res.model.h),
         "q": dmatrix_to_nested(&res.model.q),
         "r": dmatrix_to_nested(&res.model.r),
     });

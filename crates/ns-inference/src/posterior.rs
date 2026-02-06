@@ -89,6 +89,11 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
                 theta.len()
             )));
         }
+        if theta.iter().any(|v| !v.is_finite()) {
+            return Err(ns_core::Error::Validation(
+                "theta must contain only finite values".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -99,6 +104,11 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
                 self.dim(),
                 z.len()
             )));
+        }
+        if z.iter().any(|v| !v.is_finite()) {
+            return Err(ns_core::Error::Validation(
+                "z must contain only finite values".to_string(),
+            ));
         }
         Ok(())
     }
