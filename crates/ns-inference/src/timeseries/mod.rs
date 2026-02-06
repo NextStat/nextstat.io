@@ -11,3 +11,6 @@ pub mod forecast;
 
 /// Simulation utilities for linear-Gaussian state space models.
 pub mod simulate;
+
+/// Parameter transforms and bounds for time series models.
+pub mod params;

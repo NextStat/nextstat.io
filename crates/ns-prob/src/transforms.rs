@@ -20,6 +20,28 @@ pub trait Bijector: Send + Sync {
     fn jacobian(&self, z: f64) -> f64;
 }
 
+/// Which bijector to use for positive parameters `(0, +inf)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositiveBijectorKind {
+    /// `theta = exp(z)`.
+    Exp,
+    /// `theta = softplus(z)`.
+    Softplus,
+}
+
+/// Options for building a [`ParameterTransform`] from bounds.
+#[derive(Debug, Clone, Copy)]
+pub struct ParameterTransformOptions {
+    /// Mapping used when bounds are exactly `(0, +inf)`.
+    pub positive_bijector: PositiveBijectorKind,
+}
+
+impl Default for ParameterTransformOptions {
+    fn default() -> Self {
+        Self { positive_bijector: PositiveBijectorKind::Exp }
+    }
+}
+
 /// Identity: `(-inf, inf) -> (-inf, inf)`.
 pub struct IdentityBijector;
 
@@ -270,11 +292,16 @@ impl ParameterTransform {
     ///
     /// Selection logic:
     /// - `(-inf, inf)` -> Identity
-    /// - `(0, inf)` -> Exp
+    /// - `(0, inf)` -> Exp (default; see [`Self::from_bounds_with_options`])
     /// - `(a, inf)` where `a > -inf` -> LowerBounded(a)
     /// - `(-inf, b)` where `b < inf` -> UpperBounded(b)
     /// - `(a, b)` where both finite -> Sigmoid(a, b)
     pub fn from_bounds(bounds: &[(f64, f64)]) -> Self {
+        Self::from_bounds_with_options(bounds, ParameterTransformOptions::default())
+    }
+
+    /// Create transforms from parameter bounds with custom selection options.
+    pub fn from_bounds_with_options(bounds: &[(f64, f64)], opts: ParameterTransformOptions) -> Self {
         let bijectors: Vec<Box<dyn Bijector>> = bounds
             .iter()
             .map(|&(lo, hi)| -> Box<dyn Bijector> {
@@ -287,7 +314,10 @@ impl ParameterTransform {
                         if !lo.is_finite() {
                             Box::new(IdentityBijector)
                         } else if lo == 0.0 {
-                            Box::new(ExpBijector)
+                            match opts.positive_bijector {
+                                PositiveBijectorKind::Exp => Box::new(ExpBijector),
+                                PositiveBijectorKind::Softplus => Box::new(SoftplusBijector::new(0.0)),
+                            }
                         } else {
                             Box::new(LowerBoundedBijector::new(lo))
                         }
@@ -311,6 +341,16 @@ impl ParameterTransform {
             .collect();
 
         Self { bijectors }
+    }
+
+    /// Like [`Self::from_bounds`], but uses softplus for positive parameters `(0, +inf)`.
+    pub fn from_bounds_softplus(bounds: &[(f64, f64)]) -> Self {
+        Self::from_bounds_with_options(
+            bounds,
+            ParameterTransformOptions {
+                positive_bijector: PositiveBijectorKind::Softplus,
+            },
+        )
     }
 
     /// Number of parameters.
@@ -617,5 +657,18 @@ mod tests {
         }
 
         assert!(log_jac.is_finite(), "log_jac should be finite: {}", log_jac);
+    }
+
+    #[test]
+    fn test_parameter_transform_softplus_keeps_positive_finite_for_large_z() {
+        let bounds = vec![(0.0, f64::INFINITY)];
+        let t = ParameterTransform::from_bounds_softplus(&bounds);
+
+        // exp(1000) overflows, but softplus(1000) ~= 1000 should stay finite.
+        let theta = t.forward(&[1000.0]);
+        assert!(theta[0].is_finite() && theta[0] > 0.0, "theta={:?}", theta);
+
+        let z_back = t.inverse(&theta);
+        assert!((z_back[0] - 1000.0).abs() / 1000.0 < 1e-12, "z_back={:?}", z_back);
     }
 }
