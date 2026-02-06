@@ -253,6 +253,7 @@ enum PosteriorModel {
     HistFactory(RustModel),
     GaussianMean(GaussianMeanModel),
     Funnel(FunnelModel),
+    StdNormal(StdNormalModel),
     LinearRegression(RustLinearRegressionModel),
     LogisticRegression(RustLogisticRegressionModel),
     OrderedLogit(RustOrderedLogitModel),
@@ -273,6 +274,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
             PosteriorModel::Funnel(m) => m.dim(),
+            PosteriorModel::StdNormal(m) => m.dim(),
             PosteriorModel::LinearRegression(m) => m.dim(),
             PosteriorModel::LogisticRegression(m) => m.dim(),
             PosteriorModel::OrderedLogit(m) => m.dim(),
@@ -293,6 +295,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
             PosteriorModel::Funnel(m) => m.parameter_names(),
+            PosteriorModel::StdNormal(m) => m.parameter_names(),
             PosteriorModel::LinearRegression(m) => m.parameter_names(),
             PosteriorModel::LogisticRegression(m) => m.parameter_names(),
             PosteriorModel::OrderedLogit(m) => m.parameter_names(),
@@ -313,6 +316,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
             PosteriorModel::Funnel(m) => m.parameter_bounds(),
+            PosteriorModel::StdNormal(m) => m.parameter_bounds(),
             PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
             PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
             PosteriorModel::OrderedLogit(m) => m.parameter_bounds(),
@@ -333,6 +337,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
             PosteriorModel::Funnel(m) => m.parameter_init(),
+            PosteriorModel::StdNormal(m) => m.parameter_init(),
             PosteriorModel::LinearRegression(m) => m.parameter_init(),
             PosteriorModel::LogisticRegression(m) => m.parameter_init(),
             PosteriorModel::OrderedLogit(m) => m.parameter_init(),
@@ -353,6 +358,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
             PosteriorModel::Funnel(m) => m.nll(params),
+            PosteriorModel::StdNormal(m) => m.nll(params),
             PosteriorModel::LinearRegression(m) => m.nll(params),
             PosteriorModel::LogisticRegression(m) => m.nll(params),
             PosteriorModel::OrderedLogit(m) => m.nll(params),
@@ -373,6 +379,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
             PosteriorModel::Funnel(m) => m.grad_nll(params),
+            PosteriorModel::StdNormal(m) => m.grad_nll(params),
             PosteriorModel::LinearRegression(m) => m.grad_nll(params),
             PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
             PosteriorModel::OrderedLogit(m) => m.grad_nll(params),
@@ -615,6 +622,8 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
     } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
         Ok(PosteriorModel::Funnel(fm.inner))
+    } else if let Ok(sm) = model.extract::<PyRef<'_, PyStdNormalModel>>() {
+        Ok(PosteriorModel::StdNormal(sm.inner.clone()))
     } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
         Ok(PosteriorModel::LinearRegression(lr.inner.clone()))
     } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
@@ -641,7 +650,7 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::CoxPh(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
         ))
     }
 }
@@ -3168,6 +3177,30 @@ fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<
     mle.ranking(py, model)
 }
 
+/// Fixed-step RK4 integration for a linear ODE system `dy/dt = A y`.
+///
+/// Returns a dict: {"t": [...], "y": [[...], ...]}.
+#[pyfunction]
+#[pyo3(signature = (a, y0, t0, t1, dt, *, max_steps=100000))]
+fn rk4_linear(
+    py: Python<'_>,
+    a: Vec<Vec<f64>>,
+    y0: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    dt: f64,
+    max_steps: usize,
+) -> PyResult<Py<PyAny>> {
+    let a = dmatrix_from_nested("A", a)?;
+    let sol = ns_inference::ode::rk4_linear(&a, &y0, t0, t1, dt, max_steps)
+        .map_err(|e| PyValueError::new_err(format!("rk4_linear failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    Ok(out.into_any().unbind())
+}
+
 /// Closed-form OLS fit for linear regression fixtures and baselines.
 #[pyfunction]
 #[pyo3(signature = (x, y, *, include_intercept=true))]
@@ -3521,6 +3554,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
+    m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;

@@ -150,6 +150,30 @@ cargo run -p ns-cli -- fit --input tests/fixtures/simple_workspace.json --thread
 
 This returns best-fit parameters, uncertainties, and NLL.
 
+## HEPData (real analyses) parity harness
+
+NextStat ships deterministic parity tests against pyhf on small synthetic fixtures by default.
+To expand coverage to real published analyses, you can download and materialize pyhf JSON
+workspaces from HEPData (opt-in).
+
+Fetch + materialize (writes under `tests/hepdata/`; not committed):
+
+```bash
+make hepdata-fetch
+```
+
+Run the fast parity checks (NLL only):
+
+```bash
+make hepdata-pytest
+```
+
+Run the slow MLE smoke checks as well:
+
+```bash
+NS_RUN_SLOW=1 make hepdata-pytest
+```
+
 ## 2) Hypothesis Test (asymptotic CLs, qtilde)
 
 CLI:

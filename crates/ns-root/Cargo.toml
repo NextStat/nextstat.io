@@ -1,0 +1,21 @@
+[package]
+name = "ns-root"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Native ROOT file reader for NextStat (TH1D/TH1F histograms)"
+
+[dependencies]
+thiserror.workspace = true
+log.workspace = true
+flate2 = "1.1"
+lz4_flex = "0.11"
+
+[dev-dependencies]
+approx.workspace = true

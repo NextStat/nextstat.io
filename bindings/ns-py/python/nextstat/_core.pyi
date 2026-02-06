@@ -549,6 +549,15 @@ def poisson_toys(
 def ranking(
     model: HistFactoryModel,
 ) -> List[Dict[str, Any]]: ...
+def rk4_linear(
+    a: List[List[float]],
+    y0: List[float],
+    t0: float,
+    t1: float,
+    dt: float,
+    *,
+    max_steps: int = ...,
+) -> Dict[str, Any]: ...
 def ols_fit(x: List[List[float]], y: List[float], *, include_intercept: bool = ...) -> List[float]: ...
 
 

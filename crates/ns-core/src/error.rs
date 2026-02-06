@@ -24,6 +24,14 @@ pub enum Error {
     /// Not implemented
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    /// ROOT file error
+    #[error("ROOT file error: {0}")]
+    RootFile(String),
+
+    /// XML parsing error
+    #[error("XML error: {0}")]
+    Xml(String),
 }
 
 /// Result type alias

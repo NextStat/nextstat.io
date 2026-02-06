@@ -104,3 +104,31 @@ print(es.rel_times)
 print(es.coef)
 print(es.standard_errors)
 ```
+
+# Instrumental variables (IV) / 2SLS baseline
+
+NextStat includes a minimal **instrumental variables** estimator using **two-stage least squares (2SLS)** for linear models.
+
+- Structural equation: `y = d * beta + x' gamma + u` where `d` is endogenous.
+- Instruments: `z` affects `d`, but is excluded from the structural equation.
+
+## API
+
+```python
+import nextstat
+
+fit = nextstat.econometrics.iv_2sls_from_formula(
+    "y ~ 1 + x",      # exogenous regressors (and intercept)
+    data,
+    endog="d",        # endogenous regressor(s)
+    instruments=["z"],  # excluded instruments
+    cov="hc1",        # "homoskedastic" | "hc1" | "cluster"
+)
+
+print(fit.column_names)
+print(fit.coef)
+print(fit.standard_errors)
+print(fit.diagnostics.excluded_instruments)
+print(fit.diagnostics.first_stage_f)
+print(fit.diagnostics.first_stage_partial_r2)
+```

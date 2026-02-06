@@ -5,6 +5,7 @@ members = [
     "crates/ns-compute",
     "crates/ns-ad",
     "crates/ns-prob",
+    "crates/ns-root",
     "crates/ns-inference",
     "crates/ns-translate",
     "crates/ns-viz",
@@ -29,6 +30,7 @@ ns-core = { path = "crates/ns-core", version = "0.1.0" }
 ns-compute = { path = "crates/ns-compute", version = "0.1.0" }
 ns-ad = { path = "crates/ns-ad", version = "0.1.0" }
 ns-prob = { path = "crates/ns-prob", version = "0.1.0" }
+ns-root = { path = "crates/ns-root", version = "0.1.0" }
 ns-translate = { path = "crates/ns-translate", version = "0.1.0" }
 ns-inference = { path = "crates/ns-inference", version = "0.1.0" }
 ns-viz = { path = "crates/ns-viz", version = "0.1.0" }

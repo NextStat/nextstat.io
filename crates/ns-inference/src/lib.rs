@@ -32,6 +32,10 @@ pub mod laplace;
 pub mod lmm;
 /// Maximum-likelihood estimation via L-BFGS-B.
 pub mod mle;
+/// Ordinary differential equation (ODE) solvers (Phase 13 baseline).
+pub mod ode;
+/// Pharmacometrics models (Phase 13).
+pub mod pk;
 /// NUTS tree-building and sampling.
 pub mod nuts;
 /// Generic numerical optimizer (L-BFGS-B backend).
@@ -63,6 +67,8 @@ pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
+pub use ode::{OdeSolution, rk4_linear};
+pub use pk::{LloqPolicy, OneCompartmentOralPkModel};
 pub use nuts::{NutsConfig, sample_nuts};
 pub use optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
 pub use ordinal::{OrderedLogitModel, OrderedProbitModel};

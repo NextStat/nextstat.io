@@ -79,6 +79,11 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+# External HEPData fixtures (opt-in downloads)
+/tests/hepdata/_cache/
+/tests/hepdata/workspaces/
+/tests/hepdata/workspaces.lock.json
+
 # Testing
 .pytest_cache/
 .coverage

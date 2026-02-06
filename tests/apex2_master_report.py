@@ -445,9 +445,18 @@ def main() -> int:
         action="store_true",
         help="Also run the NUTS quality report and embed it (fast; JSON artifact).",
     )
-    ap.add_argument("--nuts-quality-cases", type=str, default="gaussian,linear,histfactory")
+    ap.add_argument(
+        "--nuts-quality-cases",
+        type=str,
+        default="gaussian,posterior,funnel,linear,histfactory",
+        help="Comma-separated cases for tests/apex2_nuts_quality_report.py",
+    )
     ap.add_argument("--nuts-quality-warmup", type=int, default=200)
     ap.add_argument("--nuts-quality-samples", type=int, default=200)
+    ap.add_argument("--nuts-quality-funnel-warmup", type=int, default=300)
+    ap.add_argument("--nuts-quality-funnel-samples", type=int, default=300)
+    ap.add_argument("--nuts-quality-funnel-divergence-rate-max", type=float, default=0.30)
+    ap.add_argument("--nuts-quality-funnel-max-treedepth-rate-max", type=float, default=0.50)
     ap.add_argument("--nuts-quality-seed", type=int, default=0)
     ap.add_argument("--sbc-cases", type=str, default="lin1d,lin2d")
     ap.add_argument("--sbc-n-runs", type=int, default=None)
@@ -537,6 +546,14 @@ def main() -> int:
             str(int(args.nuts_quality_warmup)),
             "--samples",
             str(int(args.nuts_quality_samples)),
+            "--funnel-warmup",
+            str(int(args.nuts_quality_funnel_warmup)),
+            "--funnel-samples",
+            str(int(args.nuts_quality_funnel_samples)),
+            "--funnel-divergence-rate-max",
+            str(float(args.nuts_quality_funnel_divergence_rate_max)),
+            "--funnel-max-treedepth-rate-max",
+            str(float(args.nuts_quality_funnel_max_treedepth_rate_max)),
             "--seed",
             str(int(args.nuts_quality_seed)),
         ]

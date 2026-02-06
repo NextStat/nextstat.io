@@ -54,6 +54,7 @@ fit_toys = _get("fit_toys")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
+rk4_linear = _get("rk4_linear")
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
@@ -67,6 +68,7 @@ from . import survival as survival  # noqa: E402
 from . import ordinal as ordinal  # noqa: E402
 from . import causal as causal  # noqa: E402
 from . import missing as missing  # noqa: E402
+from . import ode as ode  # noqa: E402
 from . import formula as formula  # noqa: E402
 from . import summary as summary  # noqa: E402
 from . import robust as robust  # noqa: E402
@@ -100,6 +102,7 @@ __all__ = [
     "ordinal",
     "causal",
     "missing",
+    "ode",
     "formula",
     "summary",
     "robust",
@@ -129,6 +132,7 @@ __all__ = [
     "asimov_data",
     "poisson_toys",
     "ranking",
+    "rk4_linear",
     "from_pyhf",
     "profile_scan",
     "upper_limit",

@@ -14,12 +14,13 @@ Notes / limitations:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, List, Literal, Mapping, Optional, Sequence, Tuple, Union
 
 import nextstat
 
-from .glm._linalg import as_2d_float_list, mat_vec_mul
+from .glm._linalg import as_2d_float_list, mat_inv, mat_mul, mat_t, mat_vec_mul
 
 
 ClusterKind = Literal["entity", "time", "none"]
@@ -150,6 +151,27 @@ def _dot(a: Sequence[float], b: Sequence[float]) -> float:
     if len(a) != len(b):
         raise ValueError("length mismatch")
     return sum(float(x) * float(y) for x, y in zip(a, b))
+
+def _outer(v: Sequence[float]) -> List[List[float]]:
+    vv = [float(x) for x in v]
+    return [[a * b for b in vv] for a in vv]
+
+
+def _mat_add_inplace(a: List[List[float]], b: List[List[float]]) -> None:
+    if len(a) != len(b):
+        raise ValueError("matrix shape mismatch")
+    for i in range(len(a)):
+        if len(a[i]) != len(b[i]):
+            raise ValueError("matrix shape mismatch")
+        for j in range(len(a[i])):
+            a[i][j] += float(b[i][j])
+
+
+def _mat_scale_inplace(a: List[List[float]], s: float) -> None:
+    fs = float(s)
+    for i in range(len(a)):
+        for j in range(len(a[i])):
+            a[i][j] *= fs
 
 
 def _col_as_vec(x: Sequence[Sequence[float]], j: int) -> List[float]:
@@ -668,6 +690,309 @@ def event_study_twfe_from_formula(
         cluster=cluster,
     )
 
+@dataclass(frozen=True)
+class WeakIvDiagnostics:
+    excluded_instruments: List[str]
+    first_stage_f: List[float]
+    first_stage_partial_r2: List[float]
+    n_obs: int
+
+
+@dataclass(frozen=True)
+class Iv2slsFit:
+    coef: List[float]
+    standard_errors: List[float]
+    covariance: List[List[float]]
+    column_names: List[str]
+    n_obs: int
+    df_resid: int
+    diagnostics: WeakIvDiagnostics
+
+
+def _require_full_rank(x: List[List[float]], names: List[str], what: str) -> None:
+    if not x:
+        raise ValueError(f"{what} must be non-empty")
+    k = len(x[0])
+    xs, _ns = _select_independent_columns(x, names, mandatory=list(range(k)))
+    if len(xs[0]) != k:
+        raise ValueError(f"{what} is rank-deficient / collinear")
+
+
+def _sum_sq(v: Sequence[float]) -> float:
+    return sum(float(x) * float(x) for x in v)
+
+
+def iv_2sls_fit(
+    y: Sequence[float],
+    *,
+    endog: Sequence[Sequence[float]],
+    instruments: Sequence[Sequence[float]],
+    exog: Optional[Sequence[Sequence[float]]] = None,
+    endog_names: Optional[Sequence[str]] = None,
+    exog_names: Optional[Sequence[str]] = None,
+    instrument_names: Optional[Sequence[str]] = None,
+    cov: Literal["homoskedastic", "hc1", "cluster"] = "hc1",
+    cluster: Optional[Sequence[Any]] = None,
+    df_correction: bool = True,
+) -> Iv2slsFit:
+    """Baseline IV / 2SLS for linear models (Phase 12).
+
+    Structural equation: y = X_endog * beta + X_exog * gamma + u
+    Instruments: Z = [instruments, X_exog]
+    """
+    y2 = [float(v) for v in y]
+    n = len(y2)
+    if n == 0:
+        raise ValueError("need at least 1 observation")
+
+    x_endog = as_2d_float_list(endog)
+    z_excl = as_2d_float_list(instruments)
+    if len(x_endog) != n or len(z_excl) != n:
+        raise ValueError("length mismatch between y/endog/instruments")
+
+    p_endog = len(x_endog[0]) if x_endog else 0
+    if p_endog == 0:
+        raise ValueError("endog must have at least 1 column")
+    if any(len(row) != p_endog for row in x_endog):
+        raise ValueError("endog must be rectangular")
+
+    q = len(z_excl[0]) if z_excl else 0
+    if q == 0:
+        raise ValueError("instruments must have at least 1 column")
+    if any(len(row) != q for row in z_excl):
+        raise ValueError("instruments must be rectangular")
+    if q < p_endog:
+        raise ValueError("underidentified: need at least as many excluded instruments as endogenous regressors")
+
+    x_exog: List[List[float]]
+    p_exog: int
+    if exog is None:
+        x_exog = [[] for _ in range(n)]
+        p_exog = 0
+    else:
+        x_exog = as_2d_float_list(exog)
+        if len(x_exog) != n:
+            raise ValueError("length mismatch between y and exog")
+        p_exog = len(x_exog[0]) if x_exog else 0
+        if p_exog == 0:
+            raise ValueError("exog must have at least 1 column when provided")
+        if any(len(row) != p_exog for row in x_exog):
+            raise ValueError("exog must be rectangular")
+
+    endog_names2 = [f"endog{i}" for i in range(p_endog)] if endog_names is None else [str(s) for s in endog_names]
+    if len(endog_names2) != p_endog:
+        raise ValueError("endog_names length mismatch")
+
+    exog_names2 = [f"x{i}" for i in range(p_exog)] if exog_names is None else [str(s) for s in exog_names]
+    if len(exog_names2) != p_exog:
+        raise ValueError("exog_names length mismatch")
+
+    instr_names2 = [f"z{i}" for i in range(q)] if instrument_names is None else [str(s) for s in instrument_names]
+    if len(instr_names2) != q:
+        raise ValueError("instrument_names length mismatch")
+
+    x = [xe + xx for xe, xx in zip(x_endog, x_exog)]
+    x_names = endog_names2 + exog_names2
+    _require_full_rank(x, x_names, "X")
+
+    z = [zi + xx for zi, xx in zip(z_excl, x_exog)]
+    z_names = instr_names2 + exog_names2
+
+    exog_idx = list(range(q, q + p_exog))
+    z_sel, z_names_sel = _select_independent_columns(z, z_names, mandatory=exog_idx)
+    if p_exog > 0 and any(nm not in z_names_sel for nm in exog_names2):
+        raise ValueError("exog columns are collinear in Z")
+
+    excluded_kept = [nm for nm in z_names_sel if nm in instr_names2]
+
+    kx = len(x[0])
+    kz = len(z_sel[0])
+    if n <= kx:
+        raise ValueError("Need n > n_params to estimate sigma2_hat")
+    if kz < kx:
+        raise ValueError("underidentified after dropping collinear instruments")
+
+    xt = mat_t(x)
+    zt = mat_t(z_sel)
+    ztz_inv = mat_inv(mat_mul(zt, z_sel))
+
+    xtz = mat_mul(xt, z_sel)  # (kx x kz)
+    xz_inv = mat_mul(xtz, ztz_inv)  # (kx x kz)
+    ztx = mat_t(xtz)  # (kz x kx)
+    a = mat_mul(xz_inv, ztx)  # (kx x kx)
+    a_inv = mat_inv(a)
+
+    zty = mat_vec_mul(zt, y2)  # (kz)
+    rhs = mat_vec_mul(xz_inv, zty)  # (kx)
+    beta = mat_vec_mul(a_inv, rhs)  # (kx)
+
+    yhat = mat_vec_mul(x, beta)
+    resid = [obs - pred for obs, pred in zip(y2, yhat)]
+
+    cov = str(cov).lower()  # type: ignore[assignment]
+    if cov not in ("homoskedastic", "hc1", "cluster"):
+        raise ValueError("cov must be one of: homoskedastic, hc1, cluster")
+
+    if cov == "homoskedastic":
+        sigma2 = _sum_sq(resid) / float(n - kx)
+        cov_beta = [[sigma2 * float(v) for v in row] for row in a_inv]
+    else:
+        meat = [[0.0] * kz for _ in range(kz)]
+        if cov == "hc1":
+            for ui, zi in zip(resid, z_sel):
+                oi = _outer([float(v) * float(ui) for v in zi])
+                _mat_add_inplace(meat, oi)
+            if df_correction and n > kx:
+                _mat_scale_inplace(meat, float(n) / float(n - kx))
+        else:
+            if cluster is None:
+                raise ValueError("cluster must be provided when cov='cluster'")
+            _validate_lengths(n, cluster)
+            by_g: dict[Any, List[float]] = {}
+            for ui, zi, gi in zip(resid, z_sel, cluster):
+                s = by_g.get(gi)
+                if s is None:
+                    by_g[gi] = [float(v) * float(ui) for v in zi]
+                else:
+                    for j in range(kz):
+                        s[j] += float(zi[j]) * float(ui)
+            g = len(by_g)
+            if g < 2:
+                raise ValueError("cluster must have at least 2 distinct groups")
+            for s in by_g.values():
+                _mat_add_inplace(meat, _outer(s))
+            if df_correction and n > kx:
+                scale = (float(g) / float(g - 1)) * ((float(n) - 1.0) / float(n - kx))
+                _mat_scale_inplace(meat, scale)
+
+        b = mat_mul(mat_mul(xz_inv, mat_mul(meat, ztz_inv)), ztx)
+        cov_beta = mat_mul(mat_mul(a_inv, b), a_inv)
+
+    se = nextstat.robust.cov_to_se(cov_beta)
+
+    exog_sel_idx = [i for i, nm in enumerate(z_names_sel) if nm in exog_names2]
+    z_exog_only = [[row[i] for i in exog_sel_idx] for row in z_sel] if exog_sel_idx else None
+
+    f_stats: List[float] = []
+    partial_r2s: List[float] = []
+    excl_idx = [i for i, nm in enumerate(z_names_sel) if nm in instr_names2]
+    q_kept = len(excl_idx)
+    k_ur = kz
+    df2 = n - k_ur
+
+    for j in range(p_endog):
+        dcol = _col_as_vec(x_endog, j)
+        if q_kept == 0 or df2 <= 0:
+            f_stats.append(float("nan"))
+            partial_r2s.append(float("nan"))
+            continue
+
+        try:
+            fs_ur = nextstat.glm.linear.fit(z_sel, dcol, include_intercept=False)
+            d_hat = list(fs_ur.predict(z_sel))
+            ssr_ur = _sum_sq([a - b for a, b in zip(dcol, d_hat)])
+        except Exception:
+            f_stats.append(float("nan"))
+            partial_r2s.append(float("nan"))
+            continue
+
+        if z_exog_only is None or (z_exog_only and len(z_exog_only[0]) == 0):
+            ssr_r = _sum_sq(dcol)
+        else:
+            try:
+                fs_r = nextstat.glm.linear.fit(z_exog_only, dcol, include_intercept=False)
+                d_hat_r = list(fs_r.predict(z_exog_only))
+                ssr_r = _sum_sq([a - b for a, b in zip(dcol, d_hat_r)])
+            except Exception:
+                ssr_r = float("nan")
+
+        if not (math.isfinite(ssr_r) and math.isfinite(ssr_ur)) or not (ssr_ur > 0.0) or not (ssr_r >= ssr_ur):
+            f_stats.append(float("nan"))
+            partial_r2s.append(float("nan"))
+            continue
+
+        num = (ssr_r - ssr_ur) / float(q_kept)
+        den = ssr_ur / float(df2) if df2 > 0 else float("nan")
+        f_stats.append(float(num / den) if (den > 0.0) else float("nan"))
+        partial_r2s.append(float(1.0 - (ssr_ur / ssr_r)) if (ssr_r > 0.0) else float("nan"))
+
+    diag = WeakIvDiagnostics(
+        excluded_instruments=list(excluded_kept),
+        first_stage_f=f_stats,
+        first_stage_partial_r2=partial_r2s,
+        n_obs=n,
+    )
+
+    return Iv2slsFit(
+        coef=[float(v) for v in beta],
+        standard_errors=[float(v) for v in se],
+        covariance=[[float(v) for v in row] for row in cov_beta],
+        column_names=list(x_names),
+        n_obs=n,
+        df_resid=int(n - kx),
+        diagnostics=diag,
+    )
+
+
+def iv_2sls_from_formula(
+    formula: str,
+    data: Any,
+    *,
+    endog: Union[str, Sequence[str]],
+    instruments: Sequence[str],
+    categorical: Optional[Sequence[str]] = None,
+    cluster: Optional[Union[str, Sequence[Any]]] = None,
+    cov: Literal["homoskedastic", "hc1", "cluster"] = "hc1",
+    df_correction: bool = True,
+) -> Iv2slsFit:
+    """2SLS from a minimal exogenous formula plus tabular data."""
+    endog_names = [str(endog)] if isinstance(endog, str) else [str(s) for s in endog]
+    instr_names = [str(s) for s in instruments]
+    if not instr_names:
+        raise ValueError("instruments must be non-empty")
+
+    y_name, terms, _ = nextstat.formula.parse_formula(formula)
+    cols_needed = [y_name] + terms + endog_names + instr_names
+    if isinstance(cluster, str):
+        cols_needed.append(cluster)
+    cols: Mapping[str, Sequence[Any]] = nextstat.formula.to_columnar(data, cols_needed)
+
+    y_vals, x_exog, exog_names = nextstat.formula.design_matrices(formula, cols, categorical=categorical)
+    n = len(y_vals)
+
+    x_endog: List[List[float]] = []
+    for i in range(n):
+        row: List[float] = []
+        for nm in endog_names:
+            row.append(float(cols[nm][i]))
+        x_endog.append(row)
+
+    z_excl: List[List[float]] = []
+    for i in range(n):
+        row2: List[float] = []
+        for nm in instr_names:
+            row2.append(float(cols[nm][i]))
+        z_excl.append(row2)
+
+    cluster_vals: Optional[Sequence[Any]] = None
+    if cov == "cluster":
+        if cluster is None:
+            raise ValueError("cluster must be provided when cov='cluster'")
+        cluster_vals = cols[cluster] if isinstance(cluster, str) else cluster
+
+    return iv_2sls_fit(
+        y_vals,
+        endog=x_endog,
+        instruments=z_excl,
+        exog=x_exog,
+        endog_names=endog_names,
+        exog_names=exog_names,
+        instrument_names=instr_names,
+        cov=cov,
+        cluster=cluster_vals,
+        df_correction=df_correction,
+    )
+
 
 __all__ = [
     "PanelFeFit",
@@ -683,4 +1008,8 @@ __all__ = [
     "EventStudyTwfeFit",
     "event_study_twfe_fit",
     "event_study_twfe_from_formula",
+    "WeakIvDiagnostics",
+    "Iv2slsFit",
+    "iv_2sls_fit",
+    "iv_2sls_from_formula",
 ]

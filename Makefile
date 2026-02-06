@@ -2,6 +2,8 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	hepdata-fetch \
+	hepdata-pytest \
 	apex2-root-prereq \
 	apex2-root-baseline-record \
 	apex2-root-cases \
@@ -40,6 +42,12 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+hepdata-fetch:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/hepdata/fetch_workspaces.py
+
+hepdata-pytest:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" -m pytest -k hepdata_workspaces
 
 apex2-root-prereq:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/apex2_root_suite_report.py --prereq-only --out tmp/apex2_root_prereq.json
