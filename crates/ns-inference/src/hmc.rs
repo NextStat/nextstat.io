@@ -8,6 +8,17 @@ use crate::posterior::Posterior;
 use ns_core::Result;
 use ns_core::traits::LogDensityModel;
 
+#[inline]
+fn metropolis_accept(log_accept: f64, u: f64) -> bool {
+    // Standard Metropolis criterion:
+    // accept with prob min(1, exp(log_accept)).
+    //
+    // With `log_accept = H_current - H_proposal = -ΔH`, this rejects high-energy (lower-probability)
+    // proposals and always accepts downhill moves (ΔH <= 0).
+    debug_assert!(u > 0.0 && u < 1.0);
+    u.ln() < log_accept
+}
+
 /// HMC phase-space state: position + momentum + cached potential/gradient.
 #[derive(Debug, Clone)]
 pub struct HmcState {
@@ -171,7 +182,7 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> StaticHmcSampler<'a, 'b, M> {
         // Metropolis accept/reject
         let log_accept = h_current - h_proposal;
         let u: f64 = rng.random();
-        let accepted = u.ln() < log_accept;
+        let accepted = metropolis_accept(log_accept, u);
 
         if accepted { Ok((proposal, true)) } else { Ok((current.clone(), false)) }
     }
@@ -292,5 +303,17 @@ mod tests {
         // POI mean should be in reasonable range
         let poi_mean: f64 = poi_samples.iter().sum::<f64>() / poi_samples.len() as f64;
         assert!(poi_mean > 0.0 && poi_mean < 3.0, "POI mean out of range: {}", poi_mean);
+    }
+
+    #[test]
+    fn test_metropolis_accept_contract() {
+        // log_accept = -ΔH
+        // - If ΔH <= 0 => log_accept >= 0 => always accept for u in (0,1)
+        assert!(metropolis_accept(0.0, 0.5));
+        assert!(metropolis_accept(1.0, 0.999999));
+
+        // - If ΔH = 1 => log_accept = -1 => accept iff u < exp(-1) ~= 0.3679
+        assert!(metropolis_accept(-1.0, 0.1));
+        assert!(!metropolis_accept(-1.0, 0.5));
     }
 }

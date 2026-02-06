@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Apex2 master runner: one report for pyhf parity + regression golden + ROOT parity.
+"""Apex2 master runner: one report for pyhf parity + regression golden + P6 benches + ROOT parity.
 
 This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
+  - P6 benchmarks (GLM fit/predict): `tests/apex2_p6_glm_benchmark_report.py` (optional)
   - bias/pulls: `tests/apex2_bias_pulls_report.py` (optional; slow)
   - SBC (NUTS): `tests/apex2_sbc_report.py` (optional; slow)
   - ROOT: `tests/apex2_root_suite_report.py` (runs if prereqs exist, else records skipped)
@@ -218,6 +219,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
+    ap.add_argument(
+        "--p6-glm-bench-out",
+        type=Path,
+        default=Path("tmp/p6_glm_fit_predict.json"),
+        help="Underlying P6 GLM benchmark JSON output (from tests/benchmark_glm_fit_predict.py).",
+    )
+    ap.add_argument(
+        "--p6-glm-bench-report-out",
+        type=Path,
+        default=Path("tmp/apex2_p6_glm_bench_report.json"),
+        help="Apex2 P6 GLM benchmark report JSON output.",
+    )
     ap.add_argument("--bias-pulls-out", type=Path, default=Path("tmp/apex2_bias_pulls_report.json"))
     ap.add_argument("--sbc-out", type=Path, default=Path("tmp/apex2_sbc_report.json"))
     ap.add_argument("--root-out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
@@ -258,6 +271,23 @@ def main() -> int:
     ap.add_argument("--pyhf-seed", type=int, default=0)
     ap.add_argument("--pyhf-fit", action="store_true")
     ap.add_argument(
+        "--p6-glm-bench",
+        action="store_true",
+        help="Also run P6 GLM end-to-end fit/predict benchmarks and embed report.",
+    )
+    ap.add_argument(
+        "--p6-glm-bench-baseline",
+        type=Path,
+        default=None,
+        help="Optional baseline JSON to compare against (same schema as --p6-glm-bench-out).",
+    )
+    ap.add_argument("--p6-glm-bench-max-slowdown", type=float, default=1.30)
+    ap.add_argument("--p6-glm-bench-min-baseline-fit-s", type=float, default=1e-3)
+    ap.add_argument("--p6-glm-bench-sizes", type=str, default="200,2000,20000")
+    ap.add_argument("--p6-glm-bench-p", type=int, default=20)
+    ap.add_argument("--p6-glm-bench-l2", type=float, default=0.0)
+    ap.add_argument("--p6-glm-bench-nb-alpha", type=float, default=0.5)
+    ap.add_argument(
         "--bias-pulls",
         action="store_true",
         help="Also run slow bias/pulls regression (NextStat vs pyhf) and embed report.",
@@ -293,6 +323,7 @@ def main() -> int:
         },
         "pyhf": None,
         "regression_golden": None,
+        "p6_glm_bench": None,
         "bias_pulls": None,
         "sbc": None,
         "root": None,
@@ -330,6 +361,53 @@ def main() -> int:
     # Regression golden fixtures (GLM surface)
     # ------------------------------------------------------------------
     report["regression_golden"] = _run_regression_golden()
+
+    # ------------------------------------------------------------------
+    # P6 benchmarks (optional)
+    # ------------------------------------------------------------------
+    if args.p6_glm_bench:
+        p6_runner = repo / "tests" / "apex2_p6_glm_benchmark_report.py"
+        p6_cmd = [
+            sys.executable,
+            str(p6_runner),
+            "--out",
+            str(args.p6_glm_bench_report_out),
+            "--bench-out",
+            str(args.p6_glm_bench_out),
+            "--sizes",
+            str(args.p6_glm_bench_sizes),
+            "--p",
+            str(int(args.p6_glm_bench_p)),
+            "--l2",
+            str(float(args.p6_glm_bench_l2)),
+            "--nb-alpha",
+            str(float(args.p6_glm_bench_nb_alpha)),
+            "--max-slowdown",
+            str(float(args.p6_glm_bench_max_slowdown)),
+            "--min-baseline-fit-s",
+            str(float(args.p6_glm_bench_min_baseline_fit_s)),
+        ]
+        if args.p6_glm_bench_baseline is not None:
+            p6_cmd += ["--baseline", str(args.p6_glm_bench_baseline)]
+
+        rc_p6, out_p6 = _run_json(p6_cmd, cwd=cwd, env=env)
+        p6_report = _read_json(args.p6_glm_bench_report_out) if args.p6_glm_bench_report_out.exists() else None
+        p6_declared = (p6_report or {}).get("status") if isinstance(p6_report, dict) else None
+        if p6_declared in ("ok", "fail", "skipped", "error"):
+            status = str(p6_declared)
+        else:
+            status = "ok" if rc_p6 == 0 else "fail"
+        report["p6_glm_bench"] = {
+            "status": status,
+            "returncode": int(rc_p6),
+            "stdout_tail": out_p6[-4000:],
+            "report_path": str(args.p6_glm_bench_report_out),
+            "bench_report_path": str(args.p6_glm_bench_out),
+            "baseline_path": str(args.p6_glm_bench_baseline) if args.p6_glm_bench_baseline else None,
+            "report": p6_report,
+        }
+    else:
+        report["p6_glm_bench"] = {"status": "skipped", "reason": "not_requested"}
 
     # ------------------------------------------------------------------
     # Bias/pulls regression (optional; slow)
@@ -494,6 +572,7 @@ def main() -> int:
     # Exit code policy: fail on pyhf mismatch; fail on ROOT mismatch only if prereqs exist.
     pyhf_ok = (rc_pyhf == 0)
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
+    p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
     sbc_ok_or_skipped = report["sbc"]["status"] in ("ok", "skipped")
     root_ok_or_skipped = root_status in ("ok", "skipped")
@@ -502,6 +581,8 @@ def main() -> int:
     if not pyhf_ok:
         return 2
     if not reg_ok_or_skipped:
+        return 2
+    if not p6_ok_or_skipped:
         return 2
     if not bias_ok_or_skipped:
         return 2

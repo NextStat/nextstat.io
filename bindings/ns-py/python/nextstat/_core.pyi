@@ -6,7 +6,7 @@ the PyO3 module in `bindings/ns-py/src/lib.rs`.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
 __version__: str
 
@@ -187,10 +187,12 @@ class FitResult:
 
 class MaximumLikelihoodEstimator:
     def __init__(self) -> None: ...
+    @overload
+    def fit(self, model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+    @overload
     def fit(
         self,
         model: Union[
-            HistFactoryModel,
             GaussianMeanModel,
             LinearRegressionModel,
             LogisticRegressionModel,
@@ -199,7 +201,7 @@ class MaximumLikelihoodEstimator:
             ComposedGlmModel,
         ],
         *,
-        data: Optional[List[float]] = ...,
+        data: Literal[None] = ...,
     ) -> FitResult: ...
     def fit_batch(
         self,
@@ -221,9 +223,11 @@ class MaximumLikelihoodEstimator:
 
 
 def from_pyhf(json_str: str) -> HistFactoryModel: ...
+@overload
+def fit(model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+@overload
 def fit(
     model: Union[
-        HistFactoryModel,
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
@@ -232,7 +236,7 @@ def fit(
         ComposedGlmModel,
     ],
     *,
-    data: Optional[List[float]] = ...,
+    data: Literal[None] = ...,
 ) -> FitResult: ...
 def fit_toys(
     model: HistFactoryModel,
@@ -297,9 +301,24 @@ def upper_limits_root(
 ) -> Tuple[float, List[float]]: ...
 
 
+@overload
+def sample(
+    model: HistFactoryModel,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    target_accept: float = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...
+@overload
 def sample(
     model: Union[
-        HistFactoryModel,
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
@@ -317,7 +336,7 @@ def sample(
     init_jitter: float = ...,
     init_jitter_rel: Optional[float] = ...,
     init_overdispersed_rel: Optional[float] = ...,
-    data: Optional[List[float]] = ...,
+    data: Literal[None] = ...,
 ) -> Dict[str, Any]: ...
 
 
@@ -347,4 +366,16 @@ def kalman_filter(
 def kalman_smooth(
     model: KalmanModel,
     ys: List[List[float]],
+) -> Dict[str, Any]: ...
+
+
+def kalman_em(
+    model: KalmanModel,
+    ys: List[List[float]],
+    *,
+    max_iter: int = ...,
+    tol: float = ...,
+    estimate_q: bool = ...,
+    estimate_r: bool = ...,
+    min_diag: float = ...,
 ) -> Dict[str, Any]: ...

@@ -108,6 +108,17 @@ enum ModelModifier {
 }
 
 impl HistFactoryModel {
+    fn validate_params_len(&self, got: usize) -> Result<()> {
+        let expected = self.parameters.len();
+        if got != expected {
+            return Err(ns_core::Error::Validation(format!(
+                "Parameter length mismatch: expected {}, got {}",
+                expected, got
+            )));
+        }
+        Ok(())
+    }
+
     /// Compute `ln Γ(n+1)` (generalized factorial).
     fn ln_factorial(n: f64) -> f64 {
         ln_gamma(n + 1.0)
@@ -659,13 +670,7 @@ impl HistFactoryModel {
     /// This helper updates the stored auxiliary observations accordingly while keeping `tau`
     /// fixed.
     pub fn with_shapesys_aux_observed_from_params(&self, params: &[f64]) -> Result<Self> {
-        if params.len() != self.parameters.len() {
-            return Err(ns_core::Error::Validation(format!(
-                "Parameter length mismatch: expected {}, got {}",
-                self.parameters.len(),
-                params.len()
-            )));
-        }
+        self.validate_params_len(params.len())?;
 
         let mut out = self.clone();
         for channel in &mut out.channels {
@@ -695,23 +700,19 @@ impl HistFactoryModel {
 
     /// Compute negative log-likelihood (f64 specialisation).
     pub fn nll(&self, params: &[f64]) -> Result<f64> {
+        self.validate_params_len(params.len())?;
         self.nll_generic(params)
     }
 
     /// Compute expected data at given parameter values (f64 specialisation).
     pub fn expected_data(&self, params: &[f64]) -> Result<Vec<f64>> {
+        self.validate_params_len(params.len())?;
         self.expected_data_generic(params)
     }
 
     /// Expected **main** data in pyhf ordering (channels lexicographically), without auxdata.
     pub fn expected_data_pyhf_main(&self, params: &[f64]) -> Result<Vec<f64>> {
-        if params.len() != self.parameters.len() {
-            return Err(ns_core::Error::Validation(format!(
-                "Parameter length mismatch: expected {}, got {}",
-                self.parameters.len(),
-                params.len()
-            )));
-        }
+        self.validate_params_len(params.len())?;
 
         let expected_main_flat: Vec<f64> = self.expected_data(params)?;
 
@@ -745,13 +746,7 @@ impl HistFactoryModel {
     /// - For `constrained_by_normal` parameter sets, the aux expectation is the parameter value.
     /// - For `shapesys` (Barlow-Beeston) Poisson constraints, the aux expectation is `gamma_i * tau_i`.
     pub fn expected_data_pyhf(&self, params: &[f64]) -> Result<Vec<f64>> {
-        if params.len() != self.parameters.len() {
-            return Err(ns_core::Error::Validation(format!(
-                "Parameter length mismatch: expected {}, got {}",
-                self.parameters.len(),
-                params.len()
-            )));
-        }
+        self.validate_params_len(params.len())?;
 
         let mut out = self.expected_data_pyhf_main(params)?;
         out.reserve(self.parameters.len());
@@ -866,16 +861,51 @@ impl HistFactoryModel {
         }
 
         for name in sorted_keys(&histosys) {
-            out.push(params[*histosys.get(&name).unwrap()]);
+            let idx = *histosys.get(&name).ok_or_else(|| {
+                ns_core::Error::Validation(format!("Missing Histosys index for '{}'", name))
+            })?;
+            if idx >= params.len() {
+                return Err(ns_core::Error::Validation(format!(
+                    "Histosys param index out of range for '{}': idx={} len={}",
+                    name,
+                    idx,
+                    params.len()
+                )));
+            }
+            out.push(params[idx]);
         }
         for name in sorted_keys(&lumi) {
-            out.push(params[*lumi.get(&name).unwrap()]);
+            let idx = *lumi.get(&name).ok_or_else(|| {
+                ns_core::Error::Validation(format!("Missing Lumi index for '{}'", name))
+            })?;
+            if idx >= params.len() {
+                return Err(ns_core::Error::Validation(format!(
+                    "Lumi param index out of range for '{}': idx={} len={}",
+                    name,
+                    idx,
+                    params.len()
+                )));
+            }
+            out.push(params[idx]);
         }
         for name in sorted_keys(&normsys) {
-            out.push(params[*normsys.get(&name).unwrap()]);
+            let idx = *normsys.get(&name).ok_or_else(|| {
+                ns_core::Error::Validation(format!("Missing NormSys index for '{}'", name))
+            })?;
+            if idx >= params.len() {
+                return Err(ns_core::Error::Validation(format!(
+                    "NormSys param index out of range for '{}': idx={} len={}",
+                    name,
+                    idx,
+                    params.len()
+                )));
+            }
+            out.push(params[idx]);
         }
         for name in sorted_keys(&shapesys) {
-            let (param_indices, tau) = shapesys.get(&name).unwrap();
+            let (param_indices, tau) = shapesys.get(&name).ok_or_else(|| {
+                ns_core::Error::Validation(format!("Missing ShapeSys definition for '{}'", name))
+            })?;
             if param_indices.len() != tau.len() {
                 return Err(ns_core::Error::Validation(format!(
                     "ShapeSys aux length mismatch for '{}': params={} tau={}",
@@ -885,11 +915,30 @@ impl HistFactoryModel {
                 )));
             }
             for (&pidx, &tau_i) in param_indices.iter().zip(tau.iter()) {
+                if pidx >= params.len() {
+                    return Err(ns_core::Error::Validation(format!(
+                        "ShapeSys param index out of range for '{}': idx={} len={}",
+                        name,
+                        pidx,
+                        params.len()
+                    )));
+                }
                 out.push((params[pidx] * tau_i).max(1e-10));
             }
         }
         for name in sorted_keys(&staterror) {
-            for &pidx in staterror.get(&name).unwrap() {
+            let idxs = staterror.get(&name).ok_or_else(|| {
+                ns_core::Error::Validation(format!("Missing StatError indices for '{}'", name))
+            })?;
+            for &pidx in idxs {
+                if pidx >= params.len() {
+                    return Err(ns_core::Error::Validation(format!(
+                        "StatError param index out of range for '{}': idx={} len={}",
+                        name,
+                        pidx,
+                        params.len()
+                    )));
+                }
                 out.push(params[pidx]);
             }
         }
@@ -899,6 +948,7 @@ impl HistFactoryModel {
 
     /// Generic NLL that works with any [`Scalar`] type (f64 or Dual).
     pub fn nll_generic<T: Scalar>(&self, params: &[T]) -> Result<T> {
+        self.validate_params_len(params.len())?;
         let expected = self.expected_data_generic(params)?;
 
         let mut nll = T::from_f64(0.0);
@@ -970,6 +1020,7 @@ impl HistFactoryModel {
 
     /// Generic expected data computation.
     pub fn expected_data_generic<T: Scalar>(&self, params: &[T]) -> Result<Vec<T>> {
+        self.validate_params_len(params.len())?;
         let mut result = Vec::new();
 
         for channel in &self.channels {
@@ -1070,6 +1121,7 @@ impl HistFactoryModel {
     pub fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
         use rayon::prelude::*;
 
+        self.validate_params_len(params.len())?;
         let n = params.len();
         let mut grad = vec![0.0; n];
 
@@ -1101,6 +1153,7 @@ impl HistFactoryModel {
     pub fn gradient_ad(&self, params: &[f64]) -> Result<Vec<f64>> {
         use ns_ad::dual::Dual;
 
+        self.validate_params_len(params.len())?;
         let n = params.len();
         let mut grad = vec![0.0; n];
 
@@ -1125,6 +1178,7 @@ impl HistFactoryModel {
     pub fn gradient_reverse(&self, params: &[f64]) -> Result<Vec<f64>> {
         use ns_ad::tape::Tape;
 
+        self.validate_params_len(params.len())?;
         let n = params.len();
         // Pre-allocate tape: rough estimate of nodes per NLL evaluation
         let mut tape = Tape::with_capacity(n * 20);
@@ -1149,6 +1203,7 @@ impl HistFactoryModel {
         tape: &mut ns_ad::tape::Tape,
         params: &[ns_ad::tape::Var],
     ) -> Result<ns_ad::tape::Var> {
+        self.validate_params_len(params.len())?;
         let expected = self.expected_data_on_tape(tape, params)?;
         let mut nll = tape.constant(0.0);
 
@@ -1247,6 +1302,7 @@ impl HistFactoryModel {
         params: &[ns_ad::tape::Var],
     ) -> Result<Vec<ns_ad::tape::Var>> {
         type Var = ns_ad::tape::Var;
+        self.validate_params_len(params.len())?;
         let mut result = Vec::new();
 
         for channel in &self.channels {
@@ -1782,6 +1838,34 @@ mod tests {
         // mu + 2 shapesys gamma parameters (2 bins)
         assert_eq!(model.n_params(), 3);
         assert_eq!(model.poi_index(), Some(0));
+    }
+
+    #[test]
+    fn test_model_validates_parameter_length_and_does_not_panic() {
+        let json = include_str!("../../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+        let n = model.n_params();
+
+        // Too short
+        let short = vec![1.0; n.saturating_sub(1)];
+        assert!(model.nll(&short).is_err());
+        assert!(model.expected_data(&short).is_err());
+        assert!(model.expected_data_pyhf_main(&short).is_err());
+        assert!(model.expected_data_pyhf(&short).is_err());
+        assert!(model.gradient(&short).is_err());
+        assert!(model.gradient_ad(&short).is_err());
+        assert!(model.gradient_reverse(&short).is_err());
+
+        // Too long
+        let long = vec![1.0; n + 1];
+        assert!(model.nll(&long).is_err());
+        assert!(model.expected_data(&long).is_err());
+        assert!(model.expected_data_pyhf_main(&long).is_err());
+        assert!(model.expected_data_pyhf(&long).is_err());
+        assert!(model.gradient(&long).is_err());
+        assert!(model.gradient_ad(&long).is_err());
+        assert!(model.gradient_reverse(&long).is_err());
     }
 
     #[test]

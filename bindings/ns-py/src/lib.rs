@@ -27,6 +27,9 @@ use ns_inference::timeseries::kalman::{
     KalmanModel as RustKalmanModel, kalman_filter as rust_kalman_filter,
     rts_smoother as rust_rts_smoother,
 };
+use ns_inference::timeseries::em::{
+    KalmanEmConfig as RustKalmanEmConfig, kalman_em as rust_kalman_em,
+};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -299,6 +302,46 @@ fn kalman_smooth(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> Py
         "smoothed_covs",
         sr.smoothed_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
     )?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (model, ys, *, max_iter=50, tol=1e-6, estimate_q=true, estimate_r=true, min_diag=1e-12))]
+fn kalman_em(
+    py: Python<'_>,
+    model: &PyKalmanModel,
+    ys: Vec<Vec<f64>>,
+    max_iter: usize,
+    tol: f64,
+    estimate_q: bool,
+    estimate_r: bool,
+    min_diag: f64,
+) -> PyResult<Py<PyAny>> {
+    let ys: Vec<DVector<f64>> = ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| dvector_from_vec(&format!("y[{t}]"), y))
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let cfg = RustKalmanEmConfig {
+        max_iter,
+        tol,
+        estimate_q,
+        estimate_r,
+        min_diag,
+    };
+
+    let res = rust_kalman_em(&model.inner, &ys, cfg)
+        .map_err(|e| PyValueError::new_err(format!("kalman_em failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("converged", res.converged)?;
+    out.set_item("n_iter", res.n_iter)?;
+    out.set_item("loglik_trace", res.loglik_trace)?;
+    out.set_item("q", dmatrix_to_nested(&res.model.q))?;
+    out.set_item("r", dmatrix_to_nested(&res.model.r))?;
+    out.set_item("model", Py::new(py, PyKalmanModel { inner: res.model })?)?;
 
     Ok(out.into_any().unbind())
 }
@@ -1682,6 +1725,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(profile_curve, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_smooth, m)?)?;
+    m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;

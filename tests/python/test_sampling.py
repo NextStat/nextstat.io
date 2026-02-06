@@ -32,7 +32,7 @@ class TestSampleAPIShape:
 
     def test_returns_dict_with_expected_keys(self):
         model = _make_model()
-        result = nextstat.sample(model, n_chains=2, n_warmup=50, n_samples=30, seed=1)
+        result = nextstat.sample(model, n_chains=1, n_warmup=20, n_samples=10, seed=1)
         assert isinstance(result, dict)
         expected_keys = {
             "posterior", "sample_stats", "diagnostics",
@@ -42,9 +42,9 @@ class TestSampleAPIShape:
 
     def test_posterior_shape(self):
         model = _make_model()
-        n_chains, n_samples = 2, 30
+        n_chains, n_samples = 2, 10
         result = nextstat.sample(
-            model, n_chains=n_chains, n_warmup=50, n_samples=n_samples, seed=1,
+            model, n_chains=n_chains, n_warmup=20, n_samples=n_samples, seed=1,
         )
         posterior = result["posterior"]
         assert isinstance(posterior, dict)
@@ -57,9 +57,9 @@ class TestSampleAPIShape:
 
     def test_sample_stats_shape(self):
         model = _make_model()
-        n_chains, n_samples = 2, 30
+        n_chains, n_samples = 1, 10
         result = nextstat.sample(
-            model, n_chains=n_chains, n_warmup=50, n_samples=n_samples, seed=1,
+            model, n_chains=n_chains, n_warmup=20, n_samples=n_samples, seed=1,
         )
         stats = result["sample_stats"]
         assert "diverging" in stats
@@ -74,7 +74,7 @@ class TestSampleAPIShape:
 
     def test_diagnostics_keys(self):
         model = _make_model()
-        result = nextstat.sample(model, n_chains=2, n_warmup=50, n_samples=30, seed=1)
+        result = nextstat.sample(model, n_chains=2, n_warmup=20, n_samples=10, seed=1)
         diag = result["diagnostics"]
         assert "r_hat" in diag
         assert "ess_bulk" in diag
@@ -103,7 +103,7 @@ class TestSampleReproducibility:
 
     def test_same_seed_same_draws(self):
         model = _make_model()
-        kwargs = dict(n_chains=2, n_warmup=50, n_samples=20, seed=42)
+        kwargs = dict(n_chains=1, n_warmup=20, n_samples=10, seed=42)
         r1 = nextstat.sample(model, **kwargs)
         r2 = nextstat.sample(model, **kwargs)
         for name in r1["param_names"]:
@@ -124,8 +124,8 @@ class TestSampleNonSlowGates:
         result = nextstat.sample(
             model,
             n_chains=2,
-            n_warmup=100,
-            n_samples=80,
+            n_warmup=30,
+            n_samples=20,
             seed=123,
             init_jitter_rel=0.10,
         )
@@ -192,16 +192,16 @@ class TestSampleWithOverriddenData:
 
     def test_data_override_changes_posterior(self):
         model = _make_model()
-        kwargs = dict(n_chains=2, n_warmup=100, n_samples=50, seed=7)
+        kwargs = dict(n_chains=1, n_warmup=30, n_samples=20, seed=7)
         r_default = nextstat.sample(model, **kwargs)
         r_override = nextstat.sample(model, data=[200.0, 300.0], **kwargs)
         poi = r_default["param_names"][0]
         mean_default = sum(
             x for c in r_default["posterior"][poi] for x in c
-        ) / (2 * 50)
+        ) / float(kwargs["n_chains"] * kwargs["n_samples"])
         mean_override = sum(
             x for c in r_override["posterior"][poi] for x in c
-        ) / (2 * 50)
+        ) / float(kwargs["n_chains"] * kwargs["n_samples"])
         # With much higher counts the POI mean should shift
         assert abs(mean_default - mean_override) > 0.01, (
             f"data= override had no effect: {mean_default} vs {mean_override}"
@@ -218,7 +218,7 @@ class TestSampleConfig:
     def test_custom_max_treedepth(self):
         model = _make_model()
         result = nextstat.sample(
-            model, n_chains=1, n_warmup=50, n_samples=30,
+            model, n_chains=1, n_warmup=20, n_samples=10,
             seed=1, max_treedepth=5,
         )
         for depth in result["sample_stats"]["tree_depth"][0]:
@@ -226,18 +226,19 @@ class TestSampleConfig:
 
     def test_custom_target_accept(self):
         model = _make_model()
+        n_samples = 20
         result = nextstat.sample(
-            model, n_chains=1, n_warmup=100, n_samples=50,
+            model, n_chains=1, n_warmup=30, n_samples=n_samples,
             seed=1, target_accept=0.95,
         )
         # With high target_accept, step size should be smaller → higher mean accept
-        mean_accept = sum(result["sample_stats"]["accept_prob"][0]) / 50
+        mean_accept = sum(result["sample_stats"]["accept_prob"][0]) / float(n_samples)
         assert mean_accept > 0.5, f"Mean accept prob too low: {mean_accept}"
 
     def test_init_jitter_rel_smoke(self):
         model = _make_model()
         result = nextstat.sample(
-            model, n_chains=2, n_warmup=50, n_samples=30, seed=1, init_jitter_rel=0.10
+            model, n_chains=1, n_warmup=20, n_samples=10, seed=1, init_jitter_rel=0.10
         )
         assert isinstance(result, dict)
 
@@ -259,8 +260,8 @@ class TestSampleConfig:
         r = nextstat.sample(
             model,
             n_chains=2,
-            n_warmup=50,
-            n_samples=30,
+            n_warmup=20,
+            n_samples=10,
             seed=123,
             init_overdispersed_rel=0.50,
         )

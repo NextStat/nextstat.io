@@ -43,8 +43,32 @@ def kalman_smooth(model, ys: Sequence[Sequence[float]]) -> Mapping[str, Any]:
     return _core.kalman_smooth(model, [list(y) for y in ys])
 
 
+def kalman_em(
+    model,
+    ys: Sequence[Sequence[float]],
+    *,
+    max_iter: int = 50,
+    tol: float = 1e-6,
+    estimate_q: bool = True,
+    estimate_r: bool = True,
+    min_diag: float = 1e-12,
+) -> Mapping[str, Any]:
+    """Fit Q/R with EM while keeping F/H/m0/P0 fixed."""
+    from . import _core
+
+    return _core.kalman_em(
+        model,
+        [list(y) for y in ys],
+        max_iter=max_iter,
+        tol=tol,
+        estimate_q=estimate_q,
+        estimate_r=estimate_r,
+        min_diag=min_diag,
+    )
+
+
 __all__ = [
     "kalman_filter",
     "kalman_smooth",
+    "kalman_em",
 ]
-

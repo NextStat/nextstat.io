@@ -40,3 +40,21 @@ def test_glm_spec_build_logistic_with_groups_smoke():
     raw = nextstat.sample(m, n_chains=1, n_warmup=5, n_samples=10, seed=3)
     assert "posterior" in raw
     assert "diagnostics" in raw
+
+
+def test_glm_spec_roundtrip_poisson_with_offset_smoke():
+    import nextstat
+    from nextstat.data import GlmSpec
+
+    spec = GlmSpec.poisson_regression(
+        x=[[1.0], [1.0], [1.0]],
+        y=[10, 12, 9],
+        include_intercept=False,
+        offset=[0.0, 0.1, -0.2],
+    )
+    spec2 = GlmSpec.from_json(spec.to_json())
+    assert spec2.kind == "poisson"
+
+    m = spec2.build()
+    nll = m.nll(m.suggested_init())
+    assert nll == nll and nll >= 0.0

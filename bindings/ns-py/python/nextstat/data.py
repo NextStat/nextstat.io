@@ -56,6 +56,19 @@ def _as_1d_u8_list(y: Any) -> List[int]:
     return out
 
 
+def _as_1d_u64_list(y: Any) -> List[int]:
+    y = _tolist(y)
+    if not isinstance(y, Sequence) or isinstance(y, (bytes, str)):
+        raise TypeError("y must be a 1D sequence (or numpy array).")
+    out: List[int] = []
+    for v in y:
+        iv = int(v)
+        if iv < 0:
+            raise ValueError("poisson y must be >= 0")
+        out.append(iv)
+    return out
+
+
 def _as_group_idx(group_idx: Any) -> Optional[List[int]]:
     if group_idx is None:
         return None
@@ -65,7 +78,7 @@ def _as_group_idx(group_idx: Any) -> Optional[List[int]]:
     return [int(v) for v in group_idx]
 
 
-Kind = Literal["linear", "logistic"]
+Kind = Literal["linear", "logistic", "poisson"]
 
 
 @dataclass(frozen=True)
@@ -78,6 +91,7 @@ class GlmSpec:
     include_intercept: bool = True
     group_idx: Optional[List[int]] = None
     n_groups: Optional[int] = None
+    offset: Optional[List[float]] = None
     coef_prior_mu: float = 0.0
     coef_prior_sigma: float = 10.0
 
@@ -121,6 +135,31 @@ class GlmSpec:
             include_intercept=bool(include_intercept),
             group_idx=_as_group_idx(group_idx),
             n_groups=n_groups,
+            offset=None,
+            coef_prior_mu=float(coef_prior_mu),
+            coef_prior_sigma=float(coef_prior_sigma),
+        )
+
+    @staticmethod
+    def poisson_regression(
+        *,
+        x: Any,
+        y: Any,
+        include_intercept: bool = True,
+        offset: Any = None,
+        group_idx: Any = None,
+        n_groups: Optional[int] = None,
+        coef_prior_mu: float = 0.0,
+        coef_prior_sigma: float = 10.0,
+    ) -> "GlmSpec":
+        return GlmSpec(
+            kind="poisson",
+            x=_as_2d_float_list(x),
+            y=_as_1d_u64_list(y),
+            include_intercept=bool(include_intercept),
+            group_idx=_as_group_idx(group_idx),
+            n_groups=n_groups,
+            offset=(None if offset is None else _as_1d_float_list(offset)),
             coef_prior_mu=float(coef_prior_mu),
             coef_prior_sigma=float(coef_prior_sigma),
         )
@@ -134,6 +173,7 @@ class GlmSpec:
                 "y": self.y,
                 "group_idx": self.group_idx,
                 "n_groups": self.n_groups,
+                "offset": self.offset,
                 "coef_prior_mu": self.coef_prior_mu,
                 "coef_prior_sigma": self.coef_prior_sigma,
             }
@@ -145,15 +185,20 @@ class GlmSpec:
         if not isinstance(d, dict):
             raise TypeError("spec JSON must decode to an object")
         kind = cast(Kind, d.get("kind"))
-        if kind not in ("linear", "logistic"):
+        if kind not in ("linear", "logistic", "poisson"):
             raise ValueError(f"Unsupported kind: {kind!r}")
         return GlmSpec(
             kind=kind,
             include_intercept=bool(d.get("include_intercept", True)),
             x=_as_2d_float_list(d.get("x")),
-            y=_as_1d_float_list(d.get("y")) if kind == "linear" else _as_1d_u8_list(d.get("y")),
+            y=(
+                _as_1d_float_list(d.get("y"))
+                if kind == "linear"
+                else (_as_1d_u8_list(d.get("y")) if kind == "logistic" else _as_1d_u64_list(d.get("y")))
+            ),
             group_idx=_as_group_idx(d.get("group_idx")),
             n_groups=(None if d.get("n_groups") is None else int(d.get("n_groups"))),
+            offset=(None if d.get("offset") is None else _as_1d_float_list(d.get("offset"))),
             coef_prior_mu=float(d.get("coef_prior_mu", 0.0)),
             coef_prior_sigma=float(d.get("coef_prior_sigma", 10.0)),
         )
@@ -165,6 +210,8 @@ class GlmSpec:
             raise ValueError("n_groups requires group_idx")
         if self.group_idx is not None and not self.group_idx:
             raise ValueError("group_idx must be non-empty if provided")
+        if self.kind != "poisson" and self.offset is not None:
+            raise ValueError("offset is only supported for poisson")
 
         ng = self.n_groups
         if self.group_idx is not None and ng is None:
@@ -180,10 +227,21 @@ class GlmSpec:
                 coef_prior_mu=self.coef_prior_mu,
                 coef_prior_sigma=self.coef_prior_sigma,
             )
-        return _core.ComposedGlmModel.logistic_regression(
+        if self.kind == "logistic":
+            return _core.ComposedGlmModel.logistic_regression(
+                self.x,
+                cast(List[int], self.y),
+                include_intercept=self.include_intercept,
+                group_idx=self.group_idx,
+                n_groups=ng,
+                coef_prior_mu=self.coef_prior_mu,
+                coef_prior_sigma=self.coef_prior_sigma,
+            )
+        return _core.ComposedGlmModel.poisson_regression(
             self.x,
             cast(List[int], self.y),
             include_intercept=self.include_intercept,
+            offset=self.offset,
             group_idx=self.group_idx,
             n_groups=ng,
             coef_prior_mu=self.coef_prior_mu,
