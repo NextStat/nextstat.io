@@ -57,3 +57,7 @@ harness = false
 [[bench]]
 name = "kalman_benchmark"
 harness = false
+
+[[bench]]
+name = "hier_benchmark"
+harness = false
