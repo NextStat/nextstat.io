@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::datasource::DataSource;
 use crate::decompress::decompress;
 use crate::directory::Directory;
 use crate::error::{Result, RootError};
@@ -10,6 +11,8 @@ use crate::histogram::Histogram;
 use crate::key::{Key, KeyInfo};
 use crate::objects;
 use crate::rbuffer::RBuffer;
+use crate::tree::{BranchInfo, Tree};
+use crate::branch_reader::BranchReader;
 
 /// Parsed ROOT file header.
 struct FileHeader {
@@ -25,10 +28,10 @@ struct FileHeader {
     nbytes_keys: u32,
 }
 
-/// A ROOT file opened for reading histograms.
+/// A ROOT file opened for reading histograms and trees.
 pub struct RootFile {
-    /// Raw file bytes.
-    data: Vec<u8>,
+    /// Raw file bytes (owned or memory-mapped).
+    data: DataSource,
     /// Parsed header.
     header: FileHeader,
     /// Path for diagnostics.
@@ -39,15 +42,25 @@ pub struct RootFile {
 const ROOT_MAGIC: &[u8; 4] = b"root";
 
 impl RootFile {
-    /// Open and parse a ROOT file from disk.
+    /// Open and parse a ROOT file from disk using memory mapping.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let data = fs::read(&path)?;
-        Self::from_bytes(data, path)
+        let file = fs::File::open(&path)?;
+        // SAFETY: We only read the file, and rely on the OS to handle
+        // concurrent modifications (which is UB for mmap but acceptable
+        // for our read-only scientific-data use case).
+        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let data = DataSource::Mmap(mmap);
+        Self::from_datasource(data, path)
     }
 
     /// Parse a ROOT file from a byte vector (for testing).
     pub fn from_bytes(data: Vec<u8>, path: PathBuf) -> Result<Self> {
+        Self::from_datasource(DataSource::Owned(data), path)
+    }
+
+    /// Internal constructor from any DataSource.
+    fn from_datasource(data: DataSource, path: PathBuf) -> Result<Self> {
         if data.len() < 64 {
             return Err(RootError::BadMagic);
         }
@@ -229,30 +242,80 @@ impl RootFile {
         objects::read_histogram(&payload, &key.class_name)
     }
 
-    fn read_key_payload(&self, key: &Key) -> Result<Vec<u8>> {
-        let seek = key.seek_key as usize;
-        if seek + key.n_bytes as usize > self.data.len() {
-            return Err(RootError::BufferUnderflow {
-                offset: seek,
-                need: key.n_bytes as usize,
-                have: self.data.len().saturating_sub(seek),
-            });
+    /// Read and decompress the payload of a TKey.
+    pub(crate) fn read_key_payload(&self, key: &Key) -> Result<Vec<u8>> {
+        read_key_payload_from(&self.data, key)
+    }
+
+    /// Access the raw file data.
+    pub(crate) fn file_data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Whether file uses 64-bit seek pointers.
+    pub(crate) fn is_large(&self) -> bool {
+        self.header.is_large
+    }
+
+    // ── TTree API ──────────────────────────────────────────────
+
+    /// Read a TTree by name from the top-level directory.
+    pub fn get_tree(&self, name: &str) -> Result<Tree> {
+        let dir = self.read_top_directory()?;
+        let key = dir.find_key(name).ok_or_else(|| {
+            RootError::TreeNotFound(name.to_string())
+        })?;
+
+        if key.class_name != "TTree" {
+            return Err(RootError::TreeNotFound(format!(
+                "'{}' is {} not TTree", name, key.class_name
+            )));
         }
 
-        let key_slice = &self.data[seek..seek + key.n_bytes as usize];
+        let payload = self.read_key_payload(key)?;
+        objects::read_tree(&payload)
+    }
 
-        // Object data starts after the key header.
-        let obj_start = key.key_len as usize;
-        let compressed_data = &key_slice[obj_start..];
+    /// Create a [`BranchReader`] for the named branch.
+    pub fn branch_reader<'a>(&'a self, tree: &'a Tree, branch: &str)
+        -> Result<BranchReader<'a>>
+    {
+        let info = tree.find_branch(branch).ok_or_else(|| {
+            RootError::BranchNotFound(branch.to_string())
+        })?;
+        Ok(BranchReader::new(&self.data, info, self.header.is_large))
+    }
 
-        let compressed_len = key.n_bytes as usize - key.key_len as usize;
-        if key.obj_len as usize != compressed_len {
-            // Data is compressed
-            decompress(compressed_data, key.obj_len as usize)
-        } else {
-            // Data is uncompressed
-            Ok(compressed_data.to_vec())
-        }
+    /// Convenience: read all entries from a branch as `f64`.
+    pub fn branch_data(&self, tree: &Tree, branch: &str) -> Result<Vec<f64>> {
+        self.branch_reader(tree, branch)?.as_f64()
+    }
+}
+
+/// Shared helper: read and decompress a TKey payload from raw file bytes.
+pub(crate) fn read_key_payload_from(data: &[u8], key: &Key) -> Result<Vec<u8>> {
+    let seek = key.seek_key as usize;
+    if seek + key.n_bytes as usize > data.len() {
+        return Err(RootError::BufferUnderflow {
+            offset: seek,
+            need: key.n_bytes as usize,
+            have: data.len().saturating_sub(seek),
+        });
+    }
+
+    let key_slice = &data[seek..seek + key.n_bytes as usize];
+
+    // Object data starts after the key header.
+    let obj_start = key.key_len as usize;
+    let compressed_data = &key_slice[obj_start..];
+
+    let compressed_len = key.n_bytes as usize - key.key_len as usize;
+    if key.obj_len as usize != compressed_len {
+        // Data is compressed
+        decompress(compressed_data, key.obj_len as usize)
+    } else {
+        // Data is uncompressed
+        Ok(compressed_data.to_vec())
     }
 }
 

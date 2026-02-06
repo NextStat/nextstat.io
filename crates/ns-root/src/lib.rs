@@ -2,7 +2,7 @@
 //!
 //! Native ROOT file reader for NextStat.
 //!
-//! Reads TH1D and TH1F histograms from `.root` files without requiring
+//! Reads TH1D/TH1F histograms and TTrees from `.root` files without requiring
 //! Python or external ROOT libraries. Supports zlib and LZ4 compression.
 //!
 //! ## Example
@@ -16,6 +16,10 @@
 //! }
 //! let h = f.get_histogram("signal").unwrap();
 //! println!("bins: {}, entries: {}", h.n_bins, h.entries);
+//!
+//! // TTree access
+//! let tree = f.get_tree("events").unwrap();
+//! let pt: Vec<f64> = f.branch_data(&tree, "pt").unwrap();
 //! ```
 
 #![warn(missing_docs)]
@@ -23,14 +27,24 @@
 
 pub mod error;
 pub mod rbuffer;
+pub mod datasource;
 pub mod file;
 pub mod key;
 pub mod decompress;
 pub mod directory;
 pub mod objects;
 pub mod histogram;
+pub mod tree;
+pub mod basket;
+pub mod branch_reader;
+pub mod expr;
+pub mod filler;
 
 pub use error::{RootError, Result};
 pub use file::RootFile;
 pub use histogram::Histogram;
 pub use key::KeyInfo;
+pub use tree::{Tree, BranchInfo, LeafType};
+pub use branch_reader::BranchReader;
+pub use expr::CompiledExpr;
+pub use filler::{HistogramSpec, FilledHistogram, fill_histograms};

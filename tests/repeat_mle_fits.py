@@ -267,9 +267,16 @@ def _summarize_runs(
     pyhf_build_s: float,
     nextstat_build_s: float,
 ) -> dict[str, Any]:
-    # rows: only non-warmup, ok runs, single workspace
-    pyhf_rows = [r for r in rows if r.get("pyhf", {}).get("ok")]
-    ns_rows = [r for r in rows if r.get("nextstat", {}).get("ok")]
+    # rows: only non-warmup, single workspace.
+    #
+    # Important: we treat pyhf as the reference objective, but we validate NextStat as a tool.
+    # For publishable stability statistics, we compute parameter/NLL aggregates only on runs
+    # where NextStat converged, and we pair pyhf rows by run index to avoid selection bias.
+    pyhf_ok = [r for r in rows if r.get("pyhf", {}).get("ok")]
+    ns_ok = [r for r in rows if r.get("nextstat", {}).get("ok")]
+
+    paired_ok = [r for r in rows if r.get("pyhf", {}).get("ok") and r.get("nextstat", {}).get("ok")]
+    paired_converged = [r for r in paired_ok if r.get("nextstat", {}).get("converged") is True]
 
     def tool_stats(tool_rows: List[dict[str, Any]], tool_key: str) -> dict[str, Any]:
         wall = [float(r[tool_key]["fit_wall_s"]) for r in tool_rows]
@@ -296,7 +303,9 @@ def _summarize_runs(
         }
         if tool_key == "nextstat" and tool_rows:
             conv = [bool(r[tool_key].get("converged")) for r in tool_rows if r[tool_key].get("converged") is not None]
-            out["converged_rate"] = float(sum(1 for c in conv if c) / len(conv)) if conv else float("nan")
+            n_conv = sum(1 for c in conv if c)
+            out["n_converged"] = int(n_conv)
+            out["converged_rate"] = float(n_conv / len(conv)) if conv else float("nan")
         return out
 
     def param_stats(tool_rows: List[dict[str, Any]], *, names: List[str], tool_key: str) -> dict[str, Any]:
@@ -325,21 +334,54 @@ def _summarize_runs(
             stdevs.append(float(math.sqrt(var)))
         return {"names": names, "mean": means, "stdev": stdevs, "n_used": used}
 
-    # Cross-eval stats: these validate "same objective" even if optimizers land elsewhere.
-    cross_pyhf_at_ns = [
-        float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
-        for r in rows
-        if r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat") is not None
-    ]
-    cross_ns_at_pyhf = [
-        float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
-        for r in rows
-        if r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat") is not None
-    ]
+    def cross_eval_stats(rows_for_eval: List[dict[str, Any]]) -> dict[str, Any]:
+        # Cross-eval validates "same objective" even if optimizers land elsewhere.
+        cross_pyhf_at_ns = [
+            float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
+            for r in rows_for_eval
+            if r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat") is not None
+        ]
+        cross_ns_at_pyhf = [
+            float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
+            for r in rows_for_eval
+            if r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat") is not None
+        ]
+        return {
+            "pyhf_nll_at_nextstat_hat": {
+                "mean": float(statistics.mean(cross_pyhf_at_ns)) if cross_pyhf_at_ns else float("nan"),
+                "stdev": float(statistics.pstdev(cross_pyhf_at_ns)) if len(cross_pyhf_at_ns) >= 2 else 0.0,
+                "n": int(len(cross_pyhf_at_ns)),
+            },
+            "nextstat_nll_at_pyhf_hat": {
+                "mean": float(statistics.mean(cross_ns_at_pyhf)) if cross_ns_at_pyhf else float("nan"),
+                "stdev": float(statistics.pstdev(cross_ns_at_pyhf)) if len(cross_ns_at_pyhf) >= 2 else 0.0,
+                "n": int(len(cross_ns_at_pyhf)),
+            },
+        }
 
-    # Name-aligned mean diffs (in pyhf order).
-    py_params = param_stats(pyhf_rows, names=pyhf_names, tool_key="pyhf")
-    ns_params = param_stats(ns_rows, names=nextstat_names, tool_key="nextstat")
+    cross_eval_all_ok = cross_eval_stats(paired_ok)
+    cross_eval_converged = cross_eval_stats(paired_converged)
+
+    # Name-aligned mean diffs (in pyhf order), using converged-only paired runs.
+    py_params = param_stats(paired_converged, names=pyhf_names, tool_key="pyhf")
+    ns_params = param_stats(paired_converged, names=nextstat_names, tool_key="nextstat")
+
+    # Also keep all-ok stats for transparency (timing and convergence failures matter for tooling).
+    py_all = tool_stats(pyhf_ok, "pyhf")
+    ns_all = tool_stats(ns_ok, "nextstat")
+
+    # Selected (publishable) aggregates: only NextStat-converged paired runs.
+    py_sel = tool_stats(paired_converged, "pyhf")
+    ns_sel = tool_stats(paired_converged, "nextstat")
+
+    selection = {
+        "n_total_runs": int(len(rows)),
+        "n_pyhf_ok": int(len(pyhf_ok)),
+        "n_nextstat_ok": int(len(ns_ok)),
+        "n_paired_ok": int(len(paired_ok)),
+        "n_nextstat_converged": int(len(paired_converged)),
+    }
+
     ns_index = {n: i for i, n in enumerate(nextstat_names)}
     ns_mean_in_pyhf: List[float] = []
     ns_stdev_in_pyhf: List[float] = []
@@ -358,7 +400,6 @@ def _summarize_runs(
         ns_stdev_in_pyhf.append(nsd)
         abs_mean_diff.append(abs(pm - nm) if (math.isfinite(pm) and math.isfinite(nm)) else float("nan"))
 
-    # Top mean-diff params.
     rows_mean = []
     for name, d in zip(pyhf_names, abs_mean_diff):
         if math.isfinite(float(d)):
@@ -366,19 +407,12 @@ def _summarize_runs(
     rows_mean.sort(reverse=True)
 
     return {
+        "selection": selection,
         "build_s": {"pyhf": float(pyhf_build_s), "nextstat": float(nextstat_build_s)},
-        "pyhf": tool_stats(pyhf_rows, "pyhf"),
-        "nextstat": tool_stats(ns_rows, "nextstat"),
-        "cross_eval": {
-            "pyhf_nll_at_nextstat_hat": {
-                "mean": float(statistics.mean(cross_pyhf_at_ns)) if cross_pyhf_at_ns else float("nan"),
-                "stdev": float(statistics.pstdev(cross_pyhf_at_ns)) if len(cross_pyhf_at_ns) >= 2 else 0.0,
-            },
-            "nextstat_nll_at_pyhf_hat": {
-                "mean": float(statistics.mean(cross_ns_at_pyhf)) if cross_ns_at_pyhf else float("nan"),
-                "stdev": float(statistics.pstdev(cross_ns_at_pyhf)) if len(cross_ns_at_pyhf) >= 2 else 0.0,
-            },
-        },
+        "pyhf": py_sel,
+        "nextstat": ns_sel,
+        "all_ok": {"pyhf": py_all, "nextstat": ns_all},
+        "cross_eval": {"all_ok": cross_eval_all_ok, "converged": cross_eval_converged},
         "params": {
             "pyhf": py_params,
             "nextstat": ns_params,
@@ -394,6 +428,20 @@ def _summarize_runs(
             },
         },
     }
+
+
+    cross_pyhf_at_ns = [
+        float(r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat"))
+        for r in rows
+        if r.get("cross_eval", {}).get("pyhf_nll_at_nextstat_hat") is not None
+    ]
+    cross_ns_at_pyhf = [
+        float(r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat"))
+        for r in rows
+        if r.get("cross_eval", {}).get("nextstat_nll_at_pyhf_hat") is not None
+    ]
+
+    # (old summary code removed)
 
 
 def _write_summary(

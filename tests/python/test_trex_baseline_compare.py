@@ -1,6 +1,4 @@
-import math
-
-from ._trex_baseline_compare import (
+from _trex_baseline_compare import (
     Tol,
     align_named_params,
     compare_baseline_v0,
@@ -115,10 +113,15 @@ def test_compare_baseline_v0_reports_diffs_deterministically():
         tol_param_unc=Tol(atol=0.0, rtol=0.0),
     )
     assert not res.ok
-    # Ordering is deterministic: paths sorted as tie-breaker.
     paths = [d.path for d in res.diffs]
-    assert paths == sorted(paths, key=lambda p: (p != "fit.twice_nll", p)) or paths == paths  # sanity
+    # Deterministic ordering: worst mismatches first (None abs_diff treated as worst),
+    # tie-broken by path.
+    assert paths == [
+        "expected_data.pyhf_with_aux",
+        "fit.twice_nll",
+        "expected_data.pyhf_main[1]",
+        "fit.parameters[mu].value",
+    ]
     text = format_report(res, top_n=10)
     assert "FAIL" in text
     assert "- fit.twice_nll" in text
-
