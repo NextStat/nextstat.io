@@ -101,6 +101,7 @@ fn bench_nuts_sampling(c: &mut Criterion) {
         target_accept: 0.8,
         init_jitter: 0.0,
         init_jitter_rel: None,
+        init_overdispersed_rel: None,
     };
 
     let mut group = c.benchmark_group("nuts_sample");

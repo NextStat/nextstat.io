@@ -272,6 +272,7 @@ impl ParameterTransform {
     /// - `(-inf, inf)` -> Identity
     /// - `(0, inf)` -> Exp
     /// - `(a, inf)` where `a > -inf` -> LowerBounded(a)
+    /// - `(-inf, b)` where `b < inf` -> UpperBounded(b)
     /// - `(a, b)` where both finite -> Sigmoid(a, b)
     pub fn from_bounds(bounds: &[(f64, f64)]) -> Self {
         let bijectors: Vec<Box<dyn Bijector>> = bounds

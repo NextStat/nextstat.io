@@ -8,6 +8,7 @@ They validate:
 """
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,9 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 
 def load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text())
+
+def _is_finite(x: float) -> bool:
+    return math.isfinite(float(x))
 
 
 def test_model_from_workspace_rejects_invalid_json():
@@ -49,6 +53,11 @@ def test_model_basic_contracts_simple_workspace():
     nll = model.nll(init)
     assert isinstance(nll, float)
     assert nll == nll  # not NaN
+
+    g = model.grad_nll(init)
+    assert isinstance(g, list)
+    assert len(g) == n
+    assert all(_is_finite(v) for v in g)
 
 
 def test_with_observed_main_length_mismatch_raises():
@@ -91,6 +100,32 @@ def test_fit_accepts_overridden_main_data():
     res = nextstat.fit(model, data=[53.0, 65.0])
     assert len(res.bestfit) == model.n_params()
     assert res.nll == res.nll
+
+
+def test_non_histfactory_models_reject_data_kwarg():
+    gm = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+    with pytest.raises(ValueError, match="data= is only supported for HistFactoryModel"):
+        nextstat.fit(gm, data=[1.0])
+
+
+def test_gaussian_mean_model_grad_contract():
+    gm = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], 1.0)
+    init = gm.suggested_init()
+    g = gm.grad_nll(init)
+    assert isinstance(g, list)
+    assert len(g) == gm.n_params()
+    assert all(_is_finite(v) for v in g)
+
+
+def test_linear_regression_model_grad_contract_smoke():
+    x = [[0.0], [1.0], [2.0]]
+    y = [1.0, 3.0, 5.0]
+    m = nextstat.LinearRegressionModel(x, y, include_intercept=True)
+    init = m.suggested_init()
+    g = m.grad_nll(init)
+    assert isinstance(g, list)
+    assert len(g) == m.n_params()
+    assert all(_is_finite(v) for v in g)
 
 
 def test_hypotest_contracts():

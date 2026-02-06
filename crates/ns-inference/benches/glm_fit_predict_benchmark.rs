@@ -1,8 +1,12 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use ns_inference::{LinearRegressionModel, LogisticRegressionModel, MaximumLikelihoodEstimator, PoissonRegressionModel};
+use ns_inference::{
+    LinearRegressionModel, LogisticRegressionModel, MaximumLikelihoodEstimator,
+    PoissonRegressionModel,
+};
+use ns_inference::regression::NegativeBinomialRegressionModel;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use rand_distr::{Distribution, Normal, Poisson};
+use rand_distr::{Distribution, Gamma, Normal, Poisson};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -88,7 +92,7 @@ fn make_design(n: usize, p: usize, rng: &mut StdRng) -> Vec<Vec<f64>> {
     for _ in 0..n {
         let mut row = vec![0.0; p];
         for v in &mut row {
-            *v = rng.gen_range(-1.0..=1.0);
+            *v = rng.random_range(-1.0..=1.0);
         }
         x.push(row);
     }
@@ -130,7 +134,7 @@ fn make_logistic_dataset(n: usize, p: usize, seed: u64) -> (Vec<Vec<f64>>, Vec<u
     for row in &x {
         let eta = beta[0] + dot(row, &beta[1..]);
         let p = sigmoid(eta).clamp(1e-6, 1.0 - 1e-6);
-        y.push(if rng.gen_bool(p) { 1 } else { 0 });
+        y.push(if rng.random_bool(p) { 1 } else { 0 });
     }
     (x, y, include_intercept)
 }
@@ -150,7 +154,35 @@ fn make_poisson_dataset(
         let eta = beta[0] + dot(row, &beta[1..]);
         let lambda = eta.exp().clamp(1e-6, 50.0);
         let dist = Poisson::new(lambda).unwrap();
-        y.push(dist.sample(&mut rng));
+        y.push(dist.sample(&mut rng) as u64);
+    }
+    (x, y, include_intercept, None)
+}
+
+fn make_negbin_dataset(
+    n: usize,
+    p: usize,
+    seed: u64,
+    alpha: f64,
+) -> (Vec<Vec<f64>>, Vec<u64>, bool, Option<Vec<f64>>) {
+    let include_intercept = true;
+    let mut rng = StdRng::seed_from_u64(seed);
+    let x = make_design(n, p, &mut rng);
+    let beta = make_beta(p);
+
+    let alpha = alpha.max(1e-9);
+    let k = 1.0 / alpha;
+
+    let mut y = Vec::with_capacity(n);
+    for row in &x {
+        let eta = beta[0] + dot(row, &beta[1..]);
+        let mu = eta.exp().clamp(1e-6, 50.0);
+
+        // NB2 via Gamma-Poisson: lambda ~ Gamma(k=1/alpha, scale=alpha*mu), y ~ Poisson(lambda)
+        let gamma = Gamma::new(k, alpha * mu).unwrap();
+        let lambda = gamma.sample(&mut rng);
+        let pois = Poisson::new(lambda).unwrap();
+        y.push(pois.sample(&mut rng) as u64);
     }
     (x, y, include_intercept, None)
 }
@@ -184,6 +216,13 @@ fn bench_fit_predict(c: &mut Criterion) {
         let (x, y, include_intercept, offset) = make_poisson_dataset(n, p, 3);
         let model = PoissonRegressionModel::new(x, y, include_intercept, offset.clone()).unwrap();
         fit.bench_with_input(BenchmarkId::new("poisson", label), &(), |b, _| {
+            b.iter(|| black_box(mle.fit(black_box(&model))).unwrap())
+        });
+
+        let (x, y, include_intercept, offset) = make_negbin_dataset(n, p, 4, 0.5);
+        let model =
+            NegativeBinomialRegressionModel::new(x, y, include_intercept, offset.clone()).unwrap();
+        fit.bench_with_input(BenchmarkId::new("negbin", label), &(), |b, _| {
             b.iter(|| black_box(mle.fit(black_box(&model))).unwrap())
         });
     }
@@ -235,6 +274,23 @@ fn bench_fit_predict(c: &mut Criterion) {
                 black_box(predict_poisson_mean(
                     black_box(&x_pois),
                     black_box(&params_pois),
+                    include_intercept,
+                    offset.as_deref(),
+                ))
+            })
+        });
+
+        let (x_nb, y_nb, include_intercept, offset) = make_negbin_dataset(n, p, 14, 0.5);
+        let m_nb =
+            NegativeBinomialRegressionModel::new(x_nb.clone(), y_nb, include_intercept, offset.clone())
+                .unwrap();
+        let params_nb = mle.fit(&m_nb).unwrap().parameters;
+        predict.bench_with_input(BenchmarkId::new("negbin_mean", label), &(), |b, _| {
+            b.iter(|| {
+                black_box(predict_poisson_mean(
+                    black_box(&x_nb),
+                    // NB params are [coef..., log_alpha]; mean uses only coefs.
+                    black_box(&params_nb[..params_nb.len() - 1]),
                     include_intercept,
                     offset.as_deref(),
                 ))

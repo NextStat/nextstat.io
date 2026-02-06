@@ -6,12 +6,14 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
 
+use nalgebra::{DMatrix, DVector};
+
 // Re-export types from core crates
 use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_core::{Error as NsError, Result as NsResult};
 use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult};
 use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summary};
-use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
+use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
 use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
@@ -21,6 +23,10 @@ use ns_inference::{
     profile_likelihood as pl,
 };
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
+use ns_inference::timeseries::kalman::{
+    KalmanModel as RustKalmanModel, kalman_filter as rust_kalman_filter,
+    rts_smoother as rust_rts_smoother,
+};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -43,6 +49,62 @@ fn sample_nuts_multichain_with_seeds(
         n_samples,
         diagnostics: None,
     })
+}
+
+fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> PyResult<DMatrix<f64>> {
+    if rows.is_empty() {
+        return Err(PyValueError::new_err(format!("{name} must be non-empty")));
+    }
+    let nrows = rows.len();
+    let ncols = rows[0].len();
+    if ncols == 0 {
+        return Err(PyValueError::new_err(format!("{name} rows must be non-empty")));
+    }
+    for (i, r) in rows.iter().enumerate() {
+        if r.len() != ncols {
+            return Err(PyValueError::new_err(format!(
+                "{name} must be rectangular: row {i} has len {}, expected {}",
+                r.len(),
+                ncols
+            )));
+        }
+        if r.iter().any(|v| !v.is_finite()) {
+            return Err(PyValueError::new_err(format!("{name} must contain only finite values")));
+        }
+    }
+    let mut flat = Vec::with_capacity(nrows * ncols);
+    for r in rows {
+        flat.extend_from_slice(&r);
+    }
+    Ok(DMatrix::from_row_slice(nrows, ncols, &flat))
+}
+
+fn dvector_from_vec(name: &str, v: Vec<f64>) -> PyResult<DVector<f64>> {
+    if v.is_empty() {
+        return Err(PyValueError::new_err(format!("{name} must be non-empty")));
+    }
+    if v.iter().any(|x| !x.is_finite()) {
+        return Err(PyValueError::new_err(format!("{name} must contain only finite values")));
+    }
+    Ok(DVector::from_vec(v))
+}
+
+fn dvector_to_vec(v: &DVector<f64>) -> Vec<f64> {
+    v.iter().copied().collect()
+}
+
+fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
+    let nrows = m.nrows();
+    let ncols = m.ncols();
+    let mut out = Vec::with_capacity(nrows);
+    for i in 0..nrows {
+        let mut row = Vec::with_capacity(ncols);
+        for j in 0..ncols {
+            row.push(m[(i, j)]);
+        }
+        out.push(row);
+    }
+    out
 }
 
 /// Python wrapper for HistFactoryModel
@@ -75,6 +137,13 @@ impl PyHistFactoryModel {
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    /// Gradient of negative log-likelihood.
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
     }
 
     /// Expected data matching `pyhf.Model.expected_data`.
@@ -118,6 +187,120 @@ impl PyHistFactoryModel {
     fn poi_index(&self) -> Option<usize> {
         self.inner.poi_index()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Time series (Phase 8): Kalman filter / RTS smoother.
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ns_inference::timeseries::kalman::KalmanModel`.
+#[pyclass(name = "KalmanModel")]
+struct PyKalmanModel {
+    inner: RustKalmanModel,
+}
+
+#[pymethods]
+impl PyKalmanModel {
+    #[new]
+    fn new(
+        f: Vec<Vec<f64>>,
+        q: Vec<Vec<f64>>,
+        h: Vec<Vec<f64>>,
+        r: Vec<Vec<f64>>,
+        m0: Vec<f64>,
+        p0: Vec<Vec<f64>>,
+    ) -> PyResult<Self> {
+        let f = dmatrix_from_nested("F", f)?;
+        let q = dmatrix_from_nested("Q", q)?;
+        let h = dmatrix_from_nested("H", h)?;
+        let r = dmatrix_from_nested("R", r)?;
+        let m0 = dvector_from_vec("m0", m0)?;
+        let p0 = dmatrix_from_nested("P0", p0)?;
+
+        let model = RustKalmanModel::new(f, q, h, r, m0, p0)
+            .map_err(|e| PyValueError::new_err(format!("Failed to build KalmanModel: {}", e)))?;
+        Ok(Self { inner: model })
+    }
+
+    fn n_state(&self) -> usize {
+        self.inner.n_state()
+    }
+
+    fn n_obs(&self) -> usize {
+        self.inner.n_obs()
+    }
+}
+
+#[pyfunction]
+fn kalman_filter(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> PyResult<Py<PyAny>> {
+    let ys: Vec<DVector<f64>> = ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| {
+            dvector_from_vec(&format!("y[{t}]"), y)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let fr = rust_kalman_filter(&model.inner, &ys)
+        .map_err(|e| PyValueError::new_err(format!("kalman_filter failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("log_likelihood", fr.log_likelihood)?;
+    out.set_item(
+        "predicted_means",
+        fr.predicted_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "predicted_covs",
+        fr.predicted_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "filtered_means",
+        fr.filtered_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "filtered_covs",
+        fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    )?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+fn kalman_smooth(py: Python<'_>, model: &PyKalmanModel, ys: Vec<Vec<f64>>) -> PyResult<Py<PyAny>> {
+    let ys: Vec<DVector<f64>> = ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| {
+            dvector_from_vec(&format!("y[{t}]"), y)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let fr = rust_kalman_filter(&model.inner, &ys)
+        .map_err(|e| PyValueError::new_err(format!("kalman_filter failed: {}", e)))?;
+    let sr = rust_rts_smoother(&model.inner, &fr)
+        .map_err(|e| PyValueError::new_err(format!("rts_smoother failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("log_likelihood", fr.log_likelihood)?;
+    out.set_item(
+        "filtered_means",
+        fr.filtered_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "filtered_covs",
+        fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "smoothed_means",
+        sr.smoothed_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "smoothed_covs",
+        sr.smoothed_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    )?;
+
+    Ok(out.into_any().unbind())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +423,12 @@ impl PyGaussianMeanModel {
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
     }
 
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
     fn parameter_names(&self) -> Vec<String> {
         self.inner.parameter_names()
     }
@@ -283,6 +472,12 @@ impl PyLinearRegressionModel {
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
     }
 
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
     fn parameter_names(&self) -> Vec<String> {
         self.inner.parameter_names()
     }
@@ -320,6 +515,12 @@ impl PyLogisticRegressionModel {
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
     }
 
     fn parameter_names(&self) -> Vec<String> {
@@ -366,6 +567,12 @@ impl PyPoissonRegressionModel {
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
     }
 
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
     fn parameter_names(&self) -> Vec<String> {
         self.inner.parameter_names()
     }
@@ -408,6 +615,12 @@ impl PyNegativeBinomialRegressionModel {
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
     }
 
     fn parameter_names(&self) -> Vec<String> {
@@ -545,6 +758,12 @@ impl PyComposedGlmModel {
         self.inner
             .nll(&params)
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
     }
 
     fn parameter_names(&self) -> Vec<String> {
@@ -734,6 +953,137 @@ impl PyMaximumLikelihoodEstimator {
             n_gev: result.n_gev,
         })
     }
+
+    /// Fit multiple HistFactoryModel instances in parallel (Rayon).
+    ///
+    /// Two call forms:
+    /// - `fit_batch(models)` — list of models, each with its own observations
+    /// - `fit_batch(model, datasets)` — single model + list of observation vectors
+    #[pyo3(signature = (models_or_model, datasets=None))]
+    fn fit_batch<'py>(
+        &self,
+        py: Python<'py>,
+        models_or_model: &Bound<'py, PyAny>,
+        datasets: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<PyFitResult>> {
+        let mle = self.inner.clone();
+
+        let models: Vec<RustModel> = if let Some(datasets) = datasets {
+            // Single model + multiple datasets
+            let hf = models_or_model
+                .extract::<PyRef<'_, PyHistFactoryModel>>()
+                .map_err(|_| {
+                    PyValueError::new_err(
+                        "When datasets is given, first argument must be a HistFactoryModel",
+                    )
+                })?;
+            let base = hf.inner.clone();
+            datasets
+                .into_iter()
+                .map(|ds| {
+                    base.with_observed_main(&ds).map_err(|e| {
+                        PyValueError::new_err(format!("Failed to set observed data: {}", e))
+                    })
+                })
+                .collect::<PyResult<Vec<_>>>()?
+        } else {
+            // List of models
+            let list = models_or_model
+                .cast::<PyList>()
+                .map_err(|_| {
+                    PyValueError::new_err(
+                        "Expected a list of HistFactoryModel or (model, datasets=...)",
+                    )
+                })?;
+            let mut ms = Vec::with_capacity(list.len());
+            for item in list.iter() {
+                let hf = item.extract::<PyRef<'_, PyHistFactoryModel>>().map_err(|_| {
+                    PyValueError::new_err("All items in the list must be HistFactoryModel")
+                })?;
+                ms.push(hf.inner.clone());
+            }
+            ms
+        };
+
+        let results = py.detach(move || mle.fit_batch(&models));
+
+        results
+            .into_iter()
+            .map(|r| {
+                let r = r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                Ok(PyFitResult {
+                    parameters: r.parameters,
+                    uncertainties: r.uncertainties,
+                    nll: r.nll,
+                    converged: r.converged,
+                    n_iter: r.n_iter,
+                    n_fev: r.n_fev,
+                    n_gev: r.n_gev,
+                })
+            })
+            .collect()
+    }
+
+    /// Generate Poisson toy pseudo-experiments and fit each in parallel.
+    #[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+    fn fit_toys(
+        &self,
+        py: Python<'_>,
+        model: &PyHistFactoryModel,
+        params: Vec<f64>,
+        n_toys: usize,
+        seed: u64,
+    ) -> PyResult<Vec<PyFitResult>> {
+        let mle = self.inner.clone();
+        let m = model.inner.clone();
+
+        let results = py.detach(move || mle.fit_toys(&m, &params, n_toys, seed));
+
+        results
+            .into_iter()
+            .map(|r| {
+                let r = r.map_err(|e| PyValueError::new_err(format!("Toy fit failed: {}", e)))?;
+                Ok(PyFitResult {
+                    parameters: r.parameters,
+                    uncertainties: r.uncertainties,
+                    nll: r.nll,
+                    converged: r.converged,
+                    n_iter: r.n_iter,
+                    n_fev: r.n_fev,
+                    n_gev: r.n_gev,
+                })
+            })
+            .collect()
+    }
+
+    /// Compute nuisance-parameter ranking (impact on POI).
+    ///
+    /// Returns a list of dicts with keys: name, delta_mu_up, delta_mu_down, pull, constraint.
+    fn ranking<'py>(
+        &self,
+        py: Python<'py>,
+        model: &PyHistFactoryModel,
+    ) -> PyResult<Vec<Py<PyAny>>> {
+        let mle = self.inner.clone();
+        let m = model.inner.clone();
+
+        let entries: Vec<RankingEntry> = py
+            .detach(move || mle.ranking(&m))
+            .map_err(|e| PyValueError::new_err(format!("Ranking failed: {}", e)))?;
+
+        entries
+            .into_iter()
+            .map(|e| {
+                let d = PyDict::new(py);
+                d.set_item("name", e.name)?;
+                d.set_item("delta_mu_up", e.delta_mu_up)?;
+                d.set_item("delta_mu_down", e.delta_mu_down)?;
+                d.set_item("pull", e.pull)?;
+                d.set_item("constraint", e.constraint)?;
+                Ok(d.into_any().unbind())
+            })
+            .collect()
+    }
 }
 
 /// Convenience wrapper: create model from pyhf JSON string.
@@ -752,6 +1102,27 @@ fn fit<'py>(
 ) -> PyResult<PyFitResult> {
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
     mle.fit(py, model, data)
+}
+
+/// Convenience wrapper: generate Poisson toys and fit each in parallel.
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+fn fit_toys(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+) -> PyResult<Vec<PyFitResult>> {
+    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+    mle.fit_toys(py, model, params, n_toys, seed)
+}
+
+/// Convenience wrapper: nuisance-parameter ranking (impact on POI).
+#[pyfunction]
+fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
+    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+    mle.ranking(py, model)
 }
 
 /// Closed-form OLS fit for linear regression fixtures and baselines.
@@ -1298,6 +1669,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(ranking, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
@@ -1307,9 +1680,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sample, m)?)?;
     m.add_function(wrap_pyfunction!(cls_curve, m)?)?;
     m.add_function(wrap_pyfunction!(profile_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(kalman_smooth, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
+    m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;

@@ -560,6 +560,8 @@ pub fn compute_diagnostics(result: &crate::chain::SamplerResult) -> DiagnosticsR
         .chains
         .iter()
         .flat_map(|c| c.tree_depths.iter().map(move |&d| (d, c.max_treedepth)))
+        // `tree_depths` uses 0-based depth (depth=0 means a single leapfrog step).
+        // Hitting the cap means `depth >= max_treedepth`.
         .filter(|(d, max_d)| *d >= *max_d)
         .count();
     let max_treedepth_rate =
@@ -603,6 +605,34 @@ pub fn ebfmi(energies: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_max_treedepth_rate_counts_hits() {
+        // Minimal synthetic SamplerResult: only tree_depths/max_treedepth are used.
+        let mk_chain = |depths: Vec<usize>, max_td: usize| crate::chain::Chain {
+            draws_unconstrained: vec![],
+            draws_constrained: vec![],
+            divergences: vec![false; depths.len()],
+            tree_depths: depths,
+            accept_probs: vec![],
+            energies: vec![],
+            max_treedepth: max_td,
+            step_size: 0.0,
+            mass_diag: vec![],
+        };
+
+        let r = crate::chain::SamplerResult {
+            chains: vec![mk_chain(vec![0, 1, 2, 3, 3], 3)],
+            param_names: vec!["x".to_string()],
+            n_warmup: 0,
+            n_samples: 5,
+            diagnostics: None,
+        };
+
+        let d = compute_diagnostics(&r);
+        // depths >= 3 are hits: 2 / 5.
+        assert!((d.max_treedepth_rate - 0.4).abs() < 1e-12);
+    }
 
     #[test]
     fn test_ebfmi_iid_energy_is_large() {

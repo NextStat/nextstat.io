@@ -5,6 +5,7 @@ This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
   - bias/pulls: `tests/apex2_bias_pulls_report.py` (optional; slow)
+  - SBC (NUTS): `tests/apex2_sbc_report.py` (optional; slow)
   - ROOT: `tests/apex2_root_suite_report.py` (runs if prereqs exist, else records skipped)
 
 Run:
@@ -218,6 +219,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
     ap.add_argument("--bias-pulls-out", type=Path, default=Path("tmp/apex2_bias_pulls_report.json"))
+    ap.add_argument("--sbc-out", type=Path, default=Path("tmp/apex2_sbc_report.json"))
     ap.add_argument("--root-out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--root-cases", type=Path, default=None, help="Cases JSON for ROOT suite.")
     ap.add_argument(
@@ -263,6 +265,18 @@ def main() -> int:
     ap.add_argument("--bias-pulls-n-toys", type=int, default=200)
     ap.add_argument("--bias-pulls-seed", type=int, default=0)
     ap.add_argument("--bias-pulls-fixtures", type=str, default="simple")
+    ap.add_argument(
+        "--sbc",
+        action="store_true",
+        help="Also run slow SBC (NUTS) report and embed report (requires NS_RUN_SLOW=1).",
+    )
+    ap.add_argument("--sbc-cases", type=str, default="lin1d,lin2d")
+    ap.add_argument("--sbc-n-runs", type=int, default=None)
+    ap.add_argument("--sbc-warmup", type=int, default=None)
+    ap.add_argument("--sbc-samples", type=int, default=None)
+    ap.add_argument("--sbc-seed", type=int, default=None)
+    ap.add_argument("--sbc-rhat-max", type=float, default=1.40)
+    ap.add_argument("--sbc-divergence-rate-max", type=float, default=0.05)
     ap.add_argument("--root-prereq-only", action="store_true", help="Only check ROOT prereqs.")
     args = ap.parse_args()
 
@@ -280,6 +294,7 @@ def main() -> int:
         "pyhf": None,
         "regression_golden": None,
         "bias_pulls": None,
+        "sbc": None,
         "root": None,
     }
 
@@ -343,6 +358,47 @@ def main() -> int:
         }
     else:
         report["bias_pulls"] = {"status": "skipped", "reason": "not_requested"}
+
+    # ------------------------------------------------------------------
+    # SBC report (optional; slow)
+    # ------------------------------------------------------------------
+    if args.sbc:
+        sbc_runner = repo / "tests" / "apex2_sbc_report.py"
+        sbc_cmd = [
+            sys.executable,
+            str(sbc_runner),
+            "--out",
+            str(args.sbc_out),
+            "--cases",
+            str(args.sbc_cases),
+        ]
+        if args.sbc_n_runs is not None:
+            sbc_cmd += ["--n-runs", str(args.sbc_n_runs)]
+        if args.sbc_warmup is not None:
+            sbc_cmd += ["--warmup", str(args.sbc_warmup)]
+        if args.sbc_samples is not None:
+            sbc_cmd += ["--samples", str(args.sbc_samples)]
+        if args.sbc_seed is not None:
+            sbc_cmd += ["--seed", str(args.sbc_seed)]
+        sbc_cmd += ["--rhat-max", str(args.sbc_rhat_max)]
+        sbc_cmd += ["--divergence-rate-max", str(args.sbc_divergence_rate_max)]
+        rc_sbc, out_sbc = _run_json(sbc_cmd, cwd=cwd, env=env)
+        sbc_report = _read_json(args.sbc_out) if args.sbc_out.exists() else None
+        # Prefer the report's declared status to avoid "ok but skipped" confusion.
+        sbc_declared = (sbc_report or {}).get("status")
+        if sbc_declared in ("ok", "fail", "skipped", "error"):
+            status = str(sbc_declared)
+        else:
+            status = "ok" if rc_sbc == 0 else "fail"
+        report["sbc"] = {
+            "status": status,
+            "returncode": int(rc_sbc),
+            "stdout_tail": out_sbc[-4000:],
+            "report_path": str(args.sbc_out),
+            "report": sbc_report,
+        }
+    else:
+        report["sbc"] = {"status": "skipped", "reason": "not_requested"}
 
     # ------------------------------------------------------------------
     # ROOT suite runner (may be skipped)
@@ -439,6 +495,7 @@ def main() -> int:
     pyhf_ok = (rc_pyhf == 0)
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
+    sbc_ok_or_skipped = report["sbc"]["status"] in ("ok", "skipped")
     root_ok_or_skipped = root_status in ("ok", "skipped")
 
     print(f"Wrote: {args.out}")
@@ -447,6 +504,8 @@ def main() -> int:
     if not reg_ok_or_skipped:
         return 2
     if not bias_ok_or_skipped:
+        return 2
+    if not sbc_ok_or_skipped:
         return 2
     if not root_ok_or_skipped:
         return 2

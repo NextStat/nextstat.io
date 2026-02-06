@@ -1,0 +1,80 @@
+name: Apex2 Nightly Slow Validations
+
+on:
+  workflow_dispatch:
+    inputs:
+      bias_pulls_n_toys:
+        description: "Number of toys for bias/pulls report"
+        required: false
+        default: "200"
+      sbc_n_runs:
+        description: "Number of SBC runs (>=10)"
+        required: false
+        default: "20"
+      sbc_warmup:
+        description: "SBC warmup (>=100)"
+        required: false
+        default: "200"
+      sbc_samples:
+        description: "SBC samples (>=100)"
+        required: false
+        default: "200"
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC
+
+env:
+  CARGO_TERM_COLOR: always
+  NS_RUN_SLOW: "1"
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package + deps
+        run: |
+          pip install bindings/ns-py/target/wheels/*.whl
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6"
+
+      - name: Run Apex2 master report (slow suites enabled)
+        run: |
+          mkdir -p artifacts
+          python tests/apex2_master_report.py \
+            --out artifacts/apex2_master_report.json \
+            --pyhf-out artifacts/apex2_pyhf_report.json \
+            --root-out artifacts/apex2_root_suite_report.json \
+            --bias-pulls \
+            --bias-pulls-n-toys "${{ inputs.bias_pulls_n_toys || '200' }}" \
+            --bias-pulls-out artifacts/apex2_bias_pulls_report.json \
+            --sbc \
+            --sbc-out artifacts/apex2_sbc_report.json \
+            --sbc-n-runs "${{ inputs.sbc_n_runs || '20' }}" \
+            --sbc-warmup "${{ inputs.sbc_warmup || '200' }}" \
+            --sbc-samples "${{ inputs.sbc_samples || '200' }}"
+
+      - name: Upload Apex2 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex2-nightly-slow
+          path: artifacts/*.json
+

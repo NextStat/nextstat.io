@@ -138,7 +138,7 @@ def cross_val_score(
         scores.append(float(score))
 
     mean = statistics.fmean(scores) if scores else float("nan")
-    stdev = statistics.pstdev(scores) if len(scores) >= 2 else 0.0
+    stdev = statistics.stdev(scores) if len(scores) >= 2 else 0.0
     return CvResult(
         model=model,
         metric=str(metric),

@@ -161,9 +161,9 @@ def main():
     print("=" * 70)
     print("\nHardware: Apple Silicon")
     import sys
-    print(f\"Python: {sys.version.split()[0]}\")
-    print(f\"pyhf: {pyhf.__version__}\")
-    print(f\"nextstat: {nextstat.__version__}\")
+    print(f"Python: {sys.version.split()[0]}")
+    print(f"pyhf: {pyhf.__version__}")
+    print(f"nextstat: {nextstat.__version__}")
     print()
 
     nll_time = benchmark_pyhf_nll(n_iterations=1000)

@@ -73,13 +73,37 @@ def gradient_inf_norm(x, y):
                 grad[j] += xd[i][j] * (mu - obs[i])
         return max(abs(g) for g in grad)
 
+    if kind == "negbin":
+        log_alpha = float(y.get("log_alpha_hat"))
+        alpha = math.exp(log_alpha)
+        theta = 1.0 / alpha
+
+        grad = [0.0] * p
+        for i in range(len(obs)):
+            eta = sum(xd[i][j] * beta[j] for j in range(p))
+            if offset is not None:
+                eta += offset[i]
+            mu = math.exp(eta)
+            yi = float(obs[i])
+
+            # Matches Rust: d/deta nll = mu * (theta + y) / (theta + mu) - y
+            err = mu * (theta + yi) / (theta + mu) - yi
+            for j in range(p):
+                grad[j] += xd[i][j] * err
+        return max(abs(g) for g in grad)
+
     raise AssertionError(f"unknown kind: {kind}")
 
 
 def test_golden_regression_fixtures_exist():
     assert FIXTURES_DIR.is_dir()
     names = {p.name for p in FIXTURES_DIR.glob("*.json")}
-    assert {"ols_small.json", "logistic_small.json", "poisson_small.json"} <= names
+    assert {
+        "ols_small.json",
+        "logistic_small.json",
+        "poisson_small.json",
+        "negbin_small.json",
+    } <= names
 
 
 def test_golden_regression_fixtures_have_near_zero_gradients():
@@ -120,8 +144,28 @@ def test_golden_regression_fixtures_nll_matches_recompute():
                     eta += offset[i]
                 mu = math.exp(eta)
                 nll += mu - y[i] * eta
+        elif kind == "negbin":
+            # Matches Rust fixture convention: NB2 mean/dispersion, log link.
+            log_alpha = float(data.get("log_alpha_hat"))
+            alpha = math.exp(log_alpha)
+            theta = 1.0 / alpha
+
+            nll = 0.0
+            for i in range(len(y)):
+                eta = sum(xd[i][j] * beta[j] for j in range(len(beta)))
+                if offset is not None:
+                    eta += offset[i]
+                mu = math.exp(eta)
+                yi = float(y[i])
+
+                ln_p = (
+                    math.lgamma(yi + theta)
+                    - math.lgamma(theta)
+                    + theta * (math.log(theta) - math.log(theta + mu))
+                    + yi * (math.log(mu) - math.log(theta + mu))
+                )
+                nll -= ln_p
         else:
             raise AssertionError(f"unknown kind: {kind}")
 
         assert abs(nll - data["nll_at_hat"]) < 1e-8, f"{path.name}: nll mismatch"
-

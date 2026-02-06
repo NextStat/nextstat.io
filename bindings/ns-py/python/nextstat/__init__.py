@@ -43,13 +43,17 @@ LogisticRegressionModel = getattr(_core, "LogisticRegressionModel", None)  # typ
 PoissonRegressionModel = getattr(_core, "PoissonRegressionModel", None)  # type: ignore
 NegativeBinomialRegressionModel = getattr(_core, "NegativeBinomialRegressionModel", None)  # type: ignore
 ComposedGlmModel = getattr(_core, "ComposedGlmModel", None)  # type: ignore
+KalmanModel = getattr(_core, "KalmanModel", None)  # type: ignore
 ols_fit = getattr(_core, "ols_fit", None)  # type: ignore
+fit_toys = getattr(_core, "fit_toys", None)  # type: ignore
+ranking = getattr(_core, "ranking", None)  # type: ignore
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
 from . import viz as viz  # noqa: E402
 from . import data as data  # noqa: E402
 from . import glm as glm  # noqa: E402
+from . import timeseries as timeseries  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -68,6 +72,7 @@ __all__ = [
     "viz",
     "data",
     "glm",
+    "timeseries",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
@@ -75,9 +80,12 @@ __all__ = [
     "PoissonRegressionModel",
     "NegativeBinomialRegressionModel",
     "ComposedGlmModel",
+    "KalmanModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "ols_fit",
+    "fit_toys",
+    "ranking",
     "from_pyhf",
     "profile_scan",
     "upper_limit",

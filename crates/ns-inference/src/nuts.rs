@@ -1,7 +1,8 @@
-//! No-U-Turn Sampler (NUTS) with multinomial trajectory selection.
+//! No-U-Turn Sampler (NUTS).
 //!
-//! Implements the Stan-style NUTS algorithm with tree doubling,
-//! no-U-turn criterion, and multinomial proposal selection.
+//! Implements NUTS with tree doubling and the no-U-turn criterion.
+//! The current implementation uses the slice-based NUTS variant:
+//! proposals are selected uniformly among states that fall inside the slice.
 
 use crate::adapt::{WindowedAdaptation, find_reasonable_step_size};
 use crate::hmc::{HmcState, LeapfrogIntegrator};
@@ -127,9 +128,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     let logp = -h;
     let in_slice = log_u <= logp;
     // Slice-based NUTS: select uniformly among states in the slice.
-    // Using exp(-deltaH) weights here (multinomial NUTS) together with an explicit
-    // slice threshold tends to bias short chains and makes R-hat flaky in our
-    // HistFactory models. Keep weights uniform for correctness and stability.
+    // (Stan's multinomial-weighted variant does not use an explicit slice threshold.)
     let log_weight = if in_slice { 0.0 } else { f64::NEG_INFINITY };
 
     let accept_prob = (-energy_error).exp().min(1.0);

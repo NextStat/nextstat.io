@@ -87,7 +87,12 @@ def fit(
             warnings.append("possible_separation_use_l2")
     else:
         if l2 is None or float(l2) <= 0.0:
-            if any(abs(float(v)) > 30.0 for v in r.parameters):
+            # Heuristic: separation often manifests as very large coefficients and/or
+            # extremely ill-conditioned curvature (huge SE). Thresholds are intentionally
+            # conservative to avoid spurious warnings on well-scaled problems.
+            max_abs_coef = max(abs(float(v)) for v in r.parameters) if r.parameters else 0.0
+            max_se = max(abs(float(v)) for v in r.uncertainties) if r.uncertainties else 0.0
+            if (max_abs_coef > 15.0) or (max_se > 1e3):
                 warnings.append("large_coefficients_possible_separation")
 
     return LogisticFit(

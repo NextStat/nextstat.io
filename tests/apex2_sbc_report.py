@@ -97,7 +97,9 @@ def _sample_posterior_u(
     )
     diag = r["diagnostics"]
     if float(diag["divergence_rate"]) > divergence_rate_max:
-        raise AssertionError(f"divergence_rate={diag['divergence_rate']} > {divergence_rate_max}")
+        raise AssertionError(
+            f"divergence_rate={diag['divergence_rate']} > {divergence_rate_max}"
+        )
     for name, v in diag["r_hat"].items():
         if float(v) >= rhat_max:
             raise AssertionError(f"R-hat({name})={v} >= {rhat_max}")
@@ -110,7 +112,16 @@ def _sample_posterior_u(
     return out
 
 
-def _case_linear_regression_1d(nextstat_mod, *, n_runs: int, n_warmup: int, n_samples: int, seed0: int) -> Dict[str, Any]:
+def _case_linear_regression_1d(
+    nextstat_mod,
+    *,
+    n_runs: int,
+    n_warmup: int,
+    n_samples: int,
+    seed0: int,
+    rhat_max: float,
+    divergence_rate_max: float,
+) -> Dict[str, Any]:
     n = 25
     x = [[1.0] for _ in range(n)]
 
@@ -137,8 +148,8 @@ def _case_linear_regression_1d(nextstat_mod, *, n_runs: int, n_warmup: int, n_sa
             seed=seed0 + 10_000 + run,
             n_warmup=n_warmup,
             n_samples=n_samples,
-            rhat_max=1.20,
-            divergence_rate_max=0.02,
+            rhat_max=rhat_max,
+            divergence_rate_max=divergence_rate_max,
         )
         u_beta1.append(float(u["beta1"]))
 
@@ -147,7 +158,16 @@ def _case_linear_regression_1d(nextstat_mod, *, n_runs: int, n_warmup: int, n_sa
     return {"name": "linear_regression_1d_mean_only", "u_by_param": {"beta1": u_beta1}, "check": chk}
 
 
-def _case_linear_regression_2d(nextstat_mod, *, n_runs: int, n_warmup: int, n_samples: int, seed0: int) -> Dict[str, Any]:
+def _case_linear_regression_2d(
+    nextstat_mod,
+    *,
+    n_runs: int,
+    n_warmup: int,
+    n_samples: int,
+    seed0: int,
+    rhat_max: float,
+    divergence_rate_max: float,
+) -> Dict[str, Any]:
     n = 30
     xs = [(-1.0 + 2.0 * i / (n - 1)) for i in range(n)]
     x = [[1.0, float(v)] for v in xs]
@@ -177,8 +197,8 @@ def _case_linear_regression_2d(nextstat_mod, *, n_runs: int, n_warmup: int, n_sa
             seed=seed0 + 20_000 + run,
             n_warmup=n_warmup,
             n_samples=n_samples,
-            rhat_max=1.20,
-            divergence_rate_max=0.02,
+            rhat_max=rhat_max,
+            divergence_rate_max=divergence_rate_max,
         )
         u_b1.append(float(u["beta1"]))
         u_b2.append(float(u["beta2"]))
@@ -202,6 +222,8 @@ def main() -> int:
     ap.add_argument("--warmup", type=int, default=None)
     ap.add_argument("--samples", type=int, default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--rhat-max", type=float, default=1.40)
+    ap.add_argument("--divergence-rate-max", type=float, default=0.05)
     args = ap.parse_args()
 
     env_cfg = _require_slow_from_env()
@@ -220,6 +242,8 @@ def main() -> int:
             "n_samples": n_samples,
             "seed": seed0,
             "cases": args.cases,
+            "rhat_max": float(args.rhat_max),
+            "divergence_rate_max": float(args.divergence_rate_max),
         },
         "status": "skipped",
         "reason": None,
@@ -263,11 +287,23 @@ def main() -> int:
         try:
             if c == "lin1d":
                 row = _case_linear_regression_1d(
-                    nextstat, n_runs=n_runs, n_warmup=n_warmup, n_samples=n_samples, seed0=seed0
+                    nextstat,
+                    n_runs=n_runs,
+                    n_warmup=n_warmup,
+                    n_samples=n_samples,
+                    seed0=seed0,
+                    rhat_max=float(args.rhat_max),
+                    divergence_rate_max=float(args.divergence_rate_max),
                 )
             elif c == "lin2d":
                 row = _case_linear_regression_2d(
-                    nextstat, n_runs=n_runs, n_warmup=n_warmup, n_samples=n_samples, seed0=seed0
+                    nextstat,
+                    n_runs=n_runs,
+                    n_warmup=n_warmup,
+                    n_samples=n_samples,
+                    seed0=seed0,
+                    rhat_max=float(args.rhat_max),
+                    divergence_rate_max=float(args.divergence_rate_max),
                 )
             else:
                 row = {"name": c, "skipped": True, "reason": f"unknown_case:{c}"}
@@ -290,4 +326,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

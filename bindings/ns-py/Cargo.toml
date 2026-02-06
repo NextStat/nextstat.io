@@ -22,6 +22,7 @@ doctest = false
 bench = false
 
 [dependencies]
+nalgebra = { workspace = true }
 ns-core = { path = "../../crates/ns-core" }
 ns-compute = { path = "../../crates/ns-compute" }
 ns-inference = { path = "../../crates/ns-inference" }

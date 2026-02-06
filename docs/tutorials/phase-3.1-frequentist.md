@@ -48,7 +48,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_
   --out tmp/apex2_pyhf_report.json
 ```
 
-### 0.1) Master report (pyhf + regression golden + optional ROOT + optional bias/pulls)
+### 0.1) Master report (pyhf + regression golden + optional ROOT + optional bias/pulls + optional SBC)
 
 This produces one aggregated JSON artifact, and embeds sub-reports.
 
@@ -67,9 +67,21 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
   --out tmp/apex2_master_report.json
 ```
 
+Optional: include the slow SBC (NUTS) report (Phase 5.4.2).
+
+```bash
+NS_RUN_SLOW=1 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --sbc \
+  --sbc-n-runs 20 \
+  --sbc-warmup 200 \
+  --sbc-samples 200 \
+  --out tmp/apex2_master_report.json
+```
+
 Notes:
 
 - bias/pulls is intended for manual/nightly runs; it is not part of default CI.
+- SBC (NUTS) is intended for manual/nightly runs; it requires `NS_RUN_SLOW=1`.
 - ROOT parity is recorded as `skipped` unless ROOT prerequisites are present.
 
 ## 1) Fit (MLE)

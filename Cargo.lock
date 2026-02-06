@@ -894,6 +894,7 @@ dependencies = [
 name = "ns-py"
 version = "0.1.0"
 dependencies = [
+ "nalgebra 0.34.1",
  "ns-compute",
  "ns-core",
  "ns-inference",
