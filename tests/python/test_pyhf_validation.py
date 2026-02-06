@@ -119,60 +119,64 @@ def test_complex_nll_parity_nominal_and_poi():
         assert ns_val_var == pytest.approx(pyhf_val_var, rel=TWICE_NLL_RTOL, abs=TWICE_NLL_ATOL)
 
 
-def test_simple_mle_parity_bestfit_uncertainties():
+def test_simple_mle_parity_bestfit_uncertainties(ns_timing):
     workspace = load_fixture("simple_workspace.json")
-    model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
+    with ns_timing.time("pyhf"):
+        model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
 
-    pyhf_bestfit = np.asarray(pyhf.infer.mle.fit(data, model), dtype=float)
-    pyhf_bestfit_nll = pyhf_twice_nll(model, data, pyhf_bestfit) / 2.0
+    with ns_timing.time("pyhf"):
+        pyhf_bestfit = np.asarray(pyhf.infer.mle.fit(data, model), dtype=float)
+        pyhf_bestfit_nll = pyhf_twice_nll(model, data, pyhf_bestfit) / 2.0
 
     # Numerical Hessian for uncertainties (NLL, not twice_nll)
     def nll_func(x: np.ndarray) -> float:
         return pyhf_twice_nll(model, data, x) / 2.0
 
-    n = len(pyhf_bestfit)
-    h_step = 1e-4
-    damping = 1e-9
-    f0 = nll_func(pyhf_bestfit)
-    hess = np.zeros((n, n), dtype=float)
+    with ns_timing.time("pyhf"):
+        n = len(pyhf_bestfit)
+        h_step = 1e-4
+        damping = 1e-9
+        f0 = nll_func(pyhf_bestfit)
+        hess = np.zeros((n, n), dtype=float)
 
-    for i in range(n):
-        hi = h_step * max(abs(pyhf_bestfit[i]), 1.0)
-        xp = pyhf_bestfit.copy()
-        xm = pyhf_bestfit.copy()
-        xp[i] += hi
-        xm[i] -= hi
-        fp = nll_func(xp)
-        fm = nll_func(xm)
-        hess[i, i] = (fp - 2.0 * f0 + fm) / (hi * hi)
+        for i in range(n):
+            hi = h_step * max(abs(pyhf_bestfit[i]), 1.0)
+            xp = pyhf_bestfit.copy()
+            xm = pyhf_bestfit.copy()
+            xp[i] += hi
+            xm[i] -= hi
+            fp = nll_func(xp)
+            fm = nll_func(xm)
+            hess[i, i] = (fp - 2.0 * f0 + fm) / (hi * hi)
 
-        for j in range(i + 1, n):
-            hj = h_step * max(abs(pyhf_bestfit[j]), 1.0)
-            xpp = pyhf_bestfit.copy()
-            xpm = pyhf_bestfit.copy()
-            xmp = pyhf_bestfit.copy()
-            xmm = pyhf_bestfit.copy()
-            xpp[i] += hi
-            xpp[j] += hj
-            xpm[i] += hi
-            xpm[j] -= hj
-            xmp[i] -= hi
-            xmp[j] += hj
-            xmm[i] -= hi
-            xmm[j] -= hj
-            fij = (nll_func(xpp) - nll_func(xpm) - nll_func(xmp) + nll_func(xmm)) / (
-                4.0 * hi * hj
-            )
-            hess[i, j] = fij
-            hess[j, i] = fij
+            for j in range(i + 1, n):
+                hj = h_step * max(abs(pyhf_bestfit[j]), 1.0)
+                xpp = pyhf_bestfit.copy()
+                xpm = pyhf_bestfit.copy()
+                xmp = pyhf_bestfit.copy()
+                xmm = pyhf_bestfit.copy()
+                xpp[i] += hi
+                xpp[j] += hj
+                xpm[i] += hi
+                xpm[j] -= hj
+                xmp[i] -= hi
+                xmp[j] += hj
+                xmm[i] -= hi
+                xmm[j] -= hj
+                fij = (nll_func(xpp) - nll_func(xpm) - nll_func(xmp) + nll_func(xmm)) / (
+                    4.0 * hi * hj
+                )
+                hess[i, j] = fij
+                hess[j, i] = fij
 
-    hess = hess + np.eye(n) * damping
-    cov = np.linalg.inv(hess)
-    pyhf_unc = np.sqrt(np.maximum(np.diag(cov), 0.0))
+        hess = hess + np.eye(n) * damping
+        cov = np.linalg.inv(hess)
+        pyhf_unc = np.sqrt(np.maximum(np.diag(cov), 0.0))
 
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-    mle = nextstat.MaximumLikelihoodEstimator()
-    ns_res = mle.fit(ns_model)
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        mle = nextstat.MaximumLikelihoodEstimator()
+        ns_res = mle.fit(ns_model)
 
     ns_names = ns_model.parameter_names()
     ns_bestfit_by_name = dict(zip(ns_names, ns_res.parameters))

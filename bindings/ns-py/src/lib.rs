@@ -16,6 +16,7 @@ use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult
 use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summary};
 use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
 use ns_inference::nuts::{NutsConfig, sample_nuts};
+use ns_inference::transforms::ParameterTransform;
 use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
@@ -163,6 +164,225 @@ fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
         out.push(row);
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Bayesian posterior surface (Phase 3/5 standards: explicit Posterior API).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+enum PosteriorModel {
+    HistFactory(RustModel),
+    GaussianMean(GaussianMeanModel),
+    LinearRegression(RustLinearRegressionModel),
+    LogisticRegression(RustLogisticRegressionModel),
+    OrderedLogit(RustOrderedLogitModel),
+    OrderedProbit(RustOrderedProbitModel),
+    PoissonRegression(RustPoissonRegressionModel),
+    NegativeBinomialRegression(RustNegativeBinomialRegressionModel),
+    ComposedGlm(RustComposedGlmModel),
+    LmmMarginal(RustLmmMarginalModel),
+    ExponentialSurvival(RustExponentialSurvivalModel),
+    WeibullSurvival(RustWeibullSurvivalModel),
+    LogNormalAft(RustLogNormalAftModel),
+    CoxPh(RustCoxPhModel),
+}
+
+impl PosteriorModel {
+    fn as_model(&self) -> &(dyn LogDensityModel + Sync) {
+        match self {
+            PosteriorModel::HistFactory(m) => m,
+            PosteriorModel::GaussianMean(m) => m,
+            PosteriorModel::LinearRegression(m) => m,
+            PosteriorModel::LogisticRegression(m) => m,
+            PosteriorModel::OrderedLogit(m) => m,
+            PosteriorModel::OrderedProbit(m) => m,
+            PosteriorModel::PoissonRegression(m) => m,
+            PosteriorModel::NegativeBinomialRegression(m) => m,
+            PosteriorModel::ComposedGlm(m) => m,
+            PosteriorModel::LmmMarginal(m) => m,
+            PosteriorModel::ExponentialSurvival(m) => m,
+            PosteriorModel::WeibullSurvival(m) => m,
+            PosteriorModel::LogNormalAft(m) => m,
+            PosteriorModel::CoxPh(m) => m,
+        }
+    }
+}
+
+fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel> {
+    if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+        Ok(PosteriorModel::HistFactory(hf.inner.clone()))
+    } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
+        Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
+    } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
+        Ok(PosteriorModel::LinearRegression(lr.inner.clone()))
+    } else if let Ok(logit) = model.extract::<PyRef<'_, PyLogisticRegressionModel>>() {
+        Ok(PosteriorModel::LogisticRegression(logit.inner.clone()))
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedLogitModel>>() {
+        Ok(PosteriorModel::OrderedLogit(ord.inner.clone()))
+    } else if let Ok(ord) = model.extract::<PyRef<'_, PyOrderedProbitModel>>() {
+        Ok(PosteriorModel::OrderedProbit(ord.inner.clone()))
+    } else if let Ok(pois) = model.extract::<PyRef<'_, PyPoissonRegressionModel>>() {
+        Ok(PosteriorModel::PoissonRegression(pois.inner.clone()))
+    } else if let Ok(nb) = model.extract::<PyRef<'_, PyNegativeBinomialRegressionModel>>() {
+        Ok(PosteriorModel::NegativeBinomialRegression(nb.inner.clone()))
+    } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
+        Ok(PosteriorModel::ComposedGlm(glm.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLmmMarginalModel>>() {
+        Ok(PosteriorModel::LmmMarginal(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyExponentialSurvivalModel>>() {
+        Ok(PosteriorModel::ExponentialSurvival(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyWeibullSurvivalModel>>() {
+        Ok(PosteriorModel::WeibullSurvival(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyLogNormalAftModel>>() {
+        Ok(PosteriorModel::LogNormalAft(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
+        Ok(PosteriorModel::CoxPh(m.inner.clone()))
+    } else {
+        Err(PyValueError::new_err(
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, or a survival model.",
+        ))
+    }
+}
+
+fn validate_f64_vec(name: &str, xs: &[f64], dim: usize) -> PyResult<()> {
+    if xs.len() != dim {
+        return Err(PyValueError::new_err(format!(
+            "expected {name} length = model.dim() = {dim}, got {}",
+            xs.len()
+        )));
+    }
+    if xs.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "{name} must contain only finite values"
+        )));
+    }
+    Ok(())
+}
+
+/// Posterior wrapper: provides constrained and unconstrained log-density evaluation.
+///
+/// Notes:
+/// - Uses the model's `nll`/`grad_nll`. For HistFactory, constraint terms are already included
+///   in `nll` (pyhf parity baseline), and Posterior does not double-count them.
+#[pyclass(name = "Posterior")]
+struct PyPosterior {
+    model: PosteriorModel,
+    bounds: Vec<(f64, f64)>,
+    transform: ParameterTransform,
+    dim: usize,
+}
+
+#[pymethods]
+impl PyPosterior {
+    #[new]
+    fn new(model: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let model = extract_posterior_model(model)?;
+        let dim = model.as_model().dim();
+
+        // Defensive: keep Posterior well-defined even if bounds length != dim.
+        let mut bounds: Vec<(f64, f64)> = model.as_model().parameter_bounds();
+        if bounds.len() > dim {
+            bounds.truncate(dim);
+        } else if bounds.len() < dim {
+            bounds.resize(dim, (f64::NEG_INFINITY, f64::INFINITY));
+        }
+
+        let transform = ParameterTransform::from_bounds(&bounds);
+        Ok(Self { model, bounds, transform, dim })
+    }
+
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.model.as_model().parameter_names()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.bounds.clone()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.model.as_model().parameter_init()
+    }
+
+    fn logpdf(&self, theta: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        let nll = self
+            .model
+            .as_model()
+            .nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("logpdf failed: {}", e)))?;
+        Ok(-nll)
+    }
+
+    fn grad(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        let mut g = self
+            .model
+            .as_model()
+            .grad_nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("grad failed: {}", e)))?;
+        for gi in g.iter_mut() {
+            *gi = -*gi;
+        }
+        Ok(g)
+    }
+
+    fn to_unconstrained(&self, theta: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let theta = extract_f64_vec(theta)?;
+        validate_f64_vec("theta", &theta, self.dim)?;
+        Ok(self.transform.inverse(&theta))
+    }
+
+    fn to_constrained(&self, z: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        Ok(self.transform.forward(&z))
+    }
+
+    fn logpdf_unconstrained(&self, z: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        let theta = self.transform.forward(&z);
+        let nll = self
+            .model
+            .as_model()
+            .nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("logpdf_unconstrained failed: {}", e)))?;
+        let log_jac = self.transform.log_abs_det_jacobian(&z);
+        Ok(-nll + log_jac)
+    }
+
+    fn grad_unconstrained(&self, z: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let z = extract_f64_vec(z)?;
+        validate_f64_vec("z", &z, self.dim)?;
+        let theta = self.transform.forward(&z);
+
+        // grad(logpdf) = -grad(nll)
+        let mut grad_theta = self
+            .model
+            .as_model()
+            .grad_nll(&theta)
+            .map_err(|e| PyValueError::new_err(format!("grad_unconstrained failed: {}", e)))?;
+        for gi in grad_theta.iter_mut() {
+            *gi = -*gi;
+        }
+
+        let jac_diag = self.transform.jacobian_diag(&z);
+        let grad_log_jac = self.transform.grad_log_abs_det_jacobian(&z);
+        let grad_z: Vec<f64> = grad_theta
+            .iter()
+            .zip(jac_diag.iter())
+            .zip(grad_log_jac.iter())
+            .map(|((&gt, &jd), &glj)| gt * jd + glj)
+            .collect();
+        Ok(grad_z)
+    }
 }
 
 /// Python wrapper for HistFactoryModel
@@ -2961,6 +3181,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
+    m.add_class::<PyPosterior>()?;
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;

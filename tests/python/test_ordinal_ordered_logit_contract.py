@@ -85,7 +85,7 @@ def test_ordered_logit_fit_recovers_sign_and_predict_proba_shapes():
     assert float(ps[2][2]) > float(ps[0][2])
 
 
-def test_ordered_logit_optional_parity_vs_statsmodels_predict_proba():
+def test_ordered_logit_optional_parity_vs_statsmodels_predict_proba(ns_timing):
     # Optional parity check: only runs when statsmodels is installed.
     import pytest
 
@@ -110,17 +110,21 @@ def test_ordered_logit_optional_parity_vs_statsmodels_predict_proba():
         x.append([xi])
         y.append(yi)
 
-    ns_fit = nextstat.ordinal.ordered_logit.fit(x, y, n_levels=3)
+    with ns_timing.time("nextstat"):
+        ns_fit = nextstat.ordinal.ordered_logit.fit(x, y, n_levels=3)
     assert bool(ns_fit.converged)
 
     X = np.asarray(x, dtype=float)
     Y = np.asarray(y, dtype=int)
     sm = OrderedModel(Y, X, distr="logit")
-    sm_res = sm.fit(method="bfgs", disp=False, maxiter=200)
+    with ns_timing.time("statsmodels"):
+        sm_res = sm.fit(method="bfgs", disp=False, maxiter=200)
 
     grid = [[-2.0], [-1.0], [0.0], [1.0], [2.0]]
-    ns_p = ns_fit.predict_proba(grid)
-    sm_p = sm.model.predict(sm_res.params, exog=np.asarray(grid, dtype=float))
+    with ns_timing.time("nextstat"):
+        ns_p = ns_fit.predict_proba(grid)
+    with ns_timing.time("statsmodels"):
+        sm_p = sm.model.predict(sm_res.params, exog=np.asarray(grid, dtype=float))
 
     # Compare probabilities loosely (parameterizations differ, but predictions should match).
     sm_p = np.asarray(sm_p, dtype=float)

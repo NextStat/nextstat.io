@@ -117,7 +117,7 @@ def numerical_uncertainties(model, data: np.ndarray, bestfit: np.ndarray) -> np.
     return np.sqrt(np.maximum(np.diag(cov), 0.0))
 
 
-def test_pull_mu_regression_vs_pyhf():
+def test_pull_mu_regression_vs_pyhf(ns_timing):
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow toy regression tests.")
 
@@ -128,7 +128,8 @@ def test_pull_mu_regression_vs_pyhf():
         rng = np.random.default_rng(SEED + case_idx)
         workspace = load_workspace(fixture)
 
-        model, data_nominal = pyhf_model_and_data(workspace, measurement_name=measurement)
+        with ns_timing.time("pyhf"):
+            model, data_nominal = pyhf_model_and_data(workspace, measurement_name=measurement)
 
         # Choose "truth" parameters: POI=1, nuisance at suggested init
         pars_true = np.asarray(model.config.suggested_init(), dtype=float)
@@ -143,7 +144,8 @@ def test_pull_mu_regression_vs_pyhf():
         cover_pyhf = []
         cover_ns = []
 
-        ns_model = nextstat.from_pyhf(json.dumps(workspace))
+        with ns_timing.time("nextstat"):
+            ns_model = nextstat.from_pyhf(json.dumps(workspace))
         ns_poi_idx = ns_model.poi_index()
         assert ns_poi_idx is not None
         ns_poi_idx = int(ns_poi_idx)
@@ -153,8 +155,9 @@ def test_pull_mu_regression_vs_pyhf():
             toy[:n_main] = rng.poisson(expected[:n_main])
 
             try:
-                bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
-                unc_pyhf = numerical_uncertainties(model, toy, bestfit_pyhf)
+                with ns_timing.time("pyhf"):
+                    bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
+                    unc_pyhf = numerical_uncertainties(model, toy, bestfit_pyhf)
             except Exception:
                 # Skip rare numerical failures (singular Hessian, non-convergence).
                 continue
@@ -165,7 +168,8 @@ def test_pull_mu_regression_vs_pyhf():
                 continue
 
             try:
-                res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
+                with ns_timing.time("nextstat"):
+                    res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
             except Exception:
                 continue
 

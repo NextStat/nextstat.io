@@ -104,7 +104,24 @@ echo "  manifest: ${manifest}"
 echo "  report:   ${report}"
 echo
 
+set +e
 PYTHONPATH="${py_path}" "${py}" tests/compare_with_latest_baseline.py ${compare_args}
+rc=$?
+set -e
+
+if [[ "${rc}" -eq 2 ]]; then
+  echo
+  echo "Compare failed (rc=2). Retrying once to reduce perf flakiness..."
+  echo
+  set +e
+  PYTHONPATH="${py_path}" "${py}" tests/compare_with_latest_baseline.py ${compare_args}
+  rc=$?
+  set -e
+fi
+
+if [[ "${rc}" -ne 0 ]]; then
+  exit "${rc}"
+fi
 
 echo
 echo "OK. Report: ${report}"

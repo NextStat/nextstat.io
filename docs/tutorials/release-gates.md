@@ -32,6 +32,13 @@ or:
 make apex2-pre-release-gate
 ```
 
+This runs:
+- `cargo build --workspace --release`
+- `cargo test --workspace --all-features`
+- `maturin develop --release` (Python bindings)
+- `pytest -m "not slow" tests/python`
+- `tests/compare_with_latest_baseline.py --require-same-host` (retried once if it fails with `rc=2`)
+
 Exit codes:
 - `0`: OK (parity OK and within slowdown thresholds)
 - `2`: FAIL (parity failure or slowdown threshold exceeded)

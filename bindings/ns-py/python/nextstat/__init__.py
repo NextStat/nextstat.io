@@ -32,6 +32,7 @@ upper_limits_root = _get("upper_limits_root")
 HistFactoryModel = _get("HistFactoryModel")
 MaximumLikelihoodEstimator = _get("MaximumLikelihoodEstimator")
 FitResult = _get("FitResult")
+Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
 LinearRegressionModel = _get("LinearRegressionModel")
@@ -61,6 +62,8 @@ from . import hier as hier  # noqa: E402
 from . import ppc as ppc  # noqa: E402
 from . import survival as survival  # noqa: E402
 from . import ordinal as ordinal  # noqa: E402
+from . import causal as causal  # noqa: E402
+from . import missing as missing  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -85,6 +88,8 @@ __all__ = [
     "ppc",
     "survival",
     "ordinal",
+    "causal",
+    "missing",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
@@ -102,6 +107,7 @@ __all__ = [
     "CoxPhModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
+    "Posterior",
     "ols_fit",
     "fit_toys",
     "ranking",
