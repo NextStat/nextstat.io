@@ -23,7 +23,7 @@ make apex2-baseline-record
 2) Before cutting a release, run the pre-release gate:
 
 ```bash
-make apex2-baseline-compare COMPARE_ARGS="--require-same-host"
+make apex2-baseline-compare COMPARE_ARGS="--require-same-host --p6-attempts 2"
 ```
 
 or:
@@ -37,7 +37,7 @@ This runs:
 - `cargo test --workspace --all-features`
 - `maturin develop --release` (Python bindings)
 - `pytest -m "not slow" tests/python`
-- `tests/compare_with_latest_baseline.py --require-same-host` (retried once if it fails with `rc=2`)
+- `tests/compare_with_latest_baseline.py --require-same-host --p6-attempts 2` (P6 retried up to N times; whole compare retried once if it fails with `rc=2`)
 
 Exit codes:
 - `0`: OK (parity OK and within slowdown thresholds)
@@ -50,7 +50,8 @@ Exit codes:
 
 - Open `tmp/baseline_compare_report.json` and check:
   - `pyhf.compare.cases[*].ok` for perf regressions
-  - `p6_glm.compare.compare.cases[*].ok` for fit/predict regressions
+  - `p6_glm.attempts[*].status` to see retry outcomes
+  - `p6_glm.compare.compare.cases[*].ok` for fit/predict regressions (selected attempt)
 - If the baseline is stale (e.g. after a known perf improvement), record a new baseline and re-run the gate.
 
 ## Cluster notes (ROOT/TRExFitter)

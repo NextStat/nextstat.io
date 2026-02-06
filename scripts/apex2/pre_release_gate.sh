@@ -28,7 +28,7 @@ cd "${repo_root}"
 
 py="${APEX2_PY:-./.venv/bin/python}"
 py_path="${APEX2_PYTHONPATH:-bindings/ns-py/python}"
-compare_args="${APEX2_COMPARE_ARGS:---require-same-host}"
+compare_args="${APEX2_COMPARE_ARGS:---require-same-host --p6-attempts 2}"
 allow_dirty="${APEX2_ALLOW_DIRTY:-0}"
 skip_cargo="${APEX2_SKIP_CARGO:-0}"
 skip_pytest="${APEX2_SKIP_PYTEST:-0}"

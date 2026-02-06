@@ -503,6 +503,13 @@ def main() -> int:
     # P6 compare thresholds (passed through)
     ap.add_argument("--p6-max-slowdown", type=float, default=1.30)
     ap.add_argument("--p6-min-baseline-fit-s", type=float, default=1e-3)
+    ap.add_argument("--p6-min-baseline-predict-s", type=float, default=1e-3)
+    ap.add_argument(
+        "--p6-attempts",
+        type=int,
+        default=1,
+        help="Retry P6 compare up to N times if it fails with rc=2 (perf noise).",
+    )
 
     # ROOT suite perf compare thresholds
     ap.add_argument("--root-max-slowdown", type=float, default=1.30)
@@ -539,6 +546,9 @@ def main() -> int:
             "thresholds": {
                 "pyhf_max_slowdown": float(args.pyhf_max_slowdown),
                 "p6_max_slowdown": float(args.p6_max_slowdown),
+                "p6_attempts": int(args.p6_attempts),
+                "p6_min_baseline_fit_s": float(args.p6_min_baseline_fit_s),
+                "p6_min_baseline_predict_s": float(args.p6_min_baseline_predict_s),
                 "root_max_slowdown": float(args.root_max_slowdown),
             },
         },
@@ -677,55 +687,97 @@ def main() -> int:
             l2_f = float(l2) if isinstance(l2, (int, float)) else 0.0
             nb_alpha = float(settings.get("nb_alpha", 0.5)) if isinstance(settings, dict) else 0.5
 
-            out_compare = args.workdir / f"p6_glm_compare_{cur_env['hostname']}_{cur_env['timestamp']}.json"
-            out_bench = args.workdir / f"p6_glm_current_bench_{cur_env['hostname']}_{cur_env['timestamp']}.json"
             runner = repo / "tests" / "apex2_p6_glm_benchmark_report.py"
-            cmd = [
-                sys.executable,
-                str(runner),
-                "--baseline",
-                str(baseline_p6),
-                "--bench-out",
-                str(out_bench),
-                "--out",
-                str(out_compare),
-                "--max-slowdown",
-                str(float(args.p6_max_slowdown)),
-                "--min-baseline-fit-s",
-                str(float(args.p6_min_baseline_fit_s)),
-                "--sizes",
-                sizes,
-                "--p",
-                str(int(p)),
-                "--l2",
-                str(float(l2_f)),
-                "--nb-alpha",
-                str(float(nb_alpha)),
-            ]
-            rc, stdout = _run(cmd, cwd=repo, env=env_dict)
-            if rc not in (0, 2) or not out_compare.exists():
-                report["p6_glm"] = {
-                    "status": "error",
-                    "reason": "runner_failed",
+            attempts: List[Dict[str, Any]] = []
+            selected: Optional[int] = None
+            final_rep: Optional[Dict[str, Any]] = None
+            final_out_compare: Optional[Path] = None
+            final_out_bench: Optional[Path] = None
+
+            p6_attempts = int(args.p6_attempts)
+            if p6_attempts < 1:
+                p6_attempts = 1
+
+            for attempt in range(1, p6_attempts + 1):
+                out_compare = args.workdir / (
+                    f"p6_glm_compare_{cur_env['hostname']}_{cur_env['timestamp']}_attempt{attempt}.json"
+                )
+                out_bench = args.workdir / (
+                    f"p6_glm_current_bench_{cur_env['hostname']}_{cur_env['timestamp']}_attempt{attempt}.json"
+                )
+                cmd = [
+                    sys.executable,
+                    str(runner),
+                    "--baseline",
+                    str(baseline_p6),
+                    "--bench-out",
+                    str(out_bench),
+                    "--out",
+                    str(out_compare),
+                    "--max-slowdown",
+                    str(float(args.p6_max_slowdown)),
+                    "--min-baseline-fit-s",
+                    str(float(args.p6_min_baseline_fit_s)),
+                    "--min-baseline-predict-s",
+                    str(float(args.p6_min_baseline_predict_s)),
+                    "--sizes",
+                    sizes,
+                    "--p",
+                    str(int(p)),
+                    "--l2",
+                    str(float(l2_f)),
+                    "--nb-alpha",
+                    str(float(nb_alpha)),
+                ]
+
+                rc, stdout = _run(cmd, cwd=repo, env=env_dict)
+                attempt_row: Dict[str, Any] = {
+                    "attempt": int(attempt),
                     "returncode": int(rc),
                     "stdout_tail": stdout[-4000:],
-                    "baseline_path": str(baseline_p6),
-                    "compare_path": str(out_compare),
                     "bench_path": str(out_bench),
+                    "compare_path": str(out_compare),
                 }
-                any_error = True
-            else:
+
+                if rc not in (0, 2) or not out_compare.exists():
+                    attempt_row["status"] = "error"
+                    attempts.append(attempt_row)
+                    report["p6_glm"] = {
+                        "status": "error",
+                        "reason": "runner_failed",
+                        "baseline_path": str(baseline_p6),
+                        "attempts": attempts,
+                    }
+                    any_error = True
+                    break
+
                 p6_rep = _read_json(out_compare)
-                p6_status = p6_rep.get("status")
+                p6_status = p6_rep.get("status") if isinstance(p6_rep, dict) else None
                 ok = (p6_status == "ok") and (rc == 0)
-                if not ok:
+                attempt_row["status"] = "ok" if ok else "fail"
+                attempt_row["compare"] = p6_rep
+                attempts.append(attempt_row)
+
+                final_rep = p6_rep if isinstance(p6_rep, dict) else None
+                final_out_compare = out_compare
+                final_out_bench = out_bench
+
+                if ok:
+                    selected = attempt
+                    break
+
+            if not any_error:
+                ok_final = selected is not None
+                if not ok_final:
                     any_failed = True
                 report["p6_glm"] = {
-                    "status": "ok" if ok else "fail",
+                    "status": "ok" if ok_final else "fail",
                     "baseline_path": str(baseline_p6),
-                    "bench_path": str(out_bench),
-                    "compare_path": str(out_compare),
-                    "compare": p6_rep,
+                    "bench_path": str(final_out_bench) if final_out_bench is not None else None,
+                    "compare_path": str(final_out_compare) if final_out_compare is not None else None,
+                    "selected_attempt": int(selected) if selected is not None else None,
+                    "attempts": attempts,
+                    "compare": final_rep,
                 }
     else:
         report["p6_glm"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}

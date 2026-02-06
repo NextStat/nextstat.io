@@ -154,6 +154,15 @@ def _run_case_workspace(
     import nextstat
     import pyhf
 
+    timing_s: Dict[str, float] = {
+        "pyhf_build": 0.0,
+        "nextstat_build": 0.0,
+        "pyhf_fit": 0.0,
+        "pyhf_uncertainties": 0.0,
+        "nextstat_fit": 0.0,
+    }
+
+    t0 = time.perf_counter()
     model, data_nominal = _pyhf_model_and_data(workspace, measurement_name=measurement)
     pyhf_names = list(model.config.par_names)
     pyhf_index = {name: i for i, name in enumerate(pyhf_names)}
@@ -165,13 +174,16 @@ def _run_case_workspace(
 
     expected = np.asarray(model.expected_data(pars_true), dtype=float)
     n_main = int(model.config.nmaindata)
+    timing_s["pyhf_build"] += time.perf_counter() - t0
 
+    t0 = time.perf_counter()
     ns_model = nextstat.from_pyhf(json.dumps(workspace))
     ns_poi_idx = ns_model.poi_index()
     if ns_poi_idx is None:
         raise RuntimeError("NextStat model has no POI index")
     ns_names = list(ns_model.parameter_names())
     ns_index = {name: i for i, name in enumerate(ns_names)}
+    timing_s["nextstat_build"] += time.perf_counter() - t0
 
     poi_name = pyhf_names[poi_idx]
     if poi_name not in ns_index:
@@ -205,19 +217,25 @@ def _run_case_workspace(
         toy[:n_main] = rng.poisson(expected[:n_main])
 
         try:
+            t0 = time.perf_counter()
             bestfit_pyhf = np.asarray(pyhf.infer.mle.fit(toy, model), dtype=float)
+            timing_s["pyhf_fit"] += time.perf_counter() - t0
         except Exception:
             counters["n_pyhf_fit_failed"] += 1
             continue
 
         try:
+            t0 = time.perf_counter()
             unc_pyhf = _numerical_uncertainties(model, toy, bestfit_pyhf)
+            timing_s["pyhf_uncertainties"] += time.perf_counter() - t0
         except Exception:
             counters["n_pyhf_unc_failed"] += 1
             continue
 
         try:
+            t0 = time.perf_counter()
             res_ns = nextstat.fit(ns_model, data=toy[:n_main].tolist())
+            timing_s["nextstat_fit"] += time.perf_counter() - t0
         except Exception:
             counters["n_ns_fit_failed"] += 1
             continue
@@ -330,6 +348,11 @@ def _run_case_workspace(
         "min_used_frac": float(min_used_frac),
         "min_used": int(min_used),
         "counters": counters,
+        "timing_s": {
+            **{k: float(v) for k, v in timing_s.items()},
+            "pyhf_total": float(timing_s["pyhf_build"] + timing_s["pyhf_fit"] + timing_s["pyhf_uncertainties"]),
+            "nextstat_total": float(timing_s["nextstat_build"] + timing_s["nextstat_fit"]),
+        },
         "summary": {
             "n_params": int(len(param_names)),
             "n_params_ok": int(n_param_ok),
