@@ -5,6 +5,8 @@
 //! - Rank-normalized + folded split R-hat (Vehtari et al. 2021) for robustness
 //! - Bulk ESS and tail ESS (lightweight approximations)
 
+use std::fmt;
+
 use statrs::distribution::{ContinuousCDF, Normal};
 
 /// Diagnostics for a multi-chain NUTS run.
@@ -22,6 +24,244 @@ pub struct DiagnosticsResult {
     pub max_treedepth_rate: f64,
     /// E-BFMI per chain (energy Bayesian fraction of missing information).
     pub ebfmi: Vec<f64>,
+}
+
+/// High-level sampling quality status (non-slow gates).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityStatus {
+    /// All non-slow gates passed.
+    Ok,
+    /// Some non-slow gates emitted warnings.
+    Warn,
+    /// One or more non-slow gates failed.
+    Fail,
+}
+
+impl fmt::Display for QualityStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            QualityStatus::Ok => write!(f, "ok"),
+            QualityStatus::Warn => write!(f, "warn"),
+            QualityStatus::Fail => write!(f, "fail"),
+        }
+    }
+}
+
+/// Thresholds for non-slow sampling quality gates.
+///
+/// These are deliberately conservative to avoid flakiness on short runs.
+#[derive(Debug, Clone)]
+pub struct QualityGates {
+    /// Require at least this many chains before enabling R-hat/ESS gates.
+    pub min_chains: usize,
+    /// Require at least this many post-warmup draws per chain before enabling R-hat/ESS/E-BFMI gates.
+    pub min_draws_per_chain: usize,
+
+    /// Warn if divergence rate exceeds this threshold.
+    pub max_divergence_rate_warn: f64,
+    /// Fail if divergence rate exceeds this threshold.
+    pub max_divergence_rate_fail: f64,
+
+    /// Warn if max-treedepth rate exceeds this threshold.
+    pub max_treedepth_rate_warn: f64,
+    /// Fail if max-treedepth rate exceeds this threshold.
+    pub max_treedepth_rate_fail: f64,
+
+    /// Warn if max rank-normalized folded R-hat exceeds this threshold.
+    pub max_rhat_warn: f64,
+    /// Fail if max rank-normalized folded R-hat exceeds this threshold.
+    pub max_rhat_fail: f64,
+
+    /// Minimum bulk ESS as a fraction of total draws (n_chains * n_samples).
+    pub min_ess_bulk_frac_warn: f64,
+    /// Fail if bulk ESS falls below this fraction of total draws.
+    pub min_ess_bulk_frac_fail: f64,
+
+    /// Minimum E-BFMI per chain.
+    pub min_ebfmi_warn: f64,
+    /// Fail if E-BFMI falls below this threshold.
+    pub min_ebfmi_fail: f64,
+}
+
+impl Default for QualityGates {
+    fn default() -> Self {
+        Self {
+            min_chains: 2,
+            min_draws_per_chain: 50,
+            // Stan guidance + reproducibility.md: production wants <1%, tests can allow larger.
+            max_divergence_rate_warn: 0.05,
+            max_divergence_rate_fail: 0.20,
+            max_treedepth_rate_warn: 0.05,
+            max_treedepth_rate_fail: 0.20,
+            // For short runs we use loose thresholds; strict gates live in slow tests.
+            max_rhat_warn: 1.20,
+            max_rhat_fail: 1.50,
+            min_ess_bulk_frac_warn: 0.05,
+            min_ess_bulk_frac_fail: 0.01,
+            // Reproducibility.md uses >0.3; keep warn at 0.3 and fail at 0.2.
+            min_ebfmi_warn: 0.30,
+            min_ebfmi_fail: 0.20,
+        }
+    }
+}
+
+/// Summary of sampling run quality.
+#[derive(Debug, Clone)]
+pub struct QualitySummary {
+    /// Aggregated status for the run.
+    pub status: QualityStatus,
+    /// Non-fatal issues (suggests longer warmup/samples or config tuning).
+    pub warnings: Vec<String>,
+    /// Hard failures (likely invalid or unusable sampling run).
+    pub failures: Vec<String>,
+
+    /// Whether R-hat/ESS/E-BFMI gates were enabled for this run.
+    pub enabled: bool,
+    /// Total post-warmup draws used for diagnostics.
+    pub total_draws: usize,
+    /// Max rank-normalized folded R-hat across parameters.
+    pub max_r_hat: f64,
+    /// Min bulk ESS across parameters.
+    pub min_ess_bulk: f64,
+    /// Min tail ESS across parameters.
+    pub min_ess_tail: f64,
+    /// Min E-BFMI across chains.
+    pub min_ebfmi: f64,
+}
+
+/// Compute a conservative, non-slow quality summary for a sampler run.
+pub fn quality_summary(
+    diag: &DiagnosticsResult,
+    n_chains: usize,
+    n_samples: usize,
+    gates: &QualityGates,
+) -> QualitySummary {
+    let total_draws = n_chains.saturating_mul(n_samples);
+    let enabled = n_chains >= gates.min_chains && n_samples >= gates.min_draws_per_chain;
+
+    let max_r_hat = diag
+        .r_hat
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_ess_bulk = diag
+        .ess_bulk
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::INFINITY, f64::min);
+    let min_ess_tail = diag
+        .ess_tail
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::INFINITY, f64::min);
+    let min_ebfmi = diag
+        .ebfmi
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::INFINITY, f64::min);
+
+    let mut warnings = Vec::new();
+    let mut failures = Vec::new();
+
+    // Always check basic finiteness.
+    if !diag.divergence_rate.is_finite() {
+        failures.push("divergence_rate_not_finite".to_string());
+    }
+    if !diag.max_treedepth_rate.is_finite() {
+        failures.push("max_treedepth_rate_not_finite".to_string());
+    }
+    if max_r_hat == f64::NEG_INFINITY {
+        failures.push("r_hat_missing".to_string());
+    }
+    if !max_r_hat.is_finite() {
+        failures.push("r_hat_not_finite".to_string());
+    }
+    if min_ess_bulk == f64::INFINITY {
+        failures.push("ess_bulk_missing".to_string());
+    }
+    if !min_ess_bulk.is_finite() {
+        failures.push("ess_bulk_not_finite".to_string());
+    }
+    if min_ess_tail == f64::INFINITY {
+        failures.push("ess_tail_missing".to_string());
+    }
+    if !min_ess_tail.is_finite() {
+        failures.push("ess_tail_not_finite".to_string());
+    }
+    if min_ebfmi == f64::INFINITY {
+        failures.push("ebfmi_missing".to_string());
+    }
+    if !min_ebfmi.is_finite() {
+        warnings.push("ebfmi_not_finite".to_string());
+    }
+
+    // Divergences / treedepth are meaningful even for shorter runs.
+    if diag.divergence_rate > gates.max_divergence_rate_fail {
+        failures.push("divergence_rate_high".to_string());
+    } else if diag.divergence_rate > gates.max_divergence_rate_warn {
+        warnings.push("divergence_rate_high".to_string());
+    }
+
+    if diag.max_treedepth_rate > gates.max_treedepth_rate_fail {
+        failures.push("max_treedepth_rate_high".to_string());
+    } else if diag.max_treedepth_rate > gates.max_treedepth_rate_warn {
+        warnings.push("max_treedepth_rate_high".to_string());
+    }
+
+    if !enabled {
+        warnings.push("gates_disabled_short_run".to_string());
+    } else {
+        if max_r_hat > gates.max_rhat_fail {
+            failures.push("r_hat_high".to_string());
+        } else if max_r_hat > gates.max_rhat_warn {
+            warnings.push("r_hat_high".to_string());
+        }
+
+        if total_draws > 0 {
+            let warn_thr = gates.min_ess_bulk_frac_warn * (total_draws as f64);
+            let fail_thr = gates.min_ess_bulk_frac_fail * (total_draws as f64);
+            if min_ess_bulk < fail_thr {
+                failures.push("ess_bulk_low".to_string());
+            } else if min_ess_bulk < warn_thr {
+                warnings.push("ess_bulk_low".to_string());
+            }
+            if min_ess_tail < fail_thr {
+                failures.push("ess_tail_low".to_string());
+            } else if min_ess_tail < warn_thr {
+                warnings.push("ess_tail_low".to_string());
+            }
+        }
+
+        if min_ebfmi < gates.min_ebfmi_fail {
+            failures.push("ebfmi_low".to_string());
+        } else if min_ebfmi < gates.min_ebfmi_warn {
+            warnings.push("ebfmi_low".to_string());
+        }
+    }
+
+    let status = if !failures.is_empty() {
+        QualityStatus::Fail
+    } else if !warnings.is_empty() {
+        QualityStatus::Warn
+    } else {
+        QualityStatus::Ok
+    };
+
+    QualitySummary {
+        status,
+        warnings,
+        failures,
+        enabled,
+        total_draws,
+        max_r_hat,
+        min_ess_bulk,
+        min_ess_tail,
+        min_ebfmi,
+    }
 }
 
 /// Compute split R-hat for one parameter across multiple chains.

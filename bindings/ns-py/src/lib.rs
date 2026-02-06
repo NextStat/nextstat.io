@@ -10,7 +10,7 @@ use pyo3::wrap_pyfunction;
 use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_core::{Error as NsError, Result as NsResult};
 use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult};
-use ns_inference::diagnostics::compute_diagnostics;
+use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summary};
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
 use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::{
@@ -1149,6 +1149,21 @@ fn sample<'py>(
     diagnostics_dict.set_item("divergence_rate", diag.divergence_rate)?;
     diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
     diagnostics_dict.set_item("ebfmi", diag.ebfmi.clone())?;
+
+    // Non-slow quality summary (conservative gates).
+    let gates = QualityGates::default();
+    let qs = quality_summary(&diag, n_chains, n_samples, &gates);
+    let quality = PyDict::new(py);
+    quality.set_item("status", qs.status.to_string())?;
+    quality.set_item("enabled", qs.enabled)?;
+    quality.set_item("warnings", qs.warnings)?;
+    quality.set_item("failures", qs.failures)?;
+    quality.set_item("total_draws", qs.total_draws)?;
+    quality.set_item("max_r_hat", qs.max_r_hat)?;
+    quality.set_item("min_ess_bulk", qs.min_ess_bulk)?;
+    quality.set_item("min_ess_tail", qs.min_ess_tail)?;
+    quality.set_item("min_ebfmi", qs.min_ebfmi)?;
+    diagnostics_dict.set_item("quality", quality)?;
 
     // Assemble top-level dict
     let out = PyDict::new(py);

@@ -82,6 +82,13 @@ class TestSampleAPIShape:
         assert "divergence_rate" in diag
         assert "max_treedepth_rate" in diag
         assert "ebfmi" in diag
+        assert "quality" in diag
+        q = diag["quality"]
+        assert isinstance(q, dict)
+        assert {"status", "enabled", "warnings", "failures"} <= set(q.keys())
+        assert q["status"] in {"ok", "warn", "fail"}
+        assert isinstance(q["warnings"], list)
+        assert isinstance(q["failures"], list)
         # r_hat should be a dict keyed by param name
         for name in result["param_names"]:
             assert name in diag["r_hat"]
