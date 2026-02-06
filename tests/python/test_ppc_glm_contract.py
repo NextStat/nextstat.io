@@ -41,6 +41,74 @@ def test_ppc_glm_from_sample_logistic_random_intercept_smoke():
     assert "mean" in out.replicated[0]
 
 
+def test_ppc_glm_from_sample_linear_random_slope_smoke():
+    x = [[0.0], [1.0], [2.0], [3.0], [0.5], [1.5]]
+    y = [0.2, 1.1, 2.0, 3.2, 0.6, 1.4]
+    group_idx = [0, 0, 0, 1, 1, 1]
+
+    spec = nextstat.data.GlmSpec(
+        kind="linear",
+        x=x,
+        y=y,
+        include_intercept=False,
+        group_idx=group_idx,
+        n_groups=2,
+        coef_prior_mu=0.0,
+        coef_prior_sigma=1.0,
+        random_slope_feature_idx=0,
+        random_slope_non_centered=False,
+    )
+    model = spec.build()
+
+    raw = nextstat.sample(
+        model,
+        n_chains=1,
+        n_warmup=40,
+        n_samples=20,
+        seed=124,
+        init_jitter_rel=0.1,
+    )
+
+    out = nextstat.ppc.ppc_glm_from_sample(spec, raw, n_draws=5, seed=0)
+    assert isinstance(out.observed, dict)
+    assert isinstance(out.replicated, list)
+    assert len(out.replicated) == 5
+
+
+def test_ppc_glm_from_sample_linear_correlated_intercept_slope_smoke():
+    x = [[0.0], [1.0], [2.0], [3.0], [0.5], [1.5]]
+    y = [0.2, 1.1, 2.0, 3.2, 0.6, 1.4]
+    group_idx = [0, 0, 0, 1, 1, 1]
+
+    spec = nextstat.data.GlmSpec(
+        kind="linear",
+        x=x,
+        y=y,
+        include_intercept=False,
+        group_idx=group_idx,
+        n_groups=2,
+        coef_prior_mu=0.0,
+        coef_prior_sigma=1.0,
+        correlated_feature_idx=0,
+        lkj_eta=1.0,
+    )
+    model = spec.build()
+
+    raw = nextstat.sample(
+        model,
+        n_chains=1,
+        n_warmup=40,
+        n_samples=20,
+        seed=125,
+        init_jitter_rel=0.1,
+    )
+
+    out = nextstat.ppc.ppc_glm_from_sample(spec, raw, n_draws=5, seed=0)
+    assert isinstance(out.observed, dict)
+    assert isinstance(out.replicated, list)
+    assert len(out.replicated) == 5
+
+
 def test_ppc_replicate_glm_linear_smoke():
     x = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.2, 1.1, 2.0, 3.2]

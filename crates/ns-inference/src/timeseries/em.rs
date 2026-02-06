@@ -12,7 +12,7 @@ fn symmetrize(p: &DMatrix<f64>) -> DMatrix<f64> {
     0.5 * (p + p.transpose())
 }
 
-fn ensure_spd(mut a: DMatrix<f64>, min_diag: f64) -> Result<DMatrix<f64>> {
+fn ensure_spd(name: &'static str, mut a: DMatrix<f64>, min_diag: f64) -> Result<DMatrix<f64>> {
     a = symmetrize(&a);
 
     // Floor the diagonal to keep things numerically sane.
@@ -31,11 +31,22 @@ fn ensure_spd(mut a: DMatrix<f64>, min_diag: f64) -> Result<DMatrix<f64>> {
         return Ok(a);
     }
 
-    let mut jitter = min_diag.max(1e-12);
+    let base_jitter = min_diag.max(1e-12);
+    let mut jitter = base_jitter;
     for _ in 0..20 {
         let j = DMatrix::<f64>::identity(a.nrows(), a.ncols()) * jitter;
         let candidate = symmetrize(&(a.clone() + j));
         if candidate.clone().cholesky().is_some() {
+            // This is a guardrail: large jitter can hide EM instability / invalid updates.
+            // Keep it as a warning (not an error) because EM can still converge in practice.
+            if jitter >= base_jitter * 1e6 {
+                log::warn!(
+                    "kalman_em: ensure_spd({}) required large jitter={} (base={}); EM updates may be unstable",
+                    name,
+                    jitter,
+                    base_jitter
+                );
+            }
             return Ok(candidate);
         }
         jitter *= 10.0;
@@ -266,7 +277,7 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
             }
 
             let q_new = sum_q / ((ys.len() - 1) as f64);
-            cur.q = ensure_spd(q_new, cfg.min_diag)?;
+            cur.q = ensure_spd("Q", q_new, cfg.min_diag)?;
         }
 
         if cfg.estimate_r {
@@ -313,7 +324,7 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
                 ));
             }
 
-            cur.r = ensure_spd(r_new, cfg.min_diag)?;
+            cur.r = ensure_spd("R", r_new, cfg.min_diag)?;
         }
 
         prev_ll = Some(ll);

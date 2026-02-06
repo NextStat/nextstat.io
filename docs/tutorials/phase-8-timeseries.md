@@ -20,6 +20,12 @@ print(fr["filtered_means"][-1], fr["filtered_covs"][-1])
 
 sr = nextstat.timeseries.kalman_smooth(model, ys)
 print(sr["smoothed_means"][0], sr["smoothed_covs"][0])
+
+# Fit (EM) + smoother + forecast, then build a plot-friendly artifact
+fit = nextstat.timeseries.kalman_fit(model, ys, forecast_steps=10)
+art = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.95)
+# Plotting requires matplotlib:
+# nextstat.timeseries.plot_kalman_obs(art, title="Kalman fit")
 ```
 
 ## CLI quickstart

@@ -130,6 +130,277 @@ def kalman_fit(
         "forecast": forecast_out,
     }
 
+def _require_matplotlib():
+    try:
+        import matplotlib.pyplot as plt  # noqa: F401
+    except Exception as e:  # pragma: no cover
+        raise ImportError("Missing dependency: matplotlib. Install via `pip install matplotlib`.") from e
+
+def _z_for_level(level: float) -> float:
+    from statistics import NormalDist
+
+    if not (0.0 < float(level) < 1.0):
+        raise ValueError("level must be in (0, 1)")
+    z = NormalDist().inv_cdf(0.5 + 0.5 * float(level))
+    if not (z == z and z > 0.0):  # NaN guard
+        raise ValueError("invalid level (z-score was not finite)")
+    return float(z)
+
+def _bands_from_means_covs(means: list[list[float]], covs: list[list[list[float]]], z: float):
+    if len(means) != len(covs):
+        raise ValueError("means/covs length mismatch")
+    if not means:
+        raise ValueError("means must be non-empty")
+
+    t_max = len(means)
+    dim = len(means[0])
+
+    lo: list[list[float]] = [[0.0] * dim for _ in range(t_max)]
+    hi: list[list[float]] = [[0.0] * dim for _ in range(t_max)]
+
+    for t in range(t_max):
+        if len(means[t]) != dim:
+            raise ValueError("means must be rectangular")
+        if len(covs[t]) != dim or any(len(row) != dim for row in covs[t]):
+            raise ValueError("covs must be T x dim x dim")
+        for j in range(dim):
+            var = float(covs[t][j][j])
+            if not (var == var) or var < 0.0:
+                var = 0.0
+            s = (var ** 0.5) * float(z)
+            mu = float(means[t][j])
+            lo[t][j] = mu - s
+            hi[t][j] = mu + s
+
+    return lo, hi
+
+def _as_float_matrix(name: str, m: Any) -> list[list[float]]:
+    if not isinstance(m, (list, tuple)) or not m:
+        raise ValueError(f"{name} must be a non-empty nested list")
+    out: list[list[float]] = []
+    width = None
+    for row in m:
+        if not isinstance(row, (list, tuple)) or not row:
+            raise ValueError(f"{name} must be a non-empty nested list")
+        r = [float(x) for x in row]
+        if width is None:
+            width = len(r)
+        elif len(r) != width:
+            raise ValueError(f"{name} must be rectangular")
+        out.append(r)
+    return out
+
+def _as_float_diag(name: str, m: Any) -> list[float]:
+    mm = _as_float_matrix(name, m)
+    n = min(len(mm), len(mm[0]))
+    return [float(mm[i][i]) for i in range(n)]
+
+def _obs_bands_from_state(
+    *,
+    means: list[list[float]],
+    covs: list[list[list[float]]],
+    h: list[list[float]] | None,
+    r: list[list[float]] | None,
+    z: float,
+):
+    if h is None or r is None:
+        return None, None, None
+
+    h = _as_float_matrix("H", h)
+    r_diag = _as_float_diag("R", r)
+
+    n_obs = len(h)
+    n_state = len(h[0])
+    if any(len(row) != n_state for row in h):
+        raise ValueError("H must be rectangular")
+    if len(r_diag) < n_obs:
+        raise ValueError("R has wrong shape (expected at least n_obs diagonal)")
+
+    if not means:
+        raise ValueError("means must be non-empty")
+    if len(means) != len(covs):
+        raise ValueError("means/covs length mismatch")
+    if any(len(m) != n_state for m in means):
+        raise ValueError("state mean dim mismatch vs H")
+    if any(len(p) != n_state or any(len(row) != n_state for row in p) for p in covs):
+        raise ValueError("state cov dim mismatch vs H")
+
+    t_max = len(means)
+    obs_mean: list[list[float]] = [[0.0] * n_obs for _ in range(t_max)]
+    obs_lo: list[list[float]] = [[0.0] * n_obs for _ in range(t_max)]
+    obs_hi: list[list[float]] = [[0.0] * n_obs for _ in range(t_max)]
+
+    for t in range(t_max):
+        m = means[t]
+        p = covs[t]
+        for i in range(n_obs):
+            # mean: h_i * m
+            mu = 0.0
+            for a in range(n_state):
+                mu += h[i][a] * m[a]
+            obs_mean[t][i] = float(mu)
+
+            # var: h_i * P * h_i^T + R_ii
+            var = 0.0
+            for a in range(n_state):
+                ha = h[i][a]
+                if ha == 0.0:
+                    continue
+                for b in range(n_state):
+                    var += ha * p[a][b] * h[i][b]
+            var += float(r_diag[i])
+            if not (var == var) or var < 0.0:
+                var = 0.0
+            s = (var ** 0.5) * float(z)
+            obs_lo[t][i] = float(mu - s)
+            obs_hi[t][i] = float(mu + s)
+
+    return obs_mean, obs_lo, obs_hi
+
+def kalman_viz_artifact(
+    fit_out: Mapping[str, Any],
+    ys: Sequence[Sequence[float | None]],
+    *,
+    level: float = 0.95,
+) -> Mapping[str, Any]:
+    """Build a plot-friendly artifact from `kalman_fit(...)` output."""
+    z = _z_for_level(float(level))
+    ys_out = [[None if v is None else float(v) for v in row] for row in ys]
+    t_max = len(ys_out)
+    if t_max == 0:
+        raise ValueError("ys must be non-empty")
+
+    em = fit_out.get("em") if isinstance(fit_out, Mapping) else None
+    h = None
+    r = None
+    if isinstance(em, Mapping):
+        h = em.get("h")
+        r = em.get("r")
+
+    smooth_in = fit_out.get("smooth") if isinstance(fit_out, Mapping) else None
+    smooth_art = None
+    if isinstance(smooth_in, Mapping):
+        sm = smooth_in.get("smoothed_means")
+        sp = smooth_in.get("smoothed_covs")
+        if not isinstance(sm, list) or not isinstance(sp, list):
+            raise ValueError("fit_out.smooth missing smoothed_means/smoothed_covs")
+
+        state_mean = [[float(x) for x in row] for row in sm]
+        state_covs = [[[float(x) for x in row] for row in mat] for mat in sp]
+        state_lo, state_hi = _bands_from_means_covs(state_mean, state_covs, z)
+        obs_mean, obs_lo, obs_hi = _obs_bands_from_state(
+            means=state_mean,
+            covs=state_covs,
+            h=h if isinstance(h, (list, tuple)) else None,
+            r=r if isinstance(r, (list, tuple)) else None,
+            z=z,
+        )
+        smooth_art = {
+            "state_mean": state_mean,
+            "state_lo": state_lo,
+            "state_hi": state_hi,
+            "obs_mean": obs_mean,
+            "obs_lo": obs_lo,
+            "obs_hi": obs_hi,
+        }
+
+    forecast_in = fit_out.get("forecast") if isinstance(fit_out, Mapping) else None
+    forecast_art = None
+    if isinstance(forecast_in, Mapping):
+        fm = forecast_in.get("state_means")
+        fp = forecast_in.get("state_covs")
+        yom = forecast_in.get("obs_means")
+        yop = forecast_in.get("obs_covs")
+        if not (isinstance(fm, list) and isinstance(fp, list) and isinstance(yom, list) and isinstance(yop, list)):
+            raise ValueError("fit_out.forecast missing state/obs means/covs")
+
+        fc_state_mean = [[float(x) for x in row] for row in fm]
+        fc_state_covs = [[[float(x) for x in row] for row in mat] for mat in fp]
+        fc_state_lo, fc_state_hi = _bands_from_means_covs(fc_state_mean, fc_state_covs, z)
+
+        fc_obs_mean = [[float(x) for x in row] for row in yom]
+        fc_obs_covs = [[[float(x) for x in row] for row in mat] for mat in yop]
+        fc_obs_lo, fc_obs_hi = _bands_from_means_covs(fc_obs_mean, fc_obs_covs, z)
+
+        k = len(fc_state_mean)
+        forecast_art = {
+            "t": list(range(t_max, t_max + k)),
+            "state_mean": fc_state_mean,
+            "state_lo": fc_state_lo,
+            "state_hi": fc_state_hi,
+            "obs_mean": fc_obs_mean,
+            "obs_lo": fc_obs_lo,
+            "obs_hi": fc_obs_hi,
+        }
+
+    out = {
+        "level": float(level),
+        "t_obs": list(range(t_max)),
+        "ys": ys_out,
+        "smooth": smooth_art,
+        "forecast": forecast_art,
+    }
+    if isinstance(smooth_in, Mapping) and "log_likelihood" in smooth_in:
+        out["log_likelihood"] = float(smooth_in["log_likelihood"])
+    return out
+
+def plot_kalman_obs(
+    artifact: Mapping[str, Any],
+    *,
+    obs_index: int = 0,
+    ax=None,
+    title: str | None = None,
+    show_bands: bool = True,
+    show_forecast: bool = True,
+):
+    """Plot observed series with smoothed mean + bands (+ optional forecast)."""
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7.2, 4.2))
+
+    ys = artifact.get("ys") or []
+    t_obs = artifact.get("t_obs") or list(range(len(ys)))
+    y_obs = []
+    for row in ys:
+        v = None
+        try:
+            v = row[int(obs_index)]
+        except Exception:
+            v = None
+        y_obs.append(v if v is None else float(v))
+
+    t_obs_f = [float(t) for t in t_obs]
+    ax.plot(t_obs_f, [float("nan") if v is None else float(v) for v in y_obs], color="#111827", lw=1.25, label="Observed")
+
+    smooth = artifact.get("smooth") or None
+    if isinstance(smooth, Mapping) and smooth.get("obs_mean") is not None:
+        mu = [float(row[int(obs_index)]) for row in smooth["obs_mean"]]
+        ax.plot(t_obs_f, mu, color="#1D4ED8", lw=2.0, label="Smoothed")
+        if show_bands and smooth.get("obs_lo") is not None and smooth.get("obs_hi") is not None:
+            lo = [float(row[int(obs_index)]) for row in smooth["obs_lo"]]
+            hi = [float(row[int(obs_index)]) for row in smooth["obs_hi"]]
+            ax.fill_between(t_obs_f, lo, hi, color="#93C5FD", alpha=0.35, label="Smoothed band")
+
+    fc = artifact.get("forecast") or None
+    if show_forecast and isinstance(fc, Mapping):
+        t_fc = [float(t) for t in fc["t"]]
+        mu = [float(row[int(obs_index)]) for row in fc["obs_mean"]]
+        ax.plot(t_fc, mu, color="#059669", lw=2.0, ls="--", label="Forecast")
+        if show_bands:
+            lo = [float(row[int(obs_index)]) for row in fc["obs_lo"]]
+            hi = [float(row[int(obs_index)]) for row in fc["obs_hi"]]
+            ax.fill_between(t_fc, lo, hi, color="#6EE7B7", alpha=0.25, label="Forecast band")
+
+    ax.set_xlabel("t")
+    ax.set_ylabel(f"y[{int(obs_index)}]")
+    ax.grid(True, alpha=0.25)
+    if title:
+        ax.set_title(title)
+    ax.legend(frameon=False)
+    return ax
+
 
 def kalman_forecast(
     model,
@@ -288,6 +559,8 @@ __all__ = [
     "kalman_smooth",
     "kalman_em",
     "kalman_fit",
+    "kalman_viz_artifact",
+    "plot_kalman_obs",
     "kalman_forecast",
     "kalman_simulate",
     "local_level_model",
