@@ -157,6 +157,7 @@ def _load_manifest_with_fallbacks(path: Path) -> Dict[str, Any]:
     for name in (
         "latest_pyhf_manifest.json",
         "latest_p6_glm_manifest.json",
+        "latest_nuts_quality_manifest.json",
         "latest_root_manifest.json",
     ):
         p = manifest_dir / name
@@ -185,6 +186,7 @@ def _load_manifest_with_fallbacks(path: Path) -> Dict[str, Any]:
     want_keys = [
         "pyhf",
         "p6_glm",
+        "nuts_quality",
         "root_prereq",
         "root_cases",
         "root_suite",
@@ -555,6 +557,7 @@ def main() -> int:
         "baseline_manifest": manifest,
         "pyhf": None,
         "p6_glm": None,
+        "nuts_quality": None,
         "root_suite": None,
         "status": None,
         "summary": None,
@@ -781,6 +784,102 @@ def main() -> int:
                 }
     else:
         report["p6_glm"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
+
+    # ------------------------------------------------------------------
+    # NUTS quality: rerun gates with baseline parameters (quality only)
+    # ------------------------------------------------------------------
+    nuts_entry = baselines.get("nuts_quality")
+    if isinstance(nuts_entry, dict) and isinstance(nuts_entry.get("path"), str):
+        baseline_nuts = Path(nuts_entry["path"])
+        if not baseline_nuts.exists():
+            report["nuts_quality"] = {"status": "error", "reason": "baseline_missing", "path": str(baseline_nuts)}
+            any_error = True
+        else:
+            base_rep = _read_json(baseline_nuts)
+            base_meta = (base_rep.get("meta") if isinstance(base_rep, dict) else None) or {}
+            base_thr = (base_meta.get("thresholds") if isinstance(base_meta, dict) else None) or {}
+
+            out_cur = args.workdir / f"nuts_quality_current_{cur_env['hostname']}_{cur_env['timestamp']}.json"
+            runner = repo / "tests" / "apex2_nuts_quality_report.py"
+
+            cmd = [
+                sys.executable,
+                str(runner),
+                "--out",
+                str(out_cur),
+                "--cases",
+                str(base_meta.get("cases", "gaussian,linear,histfactory")),
+                "--warmup",
+                str(int(base_meta.get("warmup", 200))),
+                "--samples",
+                str(int(base_meta.get("samples", 200))),
+                "--seed",
+                str(int(base_meta.get("seed", 0))),
+            ]
+
+            # Optional per-case warmup/samples recorded in meta.
+            if base_meta.get("histfactory_warmup") is not None:
+                cmd += ["--histfactory-warmup", str(int(base_meta["histfactory_warmup"]))]
+            if base_meta.get("histfactory_samples") is not None:
+                cmd += ["--histfactory-samples", str(int(base_meta["histfactory_samples"]))]
+            if base_meta.get("funnel_warmup") is not None:
+                cmd += ["--funnel-warmup", str(int(base_meta["funnel_warmup"]))]
+            if base_meta.get("funnel_samples") is not None:
+                cmd += ["--funnel-samples", str(int(base_meta["funnel_samples"]))]
+
+            # Keep threshold params consistent if present.
+            for k, flag in (
+                ("rhat_max", "--rhat-max"),
+                ("divergence_rate_max", "--divergence-rate-max"),
+                ("max_treedepth_rate_max", "--max-treedepth-rate-max"),
+                ("funnel_divergence_rate_max", "--funnel-divergence-rate-max"),
+                ("funnel_max_treedepth_rate_max", "--funnel-max-treedepth-rate-max"),
+                ("ess_bulk_min", "--ess-bulk-min"),
+                ("ess_tail_min", "--ess-tail-min"),
+                ("ebfmi_min", "--ebfmi-min"),
+                ("histfactory_rhat_max", "--histfactory-rhat-max"),
+                ("histfactory_ess_bulk_min", "--histfactory-ess-bulk-min"),
+                ("histfactory_ess_tail_min", "--histfactory-ess-tail-min"),
+            ):
+                if k in base_thr and base_thr.get(k) is not None:
+                    cmd += [flag, str(base_thr[k])]
+
+            t0 = time.time()
+            rc, stdout = _run(cmd, cwd=repo, env=env_dict)
+            wall = time.time() - t0
+
+            if rc != 0 or not out_cur.exists():
+                report["nuts_quality"] = {
+                    "status": "error",
+                    "reason": "runner_failed",
+                    "returncode": int(rc),
+                    "stdout_tail": stdout[-4000:],
+                    "current_path": str(out_cur),
+                    "baseline_path": str(baseline_nuts),
+                }
+                any_error = True
+            else:
+                cur_rep = _read_json(out_cur)
+                if isinstance(cur_rep, dict):
+                    cur_rep["baseline_env"] = cur_env
+                    cur_rep.setdefault("meta", {})
+                    if isinstance(cur_rep["meta"], dict):
+                        cur_rep["meta"]["wall_s"] = float(wall)
+                    out_cur.write_text(json.dumps(cur_rep, indent=2))
+
+                cur_rep = _read_json(out_cur)
+                cur_status = cur_rep.get("status") if isinstance(cur_rep, dict) else None
+                ok = (cur_status == "ok")
+                if not ok:
+                    any_failed = True
+                report["nuts_quality"] = {
+                    "status": "ok" if ok else "fail",
+                    "baseline_path": str(baseline_nuts),
+                    "current_path": str(out_cur),
+                    "current_status": cur_status,
+                }
+    else:
+        report["nuts_quality"] = {"status": "skipped", "reason": "no_baseline_in_manifest"}
 
     # ------------------------------------------------------------------
     # ROOT suite: optional compare (only if baseline suite + cases exist)
