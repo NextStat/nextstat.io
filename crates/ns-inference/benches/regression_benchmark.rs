@@ -1,4 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use ns_core::traits::LogDensityModel;
 use ns_inference::{LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel};
 use serde::Deserialize;
 use std::hint::black_box;

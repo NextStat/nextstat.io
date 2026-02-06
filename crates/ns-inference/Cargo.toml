@@ -45,3 +45,7 @@ harness = false
 [[bench]]
 name = "regression_benchmark"
 harness = false
+
+[[bench]]
+name = "nuts_benchmark"
+harness = false

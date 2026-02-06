@@ -862,4 +862,497 @@ mod tests {
             counts
         );
     }
+
+    // -----------------------------------------------------------------------
+    // SBC: 2D Normal mean model (independent components)
+    // -----------------------------------------------------------------------
+
+    #[derive(Clone)]
+    struct Normal2DMeanModel {
+        data: Vec<(f64, f64)>,
+        sigma: f64,
+        prior_sigma: f64,
+    }
+
+    impl ns_core::traits::LogDensityModel for Normal2DMeanModel {
+        type Prepared<'a>
+            = ns_core::traits::PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            2
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            vec!["mu1".to_string(), "mu2".to_string()]
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            vec![(f64::NEG_INFINITY, f64::INFINITY), (f64::NEG_INFINITY, f64::INFINITY)]
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            vec![0.0, 0.0]
+        }
+
+        fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+            if params.len() != 2 {
+                return Err(ns_core::Error::Validation(format!(
+                    "expected 2 parameters (mu1, mu2), got {}",
+                    params.len()
+                )));
+            }
+            if !self.sigma.is_finite() || self.sigma <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "sigma must be finite and > 0, got {}",
+                    self.sigma
+                )));
+            }
+            if !self.prior_sigma.is_finite() || self.prior_sigma <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "prior_sigma must be finite and > 0, got {}",
+                    self.prior_sigma
+                )));
+            }
+
+            let mu1 = params[0];
+            let mu2 = params[1];
+            let inv_var = 1.0 / (self.sigma * self.sigma);
+            let mut nll = 0.0;
+            for &(x1, x2) in &self.data {
+                let r1 = x1 - mu1;
+                let r2 = x2 - mu2;
+                nll += 0.5 * (r1 * r1 + r2 * r2) * inv_var;
+            }
+
+            // Independent Gaussian priors (up to constant).
+            nll += 0.5 * (mu1 / self.prior_sigma).powi(2);
+            nll += 0.5 * (mu2 / self.prior_sigma).powi(2);
+            Ok(nll)
+        }
+
+        fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+            let mu1 = params.get(0).copied().ok_or_else(|| {
+                ns_core::Error::Validation("expected 2 parameters (mu1, mu2)".to_string())
+            })?;
+            let mu2 = params.get(1).copied().ok_or_else(|| {
+                ns_core::Error::Validation("expected 2 parameters (mu1, mu2)".to_string())
+            })?;
+
+            let inv_var = 1.0 / (self.sigma * self.sigma);
+            let mut g1 = 0.0;
+            let mut g2 = 0.0;
+            for &(x1, x2) in &self.data {
+                g1 += (mu1 - x1) * inv_var;
+                g2 += (mu2 - x2) * inv_var;
+            }
+            g1 += mu1 / (self.prior_sigma * self.prior_sigma);
+            g2 += mu2 / (self.prior_sigma * self.prior_sigma);
+            Ok(vec![g1, g2])
+        }
+
+        fn prepared(&self) -> Self::Prepared<'_> {
+            ns_core::traits::PreparedModelRef::new(self)
+        }
+    }
+
+    fn sbc_ranks_2d(
+        n_rep: usize,
+        n_obs: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+    ) -> Vec<(usize, usize)> {
+        use crate::chain::sample_nuts_multichain;
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let prior = Normal::new(0.0, 1.0).unwrap();
+        let obs = Normal::new(0.0, 1.0).unwrap();
+
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
+
+        let mut ranks = Vec::with_capacity(n_rep);
+        for rep in 0..n_rep {
+            let mu1_true = prior.sample(&mut rng);
+            let mu2_true = prior.sample(&mut rng);
+            let data: Vec<(f64, f64)> = (0..n_obs)
+                .map(|_| (mu1_true + obs.sample(&mut rng), mu2_true + obs.sample(&mut rng)))
+                .collect();
+            let model = Normal2DMeanModel { data, sigma: 1.0, prior_sigma: 1.0 };
+
+            let result = sample_nuts_multichain(
+                &model,
+                1,
+                n_warmup,
+                n_samples,
+                seed + rep as u64,
+                config.clone(),
+            )
+            .expect("NUTS should run for SBC model");
+
+            let draws1 = result.param_draws(0);
+            let draws2 = result.param_draws(1);
+            let draws1 = draws1.first().expect("one chain").as_slice();
+            let draws2 = draws2.first().expect("one chain").as_slice();
+
+            let r1 = draws1.iter().filter(|&&x| x < mu1_true).count();
+            let r2 = draws2.iter().filter(|&&x| x < mu2_true).count();
+            ranks.push((r1, r2));
+        }
+        ranks
+    }
+
+    #[test]
+    fn test_sbc_rank_statistic_2d_smoke() {
+        let n_samples = 30usize;
+        let ranks = sbc_ranks_2d(2, 10, 40, n_samples, 321);
+        for (r1, r2) in ranks {
+            assert!(r1 <= n_samples && r2 <= n_samples);
+        }
+    }
+
+    #[test]
+    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_normal_2d_mean -- --ignored`"]
+    fn test_sbc_normal_2d_mean() {
+        use statrs::distribution::{ChiSquared, ContinuousCDF};
+
+        let n_rep = 15usize;
+        let n_samples = 200usize;
+        let ranks = sbc_ranks_2d(n_rep, 20, 200, n_samples, 11);
+
+        fn chi2_pvalue(counts: &[usize]) -> f64 {
+            let bins = counts.len();
+            let expected = counts.iter().sum::<usize>() as f64 / bins as f64;
+            let chi2: f64 = counts
+                .iter()
+                .map(|&c| {
+                    let d = c as f64 - expected;
+                    d * d / expected
+                })
+                .sum();
+            let dist = ChiSquared::new((bins - 1) as f64).unwrap();
+            1.0 - dist.cdf(chi2)
+        }
+
+        let bins = 5usize;
+        let mut counts1 = vec![0usize; bins];
+        let mut counts2 = vec![0usize; bins];
+        for (r1, r2) in ranks {
+            let u1 = r1 as f64 / n_samples as f64;
+            let u2 = r2 as f64 / n_samples as f64;
+            let mut b1 = (u1 * bins as f64).floor() as usize;
+            let mut b2 = (u2 * bins as f64).floor() as usize;
+            b1 = b1.min(bins - 1);
+            b2 = b2.min(bins - 1);
+            counts1[b1] += 1;
+            counts2[b2] += 1;
+        }
+
+        let p1 = chi2_pvalue(&counts1);
+        let p2 = chi2_pvalue(&counts2);
+
+        assert!(p1 > 0.01, "SBC mu1 ranks deviate from uniform: p={}, counts={:?}", p1, counts1);
+        assert!(p2 > 0.01, "SBC mu2 ranks deviate from uniform: p={}, counts={:?}", p2, counts2);
+    }
+
+    // -----------------------------------------------------------------------
+    // SBC: simple hierarchical intercept model
+    // -----------------------------------------------------------------------
+
+    #[derive(Clone)]
+    struct HierInterceptModel {
+        y: Vec<f64>,
+        sigma_y: f64,
+        prior_mu_sigma: f64,
+        // LogNormal prior on sigma_alpha: ln(sigma) ~ Normal(m, s)
+        prior_sigma_m: f64,
+        prior_sigma_s: f64,
+    }
+
+    impl ns_core::traits::LogDensityModel for HierInterceptModel {
+        type Prepared<'a>
+            = ns_core::traits::PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            // mu, sigma_alpha, alpha_j...
+            2 + self.y.len()
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            let mut names = Vec::with_capacity(self.dim());
+            names.push("mu".to_string());
+            names.push("sigma_alpha".to_string());
+            for j in 0..self.y.len() {
+                names.push(format!("alpha[{}]", j));
+            }
+            names
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            let mut b = Vec::with_capacity(self.dim());
+            b.push((f64::NEG_INFINITY, f64::INFINITY)); // mu
+            b.push((0.0, f64::INFINITY)); // sigma_alpha
+            for _ in 0..self.y.len() {
+                b.push((f64::NEG_INFINITY, f64::INFINITY)); // alpha_j
+            }
+            b
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            let mut p = Vec::with_capacity(self.dim());
+            p.push(0.0);
+            p.push(1.0);
+            for _ in 0..self.y.len() {
+                p.push(0.0);
+            }
+            p
+        }
+
+        fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+            let g = self.y.len();
+            if params.len() != 2 + g {
+                return Err(ns_core::Error::Validation(format!(
+                    "expected {} parameters, got {}",
+                    2 + g,
+                    params.len()
+                )));
+            }
+            if !self.sigma_y.is_finite() || self.sigma_y <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "sigma_y must be finite and > 0, got {}",
+                    self.sigma_y
+                )));
+            }
+            if !self.prior_mu_sigma.is_finite() || self.prior_mu_sigma <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "prior_mu_sigma must be finite and > 0, got {}",
+                    self.prior_mu_sigma
+                )));
+            }
+            if !self.prior_sigma_s.is_finite() || self.prior_sigma_s <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "prior_sigma_s must be finite and > 0, got {}",
+                    self.prior_sigma_s
+                )));
+            }
+
+            let mu = params[0];
+            let sigma_a = params[1];
+            if !sigma_a.is_finite() || sigma_a <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "sigma_alpha must be finite and > 0, got {}",
+                    sigma_a
+                )));
+            }
+
+            let inv_var_y = 1.0 / (self.sigma_y * self.sigma_y);
+            let _inv_var_a = 1.0 / (sigma_a * sigma_a);
+
+            // Likelihood: y_j ~ Normal(alpha_j, sigma_y) (up to constant in sigma_y)
+            let mut nll = 0.0;
+            for j in 0..g {
+                let a = params[2 + j];
+                let r = self.y[j] - a;
+                nll += 0.5 * r * r * inv_var_y;
+            }
+
+            // Prior on alpha_j: Normal(mu, sigma_a), includes +log(sigma_a) term.
+            for j in 0..g {
+                let a = params[2 + j];
+                let z = (a - mu) / sigma_a;
+                nll += 0.5 * z * z;
+            }
+            nll += (g as f64) * sigma_a.ln();
+
+            // Prior on mu: Normal(0, prior_mu_sigma) (up to constant).
+            nll += 0.5 * (mu / self.prior_mu_sigma).powi(2);
+
+            // Prior on sigma_a: LogNormal(m, s) (up to constant).
+            let t = sigma_a.ln();
+            let z = (t - self.prior_sigma_m) / self.prior_sigma_s;
+            nll += 0.5 * z * z + t;
+
+            Ok(nll)
+        }
+
+        fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+            let g = self.y.len();
+            let mu = params[0];
+            let sigma_a = params[1];
+            let inv_var_y = 1.0 / (self.sigma_y * self.sigma_y);
+            let inv_var_a = 1.0 / (sigma_a * sigma_a);
+
+            let mut grad = vec![0.0; 2 + g];
+
+            // d/d alpha_j: (alpha_j - y_j)/sigma_y^2 + (alpha_j - mu)/sigma_a^2
+            for j in 0..g {
+                let a = params[2 + j];
+                grad[2 + j] += (a - self.y[j]) * inv_var_y;
+                grad[2 + j] += (a - mu) * inv_var_a;
+            }
+
+            // d/d mu: sum (mu - alpha_j)/sigma_a^2 + mu/prior_mu_sigma^2
+            for j in 0..g {
+                let a = params[2 + j];
+                grad[0] += (mu - a) * inv_var_a;
+            }
+            grad[0] += mu / (self.prior_mu_sigma * self.prior_mu_sigma);
+
+            // d/d sigma_a: from alpha prior + log(sigma_a) normalization
+            // alpha terms: -sum (a-mu)^2 / sigma^3 + g/sigma
+            let mut sum_sq = 0.0;
+            for j in 0..g {
+                let a = params[2 + j];
+                let d = a - mu;
+                sum_sq += d * d;
+            }
+            let d_alpha = (g as f64) / sigma_a - sum_sq / (sigma_a * sigma_a * sigma_a);
+
+            // sigma prior: LogNormal(m,s): 0.5*((ln s - m)/s)^2 + ln s
+            // d/ds = ((ln s - m)/s^2 + 1) * 1/s
+            let t = sigma_a.ln();
+            let d_sigma_prior =
+                ((t - self.prior_sigma_m) / (self.prior_sigma_s * self.prior_sigma_s) + 1.0)
+                    / sigma_a;
+
+            grad[1] = d_alpha + d_sigma_prior;
+
+            Ok(grad)
+        }
+
+        fn prepared(&self) -> Self::Prepared<'_> {
+            ns_core::traits::PreparedModelRef::new(self)
+        }
+    }
+
+    fn sbc_ranks_hier(
+        n_rep: usize,
+        n_groups: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+    ) -> Vec<(usize, usize)> {
+        use crate::chain::sample_nuts_multichain;
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let prior_mu: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
+            let prior_logsigma: Normal<f64> = Normal::new(0.0, 0.5).unwrap();
+            let obs: Normal<f64> = Normal::new(0.0, 1.0).unwrap();
+
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.85,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
+
+        let mut ranks = Vec::with_capacity(n_rep);
+        for rep in 0..n_rep {
+            let mu_true: f64 = prior_mu.sample(&mut rng);
+            let log_sigma_true: f64 = prior_logsigma.sample(&mut rng);
+            let sigma_true: f64 = log_sigma_true.exp();
+
+            let alpha_prior = Normal::new(mu_true, sigma_true).unwrap();
+            let y: Vec<f64> =
+                (0..n_groups).map(|_| alpha_prior.sample(&mut rng) + obs.sample(&mut rng)).collect();
+
+            let model = HierInterceptModel {
+                y,
+                sigma_y: 1.0,
+                prior_mu_sigma: 1.0,
+                prior_sigma_m: 0.0,
+                prior_sigma_s: 0.5,
+            };
+
+            let result = sample_nuts_multichain(
+                &model,
+                1,
+                n_warmup,
+                n_samples,
+                seed + rep as u64,
+                config.clone(),
+            )
+            .expect("NUTS should run for hierarchical SBC model");
+
+            let draws_mu = result.param_draws(0);
+            let draws_sigma = result.param_draws(1);
+            let draws_mu = draws_mu.first().expect("one chain").as_slice();
+            let draws_sigma = draws_sigma.first().expect("one chain").as_slice();
+
+            let r_mu = draws_mu.iter().filter(|&&x| x < mu_true).count();
+            let r_sigma = draws_sigma.iter().filter(|&&x| x < sigma_true).count();
+            ranks.push((r_mu, r_sigma));
+        }
+        ranks
+    }
+
+    #[test]
+    fn test_sbc_rank_statistic_hier_smoke() {
+        let n_samples = 30usize;
+        let ranks = sbc_ranks_hier(2, 3, 60, n_samples, 999);
+        for (r_mu, r_sigma) in ranks {
+            assert!(r_mu <= n_samples && r_sigma <= n_samples);
+        }
+    }
+
+    #[test]
+    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_hier_intercept -- --ignored`"]
+    fn test_sbc_hier_intercept() {
+        use statrs::distribution::{ChiSquared, ContinuousCDF};
+
+        let n_rep = 12usize;
+        let n_samples = 250usize;
+        let ranks = sbc_ranks_hier(n_rep, 4, 250, n_samples, 2024);
+
+        fn chi2_pvalue(counts: &[usize]) -> f64 {
+            let bins = counts.len();
+            let expected = counts.iter().sum::<usize>() as f64 / bins as f64;
+            let chi2: f64 = counts
+                .iter()
+                .map(|&c| {
+                    let d = c as f64 - expected;
+                    d * d / expected
+                })
+                .sum();
+            let dist = ChiSquared::new((bins - 1) as f64).unwrap();
+            1.0 - dist.cdf(chi2)
+        }
+
+        let bins = 4usize;
+        let mut counts_mu = vec![0usize; bins];
+        let mut counts_sigma = vec![0usize; bins];
+        for (r_mu, r_sigma) in ranks {
+            let u_mu = r_mu as f64 / n_samples as f64;
+            let u_sigma = r_sigma as f64 / n_samples as f64;
+            let mut b_mu = (u_mu * bins as f64).floor() as usize;
+            let mut b_sigma = (u_sigma * bins as f64).floor() as usize;
+            b_mu = b_mu.min(bins - 1);
+            b_sigma = b_sigma.min(bins - 1);
+            counts_mu[b_mu] += 1;
+            counts_sigma[b_sigma] += 1;
+        }
+
+        let p_mu = chi2_pvalue(&counts_mu);
+        let p_sigma = chi2_pvalue(&counts_sigma);
+
+        assert!(p_mu > 0.01, "SBC mu ranks deviate from uniform: p={}, counts={:?}", p_mu, counts_mu);
+        assert!(
+            p_sigma > 0.01,
+            "SBC sigma ranks deviate from uniform: p={}, counts={:?}",
+            p_sigma,
+            counts_sigma
+        );
+    }
 }

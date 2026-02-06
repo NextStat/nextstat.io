@@ -9,6 +9,7 @@ use ns_translate::pyhf::HistFactoryModel;
 /// Maximum Likelihood Estimator
 ///
 /// Fits statistical models by minimizing negative log-likelihood.
+#[derive(Clone)]
 pub struct MaximumLikelihoodEstimator {
     config: OptimizerConfig,
 }

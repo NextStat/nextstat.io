@@ -560,7 +560,11 @@ impl HistFactoryModel {
             });
         }
 
-        Ok(Self { parameters, poi_index, channels })
+        Ok(Self {
+            parameters,
+            poi_index,
+            channels,
+        })
     }
 
     /// Number of parameters
@@ -703,16 +707,16 @@ impl HistFactoryModel {
         self.expected_data_generic(params)
     }
 
-    /// Expected data in pyhf ordering: `main_data + auxdata`.
-    ///
-    /// pyhf orders main data by channel name (lexicographically), and appends auxiliary data
-    /// in the order parameters are constructed internally:
-    /// - `channels`, `samples`, and `(modifier_name, modifier_type)` are all sorted
-    /// - parameter sets are collected by modifier type in `histfactory_set` order
-    ///   (`histosys`, `lumi`, `normfactor`, `normsys`, `shapefactor`, `shapesys`, `staterror`)
-    /// - only constrained parameter sets contribute auxdata.
-    pub fn expected_data_pyhf(&self, params: &[f64]) -> Result<Vec<f64>> {
-        // Main expected (internal order), then reorder channels to match pyhf.
+    /// Expected **main** data in pyhf ordering (channels lexicographically), without auxdata.
+    pub fn expected_data_pyhf_main(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != self.parameters.len() {
+            return Err(ns_core::Error::Validation(format!(
+                "Parameter length mismatch: expected {}, got {}",
+                self.parameters.len(),
+                params.len()
+            )));
+        }
+
         let expected_main_flat: Vec<f64> = self.expected_data(params)?;
 
         let mut per_channel: Vec<(&str, Vec<f64>)> = Vec::with_capacity(self.channels.len());
@@ -721,7 +725,9 @@ impl HistFactoryModel {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
             let slice = expected_main_flat
                 .get(offset..offset + n_bins)
-                .ok_or_else(|| ns_core::Error::Validation("expected_data length mismatch".to_string()))?
+                .ok_or_else(|| {
+                    ns_core::Error::Validation("expected_data length mismatch".to_string())
+                })?
                 .to_vec();
             offset += n_bins;
             per_channel.push((channel.name.as_str(), slice));
@@ -732,184 +738,163 @@ impl HistFactoryModel {
         for (_name, bins) in per_channel {
             out.extend(bins);
         }
+        Ok(out)
+    }
 
-        // Aux expectations keyed by parameter index.
-        let mut aux_by_param: Vec<Option<f64>> = vec![None; self.parameters.len()];
-
-        // Normal constraints: expectation is the constraint center.
-        for (pidx, p) in self.parameters.iter().enumerate() {
-            if p.constrained {
-                if let (Some(center), Some(width)) = (p.constraint_center, p.constraint_width)
-                    && width > 0.0
-                {
-                    aux_by_param[pidx] = Some(center);
-                }
-            }
+    /// Expected data in pyhf ordering: `main_data + auxdata`.
+    ///
+    /// - Main data is ordered by channel name (lexicographically).
+    /// - Auxdata is ordered according to pyhf's parameter-set construction:
+    ///   modifier types are scanned in `histfactory_set` order and modifier names are sorted.
+    /// - For `constrained_by_normal` parameter sets, the aux expectation is the parameter value.
+    /// - For `shapesys` (Barlow-Beeston) Poisson constraints, the aux expectation is `gamma_i * tau_i`.
+    pub fn expected_data_pyhf(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != self.parameters.len() {
+            return Err(ns_core::Error::Validation(format!(
+                "Parameter length mismatch: expected {}, got {}",
+                self.parameters.len(),
+                params.len()
+            )));
         }
 
-        // ShapeSys (Barlow-Beeston) Poisson constraints: expectation is gamma * tau.
-        for channel in &self.channels {
-            for constraint in &channel.auxiliary_data {
-                if let Some(sample) = channel.samples.get(constraint.sample_idx)
-                    && let Some(ModelModifier::ShapeSys { param_indices, .. }) =
-                        sample.modifiers.get(constraint.modifier_idx)
-                {
-                    for (&tau, &gamma_idx) in constraint.tau.iter().zip(param_indices.iter()) {
-                        let gamma = params.get(gamma_idx).copied().unwrap_or(1.0);
-                        let exp_aux = (gamma * tau).max(1e-10);
-                        match aux_by_param.get_mut(gamma_idx) {
-                            Some(slot @ None) => *slot = Some(exp_aux),
-                            Some(Some(prev)) => {
-                                if (*prev - exp_aux).abs() > 1e-12 {
-                                    return Err(ns_core::Error::Validation(format!(
-                                        "Inconsistent ShapeSys aux expectation for param index {}: {} vs {}",
-                                        gamma_idx, prev, exp_aux
-                                    )));
-                                }
-                            }
-                            None => {
-                                return Err(ns_core::Error::Validation(format!(
-                                    "ShapeSys gamma index {} out of bounds",
-                                    gamma_idx
-                                )));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let mut out = self.expected_data_pyhf_main(params)?;
+        out.reserve(self.parameters.len());
 
-        // pyhf auxdata order is determined by how parameter sets are collected:
-        // it loops over modifier *types* in `histfactory_set` order and only adds a parameter set
-        // when a modifier is actually present (thismod != None) for some (channel, sample).
+        // Auxdata in pyhf parameter-set order:
+        // - parameter sets are collected by modifier type in `histfactory_set` order
+        //   (`histosys`, `lumi`, `normfactor`, `normsys`, `shapefactor`, `shapesys`, `staterror`)
+        // - modifier names are sorted within each type
+        // - only constrained parameter sets contribute auxdata
         //
-        // To match this, we:
-        // - sort channels/samples/modifiers to mimic pyhf's `_ChannelSummaryMixin`
-        // - scan modifier types in the same order as `pyhf.modifiers.histfactory_set`
-        // - push aux expectations for a parameter set in parameter-index order.
+        // For constrained_by_normal parameter sets, the aux expectation equals the parameter value.
+        // For constrained_by_poisson (shapesys), the aux expectation equals `gamma_i * tau_i`.
         fn base_name(name: &str) -> &str {
             name.split_once('[').map(|(b, _)| b).unwrap_or(name)
         }
 
-        fn modifier_type(m: &ModelModifier) -> &'static str {
-            match m {
-                ModelModifier::HistoSys { .. } => "histosys",
-                ModelModifier::Lumi { .. } => "lumi",
-                ModelModifier::NormFactor { .. } => "normfactor",
-                ModelModifier::NormSys { .. } => "normsys",
-                ModelModifier::ShapeFactor { .. } => "shapefactor",
-                ModelModifier::ShapeSys { .. } => "shapesys",
-                ModelModifier::StatError { .. } => "staterror",
-            }
-        }
+        let mut histosys: HashMap<String, usize> = HashMap::new();
+        let mut lumi: HashMap<String, usize> = HashMap::new();
+        let mut normsys: HashMap<String, usize> = HashMap::new();
+        let mut staterror: HashMap<String, Vec<usize>> = HashMap::new();
 
-        fn modifier_name_base<'a>(m: &ModelModifier, params: &'a [Parameter]) -> &'a str {
-            match m {
-                ModelModifier::NormFactor { param_idx }
-                | ModelModifier::NormSys { param_idx, .. }
-                | ModelModifier::HistoSys { param_idx, .. }
-                | ModelModifier::Lumi { param_idx } => params
-                    .get(*param_idx)
-                    .map(|p| base_name(p.name.as_str()))
-                    .unwrap_or(""),
-                ModelModifier::ShapeSys { param_indices, .. }
-                | ModelModifier::ShapeFactor { param_indices }
-                | ModelModifier::StatError { param_indices, .. } => params
-                    .get(*param_indices.first().unwrap_or(&usize::MAX))
-                    .map(|p| base_name(p.name.as_str()))
-                    .unwrap_or(""),
-            }
-        }
+        // shapesys needs tau values, which are stored in `auxiliary_data`.
+        let mut shapesys: HashMap<String, (Vec<usize>, Vec<f64>)> = HashMap::new();
 
-        // Sorted channel list.
-        let mut channel_refs: Vec<&ModelChannel> = self.channels.iter().collect();
-        channel_refs.sort_by(|a, b| a.name.cmp(&b.name));
-
-        // Sorted union of sample names.
-        let mut sample_names: Vec<&str> = Vec::new();
-        for channel in &self.channels {
-            for sample in &channel.samples {
-                sample_names.push(sample.name.as_str());
-            }
-        }
-        sample_names.sort();
-        sample_names.dedup();
-
-        // Sorted union of modifier (name, type) pairs.
-        let mut modifier_pairs: Vec<(String, String)> = Vec::new();
+        // Collect parameter-set names and indices from modifiers.
         for channel in &self.channels {
             for sample in &channel.samples {
                 for m in &sample.modifiers {
-                    let mname = modifier_name_base(m, &self.parameters).to_string();
-                    let mtype = modifier_type(m).to_string();
-                    if !mname.is_empty() {
-                        modifier_pairs.push((mname, mtype));
+                    match m {
+                        ModelModifier::HistoSys { param_idx, .. } => {
+                            if let Some(p) = self.parameters.get(*param_idx) {
+                                histosys.insert(p.name.clone(), *param_idx);
+                            }
+                        }
+                        ModelModifier::Lumi { param_idx } => {
+                            if let Some(p) = self.parameters.get(*param_idx) {
+                                lumi.insert(p.name.clone(), *param_idx);
+                            }
+                        }
+                        ModelModifier::NormSys { param_idx, .. } => {
+                            if let Some(p) = self.parameters.get(*param_idx) {
+                                normsys.insert(p.name.clone(), *param_idx);
+                            }
+                        }
+                        ModelModifier::StatError { param_indices, .. } => {
+                            let b = self
+                                .parameters
+                                .get(*param_indices.first().unwrap_or(&usize::MAX))
+                                .map(|p| base_name(p.name.as_str()).to_string())
+                                .unwrap_or_default();
+                            if !b.is_empty() {
+                                match staterror.get(&b) {
+                                    None => {
+                                        staterror.insert(b, param_indices.clone());
+                                    }
+                                    Some(prev) => {
+                                        if prev != param_indices {
+                                            return Err(ns_core::Error::Validation(format!(
+                                                "Inconsistent StatError param indices for '{}'",
+                                                b
+                                            )));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
         }
-        modifier_pairs.sort();
-        modifier_pairs.dedup();
 
-        // Group parameter indices by parameter-set base name.
-        let mut paramset_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
-        for (idx, p) in self.parameters.iter().enumerate() {
-            let base = base_name(p.name.as_str()).to_string();
-            paramset_to_indices.entry(base).or_default().push(idx);
-        }
+        // Build shapesys mapping from stored auxiliary constraints.
+        for channel in &self.channels {
+            for constraint in &channel.auxiliary_data {
+                let Some(sample) = channel.samples.get(constraint.sample_idx) else { continue };
+                let Some(ModelModifier::ShapeSys { param_indices, .. }) =
+                    sample.modifiers.get(constraint.modifier_idx)
+                else {
+                    continue;
+                };
 
-        // Helper to find a sample by name in a channel.
-        fn find_sample<'a>(channel: &'a ModelChannel, name: &str) -> Option<&'a ModelSample> {
-            channel.samples.iter().find(|s| s.name == name)
-        }
+                let b = self
+                    .parameters
+                    .get(*param_indices.first().unwrap_or(&usize::MAX))
+                    .map(|p| base_name(p.name.as_str()).to_string())
+                    .unwrap_or_default();
+                if b.is_empty() {
+                    continue;
+                }
 
-        // Helper to check if a (name, type) modifier exists in a sample.
-        fn sample_has_modifier(sample: &ModelSample, mname: &str, mtype: &str, params: &[Parameter]) -> bool {
-            sample.modifiers.iter().any(|m| {
-                modifier_type(m) == mtype && modifier_name_base(m, params) == mname
-            })
-        }
-
-        // Scan modifier types in the order defined by pyhf.
-        const PYHF_MTYPE_ORDER: [&str; 7] = [
-            "histosys",
-            "lumi",
-            "normfactor",
-            "normsys",
-            "shapefactor",
-            "shapesys",
-            "staterror",
-        ];
-
-        let mut seen_paramsets: HashMap<String, bool> = HashMap::new();
-
-        for mtype in PYHF_MTYPE_ORDER {
-            for channel in &channel_refs {
-                for &sname in &sample_names {
-                    let Some(sample) = find_sample(channel, sname) else { continue };
-
-                    for (mname, mtype_pair) in &modifier_pairs {
-                        if mtype_pair != mtype {
-                            continue;
-                        }
-                        if !sample_has_modifier(sample, mname.as_str(), mtype, &self.parameters) {
-                            continue;
-                        }
-
-                        if *seen_paramsets.get(mname).unwrap_or(&false) {
-                            continue;
-                        }
-                        seen_paramsets.insert(mname.clone(), true);
-
-                        if let Some(indices) = paramset_to_indices.get(mname) {
-                            for &idx in indices {
-                                if let Some(v) = aux_by_param.get(idx).copied().flatten() {
-                                    out.push(v);
-                                }
-                            }
+                match shapesys.get(&b) {
+                    None => {
+                        shapesys.insert(b, (param_indices.clone(), constraint.tau.clone()));
+                    }
+                    Some((prev_idx, prev_tau)) => {
+                        if prev_idx != param_indices || prev_tau != &constraint.tau {
+                            return Err(ns_core::Error::Validation(format!(
+                                "Inconsistent ShapeSys definition for '{}'",
+                                b
+                            )));
                         }
                     }
                 }
+            }
+        }
+
+        fn sorted_keys<T>(m: &HashMap<String, T>) -> Vec<String> {
+            let mut v: Vec<String> = m.keys().cloned().collect();
+            v.sort();
+            v
+        }
+
+        for name in sorted_keys(&histosys) {
+            out.push(params[*histosys.get(&name).unwrap()]);
+        }
+        for name in sorted_keys(&lumi) {
+            out.push(params[*lumi.get(&name).unwrap()]);
+        }
+        for name in sorted_keys(&normsys) {
+            out.push(params[*normsys.get(&name).unwrap()]);
+        }
+        for name in sorted_keys(&shapesys) {
+            let (param_indices, tau) = shapesys.get(&name).unwrap();
+            if param_indices.len() != tau.len() {
+                return Err(ns_core::Error::Validation(format!(
+                    "ShapeSys aux length mismatch for '{}': params={} tau={}",
+                    name,
+                    param_indices.len(),
+                    tau.len()
+                )));
+            }
+            for (&pidx, &tau_i) in param_indices.iter().zip(tau.iter()) {
+                out.push((params[pidx] * tau_i).max(1e-10));
+            }
+        }
+        for name in sorted_keys(&staterror) {
+            for &pidx in staterror.get(&name).unwrap() {
+                out.push(params[pidx]);
             }
         }
 

@@ -56,15 +56,15 @@ impl PyHistFactoryModel {
             .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
     }
 
-    fn ping(&self) -> &'static str {
-        "pong"
-    }
-
-    /// Expected data in pyhf ordering: `main_data + auxdata`.
-    fn expected_data(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
-        self.inner
-            .expected_data_pyhf(&params)
-            .map_err(|e| PyValueError::new_err(format!("expected_data failed: {}", e)))
+    /// Expected data matching `pyhf.Model.expected_data`.
+    #[pyo3(signature = (params, *, include_auxdata=true))]
+    fn expected_data(&self, params: Vec<f64>, include_auxdata: bool) -> PyResult<Vec<f64>> {
+        let out = if include_auxdata {
+            self.inner.expected_data_pyhf(&params)
+        } else {
+            self.inner.expected_data_pyhf_main(&params)
+        };
+        out.map_err(|e| PyValueError::new_err(format!("expected_data failed: {}", e)))
     }
 
     /// Return a copy of the model with overridden **main observations** (main bins only).
@@ -471,22 +471,33 @@ impl PyMaximumLikelihoodEstimator {
             ));
         };
 
+        let mle = self.inner.clone();
         let result = match fit_model {
-            FitModel::HistFactory(m) => py
-                .detach(move || RustMLE::new().fit(&m))
-                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
-            FitModel::GaussianMean(m) => py
-                .detach(move || RustMLE::new().fit(&m))
-                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
-            FitModel::LinearRegression(m) => py
-                .detach(move || RustMLE::new().fit(&m))
-                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
-            FitModel::LogisticRegression(m) => py
-                .detach(move || RustMLE::new().fit(&m))
-                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
-            FitModel::PoissonRegression(m) => py
-                .detach(move || RustMLE::new().fit(&m))
-                .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?,
+            FitModel::HistFactory(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::GaussianMean(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::LinearRegression(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::LogisticRegression(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::PoissonRegression(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
         };
 
         Ok(PyFitResult {

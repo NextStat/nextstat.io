@@ -630,4 +630,63 @@ mod tests {
         assert!(p > 0);
         assert_eq!(fx.beta_hat.len(), p + 1);
     }
+
+    #[test]
+    fn test_mle_linear_regression_recovers_fixture_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/ols_small.json"));
+        assert_eq!(fx.kind, "ols");
+        let m = LinearRegressionModel::new(fx.x.clone(), fx.y.clone(), fx.include_intercept).unwrap();
+
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(r.converged, "MLE should converge on OLS fixture");
+        assert_vec_close(&r.parameters, &fx.beta_hat, 1e-6);
+        assert!(
+            (r.nll - fx.nll_at_hat).abs() < 1e-8,
+            "nll mismatch: got {}, expected {}",
+            r.nll,
+            fx.nll_at_hat
+        );
+    }
+
+    #[test]
+    fn test_mle_logistic_regression_recovers_fixture_hat() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+        assert_eq!(fx.kind, "logistic");
+        let y: Vec<u8> = fx.y.iter().map(|&v| if v >= 0.5 { 1 } else { 0 }).collect();
+        let m = LogisticRegressionModel::new(fx.x.clone(), y, fx.include_intercept).unwrap();
+
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(r.converged, "MLE should converge on logistic fixture");
+        // Fixture hat is a numerical optimum; allow solver tolerance.
+        assert_vec_close(&r.parameters, &fx.beta_hat, 1e-4);
+        assert!(
+            (r.nll - fx.nll_at_hat).abs() < 1e-6,
+            "nll mismatch: got {}, expected {}",
+            r.nll,
+            fx.nll_at_hat
+        );
+    }
+
+    #[test]
+    fn test_mle_poisson_regression_recovers_fixture_hat() {
+        let fx = load_fixture(include_str!("../../../tests/fixtures/regression/poisson_small.json"));
+        assert_eq!(fx.kind, "poisson");
+        let y: Vec<u64> = fx.y.iter().map(|&v| v.round() as u64).collect();
+        let m = PoissonRegressionModel::new(fx.x.clone(), y, fx.include_intercept, fx.offset.clone())
+            .unwrap();
+
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(r.converged, "MLE should converge on poisson fixture");
+        assert_vec_close(&r.parameters, &fx.beta_hat, 1e-4);
+        assert!(
+            (r.nll - fx.nll_at_hat).abs() < 1e-6,
+            "nll mismatch: got {}, expected {}",
+            r.nll,
+            fx.nll_at_hat
+        );
+    }
 }
