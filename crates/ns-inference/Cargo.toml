@@ -53,3 +53,7 @@ harness = false
 [[bench]]
 name = "glm_fit_predict_benchmark"
 harness = false
+
+[[bench]]
+name = "kalman_benchmark"
+harness = false
