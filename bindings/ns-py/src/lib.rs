@@ -13,7 +13,14 @@ use ns_inference::chain::sample_nuts_multichain;
 use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
 use ns_inference::nuts::NutsConfig;
-use ns_inference::{hypotest::AsymptoticCLsContext as RustCLsCtx, profile_likelihood as pl};
+use ns_inference::{
+    hypotest::AsymptoticCLsContext as RustCLsCtx,
+    profile_likelihood as pl,
+    LinearRegressionModel as RustLinearRegressionModel,
+    LogisticRegressionModel as RustLogisticRegressionModel,
+    PoissonRegressionModel as RustPoissonRegressionModel,
+    ols_fit as rust_ols_fit,
+};
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -214,6 +221,132 @@ impl PyGaussianMeanModel {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Regression models (Phase 6).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `LinearRegressionModel` (Gaussian, sigma fixed to 1).
+#[pyclass(name = "LinearRegressionModel")]
+struct PyLinearRegressionModel {
+    inner: RustLinearRegressionModel,
+}
+
+#[pymethods]
+impl PyLinearRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> PyResult<Self> {
+        let inner = RustLinearRegressionModel::new(x, y, include_intercept)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `LogisticRegressionModel`.
+#[pyclass(name = "LogisticRegressionModel")]
+struct PyLogisticRegressionModel {
+    inner: RustLogisticRegressionModel,
+}
+
+#[pymethods]
+impl PyLogisticRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<u8>, include_intercept: bool) -> PyResult<Self> {
+        let inner = RustLogisticRegressionModel::new(x, y, include_intercept)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `PoissonRegressionModel`.
+#[pyclass(name = "PoissonRegressionModel")]
+struct PyPoissonRegressionModel {
+    inner: RustPoissonRegressionModel,
+}
+
+#[pymethods]
+impl PyPoissonRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true, offset=None))]
+    fn new(
+        x: Vec<Vec<f64>>,
+        y: Vec<u64>,
+        include_intercept: bool,
+        offset: Option<Vec<f64>>,
+    ) -> PyResult<Self> {
+        let inner = RustPoissonRegressionModel::new(x, y, include_intercept, offset)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for FitResult
 #[pyclass(name = "FitResult")]
 struct PyFitResult {
@@ -226,7 +359,11 @@ struct PyFitResult {
     #[pyo3(get)]
     converged: bool,
     #[pyo3(get)]
-    n_evaluations: usize,
+    n_iter: usize,
+    #[pyo3(get)]
+    n_fev: usize,
+    #[pyo3(get)]
+    n_gev: usize,
 }
 
 #[pymethods]
@@ -247,6 +384,12 @@ impl PyFitResult {
     #[getter]
     fn success(&self) -> bool {
         self.converged
+    }
+
+    /// Back-compat alias: `n_evaluations` historically contained argmin iterations.
+    #[getter]
+    fn n_evaluations(&self) -> usize {
+        self.n_iter
     }
 }
 
@@ -285,7 +428,9 @@ impl PyMaximumLikelihoodEstimator {
             uncertainties: result.uncertainties,
             nll: result.nll,
             converged: result.converged,
-            n_evaluations: result.n_evaluations,
+            n_iter: result.n_iter,
+            n_fev: result.n_fev,
+            n_gev: result.n_gev,
         })
     }
 }
@@ -318,7 +463,9 @@ fn fit(model: &PyHistFactoryModel, data: Option<Vec<f64>>) -> PyResult<PyFitResu
         uncertainties: result.uncertainties,
         nll: result.nll,
         converged: result.converged,
-        n_evaluations: result.n_evaluations,
+        n_iter: result.n_iter,
+        n_fev: result.n_fev,
+        n_gev: result.n_gev,
     })
 }
 
@@ -654,6 +801,9 @@ fn cls_curve(
     out.set_item("nsigma_order", art.nsigma_order.to_vec())?;
     out.set_item("obs_limit", art.obs_limit)?;
     out.set_item("exp_limits", art.exp_limits.to_vec())?;
+    out.set_item("mu_values", art.mu_values.clone())?;
+    out.set_item("cls_obs", art.cls_obs.clone())?;
+    out.set_item("cls_exp", art.cls_exp.to_vec())?;
 
     let points: Vec<Py<PyAny>> = art
         .points
@@ -698,6 +848,9 @@ fn profile_curve(
     out.set_item("poi_index", art.poi_index)?;
     out.set_item("mu_hat", art.mu_hat)?;
     out.set_item("nll_hat", art.nll_hat)?;
+    out.set_item("mu_values", art.mu_values.clone())?;
+    out.set_item("q_mu_values", art.q_mu_values.clone())?;
+    out.set_item("twice_delta_nll", art.twice_delta_nll.clone())?;
 
     let points: Vec<Py<PyAny>> = art
         .points

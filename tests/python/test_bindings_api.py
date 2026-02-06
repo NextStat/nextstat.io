@@ -78,6 +78,9 @@ def test_fit_wrappers_agree_on_shape_and_fields():
         assert isinstance(res.twice_nll, float)
         assert isinstance(res.success, bool)
         assert isinstance(res.n_evaluations, int)
+        assert isinstance(res.n_iter, int)
+        assert isinstance(res.n_fev, int)
+        assert isinstance(res.n_gev, int)
 
 
 def test_fit_accepts_overridden_main_data():

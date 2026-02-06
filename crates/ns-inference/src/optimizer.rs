@@ -7,6 +7,8 @@ use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use ns_core::Result;
 use std::fmt;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Configuration for L-BFGS-B optimizer
 #[derive(Debug, Clone)]
@@ -34,6 +36,10 @@ pub struct OptimizationResult {
     pub fval: f64,
     /// Number of iterations
     pub n_iter: u64,
+    /// Number of objective (cost) evaluations.
+    pub n_fev: usize,
+    /// Number of gradient evaluations.
+    pub n_gev: usize,
     /// Convergence status
     pub converged: bool,
     /// Termination message
@@ -44,8 +50,8 @@ impl fmt::Display for OptimizationResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "OptimizationResult(fval={:.6}, n_iter={}, converged={})",
-            self.fval, self.n_iter, self.converged
+            "OptimizationResult(fval={:.6}, n_iter={}, n_fev={}, n_gev={}, converged={})",
+            self.fval, self.n_iter, self.n_fev, self.n_gev, self.converged
         )
     }
 }
@@ -87,10 +93,17 @@ pub trait ObjectiveFunction: Send + Sync {
 struct ArgminProblem<'a> {
     objective: &'a dyn ObjectiveFunction,
     bounds: &'a [(f64, f64)],
+    counts: Arc<FuncCounts>,
 }
 
 fn clamp_params(params: &[f64], bounds: &[(f64, f64)]) -> Vec<f64> {
     params.iter().zip(bounds.iter()).map(|(&v, &(lo, hi))| v.clamp(lo, hi)).collect()
+}
+
+#[derive(Default)]
+struct FuncCounts {
+    cost: AtomicUsize,
+    grad: AtomicUsize,
 }
 
 impl<'a> CostFunction for ArgminProblem<'a> {
@@ -98,6 +111,7 @@ impl<'a> CostFunction for ArgminProblem<'a> {
     type Output = f64;
 
     fn cost(&self, params: &Self::Param) -> std::result::Result<Self::Output, argmin::core::Error> {
+        self.counts.cost.fetch_add(1, Ordering::Relaxed);
         let clamped = clamp_params(params, self.bounds);
         self.objective.eval(&clamped).map_err(|e| argmin::core::Error::msg(e.to_string()))
     }
@@ -111,6 +125,7 @@ impl<'a> Gradient for ArgminProblem<'a> {
         &self,
         params: &Self::Param,
     ) -> std::result::Result<Self::Gradient, argmin::core::Error> {
+        self.counts.grad.fetch_add(1, Ordering::Relaxed);
         let clamped = clamp_params(params, self.bounds);
         let mut g = self
             .objective
@@ -170,8 +185,10 @@ impl LbfgsbOptimizer {
 
         let init_clamped = clamp_params(init_params, bounds);
 
+        let counts = Arc::new(FuncCounts::default());
+
         // Create argmin problem
-        let problem = ArgminProblem { objective, bounds };
+        let problem = ArgminProblem { objective, bounds, counts: counts.clone() };
 
         // Create L-BFGS solver with line search
         let linesearch = MoreThuenteLineSearch::new();
@@ -194,12 +211,14 @@ impl LbfgsbOptimizer {
         let best_params = clamp_params(&best_params_unclamped, bounds);
         let fval = state.get_best_cost();
         let n_iter = state.get_iter();
+        let n_fev = counts.cost.load(Ordering::Relaxed);
+        let n_gev = counts.grad.load(Ordering::Relaxed);
 
         // Check convergence
         let converged = state.terminated();
         let message = format!("{:?}", state.get_termination_status());
 
-        Ok(OptimizationResult { parameters: best_params, fval, n_iter, converged, message })
+        Ok(OptimizationResult { parameters: best_params, fval, n_iter, n_fev, n_gev, converged, message })
     }
 }
 

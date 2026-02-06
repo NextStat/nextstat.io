@@ -15,8 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import nextstat
-import nextstat.infer as ns_infer
+from _tolerances import COVERAGE_DELTA_MAX
 
 
 pytestmark = pytest.mark.slow
@@ -51,6 +50,8 @@ def test_upper_limit_coverage_regression_vs_pyhf():
     if os.environ.get("NS_RUN_SLOW") != "1":
         pytest.skip("Set NS_RUN_SLOW=1 to run slow coverage regression tests.")
 
+    import nextstat
+    import nextstat.infer as ns_infer
     import pyhf
 
     rng = np.random.default_rng(SEED)
@@ -96,7 +97,7 @@ def test_upper_limit_coverage_regression_vs_pyhf():
     cov_ns = covered_ns / float(N_TOYS)
 
     # Regression check: NextStat should track pyhf coverage on the same toys.
-    assert abs(cov_ns - cov_pyhf) <= 0.05
+    assert abs(cov_ns - cov_pyhf) <= COVERAGE_DELTA_MAX
 
     # Write JSON artifact for CI archival (opt-in via NS_ARTIFACTS_DIR)
     artifacts_dir = os.environ.get("NS_ARTIFACTS_DIR")

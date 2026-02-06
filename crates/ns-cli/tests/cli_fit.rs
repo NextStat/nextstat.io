@@ -52,11 +52,20 @@ fn assert_json_contract(v: &serde_json::Value) {
     // Don't assert it must be true in all environments, but it should exist.
     let _ = converged;
 
+    let n_iter = v.get("n_iter").and_then(|x| x.as_u64()).expect("n_iter should be an integer");
+    assert!(n_iter > 0, "n_iter should be > 0");
+
+    // Back-compat alias
     let n_eval = v
         .get("n_evaluations")
         .and_then(|x| x.as_u64())
         .expect("n_evaluations should be an integer");
-    assert!(n_eval > 0, "n_evaluations should be > 0");
+    assert_eq!(n_eval, n_iter, "n_evaluations should alias n_iter");
+
+    let n_fev = v.get("n_fev").and_then(|x| x.as_u64()).expect("n_fev should be an integer");
+    let n_gev = v.get("n_gev").and_then(|x| x.as_u64()).expect("n_gev should be an integer");
+    assert!(n_fev > 0, "n_fev should be > 0");
+    assert!(n_gev > 0, "n_gev should be > 0");
 }
 
 #[test]
