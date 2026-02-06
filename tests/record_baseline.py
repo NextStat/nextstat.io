@@ -311,6 +311,66 @@ def record_p6_glm_baseline(
     return out_path
 
 
+def record_nuts_quality_baseline(
+    *,
+    repo: Path,
+    env_dict: Dict[str, str],
+    environment: Dict[str, Any],
+    out_dir: Path,
+    stamp: str,
+    nuts_cases: str,
+    nuts_warmup: int,
+    nuts_samples: int,
+    nuts_funnel_warmup: int,
+    nuts_funnel_samples: int,
+    nuts_seed: int,
+) -> Optional[Path]:
+    """Run NUTS quality gate runner and save as baseline."""
+    out_path = out_dir / f"nuts_quality_baseline_{stamp}.json"
+    runner = repo / "tests" / "apex2_nuts_quality_report.py"
+
+    cmd = [
+        sys.executable,
+        str(runner),
+        "--out",
+        str(out_path),
+        "--cases",
+        str(nuts_cases),
+        "--warmup",
+        str(int(nuts_warmup)),
+        "--samples",
+        str(int(nuts_samples)),
+        "--funnel-warmup",
+        str(int(nuts_funnel_warmup)),
+        "--funnel-samples",
+        str(int(nuts_funnel_samples)),
+        "--seed",
+        str(int(nuts_seed)),
+    ]
+
+    print("[nuts_quality] Running quality runner...")
+    t0 = time.time()
+    rc, output = _run(cmd, cwd=repo, env=env_dict)
+    wall = time.time() - t0
+
+    if rc != 0:
+        print(f"[nuts_quality] FAILED (exit {rc})")
+        print(output[-2000:])
+        return None
+
+    if out_path.exists():
+        report = json.loads(out_path.read_text())
+        report["baseline_env"] = environment
+        report.setdefault("meta", {})
+        if isinstance(report["meta"], dict):
+            report["meta"]["recorded_as_baseline"] = True
+            report["meta"]["wall_s"] = float(wall)
+        out_path.write_text(json.dumps(report, indent=2))
+
+    print(f"[nuts_quality] OK  ({wall:.1f}s) -> {out_path}")
+    return out_path
+
+
 def record_root_suite_baseline(
     *,
     repo: Path,
@@ -429,7 +489,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--only",
-        choices=["pyhf", "p6", "root"],
+        choices=["pyhf", "p6", "nuts_quality", "root"],
         default=None,
         help="Record only one baseline type (default: both).",
     )
@@ -443,6 +503,13 @@ def main() -> int:
     ap.add_argument("--p", type=int, default=20, help="Feature count.")
     ap.add_argument("--l2", type=float, default=0.0, help="Ridge penalty (0=off).")
     ap.add_argument("--nb-alpha", type=float, default=0.5, help="NegBin dispersion.")
+    # NUTS quality options (Phase 3 Bayesian contract)
+    ap.add_argument("--nuts-cases", default="gaussian,posterior,funnel,linear,histfactory")
+    ap.add_argument("--nuts-warmup", type=int, default=200)
+    ap.add_argument("--nuts-samples", type=int, default=200)
+    ap.add_argument("--nuts-funnel-warmup", type=int, default=300)
+    ap.add_argument("--nuts-funnel-samples", type=int, default=300)
+    ap.add_argument("--nuts-seed", type=int, default=0)
     # ROOT suite options (optional; requires ROOT + hist2workspace + uproot)
     ap.add_argument("--root-search-dir", type=Path, default=None, help="Directory to scan for TRExFitter/HistFactory exports (combination.xml).")
     ap.add_argument("--root-glob", type=str, default="**/combination.xml", help="Glob for HistFactory XML under --root-search-dir.")
@@ -504,6 +571,7 @@ def main() -> int:
 
     pyhf_path: Optional[Path] = None
     p6_path: Optional[Path] = None
+    nuts_path: Optional[Path] = None
     root_prereq_path: Optional[Path] = None
     root_cases_path: Optional[Path] = None
     root_suite_path: Optional[Path] = None
@@ -539,6 +607,24 @@ def main() -> int:
             nb_alpha=args.nb_alpha,
         )
         if p6_path is None:
+            any_failed = True
+
+    # Record NUTS quality baseline
+    if args.only is None or args.only == "nuts_quality":
+        nuts_path = record_nuts_quality_baseline(
+            repo=repo,
+            env_dict=env_dict,
+            environment=environment,
+            out_dir=args.out_dir,
+            stamp=stamp,
+            nuts_cases=str(args.nuts_cases),
+            nuts_warmup=int(args.nuts_warmup),
+            nuts_samples=int(args.nuts_samples),
+            nuts_funnel_warmup=int(args.nuts_funnel_warmup),
+            nuts_funnel_samples=int(args.nuts_funnel_samples),
+            nuts_seed=int(args.nuts_seed),
+        )
+        if nuts_path is None:
             any_failed = True
 
     # Record ROOT suite baseline (optional)
@@ -620,6 +706,11 @@ def main() -> int:
             "path": str(p6_path),
             "filename": p6_path.name,
         }
+    if nuts_path is not None:
+        manifest["baselines"]["nuts_quality"] = {
+            "path": str(nuts_path),
+            "filename": nuts_path.name,
+        }
     if root_prereq_path is not None:
         manifest["baselines"]["root_prereq"] = {
             "path": str(root_prereq_path),
@@ -667,6 +758,11 @@ def main() -> int:
             "latest_p6_glm_manifest.json",
             {"p6_glm": {"path": str(p6_path), "filename": p6_path.name}},
         )
+    if nuts_path is not None:
+        _write_latest(
+            "latest_nuts_quality_manifest.json",
+            {"nuts_quality": {"path": str(nuts_path), "filename": nuts_path.name}},
+        )
     if root_prereq_path is not None or root_cases_path is not None or root_suite_path is not None:
         subset: Dict[str, Any] = {}
         if root_prereq_path is not None:
@@ -685,6 +781,8 @@ def main() -> int:
         print(f"pyhf:      {pyhf_path}")
     if p6_path:
         print(f"p6_glm:    {p6_path}")
+    if nuts_path:
+        print(f"nuts:      {nuts_path}")
     if root_suite_path:
         print(f"root:      {root_suite_path}")
     print()
