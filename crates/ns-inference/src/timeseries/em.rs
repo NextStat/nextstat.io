@@ -270,24 +270,65 @@ pub fn kalman_em(model: &KalmanModel, ys: &[DVector<f64>], cfg: KalmanEmConfig) 
         }
 
         if cfg.estimate_r {
+            // Update R using only observed dimensions (NaN means missing). For multivariate
+            // observations, we accumulate contributions for (i,j) pairs only when both dims
+            // are observed at time t.
             let mut sum_r = DMatrix::<f64>::zeros(m_obs, m_obs);
-            let mut n_used = 0usize;
+            let mut counts = DMatrix::<usize>::zeros(m_obs, m_obs);
             for t in 0..ys.len() {
                 let y = &ys[t];
-                // For now treat any NaN in y_t as "missing full observation" for EM updates.
-                if y.iter().any(|v| v.is_nan()) {
+
+                // Select observed dims for this timestep.
+                let mut obs_idx: Vec<usize> = Vec::new();
+                for i in 0..m_obs {
+                    if y[i].is_finite() {
+                        obs_idx.push(i);
+                    }
+                }
+                if obs_idx.is_empty() {
                     continue;
                 }
-                let hm = &cur.h * &sf.m[t];
-                let v = y - hm;
-                let term = &v * v.transpose() + &cur.h * &sf.p[t] * cur.h.transpose();
-                sum_r += term;
-                n_used += 1;
+
+                let mo = obs_idx.len();
+                let mut y_obs = DVector::<f64>::zeros(mo);
+                let mut h_obs = DMatrix::<f64>::zeros(mo, n);
+                for (ii, &i) in obs_idx.iter().enumerate() {
+                    y_obs[ii] = y[i];
+                    for j in 0..n {
+                        h_obs[(ii, j)] = cur.h[(i, j)];
+                    }
+                }
+
+                let hm = &h_obs * &sf.m[t];
+                let v = y_obs - hm;
+                let term = &v * v.transpose() + &h_obs * &sf.p[t] * h_obs.transpose();
+
+                for (ii, &i) in obs_idx.iter().enumerate() {
+                    for (jj, &j) in obs_idx.iter().enumerate() {
+                        sum_r[(i, j)] += term[(ii, jj)];
+                        counts[(i, j)] += 1;
+                    }
+                }
             }
-            if n_used == 0 {
-                return Err(Error::Validation("cannot estimate R: all observations are missing".to_string()));
+
+            let mut r_new = cur.r.clone();
+            let mut any_used = false;
+            for i in 0..m_obs {
+                for j in 0..m_obs {
+                    let c = counts[(i, j)];
+                    if c > 0 {
+                        r_new[(i, j)] = sum_r[(i, j)] / (c as f64);
+                        any_used = true;
+                    }
+                }
             }
-            let r_new = sum_r / (n_used as f64);
+
+            if !any_used {
+                return Err(Error::Validation(
+                    "cannot estimate R: all observations are missing".to_string(),
+                ));
+            }
+
             cur.r = ensure_spd(r_new, cfg.min_diag)?;
         }
 

@@ -6,6 +6,43 @@
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
+fn validate_covariance_spd(name: &str, a: &DMatrix<f64>) -> Result<()> {
+    let n = a.nrows();
+    if n == 0 || a.ncols() != n {
+        return Err(Error::Validation(format!("{name} must be square with dim>0")));
+    }
+    if a.iter().any(|v| !v.is_finite()) {
+        return Err(Error::Validation(format!("{name} must contain only finite values")));
+    }
+
+    // Enforce symmetry up to a relative tolerance.
+    let mut scale = 0.0f64;
+    for v in a.iter() {
+        scale = scale.max(v.abs());
+    }
+    let tol = 1e-10 * scale.max(1.0);
+    for i in 0..n {
+        let d = a[(i, i)];
+        if d <= 0.0 {
+            return Err(Error::Validation(format!("{name} must have strictly positive diagonal")));
+        }
+        for j in (i + 1)..n {
+            if (a[(i, j)] - a[(j, i)]).abs() > tol {
+                return Err(Error::Validation(format!(
+                    "{name} must be symmetric (|a_ij - a_ji| > {tol:e})"
+                )));
+            }
+        }
+    }
+
+    if a.clone().cholesky().is_none() {
+        return Err(Error::Validation(format!(
+            "{name} must be symmetric positive definite (Cholesky failed)"
+        )));
+    }
+    Ok(())
+}
+
 /// Time-invariant linear Gaussian state-space model.
 ///
 /// State:
@@ -72,6 +109,11 @@ impl KalmanModel {
         {
             return Err(Error::Validation("model matrices/vectors must be finite".to_string()));
         }
+
+        // Covariances are core invariants: enforce SPD early to avoid fragile runtime failures.
+        validate_covariance_spd("Q", &q)?;
+        validate_covariance_spd("R", &r)?;
+        validate_covariance_spd("P0", &p0)?;
 
         Ok(Self { f, q, h, r, m0, p0 })
     }
@@ -601,6 +643,23 @@ pub fn rts_smoother(model: &KalmanModel, fr: &KalmanFilterResult) -> Result<Kalm
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_kalman_model_new_rejects_non_spd_covariances() {
+        // Q has negative diagonal -> invalid covariance.
+        let f = DMatrix::from_row_slice(1, 1, &[1.0]);
+        let q = DMatrix::from_row_slice(1, 1, &[-0.1]);
+        let h = DMatrix::from_row_slice(1, 1, &[1.0]);
+        let r = DMatrix::from_row_slice(1, 1, &[0.2]);
+        let m0 = DVector::from_row_slice(&[0.0]);
+        let p0 = DMatrix::from_row_slice(1, 1, &[1.0]);
+
+        let err = KalmanModel::new(f, q, h, r, m0, p0).unwrap_err();
+        match err {
+            Error::Validation(_) => {}
+            _ => panic!("expected validation error, got: {err:?}"),
+        }
+    }
 
     fn scalar_filter(
         y: &[f64],

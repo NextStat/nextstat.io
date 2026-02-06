@@ -100,6 +100,19 @@ def test_kalman_em_smoke():
     assert float(out["r"][0][0]) > 0.0
 
 
+def test_kalman_em_allows_missing_none():
+    import nextstat
+
+    model = nextstat.KalmanModel([[1.0]], [[0.5]], [[1.0]], [[0.5]], [0.0], [[1.0]])
+    ys = [[0.9], [None], [0.8], [None], [0.95], [1.05]]
+    out = nextstat.timeseries.kalman_em(model, ys, max_iter=5, tol=1e-9)
+
+    assert "loglik_trace" in out
+    assert len(out["loglik_trace"]) >= 2
+    assert float(out["q"][0][0]) > 0.0
+    assert float(out["r"][0][0]) > 0.0
+
+
 def test_kalman_fit_smoke():
     import nextstat
 
