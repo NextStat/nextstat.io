@@ -32,6 +32,46 @@ cd bindings/ns-py
 maturin develop
 ```
 
+## Validation Harness (Apex2)
+
+The repo includes deterministic validation runners that produce JSON artifacts.
+
+### 0) pyhf parity report (fast, deterministic)
+
+Runs a small suite of HistFactory workspaces through pyhf and NextStat and checks:
+
+- NLL parity (init + random points)
+- expected_data parity (full + main-only)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
+  --out tmp/apex2_pyhf_report.json
+```
+
+### 0.1) Master report (pyhf + regression golden + optional ROOT + optional bias/pulls)
+
+This produces one aggregated JSON artifact, and embeds sub-reports.
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --out tmp/apex2_master_report.json
+```
+
+Optional: include the slow bias/pulls regression suite (NextStat vs pyhf).
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --bias-pulls \
+  --bias-pulls-n-toys 200 \
+  --bias-pulls-fixtures simple \
+  --out tmp/apex2_master_report.json
+```
+
+Notes:
+
+- bias/pulls is intended for manual/nightly runs; it is not part of default CI.
+- ROOT parity is recorded as `skipped` unless ROOT prerequisites are present.
+
 ## 1) Fit (MLE)
 
 CLI:

@@ -644,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow (~60s release); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
+    #[ignore = "very slow (~10min release, argmin+tape AD); run with `cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored`"]
     fn test_fit_toys_pull_distribution() {
         use rand::SeedableRng;
         use rand_distr::{Distribution, Poisson};

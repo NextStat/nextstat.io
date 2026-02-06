@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Apex2 master runner: one report for pyhf parity + ROOT parity.
+"""Apex2 master runner: one report for pyhf parity + regression golden + ROOT parity.
 
 This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
+  - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
+  - bias/pulls: `tests/apex2_bias_pulls_report.py` (optional; slow)
   - ROOT: `tests/apex2_root_suite_report.py` (runs if prereqs exist, else records skipped)
 
 Run:
@@ -154,6 +156,30 @@ def _run_regression_golden() -> Dict[str, Any]:
                         "abs_nll_diff": abs(float(r.nll) - float(data["nll_at_hat"])),
                     }
                 )
+            elif kind == "negbin":
+                y_int = [int(round(float(v))) for v in y]
+                r = nextstat.glm.negbin.fit(x, y_int, include_intercept=include_intercept)
+                ok_coef = _vec_allclose(list(r.coef), list(data["beta_hat"]), rtol=2e-3, atol=1e-6)
+                ok_se = _vec_allclose(
+                    list(r.standard_errors), list(data["se_hat"]), rtol=2e-2, atol=1e-6
+                )
+                ok_log_alpha = abs(float(r.log_alpha) - float(data["log_alpha_hat"])) <= 2e-2
+                ok_nll = abs(float(r.nll) - float(data["nll_at_hat"])) <= 1e-6
+                row.update(
+                    {
+                        "ok": bool(
+                            ok_coef and ok_se and ok_log_alpha and ok_nll and bool(r.converged)
+                        ),
+                        "converged": bool(r.converged),
+                        "max_abs_coef_diff": _max_abs_vec_diff(list(r.coef), list(data["beta_hat"])),
+                        "max_abs_se_diff": _max_abs_vec_diff(
+                            list(r.standard_errors), list(data["se_hat"])
+                        ),
+                        "abs_log_alpha_diff": abs(float(r.log_alpha) - float(data["log_alpha_hat"])),
+                        "abs_alpha_diff": abs(float(r.alpha) - float(data["alpha_hat"])),
+                        "abs_nll_diff": abs(float(r.nll) - float(data["nll_at_hat"])),
+                    }
+                )
             else:
                 row.update({"ok": False, "reason": f"unknown_kind:{kind}"})
         except Exception as e:
@@ -176,6 +202,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_master_report.json"))
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
+    ap.add_argument("--bias-pulls-out", type=Path, default=Path("tmp/apex2_bias_pulls_report.json"))
     ap.add_argument("--root-out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--root-cases", type=Path, default=None, help="Cases JSON for ROOT suite.")
     ap.add_argument(
@@ -213,6 +240,14 @@ def main() -> int:
     ap.add_argument("--pyhf-n-random", type=int, default=8)
     ap.add_argument("--pyhf-seed", type=int, default=0)
     ap.add_argument("--pyhf-fit", action="store_true")
+    ap.add_argument(
+        "--bias-pulls",
+        action="store_true",
+        help="Also run slow bias/pulls regression (NextStat vs pyhf) and embed report.",
+    )
+    ap.add_argument("--bias-pulls-n-toys", type=int, default=200)
+    ap.add_argument("--bias-pulls-seed", type=int, default=0)
+    ap.add_argument("--bias-pulls-fixtures", type=str, default="simple")
     ap.add_argument("--root-prereq-only", action="store_true", help="Only check ROOT prereqs.")
     args = ap.parse_args()
 
@@ -229,6 +264,7 @@ def main() -> int:
         },
         "pyhf": None,
         "regression_golden": None,
+        "bias_pulls": None,
         "root": None,
     }
 
@@ -264,6 +300,34 @@ def main() -> int:
     # Regression golden fixtures (GLM surface)
     # ------------------------------------------------------------------
     report["regression_golden"] = _run_regression_golden()
+
+    # ------------------------------------------------------------------
+    # Bias/pulls regression (optional; slow)
+    # ------------------------------------------------------------------
+    if args.bias_pulls:
+        bias_runner = repo / "tests" / "apex2_bias_pulls_report.py"
+        bias_cmd = [
+            sys.executable,
+            str(bias_runner),
+            "--out",
+            str(args.bias_pulls_out),
+            "--n-toys",
+            str(args.bias_pulls_n_toys),
+            "--seed",
+            str(args.bias_pulls_seed),
+            "--fixtures",
+            str(args.bias_pulls_fixtures),
+        ]
+        rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
+        report["bias_pulls"] = {
+            "status": "ok" if rc_bias == 0 else "fail",
+            "returncode": int(rc_bias),
+            "stdout_tail": out_bias[-4000:],
+            "report_path": str(args.bias_pulls_out),
+            "report": _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None,
+        }
+    else:
+        report["bias_pulls"] = {"status": "skipped", "reason": "not_requested"}
 
     # ------------------------------------------------------------------
     # ROOT suite runner (may be skipped)
@@ -359,12 +423,15 @@ def main() -> int:
     # Exit code policy: fail on pyhf mismatch; fail on ROOT mismatch only if prereqs exist.
     pyhf_ok = (rc_pyhf == 0)
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
+    bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
     root_ok_or_skipped = root_status in ("ok", "skipped")
 
     print(f"Wrote: {args.out}")
     if not pyhf_ok:
         return 2
     if not reg_ok_or_skipped:
+        return 2
+    if not bias_ok_or_skipped:
         return 2
     if not root_ok_or_skipped:
         return 2
