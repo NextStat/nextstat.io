@@ -267,7 +267,7 @@ For the NUTS/HMC sampler:
 
 | Diagnostic | Threshold | Source |
 |------------|-----------|--------|
-| Split $\hat{R}$ | $< 1.1$ (test) / $< 1.01$ (production) | Cross-chain convergence |
+| Rank-normalized folded split $\hat{R}$ | $< 1.1$ (test) / $< 1.01$ (production) | Cross-chain convergence |
 | Divergence rate | $< 5\%$ (test) / $< 1\%$ (production) | Leapfrog integration quality |
 | POI posterior mean | Finite, in $(0, 5)$ | Sanity check |
 | ESS bulk / tail | $\geq 100$ per chain | Mixing quality |
@@ -277,6 +277,23 @@ Additionally:
 - **Reproducibility**: same seed $\Rightarrow$ identical draws (verified per-element)
 - **MAP consistency**: MAP with flat prior agrees with MLE within frequentist tolerances
 - **Data override**: posterior changes when observed data is replaced (sensitivity check)
+
+Definitions (aligned with Stan/ArviZ conventions and the implementation in `ns-inference`):
+
+- **Rank-normalized folded split $\hat{R}$** (Vehtari et al. 2021): each chain is split in half; draws are rank-normalized (inverse Normal CDF of ranks) to make $\hat{R}$ robust to heavy tails, and "folded" ($|x - \text{median}|$) to detect scale issues. The reported value is `max(rhat_rank, rhat_folded)`.
+- **ESS bulk**: computed on rank-normalized draws using variogram-based autocorrelation estimates with a Geyer initial monotone sequence truncation. The ESS is reported in draws (across all chains).
+- **ESS tail**: conservative tail-mixing proxy based on indicator chains at the 5% and 95% marginal quantiles; reported value is `min(ESS(I[x <= q05]), ESS(I[x >= q95]))`.
+- **E-BFMI** (Stan): `mean((E_t - E_{t-1})^2) / var(E_t)` per chain.
+
+In CI, NextStat also reports a conservative `quality` summary (ok/warn/fail) with relaxed thresholds for short runs; stricter limits (e.g. $\hat{R} < 1.01$) are reserved for longer warmup/sample settings and slow validation runs.
+
+Interpreting failures (pragmatic guidance, consistent with Stan/ArviZ):
+
+- High **divergence rate**: increase `target_accept`, reduce model curvature via reparameterization (often non-centered hierarchies), and check priors/constraints.
+- High **max treedepth rate**: increase `max_treedepth` (with caution), and treat it as a signal to reparameterize or increase `target_accept`.
+- High **$\hat{R}$**: run longer warmup/sampling and ensure chains start overdispersed (use `init_overdispersed_rel`), then reparameterize if it persists.
+- Low **ESS**: increase `n_samples` (and sometimes `n_warmup`); if ESS remains low, investigate model geometry (reparameterize).
+- Low **E-BFMI**: treat as "energy exploration is poor"; reparameterize and/or increase `target_accept`.
 
 ## 6. Test Suite Implementation
 

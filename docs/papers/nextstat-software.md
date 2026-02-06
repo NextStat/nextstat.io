@@ -317,11 +317,12 @@ Initialization options are mutually exclusive: `init_jitter`, `init_jitter_rel`,
 
 | Diagnostic | Threshold | Description |
 |------------|-----------|-------------|
-| Split $\hat{R}$ | $< 1.01$ | Potential scale reduction factor |
+| Rank-normalized folded split $\hat{R}$ | $< 1.01$ | Potential scale reduction factor (robust $\hat{R}$) |
 | ESS bulk | $\geq 100$ per chain | Effective sample size (bulk) |
 | ESS tail | $\geq 100$ per chain | Effective sample size (tail) |
 | E-BFMI | $> 0.3$ | Energy Bayesian fraction of missing information |
 | Divergence rate | $< 1\%$ | Fraction of divergent transitions |
+| Max treedepth rate | $< 1\%$ | Fraction of transitions hitting `max_treedepth` |
 
 ## 5. Automatic Differentiation
 
@@ -473,7 +474,7 @@ Toy ensembles ($N_\text{toys} = 200$ for smoke tests, $\geq 5000$ for certificat
 NUTS sampler quality is validated on toy distributions (Normal, MVN):
 
 - MAP with flat prior agrees with MLE within frequentist tolerances
-- $\hat{R} < 1.01$, divergence rate $< 1\%$, adequate ESS
+- rank-normalized folded split $\hat{R} < 1.01$, divergence rate $< 1\%$, adequate ESS and E-BFMI
 
 ### 7.6 Running Tests
 
@@ -498,7 +499,7 @@ NextStat provides a high-performance, multi-frontend inference engine for binned
 - **Three access modes** (Rust library, Python package, CLI) sharing a common numerical core.
 - **Composable AD** — forward and reverse mode via a generic `Scalar` trait, enabling gradient-based optimization and sampling without code duplication.
 
-**Future work** includes GPU backends (Metal, CUDA), expanded input format support, full mass matrix adaptation for NUTS, rank-normalized MCMC diagnostics, and published benchmark comparisons.
+**Future work** includes GPU backends (Metal, CUDA), expanded input format support, full mass matrix adaptation for NUTS, and published benchmark comparisons.
 
 NextStat is open-source under AGPL-3.0-or-later with optional commercial licensing. Source code: [https://github.com/nextstat/nextstat](https://github.com/nextstat/nextstat). Documentation: [https://nextstat.io](https://nextstat.io).
 
