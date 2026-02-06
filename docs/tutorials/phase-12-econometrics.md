@@ -58,3 +58,49 @@ This baseline supports **1-way cluster-robust** standard errors:
 
 Two-way clustering is not implemented yet.
 
+# Difference-in-Differences (DiD) and event study (TWFE)
+
+NextStat also provides minimal DiD and event-study helpers using a **two-way fixed effects (TWFE)** baseline:
+
+- DiD regressor: `treat_i * post_t`
+- Event study regressors: `treat_i * 1[rel_time == k]` for a window of relative times, with a reference bin omitted.
+
+## Parallel trends
+
+All DiD-style estimators rely on a parallel-trends assumption. Use event-study plots as a baseline diagnostic:
+- coefficients for negative relative times (pre-periods) should be near 0
+- large pre-trends are a red flag for identification
+
+## API
+
+```python
+import nextstat
+
+# DiD via TWFE
+did = nextstat.econometrics.did_twfe_from_formula(
+    "y ~ 1 + x1",  # optional controls
+    data,
+    entity="entity_id",
+    time="t",
+    treat="treated",
+    post="post",
+    cluster="entity",
+)
+print(did.att, did.att_se)
+
+# Event study via TWFE (relative time = t - policy_time)
+es = nextstat.econometrics.event_study_twfe_from_formula(
+    "y ~ 1 + x1",
+    data,
+    entity="entity_id",
+    time="t",
+    treat="treated",
+    event_time=10,       # scalar policy time, or a column name for per-row event time
+    window=(-4, 4),
+    reference=-1,
+    cluster="entity",
+)
+print(es.rel_times)
+print(es.coef)
+print(es.standard_errors)
+```

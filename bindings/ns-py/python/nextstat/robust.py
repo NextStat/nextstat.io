@@ -33,7 +33,7 @@ def cov_to_se(cov: Sequence[Sequence[float]]) -> List[float]:
         if i >= len(row):
             raise ValueError("cov must be square")
         v = float(row[i])
-        out.append(math.sqrt(v) if v > 0.0 else float("inf"))
+        out.append(math.sqrt(v) if v >= 0.0 else float("inf"))
     if len(out) != len(cov):
         raise ValueError("cov must be square")
     return out
