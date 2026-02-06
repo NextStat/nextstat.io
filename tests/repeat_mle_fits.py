@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import math
 import os
@@ -24,6 +25,8 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+import numpy as np
 
 
 def _is_pyhf_workspace(obj: Any) -> bool:
@@ -184,12 +187,14 @@ def _fit_pyhf_prepared(
     pyhf,
     prepared: PreparedPyhf,
     fit_options: dict[str, Any],
+    data_override: Any = None,
 ) -> FitRun:
     t0_wall = time.perf_counter()
     t0_cpu = time.process_time()
     try:
-        bestfit = pyhf.infer.mle.fit(prepared.data, prepared.model, **fit_options)
-        nll = float(pyhf.infer.mle.twice_nll(bestfit, prepared.data, prepared.model).item()) / 2.0
+        data = prepared.data if data_override is None else data_override
+        bestfit, twice_nll = pyhf.infer.mle.fit(data, prepared.model, return_fitted_val=True, **fit_options)
+        nll = float(twice_nll.item()) / 2.0
         return FitRun(
             ok=True,
             fit_wall_s=float(time.perf_counter() - t0_wall),
@@ -210,15 +215,14 @@ def _fit_pyhf_prepared(
 
 def _fit_nextstat_prepared(
     *,
-    nextstat,
     prepared: PreparedNextStat,
-    mle_config: dict[str, Any],
+    mle,
+    main_data_override: Optional[List[float]] = None,
 ) -> FitRun:
     t0_wall = time.perf_counter()
     t0_cpu = time.process_time()
     try:
-        mle = nextstat.MaximumLikelihoodEstimator(**mle_config)
-        res = mle.fit(prepared.model)
+        res = mle.fit(prepared.model, data=main_data_override) if main_data_override is not None else mle.fit(prepared.model)
         return FitRun(
             ok=True,
             fit_wall_s=float(time.perf_counter() - t0_wall),
@@ -507,6 +511,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--out-summary-json", type=Path, default=Path("tmp/repeat_mle_fits_summary.json"))
     ap.add_argument("--out-summary-md", type=Path, default=Path("tmp/repeat_mle_fits_summary.md"))
     ap.add_argument("--threads", type=int, default=1, help="Set thread env vars (RAYON/OMP/MKL/OPENBLAS/VECLIB).")
+    ap.add_argument("--toy-main", action="store_true", help="Poisson-fluctuate main observations per run (auxdata fixed).")
+    ap.add_argument("--toy-seed", type=int, default=123, help="Base RNG seed for toy-main generation.")
     ap.add_argument("--pyhf-method", default="SLSQP")
     ap.add_argument("--pyhf-maxiter", type=int, default=100000)
     ap.add_argument("--pyhf-tolerance", type=float, default=float("nan"))
@@ -556,7 +562,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     nextstat_mle_config = {"max_iter": int(args.nextstat_max_iter), "tol": float(args.nextstat_tol), "m": int(args.nextstat_m)}
 
     paths = [Path(p) for p in args.workspace] if args.workspace else list(_iter_default_workspace_paths())
-    excludes_raw = list(args.exclude) + ["tchannel_workspace.json"]  # default exclusion per user request
+    # Keep historical default exclusions only when running the whole fixture suite.
+    excludes_raw = list(args.exclude)
+    if not args.workspace:
+        excludes_raw += ["tchannel_workspace.json"]
     excludes: List[str] = []
     for x in excludes_raw:
         if x not in excludes:
@@ -573,6 +582,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "n_runs": int(args.n_runs),
         "n_warmup": int(args.n_warmup),
         "threads": threads,
+        "toy_main": bool(args.toy_main),
+        "toy_seed": int(args.toy_seed),
         "excluded": excludes,
         "pyhf_fit_options": pyhf_fit_options,
         "nextstat_mle_config": nextstat_mle_config,
@@ -656,11 +667,82 @@ def main(argv: Optional[List[str]] = None) -> int:
             records.append(meta_rec)
 
             # Warmup + measured runs.
+            mle = nextstat.MaximumLikelihoodEstimator(**nextstat_mle_config)
+
+            base_data = None
+            n_main = None
+            exp_main = None
+            seed_ws = None
+            if bool(args.toy_main):
+                try:
+                    # Determine main/aux split from the actual built model (pyhf order).
+                    n_data = len(prep_py.data)
+                    n_aux = len(prep_py.model.config.auxdata)
+                    n_main = int(n_data - n_aux)
+                    if n_main <= 0:
+                        raise ValueError(f"invalid n_main={n_main} (n_data={n_data}, n_aux={n_aux})")
+                    base_data = pyhf.tensorlib.tolist(prep_py.data)
+
+                    # Truth point: observed-data MLE in pyhf.
+                    truth_fit = _fit_pyhf_prepared(pyhf=pyhf, prepared=prep_py, fit_options=pyhf_fit_options)
+                    if not truth_fit.ok:
+                        raise RuntimeError(f"pyhf truth fit failed: {truth_fit.error}")
+
+                    truth_pars = truth_fit.params
+                    exp_all = prep_py.model.expected_data(truth_pars, include_auxdata=True)
+                    exp_all = [float(x) for x in list(pyhf.tensorlib.tolist(exp_all))]
+                    exp_main = exp_all[:n_main]
+                    if len(exp_main) != n_main:
+                        raise ValueError("expected_main length mismatch")
+                    if any((not math.isfinite(x)) or x < 0.0 for x in exp_main):
+                        raise ValueError("expected_main contains non-finite/negative values")
+
+                    # Stable seed per workspace, so multi-workspace runs are deterministic.
+                    h = hashlib.sha256(ws_id.encode("utf-8")).digest()
+                    seed_ws = (int.from_bytes(h[:8], "little") ^ int(args.toy_seed)) & 0x7FFF_FFFF_FFFF_FFFF
+                    rng = np.random.default_rng(seed_ws)
+
+                    # Attach toy metadata to the workspace meta record.
+                    meta_rec["toy"] = {
+                        "n_main": int(n_main),
+                        "n_aux": int(n_aux),
+                        "seed_workspace": int(seed_ws),
+                        "truth_pars_source": "pyhf_observed_mle",
+                    }
+                    meta_rec["toy"]["truth_pars"] = truth_pars
+                except Exception:
+                    err = traceback.format_exc()
+                    rec = {"type": "workspace_error", "path": str(p), "where": "toy_prepare", "error": err}
+                    _write_jsonl_line(fp, rec)
+                    continue
+
             for run_idx in range(int(args.n_warmup) + int(args.n_runs)):
                 is_warmup = run_idx < int(args.n_warmup)
 
-                py_run = _fit_pyhf_prepared(pyhf=pyhf, prepared=prep_py, fit_options=pyhf_fit_options)
-                ns_run = _fit_nextstat_prepared(nextstat=nextstat, prepared=prep_ns, mle_config=nextstat_mle_config)
+                toy = None
+                data_override = None
+                main_override = None
+                ns_model_for_eval = prep_ns.model
+
+                if bool(args.toy_main):
+                    assert base_data is not None and n_main is not None and exp_main is not None and seed_ws is not None
+                    # Poisson toys for main observations (auxdata stays fixed).
+                    y_main = rng.poisson(lam=np.asarray(exp_main, dtype=float)).astype(float).tolist()
+                    main_override = [float(x) for x in y_main]
+                    data_override = list(base_data)
+                    data_override[:n_main] = main_override
+                    toy = {
+                        "seed_workspace": int(seed_ws),
+                        "main_hash_sha256": hashlib.sha256(np.asarray(main_override, dtype=np.float64).tobytes()).hexdigest(),
+                    }
+                    # For cross-eval on this toy dataset, we need a NextStat model with overridden main obs.
+                    try:
+                        ns_model_for_eval = prep_ns.model.with_observed_main(main_override)
+                    except Exception:
+                        ns_model_for_eval = prep_ns.model
+
+                py_run = _fit_pyhf_prepared(pyhf=pyhf, prepared=prep_py, fit_options=pyhf_fit_options, data_override=data_override)
+                ns_run = _fit_nextstat_prepared(prepared=prep_ns, mle=mle, main_data_override=main_override)
 
                 diffs: Dict[str, Any] = {}
                 py_names = prep_py.names
@@ -676,9 +758,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if py_run.ok and ns_run.ok and diffs.get("param_set_equal") is True:
                     try:
                         ns_in_pyhf = _remap_params(ns_names, ns_run.params, py_names)
-                        pyhf_nll_at_ns = float(pyhf.infer.mle.twice_nll(ns_in_pyhf, prep_py.data, prep_py.model).item()) / 2.0
+                        data_for_eval = prep_py.data if data_override is None else data_override
+                        pyhf_nll_at_ns = float(pyhf.infer.mle.twice_nll(ns_in_pyhf, data_for_eval, prep_py.model).item()) / 2.0
                         py_in_ns = _remap_params(py_names, py_run.params, ns_names)
-                        ns_nll_at_py = float(prep_ns.model.nll(py_in_ns))
+                        ns_nll_at_py = float(ns_model_for_eval.nll(py_in_ns))
                         cross_eval = {
                             "pyhf_nll_at_nextstat_hat": float(pyhf_nll_at_ns),
                             "nextstat_nll_at_pyhf_hat": float(ns_nll_at_py),
@@ -693,6 +776,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "measurement": meas,
                     "warmup": bool(is_warmup),
                     "run_idx": int(run_idx),
+                    "toy": toy,
                     "pyhf": dataclasses.asdict(py_run),
                     "nextstat": dataclasses.asdict(ns_run),
                     "diffs": diffs,

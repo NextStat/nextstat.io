@@ -43,6 +43,22 @@ pub enum RootError {
     /// Object deserialization error.
     #[error("deserialization error: {0}")]
     Deserialization(String),
+
+    /// Branch not found in tree.
+    #[error("branch not found: {0}")]
+    BranchNotFound(String),
+
+    /// Tree not found in file.
+    #[error("tree not found: {0}")]
+    TreeNotFound(String),
+
+    /// Expression parse or evaluation error.
+    #[error("expression error: {0}")]
+    Expression(String),
+
+    /// Type mismatch (e.g. requesting f32 from an i64 branch).
+    #[error("type mismatch: {0}")]
+    TypeMismatch(String),
 }
 
 /// Result alias for ROOT operations.

@@ -16,6 +16,8 @@ thiserror.workspace = true
 log.workspace = true
 flate2 = "1.1"
 lz4_flex = "0.11"
+memmap2 = "0.9"
+rayon.workspace = true
 
 [dev-dependencies]
 approx.workspace = true
