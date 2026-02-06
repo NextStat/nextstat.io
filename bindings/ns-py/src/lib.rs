@@ -7,6 +7,8 @@ use pyo3::types::{PyDict, PyList};
 use pyo3::wrap_pyfunction;
 
 // Re-export types from core crates
+use ns_core::traits::{LogDensityModel, PreparedNll};
+use ns_core::{Error as NsError, Result as NsResult};
 use ns_inference::chain::sample_nuts_multichain;
 use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
@@ -76,6 +78,139 @@ impl PyHistFactoryModel {
     /// Get POI index in NextStat order.
     fn poi_index(&self) -> Option<usize> {
         self.inner.poi_index()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Minimal non-HEP model to exercise the generic sampling surface.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct GaussianMeanModel {
+    y: Vec<f64>,
+    inv_var: f64,
+    mean_y: f64,
+}
+
+impl GaussianMeanModel {
+    fn new(y: Vec<f64>, sigma: f64) -> NsResult<Self> {
+        if y.is_empty() {
+            return Err(NsError::Validation("y must be non-empty".to_string()));
+        }
+        if !sigma.is_finite() || sigma <= 0.0 {
+            return Err(NsError::Validation("sigma must be finite and > 0".to_string()));
+        }
+        let mean_y = y.iter().sum::<f64>() / (y.len() as f64);
+        Ok(Self { y, inv_var: 1.0 / (sigma * sigma), mean_y })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PreparedGaussianMeanModel<'a> {
+    model: &'a GaussianMeanModel,
+}
+
+impl PreparedNll for PreparedGaussianMeanModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for GaussianMeanModel {
+    type Prepared<'a>
+        = PreparedGaussianMeanModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        1
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec!["mu".to_string()]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY)]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![self.mean_y]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != 1 {
+            return Err(NsError::Validation("expected 1 parameter".to_string()));
+        }
+        let mu = params[0];
+        if !mu.is_finite() {
+            return Err(NsError::Validation("mu must be finite".to_string()));
+        }
+        // Constant terms don't matter for inference; keep a stable, simple NLL.
+        let mut nll = 0.0;
+        for &yi in &self.y {
+            let r = yi - mu;
+            nll += 0.5 * r * r * self.inv_var;
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != 1 {
+            return Err(NsError::Validation("expected 1 parameter".to_string()));
+        }
+        let mu = params[0];
+        if !mu.is_finite() {
+            return Err(NsError::Validation("mu must be finite".to_string()));
+        }
+        // d/dmu 0.5 * sum ((yi - mu)^2 / sigma^2) = sum ((mu - yi) / sigma^2)
+        let mut g = 0.0;
+        for &yi in &self.y {
+            g += (mu - yi) * self.inv_var;
+        }
+        Ok(vec![g])
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedGaussianMeanModel { model: self }
+    }
+}
+
+/// Python wrapper for GaussianMeanModel.
+#[pyclass(name = "GaussianMeanModel")]
+struct PyGaussianMeanModel {
+    inner: GaussianMeanModel,
+}
+
+#[pymethods]
+impl PyGaussianMeanModel {
+    #[new]
+    fn new(y: Vec<f64>, sigma: f64) -> PyResult<Self> {
+        let inner =
+            GaussianMeanModel::new(y, sigma).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
     }
 }
 
@@ -369,9 +504,9 @@ fn upper_limits_root(
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
 #[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, data=None))]
-fn sample(
-    py: Python<'_>,
-    model: &PyHistFactoryModel,
+fn sample<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
     n_chains: usize,
     n_warmup: usize,
     n_samples: usize,
@@ -382,15 +517,6 @@ fn sample(
     init_jitter_rel: Option<f64>,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
-    let sample_model = if let Some(obs_main) = data {
-        model
-            .inner
-            .with_observed_main(&obs_main)
-            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
-    } else {
-        model.inner.clone()
-    };
-
     let config = NutsConfig {
         max_treedepth,
         target_accept,
@@ -399,12 +525,45 @@ fn sample(
         ..Default::default()
     };
 
-    // Release GIL during Rayon-parallel sampling.
-    let result = py
-        .detach(|| {
-            sample_nuts_multichain(&sample_model, n_chains, n_warmup, n_samples, seed, config)
-        })
-        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?;
+    // Extract a Rust-owned model before releasing the GIL.
+    enum SampleModel {
+        HistFactory(RustModel),
+        GaussianMean(GaussianMeanModel),
+    }
+
+    let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
+        let m = if let Some(obs_main) = data {
+            hf.inner
+                .with_observed_main(&obs_main)
+                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+        } else {
+            hf.inner.clone()
+        };
+        SampleModel::HistFactory(m)
+    } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::GaussianMean(gm.inner.clone())
+    } else {
+        return Err(PyValueError::new_err(
+            "Unsupported model type. Expected HistFactoryModel or GaussianMeanModel.",
+        ));
+    };
+
+    // Release GIL during sampling (Rayon-parallel for multi-chain).
+    let result = match sample_model {
+        SampleModel::HistFactory(m) => {
+            let config = config.clone();
+            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::GaussianMean(m) => {
+            let config = config.clone();
+            py.detach(move || sample_nuts_multichain(&m, n_chains, n_warmup, n_samples, seed, config))
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+    };
 
     let diag = compute_diagnostics(&result);
     let param_names = &result.param_names;
@@ -577,6 +736,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
+    m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

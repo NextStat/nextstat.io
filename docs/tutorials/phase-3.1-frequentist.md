@@ -29,7 +29,7 @@ Optional (Python surface):
 
 ```bash
 cd bindings/ns-py
-../../.venv/bin/maturin develop
+maturin develop
 ```
 
 ## 1) Fit (MLE)
@@ -171,15 +171,39 @@ workspace = json.loads(Path("tests/fixtures/simple_workspace.json").read_text())
 model = nextstat.from_pyhf(json.dumps(workspace))
 
 # Observed asymptotic CLs (qtilde) at a tested mu
-r = infer.hypotest(1.0, model)
-print("cls(mu=1):", r["cls"])
+cls = infer.hypotest(1.0, model)
+print("cls(mu=1):", cls)
+
+# Optional: return CLs plus tail probabilities (CLs_b, CLb)
+cls, (clsb, clb) = infer.hypotest(1.0, model, return_tail_probs=True)
+print("cls/clsb/clb:", cls, clsb, clb)
 
 # Observed upper limit (default alpha=0.05)
-ul = infer.upper_limit(model, alpha=0.05)
-print("mu_up:", ul["mu_up"])
+mu_up = infer.upper_limit(model, alpha=0.05)
+print("mu_up:", mu_up)
 
 # Profile likelihood scan q(mu)
-scan = infer.profile_scan(model, start=0.0, stop=2.0, points=21)
+mu_values = [0.0 + i * (2.0 / 20.0) for i in range(21)]
+scan = infer.profile_scan(model, mu_values)
 print("mu_hat:", scan["mu_hat"])
 print("first point:", scan["points"][0])
+```
+
+## Python Visualization Artifacts (nextstat.viz)
+
+The `nextstat.viz` module produces the same plot-friendly artifacts as the CLI.
+
+```python
+import json
+from pathlib import Path
+
+import nextstat
+from nextstat import viz
+
+workspace = json.loads(Path("tests/fixtures/simple_workspace.json").read_text())
+model = nextstat.from_pyhf(json.dumps(workspace))
+
+scan = [i * 0.05 for i in range(101)]  # 0..5
+cls_artifact = viz.cls_curve(model, scan, alpha=0.05)
+profile_artifact = viz.profile_curve(model, [i * 0.1 for i in range(21)])  # 0..2
 ```

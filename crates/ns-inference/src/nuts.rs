@@ -675,4 +675,187 @@ mod tests {
         let poi_mean = result.param_mean(0);
         assert!(poi_mean > 0.0 && poi_mean < 5.0, "POI posterior mean out of range: {}", poi_mean,);
     }
+
+    // -----------------------------------------------------------------------
+    // Simulation-based calibration (SBC)
+    // -----------------------------------------------------------------------
+
+    #[derive(Clone)]
+    struct NormalMeanModel {
+        data: Vec<f64>,
+        sigma: f64,
+        prior_mu: f64,
+        prior_sigma: f64,
+    }
+
+    impl ns_core::traits::LogDensityModel for NormalMeanModel {
+        type Prepared<'a>
+            = ns_core::traits::PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            1
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            vec!["mu".to_string()]
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            vec![(f64::NEG_INFINITY, f64::INFINITY)]
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            vec![0.0]
+        }
+
+        fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+            if params.len() != 1 {
+                return Err(ns_core::Error::Validation(format!(
+                    "expected 1 parameter (mu), got {}",
+                    params.len()
+                )));
+            }
+            if !self.sigma.is_finite() || self.sigma <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "sigma must be finite and > 0, got {}",
+                    self.sigma
+                )));
+            }
+            if !self.prior_sigma.is_finite() || self.prior_sigma <= 0.0 {
+                return Err(ns_core::Error::Validation(format!(
+                    "prior_sigma must be finite and > 0, got {}",
+                    self.prior_sigma
+                )));
+            }
+
+            let mu = params[0];
+            let inv_var = 1.0 / (self.sigma * self.sigma);
+            let mut nll = 0.0;
+            for &x in &self.data {
+                let r = x - mu;
+                nll += 0.5 * r * r * inv_var;
+            }
+
+            // Gaussian prior on mu (implemented as an additive NLL term).
+            let z = (mu - self.prior_mu) / self.prior_sigma;
+            nll += 0.5 * z * z;
+            Ok(nll)
+        }
+
+        fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+            let mu = params.get(0).copied().ok_or_else(|| {
+                ns_core::Error::Validation("expected 1 parameter (mu)".to_string())
+            })?;
+            let inv_var = 1.0 / (self.sigma * self.sigma);
+            let mut g = 0.0;
+            for &x in &self.data {
+                // d/dmu 0.5 * (x-mu)^2 / sigma^2 = (mu - x) / sigma^2
+                g += (mu - x) * inv_var;
+            }
+            g += (mu - self.prior_mu) / (self.prior_sigma * self.prior_sigma);
+            Ok(vec![g])
+        }
+
+        fn prepared(&self) -> Self::Prepared<'_> {
+            ns_core::traits::PreparedModelRef::new(self)
+        }
+    }
+
+    fn sbc_ranks(
+        n_rep: usize,
+        n_obs: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+    ) -> Vec<usize> {
+        use crate::chain::sample_nuts_multichain;
+        use rand::SeedableRng;
+        use rand_distr::{Distribution, Normal};
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let prior = Normal::new(0.0, 1.0).unwrap();
+        let obs = Normal::new(0.0, 1.0).unwrap();
+
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            init_jitter: 0.0,
+            init_jitter_rel: None,
+        };
+
+        let mut ranks = Vec::with_capacity(n_rep);
+        for rep in 0..n_rep {
+            let mu_true = prior.sample(&mut rng);
+            let data: Vec<f64> = (0..n_obs).map(|_| mu_true + obs.sample(&mut rng)).collect();
+            let model = NormalMeanModel { data, sigma: 1.0, prior_mu: 0.0, prior_sigma: 1.0 };
+
+            let result = sample_nuts_multichain(
+                &model,
+                1,
+                n_warmup,
+                n_samples,
+                seed + rep as u64,
+                config.clone(),
+            )
+            .expect("NUTS should run for SBC model");
+            let draws = result.param_draws(0);
+            let draws = draws.first().expect("one chain").as_slice();
+            let rank = draws.iter().filter(|&&x| x < mu_true).count();
+            ranks.push(rank);
+        }
+        ranks
+    }
+
+    #[test]
+    fn test_sbc_rank_statistic_smoke() {
+        // Keep this fast: few reps and small chains. We only check that ranks are in range.
+        let n_samples = 40usize;
+        let ranks = sbc_ranks(3, 10, 50, n_samples, 123);
+        for r in ranks {
+            assert!(r <= n_samples, "rank {} out of range", r);
+        }
+    }
+
+    #[test]
+    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_normal_mean -- --ignored`"]
+    fn test_sbc_normal_mean() {
+        use statrs::distribution::{ChiSquared, ContinuousCDF};
+
+        let n_rep = 20usize;
+        let n_samples = 200usize;
+        let ranks = sbc_ranks(n_rep, 20, 200, n_samples, 7);
+
+        // Histogram ranks into a few bins and run a chi-square uniformity test.
+        let bins = 5usize;
+        let mut counts = vec![0usize; bins];
+        for r in ranks {
+            let u = r as f64 / n_samples as f64;
+            let mut b = (u * bins as f64).floor() as usize;
+            if b >= bins {
+                b = bins - 1;
+            }
+            counts[b] += 1;
+        }
+
+        let expected = n_rep as f64 / bins as f64;
+        let chi2: f64 = counts
+            .iter()
+            .map(|&c| {
+                let d = c as f64 - expected;
+                d * d / expected
+            })
+            .sum();
+        let dist = ChiSquared::new((bins - 1) as f64).unwrap();
+        let p = 1.0 - dist.cdf(chi2);
+
+        assert!(
+            p > 0.01,
+            "SBC ranks deviate from uniform too much: chi2={}, p={}, counts={:?}",
+            chi2,
+            p,
+            counts
+        );
+    }
 }

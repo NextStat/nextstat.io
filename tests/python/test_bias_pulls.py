@@ -169,3 +169,32 @@ def test_pull_mu_regression_vs_pyhf():
         assert abs(d_mean) <= 0.05, f"{key}: |Delta mean(pull_mu)|={abs(d_mean):.4f} too large"
         assert abs(d_std) <= 0.05, f"{key}: |Delta std(pull_mu)|={abs(d_std):.4f} too large"
         assert abs(d_cov) <= 0.03, f"{key}: |Delta coverage_1sigma(mu)|={abs(d_cov):.4f} too large"
+
+        # Write JSON artifact for CI archival (opt-in via NS_ARTIFACTS_DIR)
+        artifacts_dir = os.environ.get("NS_ARTIFACTS_DIR")
+        if artifacts_dir:
+            out_dir = Path(artifacts_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            artifact = {
+                "fixture": key,
+                "n_toys": N_TOYS,
+                "seed": SEED,
+                "pyhf": {
+                    "pull_mean": float(pulls_pyhf.mean()),
+                    "pull_std": float(pulls_pyhf.std(ddof=1)),
+                    "coverage_1sigma": float(cover_pyhf.mean()),
+                },
+                "nextstat": {
+                    "pull_mean": float(pulls_ns.mean()),
+                    "pull_std": float(pulls_ns.std(ddof=1)),
+                    "coverage_1sigma": float(cover_ns.mean()),
+                },
+                "delta": {
+                    "mean": d_mean,
+                    "std": d_std,
+                    "coverage_1sigma": d_cov,
+                },
+            }
+            (out_dir / f"bias_pulls_{key}.json").write_text(
+                json.dumps(artifact, indent=2)
+            )

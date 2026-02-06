@@ -97,3 +97,20 @@ def test_upper_limit_coverage_regression_vs_pyhf():
 
     # Regression check: NextStat should track pyhf coverage on the same toys.
     assert abs(cov_ns - cov_pyhf) <= 0.05
+
+    # Write JSON artifact for CI archival (opt-in via NS_ARTIFACTS_DIR)
+    artifacts_dir = os.environ.get("NS_ARTIFACTS_DIR")
+    if artifacts_dir:
+        out_dir = Path(artifacts_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "fixture": "simple",
+            "n_toys": N_TOYS,
+            "mu_true": mu_true,
+            "pyhf_coverage": cov_pyhf,
+            "nextstat_coverage": cov_ns,
+            "delta_coverage": cov_ns - cov_pyhf,
+        }
+        (out_dir / "coverage_regression_simple.json").write_text(
+            json.dumps(artifact, indent=2)
+        )
