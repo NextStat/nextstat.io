@@ -41,11 +41,13 @@ GaussianMeanModel = getattr(_core, "GaussianMeanModel", None)  # type: ignore
 LinearRegressionModel = getattr(_core, "LinearRegressionModel", None)  # type: ignore
 LogisticRegressionModel = getattr(_core, "LogisticRegressionModel", None)  # type: ignore
 PoissonRegressionModel = getattr(_core, "PoissonRegressionModel", None)  # type: ignore
+ComposedGlmModel = getattr(_core, "ComposedGlmModel", None)  # type: ignore
 ols_fit = getattr(_core, "ols_fit", None)  # type: ignore
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
 from . import viz as viz  # noqa: E402
+from . import data as data  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -62,11 +64,13 @@ __all__ = [
     "sample_nuts",
     "bayes",
     "viz",
+    "data",
     "HistFactoryModel",
     "GaussianMeanModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
     "PoissonRegressionModel",
+    "ComposedGlmModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "ols_fit",

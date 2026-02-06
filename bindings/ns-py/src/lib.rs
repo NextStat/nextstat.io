@@ -14,8 +14,8 @@ use ns_inference::diagnostics::compute_diagnostics;
 use ns_inference::mle::MaximumLikelihoodEstimator as RustMLE;
 use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::{
-    LinearRegressionModel as RustLinearRegressionModel,
-    LogisticRegressionModel as RustLogisticRegressionModel,
+    ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
+    LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
     PoissonRegressionModel as RustPoissonRegressionModel,
     hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
     profile_likelihood as pl,
@@ -378,6 +378,103 @@ impl PyPoissonRegressionModel {
     }
 }
 
+/// Python wrapper for `ComposedGlmModel` built via `ModelBuilder`.
+#[pyclass(name = "ComposedGlmModel")]
+struct PyComposedGlmModel {
+    inner: RustComposedGlmModel,
+}
+
+#[pymethods]
+impl PyComposedGlmModel {
+    /// Build a composed Gaussian linear regression model (sigma fixed to 1).
+    #[staticmethod]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0))]
+    fn linear_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        include_intercept: bool,
+        group_idx: Option<Vec<usize>>,
+        n_groups: Option<usize>,
+        coef_prior_mu: f64,
+        coef_prior_sigma: f64,
+    ) -> PyResult<Self> {
+        if group_idx.is_none() && n_groups.is_some() {
+            return Err(PyValueError::new_err("n_groups requires group_idx"));
+        }
+
+        let mut b = RustModelBuilder::linear_regression(x, y, include_intercept)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b
+            .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        if let Some(group_idx) = group_idx {
+            let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
+            b = b
+                .with_random_intercept(group_idx, ng)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        }
+
+        let inner = b.build().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    /// Build a composed logistic regression model (Bernoulli-logit).
+    #[staticmethod]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0))]
+    fn logistic_regression(
+        x: Vec<Vec<f64>>,
+        y: Vec<u8>,
+        include_intercept: bool,
+        group_idx: Option<Vec<usize>>,
+        n_groups: Option<usize>,
+        coef_prior_mu: f64,
+        coef_prior_sigma: f64,
+    ) -> PyResult<Self> {
+        if group_idx.is_none() && n_groups.is_some() {
+            return Err(PyValueError::new_err("n_groups requires group_idx"));
+        }
+
+        let mut b = RustModelBuilder::logistic_regression(x, y, include_intercept)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        b = b
+            .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        if let Some(group_idx) = group_idx {
+            let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
+            b = b
+                .with_random_intercept(group_idx, ng)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        }
+
+        let inner = b.build().map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for FitResult
 #[pyclass(name = "FitResult")]
 struct PyFitResult {
@@ -454,6 +551,7 @@ impl PyMaximumLikelihoodEstimator {
             LinearRegression(RustLinearRegressionModel),
             LogisticRegression(RustLogisticRegressionModel),
             PoissonRegression(RustPoissonRegressionModel),
+            ComposedGlm(RustComposedGlmModel),
         }
 
         let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -485,9 +583,14 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::PoissonRegression(pois.inner.clone())
+        } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::ComposedGlm(glm.inner.clone())
         } else {
             return Err(PyValueError::new_err(
-                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, or a regression model.",
+                "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
             ));
         };
 
@@ -514,6 +617,11 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::PoissonRegression(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::ComposedGlm(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -767,6 +875,7 @@ fn sample<'py>(
         LinearRegression(RustLinearRegressionModel),
         LogisticRegression(RustLogisticRegressionModel),
         PoissonRegression(RustPoissonRegressionModel),
+        ComposedGlm(RustComposedGlmModel),
     }
 
     let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -798,9 +907,14 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::PoissonRegression(pois.inner.clone())
+    } else if let Ok(glm) = model.extract::<PyRef<'_, PyComposedGlmModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::ComposedGlm(glm.inner.clone())
     } else {
         return Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, or a regression model.",
+            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, or ComposedGlmModel.",
         ));
     };
 
@@ -855,6 +969,18 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::PoissonRegression(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
+                    vec![seed; n_chains]
+                } else {
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
+                };
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::ComposedGlm(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> = if init_jitter == 0.0 && init_jitter_rel.is_none() {
@@ -1050,6 +1176,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
     m.add_class::<PyPoissonRegressionModel>()?;
+    m.add_class::<PyComposedGlmModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

@@ -77,6 +77,38 @@ class PoissonRegressionModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class ComposedGlmModel:
+    @staticmethod
+    def linear_regression(
+        x: List[List[float]],
+        y: List[float],
+        *,
+        include_intercept: bool = ...,
+        group_idx: Optional[List[int]] = ...,
+        n_groups: Optional[int] = ...,
+        coef_prior_mu: float = ...,
+        coef_prior_sigma: float = ...,
+    ) -> ComposedGlmModel: ...
+
+    @staticmethod
+    def logistic_regression(
+        x: List[List[float]],
+        y: List[int],
+        *,
+        include_intercept: bool = ...,
+        group_idx: Optional[List[int]] = ...,
+        n_groups: Optional[int] = ...,
+        coef_prior_mu: float = ...,
+        coef_prior_sigma: float = ...,
+    ) -> ComposedGlmModel: ...
+
+    def n_params(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class FitResult:
     parameters: List[float]
     uncertainties: List[float]
@@ -99,11 +131,34 @@ class FitResult:
 
 class MaximumLikelihoodEstimator:
     def __init__(self) -> None: ...
-    def fit(self, model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+    def fit(
+        self,
+        model: Union[
+            HistFactoryModel,
+            GaussianMeanModel,
+            LinearRegressionModel,
+            LogisticRegressionModel,
+            PoissonRegressionModel,
+            ComposedGlmModel,
+        ],
+        *,
+        data: Optional[List[float]] = ...,
+    ) -> FitResult: ...
 
 
 def from_pyhf(json_str: str) -> HistFactoryModel: ...
-def fit(model: HistFactoryModel, *, data: Optional[List[float]] = ...) -> FitResult: ...
+def fit(
+    model: Union[
+        HistFactoryModel,
+        GaussianMeanModel,
+        LinearRegressionModel,
+        LogisticRegressionModel,
+        PoissonRegressionModel,
+        ComposedGlmModel,
+    ],
+    *,
+    data: Optional[List[float]] = ...,
+) -> FitResult: ...
 def ols_fit(x: List[List[float]], y: List[float], *, include_intercept: bool = ...) -> List[float]: ...
 
 
@@ -164,6 +219,7 @@ def sample(
         LinearRegressionModel,
         LogisticRegressionModel,
         PoissonRegressionModel,
+        ComposedGlmModel,
     ],
     *,
     n_chains: int = ...,
