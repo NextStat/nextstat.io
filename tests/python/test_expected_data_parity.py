@@ -87,6 +87,7 @@ def sample_params(rng: random.Random, init: list[float], bounds: list[tuple[floa
     [
         ("simple_workspace.json", "GaussExample"),
         ("complex_workspace.json", "measurement"),
+        ("histfactory/workspace.json", "NominalMeasurement"),
     ],
 )
 def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):
@@ -130,6 +131,7 @@ def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement:
     [
         ("simple_workspace.json", "GaussExample"),
         ("complex_workspace.json", "measurement"),
+        ("histfactory/workspace.json", "NominalMeasurement"),
     ],
 )
 def test_nll_accepts_buffer_and_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):

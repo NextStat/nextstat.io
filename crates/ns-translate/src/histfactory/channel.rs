@@ -95,6 +95,14 @@ pub fn parse_channel(path: &Path) -> Result<ChannelXml> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| Error::Xml(format!("reading {}: {}", path.display(), e)))?;
 
+    // Strip DTD declaration — HistFactory XMLs always have <!DOCTYPE>
+    // and roxmltree rejects DTD by default.
+    let text: String = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("<!DOCTYPE"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     let doc = roxmltree::Document::parse(&text)
         .map_err(|e| Error::Xml(format!("parsing {}: {}", path.display(), e)))?;
 

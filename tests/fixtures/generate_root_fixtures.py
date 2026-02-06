@@ -205,7 +205,115 @@ def create_histfactory_fixtures():
     print(f"Created {ws_path}")
 
 
+def create_simple_tree():
+    """Create a ROOT file with a TTree for TTree reader tests.
+
+    Tree "events" with 1000 entries and branches:
+      pt       (float32)
+      eta      (float32)
+      njet     (int32)
+      mbb      (float64)
+      weight_mc     (float64)
+      weight_jes_up   (float64)
+      weight_jes_down (float64)
+    """
+    path = os.path.join(FIXTURES_DIR, "simple_tree.root")
+
+    rng = np.random.RandomState(42)
+    n = 1000
+
+    pt = rng.exponential(50.0, n).astype(np.float32)
+    eta = rng.uniform(-2.5, 2.5, n).astype(np.float32)
+    njet = rng.poisson(3, n).astype(np.int32)
+    mbb = rng.normal(125.0, 30.0, n).astype(np.float64)
+    weight_mc = rng.uniform(0.5, 1.5, n).astype(np.float64)
+    weight_jes_up = weight_mc * rng.normal(1.05, 0.02, n)
+    weight_jes_down = weight_mc * rng.normal(0.95, 0.02, n)
+
+    with uproot.recreate(path) as f:
+        # Use mktree + extend to write a classic TTree (not RNTuple)
+        f.mktree("events", {
+            "pt": np.float32,
+            "eta": np.float32,
+            "njet": np.int32,
+            "mbb": np.float64,
+            "weight_mc": np.float64,
+            "weight_jes_up": np.float64,
+            "weight_jes_down": np.float64,
+        })
+        f["events"].extend({
+            "pt": pt,
+            "eta": eta,
+            "njet": njet,
+            "mbb": mbb,
+            "weight_mc": weight_mc,
+            "weight_jes_up": weight_jes_up,
+            "weight_jes_down": weight_jes_down,
+        })
+
+    print(f"Created {path}")
+
+    # Write expected values for Rust tests
+    expected = {
+        "n_entries": n,
+        "branches": {
+            "pt": {
+                "type": "float32",
+                "first_5": pt[:5].tolist(),
+                "sum": float(pt.sum()),
+            },
+            "eta": {
+                "type": "float32",
+                "first_5": eta[:5].tolist(),
+                "sum": float(eta.sum()),
+            },
+            "njet": {
+                "type": "int32",
+                "first_5": njet[:5].tolist(),
+                "sum": int(njet.sum()),
+            },
+            "mbb": {
+                "type": "float64",
+                "first_5": mbb[:5].tolist(),
+                "sum": float(mbb.sum()),
+            },
+            "weight_mc": {
+                "type": "float64",
+                "first_5": weight_mc[:5].tolist(),
+                "sum": float(weight_mc.sum()),
+            },
+        },
+        # numpy.histogram reference for cross-validation
+        "mbb_histogram": {
+            "bin_edges": [0.0, 50.0, 100.0, 150.0, 200.0, 300.0],
+            "bin_content_unweighted": np.histogram(
+                mbb, bins=[0.0, 50.0, 100.0, 150.0, 200.0, 300.0]
+            )[0].tolist(),
+            "bin_content_weighted": np.histogram(
+                mbb,
+                bins=[0.0, 50.0, 100.0, 150.0, 200.0, 300.0],
+                weights=weight_mc,
+            )[0].tolist(),
+        },
+        # With selection: njet >= 4
+        "mbb_histogram_selected": {
+            "bin_edges": [0.0, 50.0, 100.0, 150.0, 200.0, 300.0],
+            "bin_content_weighted": np.histogram(
+                mbb[njet >= 4],
+                bins=[0.0, 50.0, 100.0, 150.0, 200.0, 300.0],
+                weights=weight_mc[njet >= 4],
+            )[0].tolist(),
+        },
+    }
+
+    expected_path = os.path.join(FIXTURES_DIR, "simple_tree_expected.json")
+    with open(expected_path, "w") as f:
+        json.dump(expected, f, indent=2)
+    print(f"Created {expected_path}")
+
+
 if __name__ == "__main__":
     create_simple_root()
     create_histfactory_fixtures()
+    create_simple_tree()
     print("\nAll fixtures created successfully.")

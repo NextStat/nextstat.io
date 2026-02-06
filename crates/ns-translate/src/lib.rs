@@ -12,5 +12,7 @@
 
 pub mod pyhf;
 pub mod histfactory;
+pub mod ntuple;
 
 pub use pyhf::*;
+pub use ntuple::NtupleWorkspaceBuilder;

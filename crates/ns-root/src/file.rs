@@ -11,7 +11,7 @@ use crate::histogram::Histogram;
 use crate::key::{Key, KeyInfo};
 use crate::objects;
 use crate::rbuffer::RBuffer;
-use crate::tree::{BranchInfo, Tree};
+use crate::tree::Tree;
 use crate::branch_reader::BranchReader;
 
 /// Parsed ROOT file header.

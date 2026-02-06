@@ -181,7 +181,18 @@ PY=./.venv/bin/python make pyhf-audit-fit PYHF_AUDIT_FIT_ARGS="--nextstat-max-it
 To measure run-to-run stability and timing distributions, use:
 
 ```bash
-PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py --n-runs 3
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py \
+  --threads 1 \
+  --fit-order alternate \
+  --n-warmup 1 \
+  --n-runs 3 \
+  --pyhf-method SLSQP \
+  --pyhf-maxiter 100000 \
+  --pyhf-tolerance 1e-8 \
+  --pyhf-do-grad 0 \
+  --pyhf-do-stitch 0 \
+  --nextstat-max-iter 3000 \
+  --nextstat-tol 1e-6
 ```
 
 This writes:
@@ -189,16 +200,40 @@ This writes:
 - `tmp/repeat_mle_fits.jsonl` (raw per-run log)
 - `tmp/repeat_mle_fits_summary.json` and `tmp/repeat_mle_fits_summary.md` (aggregates)
 
+To generate a more detailed, per-workspace audit report (including cross-eval objective deltas):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/analyze_repeat_mle_fits.py \
+  --in-jsonl tmp/repeat_mle_fits.jsonl \
+  --out-json tmp/repeat_mle_fits_audit.json \
+  --out-md tmp/repeat_mle_fits_audit.md
+```
+
 When the 3-run smoke works, run a full 100-run sweep:
 
 ```bash
-PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py --n-runs 100
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/repeat_mle_fits.py \
+  --threads 1 \
+  --fit-order alternate \
+  --n-warmup 3 \
+  --n-runs 100 \
+  --pyhf-method SLSQP \
+  --pyhf-maxiter 100000 \
+  --pyhf-tolerance 1e-8 \
+  --pyhf-do-grad 0 \
+  --pyhf-do-stitch 0 \
+  --nextstat-max-iter 3000 \
+  --nextstat-tol 1e-6
 ```
 
 Notes:
 
 - `tchannel_workspace.json` is excluded by default (it is covered by a separate test).
 - The runner builds each model once per workspace and measures fit timing separately.
+- `--fit-order alternate` reduces systematic cache/CPU-state bias in timing comparisons.
+- With the default `pyhf` numpy backend, `--pyhf-do-grad 1` is unsupported (no autodiff).
+- For publishable stability stats, parameter/NLL aggregates are computed on **paired runs where NextStat converged**
+  (the summary includes the selection counts and convergence rate).
 
 If you want a snapshot you can commit/review later, copy the report into `audit/`:
 

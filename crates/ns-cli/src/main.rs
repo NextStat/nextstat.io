@@ -153,6 +153,12 @@ enum Commands {
         command: VizCommands,
     },
 
+    /// Import external formats into NextStat-compatible inputs
+    Import {
+        #[command(subcommand)]
+        command: ImportCommands,
+    },
+
     /// Time series and state space models (Phase 8)
     Timeseries {
         #[command(subcommand)]
@@ -236,6 +242,20 @@ enum VizCommands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImportCommands {
+    /// HistFactory `combination.xml` (+ referenced ROOT histograms) → pyhf JSON workspace
+    Histfactory {
+        /// Path to HistFactory `combination.xml`
+        #[arg(long)]
+        xml: PathBuf,
+
+        /// Output file for the workspace (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -506,6 +526,11 @@ fn main() -> Result<()> {
                 cmd_viz_ranking(&input, output.as_ref(), threads, cli.bundle.as_ref())
             }
         },
+        Commands::Import { command } => match command {
+            ImportCommands::Histfactory { xml, output } => {
+                cmd_import_histfactory(&xml, output.as_ref(), cli.bundle.as_ref())
+            }
+        },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {
                 cmd_ts_kalman_filter(&input, output.as_ref(), cli.bundle.as_ref())
@@ -599,6 +624,22 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn cmd_import_histfactory(
+    xml: &PathBuf,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    if bundle.is_some() {
+        anyhow::bail!("--bundle is not supported for `nextstat import histfactory` yet");
+    }
+
+    tracing::info!(path = %xml.display(), "importing HistFactory combination.xml");
+    let ws = ns_translate::histfactory::from_xml(xml)?;
+    let output_json = serde_json::to_value(&ws)?;
+    write_json(output, &output_json)?;
+    Ok(())
 }
 
 fn cmd_fit(

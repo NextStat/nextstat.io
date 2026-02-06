@@ -50,12 +50,13 @@ impl CompiledExpr {
     pub fn compile(input: &str) -> Result<Self> {
         let tokens = tokenize(input)?;
         let mut parser = Parser::new(&tokens);
-        let (ast, branches) = parser.parse()?;
+        let ast = parser.parse_or()?;
         if parser.pos < parser.tokens.len() {
             return Err(RootError::Expression(format!(
                 "unexpected token after expression: {:?}", parser.tokens[parser.pos]
             )));
         }
+        let branches = std::mem::take(&mut parser.branches);
         Ok(CompiledExpr { ast, required_branches: branches })
     }
 
@@ -228,11 +229,6 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token]) -> Self {
         Self { tokens, pos: 0, branches: Vec::new() }
-    }
-
-    fn parse(mut self) -> Result<(Expr, Vec<String>)> {
-        let expr = self.parse_or()?;
-        Ok((expr, self.branches))
     }
 
     fn peek(&self) -> Option<&Token> {

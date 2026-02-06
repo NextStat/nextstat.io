@@ -52,6 +52,8 @@ def fit(
     include_intercept: bool = True,
     l2: Optional[float] = None,
     penalize_intercept: bool = False,
+    fallback_l2: Optional[float] = None,
+    fallback_on_separation: bool = False,
 ) -> LogisticFit:
     import nextstat
 
@@ -64,6 +66,15 @@ def fit(
         y2.append(iv)
 
     warnings: List[str] = []
+
+    # Cheap, deterministic 1D separation heuristic (useful for Phase 6 robustness).
+    # For multi-dimensional separation, we only emit the post-fit heuristics below.
+    if x2 and len(x2[0]) == 1 and include_intercept:
+        xs0 = [float(row[0]) for row, yi in zip(x2, y2) if int(yi) == 0]
+        xs1 = [float(row[0]) for row, yi in zip(x2, y2) if int(yi) == 1]
+        if xs0 and xs1:
+            if (max(xs0) < min(xs1)) or (max(xs1) < min(xs0)):
+                warnings.append("perfect_separation_detected_1d")
 
     if l2 is None or float(l2) <= 0.0:
         model = nextstat._core.LogisticRegressionModel(x2, y2, include_intercept=include_intercept)
@@ -94,6 +105,42 @@ def fit(
             max_se = max(abs(float(v)) for v in r.uncertainties) if r.uncertainties else 0.0
             if (max_abs_coef > 15.0) or (max_se > 1e3):
                 warnings.append("large_coefficients_possible_separation")
+
+    # Optional explicit robustness hook: retry with ridge/MAP if separation is detected.
+    # This is intentionally opt-in (no magic).
+    if (l2 is None or float(l2) <= 0.0) and fallback_on_separation:
+        fl2 = None if fallback_l2 is None else float(fallback_l2)
+        if fl2 is not None and fl2 > 0.0:
+            if (
+                ("perfect_separation_detected_1d" in warnings)
+                or ("possible_separation_use_l2" in warnings)
+                or ("large_coefficients_possible_separation" in warnings)
+            ):
+                sigma = 1.0 / math.sqrt(fl2)
+                model2 = nextstat._core.ComposedGlmModel.logistic_regression(
+                    x2,
+                    y2,
+                    include_intercept=include_intercept,
+                    coef_prior_mu=0.0,
+                    coef_prior_sigma=sigma,
+                    penalize_intercept=penalize_intercept,
+                )
+                r2 = nextstat.fit(model2)
+                if bool(r2.converged):
+                    r = r2
+                    warnings = [
+                        w
+                        for w in warnings
+                        if w
+                        not in (
+                            "possible_separation_use_l2",
+                            "large_coefficients_possible_separation",
+                            "not_converged",
+                        )
+                    ]
+                    warnings.append("fallback_l2_applied")
+                else:
+                    warnings.append("fallback_l2_failed_to_converge")
 
     return LogisticFit(
         coef=list(r.parameters),

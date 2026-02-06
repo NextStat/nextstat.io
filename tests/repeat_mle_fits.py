@@ -20,6 +20,7 @@ import math
 import os
 import platform
 import statistics
+import subprocess
 import sys
 import time
 import traceback
@@ -27,6 +28,52 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
+
+
+def _git_meta() -> dict[str, Any]:
+    try:
+        head = (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            .stdout.strip()
+        )
+    except Exception:
+        head = None
+
+    try:
+        # Avoid dumping the whole diff; just record that the working tree is dirty
+        # and how many paths are modified/untracked.
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        dirty_paths = [ln for ln in status.splitlines() if ln.strip()]
+        dirty = len(dirty_paths) > 0
+        dirty_count = len(dirty_paths)
+    except Exception:
+        dirty = None
+        dirty_count = None
+
+    try:
+        branch = (
+            subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            .stdout.strip()
+        )
+    except Exception:
+        branch = None
+
+    return {"git_head": head, "git_branch": branch, "git_dirty": dirty, "git_dirty_count": dirty_count}
 
 
 def _is_pyhf_workspace(obj: Any) -> bool:
@@ -569,6 +616,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--threads", type=int, default=1, help="Set thread env vars (RAYON/OMP/MKL/OPENBLAS/VECLIB).")
     ap.add_argument("--toy-main", action="store_true", help="Poisson-fluctuate main observations per run (auxdata fixed).")
     ap.add_argument("--toy-seed", type=int, default=123, help="Base RNG seed for toy-main generation.")
+    ap.add_argument(
+        "--fit-order",
+        choices=["pyhf-first", "nextstat-first", "alternate"],
+        default="pyhf-first",
+        help="Order of tool execution per run. Use 'alternate' to reduce systematic cache/CPU-state bias in timing comparisons.",
+    )
     ap.add_argument("--pyhf-method", default="SLSQP")
     ap.add_argument("--pyhf-maxiter", type=int, default=100000)
     ap.add_argument("--pyhf-tolerance", type=float, default=float("nan"))
@@ -607,6 +660,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception:
         raise SystemExit("pyhf is required. Install: pip install -e 'bindings/ns-py[validation]'")
 
+    # Guard against a common misconfiguration:
+    # - With the default numpy backend, pyhf cannot compute gradients (no autodiff),
+    #   so do_grad=True will hard-fail.
+    if args.pyhf_do_grad == 1:
+        tensorlib, _ = pyhf.get_backend()
+        if getattr(tensorlib, "name", None) == "numpy":
+            raise SystemExit(
+                "pyhf backend is numpy, which does not support autodifferentiation. "
+                "Use --pyhf-do-grad 0 (recommended for numpy), or install an autodiff backend "
+                "(jax/tensorflow/torch) and set it via pyhf.set_backend(...)."
+            )
+
     pyhf_fit_options: dict[str, Any] = {"method": str(args.pyhf_method), "maxiter": int(args.pyhf_maxiter)}
     if math.isfinite(float(args.pyhf_tolerance)):
         pyhf_fit_options["tolerance"] = float(args.pyhf_tolerance)
@@ -633,13 +698,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         "platform": platform.platform(),
         "machine": platform.machine(),
         "processor": platform.processor(),
+        **_git_meta(),
         "pyhf_version": getattr(pyhf, "__version__", "unknown"),
+        "pyhf_backend": getattr(pyhf.get_backend()[0], "name", "unknown"),
+        "pyhf_optimizer": pyhf.get_backend()[1].__class__.__name__,
         "nextstat_version": getattr(nextstat, "__version__", "unknown"),
         "n_runs": int(args.n_runs),
         "n_warmup": int(args.n_warmup),
         "threads": threads,
         "toy_main": bool(args.toy_main),
         "toy_seed": int(args.toy_seed),
+        "fit_order": str(args.fit_order),
         "excluded": excludes,
         "pyhf_fit_options": pyhf_fit_options,
         "nextstat_mle_config": nextstat_mle_config,
@@ -797,8 +866,29 @@ def main(argv: Optional[List[str]] = None) -> int:
                     except Exception:
                         ns_model_for_eval = prep_ns.model
 
-                py_run = _fit_pyhf_prepared(pyhf=pyhf, prepared=prep_py, fit_options=pyhf_fit_options, data_override=data_override)
-                ns_run = _fit_nextstat_prepared(prepared=prep_ns, mle=mle, main_data_override=main_override)
+                if str(args.fit_order) == "alternate":
+                    pyhf_first = (int(run_idx) % 2) == 0
+                else:
+                    pyhf_first = str(args.fit_order) == "pyhf-first"
+
+                if pyhf_first:
+                    py_run = _fit_pyhf_prepared(
+                        pyhf=pyhf,
+                        prepared=prep_py,
+                        fit_options=pyhf_fit_options,
+                        data_override=data_override,
+                    )
+                    ns_run = _fit_nextstat_prepared(prepared=prep_ns, mle=mle, main_data_override=main_override)
+                    fit_order_run = "pyhf-first"
+                else:
+                    ns_run = _fit_nextstat_prepared(prepared=prep_ns, mle=mle, main_data_override=main_override)
+                    py_run = _fit_pyhf_prepared(
+                        pyhf=pyhf,
+                        prepared=prep_py,
+                        fit_options=pyhf_fit_options,
+                        data_override=data_override,
+                    )
+                    fit_order_run = "nextstat-first"
 
                 diffs: Dict[str, Any] = {}
                 py_names = prep_py.names
@@ -832,6 +922,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "measurement": meas,
                     "warmup": bool(is_warmup),
                     "run_idx": int(run_idx),
+                    "fit_order_run": str(fit_order_run),
                     "toy": toy,
                     "pyhf": dataclasses.asdict(py_run),
                     "nextstat": dataclasses.asdict(ns_run),

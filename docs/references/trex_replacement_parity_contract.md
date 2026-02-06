@@ -6,9 +6,11 @@ created: 2026-02-06
 
 # TREx Replacement Parity Contract (v0)
 
-This document defines what “**identical numbers**” means for the TRExFitter replacement.
+Этот документ формализует, что означает “**идентичные числа**” для полной замены TRExFitter.
 
 **Source of truth for numeric tolerances:** `docs/plans/standards.md` and `tests/python/_tolerances.py`.
+
+**Apex2 reference harness for ROOT/TREx workflows:** `docs/tutorials/root-trexfitter-parity.md`.
 
 ## 1) Reference surfaces
 
@@ -23,9 +25,15 @@ Inputs:
 - NTUP (ROOT TTrees) — later milestone
 
 Contract:
-- Stable channel ordering: lexicographic by channel name (pyhf convention).
-- Stable modifier/parameter ordering: matches pyhf HistFactory set construction rules.
+- Stable ordering is **input-defined** and must be preserved:
+  - pyhf JSON: preserve the order as provided in JSON.
+  - HistFactory XML: preserve `Combination` channel file order; preserve sample/modifier order as provided by the XML (unless explicitly normalized and recorded).
+- Any normalization used for comparison (e.g. sort-by-name in a comparator) must be treated as a **comparison view** only and must not silently change the engine’s ordering without a recorded policy.
 - Deterministic output in parity mode (`threads=1`).
+- When ROOT histograms are available, we additionally require stable extraction of:
+  - `bin_edges[]` (variable width supported)
+  - `bin_content[]`
+  - `sumw2[]` where present (or explicit “missing” policy)
 
 ### 1.2 Fit outputs
 
@@ -43,6 +51,15 @@ Contract:
 ## 2) Reporting artifacts (numbers-first)
 
 Renderers must treat artifacts as canonical numeric truth. Artifacts are stable, versioned JSON.
+
+### 2.0 Plotting correctness contract (why this exists)
+
+TRExFitter “точность графиков” на практике = корректные числа + корректная геометрия бинов + корректные ошибки.
+Поэтому для любых distribution‑плотов артефакт обязан содержать **всё**, что нужно для отрисовки:
+- edges (не только индексы бинов),
+- per-sample stacking order (явно),
+- error model (явно),
+- ratio definition + policy (явно).
 
 ### 2.1 Distributions (prefit/postfit)
 
@@ -96,3 +113,11 @@ Parity mode must fix:
 - CI compares NextStat artifacts to committed baselines (no TRExFitter required).
 - Baseline refresh happens only in an external environment where ROOT/TREx can run and is manually triggered.
 
+## 5) Publication-ready vector outputs (PDF/SVG)
+
+Эта часть — acceptance criteria для renderer’ов (числа всё равно сравниваем по JSON):
+- PDF/SVG генерируются как **векторные** (без rasterization по умолчанию).
+- Рендерер пишет в метаданные:
+  - hash входного артефакта,
+  - версию схемы,
+  - policy flags (ratio policy, error model).
