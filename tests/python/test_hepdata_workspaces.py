@@ -71,7 +71,10 @@ def _shift_params(params, bounds, shift: float = 0.123) -> list[float]:
 
 def _workspace_cases() -> list[tuple[str, dict[str, Any]]]:
     if not HEPDATA_WORKSPACES_DIR.exists():
-        pytest.skip("HEPData workspaces not downloaded. Run: python3 tests/hepdata/fetch_workspaces.py")
+        pytest.skip(
+            "HEPData workspaces not downloaded. Run: python3 tests/hepdata/fetch_workspaces.py",
+            allow_module_level=True,
+        )
 
     cases: list[tuple[str, dict[str, Any]]] = []
     for p in sorted(HEPDATA_WORKSPACES_DIR.glob("**/*.json")):
@@ -81,7 +84,7 @@ def _workspace_cases() -> list[tuple[str, dict[str, Any]]]:
             raise AssertionError(f"Failed to parse JSON workspace: {p}") from e
         cases.append((str(p.relative_to(HEPDATA_WORKSPACES_DIR)), w))
     if not cases:
-        pytest.skip("HEPData workspaces dir exists but is empty.")
+        pytest.skip("HEPData workspaces dir exists but is empty.", allow_module_level=True)
     return cases
 
 
@@ -156,4 +159,3 @@ def test_hepdata_workspaces_mle_smoke(ns_timing):
         # Guard against the old 1e6 placeholder uncertainty regression.
         for unc in ns_res.uncertainties:
             assert unc != pytest.approx(1e6, abs=1e-6), f"suspicious uncertainty=1e6 for {relpath}"
-

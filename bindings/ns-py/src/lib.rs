@@ -18,6 +18,7 @@ use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summa
 use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
 use ns_inference::nuts::{NutsConfig, sample_nuts};
 use ns_inference::transforms::ParameterTransform;
+use ns_inference::OptimizerConfig;
 use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
@@ -48,6 +49,7 @@ use ns_inference::timeseries::simulate::{
     kalman_simulate as rust_kalman_simulate,
     kalman_simulate_with_x0 as rust_kalman_simulate_with_x0,
 };
+use ns_translate::histfactory::from_xml as histfactory_from_xml;
 use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -400,6 +402,7 @@ impl PosteriorModel {
             PosteriorModel::HistFactory(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
             PosteriorModel::Funnel(m) => mle.fit(m),
+            PosteriorModel::StdNormal(m) => mle.fit(m),
             PosteriorModel::LinearRegression(m) => mle.fit(m),
             PosteriorModel::LogisticRegression(m) => mle.fit(m),
             PosteriorModel::OrderedLogit(m) => mle.fit(m),
@@ -433,6 +436,9 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::StdNormal(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::LinearRegression(m) => {
@@ -486,6 +492,10 @@ impl PosteriorModel {
             }
             PosteriorModel::Funnel(m) => {
                 let w = WithPriors { model: *m, priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::StdNormal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
             PosteriorModel::LinearRegression(m) => {
@@ -561,6 +571,10 @@ impl PosteriorModel {
             }
             PosteriorModel::Funnel(m) => {
                 let w = WithPriors { model: *m, priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::StdNormal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::LinearRegression(m) => {
@@ -1023,6 +1037,19 @@ impl PyHistFactoryModel {
     fn from_workspace(json_str: &str) -> PyResult<Self> {
         let workspace: RustWorkspace = serde_json::from_str(json_str)
             .map_err(|e| PyValueError::new_err(format!("Failed to parse workspace: {}", e)))?;
+
+        let model = RustModel::from_workspace(&workspace)
+            .map_err(|e| PyValueError::new_err(format!("Failed to create model: {}", e)))?;
+
+        Ok(PyHistFactoryModel { inner: model })
+    }
+
+    /// Create model from HistFactory XML (combination.xml + ROOT files)
+    #[staticmethod]
+    fn from_xml(xml_path: &str) -> PyResult<Self> {
+        let path = std::path::Path::new(xml_path);
+        let workspace = histfactory_from_xml(path)
+            .map_err(|e| PyValueError::new_err(format!("Failed to parse HistFactory XML: {}", e)))?;
 
         let model = RustModel::from_workspace(&workspace)
             .map_err(|e| PyValueError::new_err(format!("Failed to create model: {}", e)))?;
@@ -1566,6 +1593,135 @@ impl PyGaussianMeanModel {
     fn new(y: Vec<f64>, sigma: f64) -> PyResult<Self> {
         let inner =
             GaussianMeanModel::new(y, sigma).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Minimal non-HEP model: standard normal in R^d (useful for perf/profiling).
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct StdNormalModel {
+    dim: usize,
+}
+
+impl StdNormalModel {
+    fn new(dim: usize) -> NsResult<Self> {
+        if dim == 0 {
+            return Err(NsError::Validation("dim must be >= 1".to_string()));
+        }
+        Ok(Self { dim })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PreparedStdNormalModel<'a> {
+    model: &'a StdNormalModel,
+}
+
+impl PreparedNll for PreparedStdNormalModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for StdNormalModel {
+    type Prepared<'a>
+        = PreparedStdNormalModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        (0..self.dim).map(|i| format!("x{i}")).collect()
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.dim]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0; self.dim]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != self.dim {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        // Standard normal: 0.5 * sum(x_i^2). Constants don't affect inference.
+        Ok(0.5 * params.iter().map(|&v| v * v).sum::<f64>())
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != self.dim {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        Ok(params.to_vec())
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedStdNormalModel { model: self }
+    }
+}
+
+/// Python wrapper for `StdNormalModel` (standard normal in R^d).
+#[pyclass(name = "StdNormalModel")]
+struct PyStdNormalModel {
+    inner: StdNormalModel,
+}
+
+#[pymethods]
+impl PyStdNormalModel {
+    #[new]
+    #[pyo3(signature = (dim=1))]
+    fn new(dim: usize) -> PyResult<Self> {
+        let inner = StdNormalModel::new(dim).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(Self { inner })
     }
 
@@ -2485,8 +2641,16 @@ struct PyMaximumLikelihoodEstimator {
 #[pymethods]
 impl PyMaximumLikelihoodEstimator {
     #[new]
-    fn new() -> Self {
-        PyMaximumLikelihoodEstimator { inner: RustMLE::new() }
+    #[pyo3(signature = (*, max_iter=1000, tol=1e-6, m=10))]
+    fn new(max_iter: u64, tol: f64, m: usize) -> PyResult<Self> {
+        if !tol.is_finite() || tol < 0.0 {
+            return Err(PyValueError::new_err("tol must be finite and >= 0"));
+        }
+        if m == 0 {
+            return Err(PyValueError::new_err("m must be >= 1"));
+        }
+        let cfg = OptimizerConfig { max_iter, tol, m };
+        Ok(PyMaximumLikelihoodEstimator { inner: RustMLE::with_config(cfg) })
     }
 
     /// Fit any supported model (generic `LogDensityModel`) using MLE.
@@ -3077,6 +3241,12 @@ fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_workspace(json_str)
 }
 
+/// Convenience wrapper: create model from HistFactory XML (combination.xml + ROOT files).
+#[pyfunction]
+fn from_histfactory(xml_path: &str) -> PyResult<PyHistFactoryModel> {
+    PyHistFactoryModel::from_xml(xml_path)
+}
+
 /// Convenience wrapper: fit model with optional overridden observations.
 #[pyfunction]
 #[pyo3(signature = (model, *, data=None))]
@@ -3547,6 +3717,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
+    m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
@@ -3576,6 +3747,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyFunnelModel>()?;
+    m.add_class::<PyStdNormalModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
     m.add_class::<PyOrderedLogitModel>()?;

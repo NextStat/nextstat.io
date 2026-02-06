@@ -1,0 +1,308 @@
+//! Builder: XML + ROOT histograms → pyhf Workspace.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use ns_core::{Error, Result};
+use ns_root::RootFile;
+
+use crate::pyhf::schema::{
+    Channel, HistoSysData, Measurement, MeasurementConfig, Modifier, NormSysData, Observation,
+    ParameterConfig, Sample, Workspace,
+};
+
+use super::channel::{self, ChannelXml, ModifierXml};
+use super::combination::{self, CombinationConfig};
+
+/// Parse a HistFactory `combination.xml` and its referenced ROOT files,
+/// producing a `Workspace` identical to the pyhf JSON format.
+pub fn from_xml(combination_path: &Path) -> Result<Workspace> {
+    let base_dir = combination_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+
+    let config = combination::parse_combination(combination_path)?;
+
+    // Parse channel XML files
+    let channels_xml: Vec<ChannelXml> = config
+        .channel_files
+        .iter()
+        .map(|f| channel::parse_channel(&base_dir.join(f)))
+        .collect::<Result<Vec<_>>>()?;
+
+    // Open ROOT files (cached by path)
+    let mut root_cache: HashMap<PathBuf, RootFile> = HashMap::new();
+
+    // Build Workspace
+    let mut ws_channels = Vec::new();
+    let mut ws_observations = Vec::new();
+
+    for ch_xml in &channels_xml {
+        let (channel, observation) =
+            build_channel(ch_xml, base_dir, &config, &mut root_cache)?;
+        ws_channels.push(channel);
+        ws_observations.push(observation);
+    }
+
+    let ws_measurements = build_measurements(&config)?;
+
+    Ok(Workspace {
+        channels: ws_channels,
+        observations: ws_observations,
+        measurements: ws_measurements,
+        version: Some("1.0.0".into()),
+    })
+}
+
+/// Build a Channel + Observation from a parsed channel XML.
+fn build_channel(
+    ch: &ChannelXml,
+    base_dir: &Path,
+    config: &CombinationConfig,
+    root_cache: &mut HashMap<PathBuf, RootFile>,
+) -> Result<(Channel, Observation)> {
+    // Read observed data
+    let obs_hist = resolve_and_read_histogram(
+        &ch.data.histo_name,
+        ch.data.histo_path.as_deref().or(ch.histo_path.as_deref()),
+        ch.data.input_file.as_deref().or(ch.input_file.as_deref()),
+        base_dir,
+        root_cache,
+    )?;
+
+    let observation = Observation {
+        name: ch.name.clone(),
+        data: obs_hist,
+    };
+
+    // Build samples
+    let mut samples = Vec::new();
+    for s in &ch.samples {
+        let sample = build_sample(s, ch, base_dir, config, root_cache)?;
+        samples.push(sample);
+    }
+
+    let channel = Channel {
+        name: ch.name.clone(),
+        samples,
+    };
+
+    Ok((channel, observation))
+}
+
+/// Build a Sample from XML + ROOT data.
+fn build_sample(
+    s: &channel::SampleXml,
+    ch: &ChannelXml,
+    base_dir: &Path,
+    _config: &CombinationConfig,
+    root_cache: &mut HashMap<PathBuf, RootFile>,
+) -> Result<Sample> {
+    // Resolve input file: sample > channel defaults
+    let input_file = s.input_file.as_deref().or(ch.input_file.as_deref());
+    let histo_path = s.histo_path.as_deref().or(ch.histo_path.as_deref());
+
+    // Read nominal histogram
+    let nominal =
+        resolve_and_read_histogram(&s.histo_name, histo_path, input_file, base_dir, root_cache)?;
+
+    // Build modifiers
+    let mut modifiers = Vec::new();
+    for m in &s.modifiers {
+        let mods = build_modifier(m, histo_path, input_file, base_dir, root_cache, &nominal, &ch.name)?;
+        modifiers.extend(mods);
+    }
+
+    Ok(Sample {
+        name: s.name.clone(),
+        data: nominal,
+        modifiers,
+    })
+}
+
+/// Build Modifier(s) from an XML modifier element.
+fn build_modifier(
+    m: &ModifierXml,
+    default_histo_path: Option<&str>,
+    default_input_file: Option<&str>,
+    base_dir: &Path,
+    root_cache: &mut HashMap<PathBuf, RootFile>,
+    nominal: &[f64],
+    channel_name: &str,
+) -> Result<Vec<Modifier>> {
+    match m {
+        ModifierXml::NormFactor { name, .. } => {
+            Ok(vec![Modifier::NormFactor {
+                name: name.clone(),
+                data: None,
+            }])
+        }
+        ModifierXml::OverallSys { name, low, high } => {
+            Ok(vec![Modifier::NormSys {
+                name: name.clone(),
+                data: NormSysData {
+                    hi: *high,
+                    lo: *low,
+                },
+            }])
+        }
+        ModifierXml::HistoSys {
+            name,
+            histo_name_high,
+            histo_name_low,
+            histo_path_high,
+            histo_path_low,
+            input_file_high,
+            input_file_low,
+        } => {
+            let hp_hi = histo_path_high
+                .as_deref()
+                .or(default_histo_path);
+            let hp_lo = histo_path_low
+                .as_deref()
+                .or(default_histo_path);
+            let if_hi = input_file_high
+                .as_deref()
+                .or(default_input_file);
+            let if_lo = input_file_low
+                .as_deref()
+                .or(default_input_file);
+
+            let hi_data =
+                resolve_and_read_histogram(histo_name_high, hp_hi, if_hi, base_dir, root_cache)?;
+            let lo_data =
+                resolve_and_read_histogram(histo_name_low, hp_lo, if_lo, base_dir, root_cache)?;
+
+            Ok(vec![Modifier::HistoSys {
+                name: name.clone(),
+                data: HistoSysData { hi_data, lo_data },
+            }])
+        }
+        ModifierXml::ShapeSys {
+            name,
+            histo_name,
+            histo_path,
+            input_file,
+            ..
+        } => {
+            let data = if let Some(hn) = histo_name {
+                let hp = histo_path.as_deref().or(default_histo_path);
+                let ifn = input_file.as_deref().or(default_input_file);
+                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?
+            } else {
+                // If no histogram specified, use relative uncertainties from nominal
+                nominal.iter().map(|v| v.sqrt()).collect()
+            };
+
+            Ok(vec![Modifier::ShapeSys {
+                name: name.clone(),
+                data,
+            }])
+        }
+        ModifierXml::ShapeFactor { name } => {
+            Ok(vec![Modifier::ShapeFactor {
+                name: name.clone(),
+                data: None,
+            }])
+        }
+        ModifierXml::StatError {
+            histo_name,
+            histo_path,
+            input_file,
+        } => {
+            // StatError: use sqrt(sumw2) from ROOT histogram, or sqrt(nominal) if not provided
+            let data = if let Some(hn) = histo_name {
+                let hp = histo_path.as_deref().or(default_histo_path);
+                let ifn = input_file.as_deref().or(default_input_file);
+                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?
+            } else {
+                // Use sqrt(nominal) as default stat error
+                nominal.iter().map(|v| v.sqrt()).collect()
+            };
+
+            // StatError name follows pyhf convention: "staterror_{channel_name}"
+            let stat_name = format!("staterror_{}", channel_name);
+
+            Ok(vec![Modifier::StatError {
+                name: stat_name,
+                data,
+            }])
+        }
+    }
+}
+
+/// Build Measurement configs from combination.
+fn build_measurements(config: &CombinationConfig) -> Result<Vec<Measurement>> {
+    config
+        .measurements
+        .iter()
+        .map(|m| {
+            let parameters: Vec<ParameterConfig> = m
+                .param_settings
+                .iter()
+                .flat_map(|ps| {
+                    ps.names.iter().map(move |name| ParameterConfig {
+                        name: name.clone(),
+                        inits: ps.val.map(|v| vec![v]).unwrap_or_default(),
+                        bounds: Vec::new(),
+                        auxdata: Vec::new(),
+                        sigmas: Vec::new(),
+                    })
+                })
+                .collect();
+
+            Ok(Measurement {
+                name: m.name.clone(),
+                config: MeasurementConfig {
+                    poi: m.poi.clone(),
+                    parameters,
+                },
+            })
+        })
+        .collect()
+}
+
+/// Resolve a histogram reference and read bin contents from a ROOT file.
+fn resolve_and_read_histogram(
+    histo_name: &str,
+    histo_path: Option<&str>,
+    input_file: Option<&str>,
+    base_dir: &Path,
+    root_cache: &mut HashMap<PathBuf, RootFile>,
+) -> Result<Vec<f64>> {
+    let input_file = input_file.ok_or_else(|| {
+        Error::Xml(format!(
+            "no InputFile specified for histogram '{}'",
+            histo_name
+        ))
+    })?;
+
+    let root_path = base_dir.join(input_file);
+
+    // Open or reuse cached ROOT file
+    if !root_cache.contains_key(&root_path) {
+        let rf = RootFile::open(&root_path).map_err(|e| {
+            Error::RootFile(format!("opening {}: {}", root_path.display(), e))
+        })?;
+        root_cache.insert(root_path.clone(), rf);
+    }
+
+    let rf = root_cache.get(&root_path).unwrap();
+
+    // Build full path: HistoPath/HistoName
+    let full_path = match histo_path {
+        Some(hp) if !hp.is_empty() => format!("{}/{}", hp, histo_name),
+        _ => histo_name.to_string(),
+    };
+
+    let hist = rf.get_histogram(&full_path).map_err(|e| {
+        Error::RootFile(format!(
+            "reading histogram '{}' from {}: {}",
+            full_path,
+            root_path.display(),
+            e
+        ))
+    })?;
+
+    Ok(hist.bin_content)
+}

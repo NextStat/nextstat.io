@@ -99,6 +99,7 @@ impl<'a> RBuffer<'a> {
     }
 
     /// Read a big-endian i64.
+    #[allow(dead_code)]
     pub fn read_i64(&mut self) -> Result<i64> {
         let b = self.read_bytes(8)?;
         Ok(i64::from_be_bytes([
@@ -139,18 +140,23 @@ impl<'a> RBuffer<'a> {
 
     /// Read a ROOT streamer version header.
     ///
-    /// Returns `(version, byte_count)`. If the high bit of the first u32 is set
-    /// (`kByteCountMask = 0x4000_0000`), the remaining bits encode a byte count
-    /// and the actual version follows as a u16. Otherwise the first u16 *is* the
-    /// version and there is no byte count.
-    pub fn read_version(&mut self) -> Result<(u16, Option<u32>)> {
+    /// Returns `(version, end_pos)` where `end_pos` is the absolute buffer
+    /// position where this streamed object ends (`None` if no byte-count header).
+    ///
+    /// ROOT uses `kByteCountMask = 0x4000_0000` on the first u32 to signal that
+    /// a byte count is present. The byte count spans from right after the u32
+    /// to the end of the object (i.e. it includes the version u16).
+    pub fn read_version(&mut self) -> Result<(u16, Option<usize>)> {
+        let start = self.pos;
         let raw = self.read_u32()?;
         if raw & 0x4000_0000 != 0 {
-            let byte_count = raw & !0x4000_0000;
+            let byte_count = (raw & !0x4000_0000) as usize;
             let version = self.read_u16()?;
-            Ok((version, Some(byte_count)))
+            // byte_count counts from right after the u32
+            let end_pos = start + 4 + byte_count;
+            Ok((version, Some(end_pos)))
         } else {
-            // First two bytes are the version; rewind the other two.
+            // No byte count — first two bytes are the version.
             let version = (raw >> 16) as u16;
             self.pos -= 2;
             Ok((version, None))
@@ -172,7 +178,7 @@ impl<'a> RBuffer<'a> {
 
     /// Read a `TNamed`: TObject + fName + fTitle.
     pub fn read_tnamed(&mut self) -> Result<(String, String)> {
-        let (_ver, _bc) = self.read_version()?;
+        let (_ver, _end) = self.read_version()?;
         self.read_tobject()?;
         let name = self.read_string()?;
         let title = self.read_string()?;
@@ -233,14 +239,16 @@ mod tests {
 
     #[test]
     fn read_version_with_bytecount() {
-        // byte_count = 0x00000010, version = 3
+        // byte_count = 0x00000010 (16), version = 3
         let mut data = Vec::new();
         data.extend_from_slice(&0x4000_0010u32.to_be_bytes());
         data.extend_from_slice(&3u16.to_be_bytes());
+        data.extend_from_slice(&[0u8; 20]); // padding for end_pos
         let mut r = RBuffer::new(&data);
-        let (ver, bc) = r.read_version().unwrap();
+        let (ver, end) = r.read_version().unwrap();
         assert_eq!(ver, 3);
-        assert_eq!(bc, Some(0x10));
+        // end_pos = start(0) + 4 + 16 = 20
+        assert_eq!(end, Some(20));
     }
 
     #[test]
@@ -250,8 +258,8 @@ mod tests {
         data.extend_from_slice(&5u16.to_be_bytes());
         data.extend_from_slice(&[0x00, 0x00]); // padding
         let mut r = RBuffer::new(&data);
-        let (ver, bc) = r.read_version().unwrap();
+        let (ver, end) = r.read_version().unwrap();
         assert_eq!(ver, 5);
-        assert!(bc.is_none());
+        assert!(end.is_none());
     }
 }

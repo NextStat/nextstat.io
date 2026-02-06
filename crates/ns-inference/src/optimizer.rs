@@ -2,7 +2,7 @@
 //!
 //! This module provides wrappers around argmin optimizers with a clean interface.
 
-use argmin::core::{CostFunction, Executor, Gradient, State};
+use argmin::core::{CostFunction, Executor, Gradient, State, TerminationReason, TerminationStatus};
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
 use ns_core::Result;
@@ -192,7 +192,17 @@ impl LbfgsbOptimizer {
 
         // Create L-BFGS solver with line search
         let linesearch = MoreThuenteLineSearch::new();
-        let solver = LBFGS::new(linesearch, self.config.m);
+        // Argmin's default cost tolerance is ~EPS, which is too strict for our NLL scales and
+        // can lead to unnecessary max-iter terminations on larger HistFactory models.
+        let tol_cost = if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
+        let solver = LBFGS::new(linesearch, self.config.m)
+            .with_tolerance_grad(self.config.tol)
+            .map_err(|e| {
+                ns_core::Error::Validation(format!("Invalid optimizer configuration (tol): {e}"))
+            })?;
+        let solver = solver.with_tolerance_cost(tol_cost).map_err(|e| {
+            ns_core::Error::Validation(format!("Invalid optimizer configuration (tol_cost): {e}"))
+        })?;
 
         // Create executor
         let res = Executor::new(problem, solver)
@@ -215,8 +225,13 @@ impl LbfgsbOptimizer {
         let n_gev = counts.grad.load(Ordering::Relaxed);
 
         // Check convergence
-        let converged = state.terminated();
-        let message = format!("{:?}", state.get_termination_status());
+        let termination = state.get_termination_status();
+        let converged = matches!(
+            termination,
+            TerminationStatus::Terminated(TerminationReason::SolverConverged)
+                | TerminationStatus::Terminated(TerminationReason::TargetCostReached)
+        );
+        let message = termination.to_string();
 
         Ok(OptimizationResult {
             parameters: best_params,

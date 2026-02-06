@@ -5,6 +5,18 @@ NextStat Phase 8 introduces time series and state space models. The current base
 - Kalman filter (log-likelihood, predicted + filtered states)
 - RTS smoother (smoothed states)
 
+See also:
+- Phase 6 (regression / GLMs): `docs/tutorials/phase-6-regression.md`
+- Phase 7 (hierarchical / multilevel): `docs/tutorials/phase-7-hierarchical.md`
+
+## Assumptions and diagnostics (quick checklist)
+
+- Baseline Phase 8 models are **linear-Gaussian** state space models; likelihood and uncertainty are Normal.
+- For AR(1), a common stability condition is `abs(phi) < 1` (stationary). For ARMA baselines, keep parameters in a stable region.
+- Diagnostics to watch:
+  - EM convergence (`fit["em"]["converged"]`, `fit["em"]["loglik_trace"]`)
+  - One-step-ahead forecast errors (innovations) and whether residuals look roughly Gaussian / uncorrelated
+
 ## Python quickstart
 
 ```python
@@ -28,6 +40,44 @@ art = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.95)
 # nextstat.timeseries.plot_kalman_obs(art, title="Kalman fit")
 # nextstat.timeseries.plot_kalman_states(art, title="Latent states")
 # nextstat.timeseries.plot_kalman_obs_grid(art, title="Observed components")
+```
+
+## AR(1) fit + forecast
+
+```python
+import nextstat
+
+# 1D AR(1): x[t] = phi * x[t-1] + eps[t], y[t] = x[t] + eta[t]
+true = nextstat.timeseries.ar1_model(phi=0.8, q=0.2, r=0.1, m0=0.0, p0=1.0)
+sim = nextstat.timeseries.kalman_simulate(true, t_max=30, seed=123, init="mean")
+ys = sim["ys"]  # list of [y_t]
+
+# Start from a rough model, estimate phi (F), and forecast.
+init = nextstat.timeseries.ar1_model(phi=0.2, q=1.0, r=1.0, m0=0.0, p0=1.0)
+fit = nextstat.timeseries.kalman_fit(
+    init,
+    ys,
+    estimate_q=True,
+    estimate_r=True,
+    estimate_f=True,  # estimate phi in F[0,0] (1D-only baseline)
+    forecast_steps=10,
+)
+print("converged:", fit["em"]["converged"], "iters:", fit["em"]["n_iter"])
+print("phi_hat:", fit["em"]["f"][0][0])
+print("forecast t[-1]:", fit["forecast"]["t"][-1], "y_mean[-1]:", fit["forecast"]["obs_mean"][-1][0])
+```
+
+## ARMA(1,1) forecast (fixed-parameter baseline)
+
+```python
+import nextstat
+
+# Note: baseline Kalman implementation requires r > 0 (use tiny r to approximate r=0).
+model = nextstat.timeseries.arma11_model(phi=0.6, theta=0.2, sigma2=0.4, r=1e-12)
+ys = [[0.1], [0.2], [-0.1], [0.0], [0.15], [0.05]]
+
+fc = nextstat.timeseries.kalman_forecast(model, ys, steps=5, alpha=0.05)
+print(fc["obs_mean"])
 ```
 
 ## CLI quickstart

@@ -290,6 +290,10 @@ impl LogDensityModel for OneCompartmentOralPkModel {
 
         Ok(g)
     }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
 }
 
 #[cfg(test)]

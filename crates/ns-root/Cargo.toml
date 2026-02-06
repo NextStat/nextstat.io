@@ -19,3 +19,5 @@ lz4_flex = "0.11"
 
 [dev-dependencies]
 approx.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

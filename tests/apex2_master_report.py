@@ -419,6 +419,12 @@ def main() -> int:
         help="Also run slow bias/pulls regression (NextStat vs pyhf) and embed report.",
     )
     ap.add_argument("--bias-pulls-n-toys", type=int, default=200)
+    ap.add_argument(
+        "--bias-pulls-zoo-n-toys",
+        type=int,
+        default=None,
+        help="Optional override for number of toys for model-zoo cases (requires --bias-pulls-include-zoo).",
+    )
     ap.add_argument("--bias-pulls-seed", type=int, default=0)
     ap.add_argument("--bias-pulls-fixtures", type=str, default="simple")
     ap.add_argument("--bias-pulls-params", type=str, default="poi", help="poi or all (passed to bias/pulls runner)")
@@ -648,6 +654,8 @@ def main() -> int:
             bias_cmd.append("--include-zoo")
             if str(args.bias_pulls_zoo_sizes).strip():
                 bias_cmd += ["--zoo-sizes", str(args.bias_pulls_zoo_sizes)]
+            if args.bias_pulls_zoo_n_toys is not None:
+                bias_cmd += ["--zoo-n-toys", str(int(args.bias_pulls_zoo_n_toys))]
         rc_bias, out_bias = _run_json(bias_cmd, cwd=cwd, env=env)
         bias_report = _read_json(args.bias_pulls_out) if args.bias_pulls_out.exists() else None
         bias_declared = ((bias_report or {}).get("summary") or {}).get("status") if isinstance(bias_report, dict) else None

@@ -25,10 +25,7 @@ def create_simple_root():
             np.array([0.0, 1.0, 2.0, 3.0]),  # bin edges
         )
 
-        # Histogram with sumw2
-        import uproot.writing
-
-        # Use uproot's histogram writing
+        # Histogram with 4 bins
         f["hist_sw2"] = (
             np.array([5.0, 15.0, 25.0, 35.0]),
             np.array([0.0, 0.5, 1.0, 1.5, 2.0]),

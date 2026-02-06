@@ -11,5 +11,6 @@
 #![warn(clippy::all)]
 
 pub mod pyhf;
+pub mod histfactory;
 
 pub use pyhf::*;

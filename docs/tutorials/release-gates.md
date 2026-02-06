@@ -39,6 +39,10 @@ This runs:
 - `pytest -m "not slow" tests/python`
 - `tests/compare_with_latest_baseline.py --require-same-host --p6-attempts 2` (P6 retried up to N times; whole compare retried once if it fails with `rc=2`)
 
+Notes:
+
+- `maturin develop` installs the compiled extension into the active venv. The built binary is **not** committed to git.
+
 Exit codes:
 - `0`: OK (parity OK and within slowdown thresholds)
 - `2`: FAIL (parity failure or slowdown threshold exceeded)

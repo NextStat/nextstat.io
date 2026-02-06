@@ -6,6 +6,16 @@ This tutorial shows the minimal end-to-end flow:
 2. Run MAP fit (`nextstat.fit`)
 3. Run NUTS (`nextstat.sample` or `nextstat.bayes.sample`)
 
+See also:
+- Phase 6 (regression / GLMs): `docs/tutorials/phase-6-regression.md`
+
+## Assumptions and diagnostics (quick checklist)
+
+- Random effects are typically modeled as **Normal** and **exchangeable** across groups.
+- Partial pooling assumes groups come from a shared population (shrinkage toward a common mean).
+- If some groups are tiny or highly imbalanced, posteriors can be weakly identified; consider stronger priors.
+- For Bayesian fits, always check sampling diagnostics (`raw["diagnostics"]["quality"]`) and do posterior predictive checks (see PPC section).
+
 ## Logistic regression with random intercept
 
 ```python
@@ -92,3 +102,33 @@ m = nextstat.hier.linear_random_intercept(
 fit = nextstat.fit(m)
 print("nll:", fit.nll)
 ```
+
+## Linear regression with random slope
+
+Random slopes let the effect of a feature vary by group (in addition to a random intercept).
+
+```python
+import nextstat
+
+# Two groups with different slopes (toy example).
+X = [[0.0], [1.0], [2.0], [0.0], [1.0], [2.0]]
+y = [0.0, 1.0, 2.0, 0.0, 2.0, 4.0]
+group_idx = [0, 0, 0, 1, 1, 1]
+
+m = nextstat.hier.linear_random_slope(
+    x=X,
+    y=y,
+    group_idx=group_idx,
+    n_groups=2,
+    random_slope_feature_idx=0,  # X has a single feature column
+    random_intercept_non_centered=True,
+    random_slope_non_centered=True,
+)
+
+fit = nextstat.fit(m)
+print("nll:", fit.nll)
+```
+
+Notes:
+- `random_slope_feature_idx` indexes into **feature columns** (the same `x` you pass in; the intercept is handled separately).
+- Non-centered parameterizations can help sampling in hierarchical models; they’re exposed as `*_non_centered=True`.

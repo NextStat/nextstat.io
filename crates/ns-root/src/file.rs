@@ -13,21 +13,16 @@ use crate::rbuffer::RBuffer;
 
 /// Parsed ROOT file header.
 struct FileHeader {
-    /// ROOT file format version.
-    #[allow(dead_code)]
-    version: u32,
-    /// Offset of first data record.
-    #[allow(dead_code)]
+    /// Offset of first data record (also where top-level TKey sits).
     begin: u64,
-    /// Offset of first free-segment record.
-    #[allow(dead_code)]
-    end: u64,
+    /// Whether the file uses large (64-bit) seek pointers (version >= 1000000).
+    is_large: bool,
+    /// Number of bytes for the name record (TKey + TNamed) at begin.
+    nbytes_name: u32,
     /// Offset where top-level directory keys are stored.
     seek_keys: u64,
     /// Number of bytes in the key list.
     nbytes_keys: u32,
-    /// Whether the file uses large (64-bit) seek pointers (version >= 1000000).
-    is_large: bool,
 }
 
 /// A ROOT file opened for reading histograms.
@@ -64,6 +59,28 @@ impl RootFile {
         Ok(Self { data, header, path })
     }
 
+    /// Parse the file-level header (first ~63 bytes) and the embedded TDirectory.
+    ///
+    /// ROOT file header layout (small file, version < 1000000):
+    /// ```text
+    /// offset  size  field
+    ///    0      4   magic "root"
+    ///    4      4   fVersion
+    ///    8      4   fBEGIN
+    ///   12      4   fEND
+    ///   16      4   fSeekFree
+    ///   20      4   fNbytesFree
+    ///   24      4   nfree
+    ///   28      4   fNbytesName
+    ///   32      1   fUnits
+    ///   33      4   fCompress
+    ///   37      4   fSeekInfo
+    ///   41      4   fNbytesInfo
+    ///   45     18   fUUID
+    ///   63         (end of file header)
+    /// ```
+    ///
+    /// The TDirectory streamer is located at `fBEGIN + fNbytesName`.
     fn parse_header(data: &[u8]) -> Result<FileHeader> {
         let mut r = RBuffer::new(data);
         r.skip(4)?; // magic
@@ -72,66 +89,57 @@ impl RootFile {
         let is_large = version >= 1_000_000;
 
         let begin = r.read_u32()? as u64;
-        let (end, seek_free, nbytes_free, _nfree);
-        if is_large {
-            end = r.read_u64()?;
-            seek_free = r.read_u64()?;
-            nbytes_free = r.read_u32()?;
-            _nfree = r.read_u32()?;
-        } else {
-            end = r.read_u32()? as u64;
-            seek_free = r.read_u32()? as u64;
-            nbytes_free = r.read_u32()?;
-            _nfree = r.read_u32()?;
-        }
 
-        let _nbytes_name = r.read_u8()?;
+        if is_large {
+            let _end = r.read_u64()?;
+            let _seek_free = r.read_u64()?;
+        } else {
+            let _end = r.read_u32()?;
+            let _seek_free = r.read_u32()?;
+        }
+        let _nbytes_free = r.read_u32()?;
+        let _nfree = r.read_u32()?;
+        let nbytes_name = r.read_u32()?;
         let _units = r.read_u8()?;
         let _compress = r.read_u32()?;
-
-        let (seek_keys, nbytes_keys);
         if is_large {
             let _seek_info = r.read_u64()?;
-            let _nbytes_info = r.read_u32()?;
-            // For large files, seek_keys is at a different offset.
-            // We need to navigate the top-level TDirectory to find it.
-            // Fall through to TDirectory parsing below.
-            seek_keys = 0;
-            nbytes_keys = 0;
         } else {
-            let _seek_info = r.read_u32()? as u64;
-            let _nbytes_info = r.read_u32()?;
-            seek_keys = 0;
-            nbytes_keys = 0;
+            let _seek_info = r.read_u32()?;
         }
+        let _nbytes_info = r.read_u32()?;
+        // 18-byte UUID follows — skip it
 
-        let _ = seek_free;
-        let _ = nbytes_free;
-
-        // Parse the top-level TDirectory header (embedded right after the file header).
-        // The TDirectory at `begin` contains seek_keys and nbytes_keys.
-        let (real_seek_keys, real_nbytes_keys) = Self::parse_top_directory(data, begin, is_large)?;
+        // Parse the top-level TDirectory located at fBEGIN + fNbytesName.
+        let (seek_keys, nbytes_keys) =
+            Self::parse_top_directory(data, begin as usize, nbytes_name as usize, is_large)?;
 
         Ok(FileHeader {
-            version,
             begin,
-            end,
-            seek_keys: if real_seek_keys != 0 { real_seek_keys } else { seek_keys },
-            nbytes_keys: if real_nbytes_keys != 0 { real_nbytes_keys } else { nbytes_keys },
             is_large,
+            nbytes_name,
+            seek_keys,
+            nbytes_keys,
         })
     }
 
-    /// Parse the top-level TKey + TDirectory at `begin` to get seek_keys/nbytes_keys.
-    fn parse_top_directory(data: &[u8], begin: u64, is_large: bool) -> Result<(u64, u32)> {
+    /// Parse the TDirectory streamer at `begin + nbytes_name` to extract seek_keys.
+    fn parse_top_directory(
+        data: &[u8],
+        begin: usize,
+        nbytes_name: usize,
+        _is_large: bool,
+    ) -> Result<(u64, u32)> {
+        let dir_offset = begin + nbytes_name;
+        if dir_offset >= data.len() {
+            return Err(RootError::Deserialization(
+                "TDirectory offset past end of file".into(),
+            ));
+        }
+
         let mut r = RBuffer::new(data);
-        r.set_pos(begin as usize);
+        r.set_pos(dir_offset);
 
-        // Read the TKey header
-        let _key = Key::read(&mut r, is_large)?;
-
-        // Now we're at the start of the TDirectory payload.
-        // TDirectory streamer: version, datime_c, datime_m, nbytes_keys, nbytes_name, seek_dir, seek_parent, seek_keys
         let dir_version = r.read_u16()?;
         let _datime_c = r.read_u32()?;
         let _datime_m = r.read_u32()?;
@@ -199,11 +207,17 @@ impl RootFile {
                 )));
             }
 
-            let payload = self.read_key_payload(key)?;
-            current_dir = Directory::read_from_payload(&payload, key, self.header.is_large, &self.data)?;
+            current_dir = self.read_subdirectory(key)?;
         }
 
         self.read_histogram_from_dir(&current_dir, parts[parts.len() - 1])
+    }
+
+    fn read_subdirectory(&self, key: &Key) -> Result<Directory> {
+        // For TDirectoryFile, the seek_keys is stored in the directory payload.
+        // We need to read the key payload, then parse the TDirectory streamer.
+        let payload = self.read_key_payload(key)?;
+        Directory::read_from_payload(&payload, key, self.header.is_large, &self.data)
     }
 
     fn read_histogram_from_dir(&self, dir: &Directory, name: &str) -> Result<Histogram> {
@@ -227,11 +241,12 @@ impl RootFile {
 
         let key_slice = &self.data[seek..seek + key.n_bytes as usize];
 
-        // Read past the key header to get the raw object data.
+        // Object data starts after the key header.
         let obj_start = key.key_len as usize;
         let compressed_data = &key_slice[obj_start..];
 
-        if key.obj_len as usize != (key.n_bytes as usize - key.key_len as usize) {
+        let compressed_len = key.n_bytes as usize - key.key_len as usize;
+        if key.obj_len as usize != compressed_len {
             // Data is compressed
             decompress(compressed_data, key.obj_len as usize)
         } else {

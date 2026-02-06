@@ -15,6 +15,8 @@ description = "Format translators (pyhf JSON, HistFactory XML, ROOT) for NextSta
 ns-core.workspace = true
 ns-ad.workspace = true
 ns-compute.workspace = true
+ns-root.workspace = true
+roxmltree = "0.21"
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

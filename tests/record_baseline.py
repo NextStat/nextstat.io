@@ -384,6 +384,7 @@ def record_bias_pulls_baseline(
     fixtures: str,
     include_zoo: bool,
     zoo_sizes: str,
+    zoo_n_toys: Optional[int],
     params: str,
 ) -> Optional[Path]:
     """Run bias/pulls regression suite and save as baseline (slow)."""
@@ -410,6 +411,8 @@ def record_bias_pulls_baseline(
         cmd.append("--include-zoo")
         if str(zoo_sizes).strip():
             cmd += ["--zoo-sizes", str(zoo_sizes)]
+        if zoo_n_toys is not None:
+            cmd += ["--zoo-n-toys", str(int(zoo_n_toys))]
 
     print("[bias_pulls] Running suite (slow)...")
     t0 = time.time()
@@ -586,6 +589,12 @@ def main() -> int:
     ap.add_argument("--bias-params", type=str, default="poi", help="poi or all")
     ap.add_argument("--bias-include-zoo", action="store_true")
     ap.add_argument("--bias-zoo-sizes", type=str, default="")
+    ap.add_argument(
+        "--bias-zoo-n-toys",
+        type=int,
+        default=None,
+        help="Optional override for number of toys for model-zoo cases (requires --bias-include-zoo).",
+    )
     # ROOT suite options (optional; requires ROOT + hist2workspace + uproot)
     ap.add_argument("--root-search-dir", type=Path, default=None, help="Directory to scan for TRExFitter/HistFactory exports (combination.xml).")
     ap.add_argument("--root-glob", type=str, default="**/combination.xml", help="Glob for HistFactory XML under --root-search-dir.")
@@ -718,6 +727,7 @@ def main() -> int:
             fixtures=str(args.bias_fixtures),
             include_zoo=bool(args.bias_include_zoo),
             zoo_sizes=str(args.bias_zoo_sizes),
+            zoo_n_toys=(None if args.bias_zoo_n_toys is None else int(args.bias_zoo_n_toys)),
             params=str(args.bias_params),
         )
         if bias_path is None:

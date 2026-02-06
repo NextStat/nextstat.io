@@ -35,6 +35,12 @@ Optional (Python surface + Apex2 validation runners):
 ./.venv/bin/maturin develop --release -m bindings/ns-py/Cargo.toml
 ```
 
+Notes:
+
+- `maturin develop` installs the compiled extension into the active venv. The built binary is **not**
+  committed to git (only the Rust/Python source is).
+- Re-run `maturin develop --release ...` any time you change Rust code under `crates/` or `bindings/ns-py/src/`.
+
 Optional (plots in this doc):
 
 ```bash
@@ -149,6 +155,27 @@ cargo run -p ns-cli -- fit --input tests/fixtures/simple_workspace.json --thread
 ```
 
 This returns best-fit parameters, uncertainties, and NLL.
+
+## pyhf parity audit (fixtures)
+
+To compare NextStat against pyhf across all local pyhf-style JSON fixtures (and record timings + best-fit diffs):
+
+```bash
+PY=./.venv/bin/python make pyhf-audit
+PY=./.venv/bin/python make pyhf-audit-fit
+```
+
+Reports are written to:
+
+- `tmp/pyhf_parity_audit.json` / `tmp/pyhf_parity_audit.md`
+- `tmp/pyhf_parity_audit_fit.json` / `tmp/pyhf_parity_audit_fit.md`
+
+If you want a snapshot you can commit/review later, copy the report into `audit/`:
+
+```bash
+cp tmp/pyhf_parity_audit_fit.md "audit/$(date +%F)_pyhf-parity-audit.md"
+cp tmp/pyhf_parity_audit_fit.json "audit/$(date +%F)_pyhf-parity-audit.json"
+```
 
 ## HEPData (real analyses) parity harness
 

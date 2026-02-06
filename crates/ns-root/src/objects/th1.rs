@@ -5,20 +5,21 @@
 //! TH1D (or TH1F)
 //!   └─ TH1 (base)
 //!        ├─ TNamed (name, title)
-//!        ├─ TAttLine (skip 10 bytes: color u16, style u16, width u16 — but version-dependent)
-//!        ├─ TAttFill (skip: color u16, style u16)
-//!        ├─ TAttMarker (skip: color u16, style u16, size f32)
+//!        ├─ TAttLine (skip via end_pos)
+//!        ├─ TAttFill (skip via end_pos or fixed 4 bytes)
+//!        ├─ TAttMarker (skip via end_pos or fixed 8 bytes)
 //!        ├─ fNcells (i32)
-//!        ├─ fXaxis (TAxis)
-//!        ├─ fYaxis (TAxis)
-//!        ├─ fZaxis (TAxis)
-//!        ├─ various scalar stats (fBarOffset, fBarWidth, fEntries, fTsumw, ...)
-//!        ├─ fSumw2 (TArrayD — n i32 + n×f64)
+//!        ├─ fXaxis (TAxis) — skip via end_pos
+//!        ├─ fYaxis (TAxis) — skip via end_pos
+//!        ├─ fZaxis (TAxis) — skip via end_pos
+//!        ├─ scalar stats (fBarOffset, fBarWidth, fEntries, ...)
+//!        ├─ fContour (TArrayD)
+//!        ├─ fSumw2 (TArrayD)
 //!        ├─ fOption (TString)
-//!        ├─ fFunctions (TList — skip via byte_count)
-//!        ├─ (fBufferSize, fBuffer if version >= 4) — usually empty
-//!        ├─ fBinStatErrOpt, fBinStatErrOpt2 (if th1_version >= 8)
-//!        └─ fNormFactor (if th1_version ≥ 2)
+//!        ├─ fFunctions (TList) — skip via end_pos
+//!        ├─ fBufferSize (if th1_ver >= 4)
+//!        ├─ fBinStatErrOpt (if th1_ver >= 7)
+//!        └─ fStatOverflows (if th1_ver >= 8)
 //!   └─ TArrayD / TArrayF (the actual bin contents)
 //! ```
 
@@ -31,7 +32,7 @@ pub fn read_th1d(data: &[u8]) -> Result<Histogram> {
     let mut r = RBuffer::new(data);
 
     // TH1D version header
-    let (th1d_ver, _bc) = r.read_version()?;
+    let (th1d_ver, _end) = r.read_version()?;
     if th1d_ver < 1 {
         return Err(RootError::Deserialization(format!(
             "unsupported TH1D version: {}",
@@ -60,7 +61,7 @@ pub fn read_th1f(data: &[u8]) -> Result<Histogram> {
     let mut r = RBuffer::new(data);
 
     // TH1F version header
-    let (th1f_ver, _bc) = r.read_version()?;
+    let (th1f_ver, _end) = r.read_version()?;
     if th1f_ver < 1 {
         return Err(RootError::Deserialization(format!(
             "unsupported TH1F version: {}",
@@ -99,18 +100,17 @@ struct AxisInfo {
 /// Returns (name, title, n_cells, axis_info, sumw2).
 fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Option<Vec<f64>>)> {
     // TH1 version header
-    let (th1_ver, th1_bc) = r.read_version()?;
-    let th1_end = th1_bc.map(|bc| r.pos() + bc as usize);
+    let (th1_ver, th1_end) = r.read_version()?;
 
     // TNamed
     let (name, title) = r.read_tnamed()?;
 
-    // TAttLine (version + body)
-    skip_streamer_object(r)?;
-    // TAttFill
-    skip_streamer_object(r)?;
-    // TAttMarker
-    skip_streamer_object(r)?;
+    // TAttLine — skip
+    skip_versioned_object(r)?;
+    // TAttFill — skip
+    skip_versioned_object(r)?;
+    // TAttMarker — skip
+    skip_versioned_object(r)?;
 
     // fNcells
     let n_cells = r.read_i32()?;
@@ -118,11 +118,11 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
     // fXaxis
     let axis = read_taxis(r)?;
     // fYaxis (skip)
-    skip_taxis(r)?;
+    skip_versioned_object(r)?;
     // fZaxis (skip)
-    skip_taxis(r)?;
+    skip_versioned_object(r)?;
 
-    // Scalar stats (version-dependent count)
+    // Scalar stats
     let _bar_offset = r.read_i16()?;
     let _bar_width = r.read_i16()?;
     let _entries = r.read_f64()?;
@@ -131,19 +131,17 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
     let _tsumwx = r.read_f64()?;
     let _tsumwx2 = r.read_f64()?;
     if th1_ver >= 2 {
-        // fMaximum, fMinimum
         let _max = r.read_f64()?;
         let _min = r.read_f64()?;
     }
     if th1_ver >= 3 {
-        // fNormFactor
         let _norm = r.read_f64()?;
     }
 
     // fContour (TArrayD)
     let contour_n = r.read_u32()? as usize;
     if contour_n > 0 {
-        r.skip(contour_n * 8)?; // f64 array
+        r.skip(contour_n * 8)?;
     }
 
     // fSumw2 (TArrayD)
@@ -157,14 +155,13 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
     // fOption (TString)
     let _option = r.read_string()?;
 
-    // fFunctions (TList) — skip via byte_count
-    skip_streamer_object(r)?;
+    // fFunctions (TList) — skip via version header
+    skip_versioned_object(r)?;
 
-    // fBufferSize (i32) — if th1_ver >= 4 the full fBuffer is here but usually empty
+    // fBufferSize (i32) — if th1_ver >= 4
     if th1_ver >= 4 {
         let buf_size = r.read_i32()?;
         if buf_size > 0 {
-            // fBuffer: buf_size f64 values (very rare, skip)
             r.skip(buf_size as usize * 8)?;
         }
     }
@@ -178,7 +175,7 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
         let _stat_overflows = r.read_i32()?;
     }
 
-    // If there's a known byte_count end, seek to it to skip any fields we missed.
+    // If there's a known end position, seek to it to skip any fields we missed.
     if let Some(end) = th1_end {
         if end > r.pos() {
             r.set_pos(end);
@@ -188,16 +185,15 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
     Ok((name, title, n_cells, axis, sumw2))
 }
 
-/// Read a TAxis.
+/// Read a TAxis, extracting nbins/xmin/xmax and variable bin edges.
 fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
-    let (_ver, bc) = r.read_version()?;
-    let axis_end = bc.map(|b| r.pos() + b as usize);
+    let (_ver, end) = r.read_version()?;
 
     // TNamed
     let (_name, _title) = r.read_tnamed()?;
 
-    // TAttAxis
-    skip_streamer_object(r)?;
+    // TAttAxis — skip
+    skip_versioned_object(r)?;
 
     let n_bins = r.read_i32()?;
     let x_min = r.read_f64()?;
@@ -211,10 +207,10 @@ fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
         Vec::new()
     };
 
-    // Skip remaining axis fields to axis_end
-    if let Some(end) = axis_end {
-        if end > r.pos() {
-            r.set_pos(end);
+    // Skip remaining axis fields to end
+    if let Some(e) = end {
+        if e > r.pos() {
+            r.set_pos(e);
         }
     }
 
@@ -226,49 +222,19 @@ fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
     })
 }
 
-/// Skip a TAxis without extracting data.
-fn skip_taxis(r: &mut RBuffer) -> Result<()> {
-    let (_ver, bc) = r.read_version()?;
-    if let Some(b) = bc {
-        r.set_pos(r.pos() + b as usize);
-    } else {
-        // Without byte count we can't reliably skip; attempt to read and discard.
-        let _ = read_taxis_inner_skip(r)?;
-    }
-    Ok(())
-}
-
-/// Fallback: read axis fields without byte_count.
-fn read_taxis_inner_skip(r: &mut RBuffer) -> Result<()> {
-    // TNamed
-    r.read_tnamed()?;
-    // TAttAxis
-    skip_streamer_object(r)?;
-    let _n_bins = r.read_i32()?;
-    let _x_min = r.read_f64()?;
-    let _x_max = r.read_f64()?;
-    let xbins_n = r.read_u32()? as usize;
-    if xbins_n > 0 {
-        r.skip(xbins_n * 8)?;
-    }
-    // The remaining fields (fFirst, fLast, fBits2, fTimeDisplay, fTimeFormat, fLabels, fModLabs)
-    // are hard to skip without byte_count. This path is rarely hit since ROOT >= 4 always writes byte_count.
-    Ok(())
-}
-
-/// Skip a streamer object that has a version header with byte_count.
+/// Skip a versioned ROOT object by jumping to its end_pos.
 ///
-/// ROOT writes most embedded objects with `(version | 0x40000000, byte_count)`.
-/// We read the version header and skip `byte_count` bytes.
-fn skip_streamer_object(r: &mut RBuffer) -> Result<()> {
-    let (_ver, bc) = r.read_version()?;
-    if let Some(b) = bc {
-        r.set_pos(r.pos() + b as usize);
+/// If the object has a byte-count header, we jump directly.
+/// Without byte-count, we cannot reliably skip — but modern ROOT files
+/// always use byte-count headers, and uproot files use them for all
+/// substantial objects.
+fn skip_versioned_object(r: &mut RBuffer) -> Result<()> {
+    let (_ver, end) = r.read_version()?;
+    if let Some(e) = end {
+        r.set_pos(e);
     }
-    // If no byte_count, the object is minimal (version-only).
-    // For TAttLine/TAttFill/TAttMarker the old format is very short and
-    // we skip nothing extra — but this is fragile. In practice all modern ROOT
-    // files use byte_count headers.
+    // Without byte-count, pos remains right after the version u16.
+    // Caller must handle this case for known small objects.
     Ok(())
 }
 
@@ -283,8 +249,6 @@ fn build_histogram(
 ) -> Result<Histogram> {
     let n_bins = axis.n_bins as usize;
 
-    // bin_content_raw has n_cells = n_bins + 2 entries:
-    // [underflow, bin1, bin2, ..., binN, overflow]
     if bin_content_raw.len() != n_cells as usize {
         return Err(RootError::Deserialization(format!(
             "bin content length {} != n_cells {}",
@@ -296,7 +260,6 @@ fn build_histogram(
     // Extract main bins (skip underflow=0 and overflow=last)
     let bin_content: Vec<f64> = bin_content_raw[1..1 + n_bins].to_vec();
 
-    // Extract sumw2 for main bins
     let sumw2 = sumw2_raw.map(|sw2| {
         if sw2.len() == n_cells as usize {
             sw2[1..1 + n_bins].to_vec()
@@ -305,18 +268,15 @@ fn build_histogram(
         }
     });
 
-    // Compute bin edges
     let bin_edges = if !axis.bin_edges.is_empty() {
         axis.bin_edges.clone()
     } else {
-        // Uniform binning
         let width = (axis.x_max - axis.x_min) / n_bins as f64;
         (0..=n_bins)
             .map(|i| axis.x_min + i as f64 * width)
             .collect()
     };
 
-    // Compute entries from sum of bin contents
     let entries: f64 = bin_content.iter().sum();
 
     Ok(Histogram {

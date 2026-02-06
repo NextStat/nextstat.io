@@ -133,6 +133,37 @@ def _std(xs: List[float]) -> float:
     return float(math.sqrt(v))
 
 
+class _RunningStats:
+    """Merge-friendly sample stats.
+
+    Stores only (n, sum, sumsq) so we can merge shards without retaining raw pulls.
+    """
+
+    __slots__ = ("n", "sum", "sumsq")
+
+    def __init__(self) -> None:
+        self.n = 0
+        self.sum = 0.0
+        self.sumsq = 0.0
+
+    def add(self, x: float) -> None:
+        self.n += 1
+        self.sum += float(x)
+        self.sumsq += float(x) * float(x)
+
+    def mean(self) -> float:
+        return float(self.sum / self.n) if self.n > 0 else float("nan")
+
+    def std(self) -> float:
+        import math
+
+        if self.n < 2:
+            return float("nan")
+        mu = self.sum / self.n
+        v = (self.sumsq - float(self.n) * mu * mu) / float(self.n - 1)
+        return float(math.sqrt(max(v, 0.0)))
+
+
 def _run_case_workspace(
     *,
     key: str,
@@ -148,6 +179,7 @@ def _run_case_workspace(
     pull_mean_delta_max: float,
     pull_std_delta_max: float,
     coverage_1sigma_delta_max: float,
+    shard: Optional[Tuple[int, int]] = None,
 ) -> Dict[str, Any]:
     import numpy as np
 
@@ -197,10 +229,10 @@ def _run_case_workspace(
     else:
         raise ValueError(f"Unknown params mode '{params}'. Expected: poi, all")
 
-    pulls_pyhf: Dict[str, List[float]] = {n: [] for n in param_names}
-    pulls_ns: Dict[str, List[float]] = {n: [] for n in param_names}
-    cover_pyhf: Dict[str, List[bool]] = {n: [] for n in param_names}
-    cover_ns: Dict[str, List[bool]] = {n: [] for n in param_names}
+    pulls_pyhf: Dict[str, _RunningStats] = {n: _RunningStats() for n in param_names}
+    pulls_ns: Dict[str, _RunningStats] = {n: _RunningStats() for n in param_names}
+    cover_pyhf: Dict[str, int] = {n: 0 for n in param_names}
+    cover_ns: Dict[str, int] = {n: 0 for n in param_names}
 
     counters: Dict[str, int] = {
         "n_toys_total": 0,
@@ -210,10 +242,16 @@ def _run_case_workspace(
         "n_param_valid_used": 0,
     }
 
-    rng = np.random.default_rng(seed)
-    for _ in range(n_toys):
+    toy_ids = list(range(int(n_toys)))
+    if shard is not None:
+        shard_index, shard_count = int(shard[0]), int(shard[1])
+        toy_ids = [i for i in toy_ids if (i % shard_count) == shard_index]
+
+    for toy_id in toy_ids:
         counters["n_toys_total"] += 1
         toy = data_nominal.copy()
+        # Per-toy RNG makes sharding deterministic and independent of exception paths.
+        rng = np.random.default_rng(int(seed) + int(toy_id))
         toy[:n_main] = rng.poisson(expected[:n_main])
 
         try:
@@ -258,10 +296,12 @@ def _run_case_workspace(
             if not (np.isfinite(th_hat_ns) and np.isfinite(th_sig_ns) and th_sig_ns > 0.0):
                 continue
 
-            pulls_pyhf[name].append((th_hat_py - th_true) / th_sig_py)
-            cover_pyhf[name].append(abs(th_hat_py - th_true) <= th_sig_py)
-            pulls_ns[name].append((th_hat_ns - th_true) / th_sig_ns)
-            cover_ns[name].append(abs(th_hat_ns - th_true) <= th_sig_ns)
+            pull_py = (th_hat_py - th_true) / th_sig_py
+            pull_ns = (th_hat_ns - th_true) / th_sig_ns
+            pulls_pyhf[name].add(float(pull_py))
+            pulls_ns[name].add(float(pull_ns))
+            cover_pyhf[name] += 1 if abs(th_hat_py - th_true) <= th_sig_py else 0
+            cover_ns[name] += 1 if abs(th_hat_ns - th_true) <= th_sig_ns else 0
             counters["n_param_valid_used"] += 1
 
     min_used = max(int(min_used_abs), int(float(min_used_frac) * float(n_toys)))
@@ -276,27 +316,42 @@ def _run_case_workspace(
     n_param_fail = 0
     n_param_skipped = 0
     for name in param_names:
-        n_used = min(len(pulls_pyhf[name]), len(pulls_ns[name]))
+        n_used = int(min(pulls_pyhf[name].n, pulls_ns[name].n))
         if n_used < min_used:
             per_param[name] = {
                 "status": "skipped",
                 "reason": f"insufficient_valid_toys:{n_used}<{min_used}",
                 "n_toys_used": int(n_used),
+                "accum": {
+                    "n_used": int(n_used),
+                    "pyhf": {
+                        "sum": float(pulls_pyhf[name].sum),
+                        "sumsq": float(pulls_pyhf[name].sumsq),
+                        "n_cover": int(cover_pyhf[name]),
+                    },
+                    "nextstat": {
+                        "sum": float(pulls_ns[name].sum),
+                        "sumsq": float(pulls_ns[name].sumsq),
+                        "n_cover": int(cover_ns[name]),
+                    },
+                },
             }
             n_param_skipped += 1
             continue
 
         any_ran = True
-        p_py = pulls_pyhf[name][:n_used]
-        p_ns = pulls_ns[name][:n_used]
-        c_py = cover_pyhf[name][:n_used]
-        c_ns = cover_ns[name][:n_used]
+        py = pulls_pyhf[name]
+        ns = pulls_ns[name]
+        mean_py = float(py.sum / n_used)
+        mean_ns = float(ns.sum / n_used)
+        std_py = float(py.std())
+        std_ns = float(ns.std())
+        cov_py = float(cover_pyhf[name]) / float(n_used)
+        cov_ns = float(cover_ns[name]) / float(n_used)
 
-        d_mean = float(_mean(p_ns) - _mean(p_py))
-        d_std = float(_std(p_ns) - _std(p_py))
-        d_cov = float(
-            _mean([1.0 if b else 0.0 for b in c_ns]) - _mean([1.0 if b else 0.0 for b in c_py])
-        )
+        d_mean = float(mean_ns - mean_py)
+        d_std = float(std_ns - std_py)
+        d_cov = float(cov_ns - cov_py)
         ok = (
             abs(d_mean) <= float(pull_mean_delta_max)
             and abs(d_std) <= float(pull_std_delta_max)
@@ -317,20 +372,33 @@ def _run_case_workspace(
             "truth": float(truth_by_name[name]),
             "n_toys_used": int(n_used),
             "pyhf": {
-                "pull_mean": float(_mean(p_py)),
-                "pull_std": float(_std(p_py)),
-                "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in c_py])),
+                "pull_mean": float(mean_py),
+                "pull_std": float(std_py),
+                "coverage_1sigma": float(cov_py),
             },
             "nextstat": {
-                "pull_mean": float(_mean(p_ns)),
-                "pull_std": float(_std(p_ns)),
-                "coverage_1sigma": float(_mean([1.0 if b else 0.0 for b in c_ns])),
+                "pull_mean": float(mean_ns),
+                "pull_std": float(std_ns),
+                "coverage_1sigma": float(cov_ns),
             },
             "delta": {"mean": d_mean, "std": d_std, "coverage_1sigma": d_cov},
             "thresholds": {
                 "pull_mean_delta_max": float(pull_mean_delta_max),
                 "pull_std_delta_max": float(pull_std_delta_max),
                 "coverage_1sigma_delta_max": float(coverage_1sigma_delta_max),
+            },
+            "accum": {
+                "n_used": int(n_used),
+                "pyhf": {
+                    "sum": float(py.sum),
+                    "sumsq": float(py.sumsq),
+                    "n_cover": int(cover_pyhf[name]),
+                },
+                "nextstat": {
+                    "sum": float(ns.sum),
+                    "sumsq": float(ns.sumsq),
+                    "n_cover": int(cover_ns[name]),
+                },
             },
         }
 
@@ -380,6 +448,7 @@ def _run_case(
     pull_mean_delta_max: float,
     pull_std_delta_max: float,
     coverage_1sigma_delta_max: float,
+    shard: Optional[Tuple[int, int]] = None,
 ) -> Dict[str, Any]:
     workspace = _load_workspace(fixture)
     return _run_case_workspace(
@@ -396,6 +465,7 @@ def _run_case(
         pull_mean_delta_max=pull_mean_delta_max,
         pull_std_delta_max=pull_std_delta_max,
         coverage_1sigma_delta_max=coverage_1sigma_delta_max,
+        shard=shard,
     )
 
 
@@ -403,6 +473,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_bias_pulls.json"))
     ap.add_argument("--n-toys", type=int, default=200)
+    ap.add_argument(
+        "--zoo-n-toys",
+        type=int,
+        default=None,
+        help="Optional override for number of toys for model-zoo cases (requires --include-zoo).",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mu-truth", type=float, default=1.0)
     ap.add_argument("--fixtures", type=str, default="simple", help="simple,complex,all or comma-separated keys")
@@ -419,7 +495,19 @@ def main() -> int:
     ap.add_argument("--pull-mean-delta-max", type=float, default=0.05)
     ap.add_argument("--pull-std-delta-max", type=float, default=0.05)
     ap.add_argument("--coverage-1sigma-delta-max", type=float, default=0.03)
+    ap.add_argument("--shard-index", type=int, default=None, help="Optional shard index (0-based).")
+    ap.add_argument("--shard-count", type=int, default=None, help="Optional total number of shards.")
     args = ap.parse_args()
+
+    shard: Optional[Tuple[int, int]] = None
+    if args.shard_index is not None or args.shard_count is not None:
+        if args.shard_index is None or args.shard_count is None:
+            raise SystemExit("--shard-index and --shard-count must be provided together")
+        if int(args.shard_count) <= 0:
+            raise SystemExit("--shard-count must be > 0")
+        if not (0 <= int(args.shard_index) < int(args.shard_count)):
+            raise SystemExit("--shard-index must satisfy 0 <= index < shard-count")
+        shard = (int(args.shard_index), int(args.shard_count))
 
     fixture_cases: Dict[str, Tuple[str, str]] = {
         "simple": ("simple_workspace.json", "GaussExample"),
@@ -447,10 +535,18 @@ def main() -> int:
             for n in zoo_sizes:
                 workspace_cases[f"synthetic_shapesys_{n}"] = (make_synthetic_shapesys_workspace(int(n)), "m")
 
-    if args.fixtures.strip().lower() == "all":
-        keys = list(fixture_cases.keys()) + (list(workspace_cases.keys()) if args.include_zoo else [])
+    fixtures_sel = args.fixtures.strip().lower()
+    if fixtures_sel == "all":
+        keys = list(fixture_cases.keys())
+    elif fixtures_sel in ("none", "zoo"):
+        keys = []
     else:
         keys = [k.strip().lower() for k in args.fixtures.split(",") if k.strip()]
+
+    # If zoo is requested, include all model-zoo cases in addition to the selected fixture keys.
+    # This matches user expectation: `--fixtures simple --include-zoo` should run both.
+    if args.include_zoo:
+        keys = list(dict.fromkeys(keys + list(workspace_cases.keys())))
 
     # Prereqs: allow "skipped" report if dependencies are missing.
     prereqs: Dict[str, Any] = {}
@@ -483,6 +579,9 @@ def main() -> int:
             "prereqs": prereqs,
             "params": {
                 "n_toys": int(args.n_toys),
+                "shard_index": (int(args.shard_index) if args.shard_index is not None else None),
+                "shard_count": (int(args.shard_count) if args.shard_count is not None else None),
+                "zoo_n_toys": (int(args.zoo_n_toys) if args.zoo_n_toys is not None else None),
                 "seed": int(args.seed),
                 "mu_truth": float(args.mu_truth),
                 "fixtures": args.fixtures,
@@ -516,19 +615,21 @@ def main() -> int:
                     pull_mean_delta_max=float(args.pull_mean_delta_max),
                     pull_std_delta_max=float(args.pull_std_delta_max),
                     coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
+                    shard=shard,
                 )
             elif key in workspace_cases:
                 workspace, measurement = workspace_cases[key]
                 if key == "zoo_import_error":
                     row = {"name": key, "status": "skipped", "reason": "zoo_import_error"}
                 else:
+                    n_toys = int(args.zoo_n_toys) if args.zoo_n_toys is not None else int(args.n_toys)
                     row = _run_case_workspace(
                         key=key,
                         fixture=None,
                         workspace=workspace,
                         measurement=measurement,
                         params=str(args.params),
-                        n_toys=int(args.n_toys),
+                        n_toys=n_toys,
                         seed=int(args.seed + case_idx),
                         mu_truth=float(args.mu_truth),
                         min_used_abs=int(args.min_used_abs),
@@ -536,6 +637,7 @@ def main() -> int:
                         pull_mean_delta_max=float(args.pull_mean_delta_max),
                         pull_std_delta_max=float(args.pull_std_delta_max),
                         coverage_1sigma_delta_max=float(args.coverage_1sigma_delta_max),
+                        shard=shard,
                     )
             else:
                 row = {"name": key, "status": "error", "reason": "unknown_fixture_key"}

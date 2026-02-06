@@ -1008,6 +1008,8 @@ dependencies = [
  "flate2",
  "log",
  "lz4_flex",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -1021,8 +1023,10 @@ dependencies = [
  "ns-ad",
  "ns-compute",
  "ns-core",
+ "ns-root",
  "proptest",
  "rayon",
+ "roxmltree",
  "serde",
  "serde_json",
  "statrs",
@@ -1451,6 +1455,15 @@ name = "regex-syntax"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "rustix"

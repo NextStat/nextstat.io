@@ -927,6 +927,8 @@ def main() -> int:
                 zs = base_params.get("zoo_sizes", [])
                 if isinstance(zs, list) and zs:
                     cmd += ["--zoo-sizes", ",".join(str(int(x)) for x in zs)]
+                if base_params.get("zoo_n_toys") is not None:
+                    cmd += ["--zoo-n-toys", str(int(base_params["zoo_n_toys"]))]
 
             t0 = time.time()
             rc, stdout = _run(cmd, cwd=repo, env=env_dict)

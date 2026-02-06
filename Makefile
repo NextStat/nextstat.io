@@ -4,6 +4,7 @@
 	apex2-pre-release-gate \
 	hepdata-fetch \
 	hepdata-pytest \
+	pyhf-audit \
 	apex2-root-prereq \
 	apex2-root-baseline-record \
 	apex2-root-cases \
@@ -48,6 +49,13 @@ hepdata-fetch:
 
 hepdata-pytest:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" -m pytest -k hepdata_workspaces
+
+pyhf-audit:
+	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py --out-json tmp/pyhf_parity_audit.json --out-md tmp/pyhf_parity_audit.md
+
+.PHONY: pyhf-audit-fit
+pyhf-audit-fit:
+	PYTHONUNBUFFERED=1 PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/audit_pyhf_parity.py --fit --fit-max-params 600 --out-json tmp/pyhf_parity_audit_fit.json --out-md tmp/pyhf_parity_audit_fit.md
 
 apex2-root-prereq:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/apex2_root_suite_report.py --prereq-only --out tmp/apex2_root_prereq.json
