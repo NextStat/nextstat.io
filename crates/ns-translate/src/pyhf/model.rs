@@ -1339,7 +1339,13 @@ impl HistFactoryModel {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
-                let exp = expected.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
+                let exp = expected.get(bin_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "expected_data length mismatch on tape: bin_idx={} len={}",
+                        bin_idx,
+                        expected.len()
+                    ))
+                })?;
                 let floor = tape.constant(1e-10);
                 let exp = tape.max(exp, floor);
 
@@ -1370,7 +1376,13 @@ impl HistFactoryModel {
                         .zip(constraint.observed.iter())
                         .zip(param_indices.iter())
                     {
-                        let gamma = params.get(gamma_idx).copied().unwrap_or(tape.constant(1.0));
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range in aux constraint (tape): idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
                         let tau_c = tape.constant(tau);
                         let exp_aux = tape.mul(gamma, tau_c);
                         let floor = tape.constant(1e-10);
@@ -1400,7 +1412,13 @@ impl HistFactoryModel {
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
-                let value = params.get(param_idx).copied().unwrap_or(tape.constant(param.init));
+                let value = params.get(param_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "Constrained parameter index out of range (tape): idx={} len={}",
+                        param_idx,
+                        params.len()
+                    ))
+                })?;
                 let center_c = tape.constant(center);
                 let diff = tape.sub(value, center_c);
                 let inv_width = tape.constant(1.0 / width);
