@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize)]
@@ -176,4 +176,3 @@ pub fn write_bundle(
 
     Ok(())
 }
-

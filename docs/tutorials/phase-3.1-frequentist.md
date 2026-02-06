@@ -186,6 +186,30 @@ Schema:
 - `points[]: { mu, cls, expected[5] }`
 - `obs_limit`, `exp_limits[5]` (scan interpolation)
 
+## Reproducible Run Bundles (Phase 9 reporting baseline)
+
+For regulated workflows (pharma/social science packs) you often need immutable artifacts:
+
+- exact model spec and input data snapshot
+- hashes (data + spec) and command args
+- output JSON captured alongside inputs
+
+The CLI supports this via a global `--bundle` flag. The target directory must be empty (or not exist).
+
+Example:
+
+```bash
+rm -rf tmp/run_bundle
+cargo run -p ns-cli -- --bundle tmp/run_bundle fit --input tests/fixtures/simple_workspace.json --threads 1
+```
+
+Bundle layout:
+
+- `meta.json`: tool version, args, and input/spec/data SHA-256 hashes (when applicable)
+- `inputs/`: `input.json` plus `model_spec.json` + `data.json` (pyhf workspaces)
+- `outputs/result.json`: the command output JSON
+- `manifest.json`: SHA-256 + size for each file in the bundle
+
 ## Minimal plotting example (Python)
 
 This example reads the CLs artifact JSON and plots the observed curve and the median expected curve.

@@ -1026,7 +1026,11 @@ fn load_kalman_input_with_raw(
     Ok((model, ys, ys_raw, kind))
 }
 
-fn cmd_ts_kalman_filter(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
+fn cmd_ts_kalman_filter(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
         .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
@@ -1039,10 +1043,18 @@ fn cmd_ts_kalman_filter(input: &PathBuf, output: Option<&PathBuf>) -> Result<()>
         "filtered_covs": fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(dir, "timeseries_kalman_filter", serde_json::json!({}), input, &output_json)?;
+    }
+    Ok(())
 }
 
-fn cmd_ts_kalman_smooth(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
+fn cmd_ts_kalman_smooth(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
         .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
@@ -1057,7 +1069,11 @@ fn cmd_ts_kalman_smooth(input: &PathBuf, output: Option<&PathBuf>) -> Result<()>
         "smoothed_covs": sr.smoothed_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(dir, "timeseries_kalman_smooth", serde_json::json!({}), input, &output_json)?;
+    }
+    Ok(())
 }
 
 fn cmd_ts_kalman_em(
@@ -1070,6 +1086,7 @@ fn cmd_ts_kalman_em(
     estimate_h: bool,
     min_diag: f64,
     output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let cfg = ns_inference::timeseries::em::KalmanEmConfig {
@@ -1095,7 +1112,17 @@ fn cmd_ts_kalman_em(
         "r": dmatrix_to_nested(&res.model.r),
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_em",
+            serde_json::json!({ "max_iter": max_iter, "tol": tol }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_ts_kalman_fit(
@@ -1110,6 +1137,7 @@ fn cmd_ts_kalman_fit(
     forecast_steps: usize,
     no_smooth: bool,
     output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let cfg = ns_inference::timeseries::em::KalmanEmConfig {
@@ -1176,7 +1204,17 @@ fn cmd_ts_kalman_fit(
         "forecast": forecast_json,
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_fit",
+            serde_json::json!({ "max_iter": max_iter, "tol": tol, "forecast_steps": forecast_steps, "no_smooth": no_smooth }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn z_for_level(level: f64) -> Result<(f64, f64)> {
@@ -1333,6 +1371,7 @@ fn cmd_ts_kalman_viz(
     level: f64,
     forecast_steps: usize,
     output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let (model0, ys, ys_raw, kind) = load_kalman_input_with_raw(input)?;
     let t_max = ys.len();
@@ -1433,7 +1472,17 @@ fn cmd_ts_kalman_viz(
         "forecast": forecast_json,
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_viz",
+            serde_json::json!({ "max_iter": max_iter, "tol": tol, "level": level, "forecast_steps": forecast_steps }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_ts_kalman_forecast(
@@ -1441,6 +1490,7 @@ fn cmd_ts_kalman_forecast(
     steps: usize,
     alpha: Option<f64>,
     output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let (model, ys) = load_kalman_input(input)?;
     let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
@@ -1468,10 +1518,26 @@ fn cmd_ts_kalman_forecast(
         );
     }
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_forecast",
+            serde_json::json!({ "steps": steps, "alpha": alpha }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
-fn cmd_ts_kalman_simulate(input: &PathBuf, t_max: usize, seed: u64, output: Option<&PathBuf>) -> Result<()> {
+fn cmd_ts_kalman_simulate(
+    input: &PathBuf,
+    t_max: usize,
+    seed: u64,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
     let (model, _ys) = load_kalman_input(input)?;
     let sim = ns_inference::timeseries::simulate::kalman_simulate(&model, t_max, seed)
         .map_err(|e| anyhow::anyhow!("kalman_simulate failed: {e}"))?;
@@ -1480,7 +1546,17 @@ fn cmd_ts_kalman_simulate(input: &PathBuf, t_max: usize, seed: u64, output: Opti
         "xs": sim.xs.iter().map(dvector_to_vec).collect::<Vec<_>>(),
         "ys": sim.ys.iter().map(dvector_to_vec).collect::<Vec<_>>(),
     });
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "timeseries_kalman_simulate",
+            serde_json::json!({ "t_max": t_max, "seed": seed }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_hypotest(
@@ -1489,6 +1565,7 @@ fn cmd_hypotest(
     expected_set: bool,
     output: Option<&PathBuf>,
     threads: usize,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let model = load_model(input, threads)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
@@ -1516,7 +1593,17 @@ fn cmd_hypotest(
         },
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "hypotest",
+            serde_json::json!({ "mu": mu, "expected_set": expected_set, "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_upper_limit(
@@ -1532,6 +1619,7 @@ fn cmd_upper_limit(
     max_iter: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let model = load_model(input, threads)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
@@ -1584,7 +1672,28 @@ fn cmd_upper_limit(
         })
     };
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "upper_limit",
+            serde_json::json!({
+                "alpha": alpha,
+                "expected": expected,
+                "scan_start": scan_start,
+                "scan_stop": scan_stop,
+                "scan_points": scan_points,
+                "lo": lo,
+                "hi": hi,
+                "rtol": rtol,
+                "max_iter": max_iter,
+                "threads": threads
+            }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_scan(
@@ -1594,6 +1703,7 @@ fn cmd_scan(
     points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
         anyhow::bail!("points must be >= 2");
@@ -1618,7 +1728,17 @@ fn cmd_scan(
         })).collect::<Vec<_>>(),
     });
 
-    write_json(output, output_json)
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "scan",
+            serde_json::json!({ "start": start, "stop": stop, "points": points, "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_viz_profile(
@@ -1628,6 +1748,7 @@ fn cmd_viz_profile(
     points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
         anyhow::bail!("points must be >= 2");
@@ -1640,7 +1761,18 @@ fn cmd_viz_profile(
     let scan = ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?;
     let artifact: ns_viz::ProfileCurveArtifact = scan.into();
 
-    write_json(output, serde_json::to_value(artifact)?)
+    let output_json = serde_json::to_value(artifact)?;
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_profile",
+            serde_json::json!({ "start": start, "stop": stop, "points": points, "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
 
 fn cmd_viz_cls(
@@ -1651,6 +1783,7 @@ fn cmd_viz_cls(
     scan_points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if scan_points < 2 {
         anyhow::bail!("scan_points must be >= 2");
@@ -1667,5 +1800,22 @@ fn cmd_viz_cls(
     let scan: Vec<f64> = (0..scan_points).map(|i| scan_start + step * i as f64).collect();
 
     let artifact = ns_viz::ClsCurveArtifact::from_scan(&ctx, &mle, alpha, &scan)?;
-    write_json(output, serde_json::to_value(artifact)?)
+    let output_json = serde_json::to_value(artifact)?;
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_cls",
+            serde_json::json!({
+                "alpha": alpha,
+                "scan_start": scan_start,
+                "scan_stop": scan_stop,
+                "scan_points": scan_points,
+                "threads": threads
+            }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
 }
