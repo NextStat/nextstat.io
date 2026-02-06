@@ -625,6 +625,10 @@ If the selected manifest is missing some baseline keys (for example because it w
 `tests/compare_with_latest_baseline.py` will try to recover missing entries by scanning newer `baseline_manifest_*.json`
 in the same `tmp/baselines/` directory.
 
+Performance noise notes (local dev machines):
+- `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons when the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`).
+- `tests/benchmark_glm_fit_predict.py` uses median timings to reduce false regressions when CPU load/frequency changes.
+
 For performance gating, use the same machine as the baseline and enable:
 
 ```bash

@@ -152,6 +152,10 @@ This writes a consolidated report to `tmp/baseline_compare_report.json` and exit
 If the chosen manifest is missing some baseline keys (for example because it was recorded with `--only root`),
 the compare runner will attempt to recover missing entries by scanning newer `baseline_manifest_*.json` in the same directory.
 
+Note on performance noise:
+- `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons where the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`), because sub-microsecond timings are dominated by timer noise.
+- The GLM benchmark (`tests/benchmark_glm_fit_predict.py`) reports median timings (not min) to make regressions less sensitive to transient CPU load.
+
 For strict performance gating, require the same host as the baseline:
 
 ```bash

@@ -18,6 +18,7 @@ import platform
 import sys
 import time
 import timeit
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -28,7 +29,7 @@ import nextstat
 from nextstat.glm import linear, logistic, negbin, poisson
 
 
-def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 5) -> float:
+def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 7) -> float:
     number = 1
     while True:
         t = timeit.timeit(fn, number=number)
@@ -36,16 +37,21 @@ def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat
             break
         number *= 2
     times = [timeit.timeit(fn, number=number) / number for _ in range(repeat)]
-    return min(times)
+    # Median is more robust than min for regression gating on shared/dev machines.
+    return float(statistics.median(times))
 
 
-def bench_fit_time(fn: Callable[[], Any], *, repeat: int = 3) -> float:
+def bench_fit_time(fn: Callable[[], Any], *, warmup: int = 1, repeat: int = 5) -> float:
+    # Warm up once to reduce one-time effects (allocs, code paths, caches).
+    for _ in range(warmup):
+        fn()
     times: list[float] = []
     for _ in range(repeat):
         t0 = time.perf_counter()
         fn()
         times.append(time.perf_counter() - t0)
-    return min(times)
+    # Median is more stable than min when CPU frequency/background load fluctuates.
+    return float(statistics.median(times))
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
