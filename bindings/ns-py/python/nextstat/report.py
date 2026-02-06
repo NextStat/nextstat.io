@@ -156,7 +156,6 @@ def _plot_pulls(entries: Sequence[Mapping[str, Any]], *, title: str, page: int, 
     names = [str(e.get("name", "")) for e in entries]
     pulls = [float(e.get("pull", 0.0)) for e in entries]
     constraints = [float(e.get("constraint", 0.0)) for e in entries]
-    kinds = [str(e.get("kind", "nuisance")) for e in entries]
 
     y = list(range(len(entries)))
     fig_h = max(3.0, 0.18 * len(entries) + 1.4)
@@ -166,8 +165,7 @@ def _plot_pulls(entries: Sequence[Mapping[str, Any]], *, title: str, page: int, 
     ax.axvspan(-2.0, 2.0, color="#F2D95C", alpha=0.15, zorder=0)
     ax.axvline(0.0, color="#6B7280", lw=1.0)
 
-    colors = ["#111827" if k == "poi" else "#1D4ED8" for k in kinds]
-    ax.errorbar(pulls, y, xerr=constraints, fmt="o", color="#111827", ecolor=colors, elinewidth=1.2, capsize=0.0)
+    ax.errorbar(pulls, y, xerr=constraints, fmt="o", color="#111827", ecolor="#111827", elinewidth=1.2, capsize=0.0)
 
     ax.set_yticks(y)
     ax.set_yticklabels(names, fontsize=8)

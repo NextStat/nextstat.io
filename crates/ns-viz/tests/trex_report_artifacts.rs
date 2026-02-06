@@ -1,0 +1,141 @@
+use approx::assert_abs_diff_eq;
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repo root")
+}
+
+fn load_histfactory_fixture() -> (ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel) {
+    let root = repo_root();
+    let ws_path = root.join("tests/fixtures/histfactory/workspace.json");
+    let bytes = std::fs::read(ws_path).expect("read fixture workspace");
+    let ws: ns_translate::pyhf::Workspace = serde_json::from_slice(&bytes).expect("parse workspace");
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&ws).expect("build model");
+    (ws, model)
+}
+
+#[test]
+fn trex_report_distributions_artifact_contract_smoke() {
+    let (ws, model) = load_histfactory_fixture();
+
+    let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+    let params_postfit = params_prefit.clone();
+
+    let mut data_by_channel: HashMap<String, Vec<f64>> = HashMap::new();
+    for obs in &ws.observations {
+        data_by_channel.insert(obs.name.clone(), obs.data.clone());
+    }
+
+    let root = repo_root();
+    let xml = root.join("tests/fixtures/histfactory/combination.xml");
+    let edges = ns_translate::histfactory::bin_edges_by_channel_from_xml(&xml).expect("bin edges from xml");
+
+    let artifact = ns_viz::distributions::distributions_artifact(
+        &model,
+        &data_by_channel,
+        &edges,
+        &params_prefit,
+        &params_postfit,
+        1,
+    )
+    .expect("distributions artifact");
+
+    assert_eq!(artifact.schema_version, "trex_report_distributions_v0");
+    assert!(!artifact.channels.is_empty());
+
+    for ch in &artifact.channels {
+        // Basic shape checks.
+        assert!(ch.bin_edges.len() >= 2);
+        let n_bins = ch.bin_edges.len() - 1;
+        assert_eq!(ch.data_y.len(), n_bins);
+        assert_eq!(ch.total_prefit_y.len(), n_bins);
+        assert_eq!(ch.total_postfit_y.len(), n_bins);
+        assert_eq!(ch.ratio_y.len(), n_bins);
+        assert_eq!(ch.ratio_yerr_lo.len(), n_bins);
+        assert_eq!(ch.ratio_yerr_hi.len(), n_bins);
+
+        // Ratio should be data / total_postfit where denom is finite and non-zero.
+        for i in 0..n_bins.min(5) {
+            let denom = ch.total_postfit_y[i];
+            if denom.is_finite() && denom != 0.0 {
+                let want = ch.data_y[i] / denom;
+                assert_abs_diff_eq!(ch.ratio_y[i], want, epsilon = 1e-9);
+            }
+        }
+    }
+}
+
+#[test]
+fn trex_report_pulls_and_corr_golden_simple_fit() {
+    let (_ws, model) = load_histfactory_fixture();
+
+    let n = model.parameters().len();
+    let mut params = Vec::with_capacity(n);
+    let mut uncs = Vec::with_capacity(n);
+    for p in model.parameters() {
+        params.push(p.constraint_center.unwrap_or(p.init));
+        // Ensure strictly positive widths for correlation normalization.
+        uncs.push(p.constraint_width.unwrap_or(1.0).max(1e-12));
+    }
+
+    let mut cov = vec![0.0; n * n];
+    for i in 0..n {
+        cov[i * n + i] = uncs[i] * uncs[i];
+    }
+
+    let fit = ns_core::FitResult {
+        parameters: params,
+        uncertainties: uncs,
+        covariance: Some(cov),
+        nll: 0.0,
+        converged: true,
+        n_iter: 0,
+        n_fev: 0,
+        n_gev: 0,
+    };
+
+    let pulls = ns_viz::pulls::pulls_artifact(&model, &fit, 1).expect("pulls artifact");
+    assert_eq!(pulls.schema_version, "trex_report_pulls_v0");
+    assert!(!pulls.entries.is_empty());
+    for e in &pulls.entries {
+        if e.kind == "nuisance" {
+            assert_abs_diff_eq!(e.pull, 0.0, epsilon = 1e-12);
+            assert_abs_diff_eq!(e.constraint, 1.0, epsilon = 1e-12);
+        }
+    }
+
+    let corr = ns_viz::corr::corr_artifact(&model, &fit, 1, false).expect("corr artifact");
+    assert_eq!(corr.schema_version, "trex_report_corr_v0");
+    assert_eq!(corr.parameter_names.len(), n);
+    assert_eq!(corr.corr.len(), n);
+    for i in 0..n {
+        assert_eq!(corr.corr[i].len(), n);
+        for j in 0..n {
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert_abs_diff_eq!(corr.corr[i][j], want, epsilon = 1e-12);
+        }
+    }
+}
+
+#[test]
+fn trex_report_yields_invariants_prefit_equals_postfit() {
+    let (_ws, model) = load_histfactory_fixture();
+
+    let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+    let artifact = ns_viz::yields::yields_artifact(&model, &params_prefit, &params_prefit, 1)
+        .expect("yields artifact");
+
+    assert_eq!(artifact.schema_version, "trex_report_yields_v0");
+    assert!(!artifact.channels.is_empty());
+
+    for ch in &artifact.channels {
+        assert_abs_diff_eq!(ch.total_prefit, ch.total_postfit, epsilon = 1e-9);
+        let sum_samples: f64 = ch.samples.iter().map(|s| s.prefit).sum();
+        assert_abs_diff_eq!(sum_samples, ch.total_prefit, epsilon = 1e-6);
+    }
+}
+
