@@ -65,6 +65,7 @@ def sample(
     target_accept: float = 0.8,
     init_jitter: float = 0.0,
     init_jitter_rel: float | None = None,
+    init_overdispersed_rel: float | None = None,
     data: Optional[list[float]] = None,
     return_idata: bool = True,
 ):
@@ -86,6 +87,7 @@ def sample(
         target_accept=target_accept,
         init_jitter=init_jitter,
         init_jitter_rel=init_jitter_rel,
+        init_overdispersed_rel=init_overdispersed_rel,
         data=data,
     )
 

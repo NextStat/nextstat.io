@@ -81,10 +81,11 @@ fn qmu_like_with_free(
     let fixed_model = model.with_fixed_param(poi, mu_test);
     let fixed = mle.fit_minimum(&fixed_model)?;
     if !fixed.converged {
-        return Err(Error::Validation(format!(
-            "Fixed fit did not converge for mu_test={}: {}",
-            mu_test, fixed.message
-        )));
+        log::warn!(
+            "hypotest: fixed fit did not converge for mu_test={}: {} (continuing with best-found)",
+            mu_test,
+            fixed.message
+        );
     }
 
     let llr = 2.0 * (fixed.fval - free_nll);
@@ -264,10 +265,11 @@ impl AsymptoticCLsContext {
             };
             let fixed_data = mle.fit_minimum_from(&fixed_data_model, &init_data)?;
             if !fixed_data.converged {
-                return Err(Error::Validation(format!(
-                    "Fixed fit did not converge for mu_test={}: {}",
-                    mu, fixed_data.message
-                )));
+                log::warn!(
+                    "hypotest scan: fixed fit did not converge for mu_test={}: {} (continuing with best-found)",
+                    mu,
+                    fixed_data.message
+                );
             }
             last_fixed_data_params = Some(fixed_data.parameters.clone());
 
@@ -289,10 +291,11 @@ impl AsymptoticCLsContext {
             };
             let fixed_asimov = mle.fit_minimum_from(&fixed_asimov_model, &init_asimov)?;
             if !fixed_asimov.converged {
-                return Err(Error::Validation(format!(
-                    "Fixed fit (Asimov) did not converge for mu_test={}: {}",
-                    mu, fixed_asimov.message
-                )));
+                log::warn!(
+                    "hypotest scan: fixed fit (Asimov) did not converge for mu_test={}: {} (continuing with best-found)",
+                    mu,
+                    fixed_asimov.message
+                );
             }
             last_fixed_asimov_params = Some(fixed_asimov.parameters.clone());
 

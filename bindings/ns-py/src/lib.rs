@@ -1442,11 +1442,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1455,11 +1451,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1468,11 +1460,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1481,11 +1469,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1494,11 +1478,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1507,11 +1487,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
@@ -1520,11 +1496,7 @@ fn sample<'py>(
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
-                    if init_jitter == 0.0 && init_jitter_rel.is_none() && init_overdispersed_rel.is_none() {
-                    vec![seed; n_chains]
-                } else {
-                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect()
-                };
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
                 sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
             })
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?

@@ -109,7 +109,7 @@ mod tests {
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
-        // No jitter so identical seeds produce identical chains.
+        // Deterministic: same base seed yields same draws across runs.
         let config = NutsConfig {
             max_treedepth: 8,
             target_accept: 0.8,

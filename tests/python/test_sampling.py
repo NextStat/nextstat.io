@@ -23,6 +23,11 @@ def _make_model():
     return nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
 
 
+def _make_fast_model():
+    # Fast, non-HEP model for most API/shape/config tests (keeps non-slow suite quick).
+    return nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
+
+
 # ---------------------------------------------------------------------------
 # API shape
 # ---------------------------------------------------------------------------
@@ -31,7 +36,7 @@ class TestSampleAPIShape:
     """Return value has correct top-level keys and nested dimensions."""
 
     def test_returns_dict_with_expected_keys(self):
-        model = _make_model()
+        model = _make_fast_model()
         result = nextstat.sample(model, n_chains=1, n_warmup=20, n_samples=10, seed=1)
         assert isinstance(result, dict)
         expected_keys = {
@@ -41,7 +46,7 @@ class TestSampleAPIShape:
         assert expected_keys <= set(result.keys())
 
     def test_posterior_shape(self):
-        model = _make_model()
+        model = _make_fast_model()
         n_chains, n_samples = 2, 10
         result = nextstat.sample(
             model, n_chains=n_chains, n_warmup=20, n_samples=n_samples, seed=1,
@@ -56,7 +61,7 @@ class TestSampleAPIShape:
                 assert len(chain) == n_samples
 
     def test_sample_stats_shape(self):
-        model = _make_model()
+        model = _make_fast_model()
         n_chains, n_samples = 1, 10
         result = nextstat.sample(
             model, n_chains=n_chains, n_warmup=20, n_samples=n_samples, seed=1,
@@ -73,7 +78,7 @@ class TestSampleAPIShape:
         assert len(stats["step_size"]) == n_chains
 
     def test_diagnostics_keys(self):
-        model = _make_model()
+        model = _make_fast_model()
         result = nextstat.sample(model, n_chains=2, n_warmup=20, n_samples=10, seed=1)
         diag = result["diagnostics"]
         assert "r_hat" in diag
@@ -102,7 +107,7 @@ class TestSampleReproducibility:
     """Same seed produces identical draws."""
 
     def test_same_seed_same_draws(self):
-        model = _make_model()
+        model = _make_fast_model()
         kwargs = dict(n_chains=1, n_warmup=20, n_samples=10, seed=42)
         r1 = nextstat.sample(model, **kwargs)
         r2 = nextstat.sample(model, **kwargs)
@@ -120,7 +125,7 @@ class TestSampleNonSlowGates:
     """Non-flaky, non-slow sanity checks for CI."""
 
     def test_basic_diagnostics_are_finite(self):
-        model = _make_model()
+        model = _make_fast_model()
         result = nextstat.sample(
             model,
             n_chains=2,
@@ -216,7 +221,7 @@ class TestSampleConfig:
     """max_treedepth, target_accept kwargs are respected."""
 
     def test_custom_max_treedepth(self):
-        model = _make_model()
+        model = _make_fast_model()
         result = nextstat.sample(
             model, n_chains=1, n_warmup=20, n_samples=10,
             seed=1, max_treedepth=5,
@@ -225,7 +230,7 @@ class TestSampleConfig:
             assert depth <= 5, f"Tree depth {depth} exceeds max_treedepth=5"
 
     def test_custom_target_accept(self):
-        model = _make_model()
+        model = _make_fast_model()
         n_samples = 20
         result = nextstat.sample(
             model, n_chains=1, n_warmup=30, n_samples=n_samples,
@@ -236,14 +241,14 @@ class TestSampleConfig:
         assert mean_accept > 0.5, f"Mean accept prob too low: {mean_accept}"
 
     def test_init_jitter_rel_smoke(self):
-        model = _make_model()
+        model = _make_fast_model()
         result = nextstat.sample(
             model, n_chains=1, n_warmup=20, n_samples=10, seed=1, init_jitter_rel=0.10
         )
         assert isinstance(result, dict)
 
     def test_init_jitter_mutual_exclusive(self):
-        model = _make_model()
+        model = _make_fast_model()
         with pytest.raises(ValueError):
             nextstat.sample(
                 model,
@@ -256,7 +261,7 @@ class TestSampleConfig:
             )
 
     def test_init_overdispersed_produces_distinct_chains(self):
-        model = _make_model()
+        model = _make_fast_model()
         r = nextstat.sample(
             model,
             n_chains=2,

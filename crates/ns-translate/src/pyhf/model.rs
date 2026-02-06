@@ -686,12 +686,18 @@ impl HistFactoryModel {
                             param_indices.len()
                         )));
                     }
-                    constraint.observed = constraint
-                        .tau
-                        .iter()
-                        .zip(param_indices.iter())
-                        .map(|(&tau, &gamma_idx)| params[gamma_idx] * tau)
-                        .collect();
+                    let mut obs = Vec::with_capacity(constraint.tau.len());
+                    for (&tau, &gamma_idx) in constraint.tau.iter().zip(param_indices.iter()) {
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range: idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
+                        obs.push(gamma * tau);
+                    }
+                    constraint.observed = obs;
                 }
             }
         }
@@ -1040,7 +1046,13 @@ impl HistFactoryModel {
                 for modifier in &sample.modifiers {
                     match modifier {
                         ModelModifier::NormFactor { param_idx } => {
-                            let norm = params[*param_idx];
+                            let norm = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormFactor param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for fac in &mut sample_factors {
                                 *fac = *fac * norm;
                             }
@@ -1048,20 +1060,39 @@ impl HistFactoryModel {
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma_val = params[gamma_idx];
+                                    let gamma_val =
+                                        params.get(gamma_idx).copied().ok_or_else(|| {
+                                            ns_core::Error::Validation(format!(
+                                                "ShapeSys gamma index out of range: idx={} len={}",
+                                                gamma_idx,
+                                                params.len()
+                                            ))
+                                        })?;
                                     sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
-                            let alpha = params[*param_idx];
+                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
                             for fac in &mut sample_factors {
                                 *fac = *fac * factor;
                             }
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
-                            let alpha = params[*param_idx];
+                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "HistoSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
                                 let nom = sample_nominal
                                     .get(bin_idx)
@@ -1081,7 +1112,14 @@ impl HistFactoryModel {
                         ModelModifier::StatError { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma_val = params[gamma_idx];
+                                    let gamma_val =
+                                        params.get(gamma_idx).copied().ok_or_else(|| {
+                                            ns_core::Error::Validation(format!(
+                                                "StatError gamma index out of range: idx={} len={}",
+                                                gamma_idx,
+                                                params.len()
+                                            ))
+                                        })?;
                                     sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
@@ -1089,13 +1127,26 @@ impl HistFactoryModel {
                         ModelModifier::ShapeFactor { param_indices } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma_val = params[gamma_idx];
+                                    let gamma_val =
+                                        params.get(gamma_idx).copied().ok_or_else(|| {
+                                            ns_core::Error::Validation(format!(
+                                                "ShapeFactor gamma index out of range: idx={} len={}",
+                                                gamma_idx,
+                                                params.len()
+                                            ))
+                                        })?;
                                     sample_factors[bin_idx] = sample_factors[bin_idx] * gamma_val;
                                 }
                             }
                         }
                         ModelModifier::Lumi { param_idx } => {
-                            let lumi = params[*param_idx];
+                            let lumi = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "Lumi param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for fac in &mut sample_factors {
                                 *fac = *fac * lumi;
                             }
@@ -1321,7 +1372,13 @@ impl HistFactoryModel {
                 for modifier in &sample.modifiers {
                     match modifier {
                         ModelModifier::NormFactor { param_idx } => {
-                            let norm = params[*param_idx];
+                            let norm = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormFactor param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for fac in &mut sample_factors {
                                 *fac = tape.mul(*fac, norm);
                             }
@@ -1329,21 +1386,39 @@ impl HistFactoryModel {
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma = params[gamma_idx];
+                                    let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeSys gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
                                     sample_factors[bin_idx] =
                                         tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
-                            let alpha = params[*param_idx];
+                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             let factor = normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor);
                             for fac in &mut sample_factors {
                                 *fac = tape.mul(*fac, factor);
                             }
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
-                            let alpha = params[*param_idx];
+                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "HistoSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
                                 let nom = sample_nominal
                                     .get(bin_idx)
@@ -1362,7 +1437,13 @@ impl HistFactoryModel {
                         ModelModifier::StatError { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma = params[gamma_idx];
+                                    let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "StatError gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
                                     sample_factors[bin_idx] =
                                         tape.mul(sample_factors[bin_idx], gamma);
                                 }
@@ -1371,14 +1452,26 @@ impl HistFactoryModel {
                         ModelModifier::ShapeFactor { param_indices } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
                                 if bin_idx < sample_factors.len() {
-                                    let gamma = params[gamma_idx];
+                                    let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeFactor gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
                                     sample_factors[bin_idx] =
                                         tape.mul(sample_factors[bin_idx], gamma);
                                 }
                             }
                         }
                         ModelModifier::Lumi { param_idx } => {
-                            let lumi = params[*param_idx];
+                            let lumi = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "Lumi param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
                             for fac in &mut sample_factors {
                                 *fac = tape.mul(*fac, lumi);
                             }

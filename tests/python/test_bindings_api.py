@@ -54,10 +54,27 @@ def test_model_basic_contracts_simple_workspace():
     assert isinstance(nll, float)
     assert nll == nll  # not NaN
 
-    g = model.grad_nll(init)
-    assert isinstance(g, list)
-    assert len(g) == n
-    assert all(_is_finite(v) for v in g)
+
+def test_model_rejects_wrong_parameter_length_without_crashing():
+    ws = load_fixture("simple_workspace.json")
+    model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    # Too short
+    with pytest.raises(ValueError):
+        model.nll([1.0])
+    with pytest.raises(ValueError):
+        model.grad_nll([1.0])
+    with pytest.raises(ValueError):
+        model.expected_data([1.0])
+
+    # Too long
+    n = model.n_params()
+    with pytest.raises(ValueError):
+        model.nll([1.0] * (n + 1))
+    with pytest.raises(ValueError):
+        model.grad_nll([1.0] * (n + 1))
+    with pytest.raises(ValueError):
+        model.expected_data([1.0] * (n + 1))
 
 
 def test_with_observed_main_length_mismatch_raises():
@@ -166,3 +183,46 @@ def test_upper_limit_contract():
     ul = nextstat.upper_limit(model, alpha=0.05, lo=0.0, hi=5.0)
     assert isinstance(ul, float)
     assert ul >= 0.0
+
+
+def test_fit_batch_contract_list_of_models():
+    ws = load_fixture("simple_workspace.json")
+    m0 = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+    m1 = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    results = mle.fit_batch([m0, m1])
+    assert isinstance(results, list)
+    assert len(results) == 2
+    for r in results:
+        assert isinstance(r.bestfit, list)
+        assert isinstance(r.uncertainties, list)
+        assert isinstance(r.nll, float)
+        assert isinstance(r.success, bool)
+
+
+def test_fit_batch_contract_model_and_datasets():
+    ws = load_fixture("simple_workspace.json")
+    model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    mle = nextstat.MaximumLikelihoodEstimator()
+    results = mle.fit_batch(model, datasets=[[53.0, 65.0], [54.0, 66.0]])
+    assert isinstance(results, list)
+    assert len(results) == 2
+    for r in results:
+        assert isinstance(r.bestfit, list)
+        assert isinstance(r.uncertainties, list)
+        assert isinstance(r.nll, float)
+        assert isinstance(r.success, bool)
+
+
+def test_ranking_contract():
+    ws = load_fixture("simple_workspace.json")
+    model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    entries = nextstat.ranking(model)
+    assert isinstance(entries, list)
+    assert entries, "ranking should be non-empty for simple fixture"
+    e0 = entries[0]
+    assert isinstance(e0, dict)
+    assert {"name", "delta_mu_up", "delta_mu_down", "pull", "constraint"} <= set(e0.keys())

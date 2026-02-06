@@ -2,6 +2,8 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use nalgebra::{DMatrix, DVector};
+use serde::Deserialize;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -144,6 +146,12 @@ enum Commands {
         command: VizCommands,
     },
 
+    /// Time series and state space models (Phase 8)
+    Timeseries {
+        #[command(subcommand)]
+        command: TimeseriesCommands,
+    },
+
     /// Print version information
     Version,
 }
@@ -209,6 +217,62 @@ enum VizCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum TimeseriesCommands {
+    /// Kalman filter (linear-Gaussian SSM)
+    KalmanFilter {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// RTS smoother (runs filter + smoother)
+    KalmanSmooth {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Fit Q/R with EM (holds F/H/m0/P0 fixed)
+    KalmanEm {
+        /// Input JSON file (see docs/tutorials/phase-8-timeseries.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Max EM iterations
+        #[arg(long, default_value = "50")]
+        max_iter: usize,
+
+        /// Relative tolerance on log-likelihood improvement
+        #[arg(long, default_value = "1e-6")]
+        tol: f64,
+
+        /// Update Q
+        #[arg(long, default_value_t = true)]
+        estimate_q: bool,
+
+        /// Update R
+        #[arg(long, default_value_t = true)]
+        estimate_r: bool,
+
+        /// Minimum diagonal value applied to Q/R
+        #[arg(long, default_value = "1e-12")]
+        min_diag: f64,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -271,6 +335,19 @@ fn main() -> Result<()> {
                 threads,
             ),
         },
+        Commands::Timeseries { command } => match command {
+            TimeseriesCommands::KalmanFilter { input, output } => cmd_ts_kalman_filter(&input, output.as_ref()),
+            TimeseriesCommands::KalmanSmooth { input, output } => cmd_ts_kalman_smooth(&input, output.as_ref()),
+            TimeseriesCommands::KalmanEm {
+                input,
+                max_iter,
+                tol,
+                estimate_q,
+                estimate_r,
+                min_diag,
+                output,
+            } => cmd_ts_kalman_em(&input, max_iter, tol, estimate_q, estimate_r, min_diag, output.as_ref()),
+        },
         Commands::Version => {
             println!("nextstat {}", ns_core::VERSION);
             Ok(())
@@ -327,6 +404,171 @@ fn write_json(output: Option<&PathBuf>, value: serde_json::Value) -> Result<()> 
         println!("{}", serde_json::to_string_pretty(&value)?);
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanModelJson {
+    f: Vec<Vec<f64>>,
+    q: Vec<Vec<f64>>,
+    h: Vec<Vec<f64>>,
+    r: Vec<Vec<f64>>,
+    m0: Vec<f64>,
+    p0: Vec<Vec<f64>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanInputJson {
+    model: KalmanModelJson,
+    ys: Vec<Vec<f64>>,
+}
+
+fn dmatrix_from_nested(name: &str, rows: Vec<Vec<f64>>) -> Result<DMatrix<f64>> {
+    if rows.is_empty() {
+        anyhow::bail!("{name} must be non-empty");
+    }
+    let nrows = rows.len();
+    let ncols = rows[0].len();
+    if ncols == 0 {
+        anyhow::bail!("{name} rows must be non-empty");
+    }
+    for (i, r) in rows.iter().enumerate() {
+        if r.len() != ncols {
+            anyhow::bail!(
+                "{name} must be rectangular: row {i} has len {}, expected {}",
+                r.len(),
+                ncols
+            );
+        }
+        if r.iter().any(|v| !v.is_finite()) {
+            anyhow::bail!("{name} must contain only finite values");
+        }
+    }
+    let mut flat = Vec::with_capacity(nrows * ncols);
+    for r in rows {
+        flat.extend_from_slice(&r);
+    }
+    Ok(DMatrix::from_row_slice(nrows, ncols, &flat))
+}
+
+fn dvector_from_vec(name: &str, v: Vec<f64>) -> Result<DVector<f64>> {
+    if v.is_empty() {
+        anyhow::bail!("{name} must be non-empty");
+    }
+    if v.iter().any(|x| !x.is_finite()) {
+        anyhow::bail!("{name} must contain only finite values");
+    }
+    Ok(DVector::from_vec(v))
+}
+
+fn dvector_to_vec(v: &DVector<f64>) -> Vec<f64> {
+    v.iter().copied().collect()
+}
+
+fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
+    let nrows = m.nrows();
+    let ncols = m.ncols();
+    let mut out = Vec::with_capacity(nrows);
+    for i in 0..nrows {
+        let mut row = Vec::with_capacity(ncols);
+        for j in 0..ncols {
+            row.push(m[(i, j)]);
+        }
+        out.push(row);
+    }
+    out
+}
+
+fn load_kalman_input(
+    path: &PathBuf,
+) -> Result<(ns_inference::timeseries::kalman::KalmanModel, Vec<DVector<f64>>)> {
+    let bytes = std::fs::read(path)?;
+    let input: KalmanInputJson = serde_json::from_slice(&bytes)?;
+
+    let mj = input.model;
+    let model = ns_inference::timeseries::kalman::KalmanModel::new(
+        dmatrix_from_nested("F", mj.f)?,
+        dmatrix_from_nested("Q", mj.q)?,
+        dmatrix_from_nested("H", mj.h)?,
+        dmatrix_from_nested("R", mj.r)?,
+        dvector_from_vec("m0", mj.m0)?,
+        dmatrix_from_nested("P0", mj.p0)?,
+    )
+    .map_err(|e| anyhow::anyhow!("invalid Kalman model: {e}"))?;
+
+    let ys: Vec<DVector<f64>> = input
+        .ys
+        .into_iter()
+        .enumerate()
+        .map(|(t, y)| dvector_from_vec(&format!("y[{t}]"), y))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok((model, ys))
+}
+
+fn cmd_ts_kalman_filter(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
+    let (model, ys) = load_kalman_input(input)?;
+    let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
+        .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+
+    let output_json = serde_json::json!({
+        "log_likelihood": fr.log_likelihood,
+        "predicted_means": fr.predicted_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "predicted_covs": fr.predicted_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+        "filtered_means": fr.filtered_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "filtered_covs": fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    });
+
+    write_json(output, output_json)
+}
+
+fn cmd_ts_kalman_smooth(input: &PathBuf, output: Option<&PathBuf>) -> Result<()> {
+    let (model, ys) = load_kalman_input(input)?;
+    let fr = ns_inference::timeseries::kalman::kalman_filter(&model, &ys)
+        .map_err(|e| anyhow::anyhow!("kalman_filter failed: {e}"))?;
+    let sr = ns_inference::timeseries::kalman::rts_smoother(&model, &fr)
+        .map_err(|e| anyhow::anyhow!("rts_smoother failed: {e}"))?;
+
+    let output_json = serde_json::json!({
+        "log_likelihood": fr.log_likelihood,
+        "filtered_means": fr.filtered_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "filtered_covs": fr.filtered_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+        "smoothed_means": sr.smoothed_means.iter().map(dvector_to_vec).collect::<Vec<_>>(),
+        "smoothed_covs": sr.smoothed_covs.iter().map(dmatrix_to_nested).collect::<Vec<_>>(),
+    });
+
+    write_json(output, output_json)
+}
+
+fn cmd_ts_kalman_em(
+    input: &PathBuf,
+    max_iter: usize,
+    tol: f64,
+    estimate_q: bool,
+    estimate_r: bool,
+    min_diag: f64,
+    output: Option<&PathBuf>,
+) -> Result<()> {
+    let (model, ys) = load_kalman_input(input)?;
+    let cfg = ns_inference::timeseries::em::KalmanEmConfig {
+        max_iter,
+        tol,
+        estimate_q,
+        estimate_r,
+        min_diag,
+    };
+
+    let res = ns_inference::timeseries::em::kalman_em(&model, &ys, cfg)
+        .map_err(|e| anyhow::anyhow!("kalman_em failed: {e}"))?;
+
+    let output_json = serde_json::json!({
+        "converged": res.converged,
+        "n_iter": res.n_iter,
+        "loglik_trace": res.loglik_trace,
+        "q": dmatrix_to_nested(&res.model.q),
+        "r": dmatrix_to_nested(&res.model.r),
+    });
+
+    write_json(output, output_json)
 }
 
 fn cmd_hypotest(

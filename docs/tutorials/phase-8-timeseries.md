@@ -31,10 +31,35 @@ sr = nextstat.timeseries.kalman_smooth(model, ys)
 print(sr["smoothed_means"][0], sr["smoothed_covs"][0])
 ```
 
+## CLI quickstart
+
+Create an input JSON like:
+
+```json
+{
+  "model": {
+    "f": [[1.0]],
+    "q": [[0.1]],
+    "h": [[1.0]],
+    "r": [[0.2]],
+    "m0": [0.0],
+    "p0": [[1.0]]
+  },
+  "ys": [[0.9], [1.2], [0.8], [1.1]]
+}
+```
+
+Then run:
+
+```sh
+nextstat timeseries kalman-filter --input kalman_1d.json
+nextstat timeseries kalman-smooth --input kalman_1d.json
+nextstat timeseries kalman-em --input kalman_1d.json --max-iter 50 --tol 1e-6
+```
+
 ## JSON contract (Python)
 
 Both `kalman_filter` and `kalman_smooth` return plain Python dicts containing nested lists for vectors/matrices:
 
 - `*_means`: `T x n_state`
 - `*_covs`: `T x n_state x n_state`
-
