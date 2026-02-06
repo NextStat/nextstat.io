@@ -201,6 +201,7 @@ Baseline artifacts to archive and compare across environments:
 - pyhf parity: `tmp/baselines/pyhf_baseline_<host>_<date>.json` (includes NLL timings and optional fit timings)
 - P6 GLM: `tmp/baselines/p6_glm_baseline_<host>_<date>.json` (compare with `tests/apex2_p6_glm_benchmark_report.py`)
 - Manifest: `tmp/baselines/latest_manifest.json` (links to both + full env fingerprint)
+- One-command compare (current vs latest baseline): `tests/compare_with_latest_baseline.py` (writes `tmp/baseline_compare_report.json`)
 - ROOT/TRExFitter: `tmp/apex2_root_suite_report.json` (and optionally per-case `tmp/root_parity_suite/*/run_*/summary.json`)
 
 ### Cookbook: examples for all options
@@ -503,13 +504,36 @@ Options:
 
 ```bash
 # Record only pyhf baseline
-python tests/record_baseline.py --only pyhf
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only pyhf
 
 # Record only P6 GLM baseline
-python tests/record_baseline.py --only p6
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only p6
 
 # Custom sizes / features
-python tests/record_baseline.py --sizes 200,2000,20000 --p 20 --nb-alpha 0.5
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --sizes 200,2000,20000 --p 20 --nb-alpha 0.5
+```
+
+### Comparing against the latest baseline (recommended)
+
+After recording baselines once on a reference machine, compare current HEAD against the
+latest baseline manifest:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --manifest tmp/baselines/latest_manifest.json \
+  --out tmp/baseline_compare_report.json
+```
+
+Exit codes:
+- `0`: OK (pyhf parity OK and perf within thresholds; P6 within thresholds)
+- `2`: FAIL (parity failure or slowdown threshold exceeded)
+- `4`: ERROR (runner error)
+
+For performance gating, use the same machine as the baseline and enable:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --require-same-host
 ```
 
 ### Manual baseline generation (alternative)

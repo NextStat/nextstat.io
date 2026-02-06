@@ -82,7 +82,7 @@ The Apex2 validation system runs full Python-level benchmarks and produces machi
 Use `tests/record_baseline.py` to record reference baselines with a full environment fingerprint:
 
 ```bash
-PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/record_baseline.py
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
 ```
 
 This records both pyhf and P6 GLM baselines to `tmp/baselines/` with:
@@ -94,25 +94,25 @@ Options:
 
 ```bash
 # Record only pyhf baseline
-python tests/record_baseline.py --only pyhf
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only pyhf
 
 # Record only P6 GLM baseline
-python tests/record_baseline.py --only p6
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only p6
 
 # Custom GLM benchmark parameters
-python tests/record_baseline.py --sizes 200,2000,20000 --p 20
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --sizes 200,2000,20000 --p 20
 ```
 
 ### Comparing Against Baselines
 
 ```bash
 # Compare current P6 GLM run against recorded baseline
-PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
   --baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
   --out tmp/apex2_p6_glm_bench_report.json
 
 # Or via the master report
-PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/apex2_master_report.py \
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
   --p6-glm-bench \
   --p6-glm-bench-baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json
 ```
@@ -124,7 +124,18 @@ The comparison uses a configurable slowdown threshold (default 1.3x) and skips s
 After recording baselines once, compare current HEAD against the latest manifest:
 
 ```bash
-PYTHONPATH=bindings/ns-py/python .venv/bin/python tests/compare_with_latest_baseline.py
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py
+```
+
+This writes a consolidated report to `tmp/baseline_compare_report.json` and exits with:
+- `0` if parity is OK and slowdown thresholds are satisfied
+- `2` if parity fails or performance regresses beyond thresholds
+- `4` if a runner errors (missing deps, crash, etc.)
+
+For strict performance gating, require the same host as the baseline:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py --require-same-host
 ```
 
 ### Baseline Environment Fingerprint

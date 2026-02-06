@@ -144,10 +144,36 @@ jobs:
           name: cli-${{ matrix.target }}
           path: dist/nextstat-*
 
+  # ── Whitepaper PDF ───────────────────────────────────────────
+  whitepaper:
+    name: Whitepaper PDF
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF#refs/tags/v}"
+            python3 scripts/build_whitepaper.py --version "$VER"
+          else
+            python3 scripts/build_whitepaper.py
+          fi
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whitepaper
+          path: dist/whitepaper/*
+
   # ── GitHub Release ───────────────────────────────────────────
   github-release:
     name: GitHub Release
-    needs: [wheels, cli, sdist]
+    needs: [wheels, cli, sdist, whitepaper]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -186,6 +212,8 @@ jobs:
             dist/**/*.whl
             dist/**/*.tar.gz
             dist/**/nextstat-*
+            dist/**/nextstat-whitepaper-*.pdf
+            dist/**/nextstat-whitepaper-*.pdf.sha256
 
   # ── PyPI publish (optional, needs PYPI_TOKEN secret) ─────────
   pypi-publish:

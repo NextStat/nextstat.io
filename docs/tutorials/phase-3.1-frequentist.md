@@ -61,6 +61,25 @@ fast, deterministic NUTS/HMC diagnostics smoke test on a small non-HEP model
 (GaussianMeanModel). This is intended to catch catastrophic sampling regressions without
 requiring `NS_RUN_SLOW=1`.
 
+### 0.2) NUTS/HMC quality report (JSON, thresholds)
+
+This runner produces a standalone JSON artifact focused on Posterior/HMC/NUTS quality:
+
+- GaussianMeanModel (unbounded transform path)
+- A small Composed GLM case (generic LogDensityModel sampling path)
+- HistFactory simple fixture (bounded transform path)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_nuts_quality_report.py \
+  --out tmp/apex2_nuts_quality_report.json
+```
+
+Notes:
+
+- HistFactory posteriors can require longer warmup/sampling to meet tight R-hat/ESS gates.
+  By default the runner uses looser R-hat/ESS thresholds for the HistFactory case while
+  keeping divergence/treedepth/E-BFMI gates.
+
 Optional: include the slow bias/pulls regression suite (NextStat vs pyhf).
 
 ```bash

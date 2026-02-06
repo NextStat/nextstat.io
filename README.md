@@ -246,7 +246,8 @@ Details (quick mode, baselines, CI workflows): `docs/benchmarks.md`.
 
 ## Documentation
 
-- White paper: `docs/WHITEPAPER.md`
+- White paper (Markdown): `docs/WHITEPAPER.md`
+- White paper (PDF): built by `python3 scripts/build_whitepaper.py` and attached to GitHub Releases on tags (`v*`)
 - Internal plans/design notes are maintained outside this public repository.
 
 ## Contributing
