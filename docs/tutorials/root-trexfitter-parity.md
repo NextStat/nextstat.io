@@ -391,7 +391,8 @@ set -euo pipefail
 REPO="/abs/path/to/nextstat.io"
 TREX_EXPORT_DIR="/abs/path/to/trex/output"
 
-OUTDIR="${SCRATCH:-/tmp}/apex2_nextstat/${CLUSTER:-condor}.${PROCESS:-0}"
+OUTBASE="${_CONDOR_SCRATCH_DIR:-${TMPDIR:-${SCRATCH:-/tmp}}}"
+OUTDIR="${OUTBASE}/apex2_nextstat/${CLUSTER:-condor}.${PROCESS:-0}"
 mkdir -p "${OUTDIR}"
 
 cd "${REPO}"
@@ -428,6 +429,50 @@ queue 1
 ```bash
 chmod +x apex2_root_parity.sh
 condor_submit apex2_root_parity.sub
+```
+
+##### CERN lxbatch / HTCondor notes (пример под batchdocs)
+
+На CERN batch (lxbatch) в целом тот же `condor_submit`, но часто полезно:
+- задавать `+MaxRunTime` (секунды)
+- при необходимости зафиксировать `+AccountingGroup` (если у вас есть high-priority group)
+- если scheduler “не отвечает”, можно явно выбрать `schedd` (через env vars или `-name`)
+
+Пример `.sub` (shared filesystem, репо доступно на worker через AFS/EOS):
+
+```ini
+universe = vanilla
+executable  = apex2_root_parity.sh
+arguments   =
+output      = htcondor.out
+error       = htcondor.err
+log         = htcondor.log
+
+request_CPUs   = 4
+request_memory = 8GB
++MaxRunTime    = 7200
+
+# Optional (если ваш e-group дает доступ):
+# +AccountingGroup = "group_u_BE.ABP.NORMAL"
+
+queue
+```
+
+Если репо не доступно на worker node, можно использовать `transfer_input_files`, но это обычно дорого для большого репозитория. Минимальный вариант: упаковать только нужное (например, `tests/`, `bindings/ns-py/python/`, и собранные артефакты), либо держать репо на AFS/EOS.
+
+Если scheduler не отвечает, на lxplus можно временно сменить schedd (пример):
+
+```bash
+export _condor_SCHEDD_HOST="bigbird02.cern.ch"
+export _condor_CREDD_HOST="bigbird02.cern.ch"
+condor_q
+```
+
+Или адресовать команды напрямую:
+
+```bash
+condor_q -name bigbird15.cern.ch
+condor_submit -name bigbird15.cern.ch apex2_root_parity.sub
 ```
 
 ## 1) Проверка профилирования q(mu) vs ROOT
