@@ -20,6 +20,8 @@ use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, LinearRegressionModel as RustLinearRegressionModel,
     LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
     PoissonRegressionModel as RustPoissonRegressionModel,
+    CoxPhModel as RustCoxPhModel,
+    CoxTies as RustCoxTies,
     ExponentialSurvivalModel as RustExponentialSurvivalModel,
     WeibullSurvivalModel as RustWeibullSurvivalModel,
     LogNormalAftModel as RustLogNormalAftModel,
@@ -27,6 +29,7 @@ use ns_inference::{
     profile_likelihood as pl,
 };
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
+use ns_inference::lmm::{LmmMarginalModel as RustLmmMarginalModel, RandomEffects as RustLmmRandomEffects};
 use ns_inference::timeseries::kalman::{
     KalmanModel as RustKalmanModel, kalman_filter as rust_kalman_filter,
     rts_smoother as rust_rts_smoother,
@@ -796,9 +799,9 @@ struct PyComposedGlmModel {
 
 #[pymethods]
 impl PyComposedGlmModel {
-    /// Build a composed Gaussian linear regression model (sigma fixed to 1).
+    /// Build a composed Gaussian linear regression model (optionally with inferred sigma_y).
     #[staticmethod]
-    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false, random_intercept_non_centered=false, random_slope_feature_idx=None, random_slope_non_centered=false, correlated_feature_idx=None, lkj_eta=1.0))]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx=None, n_groups=None, coef_prior_mu=0.0, coef_prior_sigma=10.0, penalize_intercept=false, obs_sigma_prior_m=None, obs_sigma_prior_s=None, random_intercept_non_centered=false, random_slope_feature_idx=None, random_slope_non_centered=false, correlated_feature_idx=None, lkj_eta=1.0))]
     fn linear_regression(
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
@@ -808,6 +811,8 @@ impl PyComposedGlmModel {
         coef_prior_mu: f64,
         coef_prior_sigma: f64,
         penalize_intercept: bool,
+        obs_sigma_prior_m: Option<f64>,
+        obs_sigma_prior_s: Option<f64>,
         random_intercept_non_centered: bool,
         random_slope_feature_idx: Option<usize>,
         random_slope_non_centered: bool,
@@ -824,6 +829,17 @@ impl PyComposedGlmModel {
             .with_coef_prior_normal(coef_prior_mu, coef_prior_sigma)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         b = b.with_penalize_intercept(penalize_intercept);
+
+        if obs_sigma_prior_m.is_some() != obs_sigma_prior_s.is_some() {
+            return Err(PyValueError::new_err(
+                "obs_sigma_prior_m and obs_sigma_prior_s must be set together",
+            ));
+        }
+        if let (Some(m), Some(s)) = (obs_sigma_prior_m, obs_sigma_prior_s) {
+            b = b
+                .with_gaussian_obs_sigma_prior_lognormal((m, s))
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        }
 
         if correlated_feature_idx.is_some() {
             if random_slope_feature_idx.is_some()
@@ -1073,6 +1089,16 @@ impl PyComposedGlmModel {
 // Survival models (Phase 9 Pack A).
 // ---------------------------------------------------------------------------
 
+fn parse_cox_ties(ties: &str) -> PyResult<RustCoxTies> {
+    match ties.to_ascii_lowercase().as_str() {
+        "breslow" => Ok(RustCoxTies::Breslow),
+        "efron" => Ok(RustCoxTies::Efron),
+        _ => Err(PyValueError::new_err(
+            "Invalid ties policy: expected 'efron' or 'breslow'",
+        )),
+    }
+}
+
 /// Python wrapper for `ExponentialSurvivalModel` (right-censoring).
 #[pyclass(name = "ExponentialSurvivalModel")]
 struct PyExponentialSurvivalModel {
@@ -1205,6 +1231,114 @@ impl PyLogNormalAftModel {
     }
 }
 
+/// Python wrapper for `CoxPhModel` (partial likelihood; right-censoring).
+#[pyclass(name = "CoxPhModel")]
+struct PyCoxPhModel {
+    inner: RustCoxPhModel,
+}
+
+#[pymethods]
+impl PyCoxPhModel {
+    #[new]
+    #[pyo3(signature = (times, events, x, *, ties = "efron"))]
+    fn new(times: Vec<f64>, events: Vec<bool>, x: Vec<Vec<f64>>, ties: &str) -> PyResult<Self> {
+        let ties = parse_cox_ties(ties)?;
+        let inner = RustCoxPhModel::new(times, events, x, ties)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LMM (Phase 9 Pack B).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `LmmMarginalModel` (Gaussian mixed model, marginal likelihood).
+#[pyclass(name = "LmmMarginalModel")]
+struct PyLmmMarginalModel {
+    inner: RustLmmMarginalModel,
+}
+
+#[pymethods]
+impl PyLmmMarginalModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx, n_groups=None, random_slope_feature_idx=None))]
+    fn new(
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        include_intercept: bool,
+        group_idx: Vec<usize>,
+        n_groups: Option<usize>,
+        random_slope_feature_idx: Option<usize>,
+    ) -> PyResult<Self> {
+        let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
+        let re = if let Some(k) = random_slope_feature_idx {
+            RustLmmRandomEffects::InterceptSlope { feature_idx: k }
+        } else {
+            RustLmmRandomEffects::Intercept
+        };
+        let inner = RustLmmMarginalModel::new(x, y, include_intercept, group_idx, ng, re)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for FitResult
 #[pyclass(name = "FitResult")]
 struct PyFitResult {
@@ -1286,6 +1420,7 @@ impl PyMaximumLikelihoodEstimator {
             ExponentialSurvival(RustExponentialSurvivalModel),
             WeibullSurvival(RustWeibullSurvivalModel),
             LogNormalAft(RustLogNormalAftModel),
+            CoxPh(RustCoxPhModel),
         }
 
         let fit_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -1342,6 +1477,11 @@ impl PyMaximumLikelihoodEstimator {
                 return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
             }
             FitModel::LogNormalAft(m.inner.clone())
+        } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
+            if data.is_some() {
+                return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+            }
+            FitModel::CoxPh(m.inner.clone())
         } else {
             return Err(PyValueError::new_err(
                 "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
@@ -1396,6 +1536,11 @@ impl PyMaximumLikelihoodEstimator {
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
             }
             FitModel::LogNormalAft(m) => {
+                let mle = mle.clone();
+                py.detach(move || mle.fit(&m))
+                    .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
+            }
+            FitModel::CoxPh(m) => {
                 let mle = mle.clone();
                 py.detach(move || mle.fit(&m))
                     .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?
@@ -2050,6 +2195,7 @@ fn sample<'py>(
         ExponentialSurvival(RustExponentialSurvivalModel),
         WeibullSurvival(RustWeibullSurvivalModel),
         LogNormalAft(RustLogNormalAftModel),
+        CoxPh(RustCoxPhModel),
     }
 
     let sample_model = if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
@@ -2106,6 +2252,11 @@ fn sample<'py>(
             return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
         }
         SampleModel::LogNormalAft(m.inner.clone())
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyCoxPhModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err("data= is only supported for HistFactoryModel"));
+        }
+        SampleModel::CoxPh(m.inner.clone())
     } else {
         return Err(PyValueError::new_err(
             "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, a regression model, ComposedGlmModel, or a survival model.",
@@ -2196,6 +2347,15 @@ fn sample<'py>(
             .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
         }
         SampleModel::LogNormalAft(m) => {
+            let config = config.clone();
+            py.detach(move || {
+                let seeds: Vec<u64> =
+                    (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
+                sample_nuts_multichain_with_seeds(&m, n_warmup, n_samples, &seeds, config)
+            })
+            .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        }
+        SampleModel::CoxPh(m) => {
             let config = config.clone();
             py.detach(move || {
                 let seeds: Vec<u64> =
@@ -2417,6 +2577,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyExponentialSurvivalModel>()?;
     m.add_class::<PyWeibullSurvivalModel>()?;
     m.add_class::<PyLogNormalAftModel>()?;
+    m.add_class::<PyCoxPhModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
 

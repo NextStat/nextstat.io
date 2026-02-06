@@ -43,6 +43,7 @@ KalmanModel = _get("KalmanModel")
 ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
 LogNormalAftModel = _get("LogNormalAftModel")
+CoxPhModel = _get("CoxPhModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
 ranking = _get("ranking")
@@ -90,6 +91,7 @@ __all__ = [
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",
     "LogNormalAftModel",
+    "CoxPhModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "ols_fit",
@@ -105,4 +107,5 @@ __all__ = [
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",
     "LogNormalAftModel",
+    "CoxPhModel",
 ]
