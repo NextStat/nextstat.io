@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 mod analysis_spec;
+mod discover;
 mod report;
 mod run;
 
@@ -430,8 +431,12 @@ enum ImportCommands {
     /// HistFactory `combination.xml` (+ referenced ROOT histograms) → pyhf JSON workspace
     Histfactory {
         /// Path to HistFactory `combination.xml`
-        #[arg(long)]
-        xml: PathBuf,
+        #[arg(long, required_unless_present = "dir", conflicts_with = "dir")]
+        xml: Option<PathBuf>,
+
+        /// Directory to scan recursively for `combination.xml` (TREx export dirs).
+        #[arg(long, required_unless_present = "xml", conflicts_with = "xml")]
+        dir: Option<PathBuf>,
 
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -799,8 +804,14 @@ fn main() -> Result<()> {
             }
         },
         Commands::Import { command } => match command {
-            ImportCommands::Histfactory { xml, output } => {
-                cmd_import_histfactory(&xml, output.as_ref(), cli.bundle.as_ref())
+            ImportCommands::Histfactory { xml, dir, output } => {
+                let xml_path = if let Some(xml) = xml {
+                    xml
+                } else {
+                    let dir = dir.expect("clap enforces: --xml or --dir");
+                    discover::discover_single_combination_xml(&dir)?
+                };
+                cmd_import_histfactory(&xml_path, output.as_ref(), cli.bundle.as_ref())
             }
             ImportCommands::TrexConfig { config, base_dir, output } => cmd_import_trex_config(
                 &config,

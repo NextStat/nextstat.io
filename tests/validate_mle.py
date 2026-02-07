@@ -23,14 +23,19 @@ def load_workspace():
 
 def pyhf_fit(workspace):
     """Fit with pyhf and compute Hessian uncertainties."""
-    model = pyhf.Workspace(workspace).model()
-    data = pyhf.Workspace(workspace).data(model)
+    t_build0 = time.perf_counter()
+    ws = pyhf.Workspace(workspace)
+    model = ws.model()
+    data = ws.data(model)
+    t_build = time.perf_counter() - t_build0
 
     t_fit0 = time.perf_counter()
     bestfit = pyhf.infer.mle.fit(data, model)
     t_fit = time.perf_counter() - t_fit0
 
+    t_nll0 = time.perf_counter()
     nll = float(pyhf.infer.mle.twice_nll(bestfit, data, model)[0]) / 2.0
+    t_nll = time.perf_counter() - t_nll0
 
     # Numerical Hessian for uncertainties.
     def nll_func(x: np.ndarray) -> float:
@@ -80,9 +85,11 @@ def pyhf_fit(workspace):
         'uncertainties': list(uncertainties),
         'nll': nll,
         'timing_s': {
+            'build': t_build,
             'fit': t_fit,
+            'nll': t_nll,
             'uncertainties': t_unc,
-            'total': t_fit + t_unc,
+            'total': t_build + t_fit + t_nll + t_unc,
         },
     }
 
@@ -90,7 +97,9 @@ def pyhf_fit(workspace):
 def nextstat_fit(workspace):
     """Fit with NextStat."""
     workspace_json = json.dumps(workspace)
+    t_build0 = time.perf_counter()
     model = nextstat.HistFactoryModel.from_workspace(workspace_json)
+    t_build = time.perf_counter() - t_build0
 
     mle = nextstat.MaximumLikelihoodEstimator()
     t_fit0 = time.perf_counter()
@@ -105,8 +114,9 @@ def nextstat_fit(workspace):
         'converged': result.converged,
         'n_evaluations': result.n_evaluations,
         'timing_s': {
+            'build': t_build,
             'fit': t_fit,
-            'total': t_fit,
+            'total': t_build + t_fit,
         },
     }
 
@@ -239,9 +249,13 @@ def compare_results(pyhf_res, nextstat_res):
     t_pyhf = pyhf_res.get("timing_s", {})
     t_ns = nextstat_res.get("timing_s", {})
     print(f"\n  TIMING (seconds):")
+    print(f"    pyhf build:         {t_pyhf.get('build', float('nan')):.3f}")
     print(f"    pyhf fit:           {t_pyhf.get('fit', float('nan')):.3f}")
+    print(f"    pyhf nll:           {t_pyhf.get('nll', float('nan')):.3f}")
     print(f"    pyhf uncertainties: {t_pyhf.get('uncertainties', float('nan')):.3f}")
     print(f"    pyhf total:         {t_pyhf.get('total', float('nan')):.3f}")
+    print(f"    NextStat build:     {t_ns.get('build', float('nan')):.3f}")
+    print(f"    NextStat fit:       {t_ns.get('fit', float('nan')):.3f}")
     print(f"    NextStat total:     {t_ns.get('total', float('nan')):.3f}")
     speedup = t_pyhf.get('total', 0) / max(t_ns.get('total', 1e-9), 1e-9)
     print(f"    Speedup:            {speedup:.1f}x")

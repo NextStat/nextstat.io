@@ -4,6 +4,26 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for k in keys {
+                if let Some(v) = map.get(k) {
+                    out.insert(k.clone(), canonicalize_json(v));
+                }
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(canonicalize_json).collect())
+        }
+        _ => value.clone(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BundleMeta {
     pub tool: String,
@@ -141,7 +161,7 @@ pub fn write_bundle(
         tool_version: ns_core::VERSION.to_string(),
         created_unix_ms,
         command: command.to_string(),
-        args,
+        args: canonicalize_json(&args),
         input: BundleInputMeta {
             original_path: input_path.display().to_string(),
             input_sha256,
@@ -153,7 +173,8 @@ pub fn write_bundle(
     std::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)?;
 
     let out_path = outputs_dir.join("result.json");
-    std::fs::write(&out_path, serde_json::to_string_pretty(output_value)?)?;
+    let output_value = canonicalize_json(output_value);
+    std::fs::write(&out_path, serde_json::to_string_pretty(&output_value)?)?;
 
     let mut files = Vec::new();
     for rel in ["meta.json", "inputs/input.json", "outputs/result.json"] {
@@ -174,6 +195,9 @@ pub fn write_bundle(
             });
         }
     }
+
+    // Deterministic ordering.
+    files.sort_by(|a, b| a.path.cmp(&b.path));
 
     let manifest = Manifest { bundle_version: 1, files };
     let manifest_path = bundle_dir.join("manifest.json");

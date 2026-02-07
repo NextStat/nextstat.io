@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from .hygiene import NegativeBinsPolicy, apply_negative_bins_policy
+from .prune import PruneMethod, should_prune_histosys_overall, should_prune_histosys_shape, should_prune_normsys
+from .smooth import SmoothMethod, smooth_variation
 from .symmetrize import NegativePolicy, SymmetrizeMethod, symmetrize_shapes
 from .types import Json, PreprocessProvenance, PreprocessRecord, PreprocessStepProvenance
 
@@ -281,6 +283,221 @@ class NegativeBinsHygieneStep(PreprocessStep):
         return records
 
 
+class SmoothHistoSysStep(PreprocessStep):
+    """Smooth all ``histosys`` modifiers in a pyhf workspace."""
+
+    name = "smooth_histosys_v0"
+
+    def __init__(
+        self,
+        *,
+        method: SmoothMethod = "353qh_twice",
+        sigma: float = 1.5,
+        apply_maxvariation: bool = True,
+        record_unchanged: bool = True,
+        compare_atol: float = 1e-12,
+        compare_rtol: float = 1e-12,
+    ) -> None:
+        self._method = method
+        self._sigma = float(sigma)
+        self._apply_maxvariation = bool(apply_maxvariation)
+        self._record_unchanged = bool(record_unchanged)
+        self._compare_atol = float(compare_atol)
+        self._compare_rtol = float(compare_rtol)
+
+    def params(self) -> Mapping[str, Json]:
+        return {
+            "method": self._method,
+            "sigma": self._sigma,
+            "apply_maxvariation": self._apply_maxvariation,
+            "record_unchanged": self._record_unchanged,
+            "compare_atol": self._compare_atol,
+            "compare_rtol": self._compare_rtol,
+        }
+
+    def apply(self, workspace: dict[str, Any]) -> list[PreprocessRecord]:
+        records: list[PreprocessRecord] = []
+
+        for ch, sample, modifier in _iter_workspace_deterministic(workspace):
+            if modifier.get("type") != "histosys":
+                continue
+
+            mod_data = modifier.get("data") or {}
+            hi = mod_data.get("hi_data")
+            lo = mod_data.get("lo_data")
+            nominal = sample.get("data") or []
+
+            if hi is None or lo is None:
+                continue
+
+            hi_list = [float(v) for v in hi]
+            lo_list = [float(v) for v in lo]
+            nom_list = [float(v) for v in nominal]
+
+            result = smooth_variation(
+                nom_list,
+                hi_list,
+                lo_list,
+                method=self._method,
+                sigma=self._sigma,
+                apply_maxvariation=self._apply_maxvariation,
+            )
+
+            changed_hi = not _allclose(hi_list, result.up, atol=self._compare_atol, rtol=self._compare_rtol)
+            changed_lo = not _allclose(lo_list, result.down, atol=self._compare_atol, rtol=self._compare_rtol)
+            changed = bool(changed_hi or changed_lo)
+
+            if changed:
+                modifier["data"] = dict(mod_data)
+                modifier["data"]["hi_data"] = result.up
+                modifier["data"]["lo_data"] = result.down
+
+            if changed or self._record_unchanged:
+                records.append(
+                    PreprocessRecord(
+                        kind="histosys.smooth",
+                        channel=str(ch.get("name") or ""),
+                        sample=str(sample.get("name") or ""),
+                        modifier=str(modifier.get("name") or ""),
+                        modifier_type="histosys",
+                        changed=changed,
+                        metrics={
+                            "method": self._method,
+                            "bins": len(result.up),
+                            "max_delta_before_up": result.max_delta_before_up,
+                            "max_delta_after_up": result.max_delta_after_up,
+                            "max_delta_before_down": result.max_delta_before_down,
+                            "max_delta_after_down": result.max_delta_after_down,
+                            "maxvariation_applied": result.maxvariation_applied,
+                        },
+                    )
+                )
+
+        return records
+
+
+class PruneSystematicsStep(PreprocessStep):
+    """Remove negligible systematics from a pyhf workspace."""
+
+    name = "prune_systematics_v0"
+
+    def __init__(
+        self,
+        *,
+        shape_threshold: float = 0.005,
+        norm_threshold: float = 0.005,
+        prune_method: PruneMethod = "shape",
+        record_unchanged: bool = False,
+    ) -> None:
+        self._shape_threshold = float(shape_threshold)
+        self._norm_threshold = float(norm_threshold)
+        self._prune_method = prune_method
+        self._record_unchanged = bool(record_unchanged)
+
+    def params(self) -> Mapping[str, Json]:
+        return {
+            "shape_threshold": self._shape_threshold,
+            "norm_threshold": self._norm_threshold,
+            "prune_method": self._prune_method,
+            "record_unchanged": self._record_unchanged,
+        }
+
+    def apply(self, workspace: dict[str, Any]) -> list[PreprocessRecord]:
+        records: list[PreprocessRecord] = []
+
+        # First pass: collect decisions (cannot mutate list while iterating)
+        to_prune: list[tuple[str, str, str, str]] = []  # (ch_name, sample_name, mod_name, mod_type)
+
+        for ch, sample, modifier in _iter_workspace_deterministic(workspace):
+            mod_type = modifier.get("type") or ""
+            mod_name = str(modifier.get("name") or "")
+            ch_name = str(ch.get("name") or "")
+            sample_name = str(sample.get("name") or "")
+            nominal = sample.get("data") or []
+
+            decision: PruneDecision | None = None
+
+            if mod_type == "histosys":
+                mod_data = modifier.get("data") or {}
+                hi = mod_data.get("hi_data")
+                lo = mod_data.get("lo_data")
+                if hi is None or lo is None:
+                    continue
+                if self._prune_method == "shape":
+                    decision = should_prune_histosys_shape(
+                        nominal, hi, lo, threshold=self._shape_threshold,
+                    )
+                elif self._prune_method == "overall":
+                    decision = should_prune_histosys_overall(
+                        nominal, hi, lo,
+                        norm_threshold=self._norm_threshold,
+                        shape_threshold=self._shape_threshold,
+                    )
+                else:
+                    continue
+
+            elif mod_type == "normsys":
+                mod_data = modifier.get("data") or {}
+                hi_val = mod_data.get("hi")
+                lo_val = mod_data.get("lo")
+                if hi_val is None or lo_val is None:
+                    continue
+                if self._prune_method in ("norm", "overall"):
+                    decision = should_prune_normsys(
+                        float(hi_val), float(lo_val), threshold=self._norm_threshold,
+                    )
+                elif self._prune_method == "shape":
+                    # shape pruning doesn't apply to normsys
+                    continue
+                else:
+                    continue
+            else:
+                continue
+
+            if decision is None:
+                continue
+
+            if decision.should_prune:
+                to_prune.append((ch_name, sample_name, mod_name, mod_type))
+
+            if decision.should_prune or self._record_unchanged:
+                records.append(
+                    PreprocessRecord(
+                        kind=f"{mod_type}.prune",
+                        channel=ch_name,
+                        sample=sample_name,
+                        modifier=mod_name,
+                        modifier_type=mod_type,
+                        changed=decision.should_prune,
+                        metrics={
+                            "prune_method": self._prune_method,
+                            "should_prune": decision.should_prune,
+                            "reason": decision.reason,
+                            "max_rel_delta_up": decision.max_rel_delta_up,
+                            "max_rel_delta_down": decision.max_rel_delta_down,
+                            "norm_effect_up": decision.norm_effect_up,
+                            "norm_effect_down": decision.norm_effect_down,
+                        },
+                    )
+                )
+
+        # Second pass: remove pruned modifiers
+        prune_set = set(to_prune)
+        if prune_set:
+            for ch in workspace.get("channels") or []:
+                ch_name = str(ch.get("name") or "")
+                for sample in ch.get("samples") or []:
+                    sample_name = str(sample.get("name") or "")
+                    original_mods = sample.get("modifiers") or []
+                    sample["modifiers"] = [
+                        m for m in original_mods
+                        if (ch_name, sample_name, str(m.get("name") or ""), str(m.get("type") or ""))
+                        not in prune_set
+                    ]
+
+        return records
+
+
 class PreprocessPipeline:
     """Run a sequence of preprocessing steps on a workspace."""
 
@@ -327,6 +544,8 @@ __all__ = [
     "PreprocessPipeline",
     "PreprocessResult",
     "PreprocessStep",
+    "PruneSystematicsStep",
+    "SmoothHistoSysStep",
     "SymmetrizeHistoSysStep",
 ]
 

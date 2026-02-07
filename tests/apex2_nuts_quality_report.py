@@ -251,7 +251,13 @@ def _case_linear_regression(
 
 
 def _case_histfactory_simple(
-    nextstat_mod, *, seed: int, n_chains: int, n_warmup: int, n_samples: int
+    nextstat_mod,
+    *,
+    seed: int,
+    n_chains: int,
+    n_warmup: int,
+    n_samples: int,
+    target_accept: float,
 ) -> Dict[str, Any]:
     ws = json.loads((FIXTURES_DIR / "simple_workspace.json").read_text())
     model = nextstat_mod.HistFactoryModel.from_workspace(json.dumps(ws))
@@ -262,7 +268,7 @@ def _case_histfactory_simple(
         n_samples=n_samples,
         seed=seed,
         init_jitter_rel=0.10,
-        target_accept=0.85,
+        target_accept=float(target_accept),
     )
     posterior = r["posterior"]
     poi_name = r["param_names"][0] if r.get("param_names") else "mu"
@@ -341,12 +347,6 @@ def main() -> int:
             args.funnel_samples = 600
         if int(args.n_chains) == 2:
             args.n_chains = 4
-        # HistFactory tends to require longer runs than small toy problems, even for simple fixtures.
-        # Only bump when the user did not explicitly set histfactory-specific lengths.
-        if args.histfactory_warmup is None and int(args.warmup) <= 800:
-            args.histfactory_warmup = 1200
-        if args.histfactory_samples is None and int(args.samples) <= 800:
-            args.histfactory_samples = 1200
 
     t0 = time.time()
     report: Dict[str, Any] = {
@@ -448,6 +448,9 @@ def main() -> int:
                     n_chains=int(args.n_chains),
                     n_warmup=hf_warmup,
                     n_samples=hf_samples,
+                    # Empirically improves short-run chain agreement on bounded HistFactory params (esp. POI mu),
+                    # without requiring longer warmup/sampling.
+                    target_accept=(0.90 if args.strict else 0.85),
                 )
             )
         else:
