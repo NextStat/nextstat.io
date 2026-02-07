@@ -246,11 +246,28 @@ fn build_modifier(
             Ok(vec![Modifier::ShapeFactor { name: name.clone(), data: None }])
         }
         ModifierXml::StatError { histo_name, histo_path, input_file } => {
-            // StatError: use sqrt(sumw2) from ROOT histogram, or sqrt(nominal) if not provided
+            // StatError:
+            // - If a StatError histogram is provided, HistFactory convention is that it stores
+            //   **relative** uncertainties per bin. pyhf's `staterror` modifier expects
+            //   **absolute** per-bin sigmas, so we multiply by the nominal bin content.
+            // - If no histogram is provided, we use sqrt(sumw2) (preferred) or sqrt(nominal).
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
-                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content
+                let rel = resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content;
+                if rel.len() != nominal.bin_content.len() {
+                    return Err(Error::Xml(format!(
+                        "StatError histogram '{}' bin count mismatch: got={} expected={} (channel={})",
+                        hn,
+                        rel.len(),
+                        nominal.bin_content.len(),
+                        channel_name,
+                    )));
+                }
+                rel.iter()
+                    .zip(nominal.bin_content.iter())
+                    .map(|(r, n)| r * n)
+                    .collect()
             } else {
                 // Prefer nominal sumw2 if available (weighted MC templates).
                 if let Some(sw2) = nominal.sumw2.as_ref() {

@@ -72,6 +72,10 @@ struct ModelChannel {
     /// Channel name
     #[allow(dead_code)]
     name: String,
+    /// Whether this channel contributes to the main-bin Poisson likelihood (fit regions vs validation regions).
+    ///
+    /// This does not affect expected-yield calculations used for reporting; it only affects NLL/grad evaluation.
+    include_in_fit: bool,
     /// Samples in this channel
     samples: Vec<ModelSample>,
     /// Observed data (main bins only, auxiliary data added during NLL computation)
@@ -669,6 +673,7 @@ impl HistFactoryModel {
 
             channels.push(ModelChannel {
                 name: ws_channel.name.clone(),
+                include_in_fit: true,
                 samples,
                 observed,
                 auxiliary_data,
@@ -683,6 +688,74 @@ impl HistFactoryModel {
         let model = Self { parameters, poi_index, channels };
         model.validate_internal_indices()?;
         Ok(model)
+    }
+
+    /// Create a copy of the model with a fit/validation channel selection applied.
+    ///
+    /// - If `fit_channels` is provided and non-empty, only those channels contribute to the fit.
+    /// - If `validation_channels` is provided and non-empty, those channels are excluded from the fit.
+    /// - If both are provided, they must be disjoint.
+    ///
+    /// Channel names refer to workspace channel names (regions).
+    pub fn with_fit_channel_selection(
+        &self,
+        fit_channels: Option<&[String]>,
+        validation_channels: Option<&[String]>,
+    ) -> Result<Self> {
+        use std::collections::HashSet;
+
+        let fit_set: HashSet<&str> = fit_channels
+            .unwrap_or(&[])
+            .iter()
+            .map(|s| s.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        let val_set: HashSet<&str> = validation_channels
+            .unwrap_or(&[])
+            .iter()
+            .map(|s| s.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+
+        if !fit_set.is_empty() {
+            for &v in &val_set {
+                if fit_set.contains(v) {
+                    return Err(ns_core::Error::Validation(format!(
+                        "channel cannot be both fit and validation: {v}"
+                    )));
+                }
+            }
+        }
+
+        if fit_set.is_empty() && val_set.is_empty() {
+            return Ok(self.clone());
+        }
+
+        // Validate channel names.
+        let known: HashSet<&str> = self.channels.iter().map(|c| c.name.as_str()).collect();
+        let mut unknown: Vec<&str> = Vec::new();
+        for &c in fit_set.iter().chain(val_set.iter()) {
+            if !known.contains(c) {
+                unknown.push(c);
+            }
+        }
+        if !unknown.is_empty() {
+            unknown.sort();
+            unknown.dedup();
+            return Err(ns_core::Error::Validation(format!(
+                "unknown channel(s) in fit/validation selection: {}",
+                unknown.join(", ")
+            )));
+        }
+
+        let mut out = self.clone();
+        for ch in &mut out.channels {
+            let name = ch.name.as_str();
+            let include = if !fit_set.is_empty() { fit_set.contains(name) } else { true };
+            let include = include && !val_set.contains(name);
+            ch.include_in_fit = include;
+        }
+        Ok(out)
     }
 
     /// Number of parameters
@@ -1400,6 +1473,11 @@ impl HistFactoryModel {
         let mut bin_idx = 0;
         for channel in &self.channels {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            if !channel.include_in_fit {
+                // Skip main-bin and auxdata terms for validation channels, but keep expected indexing aligned.
+                bin_idx += n_bins;
+                continue;
+            }
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
                 let exp = expected.get(bin_idx).copied().unwrap_or(T::from_f64(1e-10));
@@ -2384,6 +2462,10 @@ pub struct PreparedModel<'a> {
     constraint_const: f64,
     /// Total number of main bins (sum across channels).
     n_main_bins: usize,
+    /// Optional per-bin mask (1.0 = included in fit, 0.0 = excluded).
+    ///
+    /// When present, the prepared NLL zeros `expected[i]` for excluded bins to remove their contribution.
+    fit_bin_mask: Option<Vec<f64>>,
 }
 
 impl HistFactoryModel {
@@ -2392,13 +2474,23 @@ impl HistFactoryModel {
         let mut observed_flat = Vec::new();
         let mut ln_factorials = Vec::new();
         let mut obs_mask = Vec::new();
+        let mut fit_bin_mask = Vec::new();
+        let mut any_excluded = false;
 
         for channel in &self.channels {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            if !channel.include_in_fit {
+                any_excluded = true;
+            }
             for i in 0..n_bins {
-                let obs = channel.observed.get(i).copied().unwrap_or(0.0);
+                let include = channel.include_in_fit;
+                fit_bin_mask.push(if include { 1.0 } else { 0.0 });
+
+                // For excluded bins, force a "safe" sparse Poisson evaluation:
+                // - observed=0 => obs_mask=0, ln_factorial=0
+                // - expected is later zeroed via fit_bin_mask, so nll_i becomes 0.
+                let obs = if include { channel.observed.get(i).copied().unwrap_or(0.0) } else { 0.0 };
                 observed_flat.push(obs);
-                // `ln_factorial(0) = 0`, so avoid a `ln_gamma` call for sparse observations.
                 ln_factorials.push(if obs == 0.0 { 0.0 } else { Self::ln_factorial(obs) });
                 obs_mask.push(if obs > 0.0 { 1.0 } else { 0.0 });
             }
@@ -2431,6 +2523,7 @@ impl HistFactoryModel {
             n_zero_obs,
             constraint_const,
             n_main_bins,
+            fit_bin_mask: if any_excluded { Some(fit_bin_mask) } else { None },
         }
     }
 }
@@ -2458,6 +2551,16 @@ impl PreparedModel<'_> {
         for val in &mut expected {
             if *val < 1e-10 {
                 *val = 1e-10;
+            }
+        }
+
+        // 2b. Apply fit/validation mask: excluded bins contribute 0.0 to the Poisson NLL.
+        if let Some(mask) = self.fit_bin_mask.as_ref() {
+            debug_assert_eq!(mask.len(), expected.len());
+            for (e, &m) in expected.iter_mut().zip(mask.iter()) {
+                if m == 0.0 {
+                    *e = 0.0;
+                }
             }
         }
 
