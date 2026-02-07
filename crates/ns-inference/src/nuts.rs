@@ -831,7 +831,7 @@ mod tests {
     /// simple workspace.  This validates R-hat, ESS, divergence rate, E-BFMI,
     /// and posterior mean proximity to MLE.
     #[test]
-    #[ignore] // slow (~10s); run with `cargo test -- --ignored`
+    #[ignore = "slow (~10s); run with `cargo test -p ns-inference test_nuts_quality_gate -- --ignored`"]
     fn test_nuts_quality_gate() {
         use crate::chain::sample_nuts_multichain;
         use crate::diagnostics::compute_diagnostics;
@@ -895,9 +895,9 @@ mod tests {
     /// exploding energy or catastrophic divergence/treedepth behavior.
     ///
     /// This is intentionally ignored by default (slow-ish) and is meant as a
-    /// manual/nightly regression check per `docs/plans/standards.md` 7.3.
+    /// manual/nightly regression check.
     #[test]
-    #[ignore] // run with `cargo test -p ns-inference -- --ignored`
+    #[ignore = "slow; run with `cargo test -p ns-inference test_nuts_funnel_stress_gate -- --ignored`"]
     fn test_nuts_funnel_stress_gate() {
         use crate::chain::sample_nuts_multichain;
         use crate::diagnostics::compute_diagnostics;

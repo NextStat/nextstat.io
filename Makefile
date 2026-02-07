@@ -2,6 +2,8 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	rust-slow-tests \
+	rust-very-slow-tests \
 	trex-spec-validate \
 	trex-spec-run \
 	trex-spec-baseline-record \
@@ -57,6 +59,12 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+rust-slow-tests:
+	cargo test -p ns-inference -- --ignored --skip test_fit_toys_pull_distribution
+
+rust-very-slow-tests:
+	cargo test -p ns-inference --release test_fit_toys_pull_distribution -- --ignored
 
 trex-spec-validate:
 	"$(PY)" scripts/trex/validate_analysis_spec.py --spec "$(TREX_SPEC)" --schema "$(TREX_SCHEMA)"

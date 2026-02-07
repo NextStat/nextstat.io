@@ -76,6 +76,44 @@ def _git_meta() -> dict[str, Any]:
     return {"git_head": head, "git_branch": branch, "git_dirty": dirty, "git_dirty_count": dirty_count}
 
 
+def _load_jsonl_records(path: Path) -> List[dict[str, Any]]:
+    if not path.exists():
+        return []
+    out: List[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fp:
+        for line in fp:
+            if not line.strip():
+                continue
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                # Ignore partial/corrupt trailing lines.
+                continue
+    return out
+
+
+def _next_run_idx(existing: List[dict[str, Any]], ws_id: str) -> int:
+    max_idx = -1
+    for r in existing:
+        if r.get("type") != "run":
+            continue
+        if str(r.get("workspace_id")) != ws_id:
+            continue
+        try:
+            max_idx = max(max_idx, int(r.get("run_idx")))
+        except Exception:
+            continue
+    return max_idx + 1
+
+
+def _toy_seed_for_run(ws_id: str, toy_seed: int, run_idx: int) -> int:
+    # Deterministic per-workspace-per-run seed so runs are resumable without
+    # depending on RNG state progression.
+    msg = f"{ws_id}::{toy_seed}::{run_idx}".encode("utf-8")
+    h = hashlib.sha256(msg).digest()
+    return int.from_bytes(h[:8], "little") & 0x7FFF_FFFF_FFFF_FFFF
+
+
 def _is_pyhf_workspace(obj: Any) -> bool:
     if not isinstance(obj, dict):
         return False
@@ -741,6 +779,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--out-jsonl", type=Path, default=Path("tmp/repeat_mle_fits.jsonl"))
     ap.add_argument("--out-summary-json", type=Path, default=Path("tmp/repeat_mle_fits_summary.json"))
     ap.add_argument("--out-summary-md", type=Path, default=Path("tmp/repeat_mle_fits_summary.md"))
+    ap.add_argument("--resume", action="store_true", help="Append to existing JSONL and continue missing runs (requires same config).")
     ap.add_argument("--threads", type=int, default=1, help="Set thread env vars (RAYON/OMP/MKL/OPENBLAS/VECLIB).")
     ap.add_argument("--toy-main", action="store_true", help="Poisson-fluctuate main observations per run (auxdata fixed).")
     ap.add_argument("--toy-seed", type=int, default=123, help="Base RNG seed for toy-main generation.")
@@ -855,8 +894,37 @@ def main(argv: Optional[List[str]] = None) -> int:
     records: List[dict[str, Any]] = []
     excluded_ws_ids: List[str] = []
 
-    with args.out_jsonl.open("w", encoding="utf-8") as fp:
-        _write_jsonl_line(fp, {"type": "header", **header})
+    # Resume support: load existing records and keep header immutable.
+    existing: List[dict[str, Any]] = []
+    if bool(args.resume) and args.out_jsonl.exists():
+        existing = _load_jsonl_records(args.out_jsonl)
+        if existing and existing[0].get("type") == "header":
+            prev = existing[0]
+            # Hard guard: do not mix configurations in one log.
+            must_match = [
+                "n_runs",
+                "n_warmup",
+                "threads",
+                "toy_main",
+                "toy_seed",
+                "fit_order",
+                "pyhf_fit_options",
+                "nextstat_mle_config",
+                "assessment_gates",
+            ]
+            mism = []
+            for k in must_match:
+                if prev.get(k) != header.get(k):
+                    mism.append(k)
+            if mism:
+                raise SystemExit(f"--resume requested but header config differs for keys: {mism}")
+            header = prev
+        records.extend([r for r in existing if isinstance(r, dict)])
+
+    mode = "a" if (bool(args.resume) and args.out_jsonl.exists()) else "w"
+    with args.out_jsonl.open(mode, encoding="utf-8") as fp:
+        if mode == "w":
+            _write_jsonl_line(fp, {"type": "header", **header})
 
         for p in paths:
             if any(ex in str(p) for ex in excludes):
@@ -959,10 +1027,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if any((not math.isfinite(x)) or x < 0.0 for x in exp_main):
                         raise ValueError("expected_main contains non-finite/negative values")
 
-                    # Stable seed per workspace, so multi-workspace runs are deterministic.
+                    # Stable seed per workspace (metadata only). Each run uses a per-run seed
+                    # derived from (ws_id, toy_seed, run_idx) to make resume safe.
                     h = hashlib.sha256(ws_id.encode("utf-8")).digest()
                     seed_ws = (int.from_bytes(h[:8], "little") ^ int(args.toy_seed)) & 0x7FFF_FFFF_FFFF_FFFF
-                    rng = np.random.default_rng(seed_ws)
 
                     # Attach toy metadata to the workspace meta record.
                     meta_rec["toy"] = {
@@ -978,7 +1046,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     _write_jsonl_line(fp, rec)
                     continue
 
-            for run_idx in range(int(args.n_warmup) + int(args.n_runs)):
+            start_idx = _next_run_idx(records, ws_id) if bool(args.resume) else 0
+            for run_idx in range(int(start_idx), int(args.n_warmup) + int(args.n_runs)):
                 is_warmup = run_idx < int(args.n_warmup)
 
                 toy = None
@@ -988,6 +1057,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
                 if bool(args.toy_main):
                     assert base_data is not None and n_main is not None and exp_main is not None and seed_ws is not None
+                    seed_run = _toy_seed_for_run(ws_id, int(args.toy_seed), int(run_idx))
+                    rng = np.random.default_rng(seed_run)
                     # Poisson toys for main observations (auxdata stays fixed).
                     y_main = rng.poisson(lam=np.asarray(exp_main, dtype=float)).astype(float).tolist()
                     main_override = [float(x) for x in y_main]
@@ -995,6 +1066,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     data_override[:n_main] = main_override
                     toy = {
                         "seed_workspace": int(seed_ws),
+                        "seed_run": int(seed_run),
                         "main_hash_sha256": hashlib.sha256(np.asarray(main_override, dtype=np.float64).tobytes()).hexdigest(),
                     }
                     # For cross-eval on this toy dataset, we need a NextStat model with overridden main obs.
