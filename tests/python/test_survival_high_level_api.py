@@ -84,14 +84,47 @@ def test_survival_cox_cluster_robust_unique_clusters_matches_hc0() -> None:
     ]
     groups = list(range(len(times)))  # each row is its own cluster
 
-    fit_hc0 = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=None)
-    fit_cl = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=groups)
+    # With no small-sample correction, cluster-robust with unique clusters should match HC0.
+    fit_hc0 = nextstat.survival.cox_ph.fit(
+        times, events, x, ties="efron", robust=True, groups=None
+    )
+    fit_cl = nextstat.survival.cox_ph.fit(
+        times, events, x, ties="efron", robust=True, groups=groups, cluster_correction=False
+    )
 
     assert fit_hc0.robust_kind == "hc0"
     assert fit_cl.robust_kind == "cluster"
     assert fit_hc0.robust_se is not None and fit_cl.robust_se is not None
     assert [float(v) for v in fit_cl.robust_se] == pytest.approx(
         [float(v) for v in fit_hc0.robust_se], rel=0.0, abs=1e-10
+    )
+
+
+def test_survival_cox_cluster_correction_scales_cov() -> None:
+    times = [2.0, 1.0, 1.0, 0.5, 0.5, 0.2]
+    events = [True, True, False, True, False, False]
+    x = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, -1.0],
+        [0.0, -1.0],
+        [0.5, 0.5],
+    ]
+    groups = list(range(len(times)))  # each row is its own cluster
+
+    fit_unc = nextstat.survival.cox_ph.fit(
+        times, events, x, ties="efron", robust=True, groups=groups, cluster_correction=False
+    )
+    fit_cor = nextstat.survival.cox_ph.fit(
+        times, events, x, ties="efron", robust=True, groups=groups, cluster_correction=True
+    )
+
+    assert fit_unc.robust_se is not None and fit_cor.robust_se is not None
+    factor = float(len(groups)) / float(len(groups) - 1)  # G/(G-1)
+    # SE should scale by sqrt(factor) when covariance is scaled by factor.
+    assert [float(v) for v in fit_cor.robust_se] == pytest.approx(
+        [math.sqrt(factor) * float(v) for v in fit_unc.robust_se], rel=0.0, abs=1e-10
     )
 
 
@@ -124,3 +157,21 @@ def test_survival_cox_schoenfeld_sum_matches_score() -> None:
     g = [float(v) for v in m.grad_nll(beta)]
     assert score[0] == pytest.approx(-g[0], rel=0.0, abs=1e-10)
     assert score[1] == pytest.approx(-g[1], rel=0.0, abs=1e-10)
+
+
+def test_survival_cox_ph_test_smoke() -> None:
+    times = [2.0, 1.0, 1.0, 0.5, 0.5, 0.2]
+    events = [True, True, False, True, False, False]
+    x = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, -1.0],
+        [0.0, -1.0],
+        [0.5, 0.5],
+    ]
+    fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=False, compute_cov=False)
+    tests = nextstat.survival.cox_ph_ph_test(times, events, x, ties="efron", coef=fit.coef)
+    assert isinstance(tests, list) and len(tests) == 2
+    for row in tests:
+        assert 0.0 <= float(row["p"]) <= 1.0

@@ -150,6 +150,7 @@ NextStat exposes a dependency-light residual calculator (event rows only):
 sr = nextstat.survival.cox_ph_schoenfeld(times, events, x, ties="efron", coef=fit.coef)
 print("corr(log time):", sr.corr_log_time())
 print("slope(log time):", sr.slope_log_time())
+print("PH test:", nextstat.survival.cox_ph_ph_test(times, events, x, ties="efron", coef=fit.coef))
 ```
 
 ## Notes and limitations (baseline)

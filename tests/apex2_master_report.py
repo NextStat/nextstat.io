@@ -101,6 +101,18 @@ def _run_histfactory_goldens(
         deterministic=deterministic,
     )
 
+def _run_survival_smoke(*, cwd: Path, env: Dict[str, str], deterministic: bool) -> Dict[str, Any]:
+    # Survival pack should be dependency-light and always runnable.
+    return _run_pytest(
+        [
+            "tests/python/test_survival_contract.py",
+            "tests/python/test_survival_high_level_api.py",
+        ],
+        cwd=cwd,
+        env=env,
+        deterministic=deterministic,
+    )
+
 
 def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
@@ -552,6 +564,7 @@ def main() -> int:
         },
         "pyhf": None,
         "histfactory_golden": None,
+        "survival": None,
         "regression_golden": None,
         "nuts_quality": None,
         "nuts_quality_report": None,
@@ -598,6 +611,13 @@ def main() -> int:
     # HistFactory golden (no pyhf runtime required)
     # ------------------------------------------------------------------
     report["histfactory_golden"] = _run_histfactory_goldens(
+        cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
+
+    # ------------------------------------------------------------------
+    # Survival smoke/contract tests (Phase 9)
+    # ------------------------------------------------------------------
+    report["survival"] = _run_survival_smoke(
         cwd=cwd, env=env, deterministic=bool(args.deterministic)
     )
 
@@ -933,6 +953,7 @@ def main() -> int:
 
     # Exit code policy: fail (rc=2) on any non-skipped runner failure.
     pyhf_ok = (rc_pyhf == 0)
+    survival_ok_or_skipped = report["survival"]["status"] in ("ok", "skipped")
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
@@ -943,6 +964,8 @@ def main() -> int:
 
     print(f"Wrote: {args.out}")
     if not pyhf_ok:
+        return 2
+    if not survival_ok_or_skipped:
         return 2
     if not reg_ok_or_skipped:
         return 2

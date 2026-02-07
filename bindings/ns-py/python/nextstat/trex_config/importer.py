@@ -314,14 +314,6 @@ def trex_doc_to_analysis_spec_v0(
                     "skip_uncertainty": False,
                     "uncertainty_grouping": "prefix_1",
                 },
-                "gates": {
-                    "baseline_compare": {
-                        "enabled": False,
-                        "baseline_dir": "tmp/baselines",
-                        "require_same_host": True,
-                        "max_slowdown": 1.3,
-                    }
-                },
             },
             "gates": {"baseline_compare": {"enabled": False, "baseline_dir": "tmp/baselines", "require_same_host": True, "max_slowdown": 1.3}},
         }

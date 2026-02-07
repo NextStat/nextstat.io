@@ -509,7 +509,10 @@ impl<'a> BulkEvalState<'a> {
         self.slots[idx]
     }
 
-    fn unary(&mut self, v: Slot<'a>, f: fn(f64) -> f64) -> Slot<'a> {
+    fn unary<F>(&mut self, v: Slot<'a>, f: F) -> Slot<'a>
+    where
+        F: Fn(f64) -> f64 + Copy,
+    {
         match v {
             Slot::Scalar(a) => Slot::Scalar(f(a)),
             Slot::Col(c) => {
@@ -527,7 +530,10 @@ impl<'a> BulkEvalState<'a> {
         }
     }
 
-    fn binary(&mut self, a: Slot<'a>, b: Slot<'a>, f: fn(f64, f64) -> f64) -> Slot<'a> {
+    fn binary<F>(&mut self, a: Slot<'a>, b: Slot<'a>, f: F) -> Slot<'a>
+    where
+        F: Fn(f64, f64) -> f64 + Copy,
+    {
         match (a, b) {
             (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(f(x, y)),
             (Slot::Owned(i), Slot::Scalar(y)) => {
@@ -579,11 +585,23 @@ impl<'a> BulkEvalState<'a> {
                     }
                     return Slot::Owned(i);
                 }
-                let rhs = self.arena[j].clone();
-                for (x, y) in self.arena[i].iter_mut().zip(rhs.iter()) {
-                    *x = f(*x, *y);
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+                        *x = f(*x, y);
+                    }
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+                        *x = f(*x, y);
+                    }
+                    Slot::Owned(i)
                 }
-                Slot::Owned(i)
             }
         }
     }

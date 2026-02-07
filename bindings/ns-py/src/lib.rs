@@ -4032,6 +4032,16 @@ fn has_cuda() -> bool {
     ns_inference::batch::is_cuda_batch_available()
 }
 
+/// Check if Metal GPU batch backend is available.
+///
+/// Returns True if:
+/// - the `metal` feature was enabled at compile time, AND
+/// - a Metal-capable GPU is present at runtime (Apple Silicon).
+#[pyfunction]
+fn has_metal() -> bool {
+    ns_inference::batch::is_metal_batch_available()
+}
+
 /// GPU-accelerated batch toy fitting (requires CUDA).
 ///
 /// All toys are optimized in lockstep on the GPU.
@@ -4048,25 +4058,41 @@ fn fit_toys_batch_gpu(
 ) -> PyResult<Vec<PyFitResult>> {
     let m = model.inner.clone();
 
-    let use_gpu = device == "cuda";
+    let device_str = device.to_string();
 
     let results = py.detach(move || {
-        if use_gpu {
-            #[cfg(feature = "cuda")]
-            {
-                match ns_inference::gpu_batch::fit_toys_batch_gpu(&m, &params, n_toys, seed, None) {
-                    Ok(r) => r,
-                    Err(e) => vec![Err(e)],
+        match device_str.as_str() {
+            "cuda" => {
+                #[cfg(feature = "cuda")]
+                {
+                    match ns_inference::gpu_batch::fit_toys_batch_gpu(&m, &params, n_toys, seed, None) {
+                        Ok(r) => r,
+                        Err(e) => vec![Err(e)],
+                    }
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    vec![Err(ns_core::Error::Computation(
+                        "CUDA support not compiled in. Build with --features cuda".to_string(),
+                    ))]
                 }
             }
-            #[cfg(not(feature = "cuda"))]
-            {
-                vec![Err(ns_core::Error::Computation(
-                    "CUDA support not compiled in. Build with --features cuda".to_string(),
-                ))]
+            "metal" => {
+                #[cfg(feature = "metal")]
+                {
+                    match ns_inference::metal_batch::fit_toys_batch_metal(&m, &params, n_toys, seed, None) {
+                        Ok(r) => r,
+                        Err(e) => vec![Err(e)],
+                    }
+                }
+                #[cfg(not(feature = "metal"))]
+                {
+                    vec![Err(ns_core::Error::Computation(
+                        "Metal support not compiled in. Build with --features metal".to_string(),
+                    ))]
+                }
             }
-        } else {
-            ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None)
+            _ => ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None),
         }
     });
 
@@ -4610,6 +4636,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
     m.add_function(wrap_pyfunction!(has_cuda, m)?)?;
+    m.add_function(wrap_pyfunction!(has_metal, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;

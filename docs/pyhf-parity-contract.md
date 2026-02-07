@@ -218,7 +218,8 @@ The parity system is built on a clean separation of concerns:
 │  workspace JSON → flat layout:                        │
 │    observed_flat, ln_factorials, obs_mask,             │
 │    constraint_const, modifier CSR indices              │
-│  params → nll: zero-alloc, SIMD f64x4, sparse dispatch│
+│  params → nll: SIMD f64x4, sparse dispatch            │
+│  (expected_data_f64_fast allocates scratch vectors)    │
 ├──────────────────┬───────────────────────────────────┤
 │  Parity mode     │  Fast mode                         │
 │  Kahan, 1 thread │  Accelerate/CUDA, Rayon            │

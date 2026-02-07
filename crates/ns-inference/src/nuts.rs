@@ -406,6 +406,21 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
     }
     accept_prob = accept_prob.clamp(0.0, 1.0);
 
+    // Defensive: a non-finite proposal position would break downstream transforms
+    // (e.g. mapping unconstrained -> constrained) and should be treated as a hard divergence.
+    if tree.q_proposal.iter().any(|v| !v.is_finite()) {
+        return Ok(NutsTransition {
+            q: current.q.clone(),
+            potential: current.potential,
+            grad_potential: current.grad_potential.clone(),
+            depth: depth_reached,
+            divergent: true,
+            accept_prob: 0.0,
+            energy: h0,
+            n_leapfrog: tree.n_leapfrog,
+        });
+    }
+
     Ok(NutsTransition {
         q: tree.q_proposal,
         potential: tree.potential_proposal,

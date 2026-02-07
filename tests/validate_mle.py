@@ -96,7 +96,10 @@ def pyhf_fit(workspace):
 
 def nextstat_fit(workspace):
     """Fit with NextStat."""
+    t_ser0 = time.perf_counter()
     workspace_json = json.dumps(workspace)
+    t_ser = time.perf_counter() - t_ser0
+
     t_build0 = time.perf_counter()
     model = nextstat.HistFactoryModel.from_workspace(workspace_json)
     t_build = time.perf_counter() - t_build0
@@ -114,9 +117,10 @@ def nextstat_fit(workspace):
         'converged': result.converged,
         'n_evaluations': result.n_evaluations,
         'timing_s': {
+            'serialize_workspace': t_ser,
             'build': t_build,
             'fit': t_fit,
-            'total': t_build + t_fit,
+            'total': t_ser + t_build + t_fit,
         },
     }
 
@@ -254,6 +258,7 @@ def compare_results(pyhf_res, nextstat_res):
     print(f"    pyhf nll:           {t_pyhf.get('nll', float('nan')):.3f}")
     print(f"    pyhf uncertainties: {t_pyhf.get('uncertainties', float('nan')):.3f}")
     print(f"    pyhf total:         {t_pyhf.get('total', float('nan')):.3f}")
+    print(f"    NextStat serialize: {t_ns.get('serialize_workspace', float('nan')):.3f}")
     print(f"    NextStat build:     {t_ns.get('build', float('nan')):.3f}")
     print(f"    NextStat fit:       {t_ns.get('fit', float('nan')):.3f}")
     print(f"    NextStat total:     {t_ns.get('total', float('nan')):.3f}")
@@ -284,6 +289,7 @@ def compare_results(pyhf_res, nextstat_res):
 
 def main():
     """Main validation."""
+    t_all0 = time.perf_counter()
     print("Loading workspace...")
     workspace = load_workspace()
 
@@ -293,7 +299,10 @@ def main():
     print("Fitting with NextStat...")
     nextstat_res = nextstat_fit(workspace)
 
-    return compare_results(pyhf_res, nextstat_res)
+    rc = compare_results(pyhf_res, nextstat_res)
+    t_all = time.perf_counter() - t_all0
+    print(f"\nTOTAL wall time: {t_all:.3f} s")
+    return rc
 
 
 if __name__ == "__main__":

@@ -51,8 +51,8 @@ pub fn fit_toys_batch_metal(
     config: Option<OptimizerConfig>,
 ) -> Result<Vec<Result<FitResult>>> {
     let mut config = config.unwrap_or_default();
-    // Relax tolerance for f32 precision — below 1e-4 the f32 gradient noise dominates
-    config.tol = config.tol.max(1e-4);
+    // Relax tolerance for f32 precision — below 1e-3 the f32 gradient noise dominates
+    config.tol = config.tol.max(1e-3);
     let n_params = model.n_params();
 
     // 1. Serialize model for GPU (f64 → f32)
@@ -152,4 +152,135 @@ pub fn fit_toys_batch_metal(
 /// Check if Metal GPU batch fitting is available at runtime.
 pub fn is_metal_available() -> bool {
     MetalBatchAccelerator::is_available()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ns_translate::pyhf::Workspace;
+
+    fn load_simple_workspace() -> Workspace {
+        let json = include_str!("../../../tests/fixtures/simple_workspace.json");
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn test_metal_available() {
+        // On macOS with Apple Silicon this should return true.
+        let available = is_metal_available();
+        eprintln!("Metal available: {available}");
+        // We don't assert true because CI may not have Metal.
+    }
+
+    #[test]
+    fn test_metal_batch_smoke() {
+        if !is_metal_available() {
+            eprintln!("Skipping: Metal not available");
+            return;
+        }
+
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+        let results = fit_toys_batch_metal(&model, &params, 4, 123, None).unwrap();
+        assert_eq!(results.len(), 4);
+
+        for (i, r) in results.iter().enumerate() {
+            let fit = r.as_ref().unwrap_or_else(|e| panic!("Toy {i} failed: {e}"));
+            assert!(fit.nll.is_finite(), "Toy {i} NLL should be finite: {}", fit.nll);
+            // f32 tolerance is 1e-3, so some toys may not fully converge
+            // — check that NLL is reasonable (< 100 for simple workspace).
+            assert!(fit.nll < 100.0, "Toy {i} NLL suspiciously large: {}", fit.nll);
+            eprintln!(
+                "Toy {i}: NLL={:.6}, converged={}, iters={}",
+                fit.nll, fit.converged, fit.n_iter
+            );
+        }
+    }
+
+    #[test]
+    fn test_metal_nll_at_init() {
+        //! Diagnostic: compare Metal and CPU NLL at the init point (no optimizer).
+        //! This isolates kernel correctness from optimizer convergence.
+        if !is_metal_available() {
+            eprintln!("Skipping: Metal not available");
+            return;
+        }
+
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+        // Generate one toy
+        let expected = model.expected_data_pyhf_main(&params).unwrap();
+        let toy = crate::toys::poisson_main_from_expected(&expected, 42);
+
+        // CPU NLL at init
+        let toy_model = model.with_observed_main(&toy).unwrap();
+        let cpu_nll: f64 = toy_model.nll(&params).unwrap();
+
+        // Metal NLL at init (via single-model path)
+        let gpu_data = model.serialize_for_gpu().unwrap();
+        let metal_data = MetalModelData::from_gpu_data(&gpu_data);
+        let mut accel = MetalBatchAccelerator::from_metal_data(&metal_data, 1).unwrap();
+
+        let n_bins = gpu_data.n_main_bins;
+        let ln_facts: Vec<f64> = toy.iter().map(|&o| ln_gamma(o + 1.0)).collect();
+        let obs_mask: Vec<f64> = toy.iter().map(|&o| if o > 0.0 { 1.0 } else { 0.0 }).collect();
+        accel.upload_observed(&toy, &ln_facts, &obs_mask, 1).unwrap();
+
+        let (metal_nlls, metal_grads) = accel.batch_nll_grad(&params, 1).unwrap();
+        let metal_nll = metal_nlls[0];
+
+        let rel_diff = ((metal_nll - cpu_nll) / cpu_nll).abs();
+        eprintln!("CPU NLL at init:   {cpu_nll:.8}");
+        eprintln!("Metal NLL at init: {metal_nll:.8}");
+        eprintln!("Relative diff:     {rel_diff:.2e}");
+        eprintln!("n_bins={n_bins}, n_params={}", params.len());
+        eprintln!("Metal grad[0..3]: {:?}", &metal_grads[..params.len().min(3)]);
+
+        // f32 precision: expect < 1e-3 relative diff for NLL
+        assert!(
+            rel_diff < 1e-3,
+            "Metal NLL at init deviates from CPU: {metal_nll:.8} vs {cpu_nll:.8} (rel={rel_diff:.2e})"
+        );
+    }
+
+    #[test]
+    fn test_metal_matches_cpu() {
+        if !is_metal_available() {
+            eprintln!("Skipping: Metal not available");
+            return;
+        }
+
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+        // Metal (f32)
+        let metal_results = fit_toys_batch_metal(&model, &params, 5, 42, None).unwrap();
+        // CPU (f64)
+        let cpu_results = crate::batch::fit_toys_batch(&model, &params, 5, 42, None);
+
+        let mut n_close = 0;
+        for (i, (mr, cr)) in metal_results.iter().zip(cpu_results.iter()).enumerate() {
+            if let (Ok(m), Ok(c)) = (mr, cr) {
+                let nll_diff = (m.nll - c.nll).abs();
+                eprintln!(
+                    "Toy {i}: Metal NLL={:.6} CPU NLL={:.6} diff={:.2e} conv={}",
+                    m.nll, c.nll, nll_diff, m.converged
+                );
+                if nll_diff < 1.0 {
+                    n_close += 1;
+                }
+            }
+        }
+        // Most toys should match within 1.0 (f32 optimizer may diverge on some)
+        eprintln!("{n_close}/5 toys match within 1.0 NLL");
+        assert!(
+            n_close >= 3,
+            "Too few toys match: {n_close}/5. Metal kernel may have a bug."
+        );
+    }
 }

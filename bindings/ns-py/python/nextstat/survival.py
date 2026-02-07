@@ -434,6 +434,53 @@ class SchoenfeldResult:
             out.append(float(cov) / float(vt))
         return out
 
+    def ph_test_log_time(self) -> List[dict]:
+        # Per-covariate trend test of Schoenfeld residuals vs log(time).
+        #
+        # Baseline diagnostic: fit residual_j ~ a + b*log(time) and test H0: b=0.
+        n = len(self.event_times)
+        if n < 3:
+            raise ValueError("need at least 3 events for PH test")
+
+        ts = [math.log(max(float(t), 1e-300)) for t in self.event_times]
+        mt = sum(ts) / n
+        sxx = sum((t - mt) ** 2 for t in ts)
+        if sxx <= 0.0:
+            raise ValueError("degenerate event times (Var(log time)=0)")
+
+        p = len(self.residuals[0]) if self.residuals else 0
+        nd = NormalDist()
+        corrs = self.corr_log_time()
+        out: List[dict] = []
+        for j in range(p):
+            rs = [float(r[j]) for r in self.residuals]
+            mr = sum(rs) / n
+            sxy = sum((t - mt) * (r - mr) for t, r in zip(ts, rs))
+            b = float(sxy) / float(sxx)
+            a = float(mr) - float(b) * float(mt)
+            sse = sum((r - (a + b * t)) ** 2 for t, r in zip(ts, rs))
+            s2 = float(sse) / max(1.0, float(n - 2))
+            se_b = math.sqrt(float(s2) / float(sxx)) if s2 >= 0.0 else float("nan")
+
+            if not (math.isfinite(float(se_b)) and float(se_b) > 0.0):
+                z = float("nan")
+                pv = float("nan")
+            else:
+                z = float(b) / float(se_b)
+                pv = 2.0 * (1.0 - float(nd.cdf(abs(float(z)))))
+
+            out.append(
+                {
+                    "feature": int(j),
+                    "slope": float(b),
+                    "se_slope": float(se_b),
+                    "z": float(z),
+                    "p": float(pv),
+                    "corr": float(corrs[j]) if j < len(corrs) else float("nan"),
+                }
+            )
+        return out
+
 
 def _cox_schoenfeld_residuals(
     *,
@@ -545,6 +592,22 @@ def cox_ph_schoenfeld(
     beta = [float(v) for v in coef]
     return _cox_schoenfeld_residuals(times=t, events=e, x=xx, beta=beta, ties=str(ties))
 
+
+def cox_ph_ph_test(
+    times: Any,
+    events: Any,
+    x: Any,
+    *,
+    ties: str = "efron",
+    coef: Optional[Sequence[float]] = None,
+) -> List[dict]:
+    """PH diagnostic test using Schoenfeld residuals vs log(time).
+
+    Returns per-feature dictionaries with slope/z/p-value for H0: slope=0.
+    """
+    sr = cox_ph_schoenfeld(times, events, x, ties=str(ties), coef=coef)
+    return sr.ph_test_log_time()
+
 @dataclass(frozen=True)
 class ParametricSurvivalFit:
     model: str
@@ -635,6 +698,7 @@ def _fit_cox_ph(
     robust: bool = True,
     compute_cov: bool = True,
     groups: Optional[Any] = None,
+    cluster_correction: bool = True,
     compute_baseline: bool = True,
 ) -> CoxPhFit:
     import nextstat
@@ -668,6 +732,15 @@ def _fit_cox_ph(
             )
             # cov_robust = I^{-1} B I^{-1}
             robust_cov = _mat_mul(_mat_mul(cov, bmat), cov)
+            if g is not None and bool(cluster_correction):
+                # Small-sample correction for clustered sandwich covariance: G/(G-1).
+                g_unique = len(set(int(v) for v in g))
+                if g_unique <= 1:
+                    raise ValueError("cluster_correction requires at least 2 unique groups")
+                factor = float(g_unique) / float(g_unique - 1)
+                for i in range(len(beta)):
+                    for j in range(len(beta)):
+                        robust_cov[i][j] = float(robust_cov[i][j]) * float(factor)
             robust_se = [math.sqrt(max(float(robust_cov[i][i]), 0.0)) for i in range(len(beta))]
             robust_kind = "cluster" if g is not None else "hc0"
 
@@ -721,4 +794,5 @@ __all__ = [
     "ParametricSurvivalFit",
     "SchoenfeldResult",
     "cox_ph_schoenfeld",
+    "cox_ph_ph_test",
 ]

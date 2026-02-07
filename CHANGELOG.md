@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **f32 / Dual32 precision PoC (Metal feasibility study)**
 - `impl Scalar for f32` in `ns-ad` — enables `nll_generic::<f32>()` for precision analysis.
 - `Dual32` (f32-based dual numbers) in `ns-ad` — enables analytical gradient in f32.
-- Validated on tHu (184 params): NLL rel error 3.4e-7, analytical gradient max error 3.2e-4, zero sign flips.
+- Validated on tHu (184 params): NLL rel error 3.4e-7, analytical gradient max error 3.16e-4, zero sign flips.
 - **Verdict**: f32 analytical gradients are viable for L-BFGS-B on large models (Metal path confirmed feasible).
 
 **Batch toy fitting (CPU)**

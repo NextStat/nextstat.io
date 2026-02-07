@@ -1553,7 +1553,7 @@ fn cmd_run_spec_v0(
             scan.points,
             Some(&scan.output_json),
             plan.threads,
-            false,
+            None,
             /*bundle*/ None,
         )?;
     }
