@@ -1138,4 +1138,59 @@ mod tests {
         assert!((u[0] - 0.5).abs() < 1e-12);
         assert!((u[1] - (1.0 / 3.0)).abs() < 1e-12);
     }
+
+    #[test]
+    fn test_fixed_poi_zero_converges_at_boundary() {
+        // Fix POI=0 by setting bounds to (0,0).
+        // The unconstrained MLE has mu > 0, so the optimizer must stop at the boundary
+        // and report SolverConverged, not MaxIter.
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let poi_idx = model.poi_index().expect("POI index should exist");
+
+        let mle = MaximumLikelihoodEstimator::new();
+
+        // Build bounds with POI clamped to 0
+        let mut bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        bounds[poi_idx] = (0.0, 0.0);
+
+        let mut init: Vec<f64> = model.parameter_init();
+        init[poi_idx] = 0.0;
+
+        let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+        let result = mle
+            .fit_minimum_histfactory_from_with_bounds_with_tape(&model, &init, &bounds, &mut tape)
+            .unwrap();
+
+        // POI must be exactly 0
+        assert!(
+            (result.parameters[poi_idx]).abs() < 1e-12,
+            "POI should be fixed at 0, got {}",
+            result.parameters[poi_idx]
+        );
+
+        // Must converge, not hit MaxIter
+        assert!(
+            result.converged,
+            "Fixed-POI fit should converge at boundary, not hit MaxIter. Status: {}",
+            result.message
+        );
+
+        // NLL at POI=0 should be worse (higher) than the unconstrained MLE
+        let free_result = mle.fit_minimum_histfactory_with_tape(&model, &mut tape).unwrap();
+        assert!(
+            result.fval >= free_result.fval - 1e-10,
+            "NLL at fixed POI=0 ({}) should be >= free MLE NLL ({})",
+            result.fval,
+            free_result.fval
+        );
+
+        // Nuisance parameters should still be reasonable
+        for (i, &p) in result.parameters.iter().enumerate() {
+            if i == poi_idx {
+                continue;
+            }
+            assert!(p.is_finite(), "Param[{}] should be finite: {}", i, p);
+        }
+    }
 }

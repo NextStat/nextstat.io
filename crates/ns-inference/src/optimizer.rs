@@ -434,4 +434,52 @@ mod tests {
             result.message
         );
     }
+
+    #[test]
+    fn test_optimizer_1d_mu_stuck_at_zero() {
+        // f(x) = (x + 1)^2  →  min at x = -1
+        // Bound: x in [0, 10]  →  constrained min at x = 0
+        // Mimics POI (mu) stuck at lower boundary.
+        struct Quadratic1D;
+
+        impl ObjectiveFunction for Quadratic1D {
+            fn eval(&self, params: &[f64]) -> Result<f64> {
+                let x = params[0];
+                Ok((x + 1.0).powi(2))
+            }
+
+            fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+                let x = params[0];
+                Ok(vec![2.0 * (x + 1.0)])
+            }
+        }
+
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+
+        let init = vec![5.0];
+        let bounds = vec![(0.0, 10.0)];
+
+        let result = optimizer.minimize(&Quadratic1D, &init, &bounds).unwrap();
+
+        // Should be pinned at 0
+        assert_relative_eq!(result.parameters[0], 0.0, epsilon = 1e-10);
+
+        // f(0) = 1
+        assert_relative_eq!(result.fval, 1.0, epsilon = 1e-10);
+
+        // Must converge (projected gradient = 0 at lower bound)
+        assert!(
+            result.converged,
+            "1D mu-at-zero should converge, not hit MaxIter. Status: {}",
+            result.message
+        );
+
+        // Should not need many iterations for a simple 1D case
+        assert!(
+            result.n_iter < 20,
+            "Should converge quickly, used {} iterations",
+            result.n_iter
+        );
+    }
 }
