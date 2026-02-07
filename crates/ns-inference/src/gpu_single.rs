@@ -22,6 +22,7 @@
 
 use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
 use ns_compute::cuda_batch::CudaBatchAccelerator;
+use ns_core::traits::LogDensityModel;
 use ns_core::Result;
 use ns_translate::pyhf::HistFactoryModel;
 use statrs::function::gamma::ln_gamma;

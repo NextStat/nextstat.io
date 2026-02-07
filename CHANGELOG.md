@@ -137,6 +137,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - CI: pyhf parity gate on push/PR, TREx baseline refresh (nightly), HEPData workspace tests.
 - Apex2 validation: NLL parity, bias/pulls regression, SBC calibration, NUTS quality gates.
 
+### Changed
+
+- **Compiled modifier dataflow** — CUDA differentiable kernel launch refactored: scalar args pre-computed as local variables before `LaunchArgs` borrow, fixing lifetime issues with cudarc 0.14+. `GradSignalTarget::External` pointer now stored in a local `u64` to ensure stable borrow through kernel launch.
+- `DifferentiableAccelerator.stream` upgraded to `Arc<CudaStream>` for safe sharing across kernel launches.
+
 ### Fixed
 
 - Optimizer early-stop with negative NLL (`target_cost(0.0)` removed).

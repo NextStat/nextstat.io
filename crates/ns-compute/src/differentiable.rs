@@ -28,8 +28,6 @@ use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
 };
 use cudarc::nvrtc::Ptx;
-#[allow(unused_imports)]
-use cudarc::driver::LaunchArgs;
 use std::sync::Arc;
 
 /// PTX source compiled from `kernels/differentiable_nll_grad.cu` at build time.
@@ -108,6 +106,17 @@ fn launch_kernel(
         shared_mem_bytes: shared_bytes,
     };
 
+    // Pre-compute scalar args as local variables (LaunchArgs borrows them)
+    let nse = n_signal_entries as u32;
+    let np = n_params as u32;
+    let nb = n_main_bins as u32;
+    let ns = n_samples as u32;
+    let nap = n_aux_poisson as u32;
+    let ngc = n_gauss_constr as u32;
+
+    // For GradSignalTarget::External, we need the ptr to live long enough
+    let mut grad_ptr_val: u64 = 0;
+
     let mut builder = stream.launch_builder(kernel);
 
     builder.arg(d_params);
@@ -129,21 +138,26 @@ fn launch_kernel(
 
     builder.arg(&signal_device_ptr);
     match grad_target {
-        GradSignalTarget::External(ptr) => builder.arg(&ptr),
-        GradSignalTarget::Internal(buf) => builder.arg(buf),
+        GradSignalTarget::External(ptr) => {
+            grad_ptr_val = ptr;
+            builder.arg(&grad_ptr_val);
+        }
+        GradSignalTarget::Internal(buf) => {
+            builder.arg(buf);
+        }
     }
 
     // Multi-channel signal entry arrays
     builder.arg(d_signal_indices);
     builder.arg(d_signal_first_bins);
     builder.arg(d_signal_n_bins_arr);
-    builder.arg(&(n_signal_entries as u32));
+    builder.arg(&nse);
 
-    builder.arg(&(n_params as u32));
-    builder.arg(&(n_main_bins as u32));
-    builder.arg(&(n_samples as u32));
-    builder.arg(&(n_aux_poisson as u32));
-    builder.arg(&(n_gauss_constr as u32));
+    builder.arg(&np);
+    builder.arg(&nb);
+    builder.arg(&ns);
+    builder.arg(&nap);
+    builder.arg(&ngc);
     builder.arg(&constraint_const);
 
     unsafe {
