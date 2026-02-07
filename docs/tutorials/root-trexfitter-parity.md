@@ -179,6 +179,25 @@ PYTHONPATH=bindings/ns-py/python python3 tests/compare_trex_baseline_files.py \
   --candidate tests/baselines/trex/mycase/baseline.json
 ```
 
+### GitHub Actions (self-hosted) refresh
+
+If you have a self-hosted GitHub Actions runner with ROOT/HistFactory available, you can use:
+- workflow: `.github/workflows/trex-baseline-refresh.yml` (`TREx Baseline Refresh (External)`)
+- runner labels: `self-hosted, trex`
+
+Two ways to run:
+
+1) Manual (`workflow_dispatch`):
+- Provide `export_dir` (path to an export dir with `combination.xml`) and a `case` name.
+- The workflow uploads artifacts under `trex-baseline-<case>`.
+
+2) Nightly schedule:
+- Set GitHub repo variables (on the repo settings page):
+  - `TREX_EXPORT_DIR` (required): export dir path visible on the runner
+  - `TREX_CASE` (optional): case name (default: `trex_case`)
+  - `TREX_ROOTDIR`, `TREX_COMPARE_TO` (optional)
+- If `TREX_EXPORT_DIR` is not set, the scheduled run skips without failing.
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).

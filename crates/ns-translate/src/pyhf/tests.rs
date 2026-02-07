@@ -119,6 +119,64 @@ fn test_parameter_config() {
 }
 
 #[test]
+fn test_parameter_fixed_is_parsed_and_applied_as_bounds_clamp() {
+    use ns_core::traits::LogDensityModel;
+
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "s",
+          "data": [1.0],
+          "modifiers": [
+            {"name": "lumi", "type": "lumi", "data": null}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [1.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "lumi",
+            "inits": [1.0],
+            "bounds": [[0.5, 1.5]],
+            "auxdata": [1.0],
+            "sigmas": [0.1],
+            "fixed": true
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let cfg = ws
+        .measurements
+        .first()
+        .and_then(|m| m.config.parameters.first())
+        .expect("parameter config present");
+    assert!(cfg.fixed, "expected fixed=true");
+
+    let model = super::HistFactoryModel::from_workspace(&ws).expect("build model");
+    let names = model.parameter_names();
+    let bounds = model.parameter_bounds();
+    let lumi_idx = names.iter().position(|n| n == "lumi").expect("lumi param exists");
+    assert_eq!(bounds[lumi_idx], (1.0, 1.0));
+}
+
+#[test]
 fn test_model_rejects_observation_length_mismatch() {
     let json = include_str!("../../../../tests/fixtures/bad_observations_length_mismatch.json");
     let ws: Workspace = serde_json::from_str(json).unwrap();

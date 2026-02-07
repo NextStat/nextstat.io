@@ -58,6 +58,10 @@ pub mod timeseries;
 pub mod toys;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+
+/// GPU-accelerated batch toy fitting (requires `cuda` feature + NVIDIA GPU).
+#[cfg(feature = "cuda")]
+pub mod gpu_batch;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -87,6 +91,8 @@ pub use survival::{
 };
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use batch::{fit_toys_batch, is_accelerate_available};
+#[cfg(feature = "cuda")]
+pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

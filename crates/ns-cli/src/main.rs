@@ -170,6 +170,10 @@ enum Commands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "0")]
         threads: usize,
+
+        /// Use GPU (CUDA) for batch toy fits. Requires --features cuda and NVIDIA GPU.
+        #[arg(long)]
+        gpu: bool,
     },
 
     /// Observed CLs upper limit via bisection (asymptotics, qtilde)
@@ -847,7 +851,18 @@ fn main() -> Result<()> {
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
         }
-        Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads } => {
+        Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads, gpu } => {
+            if gpu {
+                #[cfg(feature = "cuda")]
+                {
+                    eprintln!("GPU mode enabled (CUDA batch)");
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    anyhow::bail!("--gpu requires building with --features cuda");
+                }
+            }
+            let _ = gpu; // suppress unused warning when cuda feature is off
             cmd_hypotest_toys(
                 &input,
                 mu,

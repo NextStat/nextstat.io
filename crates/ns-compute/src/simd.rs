@@ -672,6 +672,98 @@ mod tests {
         }
     }
 
+    fn code0_delta_accumulate_scalar(
+        dst: &mut [f64],
+        alpha: f64,
+        lo: &[f64],
+        nom: &[f64],
+        hi: &[f64],
+    ) {
+        let n = dst.len();
+        assert_eq!(n, lo.len());
+        assert_eq!(n, nom.len());
+        assert_eq!(n, hi.len());
+
+        if alpha >= 0.0 {
+            for i in 0..n {
+                dst[i] += (hi[i] - nom[i]) * alpha;
+            }
+        } else {
+            for i in 0..n {
+                dst[i] += (nom[i] - lo[i]) * alpha;
+            }
+        }
+    }
+
+    #[test]
+    fn test_histosys_code0_delta_accumulate_matches_scalar() {
+        let n = 257;
+        let dst: Vec<f64> = (0..n).map(|i| i as f64 * 1e-3).collect();
+        let dst_ref = dst.clone();
+        let lo: Vec<f64> = (0..n).map(|i| 10.0 + (i as f64) * 0.1).collect();
+        let nom: Vec<f64> = (0..n).map(|i| 11.0 + (i as f64) * 0.1).collect();
+        let hi: Vec<f64> = (0..n).map(|i| 12.0 + (i as f64) * 0.1).collect();
+
+        for &alpha in &[-2.5, -1.0, -0.5, 0.0, 0.5, 1.0, 2.5] {
+            let mut d = dst.clone();
+            let mut d_ref = dst_ref.clone();
+            histosys_code0_delta_accumulate(&mut d, alpha, &lo, &nom, &hi);
+            code0_delta_accumulate_scalar(&mut d_ref, alpha, &lo, &nom, &hi);
+            for (a, b) in d.iter().zip(d_ref.iter()) {
+                assert_relative_eq!(a, b, epsilon = 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn test_histosys_code0_at_zero_equals_zero_delta() {
+        let n = 10;
+        let lo: Vec<f64> = (0..n).map(|i| 9.0 + (i as f64) * 0.1).collect();
+        let nom: Vec<f64> = (0..n).map(|i| 10.0 + (i as f64) * 0.1).collect();
+        let hi: Vec<f64> = (0..n).map(|i| 11.0 + (i as f64) * 0.1).collect();
+        let mut dst = vec![0.0; n];
+        histosys_code0_delta_accumulate(&mut dst, 0.0, &lo, &nom, &hi);
+        for &v in &dst {
+            assert_eq!(v, 0.0);
+        }
+    }
+
+    #[test]
+    fn test_histosys_code0_code4p_agree_at_alpha_zero() {
+        // At alpha=0, both codes must give zero delta
+        let n = 10;
+        let lo: Vec<f64> = (0..n).map(|i| 9.0 + (i as f64) * 0.1).collect();
+        let nom: Vec<f64> = (0..n).map(|i| 10.0 + (i as f64) * 0.1).collect();
+        let hi: Vec<f64> = (0..n).map(|i| 11.0 + (i as f64) * 0.1).collect();
+
+        let mut dst0 = vec![0.0; n];
+        let mut dst4p = vec![0.0; n];
+        histosys_code0_delta_accumulate(&mut dst0, 0.0, &lo, &nom, &hi);
+        histosys_code4p_delta_accumulate(&mut dst4p, 0.0, &lo, &nom, &hi);
+        for (a, b) in dst0.iter().zip(dst4p.iter()) {
+            assert_relative_eq!(a, b, epsilon = 1e-15);
+        }
+    }
+
+    #[test]
+    fn test_histosys_code0_code4p_agree_at_alpha_pm1() {
+        // At alpha=+1 and alpha=-1, code0 and code4p must agree exactly
+        let n = 10;
+        let lo: Vec<f64> = (0..n).map(|i| 8.0 + (i as f64) * 0.2).collect();
+        let nom: Vec<f64> = (0..n).map(|i| 10.0 + (i as f64) * 0.1).collect();
+        let hi: Vec<f64> = (0..n).map(|i| 13.0 + (i as f64) * 0.15).collect();
+
+        for &alpha in &[1.0, -1.0] {
+            let mut dst0 = vec![0.0; n];
+            let mut dst4p = vec![0.0; n];
+            histosys_code0_delta_accumulate(&mut dst0, alpha, &lo, &nom, &hi);
+            histosys_code4p_delta_accumulate(&mut dst4p, alpha, &lo, &nom, &hi);
+            for (a, b) in dst0.iter().zip(dst4p.iter()) {
+                assert_relative_eq!(a, b, epsilon = 1e-12);
+            }
+        }
+    }
+
     #[test]
     fn test_histosys_code4p_delta_accumulate_matches_scalar() {
         let n = 257;

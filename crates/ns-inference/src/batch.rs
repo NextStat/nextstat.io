@@ -98,6 +98,18 @@ pub fn is_accelerate_available() -> bool {
     ns_compute::accelerate_enabled()
 }
 
+/// Check if CUDA GPU batch backend is available.
+#[cfg(feature = "cuda")]
+pub fn is_cuda_batch_available() -> bool {
+    crate::gpu_batch::is_cuda_available()
+}
+
+/// Check if CUDA GPU batch backend is available (always false without feature).
+#[cfg(not(feature = "cuda"))]
+pub fn is_cuda_batch_available() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

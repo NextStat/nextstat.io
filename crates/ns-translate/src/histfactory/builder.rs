@@ -255,6 +255,7 @@ fn build_measurements(config: &CombinationConfig) -> Result<Vec<Measurement>> {
                         name: name.clone(),
                         inits: ps.val.map(|v| vec![v]).unwrap_or_default(),
                         bounds: Vec::new(),
+                        fixed: false,
                         auxdata: Vec::new(),
                         sigmas: Vec::new(),
                     })

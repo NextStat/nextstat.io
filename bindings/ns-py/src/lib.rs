@@ -3932,6 +3932,71 @@ fn has_accelerate() -> bool {
     ns_inference::batch::is_accelerate_available()
 }
 
+/// Check if CUDA GPU batch backend is available.
+///
+/// Returns True if:
+/// - the `cuda` feature was enabled at compile time, AND
+/// - a CUDA-capable GPU is present at runtime.
+#[pyfunction]
+fn has_cuda() -> bool {
+    ns_inference::batch::is_cuda_batch_available()
+}
+
+/// GPU-accelerated batch toy fitting (requires CUDA).
+///
+/// All toys are optimized in lockstep on the GPU.
+/// Falls back to CPU if CUDA is not available.
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42, device="cpu"))]
+fn fit_toys_batch_gpu(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+    device: &str,
+) -> PyResult<Vec<PyFitResult>> {
+    let m = model.inner.clone();
+
+    let use_gpu = device == "cuda";
+
+    let results = py.detach(move || {
+        if use_gpu {
+            #[cfg(feature = "cuda")]
+            {
+                match ns_inference::gpu_batch::fit_toys_batch_gpu(&m, &params, n_toys, seed, None) {
+                    Ok(r) => r,
+                    Err(e) => vec![Err(e)],
+                }
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                vec![Err(ns_core::Error::Computation(
+                    "CUDA support not compiled in. Build with --features cuda".to_string(),
+                ))]
+            }
+        } else {
+            ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None)
+        }
+    });
+
+    results
+        .into_iter()
+        .map(|r| {
+            let r = r.map_err(|e| PyValueError::new_err(format!("GPU batch toy fit failed: {}", e)))?;
+            Ok(PyFitResult {
+                parameters: r.parameters,
+                uncertainties: r.uncertainties,
+                nll: r.nll,
+                converged: r.converged,
+                n_iter: r.n_iter,
+                n_fev: r.n_fev,
+                n_gev: r.n_gev,
+            })
+        })
+        .collect()
+}
+
 /// Generate an Asimov (deterministic expected) **main** dataset for a HistFactory model.
 ///
 /// Returns a flat vector of main-bin expectations (no auxdata), suitable for passing to
@@ -4435,6 +4500,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
     m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
+    m.add_function(wrap_pyfunction!(has_cuda, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_toys_batch_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;

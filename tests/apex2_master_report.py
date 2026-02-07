@@ -66,9 +66,14 @@ def _module_available(name: str) -> bool:
         return False
 
 
-def _run_pytest(paths: list[str], *, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+def _run_pytest(
+    paths: list[str], *, cwd: Path, env: Dict[str, str], deterministic: bool
+) -> Dict[str, Any]:
     cmd = [sys.executable, "-m", "pytest", "-q", *paths]
     rc, out = _run_json(cmd, cwd=cwd, env=env)
+    # Pytest prints durations ("... in 0.03s"), so keep the report stable when requested.
+    if deterministic:
+        out = ""
     return {
         "status": "ok" if rc == 0 else "fail",
         "returncode": int(rc),
@@ -77,7 +82,9 @@ def _run_pytest(paths: list[str], *, cwd: Path, env: Dict[str, str]) -> Dict[str
     }
 
 
-def _run_histfactory_goldens(*, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+def _run_histfactory_goldens(
+    *, cwd: Path, env: Dict[str, str], deterministic: bool
+) -> Dict[str, Any]:
     repo = _repo_root()
     gold = repo / "tests" / "fixtures" / "pyhf_model_zoo_goldens.json"
     if not gold.exists():
@@ -87,7 +94,12 @@ def _run_histfactory_goldens(*, cwd: Path, env: Dict[str, str]) -> Dict[str, Any
             "hint": "Generate with: PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/python/generate_pyhf_model_zoo_goldens.py",
         }
 
-    return _run_pytest(["tests/python/test_pyhf_model_zoo_goldens.py"], cwd=cwd, env=env)
+    return _run_pytest(
+        ["tests/python/test_pyhf_model_zoo_goldens.py"],
+        cwd=cwd,
+        env=env,
+        deterministic=deterministic,
+    )
 
 
 def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
@@ -585,7 +597,9 @@ def main() -> int:
     # ------------------------------------------------------------------
     # HistFactory golden (no pyhf runtime required)
     # ------------------------------------------------------------------
-    report["histfactory_golden"] = _run_histfactory_goldens(cwd=cwd, env=env)
+    report["histfactory_golden"] = _run_histfactory_goldens(
+        cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
 
     # ------------------------------------------------------------------
     # Regression golden fixtures (GLM surface)

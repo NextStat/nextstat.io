@@ -472,6 +472,12 @@ impl HistFactoryModel {
                         param.constraint_center = Some(center);
                         param.constraint_width = Some(sigma);
                     }
+
+                    // pyhf workspace parameter configs can freeze parameters via `fixed: true`.
+                    // We implement this by clamping bounds to a single value (the configured init).
+                    if cfg.fixed {
+                        param.bounds = (param.init, param.init);
+                    }
                 }
             }
         }
