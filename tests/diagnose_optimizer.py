@@ -6,9 +6,9 @@ This script answers the key question:
    or is it just optimizer convergence quality?"
 
 Diagnostics per workspace:
-  1. Gradient norms at both optima (NextStat evaluates ||grad NLL||)
+  1. Gradient norms (raw + projected/KKT) at both optima
   2. Cross-init: pyhf started from NS hat, NS started from pyhf hat
-  3. Multi-start pyhf: N random inits within bounds
+  3. Multi-start pyhf: N random inits within bounds (pre-validated)
   4. Verdict: optimizer quality vs model mismatch
 
 Usage:
@@ -29,6 +29,7 @@ import statistics
 import sys
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -106,6 +107,56 @@ def grad_norm(model: Any, params: List[float]) -> Optional[float]:
         return float(math.sqrt(sum(x * x for x in g)))
     except Exception:
         return None
+
+
+def _projected_grad_norm_impl(
+    grad: List[float], params: List[float], bounds: List[Tuple[float, float]],
+    tol: float = 1e-12,
+) -> float:
+    """Projected gradient norm for bounded optimisation (KKT residual).
+
+    At a bound-constrained minimum the *projected* gradient is zero:
+      - if param_i ~ lo_i  and  grad_i > 0  -> projected component = 0
+      - if param_i ~ hi_i  and  grad_i < 0  -> projected component = 0
+      - otherwise                            -> projected component = grad_i
+    """
+    pg = []
+    for g_i, p_i, (lo, hi) in zip(grad, params, bounds):
+        if p_i <= lo + tol and g_i > 0:
+            pg.append(0.0)
+        elif p_i >= hi - tol and g_i < 0:
+            pg.append(0.0)
+        else:
+            pg.append(float(g_i))
+    return float(math.sqrt(sum(x * x for x in pg)))
+
+
+def _n_at_bounds_impl(
+    params: List[float], bounds: List[Tuple[float, float]], tol: float = 1e-12,
+) -> int:
+    """Count how many parameters sit at their bounds."""
+    count = 0
+    for p_i, (lo, hi) in zip(params, bounds):
+        if p_i <= lo + tol or p_i >= hi - tol:
+            count += 1
+    return count
+
+
+def grad_diagnostics(
+    model: Any, params: List[float], bounds: List[Tuple[float, float]],
+) -> Dict[str, Any]:
+    """Return raw grad norm, projected grad norm, and n_at_bounds."""
+    out: Dict[str, Any] = {}
+    try:
+        g = model.grad_nll(params)
+        out["grad_norm"] = float(math.sqrt(sum(x * x for x in g)))
+        out["proj_grad_norm"] = _projected_grad_norm_impl(g, params, bounds)
+        out["n_at_bounds"] = _n_at_bounds_impl(params, bounds)
+    except Exception:
+        out["grad_norm"] = None
+        out["proj_grad_norm"] = None
+        out["n_at_bounds"] = None
+    return out
 
 
 def fit_pyhf(pyhf, model, data, fit_options, init_pars=None):
@@ -188,11 +239,20 @@ def diagnose_workspace(
 
     result["nll_delta_ns_minus_pyhf"] = ns_nll - py_nll
 
-    # --- Step 2: Gradient norms ---
+    # --- Step 2: Gradient norms (raw + projected KKT) ---
     print("  [2/4] Gradient norms ...", flush=True)
-    result["grad_norm_at_ns_hat"] = grad_norm(ns_model, ns_params)
+    ns_bounds = list(ns_model.suggested_bounds())
+
+    ns_gd = grad_diagnostics(ns_model, ns_params, ns_bounds)
+    result["grad_norm_at_ns_hat"] = ns_gd["grad_norm"]
+    result["proj_grad_norm_at_ns_hat"] = ns_gd["proj_grad_norm"]
+    result["n_at_bounds_ns_hat"] = ns_gd["n_at_bounds"]
+
     py_in_ns = _remap_params(py_names, py_params, ns_names)
-    result["grad_norm_at_pyhf_hat"] = grad_norm(ns_model, py_in_ns)
+    py_gd = grad_diagnostics(ns_model, py_in_ns, ns_bounds)
+    result["grad_norm_at_pyhf_hat"] = py_gd["grad_norm"]
+    result["proj_grad_norm_at_pyhf_hat"] = py_gd["proj_grad_norm"]
+    result["n_at_bounds_pyhf_hat"] = py_gd["n_at_bounds"]
 
     # --- Step 3: Cross-init fits ---
     print("  [3/4] Cross-init fits ...", flush=True)
@@ -238,33 +298,61 @@ def diagnose_workspace(
 
         ms_nlls: List[float] = []
         ms_fails = 0
+        ms_invalid_init = 0
+        fail_reasons: Counter = Counter()
 
-        for ms_idx in range(n_multi_start):
+        max_attempts = n_multi_start * 5  # extra budget for invalid inits
+        attempts = 0
+
+        while len(ms_nlls) + ms_fails < n_multi_start and attempts < max_attempts:
+            attempts += 1
             init = []
             for k in range(n_pars):
                 lo, hi = pyhf_bounds[k]
                 center = pyhf_init[k]
-                sigma = 0.3 * max(hi - lo, 0.01)
+                sigma = 0.1 * max(hi - lo, 0.01)
                 val = float(rng.normal(center, sigma))
-                val = max(lo + 1e-10, min(hi - 1e-10, val))
+                val = max(lo + 1e-6, min(hi - 1e-6, val))
                 init.append(val)
+
+            # Pre-validate: NLL must be finite at init point
+            try:
+                init_tensor = pyhf.tensorlib.astensor(init)
+                data_tensor = pyhf.tensorlib.astensor(py_data)
+                logpdf_val = py_model.logpdf(init_tensor, data_tensor)
+                nll_check = -float(pyhf.tensorlib.tolist(logpdf_val)[0])
+                if not math.isfinite(nll_check):
+                    ms_invalid_init += 1
+                    continue
+            except Exception:
+                ms_invalid_init += 1
+                continue
+
             try:
                 ms_nll, _, _ = fit_pyhf(pyhf, py_model, py_data, pyhf_fit_options, init_pars=init)
                 ms_nlls.append(ms_nll)
-            except Exception:
+            except Exception as exc:
                 ms_fails += 1
+                reason = str(exc).split("\n")[0][:120]
+                fail_reasons[reason] += 1
 
         best_ms = min(ms_nlls) if ms_nlls else float("nan")
         result["pyhf_multi_start"] = {
-            "n_starts": n_multi_start,
+            "n_starts": len(ms_nlls) + ms_fails,
             "n_ok": len(ms_nlls),
             "n_failed": ms_fails,
+            "n_invalid_init_skipped": ms_invalid_init,
+            "n_attempts": attempts,
             "best_nll": float(best_ms),
             "worst_nll": float(max(ms_nlls)) if ms_nlls else float("nan"),
             "mean_nll": float(statistics.mean(ms_nlls)) if ms_nlls else float("nan"),
             "stdev_nll": float(statistics.pstdev(ms_nlls)) if len(ms_nlls) >= 2 else 0.0,
             "default_nll": py_nll,
             "best_improvement_over_default": float(py_nll - best_ms) if math.isfinite(best_ms) else float("nan"),
+            "top_failure_reasons": [
+                {"reason": reason, "count": count}
+                for reason, count in fail_reasons.most_common(3)
+            ],
         }
     else:
         print("  [4/4] Multi-start skipped (n=0)", flush=True)
@@ -312,12 +400,29 @@ def print_result(ws_path: str, r: dict) -> None:
     delta = r.get("nll_delta_ns_minus_pyhf", float("nan"))
     print(f"  Delta (NS - pyhf):    {delta:+.6e}")
 
+    # Gradient norms
     gn1 = r.get("grad_norm_at_ns_hat")
+    pgn1 = r.get("proj_grad_norm_at_ns_hat")
+    nab1 = r.get("n_at_bounds_ns_hat")
     gn2 = r.get("grad_norm_at_pyhf_hat")
+    pgn2 = r.get("proj_grad_norm_at_pyhf_hat")
+    nab2 = r.get("n_at_bounds_pyhf_hat")
+
     if gn1 is not None:
-        print(f"  ||grad||@NS_hat:      {gn1:.4e}")
+        extra = ""
+        if pgn1 is not None:
+            extra += f"  proj={pgn1:.4e}"
+        if nab1 is not None:
+            extra += f"  at_bounds={nab1}/{r.get('n_params', '?')}"
+        print(f"  ||grad||@NS_hat:      {gn1:.4e}{extra}")
+
     if gn2 is not None:
-        print(f"  ||grad||@pyhf_hat:    {gn2:.4e}")
+        extra = ""
+        if pgn2 is not None:
+            extra += f"  proj={pgn2:.4e}"
+        if nab2 is not None:
+            extra += f"  at_bounds={nab2}/{r.get('n_params', '?')}"
+        print(f"  ||grad||@pyhf_hat:    {gn2:.4e}{extra}")
 
     ci_py = r.get("pyhf_from_ns_hat", {})
     if ci_py.get("nll") is not None:
@@ -331,12 +436,15 @@ def print_result(ws_path: str, r: dict) -> None:
 
     ms = r.get("pyhf_multi_start", {})
     if ms.get("n_starts"):
+        n_inv = ms.get("n_invalid_init_skipped", 0)
         print(
             f"  pyhf multi-start ({ms['n_starts']}): "
-            f"best={ms['best_nll']:.10g}  worst={ms['worst_nll']:.10g}  "
-            f"stdev={ms.get('stdev_nll', 0):.4e}  "
+            f"ok={ms['n_ok']} fail={ms['n_failed']} invalid_init={n_inv}  "
+            f"best={ms['best_nll']:.10g}  "
             f"improve_vs_default={ms['best_improvement_over_default']:+.4e}"
         )
+        for fr in ms.get("top_failure_reasons", []):
+            print(f"    fail({fr['count']}x): {fr['reason']}")
 
     print(f"\n  >>> VERDICT: {r.get('verdict', '?')}")
     print()
@@ -357,6 +465,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pyhf-method", default="SLSQP")
     ap.add_argument("--pyhf-maxiter", type=int, default=100000)
     ap.add_argument("--pyhf-tolerance", type=float, default=float("nan"))
+    ap.add_argument("--pyhf-do-grad", type=int, default=0,
+                    help="0=force do_grad off (explicit numpy backend), 1=let pyhf decide")
     ap.add_argument("--ns-max-iter", type=int, default=1000)
     ap.add_argument("--ns-tol", type=float, default=1e-6)
     ap.add_argument("--ns-m", type=int, default=10)
@@ -375,6 +485,13 @@ def main(argv=None) -> int:
         import pyhf
     except ImportError:
         raise SystemExit("pyhf required: pip install pyhf")
+
+    # Force numpy backend with explicit do_grad control
+    if args.pyhf_do_grad == 0:
+        pyhf.set_backend("numpy", pyhf.optimize.scipy_optimizer(solver_options={"do_grad": False}))
+        print("[config] pyhf backend=numpy, do_grad=False", flush=True)
+    else:
+        print(f"[config] pyhf backend={pyhf.tensorlib.name}, do_grad=pyhf default", flush=True)
 
     pyhf_fit_options: dict = {"method": args.pyhf_method, "maxiter": args.pyhf_maxiter}
     if math.isfinite(args.pyhf_tolerance):
