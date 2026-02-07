@@ -39,6 +39,19 @@ pub enum NtupleModifier {
         /// Override tree name (defaults to channel tree_name).
         tree_name: Option<String>,
     },
+    /// Histogram-based systematic: up/down TH1 from ROOT files.
+    HistoSys {
+        /// Parameter name.
+        name: String,
+        /// Histogram object path for +1σ (e.g. `"dir/hist_up"`).
+        histo_name_up: String,
+        /// Histogram object path for −1σ.
+        histo_name_down: String,
+        /// ROOT file for +1σ (None = same as sample nominal file).
+        file_up: Option<PathBuf>,
+        /// ROOT file for −1σ (None = same as sample nominal file).
+        file_down: Option<PathBuf>,
+    },
     /// MC statistical error (Barlow–Beeston lite).
     StatError,
 }

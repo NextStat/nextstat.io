@@ -600,6 +600,7 @@ enum SystKind {
     Norm,
     Weight,
     Tree,
+    Histo,
 }
 
 /// One TREx systematic block.
@@ -625,6 +626,11 @@ pub struct TrexSystematic {
     file_up: Option<PathBuf>,
     file_down: Option<PathBuf>,
     tree_name: Option<String>,
+    // HISTO fields
+    histo_name_up: Option<String>,
+    histo_name_down: Option<String>,
+    histo_file_up: Option<PathBuf>,
+    histo_file_down: Option<PathBuf>,
 }
 
 /// A single unrecognized `key: value` attribute encountered while parsing a TREx config.
@@ -1390,6 +1396,7 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         "norm" | "normsys" | "overall" | "overallsys" => Some(SystKind::Norm),
         "weight" | "weightsys" => Some(SystKind::Weight),
         "tree" | "treesys" => Some(SystKind::Tree),
+        "histo" | "histosys" => Some(SystKind::Histo),
         _ => None,
         }
     }
@@ -1473,6 +1480,10 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         file_up: None,
         file_down: None,
         tree_name: None,
+        histo_name_up: None,
+        histo_name_down: None,
+        histo_file_up: None,
+        histo_file_down: None,
     };
 
     match kind {
@@ -1580,6 +1591,34 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
             out.file_down = Some(PathBuf::from(down));
             out.tree_name =
                 last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
+        }
+        SystKind::Histo => {
+            // TREx HISTO: read up/down variation histograms (TH1) from ROOT files.
+            // Keys: HistoNameUp/HistoNameDown (histogram object names),
+            //       HistoFileUp/HistoFileDown or HistoPathUp/HistoPathDown (ROOT files).
+            let name_up = last_attr_value(&b.attrs, "HistoNameUp")
+                .or_else(|| last_attr_value(&b.attrs, "HistoUp"))
+                .or_else(|| last_attr_value(&b.attrs, "NameUp"));
+            let name_down = last_attr_value(&b.attrs, "HistoNameDown")
+                .or_else(|| last_attr_value(&b.attrs, "HistoDown"))
+                .or_else(|| last_attr_value(&b.attrs, "NameDown"));
+            let (Some(name_up), Some(name_down)) = (name_up, name_down) else {
+                return Err(Error::Validation(format!(
+                    "Systematic '{}' (histo) requires HistoNameUp/HistoNameDown",
+                    out.name
+                )));
+            };
+            out.histo_name_up = Some(name_up);
+            out.histo_name_down = Some(name_down);
+            // Optional: separate files for up/down (defaults to sample's nominal file).
+            out.histo_file_up = last_attr_value(&b.attrs, "HistoFileUp")
+                .or_else(|| last_attr_value(&b.attrs, "HistoPathUp"))
+                .or_else(|| last_attr_value(&b.attrs, "FileUp"))
+                .map(PathBuf::from);
+            out.histo_file_down = last_attr_value(&b.attrs, "HistoFileDown")
+                .or_else(|| last_attr_value(&b.attrs, "HistoPathDown"))
+                .or_else(|| last_attr_value(&b.attrs, "FileDown"))
+                .map(PathBuf::from);
         }
     }
 
@@ -1803,6 +1842,17 @@ fn sys_to_modifier(sys: &TrexSystematic, base_weight: Option<&str>) -> Result<Nt
                 Error::Validation(format!("Systematic '{}' missing file_down", sys.name))
             })?,
             tree_name: sys.tree_name.clone(),
+        }),
+        SystKind::Histo => Ok(NtupleModifier::HistoSys {
+            name: sys.name.clone(),
+            histo_name_up: sys.histo_name_up.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing histo_name_up", sys.name))
+            })?,
+            histo_name_down: sys.histo_name_down.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing histo_name_down", sys.name))
+            })?,
+            file_up: sys.histo_file_up.clone(),
+            file_down: sys.histo_file_down.clone(),
         }),
     }
 }

@@ -247,6 +247,45 @@ impl NtupleWorkspaceBuilder {
                         },
                     });
                 }
+                NtupleModifier::HistoSys { name, histo_name_up, histo_name_down, file_up, file_down } => {
+                    // Read up/down variation histograms (TH1) from ROOT files.
+                    // If file_up/file_down are None, use the sample's nominal file.
+                    let file_up_path = file_up.as_ref().map(|f| self.base_dir.join(f))
+                        .unwrap_or_else(|| self.base_dir.join(&sample.file));
+                    let file_down_path = file_down.as_ref().map(|f| self.base_dir.join(f))
+                        .unwrap_or_else(|| self.base_dir.join(&sample.file));
+
+                    let open_or_cached = |path: &std::path::Path, cache: &mut HashMap<PathBuf, RootFile>| -> Result<()> {
+                        let canonical = path.to_path_buf();
+                        if !cache.contains_key(&canonical) {
+                            let rf = RootFile::open(path)
+                                .map_err(|e| Error::RootFile(format!("opening {}: {}", path.display(), e)))?;
+                            cache.insert(canonical, rf);
+                        }
+                        Ok(())
+                    };
+                    open_or_cached(&file_up_path, root_cache)?;
+                    open_or_cached(&file_down_path, root_cache)?;
+
+                    let hist_up = root_cache.get(&file_up_path).unwrap()
+                        .get_histogram(histo_name_up)
+                        .map_err(|e| Error::RootFile(format!(
+                            "reading histogram '{}' from {}: {}", histo_name_up, file_up_path.display(), e
+                        )))?;
+                    let hist_down = root_cache.get(&file_down_path).unwrap()
+                        .get_histogram(histo_name_down)
+                        .map_err(|e| Error::RootFile(format!(
+                            "reading histogram '{}' from {}: {}", histo_name_down, file_down_path.display(), e
+                        )))?;
+
+                    modifiers.push(Modifier::HistoSys {
+                        name: name.clone(),
+                        data: HistoSysData {
+                            hi_data: hist_up.bin_content,
+                            lo_data: hist_down.bin_content,
+                        },
+                    });
+                }
                 NtupleModifier::StatError => {
                     // Use sqrt(sumw2) from nominal
                     let stat_data: Vec<f64> = nominal.sumw2.iter().map(|&s| s.sqrt()).collect();
