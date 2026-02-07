@@ -1015,6 +1015,8 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "OverallDown",
                 "WeightUp",
                 "WeightDown",
+                "WeightSufUp",
+                "WeightSufDown",
                 "WeightBase",
                 "WeightUpSuffix",
                 "WeightDownSuffix",
@@ -1182,6 +1184,10 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
                     Some("weight_up")
                 } else if key_eq(key, "WeightDown") || key_eq(key, "Down") {
                     Some("weight_down")
+                } else if key_eq(key, "WeightSufUp") {
+                    Some("weight_suf_up")
+                } else if key_eq(key, "WeightSufDown") {
+                    Some("weight_suf_down")
                 } else if key_eq(key, "WeightBase") || key_eq(key, "Weight") {
                     Some("weight_base")
                 } else {
@@ -1810,7 +1816,7 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
 
             for sys in &cfg.systematics {
                 if sys_applies(sys, &region.name, &s.name) {
-                    sc.modifiers.push(sys_to_modifier(sys)?);
+                    sc.modifiers.push(sys_to_modifier(sys, sc.weight.as_deref())?);
                 }
             }
 
@@ -1945,7 +1951,7 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
 
             for sys in &cfg.systematics {
                 if sys_applies(sys, &region.name, &s.name) {
-                    sc.modifiers.push(sys_to_modifier(sys)?);
+                    sc.modifiers.push(sys_to_modifier(sys, sc.weight.as_deref())?);
                 }
             }
 
@@ -2801,6 +2807,35 @@ Samples: sig
         assert_eq!(sys.samples, vec!["all".to_string()]);
         assert!((sys.hi.unwrap_or(0.0) - 1.02).abs() < 1e-12);
         assert!((sys.lo.unwrap_or(0.0) - 0.98).abs() < 1e-12);
+    }
+
+    #[test]
+    fn trex_systematic_infers_weight_type_from_weightsuf_fields() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+Weight: w0
+
+Systematic: varR
+Samples: sig
+WeightSufUp: w_up
+WeightSufDown: w_down
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.systematics.len(), 1);
+        let sys = &parsed.systematics[0];
+        assert_eq!(sys.name, "varR");
+        assert_eq!(sys.kind, SystKind::Weight);
+        assert_eq!(sys.weight_suf_up.as_deref(), Some("w_up"));
+        assert_eq!(sys.weight_suf_down.as_deref(), Some("w_down"));
     }
 
     #[test]
