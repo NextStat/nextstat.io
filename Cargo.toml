@@ -84,7 +84,7 @@ clap = { version = "4.5", features = ["derive", "cargo"] }
 # autodiff dependencies will be added later
 
 # GPU backends (Phase 2C - Optional)
-# Metal/CUDA dependencies will be feature-gated
+cudarc = { version = "0.19", default-features = false, features = ["driver"] }
 
 [profile.release]
 opt-level = 3

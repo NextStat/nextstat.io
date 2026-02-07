@@ -23,6 +23,9 @@ ndarray.workspace = true
 # SIMD
 wide.workspace = true
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cudarc = { workspace = true, optional = true }
+
 [dev-dependencies]
 approx.workspace = true
 proptest.workspace = true
@@ -42,5 +45,5 @@ harness = false
 default = ["cpu"]
 cpu = []
 metal = []       # Phase 2C - Optional
-cuda = []        # Phase 2C - Optional
+cuda = ["cudarc"]
 accelerate = []  # Apple Accelerate (vDSP/vForce) - macOS only

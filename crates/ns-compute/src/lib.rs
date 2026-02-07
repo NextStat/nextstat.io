@@ -29,6 +29,16 @@ pub mod metal;
 #[cfg(feature = "cuda")]
 pub mod cuda;
 
+/// GPU data types shared between Rust and CUDA (`#[repr(C)]`).
+///
+/// Always available (no feature gate) so that ns-translate can serialize
+/// `GpuModelData` without requiring CUDA at compile time.
+pub mod cuda_types;
+
+/// CUDA batch NLL+gradient accelerator (requires `cuda` feature + NVIDIA GPU at runtime).
+#[cfg(feature = "cuda")]
+pub mod cuda_batch;
+
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 pub mod accelerate;
 
