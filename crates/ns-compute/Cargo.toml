@@ -41,5 +41,6 @@ harness = false
 [features]
 default = ["cpu"]
 cpu = []
-metal = []  # Phase 2C - Optional
-cuda = []   # Phase 2C - Optional
+metal = []       # Phase 2C - Optional
+cuda = []        # Phase 2C - Optional
+accelerate = []  # Apple Accelerate (vDSP/vForce) - macOS only

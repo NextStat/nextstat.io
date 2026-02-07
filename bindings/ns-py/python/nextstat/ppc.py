@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .data import GlmSpec
 
@@ -24,6 +24,26 @@ def _sigmoid(x: float) -> float:
         return 1.0 / (1.0 + z)
     z = math.exp(x)
     return z / (1.0 + z)
+
+def _softplus(x: float) -> float:
+    # Stable log(1 + exp(x))
+    if x > 0.0:
+        return float(x) + math.log1p(math.exp(-float(x)))
+    return math.log1p(math.exp(float(x)))
+
+
+def _normal_cdf(x: float) -> float:
+    # Phi(x) = 0.5 * erfc(-x / sqrt(2))
+    return 0.5 * math.erfc(-float(x) / math.sqrt(2.0))
+
+
+def _cutpoints_from_raw(raw: Sequence[float]) -> List[float]:
+    if not raw:
+        return []
+    c: List[float] = [float(raw[0])]
+    for r in raw[1:]:
+        c.append(float(c[-1] + _softplus(float(r))))
+    return c
 
 
 def _flatten_posterior(
@@ -177,6 +197,40 @@ def _poisson_sample(rng: random.Random, lam: float) -> int:
             return k
 
 
+def _negbin_sample_nb2(rng: random.Random, *, mu: float, alpha: float) -> int:
+    # NB2 parameterization: Var(Y) = mu + alpha * mu^2, alpha > 0.
+    # Represent as Poisson-Gamma mixture:
+    # lambda ~ Gamma(shape=1/alpha, scale=alpha*mu), y ~ Poisson(lambda).
+    if not (mu >= 0.0) or not math.isfinite(mu):
+        raise ValueError(f"negbin mean must be finite and >= 0, got {mu}")
+    if not (alpha > 0.0) or not math.isfinite(alpha):
+        raise ValueError(f"negbin alpha must be finite and > 0, got {alpha}")
+    if mu == 0.0:
+        return 0
+
+    # Very small alpha approximates Poisson(mu).
+    if alpha < 1e-12:
+        return _poisson_sample(rng, mu)
+
+    shape = 1.0 / float(alpha)
+    scale = float(alpha) * float(mu)
+    lam = rng.gammavariate(shape, scale)
+    return _poisson_sample(rng, float(lam))
+
+
+def _categorical_sample(rng: random.Random, probs: Sequence[float]) -> int:
+    s = sum(float(p) for p in probs)
+    if not (math.isfinite(s) and s > 0.0):
+        raise ValueError("categorical probs must sum to a finite positive value")
+    u = rng.random() * s
+    acc = 0.0
+    for i, p in enumerate(probs):
+        acc += float(p)
+        if u <= acc:
+            return int(i)
+    return int(len(probs) - 1)
+
+
 def _eta_glm(
     *,
     x_row: Sequence[float],
@@ -214,9 +268,18 @@ def default_stats(kind: str, y: Sequence[float]) -> Dict[str, float]:
         return {"n": 0.0}
     mu = sum(ys) / len(ys)
     out: Dict[str, float] = {"n": float(len(ys)), "mean": float(mu)}
-    if kind == "linear":
+    if kind in ("linear", "poisson", "negbin"):
         v = sum((v - mu) ** 2 for v in ys) / max(1.0, float(len(ys) - 1))
         out["var"] = float(v)
+    if kind == "ordinal_ordered":
+        # Treat y as 0..K-1 integers; report per-level proportions.
+        counts: Dict[int, int] = {}
+        for v in ys:
+            iv = int(v)
+            counts[iv] = counts.get(iv, 0) + 1
+        n = float(len(ys))
+        for k in sorted(counts.keys()):
+            out[f"p_level{k}"] = float(counts[k]) / n
     return out
 
 
@@ -295,6 +358,198 @@ def replicate_glm(
     return y_rep
 
 
+@dataclass(frozen=True)
+class NegBinomSpec:
+    """Minimal spec for PPC of NB2 (mean/dispersion) regression with log link."""
+
+    x: List[List[float]]
+    y: List[int]
+    include_intercept: bool = True
+    offset: Optional[List[float]] = None
+
+
+def replicate_negbin(
+    spec: NegBinomSpec,
+    draw: Mapping[str, float],
+    *,
+    seed: int,
+) -> List[float]:
+    rng = random.Random(int(seed))
+    if spec.offset is not None and len(spec.offset) != len(spec.x):
+        raise ValueError("spec.offset must have length n")
+
+    log_alpha = float(draw.get("log_alpha", 0.0))
+    alpha = math.exp(log_alpha)
+
+    y_rep: List[float] = []
+    for i, x_row in enumerate(spec.x):
+        offset_i = None if spec.offset is None else float(spec.offset[i])
+        eta = _eta_glm(
+            x_row=x_row,
+            draw=draw,
+            include_intercept=bool(spec.include_intercept),
+            group=None,
+            group_intercepts=None,
+            slope_feature_idx=None,
+            group_slopes=None,
+            offset=offset_i,
+        )
+        mu = math.exp(float(eta))
+        y_rep.append(float(_negbin_sample_nb2(rng, mu=mu, alpha=alpha)))
+    return y_rep
+
+
+def ppc_negbin_from_sample(
+    spec: NegBinomSpec,
+    sample_raw: Mapping[str, Any],
+    *,
+    param_names: Optional[Sequence[str]] = None,
+    n_draws: int = 50,
+    seed: int = 0,
+    stats_fn: Optional[Any] = None,
+) -> PpcStats:
+    posterior = sample_raw.get("posterior")
+    if not isinstance(posterior, Mapping):
+        raise ValueError("sample_raw must contain a 'posterior' mapping")
+
+    if param_names is None:
+        pn = sample_raw.get("param_names")
+        if not isinstance(pn, list) or not pn:
+            raise ValueError("sample_raw must contain non-empty 'param_names' or pass param_names=")
+        param_names = [str(s) for s in pn]
+
+    flat = _flatten_posterior(posterior, param_names=param_names)
+    if n_draws <= 0:
+        raise ValueError("n_draws must be > 0")
+    draws = flat if n_draws >= len(flat) else random.Random(seed).sample(flat, k=int(n_draws))
+
+    def mk_draw(vs: Sequence[float]) -> Dict[str, float]:
+        return {str(name): float(v) for name, v in zip(param_names, vs)}
+
+    if stats_fn is None:
+        stats_fn = lambda kind, y: default_stats(kind, y)
+
+    observed = stats_fn("negbin", spec.y)  # type: ignore[arg-type]
+    replicated: List[Dict[str, float]] = []
+    for i, vs in enumerate(draws):
+        d = mk_draw(vs)
+        y_rep = replicate_negbin(spec, d, seed=int(seed) + 20_000 + i)
+        replicated.append(stats_fn("negbin", y_rep))
+
+    return PpcStats(observed=observed, replicated=replicated)
+
+
+@dataclass(frozen=True)
+class OrderedSpec:
+    """Minimal spec for PPC of ordered outcomes (logit/probit)."""
+
+    x: List[List[float]]
+    y: List[int]
+    n_levels: int
+    link: str = "logit"  # "logit" | "probit"
+
+
+def _ordered_probs(
+    *,
+    eta: float,
+    cutpoints: Sequence[float],
+    link: str,
+) -> List[float]:
+    if link == "logit":
+        cdf = [_sigmoid(float(cutpoints[0]) - float(eta))]
+        for ck in cutpoints[1:]:
+            cdf.append(_sigmoid(float(ck) - float(eta)))
+    elif link == "probit":
+        cdf = [_normal_cdf(float(cutpoints[0]) - float(eta))]
+        for ck in cutpoints[1:]:
+            cdf.append(_normal_cdf(float(ck) - float(eta)))
+    else:
+        raise ValueError(f"unsupported ordered link: {link!r}")
+
+    probs: List[float] = []
+    probs.append(float(cdf[0]))
+    for j in range(1, len(cdf)):
+        probs.append(float(cdf[j] - cdf[j - 1]))
+    probs.append(float(1.0 - cdf[-1]))
+
+    # Guard against tiny negative values from float subtraction.
+    probs = [0.0 if p < 0.0 and p > -1e-12 else float(p) for p in probs]
+    s = sum(probs)
+    if not (math.isfinite(s) and s > 0.0):
+        raise ValueError("ordered model produced invalid probabilities")
+    return [p / s for p in probs]
+
+
+def replicate_ordered(
+    spec: OrderedSpec,
+    draw: Mapping[str, float],
+    *,
+    seed: int,
+) -> List[float]:
+    rng = random.Random(int(seed))
+    k = int(spec.n_levels)
+    if k < 2:
+        raise ValueError("spec.n_levels must be >= 2")
+    if any(int(v) < 0 or int(v) >= k for v in spec.y):
+        raise ValueError("spec.y must be in [0, n_levels)")
+
+    p = len(spec.x[0]) if spec.x else 0
+    beta = [float(draw.get(f"beta{j+1}", 0.0)) for j in range(p)]
+    cut_raw = [float(draw.get(f"cut_raw{j+1}", 0.0)) for j in range(k - 1)]
+    cutpoints = _cutpoints_from_raw(cut_raw)
+    if len(cutpoints) != k - 1:
+        raise ValueError("cutpoints length mismatch")
+
+    y_rep: List[float] = []
+    for x_row in spec.x:
+        eta = 0.0
+        for bj, xj in zip(beta, x_row):
+            eta += float(bj) * float(xj)
+        probs = _ordered_probs(eta=float(eta), cutpoints=cutpoints, link=str(spec.link))
+        y_rep.append(float(_categorical_sample(rng, probs)))
+    return y_rep
+
+
+def ppc_ordered_from_sample(
+    spec: OrderedSpec,
+    sample_raw: Mapping[str, Any],
+    *,
+    param_names: Optional[Sequence[str]] = None,
+    n_draws: int = 50,
+    seed: int = 0,
+    stats_fn: Optional[Any] = None,
+) -> PpcStats:
+    posterior = sample_raw.get("posterior")
+    if not isinstance(posterior, Mapping):
+        raise ValueError("sample_raw must contain a 'posterior' mapping")
+
+    if param_names is None:
+        pn = sample_raw.get("param_names")
+        if not isinstance(pn, list) or not pn:
+            raise ValueError("sample_raw must contain non-empty 'param_names' or pass param_names=")
+        param_names = [str(s) for s in pn]
+
+    flat = _flatten_posterior(posterior, param_names=param_names)
+    if n_draws <= 0:
+        raise ValueError("n_draws must be > 0")
+    draws = flat if n_draws >= len(flat) else random.Random(seed).sample(flat, k=int(n_draws))
+
+    def mk_draw(vs: Sequence[float]) -> Dict[str, float]:
+        return {str(name): float(v) for name, v in zip(param_names, vs)}
+
+    if stats_fn is None:
+        stats_fn = lambda kind, y: default_stats(kind, y)
+
+    observed = stats_fn("ordinal_ordered", spec.y)  # type: ignore[arg-type]
+    replicated: List[Dict[str, float]] = []
+    for i, vs in enumerate(draws):
+        d = mk_draw(vs)
+        y_rep = replicate_ordered(spec, d, seed=int(seed) + 30_000 + i)
+        replicated.append(stats_fn("ordinal_ordered", y_rep))
+
+    return PpcStats(observed=observed, replicated=replicated)
+
+
 def ppc_glm_from_sample(
     spec: GlmSpec,
     sample_raw: Mapping[str, Any],
@@ -343,7 +598,13 @@ def ppc_glm_from_sample(
 
 __all__ = [
     "PpcStats",
+    "NegBinomSpec",
+    "OrderedSpec",
     "default_stats",
     "replicate_glm",
+    "replicate_negbin",
+    "replicate_ordered",
     "ppc_glm_from_sample",
+    "ppc_negbin_from_sample",
+    "ppc_ordered_from_sample",
 ]

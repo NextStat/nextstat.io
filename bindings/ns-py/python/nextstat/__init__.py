@@ -38,6 +38,8 @@ FitResult = _get("FitResult")
 Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
+FunnelModel = _get("FunnelModel")
+StdNormalModel = _get("StdNormalModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
 PoissonRegressionModel = _get("PoissonRegressionModel")
@@ -132,6 +134,8 @@ __all__ = [
     "econometrics",
     "HistFactoryModel",
     "GaussianMeanModel",
+    "FunnelModel",
+    "StdNormalModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
     "PoissonRegressionModel",

@@ -1186,6 +1186,11 @@ impl PyHistFactoryModel {
         self.inner.n_params()
     }
 
+    /// Alias: `dim()` matches the universal `LogDensityModel` naming.
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     /// Compute negative log-likelihood
     fn nll(&self, params: &Bound<'_, PyAny>) -> PyResult<f64> {
         let params = extract_f64_vec(params)?;
@@ -1740,6 +1745,10 @@ impl PyFunnelModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -1782,6 +1791,10 @@ impl PyGaussianMeanModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -1913,6 +1926,10 @@ impl PyStdNormalModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -1962,6 +1979,10 @@ impl PyLinearRegressionModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2005,6 +2026,10 @@ impl PyLogisticRegressionModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -2052,6 +2077,10 @@ impl PyOrderedLogitModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2095,6 +2124,10 @@ impl PyOrderedProbitModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -2147,6 +2180,10 @@ impl PyPoissonRegressionModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2195,6 +2232,10 @@ impl PyNegativeBinomialRegressionModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -2491,6 +2532,10 @@ impl PyComposedGlmModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2547,6 +2592,10 @@ impl PyExponentialSurvivalModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2589,6 +2638,10 @@ impl PyWeibullSurvivalModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -2635,6 +2688,10 @@ impl PyLogNormalAftModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2679,6 +2736,10 @@ impl PyCoxPhModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
@@ -2775,6 +2836,10 @@ impl PyOneCompartmentOralPkModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2861,6 +2926,10 @@ impl PyOneCompartmentOralPkNlmeModel {
         self.inner.dim()
     }
 
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
         self.inner
             .nll(&params)
@@ -2921,6 +2990,10 @@ impl PyLmmMarginalModel {
 
     fn n_params(&self) -> usize {
         self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
     }
 
     fn nll(&self, params: Vec<f64>) -> PyResult<f64> {

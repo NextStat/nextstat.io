@@ -1405,14 +1405,19 @@ fn cmd_import_histfactory(
     output: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for `nextstat import histfactory` yet");
-    }
-
     tracing::info!(path = %xml.display(), "importing HistFactory combination.xml");
     let ws = ns_translate::histfactory::from_xml(xml)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "import_histfactory",
+            serde_json::json!({}),
+            xml,
+            &output_json,
+        )?;
+    }
     Ok(())
 }
 
@@ -1424,10 +1429,6 @@ fn cmd_import_trex_config(
     coverage_json: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for `nextstat import trex-config` yet");
-    }
-
     tracing::info!(path = %config.display(), "importing TRExFitter config");
     let text = std::fs::read_to_string(config)?;
 
@@ -1440,6 +1441,19 @@ fn cmd_import_trex_config(
     let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "import_trex_config",
+            serde_json::json!({
+                "base_dir": base_dir_override,
+                "analysis_yaml": analysis_yaml,
+                "coverage_json": coverage_json,
+            }),
+            config,
+            &output_json,
+        )?;
+    }
 
     if let Some(path) = coverage_json {
         let cov_json = serde_json::to_value(&coverage)?;
@@ -3456,10 +3470,6 @@ fn cmd_viz_distributions(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for `nextstat viz distributions` yet");
-    }
-
     let (workspace, model) = load_workspace_and_model(input, threads)?;
     let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
 
@@ -3491,6 +3501,19 @@ fn cmd_viz_distributions(
 
     let output_json = serde_json::to_value(&artifact)?;
     write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_distributions",
+            serde_json::json!({
+                "threads": threads,
+                "histfactory_xml": histfactory_xml,
+                "fit": fit,
+            }),
+            input,
+            &output_json,
+        )?;
+    }
     Ok(())
 }
 
@@ -3501,10 +3524,6 @@ fn cmd_viz_pulls(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for `nextstat viz pulls` yet");
-    }
-
     let model = load_model(input, threads)?;
 
     let bytes = std::fs::read(fit)?;
@@ -3549,6 +3568,15 @@ fn cmd_viz_pulls(
     let artifact = ns_viz::pulls::pulls_artifact(&model, &fit_result, threads)?;
     let output_json = serde_json::to_value(&artifact)?;
     write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_pulls",
+            serde_json::json!({ "threads": threads, "fit": fit }),
+            input,
+            &output_json,
+        )?;
+    }
     Ok(())
 }
 
@@ -3560,10 +3588,6 @@ fn cmd_viz_corr(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for `nextstat viz corr` yet");
-    }
-
     let model = load_model(input, threads)?;
 
     let bytes = std::fs::read(fit)?;
@@ -3612,5 +3636,18 @@ fn cmd_viz_corr(
     let artifact = ns_viz::corr::corr_artifact(&model, &fit_result, threads, include_covariance)?;
     let output_json = serde_json::to_value(&artifact)?;
     write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "viz_corr",
+            serde_json::json!({
+                "threads": threads,
+                "fit": fit,
+                "include_covariance": include_covariance,
+            }),
+            input,
+            &output_json,
+        )?;
+    }
     Ok(())
 }

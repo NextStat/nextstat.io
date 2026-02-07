@@ -28,3 +28,6 @@ pub mod metal;
 
 #[cfg(feature = "cuda")]
 pub mod cuda;
+
+#[cfg(feature = "accelerate")]
+pub mod accelerate;

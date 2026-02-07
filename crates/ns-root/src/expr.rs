@@ -108,12 +108,18 @@ impl CompiledExpr {
     pub fn compile(input: &str) -> Result<Self> {
         let tokens = tokenize(input)?;
         let mut parser = Parser::new(input, &tokens);
-        let ast = parser.parse_ternary()?;
+        let mut ast = parser.parse_ternary()?;
         if parser.pos < parser.tokens.len() {
             let t = &parser.tokens[parser.pos];
             return Err(expr_err(input, t.span, format!("unexpected token after expression: {:?}", t.kind)));
         }
-        reject_indexing(input, &ast)?;
+        // Indexing is supported only as syntactic sugar for selecting a scalar "view" of
+        // a branch, i.e. `jet_pt[0]` becomes a required branch named `jet_pt[0]`.
+        //
+        // The ROOT reader currently provides only scalar columns; vector-branch extraction
+        // is handled elsewhere by materializing such `name[idx]` columns.
+        rewrite_indexing(input, &mut ast, &mut parser.branches)?;
+        prune_unused_branches(&mut ast, &mut parser.branches);
         let mut bytecode = Vec::new();
         compile_bytecode(input, &ast, &mut bytecode)?;
         let branches = std::mem::take(&mut parser.branches);
@@ -512,44 +518,129 @@ fn expr_err(input: &str, span: Span, msg: String) -> RootError {
     RootError::Expression(format!("line {line}, col {col}: {msg}"))
 }
 
-fn reject_indexing(input: &str, ast: &Expr) -> Result<()> {
-    fn walk<'a>(e: &'a Expr, out: &mut Option<Span>) {
-        if out.is_some() {
-            return;
-        }
+fn rewrite_indexing(input: &str, ast: &mut Expr, branches: &mut Vec<String>) -> Result<()> {
+    fn walk(input: &str, e: &mut Expr, branches: &mut Vec<String>) -> Result<()> {
         match e {
-            Expr::Index { span, .. } => {
-                *out = Some(*span);
+            Expr::Index { base, index, span } => {
+                // Rewrite base first so chained indexing (`x[0][1]`) becomes `Var` then `Var`.
+                walk(input, base, branches)?;
+                match &**base {
+                    Expr::Var(i) => {
+                        let name = branches.get(*i).ok_or_else(|| {
+                            RootError::Expression("internal error: branch index out of bounds".to_string())
+                        })?;
+                        let indexed = format!("{name}[{index}]");
+                        let new_i = branches
+                            .iter()
+                            .position(|s| s == &indexed)
+                            .unwrap_or_else(|| {
+                                branches.push(indexed);
+                                branches.len() - 1
+                            });
+                        *e = Expr::Var(new_i);
+                        Ok(())
+                    }
+                    _ => Err(expr_err(
+                        input,
+                        *span,
+                        "indexing is only supported on branch names (e.g. jet_pt[0])".to_string(),
+                    )),
+                }
             }
-            Expr::Number(_) | Expr::Var(_) => {}
-            Expr::UnaryNeg(a) | Expr::UnaryNot(a) => walk(a, out),
+            Expr::Number(_) | Expr::Var(_) => Ok(()),
+            Expr::UnaryNeg(a) | Expr::UnaryNot(a) => walk(input, a, branches),
             Expr::BinOp(_, a, b) => {
-                walk(a, out);
-                walk(b, out);
+                walk(input, a, branches)?;
+                walk(input, b, branches)
             }
             Expr::Ternary(c, t, f) => {
-                walk(c, out);
-                walk(t, out);
-                walk(f, out);
+                walk(input, c, branches)?;
+                walk(input, t, branches)?;
+                walk(input, f, branches)
             }
             Expr::Call(_, args) => {
                 for a in args {
-                    walk(a, out);
+                    walk(input, a, branches)?;
                 }
+                Ok(())
             }
         }
     }
 
-    let mut hit: Option<Span> = None;
-    walk(ast, &mut hit);
-    if let Some(span) = hit {
-        return Err(expr_err(
-            input,
-            span,
-            "indexing (e.g. x[0]) is parsed but not supported yet; vector branches are not implemented".to_string(),
-        ));
+    walk(input, ast, branches)
+}
+
+fn prune_unused_branches(ast: &mut Expr, branches: &mut Vec<String>) {
+    fn mark_used(e: &Expr, used: &mut Vec<bool>) {
+        match e {
+            Expr::Var(i) => {
+                if let Some(v) = used.get_mut(*i) {
+                    *v = true;
+                }
+            }
+            Expr::Number(_) => {}
+            Expr::UnaryNeg(a) | Expr::UnaryNot(a) => mark_used(a, used),
+            Expr::BinOp(_, a, b) => {
+                mark_used(a, used);
+                mark_used(b, used);
+            }
+            Expr::Ternary(c, t, f) => {
+                mark_used(c, used);
+                mark_used(t, used);
+                mark_used(f, used);
+            }
+            Expr::Call(_, args) => {
+                for a in args {
+                    mark_used(a, used);
+                }
+            }
+            Expr::Index { .. } => {
+                // `rewrite_indexing` should remove all Index nodes.
+            }
+        }
     }
-    Ok(())
+
+    fn remap(e: &mut Expr, map: &[Option<usize>]) {
+        match e {
+            Expr::Var(i) => {
+                if let Some(Some(new_i)) = map.get(*i) {
+                    *i = *new_i;
+                }
+            }
+            Expr::Number(_) => {}
+            Expr::UnaryNeg(a) | Expr::UnaryNot(a) => remap(a, map),
+            Expr::BinOp(_, a, b) => {
+                remap(a, map);
+                remap(b, map);
+            }
+            Expr::Ternary(c, t, f) => {
+                remap(c, map);
+                remap(t, map);
+                remap(f, map);
+            }
+            Expr::Call(_, args) => {
+                for a in args {
+                    remap(a, map);
+                }
+            }
+            Expr::Index { .. } => {}
+        }
+    }
+
+    let mut used = vec![false; branches.len()];
+    mark_used(ast, &mut used);
+
+    let mut map: Vec<Option<usize>> = vec![None; branches.len()];
+    let mut new_branches: Vec<String> = Vec::new();
+    for (i, (name, keep)) in branches.iter().cloned().zip(used.iter().copied()).enumerate() {
+        if keep {
+            map[i] = Some(new_branches.len());
+            new_branches.push(name);
+        }
+    }
+
+    remap(ast, &map);
+    *branches = new_branches;
 }
 
 fn tokenize(input: &str) -> Result<Vec<Token>> {
@@ -1147,13 +1238,9 @@ mod tests {
     }
 
     #[test]
-    fn indexing_is_rejected_with_span() {
-        let err = CompiledExpr::compile("jet_pt[0] > 0").unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("indexing") && msg.contains("line 1, col 7"),
-            "unexpected error message: {msg}"
-        );
+    fn indexing_is_rewritten_into_a_scalar_branch_name() {
+        let e = CompiledExpr::compile("jet_pt[0] > 0").unwrap();
+        assert_eq!(e.required_branches, vec!["jet_pt[0]".to_string()]);
     }
 
     #[test]
