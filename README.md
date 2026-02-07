@@ -68,6 +68,22 @@ cd bindings/ns-py
 maturin develop --release
 ```
 
+### Try the Playground (WASM)
+
+Run asymptotic CLs upper limits (Brazil bands) in the browser (no Python, no server) using a pyhf-style `workspace.json`.
+
+From the repo root:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.108
+
+make playground-build-wasm
+make playground-serve
+```
+
+Open `http://localhost:8000/` and drag & drop a `workspace.json` (example: `playground/examples/simple_workspace.json`).
+
 ## Usage
 
 ### Rust API
@@ -229,6 +245,7 @@ nextstat version
 - Python API reference: `docs/references/python-api.md`
 - Rust API reference: `docs/references/rust-api.md`
 - CLI reference: `docs/references/cli.md`
+- Playground (browser/WASM): `docs/references/playground.md` (and `playground/README.md`)
 
 ## Architecture
 

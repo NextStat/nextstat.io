@@ -15,6 +15,7 @@ This page summarizes the main Rust crates and their public entry points.
 - `ns-translate`: ingestion and translation layers (pyhf JSON, HistFactory XML, ntuple-to-workspace builder).
 - `ns-viz`: plot-friendly artifacts (CLs curves, profile scans).
 - `ns-cli`: `nextstat` CLI.
+- `ns-wasm` (in `bindings/ns-wasm`): `wasm-bindgen` bindings used by the static `playground/` demo.
 
 ## `ns-core`
 

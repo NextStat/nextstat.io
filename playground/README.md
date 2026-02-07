@@ -7,12 +7,14 @@ Static browser demo for running NextStat asymptotic CLs (q~tilde~) directly on a
 Prereqs:
 - Rust toolchain (see `rust-toolchain.toml`)
 - `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`
-- `wasm-bindgen` CLI (version should match the `wasm-bindgen` crate in `Cargo.lock`)
+- `wasm-bindgen` CLI: `cargo install wasm-bindgen-cli --version 0.2.108` (version should match `Cargo.lock`)
 
 Build the JS + WASM bundle into `playground/pkg/`:
 
+From the repo root:
+
 ```bash
-bash scripts/playground_build_wasm.sh
+make playground-build-wasm
 ```
 
 ## Run locally
@@ -20,7 +22,7 @@ bash scripts/playground_build_wasm.sh
 You must serve the files over HTTP (workers/modules don’t work from `file://`).
 
 ```bash
-bash scripts/playground_serve.sh 8000
+make playground-serve
 ```
 
 Open `http://localhost:8000/`.
@@ -31,4 +33,3 @@ GitHub Pages can serve the `playground/` directory, but you must ensure `playgro
 Use either:
 - commit `playground/pkg/` (quickest for a demo), or
 - add a Pages workflow that runs `scripts/playground_build_wasm.sh` and publishes `playground/`.
-

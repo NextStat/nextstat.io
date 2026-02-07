@@ -315,6 +315,13 @@ mod tests {
         // Should find constrained optimum
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-4);
         assert_relative_eq!(result.parameters[1], 2.0, epsilon = 1e-4);
+
+        // Must converge properly, not hit MaxIter
+        assert!(
+            result.converged,
+            "Optimizer should converge at constrained optimum, not MaxIter. Status: {}",
+            result.message
+        );
     }
 
     // Quadratic with negative offset: minimum is negative.
@@ -382,5 +389,49 @@ mod tests {
         assert_relative_eq!(result.parameters[0], 1.0, epsilon = 1e-3);
         assert_relative_eq!(result.parameters[1], 1.0, epsilon = 1e-3);
         assert!(result.fval < 1e-4);
+    }
+
+    #[test]
+    fn test_optimizer_converges_at_bound_when_minimum_outside() {
+        // f(x,y) = (x+1)^2 + (y-3)^2  →  unconstrained min at (-1, 3)
+        // Bounds: x in [0, 5], y in [0, 2]  →  constrained min at (0, 2)
+        struct ShiftedQuadratic;
+
+        impl ObjectiveFunction for ShiftedQuadratic {
+            fn eval(&self, params: &[f64]) -> Result<f64> {
+                let x = params[0];
+                let y = params[1];
+                Ok((x + 1.0).powi(2) + (y - 3.0).powi(2))
+            }
+
+            fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+                let x = params[0];
+                let y = params[1];
+                Ok(vec![2.0 * (x + 1.0), 2.0 * (y - 3.0)])
+            }
+        }
+
+        let config = OptimizerConfig { max_iter: 200, tol: 1e-6, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+        let objective = ShiftedQuadratic;
+
+        let init = vec![3.0, 1.0];
+        let bounds = vec![(0.0, 5.0), (0.0, 2.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+
+        // Parameters should be at the boundary
+        assert_relative_eq!(result.parameters[0], 0.0, epsilon = 1e-6);
+        assert_relative_eq!(result.parameters[1], 2.0, epsilon = 1e-6);
+
+        // f(0,2) = 1 + 1 = 2
+        assert_relative_eq!(result.fval, 2.0, epsilon = 1e-6);
+
+        // Must converge, not hit MaxIter
+        assert!(
+            result.converged,
+            "Optimizer should converge at boundary, not hit MaxIter. Status: {}",
+            result.message
+        );
     }
 }
