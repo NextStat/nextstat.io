@@ -7,6 +7,38 @@ use ns_core::{FitResult, Result};
 use ns_translate::pyhf::{HistFactoryModel, NllScratch};
 use std::cell::RefCell;
 
+/// Diagnostics extracted from an `OptimizationResult`.
+struct OptDiagnostics {
+    reason: String,
+    grad_norm: f64,
+    initial_nll: f64,
+    n_active: usize,
+}
+
+/// Compute diagnostics from an `OptimizationResult` and parameter bounds.
+fn diagnostics_from_opt(
+    opt: &crate::optimizer::OptimizationResult,
+    bounds: &[(f64, f64)],
+) -> OptDiagnostics {
+    let grad_norm = opt
+        .final_gradient
+        .as_ref()
+        .map(|g| g.iter().map(|x| x * x).sum::<f64>().sqrt())
+        .unwrap_or(f64::NAN);
+    let n_active = opt
+        .parameters
+        .iter()
+        .zip(bounds.iter())
+        .filter(|(x, (lo, hi))| (**x - lo).abs() < 1e-10 || (**x - hi).abs() < 1e-10)
+        .count();
+    OptDiagnostics { reason: opt.message.clone(), grad_norm, initial_nll: opt.initial_cost, n_active }
+}
+
+/// Apply diagnostics to a `FitResult`.
+fn apply_diagnostics(fr: FitResult, d: OptDiagnostics) -> FitResult {
+    fr.with_diagnostics(d.reason, d.grad_norm, d.initial_nll, d.n_active)
+}
+
 /// Maximum Likelihood Estimator
 ///
 /// Fits statistical models by minimizing negative log-likelihood.
@@ -40,13 +72,15 @@ impl MaximumLikelihoodEstimator {
     /// FitResult with best-fit parameters, uncertainties, covariance, and fit quality
     pub fn fit<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
         let result = self.fit_minimum(model)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
 
         // Compute full Hessian and covariance matrix
         let hessian = self.compute_hessian(model, &result.parameters)?;
         let n = result.parameters.len();
         let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
-        match self.invert_hessian(&hessian, n) {
+        let fr = match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
                 // Uncertainties from diagonal of covariance matrix
                 let mut all_variances_ok = true;
@@ -65,7 +99,7 @@ impl MaximumLikelihoodEstimator {
                     // Store covariance as row-major flat Vec
                     let cov_flat: Vec<f64> = covariance.iter().copied().collect();
 
-                    Ok(FitResult::with_covariance(
+                    FitResult::with_covariance(
                         result.parameters,
                         uncertainties,
                         cov_flat,
@@ -74,10 +108,10 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 } else {
                     log::warn!("Invalid covariance diagonal; omitting covariance matrix");
-                    Ok(FitResult::new(
+                    FitResult::new(
                         result.parameters,
                         uncertainties,
                         result.fval,
@@ -85,14 +119,14 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 }
             }
             None => {
                 // Hessian inversion failed; fall back to diagonal estimate
                 log::warn!("Hessian inversion failed, using diagonal approximation");
                 let uncertainties = self.diagonal_uncertainties(&hessian, n);
-                Ok(FitResult::new(
+                FitResult::new(
                     result.parameters,
                     uncertainties,
                     result.fval,
@@ -100,9 +134,10 @@ impl MaximumLikelihoodEstimator {
                     result.n_iter as usize,
                     result.n_fev,
                     result.n_gev,
-                ))
+                )
             }
-        }
+        };
+        Ok(apply_diagnostics(fr, diag))
     }
 
     /// Fit from an explicit starting point (warm-start) with full Hessian/covariance.
@@ -114,12 +149,14 @@ impl MaximumLikelihoodEstimator {
         initial_params: &[f64],
     ) -> Result<FitResult> {
         let result = self.fit_minimum_from(model, initial_params)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
 
         let hessian = self.compute_hessian(model, &result.parameters)?;
         let n = result.parameters.len();
         let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
-        match self.invert_hessian(&hessian, n) {
+        let fr = match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
                 let mut all_variances_ok = true;
                 let mut uncertainties = Vec::with_capacity(n);
@@ -134,7 +171,7 @@ impl MaximumLikelihoodEstimator {
                 }
                 if all_variances_ok {
                     let cov_flat: Vec<f64> = covariance.iter().copied().collect();
-                    Ok(FitResult::with_covariance(
+                    FitResult::with_covariance(
                         result.parameters,
                         uncertainties,
                         cov_flat,
@@ -143,10 +180,10 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 } else {
                     log::warn!("Invalid covariance diagonal; omitting covariance matrix");
-                    Ok(FitResult::new(
+                    FitResult::new(
                         result.parameters,
                         uncertainties,
                         result.fval,
@@ -154,13 +191,13 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 }
             }
             None => {
                 log::warn!("Hessian inversion failed, using diagonal approximation");
                 let uncertainties = self.diagonal_uncertainties(&hessian, n);
-                Ok(FitResult::new(
+                FitResult::new(
                     result.parameters,
                     uncertainties,
                     result.fval,
@@ -168,9 +205,10 @@ impl MaximumLikelihoodEstimator {
                     result.n_iter as usize,
                     result.n_fev,
                     result.n_gev,
-                ))
+                )
             }
-        }
+        };
+        Ok(apply_diagnostics(fr, diag))
     }
 
     /// Minimize NLL and return the optimizer result.
@@ -494,12 +532,14 @@ impl MaximumLikelihoodEstimator {
         tape: &mut ns_ad::tape::Tape,
     ) -> Result<FitResult> {
         let result = self.fit_minimum_histfactory_with_tape(model, tape)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
 
         let hessian = self.compute_hessian_histfactory(model, &result.parameters, tape)?;
         let n = result.parameters.len();
         let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
-        match self.invert_hessian(&hessian, n) {
+        let fr = match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
                 let mut all_variances_ok = true;
                 let mut uncertainties = Vec::with_capacity(n);
@@ -514,7 +554,7 @@ impl MaximumLikelihoodEstimator {
                 }
                 if all_variances_ok {
                     let cov_flat: Vec<f64> = covariance.iter().copied().collect();
-                    Ok(FitResult::with_covariance(
+                    FitResult::with_covariance(
                         result.parameters,
                         uncertainties,
                         cov_flat,
@@ -523,10 +563,10 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 } else {
                     log::warn!("Invalid covariance diagonal; omitting covariance matrix");
-                    Ok(FitResult::new(
+                    FitResult::new(
                         result.parameters,
                         uncertainties,
                         result.fval,
@@ -534,12 +574,12 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 }
             }
             None => {
                 log::warn!("Hessian inversion failed, using diagonal approximation");
-                Ok(FitResult::new(
+                FitResult::new(
                     result.parameters,
                     diag_uncertainties,
                     result.fval,
@@ -547,9 +587,10 @@ impl MaximumLikelihoodEstimator {
                     result.n_iter as usize,
                     result.n_fev,
                     result.n_gev,
-                ))
+                )
             }
-        }
+        };
+        Ok(apply_diagnostics(fr, diag))
     }
 
     /// Compute Hessian for a [`HistFactoryModel`], reusing a caller-provided tape.
@@ -755,13 +796,15 @@ impl MaximumLikelihoodEstimator {
     pub fn fit_gpu(&self, model: &HistFactoryModel) -> Result<FitResult> {
         let session = crate::gpu_single::GpuSession::new(model)?;
         let result = session.fit_minimum(model, &self.config)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
 
         // Compute Hessian via finite differences of GPU gradient
         let n = result.parameters.len();
         let hessian = self.compute_hessian_gpu(&session, &result.parameters)?;
         let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
-        match self.invert_hessian(&hessian, n) {
+        let fr = match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
                 let mut all_variances_ok = true;
                 let mut uncertainties = Vec::with_capacity(n);
@@ -776,7 +819,7 @@ impl MaximumLikelihoodEstimator {
                 }
                 if all_variances_ok {
                     let cov_flat: Vec<f64> = covariance.iter().copied().collect();
-                    Ok(FitResult::with_covariance(
+                    FitResult::with_covariance(
                         result.parameters,
                         uncertainties,
                         cov_flat,
@@ -785,10 +828,10 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 } else {
                     log::warn!("GPU fit: invalid covariance diagonal; omitting covariance matrix");
-                    Ok(FitResult::new(
+                    FitResult::new(
                         result.parameters,
                         uncertainties,
                         result.fval,
@@ -796,12 +839,12 @@ impl MaximumLikelihoodEstimator {
                         result.n_iter as usize,
                         result.n_fev,
                         result.n_gev,
-                    ))
+                    )
                 }
             }
             None => {
                 log::warn!("GPU fit: Hessian inversion failed, using diagonal approximation");
-                Ok(FitResult::new(
+                FitResult::new(
                     result.parameters,
                     diag_uncertainties,
                     result.fval,
@@ -809,9 +852,10 @@ impl MaximumLikelihoodEstimator {
                     result.n_iter as usize,
                     result.n_fev,
                     result.n_gev,
-                ))
+                )
             }
-        }
+        };
+        Ok(apply_diagnostics(fr, diag))
     }
 
     /// Compute Hessian via finite differences of GPU gradient.

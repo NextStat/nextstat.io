@@ -37,6 +37,26 @@ pub struct FitResult {
     /// Number of gradient evaluations performed by the optimizer.
     #[serde(default)]
     pub n_gev: usize,
+
+    /// Why the optimizer stopped (e.g. "SolverConverged", "MaxIterReached", "1D golden-section search").
+    #[serde(default)]
+    pub termination_reason: String,
+
+    /// Gradient norm at termination. `NAN` if unavailable (e.g. 1D golden-section).
+    #[serde(default = "default_nan")]
+    pub final_grad_norm: f64,
+
+    /// Negative log-likelihood before optimisation. `NAN` if unavailable.
+    #[serde(default = "default_nan")]
+    pub initial_nll: f64,
+
+    /// Number of parameters sitting at their bound at the solution.
+    #[serde(default)]
+    pub n_active_bounds: usize,
+}
+
+fn default_nan() -> f64 {
+    f64::NAN
 }
 
 impl FitResult {
@@ -50,7 +70,20 @@ impl FitResult {
         n_fev: usize,
         n_gev: usize,
     ) -> Self {
-        Self { parameters, uncertainties, covariance: None, nll, converged, n_iter, n_fev, n_gev }
+        Self {
+            parameters,
+            uncertainties,
+            covariance: None,
+            nll,
+            converged,
+            n_iter,
+            n_fev,
+            n_gev,
+            termination_reason: String::new(),
+            final_grad_norm: f64::NAN,
+            initial_nll: f64::NAN,
+            n_active_bounds: 0,
+        }
     }
 
     /// Create a fit result with covariance matrix
@@ -74,7 +107,26 @@ impl FitResult {
             n_iter,
             n_fev,
             n_gev,
+            termination_reason: String::new(),
+            final_grad_norm: f64::NAN,
+            initial_nll: f64::NAN,
+            n_active_bounds: 0,
         }
+    }
+
+    /// Attach optimizer diagnostics (builder-style).
+    pub fn with_diagnostics(
+        mut self,
+        termination_reason: String,
+        final_grad_norm: f64,
+        initial_nll: f64,
+        n_active_bounds: usize,
+    ) -> Self {
+        self.termination_reason = termination_reason;
+        self.final_grad_norm = final_grad_norm;
+        self.initial_nll = initial_nll;
+        self.n_active_bounds = n_active_bounds;
+        self
     }
 
     /// Back-compat alias for older code/tests. Prefer `n_iter`.

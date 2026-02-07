@@ -44,6 +44,10 @@ pub struct OptimizationResult {
     pub converged: bool,
     /// Termination message
     pub message: String,
+    /// Final gradient vector (None for gradient-free paths like 1D golden-section).
+    pub final_gradient: Option<Vec<f64>>,
+    /// Objective value at the initial point (before optimisation).
+    pub initial_cost: f64,
 }
 
 impl fmt::Display for OptimizationResult {
@@ -206,10 +210,13 @@ impl LbfgsbOptimizer {
                     n_gev: 0,
                     converged: true,
                     message: "1D bounds degenerate".to_string(),
+                    final_gradient: None,
+                    initial_cost: fval,
                 });
             }
 
-            let mut n_fev = 0usize;
+            let initial_cost = objective.eval(&init_clamped)?;
+            let mut n_fev = 1usize;
             let mut eval = |x: f64| -> Result<f64> {
                 n_fev += 1;
                 objective.eval(&[x])
@@ -267,6 +274,8 @@ impl LbfgsbOptimizer {
                 n_gev: 0,
                 converged: it < self.config.max_iter,
                 message: "1D golden-section search".to_string(),
+                final_gradient: None,
+                initial_cost,
             });
         }
 
@@ -290,6 +299,9 @@ impl LbfgsbOptimizer {
             ns_core::Error::Validation(format!("Invalid optimizer configuration (tol_cost): {e}"))
         })?;
 
+        // Compute initial cost for diagnostics
+        let initial_cost = objective.eval(&init_clamped)?;
+
         // Create executor
         let res = Executor::new(problem, solver)
             .configure(|state| state.param(init_clamped).max_iters(self.config.max_iter))
@@ -308,6 +320,9 @@ impl LbfgsbOptimizer {
         let n_fev = counts.cost.load(Ordering::Relaxed);
         let n_gev = counts.grad.load(Ordering::Relaxed);
 
+        // Extract final gradient
+        let final_gradient = state.get_gradient().cloned();
+
         // Check convergence
         let termination = state.get_termination_status();
         let converged = matches!(
@@ -325,6 +340,8 @@ impl LbfgsbOptimizer {
             n_gev,
             converged,
             message,
+            final_gradient,
+            initial_cost,
         })
     }
 }

@@ -217,7 +217,7 @@ pub fn poisson_nll_accelerate(
 /// # Arguments
 /// * `expected_batch` - Flat array: `[n_toys * n_bins]` of expected counts (row-major)
 /// * `observed` - Observed counts per bin `[n_bins]` (shared across toys for standard NLL,
-///                or `[n_toys * n_bins]` for per-toy observed data)
+///   or `[n_toys * n_bins]` for per-toy observed data)
 /// * `ln_factorials` - Pre-computed `lgamma(obs + 1)` per bin `[n_bins]` or `[n_toys * n_bins]`
 /// * `obs_mask` - `1.0` if `obs > 0`, else `0.0`, `[n_bins]` or `[n_toys * n_bins]`
 /// * `n_bins` - Number of bins per toy
@@ -365,10 +365,10 @@ pub fn batch_poisson_nll_accelerate(
 
     // 6. Reduce each toy's terms to a single NLL
     let mut results = vec![0.0f64; n_toys];
-    for toy_idx in 0..n_toys {
+    for (toy_idx, result) in results.iter_mut().enumerate() {
         let offset = toy_idx * n_bins;
         unsafe {
-            vDSP_sveD(terms[offset..].as_ptr(), 1, &mut results[toy_idx], n_bins);
+            vDSP_sveD(terms[offset..].as_ptr(), 1, result, n_bins);
         }
     }
 
@@ -606,16 +606,16 @@ mod tests {
         assert_eq!(batch_results.len(), n_toys);
 
         // Verify each toy matches individual computation
-        for toy_idx in 0..n_toys {
+        for (toy_idx, &batch_nll) in batch_results.iter().enumerate() {
             let offset = toy_idx * n_bins;
             let single =
                 poisson_nll_accelerate(&expected_flat[offset..offset + n_bins], &obs, &lnf, &mask);
-            let rel_err = (batch_results[toy_idx] - single).abs() / single.abs().max(1e-15);
+            let rel_err = (batch_nll - single).abs() / single.abs().max(1e-15);
             assert!(
                 rel_err < 1e-12,
                 "toy {}: batch={} single={} rel_err={}",
                 toy_idx,
-                batch_results[toy_idx],
+                batch_nll,
                 single,
                 rel_err
             );
@@ -658,7 +658,7 @@ mod tests {
 
         assert_eq!(batch_results.len(), n_toys);
 
-        for toy_idx in 0..n_toys {
+        for (toy_idx, &batch_nll) in batch_results.iter().enumerate() {
             let offset = toy_idx * n_bins;
             let single = poisson_nll_accelerate(
                 &expected_flat[offset..offset + n_bins],
@@ -666,12 +666,12 @@ mod tests {
                 &lnf_flat[offset..offset + n_bins],
                 &mask_flat[offset..offset + n_bins],
             );
-            let rel_err = (batch_results[toy_idx] - single).abs() / single.abs().max(1e-15);
+            let rel_err = (batch_nll - single).abs() / single.abs().max(1e-15);
             assert!(
                 rel_err < 1e-12,
                 "toy {}: batch={} single={} rel_err={}",
                 toy_idx,
-                batch_results[toy_idx],
+                batch_nll,
                 single,
                 rel_err
             );
