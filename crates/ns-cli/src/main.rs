@@ -116,6 +116,10 @@ enum Commands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
+
+        /// Use GPU (CUDA) for NLL+gradient. Requires --features cuda and NVIDIA GPU.
+        #[arg(long)]
+        gpu: bool,
     },
 
     /// Asymptotic CLs hypotest (qtilde)
@@ -255,6 +259,10 @@ enum Commands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
+
+        /// Use GPU (CUDA) for NLL+gradient. Requires --features cuda and NVIDIA GPU.
+        #[arg(long)]
+        gpu: bool,
     },
 
     /// TREx-like report artifacts (+ optional PDF/SVG rendering)
@@ -845,8 +853,18 @@ fn main() -> Result<()> {
         Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json } => {
             cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
         }
-        Commands::Fit { input, output, threads } => {
-            cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref())
+        Commands::Fit { input, output, threads, gpu } => {
+            if gpu {
+                #[cfg(feature = "cuda")]
+                {
+                    eprintln!("GPU mode enabled (CUDA single-model)");
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    anyhow::bail!("--gpu requires building with --features cuda");
+                }
+            }
+            cmd_fit(&input, output.as_ref(), threads, gpu, cli.bundle.as_ref())
         }
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
@@ -902,8 +920,18 @@ fn main() -> Result<()> {
             threads,
             cli.bundle.as_ref(),
         ),
-        Commands::Scan { input, start, stop, points, output, threads } => {
-            cmd_scan(&input, start, stop, points, output.as_ref(), threads, cli.bundle.as_ref())
+        Commands::Scan { input, start, stop, points, output, threads, gpu } => {
+            if gpu {
+                #[cfg(feature = "cuda")]
+                {
+                    eprintln!("GPU mode enabled (CUDA profile scan)");
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    anyhow::bail!("--gpu requires building with --features cuda");
+                }
+            }
+            cmd_scan(&input, start, stop, points, output.as_ref(), threads, gpu, cli.bundle.as_ref())
         }
         Commands::Report {
             input,
@@ -1430,7 +1458,7 @@ fn cmd_run_spec_v0(
         if let Some(parent) = fit_out.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, /*bundle*/ None)?;
+        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, false, /*bundle*/ None)?;
     }
 
     if let Some(scan) = plan.profile_scan.as_ref() {
@@ -1444,6 +1472,7 @@ fn cmd_run_spec_v0(
             scan.points,
             Some(&scan.output_json),
             plan.threads,
+            false,
             /*bundle*/ None,
         )?;
     }
@@ -1780,12 +1809,24 @@ fn cmd_fit(
     input: &PathBuf,
     output: Option<&PathBuf>,
     threads: usize,
+    gpu: bool,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let model = load_model(input, threads)?;
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
-    let result = mle.fit(&model)?;
+    let result = if gpu {
+        #[cfg(feature = "cuda")]
+        {
+            mle.fit_gpu(&model)?
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            unreachable!("--gpu check should have bailed earlier")
+        }
+    } else {
+        mle.fit(&model)?
+    };
     tracing::info!(nll = result.nll, converged = result.converged, "fit complete");
 
     let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
@@ -3249,6 +3290,7 @@ fn cmd_scan(
     points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    gpu: bool,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
@@ -3259,7 +3301,18 @@ fn cmd_scan(
 
     let step = (stop - start) / (points as f64 - 1.0);
     let mu_values: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
-    let scan = ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?;
+    let scan = if gpu {
+        #[cfg(feature = "cuda")]
+        {
+            ns_inference::profile_likelihood::scan_gpu(&mle, &model, &mu_values)?
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            unreachable!("--gpu check should have bailed earlier")
+        }
+    } else {
+        ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?
+    };
 
     let output_json = serde_json::json!({
         "poi_index": scan.poi_index,

@@ -26,6 +26,11 @@ impl MaximumLikelihoodEstimator {
         Self { config }
     }
 
+    /// Access the optimizer configuration.
+    pub fn config(&self) -> &OptimizerConfig {
+        &self.config
+    }
+
     /// Fit any [`LogDensityModel`] by minimizing negative log-likelihood.
     ///
     /// # Arguments

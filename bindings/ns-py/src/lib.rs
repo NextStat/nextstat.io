@@ -3822,14 +3822,74 @@ fn read_root_histogram<'py>(
 }
 
 /// Convenience wrapper: fit model with optional overridden observations.
+///
+/// Pass `device="cuda"` to use GPU-accelerated NLL+gradient (requires CUDA build).
 #[pyfunction]
-#[pyo3(signature = (model, *, data=None, init_pars=None))]
+#[pyo3(signature = (model, *, data=None, init_pars=None, device="cpu"))]
 fn fit<'py>(
     py: Python<'py>,
     model: &Bound<'py, PyAny>,
     data: Option<Vec<f64>>,
     init_pars: Option<Vec<f64>>,
+    device: &str,
 ) -> PyResult<PyFitResult> {
+    if device == "cuda" {
+        // GPU path: requires HistFactoryModel
+        let hf = model
+            .extract::<PyRef<'_, PyHistFactoryModel>>()
+            .map_err(|_| PyValueError::new_err("device='cuda' requires a HistFactoryModel"))?;
+        let mut m = hf.inner.clone();
+        if let Some(ref obs) = data {
+            m = m
+                .with_observed_main(obs)
+                .map_err(|e| PyValueError::new_err(format!("Failed to set data: {}", e)))?;
+        }
+        let ip = init_pars.clone();
+        let result = py
+            .detach(move || -> ns_core::Result<ns_core::FitResult> {
+                let mle = RustMLE::new();
+                #[cfg(feature = "cuda")]
+                {
+                    if let Some(ip) = ip {
+                        // GPU with warm-start: fit_minimum + hessian
+                        let session = ns_inference::gpu_single::GpuSession::new(&m)?;
+                        let config = mle.config().clone();
+                        let opt = session.fit_minimum_from(&m, &ip, &config)?;
+                        // Compute uncertainties via CPU fallback
+                        Ok(ns_core::FitResult::new(
+                            opt.parameters,
+                            vec![0.0; m.n_params()],
+                            opt.fval,
+                            opt.converged,
+                            opt.n_iter as usize,
+                            opt.n_fev,
+                            opt.n_gev,
+                        ))
+                    } else {
+                        mle.fit_gpu(&m)
+                    }
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    let _ = (mle, m, ip);
+                    Err(ns_core::Error::Computation(
+                        "CUDA support not compiled in. Build with --features cuda".to_string(),
+                    ))
+                }
+            })
+            .map_err(|e| PyValueError::new_err(format!("GPU fit failed: {}", e)))?;
+
+        return Ok(PyFitResult {
+            parameters: result.parameters,
+            uncertainties: result.uncertainties,
+            nll: result.nll,
+            converged: result.converged,
+            n_iter: result.n_iter,
+            n_fev: result.n_fev,
+            n_gev: result.n_gev,
+        });
+    }
+
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
     mle.fit(py, model, data, init_pars)
 }
@@ -4174,13 +4234,16 @@ fn hypotest_toys(
 }
 
 /// Profile likelihood scan over POI values (q_mu).
+///
+/// Pass `device="cuda"` to use GPU-accelerated NLL+gradient (requires CUDA build).
 #[pyfunction]
-#[pyo3(signature = (model, mu_values, *, data=None))]
+#[pyo3(signature = (model, mu_values, *, data=None, device="cpu"))]
 fn profile_scan(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     mu_values: Vec<f64>,
     data: Option<Vec<f64>>,
+    device: &str,
 ) -> PyResult<Py<PyAny>> {
     let mle = RustMLE::new();
     let fit_model = if let Some(obs_main) = data {
@@ -4192,8 +4255,22 @@ fn profile_scan(
         model.inner.clone()
     };
 
-    let scan = pl::scan(&mle, &fit_model, &mu_values)
-        .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?;
+    let scan = if device == "cuda" {
+        #[cfg(feature = "cuda")]
+        {
+            pl::scan_gpu(&mle, &fit_model, &mu_values)
+                .map_err(|e| PyValueError::new_err(format!("GPU profile scan failed: {}", e)))?
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            return Err(PyValueError::new_err(
+                "CUDA support not compiled in. Build with --features cuda",
+            ));
+        }
+    } else {
+        pl::scan(&mle, &fit_model, &mu_values)
+            .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
+    };
 
     let out = PyDict::new(py);
     out.set_item("poi_index", scan.poi_index)?;

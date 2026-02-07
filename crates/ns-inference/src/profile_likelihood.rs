@@ -100,3 +100,64 @@ pub fn scan(
 
     Ok(ProfileLikelihoodScan { poi_index: poi, mu_hat, nll_hat, points })
 }
+
+/// GPU-accelerated profile likelihood scan.
+///
+/// One `GpuSession` is shared across all scan points, avoiding repeated
+/// model serialization and GPU buffer allocation. Warm-start: each point
+/// starts from the previous point's best-fit parameters.
+#[cfg(feature = "cuda")]
+pub fn scan_gpu(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    mu_values: &[f64],
+) -> Result<ProfileLikelihoodScan> {
+    let poi = model
+        .poi_index()
+        .ok_or_else(|| Error::Validation("No POI defined".to_string()))?;
+
+    let session = crate::gpu_single::GpuSession::new(model)?;
+    let config = mle.config().clone();
+
+    // Free fit (unconditional MLE)
+    let free = session.fit_minimum(model, &config)?;
+    let mu_hat = free.parameters[poi];
+    let nll_hat = free.fval;
+
+    let base_bounds = model.parameter_bounds();
+    let mut warm_params = free.parameters.clone();
+
+    let mut points = Vec::with_capacity(mu_values.len());
+    for &mu in mu_values {
+        // Fix POI at mu via bounds clamping
+        let mut bounds = base_bounds.clone();
+        bounds[poi] = (mu, mu);
+        warm_params[poi] = mu;
+
+        let fixed = session.fit_minimum_from_with_bounds(
+            model,
+            &warm_params,
+            &bounds,
+            &config,
+        )?;
+
+        let llr = 2.0 * (fixed.fval - nll_hat);
+        let mut q = llr.max(0.0);
+        if mu_hat > mu {
+            q = 0.0;
+        }
+
+        // Update warm-start for next point
+        warm_params = fixed.parameters.clone();
+
+        points.push(ProfilePoint {
+            mu,
+            q_mu: q,
+            nll_mu: fixed.fval,
+            converged: fixed.converged,
+            n_iter: fixed.n_iter,
+        });
+    }
+
+    Ok(ProfileLikelihoodScan { poi_index: poi, mu_hat, nll_hat, points })
+}
