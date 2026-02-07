@@ -2655,10 +2655,16 @@ impl HistFactoryModel {
                                 modifier_data.push(hi.ln());
                                 modifier_data.push(lo.ln());
                             } else {
-                                // Invalid factors — store linear fallback data
-                                // coeffs = [hi-1, 0, 0, 0, 0, 0] for alpha>=0
-                                // or [1-lo, 0, 0, 0, 0, 0] for alpha<0
-                                // The kernel handles this via the same polynomial path
+                                // Invalid factors — store linear fallback coefficients.
+                                // The polynomial path in the GPU kernel uses only coeffs[0..5],
+                                // so the 0.0 placeholders for ln_hi/ln_lo are safe (unused by code4).
+                                // The exponential path (|alpha| >= 1) would read them, but that
+                                // path is unreachable for this linear approximation.
+                                log::warn!(
+                                    "NormSys param_idx={} has non-positive factor (hi={}, lo={}), \
+                                     GPU serialization uses linear fallback",
+                                    param_idx, hi, lo
+                                );
                                 modifier_data.extend_from_slice(&[
                                     hi - 1.0,
                                     1.0 - lo,
