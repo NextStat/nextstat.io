@@ -125,12 +125,10 @@ enum Instr {
     /// Forces row-wise evaluation since index varies per row.
     DynLoad(usize),
     /// Jump to absolute instruction index if condition (popped) is <= 0.
-    /// Reserved for future short-circuit &&/|| — not currently emitted.
-    #[allow(dead_code)]
+    /// Used for short-circuit boolean operators (&&/||) and DynLoad row-wise fallback.
     Jz(usize),
     /// Unconditional jump to absolute instruction index.
-    /// Reserved for future short-circuit &&/|| — not currently emitted.
-    #[allow(dead_code)]
+    /// Used for short-circuit boolean operators (&&/||) and DynLoad row-wise fallback.
     Jmp(usize),
 }
 
@@ -262,13 +260,13 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
         }
         Expr::BinOp(op, a, b) => {
             let lhs = eval_expr(a, vals);
-            let rhs = eval_expr(b, vals);
             match op {
-                BinOp::Add => lhs + rhs,
-                BinOp::Sub => lhs - rhs,
-                BinOp::Mul => lhs * rhs,
-                BinOp::Div => lhs / rhs,
+                BinOp::Add => lhs + eval_expr(b, vals),
+                BinOp::Sub => lhs - eval_expr(b, vals),
+                BinOp::Mul => lhs * eval_expr(b, vals),
+                BinOp::Div => lhs / eval_expr(b, vals),
                 BinOp::Eq => {
+                    let rhs = eval_expr(b, vals);
                     if (lhs - rhs).abs() < f64::EPSILON {
                         1.0
                     } else {
@@ -276,6 +274,7 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::Ne => {
+                    let rhs = eval_expr(b, vals);
                     if (lhs - rhs).abs() >= f64::EPSILON {
                         1.0
                     } else {
@@ -283,6 +282,7 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::Lt => {
+                    let rhs = eval_expr(b, vals);
                     if lhs < rhs {
                         1.0
                     } else {
@@ -290,6 +290,7 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::Le => {
+                    let rhs = eval_expr(b, vals);
                     if lhs <= rhs {
                         1.0
                     } else {
@@ -297,6 +298,7 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::Gt => {
+                    let rhs = eval_expr(b, vals);
                     if lhs > rhs {
                         1.0
                     } else {
@@ -304,6 +306,7 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::Ge => {
+                    let rhs = eval_expr(b, vals);
                     if lhs >= rhs {
                         1.0
                     } else {
@@ -311,17 +314,17 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::And => {
-                    if lhs > 0.0 && rhs > 0.0 {
-                        1.0
+                    if lhs > 0.0 {
+                        if eval_expr(b, vals) > 0.0 { 1.0 } else { 0.0 }
                     } else {
                         0.0
                     }
                 }
                 BinOp::Or => {
-                    if lhs > 0.0 || rhs > 0.0 {
+                    if lhs > 0.0 {
                         1.0
                     } else {
-                        0.0
+                        if eval_expr(b, vals) > 0.0 { 1.0 } else { 0.0 }
                     }
                 }
             }
@@ -375,22 +378,88 @@ fn compile_bytecode(
             out.push(Instr::Not);
         }
         Expr::BinOp(op, a, b) => {
-            compile_bytecode(input, a, out, jagged)?;
-            compile_bytecode(input, b, out, jagged)?;
-            out.push(match op {
-                BinOp::Add => Instr::Add,
-                BinOp::Sub => Instr::Sub,
-                BinOp::Mul => Instr::Mul,
-                BinOp::Div => Instr::Div,
-                BinOp::Eq => Instr::Eq,
-                BinOp::Ne => Instr::Ne,
-                BinOp::Lt => Instr::Lt,
-                BinOp::Le => Instr::Le,
-                BinOp::Gt => Instr::Gt,
-                BinOp::Ge => Instr::Ge,
-                BinOp::And => Instr::And,
-                BinOp::Or => Instr::Or,
-            });
+            match op {
+                BinOp::And => {
+                    // Short-circuit `a && b`:
+                    // - evaluate `a`
+                    // - if false: push 0 and skip `b`
+                    // - else: evaluate `b` and booleanize
+                    compile_bytecode(input, a, out, jagged)?;
+
+                    let jz_pos = out.len();
+                    out.push(Instr::Jz(usize::MAX));
+
+                    compile_bytecode(input, b, out, jagged)?;
+                    // booleanize: !!b
+                    out.push(Instr::Not);
+                    out.push(Instr::Not);
+
+                    let jmp_pos = out.len();
+                    out.push(Instr::Jmp(usize::MAX));
+
+                    let false_target = out.len();
+                    out.push(Instr::Const(0.0));
+
+                    let end_target = out.len();
+                    match out[jz_pos] {
+                        Instr::Jz(ref mut t) => *t = false_target,
+                        _ => unreachable!(),
+                    }
+                    match out[jmp_pos] {
+                        Instr::Jmp(ref mut t) => *t = end_target,
+                        _ => unreachable!(),
+                    }
+                }
+                BinOp::Or => {
+                    // Short-circuit `a || b`:
+                    // - evaluate `a`
+                    // - if true: push 1 and skip `b`
+                    // - else: evaluate `b` and booleanize
+                    compile_bytecode(input, a, out, jagged)?;
+                    // Convert jump condition into "a is true" using Not + Jz.
+                    out.push(Instr::Not);
+
+                    let jz_pos = out.len();
+                    out.push(Instr::Jz(usize::MAX));
+
+                    compile_bytecode(input, b, out, jagged)?;
+                    out.push(Instr::Not);
+                    out.push(Instr::Not);
+
+                    let jmp_pos = out.len();
+                    out.push(Instr::Jmp(usize::MAX));
+
+                    let true_target = out.len();
+                    out.push(Instr::Const(1.0));
+
+                    let end_target = out.len();
+                    match out[jz_pos] {
+                        Instr::Jz(ref mut t) => *t = true_target,
+                        _ => unreachable!(),
+                    }
+                    match out[jmp_pos] {
+                        Instr::Jmp(ref mut t) => *t = end_target,
+                        _ => unreachable!(),
+                    }
+                }
+                _ => {
+                    compile_bytecode(input, a, out, jagged)?;
+                    compile_bytecode(input, b, out, jagged)?;
+                    out.push(match op {
+                        BinOp::Add => Instr::Add,
+                        BinOp::Sub => Instr::Sub,
+                        BinOp::Mul => Instr::Mul,
+                        BinOp::Div => Instr::Div,
+                        BinOp::Eq => Instr::Eq,
+                        BinOp::Ne => Instr::Ne,
+                        BinOp::Lt => Instr::Lt,
+                        BinOp::Le => Instr::Le,
+                        BinOp::Gt => Instr::Gt,
+                        BinOp::Ge => Instr::Ge,
+                        BinOp::And | BinOp::Or => unreachable!(),
+                    });
+                }
+            }
         }
         Expr::Ternary(c, t, f) => {
             compile_bytecode(input, c, out, jagged)?;  // mask

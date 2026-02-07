@@ -2,6 +2,12 @@
 
 This module provides autograd wrappers that call into the native NextStat
 extension. It is intentionally small and only imported when needed.
+
+Limitations:
+- The differentiable target is computed by profiling the HistFactory likelihood.
+- Gradients are w.r.t. the *nominal yields vector* of a single sample (main bins).
+- Supported sample modifiers for nominal overrides: `NormFactor`, `NormSys`, `Lumi`, `ShapeFactor`.
+  Samples with `HistoSys`/`ShapeSys`/`StatError` are currently rejected (fail-fast).
 """
 
 from __future__ import annotations
