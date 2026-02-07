@@ -820,9 +820,9 @@ impl TrexConfig {
                 BlockKind::Systematic => {
                     match parse_systematic_block(&b) {
                         Ok(s) => systematics.push(s),
-                        Err(Error::NotImplemented(_)) => {
-                            // Best-effort: allow parsing full TREx configs even if some systematic types
-                            // are not yet supported by the NTUP importer.
+                        Err(Error::NotImplemented(_) | Error::Validation(_)) => {
+                            // Best-effort: skip systematics with unsupported types or
+                            // missing required fields (e.g. HISTO without HistoNameUp).
                             continue;
                         }
                         Err(e) => return Err(e),
@@ -1431,11 +1431,16 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         let has_tree = ["FileUp", "UpFile", "FileDown", "DownFile"]
             .iter()
             .any(|k| has_attr(&b.attrs, k));
+        let has_histo = ["HistoNameUp", "HistoNameDown", "HistoUp", "HistoDown"]
+            .iter()
+            .any(|k| has_attr(&b.attrs, k));
 
         if has_weight {
             SystKind::Weight
         } else if has_norm {
             SystKind::Norm
+        } else if has_histo {
+            SystKind::Histo
         } else if has_tree {
             SystKind::Tree
         } else {
@@ -2905,7 +2910,7 @@ MCweight: w_mc
     }
 
     #[test]
-    fn trex_skips_unsupported_systematic_types_in_best_effort_parse() {
+    fn trex_parses_histo_systematic_type() {
         let cfg = r#"
 ReadFrom: NTUP
 TreeName: events
@@ -2925,17 +2930,61 @@ Samples: all
 
 Systematic: jes
 Type: HISTO
+HistoNameUp: jes_up
+HistoNameDown: jes_down
+HistoFileUp: syst_up.root
+HistoFileDown: syst_down.root
 Samples: sig
 "#;
 
         let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
-        assert_eq!(parsed.systematics.len(), 1, "expected unsupported HISTO sys to be skipped");
-        let sys = &parsed.systematics[0];
-        assert_eq!(sys.name, "lumi");
-        assert_eq!(sys.kind, SystKind::Norm);
-        assert_eq!(sys.samples, vec!["all".to_string()]);
-        assert!((sys.hi.unwrap_or(0.0) - 1.02).abs() < 1e-12);
-        assert!((sys.lo.unwrap_or(0.0) - 0.98).abs() < 1e-12);
+        assert_eq!(parsed.systematics.len(), 2, "both OVERALL and HISTO should be parsed");
+
+        let lumi = &parsed.systematics[0];
+        assert_eq!(lumi.name, "lumi");
+        assert_eq!(lumi.kind, SystKind::Norm);
+        assert!((lumi.hi.unwrap_or(0.0) - 1.02).abs() < 1e-12);
+        assert!((lumi.lo.unwrap_or(0.0) - 0.98).abs() < 1e-12);
+
+        let jes = &parsed.systematics[1];
+        assert_eq!(jes.name, "jes");
+        assert_eq!(jes.kind, SystKind::Histo);
+        assert_eq!(jes.histo_name_up.as_deref(), Some("jes_up"));
+        assert_eq!(jes.histo_name_down.as_deref(), Some("jes_down"));
+        assert_eq!(jes.histo_file_up.as_ref().unwrap().to_str().unwrap(), "syst_up.root");
+        assert_eq!(jes.histo_file_down.as_ref().unwrap().to_str().unwrap(), "syst_down.root");
+        assert_eq!(jes.samples, vec!["sig".to_string()]);
+    }
+
+    #[test]
+    fn trex_skips_histo_systematic_without_required_fields() {
+        // HISTO without HistoNameUp/HistoNameDown → Validation error → skipped in best-effort
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+
+Systematic: lumi
+Type: OVERALL
+OverallUp: 0.02
+OverallDown: -0.02
+Samples: all
+
+Systematic: jes_bad
+Type: HISTO
+Samples: sig
+"#;
+
+        // This should NOT error out — the bad HISTO should be skipped like any invalid systematic.
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.systematics.len(), 1, "only lumi should be parsed; jes_bad skipped");
+        assert_eq!(parsed.systematics[0].name, "lumi");
     }
 
     #[test]

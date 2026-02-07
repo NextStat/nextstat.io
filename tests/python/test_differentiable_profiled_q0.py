@@ -59,6 +59,59 @@ def test_q0_like_loss_and_grad_nominal_finite_diff() -> None:
     assert rel < 5e-2
 
 
+def test_qmu_like_loss_and_grad_nominal_finite_diff() -> None:
+    ws_path = Path("tests/fixtures/simple_workspace.json")
+    ws_json = ws_path.read_text(encoding="utf-8")
+    model = nextstat.HistFactoryModel.from_workspace(ws_json)
+
+    nominal = _load_signal_nominal_from_workspace(ws_path, channel="singlechannel", sample="signal")
+    mle = nextstat.MaximumLikelihoodEstimator(max_iter=400, tol=1e-6, m=10)
+
+    mu_test = 5.0
+    qmu, grad = mle.qmu_like_loss_and_grad_nominal(
+        model,
+        mu_test=mu_test,
+        channel="singlechannel",
+        sample="signal",
+        nominal=nominal,
+    )
+    assert qmu == qmu  # not NaN
+    assert len(grad) == len(nominal)
+
+    idx = 0
+    for i, v in enumerate(nominal):
+        if v > 0.5:
+            idx = i
+            break
+
+    eps = max(1e-3, 1e-3 * abs(nominal[idx]))
+    plus = list(nominal)
+    plus[idx] += eps
+    qmu_p, _ = mle.qmu_like_loss_and_grad_nominal(
+        model,
+        mu_test=mu_test,
+        channel="singlechannel",
+        sample="signal",
+        nominal=plus,
+    )
+
+    minus = list(nominal)
+    minus[idx] -= eps
+    qmu_m, _ = mle.qmu_like_loss_and_grad_nominal(
+        model,
+        mu_test=mu_test,
+        channel="singlechannel",
+        sample="signal",
+        nominal=minus,
+    )
+
+    fd = (qmu_p - qmu_m) / (2.0 * eps)
+    g = grad[idx]
+    denom = max(abs(fd), abs(g), 1e-6)
+    rel = abs(fd - g) / denom
+    assert rel < 5e-2
+
+
 # ---------------------------------------------------------------------------
 # GPU Profiled Differentiable Tests (CUDA only)
 # ---------------------------------------------------------------------------
@@ -200,10 +253,11 @@ def test_training_loop_profiled():
     signal_param = torch.nn.Parameter(signal.clone() * 2.0)
     optimizer = torch.optim.Adam([signal_param], lr=0.1)
 
+    # Session is reusable across iterations (signal is read via pointer each time)
+    session = create_profiled_session(model, "signal")
     q0_values = []
     for _ in range(10):
         optimizer.zero_grad()
-        session = create_profiled_session(model, "signal")
         q0 = profiled_q0_loss(signal_param, session)
         loss = -q0  # maximize q₀
         loss.backward()
@@ -217,3 +271,102 @@ def test_training_loop_profiled():
     # Allow some variance — just check that it doesn't collapse to zero
     assert max(q0_values) > 0.0, f"q₀ collapsed to zero: {q0_values}"
 
+
+@_REQUIRES_GPU
+def test_profiled_qmu_matches_cpu():
+    """GPU profiled qμ matches CPU qmu_like_loss_and_grad_nominal."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_qmu_loss
+
+    model, signal, nominal = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    mu_test = 5.0
+
+    # GPU
+    signal_req = signal.clone().requires_grad_(True)
+    qmu_gpu = profiled_qmu_loss(signal_req, session, mu_test).detach().cpu().item()
+
+    # CPU
+    mle = nextstat.MaximumLikelihoodEstimator(max_iter=400, tol=1e-6, m=10)
+    qmu_cpu, _ = mle.qmu_like_loss_and_grad_nominal(
+        model,
+        mu_test=mu_test,
+        channel="singlechannel",
+        sample="signal",
+        nominal=nominal,
+    )
+
+    assert abs(qmu_gpu - qmu_cpu) < 0.1 * max(qmu_cpu, 1e-3), (
+        f"qmu_gpu={qmu_gpu}, qmu_cpu={qmu_cpu}"
+    )
+
+
+@_REQUIRES_GPU
+def test_profiled_qmu_grad_flows():
+    """Backward pass produces non-zero gradients for qμ."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_qmu_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    signal_req = signal.clone().requires_grad_(True)
+    qmu = profiled_qmu_loss(signal_req, session, 5.0)
+    qmu.backward()
+
+    assert signal_req.grad is not None, "No gradient computed"
+    assert signal_req.grad.shape == signal.shape
+    assert signal_req.grad.abs().max().item() > 1e-10
+
+
+@_REQUIRES_GPU
+def test_profiled_qmu_grad_fd():
+    """GPU profiled qμ gradient matches finite differences."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_qmu_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+
+    mu_test = 5.0
+    signal_req = signal.clone().requires_grad_(True)
+    session = create_profiled_session(model, "signal")
+    qmu = profiled_qmu_loss(signal_req, session, mu_test)
+    qmu.backward()
+    grad_analytic = signal_req.grad.clone()
+
+    idx = grad_analytic.abs().argmax().item()
+    eps = max(1e-3, 1e-3 * signal[idx].abs().item())
+
+    signal_p = signal.clone()
+    signal_p[idx] += eps
+    session_p = create_profiled_session(model, "signal")
+    qmu_p = profiled_qmu_loss(signal_p, session_p, mu_test).item()
+
+    signal_m = signal.clone()
+    signal_m[idx] -= eps
+    session_m = create_profiled_session(model, "signal")
+    qmu_m = profiled_qmu_loss(signal_m, session_m, mu_test).item()
+
+    fd = (qmu_p - qmu_m) / (2.0 * eps)
+    g = grad_analytic[idx].item()
+    denom = max(abs(fd), abs(g), 1e-6)
+    rel = abs(fd - g) / denom
+    assert rel < 0.1, f"FD mismatch: fd={fd:.6e}, analytic={g:.6e}, rel={rel:.4f}"
+
+
+@_REQUIRES_GPU
+def test_profiled_zmu_loss():
+    """Zμ = sqrt(qμ) loss is differentiable."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_zmu_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    signal_req = signal.clone().requires_grad_(True)
+    zmu = profiled_zmu_loss(signal_req, session, 5.0)
+    zmu.backward()
+
+    assert zmu.item() >= 0.0
+    assert signal_req.grad is not None

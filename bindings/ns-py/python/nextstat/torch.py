@@ -436,3 +436,18 @@ def profiled_qmu_loss(signal_histogram, session, mu_test):
     """
     return ProfiledQmuLoss.apply(signal_histogram, session, mu_test)
 
+
+def profiled_zmu_loss(signal_histogram, session, mu_test, eps=1e-12):
+    """Compute differentiable Zμ = sqrt(qμ) loss.
+
+    Args:
+        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        session: ProfiledDifferentiableSession from create_profiled_session()
+        mu_test: float — signal strength hypothesis
+        eps: small constant for numerical stability
+
+    Returns:
+        Zμ scalar (torch.Tensor with grad_fn)
+    """
+    qmu = profiled_qmu_loss(signal_histogram, session, mu_test)
+    return (qmu + eps).sqrt()

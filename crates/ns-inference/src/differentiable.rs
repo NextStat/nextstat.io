@@ -255,6 +255,8 @@ impl ProfiledDifferentiableSession {
     /// Run L-BFGS-B fit using GPU NLL+grad evaluations.
     ///
     /// Returns `(nll_at_minimum, parameter_values)`.
+    /// Returns an error if the fit fails to converge (envelope theorem
+    /// requires ∂NLL/∂θ = 0 at the optima for exact gradients).
     fn profile_fit(
         &mut self,
         signal_ptr: u64,
@@ -266,15 +268,23 @@ impl ProfiledDifferentiableSession {
             None => self.init_params.clone(),
         };
 
+        let max_iter = 200;
         let mut lbfgs = LbfgsState::new(x0, bounds.to_vec(), 10, 1e-6);
 
-        for _ in 0..200 {
+        for _ in 0..max_iter {
             let params = lbfgs.x.clone();
             let (nll, grad_params) = self.accel.nll_and_grad_params(&params, signal_ptr)?;
             lbfgs.step(nll, &grad_params);
             if lbfgs.converged {
                 break;
             }
+        }
+
+        if !lbfgs.converged {
+            return Err(ns_core::Error::Validation(format!(
+                "GPU profile fit did not converge after {} iterations (NLL={:.6})",
+                max_iter, lbfgs.fval
+            )));
         }
 
         Ok((lbfgs.fval, lbfgs.x.clone()))

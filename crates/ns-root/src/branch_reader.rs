@@ -63,14 +63,28 @@ impl<'a> BranchReader<'a> {
     ///
     /// If an entry has fewer than `index + 1` elements, `out_of_range_value` is used.
     pub fn as_f64_indexed(&self, index: usize, out_of_range_value: f64) -> Result<Vec<f64>> {
-        // Fast path: fixed-size arrays (no entry offsets, but basket contains N = entries * len).
         if self.branch.entry_offset_len == 0 {
-            let flat = self.as_f64()?;
             let entries = self.branch.entries as usize;
             if entries == 0 {
                 return Ok(Vec::new());
             }
 
+            // Best-effort support: unsplit std::vector<T> branches (TBranchElement without offset table).
+            // These baskets typically store [len_i][elem_0..elem_len-1] for each entry.
+            let raw_baskets = self.read_all_baskets()?;
+            if let Some(out) = try_decode_unsplit_vector_indexed_all_baskets(
+                &raw_baskets,
+                &self.branch.basket_entry,
+                self.branch.entries,
+                self.branch.leaf_type,
+                index,
+                out_of_range_value,
+            )? {
+                return Ok(out);
+            }
+
+            // Fixed-size arrays (no entry offsets, but basket contains N = entries * len).
+            let flat = decode_as_f64(&raw_baskets, self.branch.leaf_type)?;
             if flat.len() == entries {
                 if index == 0 {
                     return Ok(flat);
@@ -170,13 +184,37 @@ impl<'a> BranchReader<'a> {
     /// For fixed-size arrays, all entries will have the same length.
     pub fn as_jagged_f64(&self) -> Result<JaggedCol> {
         if self.branch.entry_offset_len == 0 {
-            // Fixed-size array — synthesize offsets
-            let flat = self.as_f64()?;
             let entries = self.branch.entries as usize;
             if entries == 0 {
                 return Ok(JaggedCol { flat: Vec::new(), offsets: vec![0] });
             }
-            let elem_per_entry = if flat.len() == entries { 1 } else { flat.len() / entries };
+
+            // Best-effort: unsplit std::vector<T> branches (TBranchElement without offset table).
+            let raw_baskets = self.read_all_baskets()?;
+            if let Some(j) = try_decode_unsplit_vector_jagged_all_baskets(
+                &raw_baskets,
+                &self.branch.basket_entry,
+                self.branch.entries,
+                self.branch.leaf_type,
+            )? {
+                return Ok(j);
+            }
+
+            // Fixed-size array — synthesize offsets
+            let flat = decode_as_f64(&raw_baskets, self.branch.leaf_type)?;
+            let elem_per_entry = if flat.len() == entries {
+                1
+            } else {
+                if flat.len() % entries != 0 {
+                    return Err(RootError::Deserialization(format!(
+                        "branch '{}' decoded to {} values, not divisible by entries={}",
+                        self.branch.name,
+                        flat.len(),
+                        entries
+                    )));
+                }
+                flat.len() / entries
+            };
             let mut offsets = Vec::with_capacity(entries + 1);
             for i in 0..=entries {
                 offsets.push(i * elem_per_entry);
@@ -461,6 +499,232 @@ fn decode_jagged_from_payload(
     Ok(())
 }
 
+// ── Best-effort decoding: unsplit std::vector<T> (TBranchElement) ──────────────
+
+const MAX_UNSPLIT_VECTOR_LEN: usize = 1_000_000;
+
+fn leaf_type_candidates(prefer: LeafType) -> Vec<LeafType> {
+    let all = [
+        prefer,
+        LeafType::F32,
+        LeafType::F64,
+        LeafType::I32,
+        LeafType::I64,
+        LeafType::U32,
+        LeafType::U64,
+        LeafType::I16,
+        LeafType::I8,
+        LeafType::Bool,
+    ];
+    let mut out: Vec<LeafType> = Vec::with_capacity(all.len());
+    for lt in all {
+        if !out.contains(&lt) {
+            out.push(lt);
+        }
+    }
+    out
+}
+
+fn basket_n_entries(basket_entry: &[u64], total_entries: u64, basket_idx: usize) -> usize {
+    let end = basket_entry
+        .get(basket_idx + 1)
+        .copied()
+        .unwrap_or(total_entries);
+    let start = basket_entry.get(basket_idx).copied().unwrap_or(0);
+    end.saturating_sub(start) as usize
+}
+
+fn trailing_all_zero(b: &[u8]) -> bool {
+    b.iter().all(|&x| x == 0)
+}
+
+fn decode_unsplit_vector_indexed_from_payload(
+    payload: &[u8],
+    elem_type: LeafType,
+    n_entries: usize,
+    index: usize,
+    out_of_range_value: f64,
+    out: &mut Vec<f64>,
+) -> Result<usize> {
+    let elem_size = elem_type.byte_size();
+    let mut pos = 0usize;
+    let mut total_elems = 0usize;
+
+    for _ in 0..n_entries {
+        if pos + 4 > payload.len() {
+            return Err(RootError::Deserialization(
+                "unsplit vector payload underflow (missing length)".into(),
+            ));
+        }
+        let len = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
+
+        if len > MAX_UNSPLIT_VECTOR_LEN {
+            return Err(RootError::Deserialization(format!(
+                "unsplit vector length too large: {len}"
+            )));
+        }
+        let bytes = len
+            .checked_mul(elem_size)
+            .ok_or_else(|| RootError::Deserialization("unsplit vector length overflow".into()))?;
+        if pos + bytes > payload.len() {
+            return Err(RootError::Deserialization(
+                "unsplit vector payload underflow (elements)".into(),
+            ));
+        }
+
+        if index < len {
+            let off = pos + index * elem_size;
+            out.push(decode_one_f64(payload, off, elem_type));
+        } else {
+            out.push(out_of_range_value);
+        }
+
+        pos += bytes;
+        total_elems += len;
+    }
+
+    if pos < payload.len() && !trailing_all_zero(&payload[pos..]) {
+        return Err(RootError::Deserialization(
+            "unsplit vector payload has trailing non-zero bytes".into(),
+        ));
+    }
+
+    Ok(total_elems)
+}
+
+fn decode_unsplit_vector_jagged_from_payload(
+    payload: &[u8],
+    elem_type: LeafType,
+    n_entries: usize,
+    flat: &mut Vec<f64>,
+    offsets: &mut Vec<usize>,
+) -> Result<usize> {
+    let elem_size = elem_type.byte_size();
+    let mut pos = 0usize;
+    let mut total_elems = 0usize;
+
+    for _ in 0..n_entries {
+        if pos + 4 > payload.len() {
+            return Err(RootError::Deserialization(
+                "unsplit vector payload underflow (missing length)".into(),
+            ));
+        }
+        let len = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
+
+        if len > MAX_UNSPLIT_VECTOR_LEN {
+            return Err(RootError::Deserialization(format!(
+                "unsplit vector length too large: {len}"
+            )));
+        }
+        let bytes = len
+            .checked_mul(elem_size)
+            .ok_or_else(|| RootError::Deserialization("unsplit vector length overflow".into()))?;
+        if pos + bytes > payload.len() {
+            return Err(RootError::Deserialization(
+                "unsplit vector payload underflow (elements)".into(),
+            ));
+        }
+
+        for j in 0..len {
+            let off = pos + j * elem_size;
+            flat.push(decode_one_f64(payload, off, elem_type));
+        }
+        pos += bytes;
+        total_elems += len;
+        offsets.push(flat.len());
+    }
+
+    if pos < payload.len() && !trailing_all_zero(&payload[pos..]) {
+        return Err(RootError::Deserialization(
+            "unsplit vector payload has trailing non-zero bytes".into(),
+        ));
+    }
+
+    Ok(total_elems)
+}
+
+fn try_decode_unsplit_vector_indexed_all_baskets(
+    raw_baskets: &[Vec<u8>],
+    basket_entry: &[u64],
+    total_entries: u64,
+    leaf_type_prefer: LeafType,
+    index: usize,
+    out_of_range_value: f64,
+) -> Result<Option<Vec<f64>>> {
+    let total_entries_usize = total_entries as usize;
+    if total_entries_usize == 0 || raw_baskets.is_empty() {
+        return Ok(None);
+    }
+
+    for lt in leaf_type_candidates(leaf_type_prefer) {
+        let mut out = Vec::with_capacity(total_entries_usize);
+        let mut ok = true;
+
+        for (i, payload) in raw_baskets.iter().enumerate() {
+            let n_entries = basket_n_entries(basket_entry, total_entries, i);
+            if n_entries == 0 {
+                continue;
+            }
+            if let Err(_) = decode_unsplit_vector_indexed_from_payload(
+                payload,
+                lt,
+                n_entries,
+                index,
+                out_of_range_value,
+                &mut out,
+            ) {
+                ok = false;
+                break;
+            }
+        }
+
+        if ok && out.len() == total_entries_usize {
+            return Ok(Some(out));
+        }
+    }
+
+    Ok(None)
+}
+
+fn try_decode_unsplit_vector_jagged_all_baskets(
+    raw_baskets: &[Vec<u8>],
+    basket_entry: &[u64],
+    total_entries: u64,
+    leaf_type_prefer: LeafType,
+) -> Result<Option<JaggedCol>> {
+    let total_entries_usize = total_entries as usize;
+    if total_entries_usize == 0 || raw_baskets.is_empty() {
+        return Ok(None);
+    }
+
+    for lt in leaf_type_candidates(leaf_type_prefer) {
+        let mut flat: Vec<f64> = Vec::new();
+        let mut offsets: Vec<usize> = vec![0usize];
+        let mut ok = true;
+
+        for (i, payload) in raw_baskets.iter().enumerate() {
+            let n_entries = basket_n_entries(basket_entry, total_entries, i);
+            if n_entries == 0 {
+                continue;
+            }
+            if let Err(_) =
+                decode_unsplit_vector_jagged_from_payload(payload, lt, n_entries, &mut flat, &mut offsets)
+            {
+                ok = false;
+                break;
+            }
+        }
+
+        if ok && offsets.len() == total_entries_usize + 1 {
+            return Ok(Some(JaggedCol { flat, offsets }));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Decode a single f64 value from big-endian bytes at `off`.
 fn decode_one_f64(data: &[u8], off: usize, leaf_type: LeafType) -> f64 {
     match leaf_type {
@@ -479,6 +743,81 @@ fn decode_one_f64(data: &[u8], off: usize, leaf_type: LeafType) -> f64 {
                 0.0
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn be_u32(x: u32) -> [u8; 4] {
+        x.to_be_bytes()
+    }
+
+    fn be_f32(x: f32) -> [u8; 4] {
+        x.to_be_bytes()
+    }
+
+    #[test]
+    fn unsplit_vector_indexed_decodes_index_or_oor() {
+        // 3 entries:
+        // - [1.0, 2.0]
+        // - []
+        // - [3.0]
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&be_u32(2));
+        payload.extend_from_slice(&be_f32(1.0));
+        payload.extend_from_slice(&be_f32(2.0));
+        payload.extend_from_slice(&be_u32(0));
+        payload.extend_from_slice(&be_u32(1));
+        payload.extend_from_slice(&be_f32(3.0));
+
+        let mut out = Vec::new();
+        decode_unsplit_vector_indexed_from_payload(&payload, LeafType::F32, 3, 0, 0.0, &mut out).unwrap();
+        assert_eq!(out, vec![1.0, 0.0, 3.0]);
+
+        let mut out = Vec::new();
+        decode_unsplit_vector_indexed_from_payload(&payload, LeafType::F32, 3, 1, 0.0, &mut out).unwrap();
+        assert_eq!(out, vec![2.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn unsplit_vector_jagged_builds_flat_and_offsets() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&be_u32(2));
+        payload.extend_from_slice(&be_f32(1.0));
+        payload.extend_from_slice(&be_f32(2.0));
+        payload.extend_from_slice(&be_u32(0));
+        payload.extend_from_slice(&be_u32(1));
+        payload.extend_from_slice(&be_f32(3.0));
+
+        let mut flat = Vec::new();
+        let mut offsets = vec![0usize];
+        decode_unsplit_vector_jagged_from_payload(&payload, LeafType::F32, 3, &mut flat, &mut offsets).unwrap();
+        assert_eq!(flat, vec![1.0, 2.0, 3.0]);
+        assert_eq!(offsets, vec![0, 2, 2, 3]);
+    }
+
+    #[test]
+    fn unsplit_vector_try_decode_rejects_plain_flat_baskets() {
+        // Flat f32 values (not length-prefixed).
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&be_f32(2.0));
+        payload.extend_from_slice(&be_f32(3.0));
+        payload.extend_from_slice(&be_f32(4.0));
+
+        let baskets = vec![payload];
+        let basket_entry = vec![0u64, 3u64];
+        let out = try_decode_unsplit_vector_indexed_all_baskets(
+            &baskets,
+            &basket_entry,
+            3,
+            LeafType::F32,
+            0,
+            0.0,
+        )
+        .unwrap();
+        assert!(out.is_none());
     }
 }
 

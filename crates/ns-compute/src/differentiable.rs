@@ -75,6 +75,10 @@ pub struct DifferentiableAccelerator {
     // when we only need NLL + grad_params and no external PyTorch pointer).
     d_grad_signal_buf: CudaSlice<f64>,
 
+    // Pre-allocated host zero buffers (avoids per-iteration allocation)
+    zeros_params: Vec<f64>,
+    zeros_signal: Vec<f64>,
+
     // Metadata
     n_params: usize,
     n_main_bins: usize,
@@ -143,6 +147,8 @@ impl DifferentiableAccelerator {
             d_nll_out,
             d_grad_params_out,
             d_grad_signal_buf,
+            zeros_params: vec![0.0f64; data.n_params],
+            zeros_signal: vec![0.0f64; signal_info.n_bins as usize],
             n_params: data.n_params,
             n_main_bins: data.n_main_bins,
             n_samples: data.samples.len(),
@@ -193,9 +199,8 @@ impl DifferentiableAccelerator {
         // Upload params
         self.stream.memcpy_htod(params, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
-        // Zero gradient output
-        let zeros = vec![0.0f64; self.n_params];
-        self.stream.memcpy_htod(&zeros, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
+        // Zero gradient output (pre-allocated buffer)
+        self.stream.memcpy_htod(&self.zeros_params, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
 
         // Kernel launch: single block, threads = next_power_of_two(min(n_main_bins, 256))
         // Block reduction assumes power-of-2 thread count.
@@ -281,11 +286,9 @@ impl DifferentiableAccelerator {
         // Upload params
         self.stream.memcpy_htod(params, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
-        // Zero gradient outputs
-        let zeros_p = vec![0.0f64; self.n_params];
-        self.stream.memcpy_htod(&zeros_p, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
-        let zeros_s = vec![0.0f64; self.signal_info.n_bins as usize];
-        self.stream.memcpy_htod(&zeros_s, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
+        // Zero gradient outputs (pre-allocated buffers)
+        self.stream.memcpy_htod(&self.zeros_params, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(&self.zeros_signal, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
 
         let block_size = (self.n_main_bins.min(256) as u32).next_power_of_two();
         let shared_bytes =
@@ -362,11 +365,9 @@ impl DifferentiableAccelerator {
         // Upload params
         self.stream.memcpy_htod(params, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
-        // Zero gradient outputs
-        let zeros_p = vec![0.0f64; self.n_params];
-        self.stream.memcpy_htod(&zeros_p, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
-        let zeros_s = vec![0.0f64; self.signal_info.n_bins as usize];
-        self.stream.memcpy_htod(&zeros_s, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
+        // Zero gradient outputs (pre-allocated buffers)
+        self.stream.memcpy_htod(&self.zeros_params, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(&self.zeros_signal, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
 
         let block_size = (self.n_main_bins.min(256) as u32).next_power_of_two();
         let shared_bytes =
