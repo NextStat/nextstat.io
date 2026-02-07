@@ -3613,6 +3613,75 @@ impl PyMaximumLikelihoodEstimator {
             })
             .collect()
     }
+
+    /// Discovery-style `q0` and gradient w.r.t. one sample's nominal yields (main bins).
+    ///
+    /// This mutates the provided `HistFactoryModel` in place by overriding the specified
+    /// sample's nominal yields before computing the profiled test statistic.
+    ///
+    /// Notes:
+    /// - The overridden sample must have only multiplicative modifiers (NormFactor/NormSys/Lumi).
+    /// - This is intended for ML/training-loop use; prefer reusing a single model instance.
+    #[pyo3(signature = (model, *, channel, sample, nominal))]
+    fn q0_like_loss_and_grad_nominal(
+        &self,
+        model: &mut PyHistFactoryModel,
+        channel: &str,
+        sample: &str,
+        nominal: &Bound<'_, PyAny>,
+    ) -> PyResult<(f64, Vec<f64>)> {
+        let nominal = extract_f64_vec(nominal)?;
+        if nominal.iter().any(|v| !v.is_finite()) {
+            return Err(PyValueError::new_err("nominal must contain only finite values"));
+        }
+
+        let (ch_idx, s_idx) = model
+            .inner
+            .set_sample_nominal_by_name(channel, sample, &nominal)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set sample nominal: {}", e)))?;
+
+        let (q0, grad) = self
+            .inner
+            .q0_like_loss_and_grad_sample_nominal(&model.inner, ch_idx, s_idx)
+            .map_err(|e| PyValueError::new_err(format!("q0_like failed: {}", e)))?;
+
+        Ok((q0, grad))
+    }
+
+    /// Upper-limit-style `q_mu` and gradient w.r.t. one sample's nominal yields (main bins).
+    ///
+    /// This mutates the provided `HistFactoryModel` in place by overriding the specified
+    /// sample's nominal yields before computing the profiled test statistic.
+    #[pyo3(signature = (model, *, mu_test, channel, sample, nominal))]
+    fn qmu_like_loss_and_grad_nominal(
+        &self,
+        model: &mut PyHistFactoryModel,
+        mu_test: f64,
+        channel: &str,
+        sample: &str,
+        nominal: &Bound<'_, PyAny>,
+    ) -> PyResult<(f64, Vec<f64>)> {
+        if !mu_test.is_finite() {
+            return Err(PyValueError::new_err("mu_test must be finite"));
+        }
+
+        let nominal = extract_f64_vec(nominal)?;
+        if nominal.iter().any(|v| !v.is_finite()) {
+            return Err(PyValueError::new_err("nominal must contain only finite values"));
+        }
+
+        let (ch_idx, s_idx) = model
+            .inner
+            .set_sample_nominal_by_name(channel, sample, &nominal)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set sample nominal: {}", e)))?;
+
+        let (q, grad) = self
+            .inner
+            .qmu_like_loss_and_grad_sample_nominal(&model.inner, mu_test, ch_idx, s_idx)
+            .map_err(|e| PyValueError::new_err(format!("qmu_like failed: {}", e)))?;
+
+        Ok((q, grad))
+    }
 }
 
 /// Convenience wrapper: create model from pyhf JSON string.
@@ -4493,6 +4562,67 @@ fn profile_curve(
     Ok(out.into_any().unbind())
 }
 
+// ---------------------------------------------------------------------------
+// DifferentiableSession — PyTorch zero-copy differentiable NLL (CUDA only)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "cuda")]
+#[pyclass(name = "DifferentiableSession")]
+struct PyDiffSession {
+    inner: ns_inference::DifferentiableSession,
+}
+
+#[cfg(feature = "cuda")]
+#[pymethods]
+impl PyDiffSession {
+    /// Create a differentiable GPU session.
+    ///
+    /// Args:
+    ///     model: HistFactoryModel
+    ///     signal_sample_name: name of the signal sample in the workspace
+    #[new]
+    fn new(model: &PyHistFactoryModel, signal_sample_name: &str) -> PyResult<Self> {
+        let inner = ns_inference::DifferentiableSession::new(&model.inner, signal_sample_name)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Compute NLL and write signal gradient into PyTorch grad tensor (zero-copy).
+    ///
+    /// Args:
+    ///     params: list[float] — nuisance parameter values
+    ///     signal_ptr: int — from torch.Tensor.data_ptr() (CUDA device pointer)
+    ///     grad_signal_ptr: int — from torch.Tensor.data_ptr() (CUDA device pointer, pre-zeroed)
+    ///
+    /// Returns:
+    ///     float — NLL value
+    fn nll_grad_signal(
+        &mut self,
+        params: Vec<f64>,
+        signal_ptr: u64,
+        grad_signal_ptr: u64,
+    ) -> PyResult<f64> {
+        self.inner
+            .nll_grad_signal(&params, signal_ptr, grad_signal_ptr)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Number of signal bins.
+    fn signal_n_bins(&self) -> usize {
+        self.inner.signal_n_bins()
+    }
+
+    /// Number of model parameters.
+    fn n_params(&self) -> usize {
+        self.inner.n_params()
+    }
+
+    /// Default initial parameter values.
+    fn parameter_init(&self) -> Vec<f64> {
+        self.inner.parameter_init().to_vec()
+    }
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -4559,6 +4689,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOneCompartmentOralPkNlmeModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
+
+    // DifferentiableSession (CUDA only)
+    #[cfg(feature = "cuda")]
+    m.add_class::<PyDiffSession>()?;
 
     // Back-compat aliases used in plans/docs.
     let model_cls = m.getattr("HistFactoryModel")?;

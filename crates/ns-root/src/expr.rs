@@ -11,6 +11,7 @@
 //! - Parsed bracket indexing `x[0]` (currently rejected with a clear error;
 //!   vector branches are not supported by the ROOT reader yet).
 
+use crate::branch_reader::JaggedCol;
 use crate::error::{Result, RootError};
 
 // ── AST ────────────────────────────────────────────────────────
@@ -25,6 +26,9 @@ enum Expr {
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Call(Func, Vec<Expr>),
     Index { base: Box<Expr>, index: usize, span: Span },
+    /// Dynamic indexing: `branch[expr]` where expr is evaluated at runtime.
+    #[allow(dead_code)]
+    DynamicIndex { base: String, index: Box<Expr>, span: Span },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,6 +121,9 @@ enum Instr {
     Max,
     /// Mask-select: pops else, then, mask. result[i] = mask[i] > 0 ? then[i] : else[i].
     Select,
+    /// Pop index from stack, load element from jagged branch #id. OOR → 0.0.
+    /// Forces row-wise evaluation since index varies per row.
+    DynLoad(usize),
     /// Jump to absolute instruction index if condition (popped) is <= 0.
     /// Reserved for future short-circuit &&/|| — not currently emitted.
     #[allow(dead_code)]
@@ -139,6 +146,9 @@ pub struct CompiledExpr {
     bytecode: Vec<Instr>,
     /// Branch names referenced by this expression (ordered by first occurrence).
     pub required_branches: Vec<String>,
+    /// Jagged branch names required for dynamic indexing (`branch[expr]`).
+    /// The index in this vec corresponds to the `DynLoad(id)` instruction operand.
+    pub required_jagged_branches: Vec<String>,
 }
 
 impl CompiledExpr {
@@ -164,10 +174,16 @@ impl CompiledExpr {
         // is handled elsewhere by materializing such `name[idx]` columns.
         rewrite_indexing(input, &mut ast, &mut parser.branches)?;
         prune_unused_branches(&mut ast, &mut parser.branches);
+        let mut jagged_branches = Vec::new();
         let mut bytecode = Vec::new();
-        compile_bytecode(input, &ast, &mut bytecode)?;
+        compile_bytecode(input, &ast, &mut bytecode, &mut jagged_branches)?;
         let branches = std::mem::take(&mut parser.branches);
-        Ok(CompiledExpr { ast, bytecode, required_branches: branches })
+        Ok(CompiledExpr {
+            ast,
+            bytecode,
+            required_branches: branches,
+            required_jagged_branches: jagged_branches,
+        })
     }
 
     /// Evaluate the expression for a single row.
@@ -187,6 +203,17 @@ impl CompiledExpr {
             return vec![eval_bytecode_row(&self.bytecode, &[])];
         }
         eval_bytecode_bulk(&self.bytecode, columns)
+    }
+
+    /// Evaluate the expression with jagged (variable-length) branch data.
+    ///
+    /// `columns` maps to `required_branches`, `jagged` maps to `required_jagged_branches`.
+    /// DynLoad instructions use the jagged arrays for per-row indexed access.
+    pub fn eval_bulk_with_jagged(&self, columns: &[&[f64]], jagged: &[&JaggedCol]) -> Vec<f64> {
+        if columns.is_empty() && jagged.is_empty() {
+            return vec![eval_bytecode_row(&self.bytecode, &[])];
+        }
+        eval_bytecode_bulk_with_jagged(&self.bytecode, columns, jagged)
     }
 
     /// Evaluate the expression in chunks to limit peak memory usage.
@@ -323,28 +350,33 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                 Func::Max => a0().max(a1()),
             }
         }
-        Expr::Index { .. } => {
-            // Rejected in compile(), but keep evaluation total.
+        Expr::Index { .. } | Expr::DynamicIndex { .. } => {
+            // Rejected/rewritten in compile(), but keep evaluation total.
             f64::NAN
         }
     }
 }
 
-fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
+fn compile_bytecode(
+    input: &str,
+    e: &Expr,
+    out: &mut Vec<Instr>,
+    jagged: &mut Vec<String>,
+) -> Result<()> {
     match e {
         Expr::Number(n) => out.push(Instr::Const(*n)),
         Expr::Var(i) => out.push(Instr::Load(*i)),
         Expr::UnaryNeg(a) => {
-            compile_bytecode(input, a, out)?;
+            compile_bytecode(input, a, out, jagged)?;
             out.push(Instr::Neg);
         }
         Expr::UnaryNot(a) => {
-            compile_bytecode(input, a, out)?;
+            compile_bytecode(input, a, out, jagged)?;
             out.push(Instr::Not);
         }
         Expr::BinOp(op, a, b) => {
-            compile_bytecode(input, a, out)?;
-            compile_bytecode(input, b, out)?;
+            compile_bytecode(input, a, out, jagged)?;
+            compile_bytecode(input, b, out, jagged)?;
             out.push(match op {
                 BinOp::Add => Instr::Add,
                 BinOp::Sub => Instr::Sub,
@@ -361,14 +393,14 @@ fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
             });
         }
         Expr::Ternary(c, t, f) => {
-            compile_bytecode(input, c, out)?;  // mask
-            compile_bytecode(input, t, out)?;  // then_val
-            compile_bytecode(input, f, out)?;  // else_val
+            compile_bytecode(input, c, out, jagged)?;  // mask
+            compile_bytecode(input, t, out, jagged)?;  // then_val
+            compile_bytecode(input, f, out, jagged)?;  // else_val
             out.push(Instr::Select);
         }
         Expr::Call(func, args) => {
             for a in args {
-                compile_bytecode(input, a, out)?;
+                compile_bytecode(input, a, out, jagged)?;
             }
             out.push(match func {
                 Func::Abs => Instr::Abs,
@@ -385,8 +417,16 @@ fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
             });
         }
         Expr::Index { span, .. } => {
-            // Should be rejected by `reject_indexing`, but keep a clear error if it ever gets here.
+            // Should be rejected by `rewrite_indexing`, but keep a clear error if it ever gets here.
             return Err(expr_err(input, *span, "vector branches are not supported".to_string()));
+        }
+        Expr::DynamicIndex { base, index, .. } => {
+            compile_bytecode(input, index, out, jagged)?;  // push index value
+            let id = jagged.iter().position(|s| s == base).unwrap_or_else(|| {
+                jagged.push(base.clone());
+                jagged.len() - 1
+            });
+            out.push(Instr::DynLoad(id));
         }
     }
     Ok(())
@@ -463,6 +503,12 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 let mask = stack.pop().unwrap();
                 stack.push(if mask > 0.0 { then_val } else { else_val });
             }
+            Instr::DynLoad(_) => {
+                // DynLoad requires jagged data context — not available in plain row eval.
+                // Pop the index and push NaN as a sentinel.
+                let _idx = stack.pop().unwrap();
+                stack.push(f64::NAN);
+            }
             Instr::Jz(target) => {
                 let c = stack.pop().unwrap();
                 if c <= 0.0 {
@@ -488,15 +534,27 @@ fn bin2(stack: &mut Vec<f64>, f: impl FnOnce(f64, f64) -> f64) {
 
 fn eval_bytecode_bulk(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
     // Vectorized path operates on whole columns (Scalar/Col/Owned slots).
-    // Falls back to row-wise for expressions with control flow (ternary → Jz/Jmp).
+    // Falls back to row-wise for expressions with control flow (ternary → Jz/Jmp/DynLoad).
     if bytecode_has_control_flow(code) {
-        eval_bytecode_bulk_rowwise(code, cols)
+        eval_bytecode_bulk_rowwise(code, cols, &[])
     } else {
         eval_bytecode_bulk_vectorized(code, cols)
     }
 }
 
-fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
+fn eval_bytecode_bulk_with_jagged(
+    code: &[Instr],
+    cols: &[&[f64]],
+    jagged: &[&JaggedCol],
+) -> Vec<f64> {
+    if bytecode_has_control_flow(code) {
+        eval_bytecode_bulk_rowwise(code, cols, jagged)
+    } else {
+        eval_bytecode_bulk_vectorized(code, cols)
+    }
+}
+
+fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&JaggedCol]) -> Vec<f64> {
     let n = cols[0].len();
     let mut out = Vec::with_capacity(n);
     let mut stack: Vec<f64> = Vec::with_capacity(16);
@@ -582,6 +640,11 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                     ip = target;
                     continue;
                 }
+                Instr::DynLoad(id) => {
+                    let idx_f = stack.pop().unwrap();
+                    let idx = idx_f.max(0.0) as usize;
+                    stack.push(jagged.get(id).map_or(f64::NAN, |j| j.get(row, idx, 0.0)));
+                }
             }
             ip += 1;
         }
@@ -592,7 +655,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
 }
 
 fn bytecode_has_control_flow(code: &[Instr]) -> bool {
-    code.iter().any(|i| matches!(i, Instr::Jz(_) | Instr::Jmp(_)))
+    code.iter().any(|i| matches!(i, Instr::Jz(_) | Instr::Jmp(_) | Instr::DynLoad(_)))
 }
 
 /// Slot-based value for the vectorized bulk evaluator.
@@ -927,7 +990,9 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 let r = st.select(m, t, e);
                 st.push(r);
             }
-            Instr::Jz(_) | Instr::Jmp(_) => unreachable!("control flow handled by row-wise path"),
+            Instr::Jz(_) | Instr::Jmp(_) | Instr::DynLoad(_) => {
+                unreachable!("control flow / DynLoad handled by row-wise path")
+            }
         }
     }
 
@@ -1041,6 +1106,10 @@ fn rewrite_indexing(input: &str, ast: &mut Expr, branches: &mut Vec<String>) -> 
                 }
                 Ok(())
             }
+            Expr::DynamicIndex { index, .. } => {
+                // DynamicIndex bypasses rewrite_indexing — only recurse into the index expr.
+                walk(input, index, branches)
+            }
         }
     }
 
@@ -1074,6 +1143,10 @@ fn prune_unused_branches(ast: &mut Expr, branches: &mut Vec<String>) {
             Expr::Index { .. } => {
                 // `rewrite_indexing` should remove all Index nodes.
             }
+            Expr::DynamicIndex { index, .. } => {
+                // Recurse into the index expression (it may reference Var nodes).
+                mark_used(index, used);
+            }
         }
     }
 
@@ -1101,6 +1174,10 @@ fn prune_unused_branches(ast: &mut Expr, branches: &mut Vec<String>) {
                 }
             }
             Expr::Index { .. } => {}
+            Expr::DynamicIndex { index, .. } => {
+                // Remap Var references inside the index expression.
+                remap(index, map);
+            }
         }
     }
 
@@ -1441,31 +1518,63 @@ impl<'a> Parser<'a> {
 
         while let Some(TokenKind::LBracket) = self.peek().map(|t| &t.kind) {
             let lb = self.advance().unwrap();
-            let idx_tok = self.advance().ok_or_else(|| {
-                expr_err(self.input, lb.span, "expected index after '['".to_string())
-            })?;
-            let index = match idx_tok.kind {
-                TokenKind::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
-                _ => {
+
+            // Try static integer literal: peek at next two tokens for `Num(int) ]`
+            let is_static = self.peek().is_some_and(|t| {
+                matches!(&t.kind, TokenKind::Num(n) if n.fract() == 0.0 && *n >= 0.0)
+            }) && self
+                .tokens
+                .get(self.pos + 1)
+                .is_some_and(|t| t.kind == TokenKind::RBracket);
+
+            if is_static {
+                let idx_tok = self.advance().unwrap();
+                let index = match idx_tok.kind {
+                    TokenKind::Num(n) => n as usize,
+                    _ => unreachable!(),
+                };
+                let rb = self.advance().unwrap();
+                let span = Span { start: lb.span.start, end: rb.span.end };
+                e = Expr::Index { base: Box::new(e), index, span };
+            } else {
+                // Dynamic index: parse a full subexpression.
+                // The base must be a variable name for DynamicIndex.
+                let base_name = match &e {
+                    Expr::Var(i) => self.branches.get(*i).cloned().ok_or_else(|| {
+                        expr_err(
+                            self.input,
+                            lb.span,
+                            "internal error: branch index out of bounds".to_string(),
+                        )
+                    })?,
+                    _ => {
+                        return Err(expr_err(
+                            self.input,
+                            lb.span,
+                            "dynamic indexing is only supported on branch names (e.g. jet_pt[njet-1])".to_string(),
+                        ));
+                    }
+                };
+
+                let index_expr = self.parse_ternary()?;
+
+                let rb = self.advance().ok_or_else(|| {
+                    expr_err(self.input, lb.span, "expected ']'".to_string())
+                })?;
+                if rb.kind != TokenKind::RBracket {
                     return Err(expr_err(
                         self.input,
-                        idx_tok.span,
-                        "index must be a non-negative integer literal".to_string(),
+                        rb.span,
+                        format!("expected ']', got {:?}", rb.kind),
                     ));
                 }
-            };
-            let rb = self
-                .advance()
-                .ok_or_else(|| expr_err(self.input, lb.span, "expected ']'".to_string()))?;
-            if rb.kind != TokenKind::RBracket {
-                return Err(expr_err(
-                    self.input,
-                    rb.span,
-                    format!("expected ']', got {:?}", rb.kind),
-                ));
+                let span = Span { start: lb.span.start, end: rb.span.end };
+                e = Expr::DynamicIndex {
+                    base: base_name,
+                    index: Box::new(index_expr),
+                    span,
+                };
             }
-            let span = Span { start: lb.span.start, end: rb.span.end };
-            e = Expr::Index { base: Box::new(e), index, span };
         }
 
         Ok(e)
@@ -1855,5 +1964,173 @@ mod tests {
         let err = CompiledExpr::compile("x +\n  * 2").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("line 2, col 3"), "unexpected error message: {msg}");
+    }
+
+    #[test]
+    fn parse_dynamic_index() {
+        let expr = CompiledExpr::compile("jet_pt[njet - 1]").unwrap();
+        assert!(
+            expr.required_jagged_branches.contains(&"jet_pt".to_string()),
+            "expected jet_pt in required_jagged_branches: {:?}",
+            expr.required_jagged_branches
+        );
+        assert!(
+            expr.required_branches.contains(&"njet".to_string()),
+            "expected njet in required_branches: {:?}",
+            expr.required_branches
+        );
+        // DynLoad forces control flow → row-wise path
+        assert!(
+            bytecode_has_control_flow(&expr.bytecode),
+            "dynamic index should trigger control flow path"
+        );
+    }
+
+    #[test]
+    fn static_index_still_works() {
+        // jet_pt[0] should remain static (Expr::Index → Var rewrite)
+        let expr = CompiledExpr::compile("jet_pt[0]").unwrap();
+        assert!(
+            expr.required_jagged_branches.is_empty(),
+            "static index should not create jagged branches"
+        );
+        assert!(
+            expr.required_branches.contains(&"jet_pt[0]".to_string()),
+            "expected jet_pt[0] in required_branches: {:?}",
+            expr.required_branches
+        );
+    }
+
+    #[test]
+    fn dynamic_index_eval_with_jagged() {
+        use crate::branch_reader::JaggedCol;
+
+        // jet_pt[idx] where idx comes from a scalar column
+        let expr = CompiledExpr::compile("jet_pt[idx]").unwrap();
+
+        // 4 entries; jet_pt is jagged: [10,20], [30], [40,50,60], []
+        let jagged = JaggedCol {
+            flat: vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+            offsets: vec![0, 2, 3, 6, 6],
+        };
+
+        // idx = [1, 0, 2, 0] → expect [20, 30, 60, 0(OOR)]
+        let idx_col = vec![1.0, 0.0, 2.0, 0.0];
+
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "idx");
+                idx_col.as_slice()
+            })
+            .collect();
+
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "jet_pt");
+                &jagged
+            })
+            .collect();
+
+        let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(result, vec![20.0, 30.0, 60.0, 0.0]);
+    }
+
+    #[test]
+    fn dynamic_index_negative_to_oor() {
+        use crate::branch_reader::JaggedCol;
+
+        let expr = CompiledExpr::compile("x[idx]").unwrap();
+
+        let jagged = JaggedCol {
+            flat: vec![100.0, 200.0],
+            offsets: vec![0, 2],
+        };
+
+        // Negative index → clamped to 0 by max(0.0) → gets first element
+        let idx_col = vec![-1.0];
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|_| idx_col.as_slice())
+            .collect();
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|_| &jagged)
+            .collect();
+
+        let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        // -1.0.max(0.0) = 0.0 as usize = 0 → x[0] = 100.0
+        assert_eq!(result, vec![100.0]);
+    }
+
+    #[test]
+    fn dynamic_index_float_truncates() {
+        use crate::branch_reader::JaggedCol;
+
+        let expr = CompiledExpr::compile("x[idx]").unwrap();
+
+        let jagged = JaggedCol {
+            flat: vec![10.0, 20.0, 30.0],
+            offsets: vec![0, 3],
+        };
+
+        // 1.7 → truncated to 1 → x[1] = 20.0
+        let idx_col = vec![1.7];
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|_| idx_col.as_slice())
+            .collect();
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|_| &jagged)
+            .collect();
+
+        let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(result, vec![20.0]);
+    }
+
+    #[test]
+    fn dynamic_index_expression() {
+        use crate::branch_reader::JaggedCol;
+
+        // jet_pt[njet - 1]: index by expression
+        let expr = CompiledExpr::compile("jet_pt[njet - 1]").unwrap();
+
+        // 3 entries; jet_pt: [10,20,30], [40,50], [60]
+        let jagged = JaggedCol {
+            flat: vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+            offsets: vec![0, 3, 5, 6],
+        };
+
+        // njet = [3, 2, 1] → index = [2, 1, 0] → expect [30, 50, 60]
+        let njet_col = vec![3.0, 2.0, 1.0];
+
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "njet");
+                njet_col.as_slice()
+            })
+            .collect();
+
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "jet_pt");
+                &jagged
+            })
+            .collect();
+
+        let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(result, vec![30.0, 50.0, 60.0]);
     }
 }

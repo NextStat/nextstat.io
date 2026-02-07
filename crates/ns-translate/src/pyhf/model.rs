@@ -277,6 +277,45 @@ impl HistFactoryModel {
         Ok(offset)
     }
 
+    /// Find a signal sample by name and return its flat GPU index + bin range.
+    ///
+    /// Searches all channels for a sample with the given name. Returns the
+    /// flat sample index (in `serialize_for_gpu()` order), the first main-bin
+    /// offset, and the number of bins. Used by the differentiable layer.
+    ///
+    /// **Limitation**: Returns the *first* match only. For multi-channel
+    /// workspaces where the same sample name appears in multiple channels,
+    /// only the first channel's signal sample will be differentiable. This is
+    /// sufficient for single-channel physics analyses but may need extension
+    /// for multi-channel signal injection.
+    pub fn signal_sample_gpu_info(
+        &self,
+        sample_name: &str,
+    ) -> Result<(u32, u32, u32)> {
+        let mut flat_sample_idx: u32 = 0;
+        let mut main_bin_offset: u32 = 0;
+
+        for channel in &self.channels {
+            let channel_n_bins =
+                channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0) as u32;
+
+            for sample in &channel.samples {
+                if sample.name == sample_name {
+                    let n_bins = sample.nominal.len() as u32;
+                    return Ok((flat_sample_idx, main_bin_offset, n_bins));
+                }
+                flat_sample_idx += 1;
+            }
+
+            main_bin_offset += channel_n_bins;
+        }
+
+        Err(ns_core::Error::Validation(format!(
+            "Signal sample '{}' not found in any channel",
+            sample_name
+        )))
+    }
+
     /// Borrow the nominal main-bin yields for a given channel/sample.
     pub fn sample_nominal(&self, channel_idx: usize, sample_idx: usize) -> Result<&[f64]> {
         let ch = self.channels.get(channel_idx).ok_or_else(|| {

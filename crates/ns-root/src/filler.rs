@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::branch_reader::JaggedCol;
 use crate::error::{Result, RootError};
 use crate::expr::CompiledExpr;
 use crate::histogram::Histogram;
@@ -278,6 +279,184 @@ fn eval_expr_columns(
     } else {
         Ok(expr.eval_bulk(&cols))
     }
+}
+
+/// Evaluate a compiled expression using column data and jagged branches.
+fn eval_expr_columns_with_jagged(
+    expr: &CompiledExpr,
+    columns: &HashMap<String, Vec<f64>>,
+    jagged_columns: &HashMap<String, JaggedCol>,
+    n_entries: usize,
+) -> Result<Vec<f64>> {
+    let cols: Vec<&[f64]> = expr
+        .required_branches
+        .iter()
+        .map(|name| {
+            columns
+                .get(name.as_str())
+                .map(|v| v.as_slice())
+                .ok_or_else(|| RootError::Expression(format!("missing column: '{}'", name)))
+        })
+        .collect::<Result<_>>()?;
+
+    let jagged_refs: Vec<&JaggedCol> = expr
+        .required_jagged_branches
+        .iter()
+        .map(|name| {
+            jagged_columns
+                .get(name.as_str())
+                .ok_or_else(|| RootError::Expression(format!("missing jagged column: '{}'", name)))
+        })
+        .collect::<Result<_>>()?;
+
+    if cols.is_empty() && jagged_refs.is_empty() {
+        let val = expr.eval_row(&[]);
+        return Ok(vec![val; n_entries]);
+    }
+
+    if jagged_refs.is_empty() {
+        use crate::expr::DEFAULT_CHUNK_SIZE;
+        if n_entries > DEFAULT_CHUNK_SIZE * 2 {
+            return Ok(expr.eval_bulk_chunked(&cols, DEFAULT_CHUNK_SIZE));
+        }
+        return Ok(expr.eval_bulk(&cols));
+    }
+
+    Ok(expr.eval_bulk_with_jagged(&cols, &jagged_refs))
+}
+
+/// Fill multiple histograms with support for jagged (variable-length) branches.
+///
+/// Like [`fill_histograms`], but additionally accepts `jagged_columns` for
+/// expressions that use dynamic indexing (e.g. `jet_pt[njet-1]`).
+pub fn fill_histograms_with_jagged(
+    specs: &[HistogramSpec],
+    columns: &HashMap<String, Vec<f64>>,
+    jagged_columns: &HashMap<String, JaggedCol>,
+) -> Result<Vec<FilledHistogram>> {
+    if specs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let n_entries = columns
+        .values()
+        .next()
+        .map(|v| v.len())
+        .or_else(|| jagged_columns.values().next().map(|j| j.n_entries()))
+        .unwrap_or(0);
+
+    let mut var_vals: Vec<Vec<f64>> = Vec::with_capacity(specs.len());
+    let mut weight_vals: Vec<Option<Vec<f64>>> = Vec::with_capacity(specs.len());
+    let mut sel_vals: Vec<Option<Vec<f64>>> = Vec::with_capacity(specs.len());
+
+    for spec in specs {
+        var_vals.push(eval_expr_columns_with_jagged(
+            &spec.variable,
+            columns,
+            jagged_columns,
+            n_entries,
+        )?);
+        weight_vals.push(match &spec.weight {
+            Some(w) => {
+                Some(eval_expr_columns_with_jagged(w, columns, jagged_columns, n_entries)?)
+            }
+            None => None,
+        });
+        sel_vals.push(match &spec.selection {
+            Some(s) => {
+                Some(eval_expr_columns_with_jagged(s, columns, jagged_columns, n_entries)?)
+            }
+            None => None,
+        });
+    }
+
+    let mut results: Vec<FilledHistogram> = specs
+        .iter()
+        .map(|spec| {
+            let n_bins = spec.bin_edges.len() - 1;
+            FilledHistogram {
+                name: spec.name.clone(),
+                bin_edges: spec.bin_edges.clone(),
+                bin_content: vec![0.0; n_bins],
+                sumw2: vec![0.0; n_bins],
+                underflow: 0.0,
+                overflow: 0.0,
+                underflow_sumw2: 0.0,
+                overflow_sumw2: 0.0,
+                negative_weight_entries: 0,
+                entries: 0,
+            }
+        })
+        .collect();
+
+    for entry in 0..n_entries {
+        for (i, _spec) in specs.iter().enumerate() {
+            if let Some(ref sel) = sel_vals[i]
+                && sel[entry] <= 0.0
+            {
+                continue;
+            }
+
+            let val = var_vals[i][entry];
+            let mut weight = match &weight_vals[i] {
+                Some(w) => w[entry],
+                None => 1.0,
+            };
+
+            if weight < 0.0 {
+                match specs[i].negative_weight_policy {
+                    NegativeWeightPolicy::Allow => {
+                        results[i].negative_weight_entries += 1;
+                    }
+                    NegativeWeightPolicy::ClampToZero => {
+                        results[i].negative_weight_entries += 1;
+                        weight = 0.0;
+                    }
+                    NegativeWeightPolicy::Error => {
+                        return Err(RootError::HistogramFill(format!(
+                            "negative weight (spec='{}', entry={entry}, weight={weight})",
+                            specs[i].name
+                        )));
+                    }
+                }
+            }
+
+            let w2 = weight * weight;
+            let edges = &results[i].bin_edges;
+            let n_bins = results[i].bin_content.len();
+
+            if val < edges[0] {
+                results[i].underflow += weight;
+                results[i].underflow_sumw2 += w2;
+                if specs[i].flow_policy == FlowPolicy::Fold {
+                    results[i].bin_content[0] += weight;
+                    results[i].sumw2[0] += w2;
+                    results[i].entries += 1;
+                }
+                continue;
+            }
+            if val >= edges[edges.len() - 1] {
+                results[i].overflow += weight;
+                results[i].overflow_sumw2 += w2;
+                if specs[i].flow_policy == FlowPolicy::Fold {
+                    let last = n_bins - 1;
+                    results[i].bin_content[last] += weight;
+                    results[i].sumw2[last] += w2;
+                    results[i].entries += 1;
+                }
+                continue;
+            }
+
+            let bin = find_bin(edges, val);
+            if let Some(b) = bin {
+                results[i].bin_content[b] += weight;
+                results[i].sumw2[b] += w2;
+                results[i].entries += 1;
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]

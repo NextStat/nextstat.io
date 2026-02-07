@@ -13,7 +13,8 @@ def load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text())
 
 def test_ranking_artifact_contract():
-    ws = load_fixture("simple_workspace.json")
+    # Use a fixture with constrained nuisance parameters so ranking is non-empty.
+    ws = load_fixture("complex_workspace.json")
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
 
     artifact = nextstat.viz.ranking_artifact(model)

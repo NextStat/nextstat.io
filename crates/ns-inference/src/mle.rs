@@ -325,6 +325,27 @@ impl MaximumLikelihoodEstimator {
         result
     }
 
+    /// Minimize NLL for a [`HistFactoryModel`], reusing both the AD tape and NllScratch.
+    ///
+    /// This is the zero-alloc hot-loop entrypoint for workflows that repeatedly refit the same
+    /// model structure (profile scans, differentiable objectives, training loops).
+    pub fn fit_minimum_histfactory_with_tape_reuse(
+        &self,
+        model: &HistFactoryModel,
+        tape: &mut ns_ad::tape::Tape,
+        scratch: &mut NllScratch,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let initial_params: Vec<f64> = model.parameter_init();
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        self.fit_minimum_histfactory_from_with_bounds_reuse(
+            model,
+            &initial_params,
+            &bounds,
+            tape,
+            scratch,
+        )
+    }
+
     /// Minimize NLL for a [`HistFactoryModel`] from an explicit starting point, reusing a caller-provided AD tape.
     ///
     /// This is the HistFactory equivalent of [`fit_minimum_from`] and is intended for warm-started
@@ -799,6 +820,185 @@ impl MaximumLikelihoodEstimator {
         });
 
         Ok(ranking)
+    }
+
+    /// Discovery-style test statistic `q0 = 2*(NLL(mu=0) - NLL_hat)` and its gradient
+    /// w.r.t. the nominal yields of a single sample (main bins).
+    ///
+    /// The gradient is computed for the profiled objective via the envelope theorem:
+    /// it is the partial derivative at the profiled optima.
+    ///
+    /// The returned gradient has length equal to the number of bins in the specified channel.
+    pub fn q0_like_loss_and_grad_sample_nominal(
+        &self,
+        model: &HistFactoryModel,
+        channel_idx: usize,
+        sample_idx: usize,
+    ) -> Result<(f64, Vec<f64>)> {
+        let poi = model
+            .poi_index()
+            .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
+
+        // Validate nominal-override semantics for this sample.
+        model.validate_sample_nominal_override_linear_safe(channel_idx, sample_idx)?;
+
+        let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+        let mut scratch = NllScratch::for_model(model);
+
+        // Free fit: unconditional MLE.
+        let free = self.fit_minimum_histfactory_with_tape_reuse(model, &mut tape, &mut scratch)?;
+        if !free.converged {
+            return Err(ns_core::Error::Validation(format!(
+                "Free fit did not converge: {}",
+                free.message
+            )));
+        }
+        let mu_hat = free.parameters[poi];
+        let nll_hat = free.fval;
+
+        // Conditional fit at mu=0 (bounds clamping; no model clone).
+        let base_bounds = model.parameter_bounds();
+        let mut bounds0 = base_bounds.clone();
+        bounds0[poi] = (0.0, 0.0);
+        let mut warm0 = free.parameters.clone();
+        warm0[poi] = 0.0;
+
+        let fixed0 = self.fit_minimum_histfactory_from_with_bounds_reuse(
+            model,
+            &warm0,
+            &bounds0,
+            &mut tape,
+            &mut scratch,
+        )?;
+        if !fixed0.converged {
+            return Err(ns_core::Error::Validation(format!(
+                "Fixed fit (mu=0) did not converge: {}",
+                fixed0.message
+            )));
+        }
+
+        let llr = 2.0 * (fixed0.fval - nll_hat);
+        let q0 = llr.max(0.0);
+
+        // One-sided discovery test: if mu_hat < 0, q0 = 0 and gradient is 0.
+        if mu_hat < 0.0 || q0 == 0.0 {
+            let n_bins = model.channel_bin_count(channel_idx)?;
+            return Ok((0.0, vec![0.0; n_bins]));
+        }
+
+        let prepared = model.prepare();
+        let n_bins = model.channel_bin_count(channel_idx)?;
+        let mut grad_free = vec![0.0; n_bins];
+        let mut grad_fixed = vec![0.0; n_bins];
+
+        prepared.grad_nll_wrt_sample_nominal_main_reuse(
+            &free.parameters,
+            &mut scratch,
+            channel_idx,
+            sample_idx,
+            &mut grad_free,
+        )?;
+        prepared.grad_nll_wrt_sample_nominal_main_reuse(
+            &fixed0.parameters,
+            &mut scratch,
+            channel_idx,
+            sample_idx,
+            &mut grad_fixed,
+        )?;
+
+        let mut grad = vec![0.0; n_bins];
+        for i in 0..n_bins {
+            grad[i] = 2.0 * (grad_fixed[i] - grad_free[i]);
+        }
+
+        Ok((q0, grad))
+    }
+
+    /// Upper-limit-style test statistic `q_mu` (pyhf `qtilde`) and its gradient
+    /// w.r.t. the nominal yields of a single sample (main bins).
+    ///
+    /// This follows the pyhf convention for `q_mu`:
+    /// - `q_mu = 2*(NLL(mu_test) - NLL_hat)`, clipped at 0
+    /// - if `mu_hat > mu_test`, `q_mu = 0` (one-sided)
+    pub fn qmu_like_loss_and_grad_sample_nominal(
+        &self,
+        model: &HistFactoryModel,
+        mu_test: f64,
+        channel_idx: usize,
+        sample_idx: usize,
+    ) -> Result<(f64, Vec<f64>)> {
+        let poi = model
+            .poi_index()
+            .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
+
+        model.validate_sample_nominal_override_linear_safe(channel_idx, sample_idx)?;
+
+        let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+        let mut scratch = NllScratch::for_model(model);
+
+        let free = self.fit_minimum_histfactory_with_tape_reuse(model, &mut tape, &mut scratch)?;
+        if !free.converged {
+            return Err(ns_core::Error::Validation(format!(
+                "Free fit did not converge: {}",
+                free.message
+            )));
+        }
+        let mu_hat = free.parameters[poi];
+        let nll_hat = free.fval;
+
+        let base_bounds = model.parameter_bounds();
+        let mut bounds = base_bounds.clone();
+        bounds[poi] = (mu_test, mu_test);
+        let mut warm = free.parameters.clone();
+        warm[poi] = mu_test;
+
+        let fixed = self.fit_minimum_histfactory_from_with_bounds_reuse(
+            model,
+            &warm,
+            &bounds,
+            &mut tape,
+            &mut scratch,
+        )?;
+        if !fixed.converged {
+            return Err(ns_core::Error::Validation(format!(
+                "Fixed fit (mu={}) did not converge: {}",
+                mu_test, fixed.message
+            )));
+        }
+
+        let llr = 2.0 * (fixed.fval - nll_hat);
+        let q_mu = llr.max(0.0);
+        if mu_hat > mu_test || q_mu == 0.0 {
+            let n_bins = model.channel_bin_count(channel_idx)?;
+            return Ok((0.0, vec![0.0; n_bins]));
+        }
+
+        let prepared = model.prepare();
+        let n_bins = model.channel_bin_count(channel_idx)?;
+        let mut grad_free = vec![0.0; n_bins];
+        let mut grad_fixed = vec![0.0; n_bins];
+
+        prepared.grad_nll_wrt_sample_nominal_main_reuse(
+            &free.parameters,
+            &mut scratch,
+            channel_idx,
+            sample_idx,
+            &mut grad_free,
+        )?;
+        prepared.grad_nll_wrt_sample_nominal_main_reuse(
+            &fixed.parameters,
+            &mut scratch,
+            channel_idx,
+            sample_idx,
+            &mut grad_fixed,
+        )?;
+
+        let mut grad = vec![0.0; n_bins];
+        for i in 0..n_bins {
+            grad[i] = 2.0 * (grad_fixed[i] - grad_free[i]);
+        }
+
+        Ok((q_mu, grad))
     }
 
     // --- GPU-accelerated methods (requires `cuda` feature) ---
@@ -1601,6 +1801,124 @@ mod tests {
             result.final_grad_norm,
             result.initial_nll,
             result.n_active_bounds
+        );
+    }
+
+    #[test]
+    fn test_q0_like_grad_nominal_finite_diff_simple() {
+        let json = include_str!("../../../tests/fixtures/simple_workspace.json");
+        let workspace: Workspace = serde_json::from_str(json).unwrap();
+        let mut model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let ch = model.channel_index("singlechannel").unwrap();
+        let s = model.sample_index(ch, "signal").unwrap();
+        model.validate_sample_nominal_override_linear_safe(ch, s).unwrap();
+
+        let base = model.sample_nominal(ch, s).unwrap().to_vec();
+
+        let mle = MaximumLikelihoodEstimator::with_config(OptimizerConfig {
+            max_iter: 400,
+            tol: 1e-6,
+            m: 10,
+        });
+
+        let (q0, grad) = mle.q0_like_loss_and_grad_sample_nominal(&model, ch, s).unwrap();
+        assert!(q0.is_finite());
+        assert_eq!(grad.len(), base.len());
+
+        // Pick a bin away from zero if possible to reduce clamp artifacts.
+        let mut idx = 0usize;
+        for (i, &v) in base.iter().enumerate() {
+            if v > 0.5 {
+                idx = i;
+                break;
+            }
+        }
+
+        let eps = 1e-3_f64.max(1e-3 * base[idx].abs());
+
+        let mut plus = base.clone();
+        plus[idx] += eps;
+        model.set_sample_nominal(ch, s, &plus).unwrap();
+        let (q0_p, _) = mle.q0_like_loss_and_grad_sample_nominal(&model, ch, s).unwrap();
+
+        let mut minus = base.clone();
+        minus[idx] -= eps;
+        model.set_sample_nominal(ch, s, &minus).unwrap();
+        let (q0_m, _) = mle.q0_like_loss_and_grad_sample_nominal(&model, ch, s).unwrap();
+
+        model.set_sample_nominal(ch, s, &base).unwrap();
+
+        let fd = (q0_p - q0_m) / (2.0 * eps);
+        let g = grad[idx];
+        let denom = fd.abs().max(g.abs()).max(1e-6);
+        let rel = (fd - g).abs() / denom;
+        assert!(
+            rel < 5e-2,
+            "finite-diff mismatch: idx={}, fd={}, grad={}, rel={}",
+            idx,
+            fd,
+            g,
+            rel
+        );
+    }
+
+    #[test]
+    fn test_qmu_like_grad_nominal_finite_diff_simple() {
+        let json = include_str!("../../../tests/fixtures/simple_workspace.json");
+        let workspace: Workspace = serde_json::from_str(json).unwrap();
+        let mut model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let ch = model.channel_index("singlechannel").unwrap();
+        let s = model.sample_index(ch, "signal").unwrap();
+        model.validate_sample_nominal_override_linear_safe(ch, s).unwrap();
+
+        let base = model.sample_nominal(ch, s).unwrap().to_vec();
+
+        let mle = MaximumLikelihoodEstimator::with_config(OptimizerConfig {
+            max_iter: 400,
+            tol: 1e-6,
+            m: 10,
+        });
+
+        // Pick mu_test above typical mu_hat so we don't hit the one-sided clip.
+        let mu_test = 5.0;
+
+        let (q, grad) = mle
+            .qmu_like_loss_and_grad_sample_nominal(&model, mu_test, ch, s)
+            .unwrap();
+        assert!(q.is_finite());
+        assert_eq!(grad.len(), base.len());
+
+        let idx = 0usize;
+        let eps = 1e-3_f64.max(1e-3 * base[idx].abs());
+
+        let mut plus = base.clone();
+        plus[idx] += eps;
+        model.set_sample_nominal(ch, s, &plus).unwrap();
+        let (q_p, _) = mle
+            .qmu_like_loss_and_grad_sample_nominal(&model, mu_test, ch, s)
+            .unwrap();
+
+        let mut minus = base.clone();
+        minus[idx] -= eps;
+        model.set_sample_nominal(ch, s, &minus).unwrap();
+        let (q_m, _) = mle
+            .qmu_like_loss_and_grad_sample_nominal(&model, mu_test, ch, s)
+            .unwrap();
+
+        model.set_sample_nominal(ch, s, &base).unwrap();
+
+        let fd = (q_p - q_m) / (2.0 * eps);
+        let g = grad[idx];
+        let denom = fd.abs().max(g.abs()).max(1e-6);
+        let rel = (fd - g).abs() / denom;
+        assert!(
+            rel < 5e-2,
+            "finite-diff mismatch: fd={}, grad={}, rel={}",
+            fd,
+            g,
+            rel
         );
     }
 }

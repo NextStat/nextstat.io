@@ -73,6 +73,9 @@ pub mod toybased;
 /// Toy data generation (Asimov + Poisson).
 pub mod toys;
 
+/// Differentiable NLL session for PyTorch zero-copy integration (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod differentiable;
 /// GPU-accelerated batch toy fitting (requires `cuda` feature + NVIDIA GPU).
 #[cfg(feature = "cuda")]
 pub mod gpu_batch;
@@ -92,6 +95,8 @@ pub use batch::{fit_toys_batch, is_accelerate_available};
 pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
+#[cfg(feature = "cuda")]
+pub use differentiable::DifferentiableSession;
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]

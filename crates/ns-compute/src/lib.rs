@@ -45,6 +45,10 @@ pub mod metal_types;
 #[cfg(feature = "cuda")]
 pub mod cuda_batch;
 
+/// CUDA differentiable NLL accelerator for PyTorch zero-copy integration.
+#[cfg(feature = "cuda")]
+pub mod differentiable;
+
 /// Metal batch NLL+gradient accelerator (requires `metal` feature + Apple Silicon at runtime).
 #[cfg(feature = "metal")]
 pub mod metal_batch;

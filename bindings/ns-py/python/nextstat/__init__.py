@@ -65,6 +65,7 @@ set_eval_mode = _get("set_eval_mode")
 get_eval_mode = _get("get_eval_mode")
 has_accelerate = _get("has_accelerate")
 has_cuda = _get("has_cuda")
+DifferentiableSession = _get("DifferentiableSession")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
@@ -171,6 +172,7 @@ __all__ = [
     "get_eval_mode",
     "has_accelerate",
     "has_cuda",
+    "DifferentiableSession",
     "asimov_data",
     "poisson_toys",
     "ranking",

@@ -40,12 +40,13 @@ pub mod objects;
 pub mod rbuffer;
 pub mod tree;
 
-pub use branch_reader::BranchReader;
+pub use branch_reader::{BranchReader, JaggedCol};
 pub use error::{Result, RootError};
 pub use expr::{CompiledExpr, DEFAULT_CHUNK_SIZE};
 pub use file::RootFile;
 pub use filler::{
     FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, fill_histograms,
+    fill_histograms_with_jagged,
 };
 pub use histogram::{Histogram, HistogramWithFlows};
 pub use key::KeyInfo;
