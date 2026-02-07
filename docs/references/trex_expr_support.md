@@ -55,7 +55,7 @@ Binary:
 - `eval_row`: scalar evaluation for one event (used in tests/diagnostics)
 - `eval_bulk`: columnar evaluation with a vectorized fast path (falls back to row-wise when control-flow is present)
 
-## Not supported yet (planned)
+## Limitations / known gaps
 
 ### Vector branches (real `jet_pt[0]`)
 Goal: allow expressions like `jet_pt[0]` when `jet_pt` is stored as a vector branch in a ROOT TTree.
@@ -64,7 +64,10 @@ Current status:
 - Implemented for:
   - uproot-style jagged leaflist branches with per-basket entry-offset tables,
   - fixed-length arrays (heuristic based on decoded length vs entries).
-- Not yet implemented for true `TBranchElement` / STL `std::vector<T>` branches (different streamer/layout).
+- Best-effort implemented for unsplit `TBranchElement` / STL `std::vector<T>` branches when the basket payload matches the common numeric layout:
+  - per entry: `u32 len` (big-endian) followed by `len` elements,
+  - element type inferred from the branch leaf type (with fallback probes).
+  This is sufficient for typical `branch[idx]` usage in selections/weights but is not a full ROOT streamer implementation.
 
 BMCP:
 - Epic: `TREx Replacement: Expression Compatibility (TTreeFormula subset + vector branches)` (`53b3d3fc-ef1f-42b2-b067-b4df90c1044e`)
