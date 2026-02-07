@@ -524,32 +524,40 @@ def record_one_case(
     exp = _build_expected_data(workspace_json_text=ws_text, root_fit=root_fit)
 
     # Build baseline payload (numbers-first).
+    # Align meta with `docs/schemas/trex/baseline_v0.schema.json`.
+    tool_versions: Dict[str, Any] = {"root": root_version, "trexfitter": trex_version}
+    try:
+        import nextstat  # type: ignore
+
+        tool_versions["nextstat"] = getattr(nextstat, "__version__", None)
+    except Exception:
+        tool_versions["nextstat"] = None
+
     baseline: Dict[str, Any] = {
         "schema_version": "trex_baseline_v0",
         "meta": {
-            "reference": {
-                "tool": "trexfitter" if trex_cmdline else "histfactory_export",
-                "root_version": root_version,
-                "trexfitter_version": trex_version,
-                "seed": int(seed) if seed is not None else None,
-            },
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            # Determinism in this context means we ran a single reference fit and store stable ordering.
+            "deterministic": True,
+            "threads": 1,
+            "seed": int(seed) if seed is not None else None,
+            "tool_versions": tool_versions,
             "inputs": {
                 "export_dir": str(export.export_dir),
                 "combination_xml": str(export.combination_xml),
                 "rootdir": str(resolved_rootdir),
                 "hashes": input_hashes,
             },
+            # Extra context (non-contract) for reproducibility.
             "baseline_env": environment,
+            "reference": {"mode": "trexfitter" if trex_cmdline else "histfactory_export"},
         },
         "fit": {
             "twice_nll": float(root_fit.get("twice_nll")),
             "parameters": list(root_fit.get("parameters") or []),
             "covariance": None,
         },
-        "expected_data": {
-            "pyhf_main": exp["pyhf_main"],
-            "pyhf_with_aux": exp["pyhf_with_aux"],
-        },
+        "expected_data": {"pyhf_main": exp["pyhf_main"], "pyhf_with_aux": exp["pyhf_with_aux"]},
     }
 
     # Extra debug info (non-contract).

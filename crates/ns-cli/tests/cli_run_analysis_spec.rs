@@ -26,6 +26,111 @@ fn run(args: &[&str]) -> Output {
 }
 
 #[test]
+fn run_accepts_analysis_spec_v0_histfactory_import_only_with_bundle() {
+    let root = repo_root();
+    let export_dir = root.join("tests/fixtures/histfactory");
+    let spec_dir = tmp_dir("run_spec_histfactory_bundle");
+    let bundle_dir = tmp_dir("run_spec_bundle_dir");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+
+    // Ensure clean.
+    let _ = std::fs::remove_dir_all(&bundle_dir);
+
+    let workspace_json = spec_dir.join("workspace.json");
+    let spec_path = spec_dir.join("analysis.yaml");
+
+    let yaml = format!(
+        r#"$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: "fixture"
+  description: "fixture"
+  tags: ["test"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: "{export_dir}"
+    combination_xml: null
+    measurement: NominalMeasurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: "{workspace_json}"
+
+  fit:
+    enabled: false
+    output_json: "{fit_json}"
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: "{scan_json}"
+
+  report:
+    enabled: false
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+"#,
+        export_dir = export_dir.display(),
+        workspace_json = workspace_json.display(),
+        fit_json = spec_dir.join("fit.json").display(),
+        scan_json = spec_dir.join("scan.json").display(),
+        report_dir = spec_dir.join("report").display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run(&[
+        "--bundle",
+        bundle_dir.to_string_lossy().as_ref(),
+        "run",
+        "--config",
+        spec_path.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        out.status.success(),
+        "run should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(workspace_json.exists(), "missing workspace.json: {}", workspace_json.display());
+
+    // Bundle presence (contract).
+    assert!(bundle_dir.join("meta.json").exists());
+    assert!(bundle_dir.join("provenance.json").exists());
+    assert!(bundle_dir.join("manifest.json").exists());
+    assert!(bundle_dir.join("inputs/analysis.yaml").exists());
+    assert!(bundle_dir.join("inputs/histfactory/combination.xml").exists());
+    assert!(bundle_dir.join("outputs/workspace.json").exists());
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+    let _ = std::fs::remove_dir_all(&bundle_dir);
+}
+
+#[test]
 fn run_accepts_analysis_spec_v0_histfactory_report_only() {
     let root = repo_root();
     let export_dir = root.join("tests/fixtures/histfactory");

@@ -187,21 +187,6 @@ fn rel_display(root: &Path, p: &Path) -> String {
     p.strip_prefix(root).unwrap_or(p).display().to_string()
 }
 
-fn describe_file(role: &str, original: &Path, bundle_root: &Path, bundle_path: &Path) -> Result<()> {
-    if !bundle_path.is_file() {
-        anyhow::bail!(
-            "expected bundle file for role={role} but it does not exist: {}",
-            bundle_path.display()
-        );
-    }
-    if !original.exists() {
-        // Best-effort: original may have been a temp file deleted after run.
-        // Manifest still guards the bundled copy.
-        return Ok(());
-    }
-    Ok(())
-}
-
 fn record_prov_file(
     list: &mut Vec<ProvenanceFile>,
     role: &str,
@@ -209,7 +194,12 @@ fn record_prov_file(
     bundle_root: &Path,
     bundle_path: &Path,
 ) -> Result<()> {
-    describe_file(role, original, bundle_root, bundle_path)?;
+    if !bundle_path.is_file() {
+        anyhow::bail!(
+            "expected bundle file for role={role} but it does not exist: {}",
+            bundle_path.display()
+        );
+    }
     list.push(ProvenanceFile {
         role: role.to_string(),
         original_path: original.display().to_string(),

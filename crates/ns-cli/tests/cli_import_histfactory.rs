@@ -52,6 +52,28 @@ fn import_histfactory_writes_workspace_json_to_stdout() {
 }
 
 #[test]
+fn import_histfactory_dir_autodiscovers_combination_xml() {
+    let dir = fixture_path("histfactory");
+    let expected = fixture_path("histfactory/workspace.json");
+    assert!(dir.is_dir(), "missing fixture dir: {}", dir.display());
+    assert!(expected.exists(), "missing fixture: {}", expected.display());
+
+    let out = run(&["import", "histfactory", "--dir", dir.to_string_lossy().as_ref()]);
+    assert!(
+        out.status.success(),
+        "import histfactory --dir should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let got: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    let want: serde_json::Value = serde_json::from_slice(&std::fs::read(&expected).unwrap())
+        .expect("expected fixture should be valid JSON");
+
+    assert_eq!(got, want, "workspace JSON mismatch");
+}
+
+#[test]
 fn import_histfactory_writes_workspace_json_to_file() {
     let xml = fixture_path("histfactory/combination.xml");
     let out_path = tmp_path("import_histfactory_workspace.json");

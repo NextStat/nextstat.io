@@ -13,6 +13,7 @@ This directory contains end-to-end tutorials for the implemented packs and workf
   - MLE fit, asymptotic CLs hypotest, upper limits, profile scans, plot-friendly artifacts.
 - ROOT/TRExFitter parity and reproducibility: `docs/tutorials/root-trexfitter-parity.md`
 - TREx analysis spec (YAML + schema + one-command runner): `docs/tutorials/trex-analysis-spec.md`
+- TREx replacement workflow (config → run → report): `docs/tutorials/trex-replacement-workflow.md`
 
 ## General statistics and modeling packs
 

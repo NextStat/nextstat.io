@@ -48,6 +48,7 @@ pub struct RunPlan {
 pub enum ImportPlan {
     HistfactoryXml { histfactory_xml: PathBuf },
     TrexConfigTxt { config_path: PathBuf, base_dir: PathBuf },
+    TrexConfigYaml { config_text: String, base_dir: PathBuf },
 }
 
 #[derive(Debug, Clone)]
@@ -123,9 +124,94 @@ pub struct TrexConfigTxtInputs {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TrexConfigYamlInputs {
-    // Parsed, but not executed by `nextstat run` yet.
-    #[allow(dead_code)]
     pub read_from: String,
+    #[serde(default)]
+    pub base_dir: Option<PathBuf>,
+    pub tree_name: String,
+    pub measurement: String,
+    pub poi: String,
+    pub regions: Vec<TrexYamlRegion>,
+    pub samples: Vec<TrexYamlSample>,
+    #[serde(default)]
+    pub systematics: Vec<TrexYamlSystematic>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrexYamlRegion {
+    pub name: String,
+    pub variable: String,
+    pub binning_edges: Vec<f64>,
+    #[serde(default)]
+    pub selection: Option<String>,
+    #[serde(default)]
+    pub data_file: Option<PathBuf>,
+    #[serde(default)]
+    pub data_tree_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrexYamlSampleKind {
+    Data,
+    Mc,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrexYamlNormSys {
+    pub name: String,
+    pub lo: f64,
+    pub hi: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrexYamlSample {
+    pub name: String,
+    pub kind: TrexYamlSampleKind,
+    pub file: PathBuf,
+    #[serde(default)]
+    pub tree_name: Option<String>,
+    #[serde(default)]
+    pub weight: Option<String>,
+    #[serde(default)]
+    pub regions: Option<Vec<String>>,
+    #[serde(default)]
+    pub norm_factors: Vec<String>,
+    #[serde(default)]
+    pub norm_sys: Vec<TrexYamlNormSys>,
+    #[serde(default)]
+    pub stat_error: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrexYamlSystematicType {
+    Norm,
+    Weight,
+    Tree,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrexYamlSystematic {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: TrexYamlSystematicType,
+    pub samples: Vec<String>,
+    #[serde(default)]
+    pub regions: Option<Vec<String>>,
+    #[serde(default)]
+    pub lo: Option<f64>,
+    #[serde(default)]
+    pub hi: Option<f64>,
+    #[serde(default)]
+    pub weight_up: Option<String>,
+    #[serde(default)]
+    pub weight_down: Option<String>,
+    #[serde(default)]
+    pub file_up: Option<PathBuf>,
+    #[serde(default)]
+    pub file_down: Option<PathBuf>,
+    #[serde(default)]
+    pub tree_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -267,6 +267,12 @@ enum Commands {
         command: ImportCommands,
     },
 
+    /// Export NextStat inputs into external formats (for cross-checks)
+    Export {
+        #[command(subcommand)]
+        command: ExportCommands,
+    },
+
     /// Time series and state space models (Phase 8)
     Timeseries {
         #[command(subcommand)]
@@ -458,6 +464,32 @@ enum ImportCommands {
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ExportCommands {
+    /// pyhf workspace.json → HistFactory XML + ROOT hists (via pyhf.writexml)
+    Histfactory {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output directory (will contain `combination.xml`, `data.root`, `HistFactorySchema.dtd`, and `channels/`)
+        #[arg(long)]
+        out_dir: PathBuf,
+
+        /// Overwrite existing out_dir contents.
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
+
+        /// Output prefix used by HistFactory (also names channel XML files).
+        #[arg(long, default_value = "results")]
+        prefix: String,
+
+        /// Python executable to use (default: python3).
+        #[arg(long)]
+        python: Option<PathBuf>,
     },
 }
 
@@ -820,6 +852,17 @@ fn main() -> Result<()> {
                 cli.bundle.as_ref(),
             ),
         },
+        Commands::Export { command } => match command {
+            ExportCommands::Histfactory { input, out_dir, overwrite, prefix, python } => {
+                cmd_export_histfactory(
+                    &input,
+                    &out_dir,
+                    overwrite,
+                    prefix.as_str(),
+                    python.as_ref(),
+                )
+            }
+        },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {
                 cmd_ts_kalman_filter(&input, output.as_ref(), cli.bundle.as_ref())
@@ -1165,6 +1208,87 @@ fn cmd_import_trex_config(
     let ws = ns_translate::trex::workspace_from_str(&text, base_dir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
+    Ok(())
+}
+
+fn cmd_export_histfactory(
+    input: &PathBuf,
+    out_dir: &PathBuf,
+    overwrite: bool,
+    prefix: &str,
+    python: Option<&PathBuf>,
+) -> Result<()> {
+    if prefix.trim().is_empty() {
+        anyhow::bail!("--prefix must be non-empty");
+    }
+
+    let input = input
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("failed to resolve input workspace: {}: {}", input.display(), e))?;
+    if !input.is_file() {
+        anyhow::bail!("input workspace not found: {}", input.display());
+    }
+
+    if out_dir.exists() {
+        if !out_dir.is_dir() {
+            anyhow::bail!("out_dir exists but is not a directory: {}", out_dir.display());
+        }
+        if !overwrite {
+            let mut rd = std::fs::read_dir(out_dir)?;
+            if rd.next().is_some() {
+                anyhow::bail!(
+                    "out_dir is not empty (pass --overwrite to allow): {}",
+                    out_dir.display()
+                );
+            }
+        }
+    } else {
+        std::fs::create_dir_all(out_dir)?;
+    }
+
+    let py = python
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("python3"));
+
+    let code = r#"
+import json
+import os
+from pathlib import Path
+
+import pyhf.writexml as wx
+
+ws_path = Path(os.environ["NS_WORKSPACE_JSON"])
+prefix = os.environ.get("NS_PREFIX", "results")
+
+spec = json.loads(ws_path.read_text(encoding="utf-8"))
+
+# Use relative paths so the export directory is self-contained.
+channels_dir = Path("channels")
+channels_dir.mkdir(parents=True, exist_ok=True)
+
+# Writes channels/*.xml, data.root, HistFactorySchema.dtd (in cwd), returns combination.xml bytes.
+combo = wx.writexml(spec, specdir=str(channels_dir), data_rootdir=".", resultprefix=str(prefix))
+Path("combination.xml").write_bytes(combo)
+"#;
+
+    let out = Command::new(&py)
+        .current_dir(out_dir)
+        .arg("-c")
+        .arg(code)
+        .env("NS_WORKSPACE_JSON", input)
+        .env("NS_PREFIX", prefix)
+        .output()
+        .map_err(|e| anyhow::anyhow!("failed to run python exporter ({}): {}", py.display(), e))?;
+
+    if !out.status.success() {
+        anyhow::bail!(
+            "python exporter failed ({}):\nstdout:\n{}\nstderr:\n{}",
+            py.display(),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
     Ok(())
 }
 
