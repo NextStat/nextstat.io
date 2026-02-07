@@ -277,8 +277,10 @@ impl ProfiledDifferentiableSession {
         };
 
         let max_iter = 200;
-        let mut lbfgs = LbfgsState::new(x0, bounds.to_vec(), 10, 1e-6);
+        let tol = 1e-5; // 1e-6 too tight — projected gradient lingers near bounds
+        let mut lbfgs = LbfgsState::new(x0, bounds.to_vec(), 10, tol);
 
+        let mut prev_nll = f64::INFINITY;
         for _ in 0..max_iter {
             let params = lbfgs.x.clone();
             let (nll, grad_params) = self.accel.nll_and_grad_params(&params, signal_ptr)?;
@@ -286,6 +288,12 @@ impl ProfiledDifferentiableSession {
             if lbfgs.converged {
                 break;
             }
+            // Accept convergence if NLL is stable (< 1e-10 change)
+            if (prev_nll - nll).abs() < 1e-10 && nll < prev_nll + 1e-12 {
+                lbfgs.converged = true;
+                break;
+            }
+            prev_nll = nll;
         }
 
         if !lbfgs.converged {

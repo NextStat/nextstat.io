@@ -16,7 +16,7 @@ ns-core.workspace = true
 ns-ad.workspace = true
 ns-compute.workspace = true
 ns-prob.workspace = true
-ns-translate.workspace = true
+ns-translate = { workspace = true, default-features = false }
 thiserror.workspace = true
 log.workspace = true
 nalgebra.workspace = true
@@ -29,7 +29,8 @@ rand_distr.workspace = true
 statrs.workspace = true
 
 [features]
-default = []
+default = ["root-io"]
+root-io = ["ns-translate/root-io"]
 accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
 cuda = ["ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-translate/metal", "ns-compute/metal"]

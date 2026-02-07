@@ -13,8 +13,8 @@ description = "WASM bindings for NextStat (NextStat Playground)"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ns-inference.workspace = true
-ns-translate.workspace = true
+ns-inference = { workspace = true, default-features = false }
+ns-translate = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 

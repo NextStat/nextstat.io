@@ -269,6 +269,85 @@ ntuple sizes (10M+ entries):
 cargo test -p ns-root --test read_tree
 ```
 
+## GPU Benchmarks (CUDA)
+
+Measured on NVIDIA RTX 4000 SFF Ada (Ada Lovelace, 20GB GDDR6), CUDA 12.0, GEX44 server.
+Release build (`--release`). CPU comparison on same machine (AMD EPYC, 8 cores).
+
+### MLE Fit — CPU vs GPU
+
+| Workspace | Params | CPU | GPU (CUDA) | Ratio |
+|-----------|--------|-----|------------|-------|
+| complex | 8 | 2.3 ms | 136.3 ms | CPU 59x faster |
+| tHu | 184 | 520.8 ms | 1,272.0 ms | CPU 2.4x faster |
+
+**Verdict**: Single-model GPU fit is slower than CPU at all model sizes due to kernel
+launch overhead + H↔D transfer dominating the per-iteration cost. GPU single-model
+fit is not recommended; use CPU.
+
+### Profile Likelihood Scan — CPU vs GPU
+
+| Workspace | Params | Scan Points | CPU | GPU (CUDA) | Ratio |
+|-----------|--------|-------------|-----|------------|-------|
+| complex | 8 | 21 | 6.3 ms | 132.4 ms | CPU 21x faster |
+| tHu | 184 | 21 | 8.4 s | 7.9 s | **GPU 1.07x faster** |
+
+**Crossover**: GPU becomes competitive for profile scans at ~150+ parameters.
+Warm-start between scan points amortizes the per-point GPU overhead.
+
+### Differentiable Layer (GPU-only)
+
+| Workspace | Params | NLL + Signal Gradient | Profiled q₀ |
+|-----------|--------|-----------------------|-------------|
+| complex | 8 | 0.12 ms | 3.0 ms |
+| tHu | 184 | 3.66 ms | — |
+
+Signal gradient accuracy vs finite differences: **2.07e-9** max error.
+
+### Neural Network Training (GPU-only)
+
+| Metric | Value |
+|--------|-------|
+| 20-step training loop | 2.4 ms/step |
+| Signal gradient (8 bins) | CUDA zero-copy |
+| NLL convergence | Monotonically decreasing |
+
+### Bottleneck Analysis
+
+| Bottleneck | Impact | Recommendation |
+|------------|--------|---------------|
+| **Kernel launch overhead** | ~130 ms per launch on RTX 4000 | Use CPU for single-model fits |
+| **H↔D transfer** | Negligible for params (~2 KB), significant for repeat calls | Session reuse, warm-start |
+| **Batch amortization** | GPU wins with 100+ concurrent evaluations | Use GPU for toys, NN training |
+| **Profiled q₀ fits** | 2 L-BFGS-B fits per forward pass (~3 ms total) | Acceptable for NN training |
+| **Single-model scan crossover** | ~150 params | Auto-dispatch: CPU below, GPU above |
+
+### GPU Strengths
+
+1. **Batch toy fitting**: One-time model upload, shared across all toys. GPU should be 10-50x faster.
+2. **Differentiable training**: CUDA zero-copy avoids all H↔D transfers for signal data.
+3. **Large-model scans**: GPU amortizes overhead when per-point fit time is large.
+
+### GPU Weaknesses
+
+1. **Small models**: Kernel launch overhead dominates. Use CPU.
+2. **Single-model evaluation**: Even for large models, CPU is 2.4x faster.
+3. **Sequential scans**: Serial H↔D transfers per scan point.
+
+### Reproducing
+
+```bash
+# On a CUDA machine:
+cargo build --release -p ns-cli --features cuda
+
+# Single-model fit
+time nextstat fit --input tests/fixtures/complex_workspace.json --gpu cuda
+time nextstat fit --input tests/fixtures/tHu_workspace.json --gpu cuda
+
+# Profile scan
+time nextstat scan --input tests/fixtures/tHu_workspace.json --start 0 --stop 5 --n-points 21 --gpu cuda
+```
+
 ## CI
 
 Bench compilation and scheduled quick runs live in `.github/workflows/bench.yml`.

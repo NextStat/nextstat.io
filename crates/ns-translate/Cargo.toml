@@ -15,7 +15,7 @@ description = "Format translators (pyhf JSON, HistFactory XML, ROOT) for NextSta
 ns-core.workspace = true
 ns-ad.workspace = true
 ns-compute.workspace = true
-ns-root.workspace = true
+ns-root = { workspace = true, optional = true }
 roxmltree = "0.21"
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -26,7 +26,8 @@ statrs.workspace = true
 json-patch.workspace = true
 
 [features]
-default = []
+default = ["root-io"]
+root-io = ["dep:ns-root"]
 accelerate = ["ns-compute/accelerate"]
 cuda = ["ns-compute/cuda"]
 metal = ["ns-compute/metal"]

@@ -94,8 +94,9 @@ fn decompress_lz4(data: &[u8], expected: usize) -> Result<Vec<u8>> {
 fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
     use std::io::Read;
 
-    let mut decoder =
-        zstd::stream::read::Decoder::new(data).map_err(|e| RootError::Decompression(format!("zstd init: {}", e)))?;
+    let mut source = data;
+    let mut decoder = ruzstd::decoding::StreamingDecoder::new(&mut source)
+        .map_err(|e| RootError::Decompression(format!("zstd init: {}", e)))?;
     let mut out = Vec::with_capacity(expected);
     decoder
         .read_to_end(&mut out)
@@ -104,12 +105,9 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
 }
 
 fn decompress_xz(data: &[u8], expected: usize) -> Result<Vec<u8>> {
-    use std::io::Read;
-
-    let mut decoder = xz2::read::XzDecoder::new(data);
+    let mut input = std::io::BufReader::new(data);
     let mut out = Vec::with_capacity(expected);
-    decoder
-        .read_to_end(&mut out)
+    lzma_rs::xz_decompress(&mut input, &mut out)
         .map_err(|e| RootError::Decompression(format!("xz: {}", e)))?;
     Ok(out)
 }
@@ -180,7 +178,10 @@ mod tests {
     #[test]
     fn zstd_round_trip() {
         let original = b"Hello ROOT ZSTD compression! Repeated data: BBBBBBBBBB";
-        let compressed = zstd::encode_all(&original[..], 3).unwrap();
+        let compressed = ruzstd::encoding::compress_to_vec(
+            &original[..],
+            ruzstd::encoding::CompressionLevel::Uncompressed,
+        );
         let block = make_root_block(b"ZS", 0x04, &compressed, original.len());
 
         let result = decompress(&block, original.len()).unwrap();
@@ -189,12 +190,9 @@ mod tests {
 
     #[test]
     fn xz_round_trip() {
-        use std::io::Write;
-
         let original = b"Hello ROOT XZ compression! Repeated data: CCCCCCCCCC";
-        let mut encoder = xz2::write::XzEncoder::new(Vec::new(), 6);
-        encoder.write_all(original).unwrap();
-        let compressed = encoder.finish().unwrap();
+        let mut compressed = Vec::new();
+        lzma_rs::xz_compress(&mut std::io::BufReader::new(&original[..]), &mut compressed).unwrap();
         let block = make_root_block(b"XZ", 0x05, &compressed, original.len());
 
         let result = decompress(&block, original.len()).unwrap();

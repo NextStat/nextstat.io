@@ -40,12 +40,53 @@ Both CUDA and Metal support the differentiable NLL layer:
 | Multi-channel signal | Supported | Supported |
 | PyTorch integration | Direct (same CUDA context) | Via CPU tensor bridge |
 
+## Batch Toy Fitting
+
+Both CUDA and Metal support GPU-accelerated batch toy fitting for CLs hypothesis testing:
+
+| Entry Point | Description |
+|-------------|-------------|
+| `fit_toys_batch_gpu` / `fit_toys_batch_metal` | High-level: generate toys from model params |
+| `fit_toys_from_data_gpu` / `fit_toys_from_data_metal` | Low-level: custom expected data, init, bounds |
+| `hypotest_qtilde_toys_gpu(device="cuda"\|"metal")` | Full CLs workflow: Phase A (CPU baseline) + Phase B (GPU ensemble) |
+
+Architecture: Phase A performs 3 baseline CPU fits (free, conditional at μ_test, conditional at μ=0), then Phase B dispatches to the appropriate GPU backend for batch toy ensemble generation.
+
+CLI: `nextstat hypotest-toys --gpu cuda` or `nextstat hypotest-toys --gpu metal`.
+
+## Performance (RTX 4000 SFF Ada, CUDA 12.0)
+
+| Operation | CPU | CUDA | Winner |
+|-----------|-----|------|--------|
+| MLE fit (8 params) | 2.3 ms | 136.3 ms | CPU 59x |
+| MLE fit (184 params) | 520.8 ms | 1,272.0 ms | CPU 2.4x |
+| Profile scan (184p, 21pt) | 8.4 s | 7.9 s | **GPU 1.07x** |
+| Diff NLL + grad (8 params) | — | 0.12 ms | GPU-only |
+| Diff NLL + grad (184 params) | — | 3.66 ms | GPU-only |
+| Profiled q₀ (8 params) | — | 3.0 ms | GPU-only |
+| NN training loop | — | 2.4 ms/step | GPU-only |
+
+**Recommendation**: Use GPU for batch workloads (toys, NN training, large-model scans).
+Use CPU for single-model fits.
+
+## Known Issues (Fixed)
+
+- **Batch toys memcpy_dtoh panic**: cudarc 0.19 requires `dst.len() >= src.len()` for
+  device-to-host copies. When toys converge and `n_active < max_batch`, the host buffer
+  was too small. Fix: allocate host buffers at `max_batch` size and truncate.
+- **ProfiledDifferentiableSession convergence**: L-BFGS-B tolerance 1e-6 too tight for
+  projected gradient near parameter bounds. Fix: tolerance 1e-5 + NLL stability criterion.
+
 ## Validation
 
 ### Rust integration tests
 
 ```bash
+# Single-model fit + gradient parity
 cargo test -p ns-inference --features cuda -- --nocapture
+
+# Metal batch tests
+cargo test -p ns-inference --features metal -- --nocapture
 ```
 
 Tests in `crates/ns-inference/src/gpu_single.rs`:

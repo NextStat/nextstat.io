@@ -236,11 +236,16 @@ impl CudaBatchAccelerator {
         }
 
         // D→H: download results
-        let mut nll_out = vec![0.0f64; n_active];
-        let mut grad_out = vec![0.0f64; n_active * self.n_params];
+        // Allocate at max_batch size: cudarc memcpy_dtoh requires dst.len() >= src.len(),
+        // and device buffers are pre-allocated at max_batch capacity.
+        let mut nll_out = vec![0.0f64; self.max_batch];
+        let mut grad_out = vec![0.0f64; self.max_batch * self.n_params];
         self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
         self.stream.memcpy_dtoh(&self.d_grad_out, &mut grad_out).map_err(|e| cuda_err(e))?;
         self.stream.synchronize().map_err(|e| cuda_err(e))?;
+
+        nll_out.truncate(n_active);
+        grad_out.truncate(n_active * self.n_params);
 
         Ok((nll_out, grad_out))
     }
@@ -297,10 +302,12 @@ impl CudaBatchAccelerator {
             builder.launch(config).map_err(|e| cuda_err(format!("launch batch_nll_only: {e}")))?;
         }
 
-        let mut nll_out = vec![0.0f64; n_active];
+        // Allocate at max_batch size (cudarc requires dst.len() >= src.len())
+        let mut nll_out = vec![0.0f64; self.max_batch];
         self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
         self.stream.synchronize().map_err(|e| cuda_err(e))?;
 
+        nll_out.truncate(n_active);
         Ok(nll_out)
     }
 

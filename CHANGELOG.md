@@ -15,7 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
   - `nextstat.fit_toys_batch_gpu(model, ..., device="metal")`, `--gpu metal` CLI flag
 - **Apple Accelerate** — vDSP/vForce vectorized NLL on macOS. <5% overhead vs naive summation.
 - **CPU batch toys** — Rayon-parallel toy fitting with per-thread tape reuse, seed-based reproducibility.
-- Reverse-mode tape optimization: zero-realloc gradient reuse, inlined tape ops.
+- Reverse-mode tape optimization: faster gradient computation with reduced memory allocation.
 
 #### Differentiable Analysis (PyTorch)
 
@@ -24,7 +24,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `ProfiledDifferentiableSession`: profiled test statistics with envelope-theorem gradients — enables NN → signal histogram → profiled CLs → loss.
 - `nextstat.torch` Python module: `NextStatNLLFunction`, `NextStatProfiledQ0Function` (autograd), `NextStatLayer(nn.Module)`.
 - `profiled_zmu_loss()` — Zμ loss wrapper (sqrt(qμ) with numerical stability) for signal-strength optimization.
-- Fit convergence check: returns error if GPU profile fit fails to converge (envelope theorem requires ∂NLL/∂θ = 0).
+- Fit convergence check: returns error if GPU profile fit fails to converge.
 
 #### Gymnasium RL Environment
 
@@ -37,7 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 - **EvalMode** — process-wide flag: **Parity** (Kahan summation, single-threaded, bit-exact) vs **Fast** (default, SIMD/GPU, multi-threaded).
 - CLI: `--parity` · Python: `nextstat.set_eval_mode("parity")`.
-- 7-tier tolerance contract vs pyhf (per-bin ~1e-14 worst case). 45+ parity tests.
+- 7-tier tolerance contract vs pyhf (per-bin ~1e-14 worst case).
 
 #### Native ROOT I/O
 
@@ -45,7 +45,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **Expression engine** — bytecode-compiled, vectorized. Full grammar: arithmetic, comparisons, boolean logic, ternary, builtins. Python wrapper: `nextstat.analysis.expr_eval`.
 - **Histogram filler** — single-pass with selection cuts, weights, variable binning.
 - **Unsplit vector branch decoding** — best-effort decoding for `std::vector<T>` branches without offset tables.
-- **~8.5x faster** than uproot+numpy on the full pipeline (benchmarked on 1k entries, 7 branches).
+- **~8.5× faster** than uproot+numpy on the full pipeline.
 
 #### Ntuple-to-Workspace Pipeline
 
@@ -64,7 +64,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 #### Systematics Preprocessing
 
 - **Smoothing**: 353QH,twice algorithm (ROOT `TH1::Smooth` equivalent) + Gaussian kernel.
-- **Pruning**: shape, norm, and overall pruning with audit trail (`PruneDecision`).
+- **Pruning**: shape, norm, and overall pruning with audit trail.
 - **`nextstat preprocess`** CLI with declarative YAML config and content-hash caching.
 - Recommended order: hygiene → symmetrize → smooth → prune.
 
@@ -139,11 +139,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ### Changed
 
-- **Compiled modifier dataflow** — CUDA differentiable kernel launch refactored: scalar args pre-computed as local variables before `LaunchArgs` borrow, fixing lifetime issues with cudarc 0.14+. `GradSignalTarget::External` pointer now stored in a local `u64` to ensure stable borrow through kernel launch.
-- `DifferentiableAccelerator.stream` upgraded to `Arc<CudaStream>` for safe sharing across kernel launches.
+- **CUDA differentiable kernel** — launch refactored for cudarc 0.14+ compatibility; GPU stream now safely shared across kernel launches.
 
 ### Fixed
 
+- CUDA batch toys (`--gpu cuda`) crash when some toys converge before others.
+- GPU profiled session (`ProfiledDifferentiableSession`) convergence failure near parameter bounds.
 - Optimizer early-stop with negative NLL (`target_cost(0.0)` removed).
 - `kalman_simulate()`: `init="sample|mean"` and `x0=...` support.
 - StatError: incorrect `sqrt(sumw2)` propagation with zero nominal counts.

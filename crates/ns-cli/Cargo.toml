@@ -18,8 +18,8 @@ path = "src/main.rs"
 [dependencies]
 ns-core.workspace = true
 ns-compute.workspace = true
-ns-inference.workspace = true
-ns-translate.workspace = true
+ns-inference = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io"] }
 ns-viz.workspace = true
 anyhow.workspace = true
 clap.workspace = true

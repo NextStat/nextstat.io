@@ -13,8 +13,8 @@ description = "Visualization utilities for NextStat"
 
 [dependencies]
 ns-core.workspace = true
-ns-inference.workspace = true
-ns-translate.workspace = true
+ns-inference = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
