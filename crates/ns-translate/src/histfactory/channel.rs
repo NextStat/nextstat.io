@@ -144,9 +144,10 @@ fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
 
     for child in node.children() {
         if child.is_element()
-            && let Some(m) = parse_modifier(child)? {
-                modifiers.push(m);
-            }
+            && let Some(m) = parse_modifier(child)?
+        {
+            modifiers.push(m);
+        }
     }
 
     Ok(SampleXml { name, histo_name, input_file, histo_path, modifiers })

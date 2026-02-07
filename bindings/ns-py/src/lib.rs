@@ -809,13 +809,15 @@ fn validate_nuts_config(
         return Err(PyValueError::new_err("init_jitter must be finite and >= 0"));
     }
     if let Some(v) = init_jitter_rel
-        && (!v.is_finite() || v <= 0.0) {
-            return Err(PyValueError::new_err("init_jitter_rel must be finite and > 0"));
-        }
+        && (!v.is_finite() || v <= 0.0)
+    {
+        return Err(PyValueError::new_err("init_jitter_rel must be finite and > 0"));
+    }
     if let Some(v) = init_overdispersed_rel
-        && (!v.is_finite() || v <= 0.0) {
-            return Err(PyValueError::new_err("init_overdispersed_rel must be finite and > 0"));
-        }
+        && (!v.is_finite() || v <= 0.0)
+    {
+        return Err(PyValueError::new_err("init_overdispersed_rel must be finite and > 0"));
+    }
 
     let init_modes = (init_jitter > 0.0) as u8
         + init_jitter_rel.is_some() as u8
@@ -2323,11 +2325,11 @@ impl PyComposedGlmModel {
             && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
                 || random_slope_non_centered)
-            {
-                return Err(PyValueError::new_err(
-                    "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
-                ));
-            }
+        {
+            return Err(PyValueError::new_err(
+                "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
+            ));
+        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -2403,11 +2405,11 @@ impl PyComposedGlmModel {
             && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
                 || random_slope_non_centered)
-            {
-                return Err(PyValueError::new_err(
-                    "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
-                ));
-            }
+        {
+            return Err(PyValueError::new_err(
+                "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
+            ));
+        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -2484,11 +2486,11 @@ impl PyComposedGlmModel {
             && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
                 || random_slope_non_centered)
-            {
-                return Err(PyValueError::new_err(
-                    "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
-                ));
-            }
+        {
+            return Err(PyValueError::new_err(
+                "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
+            ));
+        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);

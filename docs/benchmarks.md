@@ -62,6 +62,30 @@ cargo bench -p ns-inference --bench mle_benchmark -- --baseline main
 
 Baselines are stored under `target/criterion`.
 
+## Profile Likelihood Scan (CPU)
+
+`scan_histfactory()` uses warm-start + bounds-clamping + tape reuse for HistFactory models,
+replacing the generic `scan()` cold-start + model-clone path.
+
+### Results (release, Apple M5)
+
+| Workspace | Params | Points | `scan()` (cold) | `scan_histfactory()` (warm) | Speedup | Iter reduction |
+|-----------|--------|--------|-----------------|----------------------------|---------|----------------|
+| simple | 3 | 21 | 0.000s | 0.000s | 2.2x | 1.2x |
+| tHu | 184 | 21 | 11.2s | 4.2s | 2.7x | 1.2x |
+| tttt-prod | 249 | 51 | 14.4s | 4.4s | 3.3x | 1.9x |
+
+Warm-start also improves numerical accuracy at tail points: cold-start from `parameter_init()`
+can get stuck in local minima at extreme mu values, while warm-start from the neighboring
+scan point reaches the global minimum consistently.
+
+### Reproducing
+
+```bash
+# All three benchmarks (release mode required for meaningful timings)
+cargo test -p ns-inference --release -- test_bench_scan --ignored --nocapture
+```
+
 ## Python End-to-End Benchmarks (Apex2)
 
 The Apex2 validation system runs full Python-level benchmarks and produces machine-readable JSON reports.

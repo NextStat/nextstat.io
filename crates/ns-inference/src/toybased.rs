@@ -541,6 +541,391 @@ fn hypotest_qtilde_toys_impl(
     Ok((observed, Some(expected)))
 }
 
+// ── GPU-accelerated ensemble functions ──────────────────────────
+
+#[cfg(feature = "metal")]
+fn count_q_ge_ensemble_metal(
+    model: &HistFactoryModel,
+    poi: usize,
+    mu_test: f64,
+    q_obs: f64,
+    expected_main: &[f64],
+    init_free: &[f64],
+    bounds: &[(f64, f64)],
+    bounds_fixed: &[(f64, f64)],
+    n_toys: usize,
+    seed: u64,
+) -> Result<ToyCounts> {
+    // GPU batch: free fits
+    let free_fits = crate::metal_batch::fit_toys_from_data_metal(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds,
+        None,
+    )?;
+    // GPU batch: fixed fits (POI pinned to mu_test)
+    let fixed_fits = crate::metal_batch::fit_toys_from_data_metal(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds_fixed,
+        None,
+    )?;
+
+    let mut n_ge = 0usize;
+    let mut n_valid = 0usize;
+    let mut n_error = 0usize;
+    let mut n_nonconverged = 0usize;
+
+    for (fr, fxr) in free_fits.iter().zip(fixed_fits.iter()) {
+        match (fr, fxr) {
+            (Ok(free), Ok(fixed)) => {
+                let mu_hat = free.parameters[poi];
+                let q =
+                    if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed.nll - free.nll)).max(0.0) };
+                if q.is_finite() {
+                    n_valid += 1;
+                    if q >= q_obs {
+                        n_ge += 1;
+                    }
+                } else {
+                    n_error += 1;
+                }
+                if !(free.converged && fixed.converged) {
+                    n_nonconverged += 1;
+                }
+            }
+            _ => {
+                n_error += 1;
+            }
+        }
+    }
+
+    Ok(ToyCounts { n_ge, n_valid, n_error, n_nonconverged })
+}
+
+#[cfg(feature = "metal")]
+fn generate_q_ensemble_metal(
+    model: &HistFactoryModel,
+    poi: usize,
+    mu_test: f64,
+    expected_main: &[f64],
+    init_free: &[f64],
+    bounds: &[(f64, f64)],
+    bounds_fixed: &[(f64, f64)],
+    n_toys: usize,
+    seed: u64,
+) -> Result<QEnsemble> {
+    let free_fits = crate::metal_batch::fit_toys_from_data_metal(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds,
+        None,
+    )?;
+    let fixed_fits = crate::metal_batch::fit_toys_from_data_metal(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds_fixed,
+        None,
+    )?;
+
+    let mut q = Vec::with_capacity(n_toys);
+    let mut n_error = 0usize;
+    let mut n_nonconverged = 0usize;
+
+    for (fr, fxr) in free_fits.iter().zip(fixed_fits.iter()) {
+        match (fr, fxr) {
+            (Ok(free), Ok(fixed)) => {
+                let mu_hat = free.parameters[poi];
+                let qq =
+                    if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed.nll - free.nll)).max(0.0) };
+                if qq.is_finite() {
+                    q.push(qq);
+                } else {
+                    n_error += 1;
+                }
+                if !(free.converged && fixed.converged) {
+                    n_nonconverged += 1;
+                }
+            }
+            _ => {
+                n_error += 1;
+            }
+        }
+    }
+
+    Ok(QEnsemble { q, n_error, n_nonconverged })
+}
+
+// ── GPU dispatch wrapper for hypotest_qtilde_toys_impl ─────────
+
+#[cfg(feature = "metal")]
+fn hypotest_qtilde_toys_gpu_impl(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    gpu_device: &str,
+) -> Result<(ToyHypotestResult, Option<[f64; 5]>)> {
+    // Validate device early, before any expensive computation.
+    match gpu_device {
+        #[cfg(feature = "metal")]
+        "metal" => {}
+        _ => {
+            return Err(Error::Validation(format!(
+                "Unsupported GPU device for hypotest-toys: '{}'",
+                gpu_device
+            )));
+        }
+    }
+
+    if n_toys == 0 {
+        return Err(Error::Validation("n_toys must be > 0".to_string()));
+    }
+
+    let poi = poi_index(model)?;
+
+    let bounds = model.parameter_bounds();
+    if poi >= bounds.len() {
+        return Err(Error::Validation(format!(
+            "POI index out of bounds: poi={} bounds_len={}",
+            poi,
+            bounds.len()
+        )));
+    }
+    let mut bounds_fixed = bounds.clone();
+    bounds_fixed[poi] = (mu_test, mu_test);
+    let mut bounds_mu0 = bounds.clone();
+    bounds_mu0[poi] = (0.0, 0.0);
+
+    // Phase A: baseline CPU fits (3 fits, not bottleneck)
+    let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+    let init0 = model.parameter_init();
+    let free_obs =
+        mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &init0, &bounds, &mut tape)?;
+    if !free_obs.converged {
+        return Err(Error::Validation(format!(
+            "Observed-data free fit did not converge: {}",
+            free_obs.message
+        )));
+    }
+    let free_nll = free_obs.fval;
+    let mu_hat = free_obs.parameters[poi];
+
+    let mut init_mu = free_obs.parameters.clone();
+    init_mu[poi] = mu_test;
+    let fixed_mu = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
+        model,
+        &init_mu,
+        &bounds_fixed,
+        &mut tape,
+    )?;
+    if !fixed_mu.converged {
+        return Err(Error::Validation(format!(
+            "Failed to fit generation point at mu={}: {}",
+            mu_test, fixed_mu.message
+        )));
+    }
+
+    let mut init_mu0 = free_obs.parameters.clone();
+    init_mu0[poi] = 0.0;
+    let fixed_0 = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
+        model,
+        &init_mu0,
+        &bounds_mu0,
+        &mut tape,
+    )?;
+    if !fixed_0.converged {
+        return Err(Error::Validation(format!(
+            "Failed to fit generation point at mu=0: {}",
+            fixed_0.message
+        )));
+    }
+
+    let q_obs = if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed_mu.fval - free_nll)).max(0.0) };
+
+    let expected_sb = model.expected_data_pyhf_main(&fixed_mu.parameters)?;
+    let expected_b = model.expected_data_pyhf_main(&fixed_0.parameters)?;
+
+    let seed_b = seed;
+    let seed_sb = seed.wrapping_add(1_000_000_000u64);
+
+    // Phase B: GPU-accelerated toy ensembles (device already validated at entry)
+
+    if !expected_set {
+        // count-only path (no need to collect full q distributions)
+        let eb = count_q_ge_ensemble_metal(
+            model,
+            poi,
+            mu_test,
+            q_obs,
+            &expected_b,
+            &fixed_0.parameters,
+            &bounds,
+            &bounds_fixed,
+            n_toys,
+            seed_b,
+        )?;
+        let esb = count_q_ge_ensemble_metal(
+            model,
+            poi,
+            mu_test,
+            q_obs,
+            &expected_sb,
+            &fixed_mu.parameters,
+            &bounds,
+            &bounds_fixed,
+            n_toys,
+            seed_sb,
+        )?;
+
+        if eb.n_valid == 0 || esb.n_valid == 0 {
+            return Err(Error::Validation(format!(
+                "All toys failed: b_only_valid={} sb_valid={}",
+                eb.n_valid, esb.n_valid
+            )));
+        }
+
+        let clsb = tail_prob_counts(esb.n_ge, esb.n_valid);
+        let clb = tail_prob_counts(eb.n_ge, eb.n_valid);
+        let cls = safe_cls(clsb, clb);
+
+        return Ok((
+            ToyHypotestResult {
+                mu_test,
+                cls,
+                clsb,
+                clb,
+                q_obs,
+                mu_hat,
+                n_toys_b: n_toys,
+                n_toys_sb: n_toys,
+                n_error_b: eb.n_error,
+                n_error_sb: esb.n_error,
+                n_nonconverged_b: eb.n_nonconverged,
+                n_nonconverged_sb: esb.n_nonconverged,
+            },
+            None,
+        ));
+    }
+
+    // Full ensemble path (expected_set = true)
+    let ens_b_result = generate_q_ensemble_metal(
+        model,
+        poi,
+        mu_test,
+        &expected_b,
+        &fixed_0.parameters,
+        &bounds,
+        &bounds_fixed,
+        n_toys,
+        seed_b,
+    )?;
+    let ens_sb_result = generate_q_ensemble_metal(
+        model,
+        poi,
+        mu_test,
+        &expected_sb,
+        &fixed_mu.parameters,
+        &bounds,
+        &bounds_fixed,
+        n_toys,
+        seed_sb,
+    )?;
+
+    if ens_b_result.q.is_empty() || ens_sb_result.q.is_empty() {
+        return Err(Error::Validation(format!(
+            "Toy ensembles are empty after filtering errors: b_only={} sb={}",
+            ens_b_result.q.len(),
+            ens_sb_result.q.len()
+        )));
+    }
+
+    let mut q_b_sorted = ens_b_result.q.clone();
+    q_b_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut q_sb_sorted = ens_sb_result.q.clone();
+    q_sb_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let clsb = tail_prob_sorted(&q_sb_sorted, q_obs);
+    let clb = tail_prob_sorted(&q_b_sorted, q_obs);
+    let cls = safe_cls(clsb, clb);
+
+    let observed = ToyHypotestResult {
+        mu_test,
+        cls,
+        clsb,
+        clb,
+        q_obs,
+        mu_hat,
+        n_toys_b: n_toys,
+        n_toys_sb: n_toys,
+        n_error_b: ens_b_result.n_error,
+        n_error_sb: ens_sb_result.n_error,
+        n_nonconverged_b: ens_b_result.n_nonconverged,
+        n_nonconverged_sb: ens_sb_result.n_nonconverged,
+    };
+
+    let mut cls_vals: Vec<f64> = Vec::with_capacity(q_b_sorted.len());
+    for &q_val in &q_b_sorted {
+        let clsb_q = tail_prob_sorted(&q_sb_sorted, q_val);
+        let clb_q = tail_prob_sorted(&q_b_sorted, q_val);
+        cls_vals.push(safe_cls(clsb_q, clb_q));
+    }
+    cls_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let mut expected = [0.0; 5];
+    for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {
+        let p = normal_cdf(-t);
+        expected[i] = quantile_sorted(&cls_vals, p);
+    }
+
+    Ok((observed, Some(expected)))
+}
+
+/// GPU-accelerated toy-based CLs hypotest (qtilde) — observed p-values.
+#[cfg(feature = "metal")]
+pub fn hypotest_qtilde_toys_gpu(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    device: &str,
+) -> Result<ToyHypotestResult> {
+    hypotest_qtilde_toys_gpu_impl(mle, model, mu_test, n_toys, seed, false, device).map(|(r, _)| r)
+}
+
+/// GPU-accelerated toy-based CLs hypotest (qtilde) — observed and expected-set p-values.
+#[cfg(feature = "metal")]
+pub fn hypotest_qtilde_toys_expected_set_gpu(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    device: &str,
+) -> Result<ToyHypotestExpectedSet> {
+    let (observed, expected_opt) =
+        hypotest_qtilde_toys_gpu_impl(mle, model, mu_test, n_toys, seed, true, device)?;
+    let expected = expected_opt.ok_or_else(|| {
+        Error::Validation("internal error: expected_set requested but not produced".to_string())
+    })?;
+    Ok(ToyHypotestExpectedSet { observed, expected })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

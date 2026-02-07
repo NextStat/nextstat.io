@@ -110,8 +110,7 @@ pub fn scan_histfactory(
     model: &ns_translate::pyhf::HistFactoryModel,
     mu_values: &[f64],
 ) -> Result<ProfileLikelihoodScan> {
-    let poi = model.poi_index()
-        .ok_or_else(|| Error::Validation("No POI defined".into()))?;
+    let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".into()))?;
 
     // Free fit (unconditional MLE)
     let mut tape = ns_ad::tape::Tape::new();
@@ -130,7 +129,10 @@ pub fn scan_histfactory(
         warm_params[poi] = mu;
 
         let fixed = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
-            model, &warm_params, &bounds, &mut tape,
+            model,
+            &warm_params,
+            &bounds,
+            &mut tape,
         )?;
 
         let llr = 2.0 * (fixed.fval - nll_hat);
@@ -174,18 +176,31 @@ mod tests {
         let optimized = scan_histfactory(&mle, &model, &mu_values).unwrap();
 
         assert_eq!(generic.poi_index, optimized.poi_index);
-        assert!((generic.mu_hat - optimized.mu_hat).abs() < 1e-8,
-            "mu_hat: generic={}, optimized={}", generic.mu_hat, optimized.mu_hat);
-        assert!((generic.nll_hat - optimized.nll_hat).abs() < 1e-8,
-            "nll_hat: generic={}, optimized={}", generic.nll_hat, optimized.nll_hat);
+        assert!(
+            (generic.mu_hat - optimized.mu_hat).abs() < 1e-8,
+            "mu_hat: generic={}, optimized={}",
+            generic.mu_hat,
+            optimized.mu_hat
+        );
+        assert!(
+            (generic.nll_hat - optimized.nll_hat).abs() < 1e-8,
+            "nll_hat: generic={}, optimized={}",
+            generic.nll_hat,
+            optimized.nll_hat
+        );
 
         for (g, o) in generic.points.iter().zip(optimized.points.iter()) {
             assert!((g.mu - o.mu).abs() < 1e-15);
             let q_diff = (g.q_mu - o.q_mu).abs();
             let q_rdiff = q_diff / g.q_mu.abs().max(1e-12);
-            assert!(q_rdiff < 1e-4,
+            assert!(
+                q_rdiff < 1e-4,
                 "q_mu mismatch at mu={}: generic={}, optimized={}, rdiff={}",
-                g.mu, g.q_mu, o.q_mu, q_rdiff);
+                g.mu,
+                g.q_mu,
+                o.q_mu,
+                q_rdiff
+            );
         }
     }
 
@@ -207,10 +222,25 @@ mod tests {
         let n_iter_generic: u64 = generic.points.iter().map(|p| p.n_iter).sum();
         let n_iter_optimized: u64 = optimized.points.iter().map(|p| p.n_iter).sum();
 
-        println!("\n=== simple_workspace ({} params, {} points) ===", model.n_params(), mu_values.len());
-        println!("  scan() generic:      {:.3}s  ({} total iters)", t_generic.as_secs_f64(), n_iter_generic);
-        println!("  scan_histfactory():  {:.3}s  ({} total iters)", t_optimized.as_secs_f64(), n_iter_optimized);
-        println!("  speedup:             {:.1}x", t_generic.as_secs_f64() / t_optimized.as_secs_f64());
+        println!(
+            "\n=== simple_workspace ({} params, {} points) ===",
+            model.n_params(),
+            mu_values.len()
+        );
+        println!(
+            "  scan() generic:      {:.3}s  ({} total iters)",
+            t_generic.as_secs_f64(),
+            n_iter_generic
+        );
+        println!(
+            "  scan_histfactory():  {:.3}s  ({} total iters)",
+            t_optimized.as_secs_f64(),
+            n_iter_optimized
+        );
+        println!(
+            "  speedup:             {:.1}x",
+            t_generic.as_secs_f64() / t_optimized.as_secs_f64()
+        );
         println!("  iter reduction:      {:.1}x", n_iter_generic as f64 / n_iter_optimized as f64);
     }
 
@@ -232,25 +262,43 @@ mod tests {
         let n_iter_generic: u64 = generic.points.iter().map(|p| p.n_iter).sum();
         let n_iter_optimized: u64 = optimized.points.iter().map(|p| p.n_iter).sum();
 
-        println!("\n=== workspace_tHu ({} params, {} points) ===", model.n_params(), mu_values.len());
-        println!("  scan() generic:      {:.3}s  ({} total iters)", t_generic.as_secs_f64(), n_iter_generic);
-        println!("  scan_histfactory():  {:.3}s  ({} total iters)", t_optimized.as_secs_f64(), n_iter_optimized);
-        println!("  speedup:             {:.1}x", t_generic.as_secs_f64() / t_optimized.as_secs_f64());
+        println!(
+            "\n=== workspace_tHu ({} params, {} points) ===",
+            model.n_params(),
+            mu_values.len()
+        );
+        println!(
+            "  scan() generic:      {:.3}s  ({} total iters)",
+            t_generic.as_secs_f64(),
+            n_iter_generic
+        );
+        println!(
+            "  scan_histfactory():  {:.3}s  ({} total iters)",
+            t_optimized.as_secs_f64(),
+            n_iter_optimized
+        );
+        println!(
+            "  speedup:             {:.1}x",
+            t_generic.as_secs_f64() / t_optimized.as_secs_f64()
+        );
         println!("  iter reduction:      {:.1}x", n_iter_generic as f64 / n_iter_optimized as f64);
 
         // Numerical parity
         for (g, o) in generic.points.iter().zip(optimized.points.iter()) {
             let q_diff = (g.q_mu - o.q_mu).abs();
             let q_rdiff = q_diff / g.q_mu.abs().max(1e-12);
-            println!("  mu={:.1}: q_generic={:.6}, q_optimized={:.6}, rdiff={:.2e}, iters {}->{}",
-                g.mu, g.q_mu, o.q_mu, q_rdiff, g.n_iter, o.n_iter);
+            println!(
+                "  mu={:.1}: q_generic={:.6}, q_optimized={:.6}, rdiff={:.2e}, iters {}->{}",
+                g.mu, g.q_mu, o.q_mu, q_rdiff, g.n_iter, o.n_iter
+            );
         }
     }
 
     #[test]
     #[ignore = "benchmark; run with `cargo test -p ns-inference --release test_bench_scan_tttt -- --ignored --nocapture`"]
     fn test_bench_scan_tttt() {
-        let model = load_workspace(include_str!("../../../tests/fixtures/tttt-prod_workspace.json"));
+        let model =
+            load_workspace(include_str!("../../../tests/fixtures/tttt-prod_workspace.json"));
         let mle = MaximumLikelihoodEstimator::new();
         let mu_values: Vec<f64> = (0..51).map(|i| i as f64 * 0.1).collect();
 
@@ -266,9 +314,20 @@ mod tests {
         let n_iter_optimized: u64 = optimized.points.iter().map(|p| p.n_iter).sum();
 
         println!("\n=== tttt-prod ({} params, {} points) ===", model.n_params(), mu_values.len());
-        println!("  scan() generic:      {:.3}s  ({} total iters)", t_generic.as_secs_f64(), n_iter_generic);
-        println!("  scan_histfactory():  {:.3}s  ({} total iters)", t_optimized.as_secs_f64(), n_iter_optimized);
-        println!("  speedup:             {:.1}x", t_generic.as_secs_f64() / t_optimized.as_secs_f64());
+        println!(
+            "  scan() generic:      {:.3}s  ({} total iters)",
+            t_generic.as_secs_f64(),
+            n_iter_generic
+        );
+        println!(
+            "  scan_histfactory():  {:.3}s  ({} total iters)",
+            t_optimized.as_secs_f64(),
+            n_iter_optimized
+        );
+        println!(
+            "  speedup:             {:.1}x",
+            t_generic.as_secs_f64() / t_optimized.as_secs_f64()
+        );
         println!("  iter reduction:      {:.1}x", n_iter_generic as f64 / n_iter_optimized as f64);
     }
 }

@@ -46,9 +46,10 @@ fn walk_dir_for_combination_xml(root: &Path, out: &mut Vec<PathBuf>) -> Result<(
 
         if ft.is_file()
             && let Some(name) = path.file_name().and_then(|s| s.to_str())
-                && name == "combination.xml" {
-                    out.push(path);
-                }
+            && name == "combination.xml"
+        {
+            out.push(path);
+        }
     }
     Ok(())
 }

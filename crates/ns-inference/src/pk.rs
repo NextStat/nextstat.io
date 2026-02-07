@@ -160,9 +160,10 @@ impl OneCompartmentOralPkModel {
             return Err(Error::Validation("sigma must be finite and > 0".to_string()));
         }
         if let Some(lloq) = lloq
-            && (!lloq.is_finite() || lloq < 0.0) {
-                return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
-            }
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
         Ok(Self { times, y, dose, bioavailability, sigma, lloq, lloq_policy })
     }
 
@@ -252,9 +253,10 @@ impl OneCompartmentOralPkNlmeModel {
             return Err(Error::Validation("sigma must be finite and > 0".to_string()));
         }
         if let Some(lloq) = lloq
-            && (!lloq.is_finite() || lloq < 0.0) {
-                return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
-            }
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
         Ok(Self {
             times,
             y,
@@ -457,22 +459,23 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
             );
 
             if let Some(lloq) = self.lloq
-                && yobs < lloq {
-                    match self.lloq_policy {
-                        LloqPolicy::Ignore => continue,
-                        LloqPolicy::ReplaceHalf => {
-                            let y = 0.5 * lloq;
-                            let r = y - c;
-                            nll += 0.5 * r * r * inv_s2 + s.ln();
-                        }
-                        LloqPolicy::Censored => {
-                            let z = (lloq - c) / s;
-                            let p = normal.cdf(z).max(1e-300);
-                            nll += -p.ln();
-                        }
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let y = 0.5 * lloq;
+                        let r = y - c;
+                        nll += 0.5 * r * r * inv_s2 + s.ln();
                     }
-                    continue;
+                    LloqPolicy::Censored => {
+                        let z = (lloq - c) / s;
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
                 }
+                continue;
+            }
 
             let r = yobs - c;
             nll += 0.5 * r * r * inv_s2 + s.ln();
@@ -517,36 +520,37 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
             );
 
             if let Some(lloq) = self.lloq
-                && yobs < lloq {
-                    match self.lloq_policy {
-                        LloqPolicy::Ignore => continue,
-                        LloqPolicy::ReplaceHalf => {
-                            let y = 0.5 * lloq;
-                            let r = c - y;
-                            let w = r * inv_s2;
-                            g[0] += w * dc_dcl * (cl_i / cl_pop);
-                            g[1] += w * dc_dv * (v_i / v_pop);
-                            g[2] += w * dc_dka * (ka_i / ka_pop);
-                            g[6 + subj] += w * dc_dcl * cl_i;
-                            g[6 + n + subj] += w * dc_dv * v_i;
-                            g[6 + 2 * n + subj] += w * dc_dka * ka_i;
-                        }
-                        LloqPolicy::Censored => {
-                            let z = (lloq - c) / s;
-                            let p = normal.cdf(z).max(1e-300);
-                            let pdf = normal.pdf(z);
-                            let ratio = pdf / p;
-                            let w = ratio / s;
-                            g[0] += w * dc_dcl * (cl_i / cl_pop);
-                            g[1] += w * dc_dv * (v_i / v_pop);
-                            g[2] += w * dc_dka * (ka_i / ka_pop);
-                            g[6 + subj] += w * dc_dcl * cl_i;
-                            g[6 + n + subj] += w * dc_dv * v_i;
-                            g[6 + 2 * n + subj] += w * dc_dka * ka_i;
-                        }
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let y = 0.5 * lloq;
+                        let r = c - y;
+                        let w = r * inv_s2;
+                        g[0] += w * dc_dcl * (cl_i / cl_pop);
+                        g[1] += w * dc_dv * (v_i / v_pop);
+                        g[2] += w * dc_dka * (ka_i / ka_pop);
+                        g[6 + subj] += w * dc_dcl * cl_i;
+                        g[6 + n + subj] += w * dc_dv * v_i;
+                        g[6 + 2 * n + subj] += w * dc_dka * ka_i;
                     }
-                    continue;
+                    LloqPolicy::Censored => {
+                        let z = (lloq - c) / s;
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let ratio = pdf / p;
+                        let w = ratio / s;
+                        g[0] += w * dc_dcl * (cl_i / cl_pop);
+                        g[1] += w * dc_dv * (v_i / v_pop);
+                        g[2] += w * dc_dka * (ka_i / ka_pop);
+                        g[6 + subj] += w * dc_dcl * cl_i;
+                        g[6 + n + subj] += w * dc_dv * v_i;
+                        g[6 + 2 * n + subj] += w * dc_dka * ka_i;
+                    }
                 }
+                continue;
+            }
 
             let r = c - yobs;
             let w = r * inv_s2;
@@ -634,22 +638,23 @@ impl LogDensityModel for OneCompartmentOralPkModel {
             let c = self.conc(cl, v, ka, t);
 
             if let Some(lloq) = self.lloq
-                && yobs < lloq {
-                    match self.lloq_policy {
-                        LloqPolicy::Ignore => continue,
-                        LloqPolicy::ReplaceHalf => {
-                            let y = 0.5 * lloq;
-                            let r = y - c;
-                            nll += 0.5 * r * r * inv_s2 + s.ln();
-                        }
-                        LloqPolicy::Censored => {
-                            let z = (lloq - c) / s;
-                            let p = normal.cdf(z).max(1e-300);
-                            nll += -p.ln();
-                        }
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let y = 0.5 * lloq;
+                        let r = y - c;
+                        nll += 0.5 * r * r * inv_s2 + s.ln();
                     }
-                    continue;
+                    LloqPolicy::Censored => {
+                        let z = (lloq - c) / s;
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
                 }
+                continue;
+            }
 
             let r = yobs - c;
             nll += 0.5 * r * r * inv_s2 + s.ln();
@@ -677,30 +682,31 @@ impl LogDensityModel for OneCompartmentOralPkModel {
             let (c, dc_dcl, dc_dv, dc_dka) = self.conc_and_grad(cl, v, ka, t);
 
             if let Some(lloq) = self.lloq
-                && yobs < lloq {
-                    match self.lloq_policy {
-                        LloqPolicy::Ignore => continue,
-                        LloqPolicy::ReplaceHalf => {
-                            let y = 0.5 * lloq;
-                            let r = c - y;
-                            let w = r * inv_s2;
-                            g[0] += w * dc_dcl;
-                            g[1] += w * dc_dv;
-                            g[2] += w * dc_dka;
-                        }
-                        LloqPolicy::Censored => {
-                            let z = (lloq - c) / s;
-                            let p = normal.cdf(z).max(1e-300);
-                            let pdf = normal.pdf(z);
-                            let ratio = pdf / p; // φ/Φ
-                            let w = ratio / s;
-                            g[0] += w * dc_dcl;
-                            g[1] += w * dc_dv;
-                            g[2] += w * dc_dka;
-                        }
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let y = 0.5 * lloq;
+                        let r = c - y;
+                        let w = r * inv_s2;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv;
+                        g[2] += w * dc_dka;
                     }
-                    continue;
+                    LloqPolicy::Censored => {
+                        let z = (lloq - c) / s;
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let ratio = pdf / p; // φ/Φ
+                        let w = ratio / s;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv;
+                        g[2] += w * dc_dka;
+                    }
                 }
+                continue;
+            }
 
             let r = c - yobs;
             let w = r * inv_s2;

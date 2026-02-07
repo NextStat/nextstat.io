@@ -253,30 +253,31 @@ impl WindowedAdaptation {
 
                     // Try dense metric when available.
                     if let Some(wc) = self.welford_cov.as_ref()
-                        && let Some(mut cov) = wc.covariance() {
-                            let n = cov.nrows();
-                            let count = wc.count().max(1) as f64;
-                            // Stan-like shrinkage towards scaled identity for stability.
-                            let alpha = count / (count + 5.0);
-                            let trace = cov.trace();
-                            let scale = (trace / (n as f64)).abs().max(1e-6);
+                        && let Some(mut cov) = wc.covariance()
+                    {
+                        let n = cov.nrows();
+                        let count = wc.count().max(1) as f64;
+                        // Stan-like shrinkage towards scaled identity for stability.
+                        let alpha = count / (count + 5.0);
+                        let trace = cov.trace();
+                        let scale = (trace / (n as f64)).abs().max(1e-6);
 
-                            cov *= alpha;
-                            for i in 0..n {
-                                cov[(i, i)] += (1.0 - alpha) * scale + 1e-6 * scale;
-                            }
+                        cov *= alpha;
+                        for i in 0..n {
+                            cov[(i, i)] += (1.0 - alpha) * scale + 1e-6 * scale;
+                        }
 
-                            if let Some(ch) = cov.clone().cholesky() {
-                                let prec = ch.inverse();
-                                if let Some(prec_ch) = prec.cholesky() {
-                                    let l = prec_ch.l();
-                                    self.metric = crate::hmc::Metric::DenseCholesky {
-                                        dim: n,
-                                        l: l.as_slice().to_vec(),
-                                    };
-                                }
+                        if let Some(ch) = cov.clone().cholesky() {
+                            let prec = ch.inverse();
+                            if let Some(prec_ch) = prec.cholesky() {
+                                let l = prec_ch.l();
+                                self.metric = crate::hmc::Metric::DenseCholesky {
+                                    dim: n,
+                                    l: l.as_slice().to_vec(),
+                                };
                             }
                         }
+                    }
 
                     self.welford.reset();
                     if let Some(wc) = self.welford_cov.as_mut() {

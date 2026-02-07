@@ -37,4 +37,3 @@ fn fccfitter_corpus_compiles() {
         panic!("{msg}");
     }
 }
-

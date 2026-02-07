@@ -1461,10 +1461,11 @@ fn cmd_trex_import_config(
         dir = Some(parent);
     }
     if let Some(existing) = std::env::var_os("PYTHONPATH")
-        && !existing.is_empty() {
-            pythonpath.push(":");
-            pythonpath.push(existing);
-        }
+        && !existing.is_empty()
+    {
+        pythonpath.push(":");
+        pythonpath.push(existing);
+    }
 
     let mut cmd = Command::new(&python);
     cmd.env("PYTHONPATH", pythonpath)
@@ -1757,9 +1758,10 @@ fn cmd_import_trex_config(
 
     if let Some(path) = analysis_yaml {
         if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
 
         let stem = config.file_stem().and_then(|s| s.to_str()).unwrap_or("trex_config");
         let ws_out = format!("tmp/{stem}_workspace.json");
@@ -2186,9 +2188,10 @@ fn ensure_out_dir(out_dir: &std::path::Path, overwrite: bool) -> Result<()> {
 
 fn write_json_file(path: &std::path::Path, value: &serde_json::Value) -> Result<()> {
     if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
     let value = canonicalize_json(value);
     std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     Ok(())
@@ -2205,20 +2208,12 @@ fn write_yields_tables(
         for s in &ch.samples {
             csv.push_str(&format!(
                 "{},{},{},{},{}\n",
-                ch.channel_name,
-                "sample",
-                s.name,
-                s.prefit,
-                s.postfit
+                ch.channel_name, "sample", s.name, s.prefit, s.postfit
             ));
         }
         csv.push_str(&format!(
             "{},{},{},{},{}\n",
-            ch.channel_name,
-            "total",
-            "TOTAL",
-            ch.total_prefit,
-            ch.total_postfit
+            ch.channel_name, "total", "TOTAL", ch.total_prefit, ch.total_postfit
         ));
         csv.push_str(&format!(
             "{},{},{},{},\n",
@@ -2241,19 +2236,10 @@ fn write_yields_tables(
         tex.push_str("Sample & Prefit & Postfit \\\\\n");
         tex.push_str("\\midrule\n");
         for s in &ch.samples {
-            tex.push_str(&format!(
-                "{} & {} & {} \\\\\n",
-                s.name,
-                s.prefit,
-                s.postfit
-            ));
+            tex.push_str(&format!("{} & {} & {} \\\\\n", s.name, s.prefit, s.postfit));
         }
         tex.push_str("\\midrule\n");
-        tex.push_str(&format!(
-            "Total & {} & {} \\\\\n",
-            ch.total_prefit,
-            ch.total_postfit
-        ));
+        tex.push_str(&format!("Total & {} & {} \\\\\n", ch.total_prefit, ch.total_postfit));
         tex.push_str(&format!(
             "Data & {} & \\\\\n",
             if ch.data_is_blinded == Some(true) {
@@ -3349,44 +3335,97 @@ fn cmd_hypotest_toys(
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let _ = gpu; // TODO: wire GPU batch toy fitting into hypotest flow
     let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
-    let output_json = if expected_set {
-        let r = ns_inference::hypotest_qtilde_toys_expected_set(&mle, &model, mu, n_toys, seed)?;
-        let o = &r.observed;
-        serde_json::json!({
-            "mu_test": o.mu_test,
-            "cls": o.cls,
-            "clsb": o.clsb,
-            "clb": o.clb,
-            "q_obs": o.q_obs,
-            "mu_hat": o.mu_hat,
-            "n_toys": { "b": o.n_toys_b, "sb": o.n_toys_sb },
-            "n_error": { "b": o.n_error_b, "sb": o.n_error_sb },
-            "n_nonconverged": { "b": o.n_nonconverged_b, "sb": o.n_nonconverged_sb },
-            "seed": seed,
-            "expected_set": {
-                "nsigma_order": [2, 1, 0, -1, -2],
-                "cls": r.expected,
-            },
-        })
+    let output_json = if let Some(device) = gpu {
+        // GPU-accelerated path
+        #[cfg(feature = "metal")]
+        {
+            if expected_set {
+                let r = ns_inference::hypotest_qtilde_toys_expected_set_gpu(
+                    &mle, &model, mu, n_toys, seed, device,
+                )?;
+                let o = &r.observed;
+                serde_json::json!({
+                    "mu_test": o.mu_test,
+                    "cls": o.cls,
+                    "clsb": o.clsb,
+                    "clb": o.clb,
+                    "q_obs": o.q_obs,
+                    "mu_hat": o.mu_hat,
+                    "n_toys": { "b": o.n_toys_b, "sb": o.n_toys_sb },
+                    "n_error": { "b": o.n_error_b, "sb": o.n_error_sb },
+                    "n_nonconverged": { "b": o.n_nonconverged_b, "sb": o.n_nonconverged_sb },
+                    "seed": seed,
+                    "gpu": device,
+                    "expected_set": {
+                        "nsigma_order": [2, 1, 0, -1, -2],
+                        "cls": r.expected,
+                    },
+                })
+            } else {
+                let r =
+                    ns_inference::hypotest_qtilde_toys_gpu(&mle, &model, mu, n_toys, seed, device)?;
+                serde_json::json!({
+                    "mu_test": r.mu_test,
+                    "cls": r.cls,
+                    "clsb": r.clsb,
+                    "clb": r.clb,
+                    "q_obs": r.q_obs,
+                    "mu_hat": r.mu_hat,
+                    "n_toys": { "b": r.n_toys_b, "sb": r.n_toys_sb },
+                    "n_error": { "b": r.n_error_b, "sb": r.n_error_sb },
+                    "n_nonconverged": { "b": r.n_nonconverged_b, "sb": r.n_nonconverged_sb },
+                    "seed": seed,
+                    "gpu": device,
+                    "expected_set": serde_json::Value::Null,
+                })
+            }
+        }
+        #[cfg(not(feature = "metal"))]
+        {
+            let _ = device;
+            anyhow::bail!("GPU hypotest-toys requires --features metal (or cuda)");
+        }
     } else {
-        let r = ns_inference::hypotest_qtilde_toys(&mle, &model, mu, n_toys, seed)?;
-        serde_json::json!({
-            "mu_test": r.mu_test,
-            "cls": r.cls,
-            "clsb": r.clsb,
-            "clb": r.clb,
-            "q_obs": r.q_obs,
-            "mu_hat": r.mu_hat,
-            "n_toys": { "b": r.n_toys_b, "sb": r.n_toys_sb },
-            "n_error": { "b": r.n_error_b, "sb": r.n_error_sb },
-            "n_nonconverged": { "b": r.n_nonconverged_b, "sb": r.n_nonconverged_sb },
-            "seed": seed,
-            "expected_set": serde_json::Value::Null,
-        })
+        // CPU path
+        if expected_set {
+            let r =
+                ns_inference::hypotest_qtilde_toys_expected_set(&mle, &model, mu, n_toys, seed)?;
+            let o = &r.observed;
+            serde_json::json!({
+                "mu_test": o.mu_test,
+                "cls": o.cls,
+                "clsb": o.clsb,
+                "clb": o.clb,
+                "q_obs": o.q_obs,
+                "mu_hat": o.mu_hat,
+                "n_toys": { "b": o.n_toys_b, "sb": o.n_toys_sb },
+                "n_error": { "b": o.n_error_b, "sb": o.n_error_sb },
+                "n_nonconverged": { "b": o.n_nonconverged_b, "sb": o.n_nonconverged_sb },
+                "seed": seed,
+                "expected_set": {
+                    "nsigma_order": [2, 1, 0, -1, -2],
+                    "cls": r.expected,
+                },
+            })
+        } else {
+            let r = ns_inference::hypotest_qtilde_toys(&mle, &model, mu, n_toys, seed)?;
+            serde_json::json!({
+                "mu_test": r.mu_test,
+                "cls": r.cls,
+                "clsb": r.clsb,
+                "clb": r.clb,
+                "q_obs": r.q_obs,
+                "mu_hat": r.mu_hat,
+                "n_toys": { "b": r.n_toys_b, "sb": r.n_toys_sb },
+                "n_error": { "b": r.n_error_b, "sb": r.n_error_sb },
+                "n_nonconverged": { "b": r.n_nonconverged_b, "sb": r.n_nonconverged_sb },
+                "seed": seed,
+                "expected_set": serde_json::Value::Null,
+            })
+        }
     };
 
     write_json(output, &output_json)?;
@@ -3920,10 +3959,11 @@ fn cmd_report(
         let mut pythonpath = std::ffi::OsString::new();
         pythonpath.push("bindings/ns-py/python");
         if let Some(existing) = std::env::var_os("PYTHONPATH")
-            && !existing.is_empty() {
-                pythonpath.push(":");
-                pythonpath.push(existing);
-            }
+            && !existing.is_empty()
+        {
+            pythonpath.push(":");
+            pythonpath.push(existing);
+        }
 
         let status = Command::new(&python)
             .env("PYTHONPATH", pythonpath)

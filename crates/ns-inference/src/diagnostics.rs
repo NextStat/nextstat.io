@@ -553,7 +553,6 @@ pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
         return 0.0;
     }
 
-    
     (total_draws / tau).clamp(1.0, total_draws)
 }
 

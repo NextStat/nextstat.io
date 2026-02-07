@@ -221,12 +221,11 @@ impl HistFactoryModel {
                 if let ModelModifier::ShapeSys { param_indices, .. } = modifier
                     && (constraint.tau.len() != param_indices.len()
                         || constraint.observed.len() != param_indices.len())
-                    {
-                        return Err(ns_core::Error::Validation(
-                            "Aux constraint length mismatch (tau/observed/param_indices)"
-                                .to_string(),
-                        ));
-                    }
+                {
+                    return Err(ns_core::Error::Validation(
+                        "Aux constraint length mismatch (tau/observed/param_indices)".to_string(),
+                    ));
+                }
             }
         }
         Ok(())
@@ -2663,7 +2662,9 @@ impl HistFactoryModel {
                                 log::warn!(
                                     "NormSys param_idx={} has non-positive factor (hi={}, lo={}), \
                                      GPU serialization uses linear fallback",
-                                    param_idx, hi, lo
+                                    param_idx,
+                                    hi,
+                                    lo
                                 );
                                 modifier_data.extend_from_slice(&[
                                     hi - 1.0,
@@ -2767,21 +2768,21 @@ impl HistFactoryModel {
                 if let Some(sample) = channel.samples.get(constraint.sample_idx)
                     && let Some(ModelModifier::ShapeSys { param_indices, .. }) =
                         sample.modifiers.get(constraint.modifier_idx)
-                    {
-                        for (i, &gamma_idx) in param_indices.iter().enumerate() {
-                            let tau = constraint.tau.get(i).copied().unwrap_or(0.0);
-                            let obs_aux = constraint.observed.get(i).copied().unwrap_or(0.0);
-                            if tau > 0.0 {
-                                aux_poisson.push(GpuAuxPoissonEntry {
-                                    gamma_param_idx: gamma_idx as u16,
-                                    _pad: 0,
-                                    _pad2: 0.0,
-                                    tau,
-                                    observed_aux: obs_aux,
-                                });
-                            }
+                {
+                    for (i, &gamma_idx) in param_indices.iter().enumerate() {
+                        let tau = constraint.tau.get(i).copied().unwrap_or(0.0);
+                        let obs_aux = constraint.observed.get(i).copied().unwrap_or(0.0);
+                        if tau > 0.0 {
+                            aux_poisson.push(GpuAuxPoissonEntry {
+                                gamma_param_idx: gamma_idx as u16,
+                                _pad: 0,
+                                _pad2: 0.0,
+                                tau,
+                                observed_aux: obs_aux,
+                            });
                         }
                     }
+                }
             }
         }
 
@@ -2795,16 +2796,17 @@ impl HistFactoryModel {
                 continue;
             }
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
-                && width > 0.0 {
-                    gauss_constraints.push(GpuGaussConstraintEntry {
-                        param_idx: param_idx as u16,
-                        _pad: 0,
-                        _pad2: 0.0,
-                        center,
-                        inv_width: 1.0 / width,
-                    });
-                    constraint_const += width.ln() + 0.5 * (2.0 * std::f64::consts::PI).ln();
-                }
+                && width > 0.0
+            {
+                gauss_constraints.push(GpuGaussConstraintEntry {
+                    param_idx: param_idx as u16,
+                    _pad: 0,
+                    _pad2: 0.0,
+                    center,
+                    inv_width: 1.0 / width,
+                });
+                constraint_const += width.ln() + 0.5 * (2.0 * std::f64::consts::PI).ln();
+            }
         }
 
         // Ensure per_bin_param_indices is non-empty (GPU needs valid pointer)
@@ -3603,11 +3605,12 @@ mod tests {
             for sample in &mut channel.samples {
                 for m in &mut sample.modifiers {
                     if let ModelModifier::ShapeSys { param_indices, .. } = m
-                        && !param_indices.is_empty() {
-                            param_indices[0] = bad;
-                            changed = true;
-                            break;
-                        }
+                        && !param_indices.is_empty()
+                    {
+                        param_indices[0] = bad;
+                        changed = true;
+                        break;
+                    }
                 }
                 if changed {
                     break;

@@ -842,9 +842,10 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         .filter(|xs| !xs.is_empty());
     // Legacy nested configs often scope samples inside a Region block instead of using `Regions:`.
     if regions.is_none()
-        && let Some(ref r) = b.ctx_region {
-            regions = Some(vec![r.clone()]);
-        }
+        && let Some(ref r) = b.ctx_region
+    {
+        regions = Some(vec![r.clone()]);
+    }
 
     let mut modifiers: Vec<NtupleModifier> = Vec::new();
 
@@ -912,9 +913,10 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
     let mut regions =
         last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
     if regions.is_none()
-        && let Some(ref r) = b.ctx_region {
-            regions = Some(vec![r.clone()]);
-        }
+        && let Some(ref r) = b.ctx_region
+    {
+        regions = Some(vec![r.clone()]);
+    }
 
     let mut out = TrexSystematic {
         name,
@@ -1091,11 +1093,13 @@ fn collect_region_weights_and_sample_overrides(
         match b.kind {
             BlockKind::Region => {
                 // Top-level region: capture region-wide Weight (applies to all samples in the region).
-                if b.ctx_region.is_none() && b.ctx_sample.is_none()
+                if b.ctx_region.is_none()
+                    && b.ctx_sample.is_none()
                     && let Some(w) = last_attr_value(&b.attrs, "Weight")
-                        && !w.trim().is_empty() {
-                            region_weight.insert(b.name.clone(), w);
-                        }
+                    && !w.trim().is_empty()
+                {
+                    region_weight.insert(b.name.clone(), w);
+                }
             }
             BlockKind::Sample => {
                 // Override-only sample nested under a Region (no File/Path): per-(region,sample) overrides.
@@ -1109,18 +1113,21 @@ fn collect_region_weights_and_sample_overrides(
 
                     if let Some(sel) = last_attr_value(&b.attrs, "Selection")
                         .or_else(|| last_attr_value(&b.attrs, "Cut"))
-                        && !sel.trim().is_empty() {
-                            entry.selection = Some(sel);
-                        }
+                        && !sel.trim().is_empty()
+                    {
+                        entry.selection = Some(sel);
+                    }
                     if let Some(w) = last_attr_value(&b.attrs, "Weight")
-                        && !w.trim().is_empty() {
-                            entry.weight = Some(w);
-                        }
+                        && !w.trim().is_empty()
+                    {
+                        entry.weight = Some(w);
+                    }
                     if let Some(v) = last_attr_value(&b.attrs, "Variable")
                         .or_else(|| last_attr_value(&b.attrs, "Var"))
-                        && !v.trim().is_empty() {
-                            entry.variable = Some(v);
-                        }
+                        && !v.trim().is_empty()
+                    {
+                        entry.variable = Some(v);
+                    }
                     continue;
                 }
 
@@ -1128,14 +1135,16 @@ fn collect_region_weights_and_sample_overrides(
                 if has_attr(&b.attrs, "File") || has_attr(&b.attrs, "Path") {
                     if let Some(sel) = last_attr_value(&b.attrs, "Selection")
                         .or_else(|| last_attr_value(&b.attrs, "Cut"))
-                        && !sel.trim().is_empty() {
-                            sample_selection.insert(b.name.clone(), sel);
-                        }
+                        && !sel.trim().is_empty()
+                    {
+                        sample_selection.insert(b.name.clone(), sel);
+                    }
                     if let Some(v) = last_attr_value(&b.attrs, "Variable")
                         .or_else(|| last_attr_value(&b.attrs, "Var"))
-                        && !v.trim().is_empty() {
-                            sample_variable.insert(b.name.clone(), v);
-                        }
+                        && !v.trim().is_empty()
+                    {
+                        sample_variable.insert(b.name.clone(), v);
+                    }
                 }
             }
             _ => {}
@@ -1153,17 +1162,21 @@ fn enforce_variable_rules(
     override_var: Option<&String>,
 ) -> Result<()> {
     if let Some(v) = sample_var
-        && !v.trim().is_empty() && v != region_variable {
-            return Err(Error::Validation(format!(
-                "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Sample.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
-            )));
-        }
+        && !v.trim().is_empty()
+        && v != region_variable
+    {
+        return Err(Error::Validation(format!(
+            "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Sample.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
+        )));
+    }
     if let Some(v) = override_var
-        && !v.trim().is_empty() && v != region_variable {
-            return Err(Error::Validation(format!(
-                "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Override.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
-            )));
-        }
+        && !v.trim().is_empty()
+        && v != region_variable
+    {
+        return Err(Error::Validation(format!(
+            "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Override.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
+        )));
+    }
     Ok(())
 }
 

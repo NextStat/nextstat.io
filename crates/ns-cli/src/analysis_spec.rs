@@ -450,9 +450,10 @@ fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> 
                     }
                 }
                 if let Some(ref rs) = s.regions
-                    && !rs.is_empty() {
-                        out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
-                    }
+                    && !rs.is_empty()
+                {
+                    out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+                }
                 for nf in &s.norm_factors {
                     let nf = nf.trim();
                     if !nf.is_empty() {
@@ -481,9 +482,10 @@ fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> 
                 out.push_str(&format!("Type: {t}\n"));
                 out.push_str(&format!("Samples: {}\n", fmt_list(&sys.samples)));
                 if let Some(ref rs) = sys.regions
-                    && !rs.is_empty() {
-                        out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
-                    }
+                    && !rs.is_empty()
+                {
+                    out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+                }
 
                 match sys.kind {
                     TrexYamlSystematicType::Norm => {

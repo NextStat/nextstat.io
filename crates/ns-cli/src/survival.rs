@@ -371,9 +371,10 @@ pub fn cmd_survival_cox_ph_fit(
 
     let groups: Option<Vec<i64>> = injson.groups;
     if let Some(ref g) = groups
-        && g.len() != injson.times.len() {
-            anyhow::bail!("groups must have length n");
-        }
+        && g.len() != injson.times.len()
+    {
+        anyhow::bail!("groups must have length n");
+    }
 
     let ties_enum = match ties {
         "breslow" => ns_inference::CoxTies::Breslow,

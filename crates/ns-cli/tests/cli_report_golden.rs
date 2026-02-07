@@ -52,9 +52,10 @@ fn sanitize_artifact(mut v: Value) -> Value {
         if let Some(parity_mode) = meta.get_mut("parity_mode").and_then(|p| p.as_object_mut()) {
             // `threads` is part of parity mode; keep it, but ensure it is serialized as integer.
             if let Some(t) = parity_mode.get_mut("threads")
-                && let Some(n) = t.as_u64() {
-                    *t = Value::from(n);
-                }
+                && let Some(n) = t.as_u64()
+            {
+                *t = Value::from(n);
+            }
         }
     }
     v

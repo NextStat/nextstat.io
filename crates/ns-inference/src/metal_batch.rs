@@ -184,7 +184,9 @@ pub fn fit_toys_from_data_metal(
     // Generate toys from custom expected data
     let toys: Vec<Vec<f64>> = (0..n_toys)
         .into_par_iter()
-        .map(|i| crate::toys::poisson_main_from_expected(expected_main, seed.wrapping_add(i as u64)))
+        .map(|i| {
+            crate::toys::poisson_main_from_expected(expected_main, seed.wrapping_add(i as u64))
+        })
         .collect();
 
     // Pre-compute per-toy observed data buffers

@@ -189,7 +189,11 @@ impl LbfgsbOptimizer {
         // box constraints, even when the optimum is in the interior. For 1D likelihoods
         // (e.g. minimal examples), use a robust bracketed golden-section search instead.
         // Only use golden-section when bounds are finite; otherwise fall through to L-BFGS.
-        if bounds.len() == 1 && bounds[0].0.is_finite() && bounds[0].1.is_finite() && bounds[0].0 <= bounds[0].1 {
+        if bounds.len() == 1
+            && bounds[0].0.is_finite()
+            && bounds[0].1.is_finite()
+            && bounds[0].0 <= bounds[0].1
+        {
             let (lo, hi) = bounds[0];
             if (hi - lo).abs() <= 0.0 {
                 let x = lo;
@@ -575,9 +579,8 @@ mod tests {
         }
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
         let optimizer = LbfgsbOptimizer::new(config);
-        let result = optimizer
-            .minimize(&Quad, &[0.0], &[(f64::NEG_INFINITY, f64::INFINITY)])
-            .unwrap();
+        let result =
+            optimizer.minimize(&Quad, &[0.0], &[(f64::NEG_INFINITY, f64::INFINITY)]).unwrap();
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);
         assert!(result.converged);
     }
@@ -597,9 +600,7 @@ mod tests {
         }
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
         let optimizer = LbfgsbOptimizer::new(config);
-        let result = optimizer
-            .minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)])
-            .unwrap();
+        let result = optimizer.minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)]).unwrap();
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);
         assert!(result.converged);
     }

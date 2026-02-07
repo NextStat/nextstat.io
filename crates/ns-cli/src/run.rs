@@ -118,9 +118,10 @@ fn ensure_empty_dir(dir: &Path) -> Result<()> {
 
 fn copy_file_into(src: &Path, dst: &Path) -> Result<()> {
     if let Some(parent) = dst.parent()
-        && !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
     std::fs::copy(src, dst)?;
     Ok(())
 }
@@ -368,9 +369,10 @@ pub fn write_run_bundle_spec_v0(
     // Copy HistFactory inputs when available (best-effort).
     let mut histfactory_xmls: Vec<PathBuf> = Vec::new();
     if let Some(import) = plan.import.as_ref()
-        && let crate::analysis_spec::ImportPlan::HistfactoryXml { histfactory_xml } = import {
-            histfactory_xmls.push(histfactory_xml.clone());
-        }
+        && let crate::analysis_spec::ImportPlan::HistfactoryXml { histfactory_xml } = import
+    {
+        histfactory_xmls.push(histfactory_xml.clone());
+    }
     if let Some(report) = plan.report.as_ref() {
         histfactory_xmls.push(report.histfactory_xml.clone());
     }
@@ -395,15 +397,16 @@ pub fn write_run_bundle_spec_v0(
 
     // Copy trex config text if used.
     if let Some(import) = plan.import.as_ref()
-        && let crate::analysis_spec::ImportPlan::TrexConfigTxt { config_path, .. } = import {
-            let dst = inputs_dir.join("trex").join("config.txt");
-            copy_file_into(config_path, &dst)?;
-            record_prov_file(&mut prov_inputs, "trex_config_txt", config_path, bundle_dir, &dst)?;
-            notes.push(
+        && let crate::analysis_spec::ImportPlan::TrexConfigTxt { config_path, .. } = import
+    {
+        let dst = inputs_dir.join("trex").join("config.txt");
+        copy_file_into(config_path, &dst)?;
+        record_prov_file(&mut prov_inputs, "trex_config_txt", config_path, bundle_dir, &dst)?;
+        notes.push(
                 "trex_config_txt mode: run bundle v1 currently records only the config text (not referenced ROOT files)"
                     .to_string(),
             );
-        }
+    }
 
     // Workspace input (workspace_json mode): copy the input workspace.
     if spec.inputs.mode == "workspace_json" {
@@ -431,17 +434,19 @@ pub fn write_run_bundle_spec_v0(
         )?;
     }
     if let Some(fit) = plan.fit.as_ref()
-        && fit.exists() {
-            let dst = outputs_dir.join("fit.json");
-            copy_file_into(fit, &dst)?;
-            record_prov_file(&mut prov_outputs, "fit_json", fit, bundle_dir, &dst)?;
-        }
+        && fit.exists()
+    {
+        let dst = outputs_dir.join("fit.json");
+        copy_file_into(fit, &dst)?;
+        record_prov_file(&mut prov_outputs, "fit_json", fit, bundle_dir, &dst)?;
+    }
     if let Some(scan) = plan.profile_scan.as_ref()
-        && scan.output_json.exists() {
-            let dst = outputs_dir.join("scan.json");
-            copy_file_into(&scan.output_json, &dst)?;
-            record_prov_file(&mut prov_outputs, "scan_json", &scan.output_json, bundle_dir, &dst)?;
-        }
+        && scan.output_json.exists()
+    {
+        let dst = outputs_dir.join("scan.json");
+        copy_file_into(&scan.output_json, &dst)?;
+        record_prov_file(&mut prov_outputs, "scan_json", &scan.output_json, bundle_dir, &dst)?;
+    }
     if let Some(report) = plan.report.as_ref() {
         let dst_dir = outputs_dir.join("report");
         copy_tree_filtered(&report.out_dir, &dst_dir, &["json", "csv", "tex", "pdf", "svg"])?;

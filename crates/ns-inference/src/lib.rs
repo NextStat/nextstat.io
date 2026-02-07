@@ -121,6 +121,8 @@ pub use toybased::{
     ToyHypotestExpectedSet, ToyHypotestResult, hypotest_qtilde_toys,
     hypotest_qtilde_toys_expected_set,
 };
+#[cfg(feature = "metal")]
+pub use toybased::{hypotest_qtilde_toys_expected_set_gpu, hypotest_qtilde_toys_gpu};
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.

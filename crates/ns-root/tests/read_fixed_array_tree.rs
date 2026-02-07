@@ -25,7 +25,9 @@ fn load_expected() -> Expected {
 fn read_indexed_fixed_array_branch_materializes_scalar_columns() {
     let path = fixture_path("fixed_array_tree.root");
     if !path.exists() {
-        eprintln!("Fixture not found: run tests/fixtures/generate_root_fixtures.py (fixed_array_tree)");
+        eprintln!(
+            "Fixture not found: run tests/fixtures/generate_root_fixtures.py (fixed_array_tree)"
+        );
         return;
     }
 
@@ -43,4 +45,3 @@ fn read_indexed_fixed_array_branch_materializes_scalar_columns() {
     assert_eq!(eig1, expected.eig_1);
     assert_eq!(eig3, expected.eig_3);
 }
-
