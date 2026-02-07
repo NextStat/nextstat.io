@@ -668,9 +668,136 @@ fn generate_q_ensemble_metal(
     Ok(QEnsemble { q, n_error, n_nonconverged })
 }
 
+// ── CUDA GPU-accelerated ensemble functions ─────────────────────
+
+#[cfg(feature = "cuda")]
+fn count_q_ge_ensemble_cuda(
+    model: &HistFactoryModel,
+    poi: usize,
+    mu_test: f64,
+    q_obs: f64,
+    expected_main: &[f64],
+    init_free: &[f64],
+    bounds: &[(f64, f64)],
+    bounds_fixed: &[(f64, f64)],
+    n_toys: usize,
+    seed: u64,
+) -> Result<ToyCounts> {
+    // GPU batch: free fits
+    let free_fits = crate::gpu_batch::fit_toys_from_data_gpu(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds,
+        None,
+    )?;
+    // GPU batch: fixed fits (POI pinned to mu_test)
+    let fixed_fits = crate::gpu_batch::fit_toys_from_data_gpu(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds_fixed,
+        None,
+    )?;
+
+    let mut n_ge = 0usize;
+    let mut n_valid = 0usize;
+    let mut n_error = 0usize;
+    let mut n_nonconverged = 0usize;
+
+    for (fr, fxr) in free_fits.iter().zip(fixed_fits.iter()) {
+        match (fr, fxr) {
+            (Ok(free), Ok(fixed)) => {
+                let mu_hat = free.parameters[poi];
+                let q =
+                    if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed.nll - free.nll)).max(0.0) };
+                if q.is_finite() {
+                    n_valid += 1;
+                    if q >= q_obs {
+                        n_ge += 1;
+                    }
+                } else {
+                    n_error += 1;
+                }
+                if !(free.converged && fixed.converged) {
+                    n_nonconverged += 1;
+                }
+            }
+            _ => {
+                n_error += 1;
+            }
+        }
+    }
+
+    Ok(ToyCounts { n_ge, n_valid, n_error, n_nonconverged })
+}
+
+#[cfg(feature = "cuda")]
+fn generate_q_ensemble_cuda(
+    model: &HistFactoryModel,
+    poi: usize,
+    mu_test: f64,
+    expected_main: &[f64],
+    init_free: &[f64],
+    bounds: &[(f64, f64)],
+    bounds_fixed: &[(f64, f64)],
+    n_toys: usize,
+    seed: u64,
+) -> Result<QEnsemble> {
+    let free_fits = crate::gpu_batch::fit_toys_from_data_gpu(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds,
+        None,
+    )?;
+    let fixed_fits = crate::gpu_batch::fit_toys_from_data_gpu(
+        model,
+        expected_main,
+        n_toys,
+        seed,
+        init_free,
+        bounds_fixed,
+        None,
+    )?;
+
+    let mut q = Vec::with_capacity(n_toys);
+    let mut n_error = 0usize;
+    let mut n_nonconverged = 0usize;
+
+    for (fr, fxr) in free_fits.iter().zip(fixed_fits.iter()) {
+        match (fr, fxr) {
+            (Ok(free), Ok(fixed)) => {
+                let mu_hat = free.parameters[poi];
+                let qq =
+                    if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed.nll - free.nll)).max(0.0) };
+                if qq.is_finite() {
+                    q.push(qq);
+                } else {
+                    n_error += 1;
+                }
+                if !(free.converged && fixed.converged) {
+                    n_nonconverged += 1;
+                }
+            }
+            _ => {
+                n_error += 1;
+            }
+        }
+    }
+
+    Ok(QEnsemble { q, n_error, n_nonconverged })
+}
+
 // ── GPU dispatch wrapper for hypotest_qtilde_toys_impl ─────────
 
-#[cfg(feature = "metal")]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 fn hypotest_qtilde_toys_gpu_impl(
     mle: &MaximumLikelihoodEstimator,
     model: &HistFactoryModel,
@@ -682,6 +809,8 @@ fn hypotest_qtilde_toys_gpu_impl(
 ) -> Result<(ToyHypotestResult, Option<[f64; 5]>)> {
     // Validate device early, before any expensive computation.
     match gpu_device {
+        #[cfg(feature = "cuda")]
+        "cuda" => {}
         #[cfg(feature = "metal")]
         "metal" => {}
         _ => {
@@ -767,30 +896,33 @@ fn hypotest_qtilde_toys_gpu_impl(
 
     if !expected_set {
         // count-only path (no need to collect full q distributions)
-        let eb = count_q_ge_ensemble_metal(
-            model,
-            poi,
-            mu_test,
-            q_obs,
-            &expected_b,
-            &fixed_0.parameters,
-            &bounds,
-            &bounds_fixed,
-            n_toys,
-            seed_b,
-        )?;
-        let esb = count_q_ge_ensemble_metal(
-            model,
-            poi,
-            mu_test,
-            q_obs,
-            &expected_sb,
-            &fixed_mu.parameters,
-            &bounds,
-            &bounds_fixed,
-            n_toys,
-            seed_sb,
-        )?;
+        let (eb, esb) = match gpu_device {
+            #[cfg(feature = "cuda")]
+            "cuda" => {
+                let eb = count_q_ge_ensemble_cuda(
+                    model, poi, mu_test, q_obs, &expected_b, &fixed_0.parameters,
+                    &bounds, &bounds_fixed, n_toys, seed_b,
+                )?;
+                let esb = count_q_ge_ensemble_cuda(
+                    model, poi, mu_test, q_obs, &expected_sb, &fixed_mu.parameters,
+                    &bounds, &bounds_fixed, n_toys, seed_sb,
+                )?;
+                (eb, esb)
+            }
+            #[cfg(feature = "metal")]
+            "metal" => {
+                let eb = count_q_ge_ensemble_metal(
+                    model, poi, mu_test, q_obs, &expected_b, &fixed_0.parameters,
+                    &bounds, &bounds_fixed, n_toys, seed_b,
+                )?;
+                let esb = count_q_ge_ensemble_metal(
+                    model, poi, mu_test, q_obs, &expected_sb, &fixed_mu.parameters,
+                    &bounds, &bounds_fixed, n_toys, seed_sb,
+                )?;
+                (eb, esb)
+            }
+            _ => unreachable!("device validated at entry"),
+        };
 
         if eb.n_valid == 0 || esb.n_valid == 0 {
             return Err(Error::Validation(format!(
@@ -823,28 +955,33 @@ fn hypotest_qtilde_toys_gpu_impl(
     }
 
     // Full ensemble path (expected_set = true)
-    let ens_b_result = generate_q_ensemble_metal(
-        model,
-        poi,
-        mu_test,
-        &expected_b,
-        &fixed_0.parameters,
-        &bounds,
-        &bounds_fixed,
-        n_toys,
-        seed_b,
-    )?;
-    let ens_sb_result = generate_q_ensemble_metal(
-        model,
-        poi,
-        mu_test,
-        &expected_sb,
-        &fixed_mu.parameters,
-        &bounds,
-        &bounds_fixed,
-        n_toys,
-        seed_sb,
-    )?;
+    let (ens_b_result, ens_sb_result) = match gpu_device {
+        #[cfg(feature = "cuda")]
+        "cuda" => {
+            let eb = generate_q_ensemble_cuda(
+                model, poi, mu_test, &expected_b, &fixed_0.parameters,
+                &bounds, &bounds_fixed, n_toys, seed_b,
+            )?;
+            let esb = generate_q_ensemble_cuda(
+                model, poi, mu_test, &expected_sb, &fixed_mu.parameters,
+                &bounds, &bounds_fixed, n_toys, seed_sb,
+            )?;
+            (eb, esb)
+        }
+        #[cfg(feature = "metal")]
+        "metal" => {
+            let eb = generate_q_ensemble_metal(
+                model, poi, mu_test, &expected_b, &fixed_0.parameters,
+                &bounds, &bounds_fixed, n_toys, seed_b,
+            )?;
+            let esb = generate_q_ensemble_metal(
+                model, poi, mu_test, &expected_sb, &fixed_mu.parameters,
+                &bounds, &bounds_fixed, n_toys, seed_sb,
+            )?;
+            (eb, esb)
+        }
+        _ => unreachable!("device validated at entry"),
+    };
 
     if ens_b_result.q.is_empty() || ens_sb_result.q.is_empty() {
         return Err(Error::Validation(format!(
@@ -896,7 +1033,7 @@ fn hypotest_qtilde_toys_gpu_impl(
 }
 
 /// GPU-accelerated toy-based CLs hypotest (qtilde) — observed p-values.
-#[cfg(feature = "metal")]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 pub fn hypotest_qtilde_toys_gpu(
     mle: &MaximumLikelihoodEstimator,
     model: &HistFactoryModel,
@@ -909,7 +1046,7 @@ pub fn hypotest_qtilde_toys_gpu(
 }
 
 /// GPU-accelerated toy-based CLs hypotest (qtilde) — observed and expected-set p-values.
-#[cfg(feature = "metal")]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 pub fn hypotest_qtilde_toys_expected_set_gpu(
     mle: &MaximumLikelihoodEstimator,
     model: &HistFactoryModel,

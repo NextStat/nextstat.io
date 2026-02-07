@@ -3638,7 +3638,7 @@ fn cmd_hypotest_toys(
 
     let output_json = if let Some(device) = gpu {
         // GPU-accelerated path
-        #[cfg(feature = "metal")]
+        #[cfg(any(feature = "metal", feature = "cuda"))]
         {
             if expected_set {
                 let r = ns_inference::hypotest_qtilde_toys_expected_set_gpu(
@@ -3681,10 +3681,10 @@ fn cmd_hypotest_toys(
                 })
             }
         }
-        #[cfg(not(feature = "metal"))]
+        #[cfg(not(any(feature = "metal", feature = "cuda")))]
         {
             let _ = device;
-            anyhow::bail!("GPU hypotest-toys requires --features metal (or cuda)");
+            anyhow::bail!("GPU hypotest-toys requires --features metal or --features cuda");
         }
     } else {
         // CPU path

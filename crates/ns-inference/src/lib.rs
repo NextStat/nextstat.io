@@ -101,7 +101,7 @@ pub use diagnostics::DiagnosticsResult;
 #[cfg(feature = "cuda")]
 pub use differentiable::{DifferentiableSession, ProfiledDifferentiableSession};
 #[cfg(feature = "cuda")]
-pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
+pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]
 pub use gpu_single::{GpuSession, is_cuda_single_available};
 #[cfg(feature = "cuda")]
@@ -133,7 +133,7 @@ pub use toybased::{
 };
 #[cfg(feature = "metal")]
 pub use metal_differentiable::MetalProfiledDifferentiableSession;
-#[cfg(feature = "metal")]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 pub use toybased::{hypotest_qtilde_toys_expected_set_gpu, hypotest_qtilde_toys_gpu};
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
