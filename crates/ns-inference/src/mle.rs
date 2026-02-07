@@ -338,11 +338,13 @@ impl MaximumLikelihoodEstimator {
 
         let prepared = model.prepare();
         let tape_cell = RefCell::new(std::mem::take(tape));
+        let scratch_cell = RefCell::new(NllScratch::for_model(model));
 
         struct HFObjective<'a> {
             prepared: ns_translate::pyhf::PreparedModel<'a>,
             model: &'a HistFactoryModel,
             tape: RefCell<ns_ad::tape::Tape>,
+            scratch: RefCell<NllScratch>,
         }
 
         // SAFETY: L-BFGS-B optimizer is single-threaded within one minimize() call.
@@ -352,7 +354,8 @@ impl MaximumLikelihoodEstimator {
 
         impl ObjectiveFunction for HFObjective<'_> {
             fn eval(&self, params: &[f64]) -> Result<f64> {
-                self.prepared.nll(params)
+                let mut s = self.scratch.borrow_mut();
+                self.prepared.nll_reuse(params, &mut s)
             }
 
             fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
@@ -361,7 +364,7 @@ impl MaximumLikelihoodEstimator {
             }
         }
 
-        let objective = HFObjective { prepared, model, tape: tape_cell };
+        let objective = HFObjective { prepared, model, tape: tape_cell, scratch: scratch_cell };
         let optimizer = LbfgsbOptimizer::new(self.config.clone());
         let result = optimizer.minimize(&objective, initial_params, bounds);
 

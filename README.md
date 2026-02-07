@@ -36,7 +36,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py
 - Negative log-likelihood (Poisson + constraints), including Barlow-Beeston auxiliary terms
 - Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via (damped) Hessian-based covariance + diagonal fallback
 - NUTS sampling surface (generic `Posterior` API) + optional ArviZ integration
-- SIMD kernels, Rayon parallelism, Apple Accelerate (vDSP/vForce), and optional CUDA GPU batch acceleration
+- SIMD kernels, Rayon parallelism, Apple Accelerate (vDSP/vForce), and optional GPU acceleration (CUDA for NVIDIA, Metal for Apple Silicon)
 - Rust library, Python package (PyO3/maturin), and a CLI
 - Implemented packs: regression/GLM, hierarchical models, time series (Kalman/EM/forecast), econometrics/causal helpers, and PK/NLME baselines
 
@@ -235,7 +235,8 @@ let expr = ns_root::CompiledExpr::compile("pt > 25.0 && abs(eta) < 2.5")?;
 nextstat fit --input workspace.json
 nextstat hypotest --input workspace.json --mu 1.0 --expected-set
 nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --seed 42 --threads 0
-nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu  # CUDA GPU acceleration
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu cuda   # NVIDIA GPU (f64)
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu metal  # Apple Silicon GPU (f32)
 nextstat upper-limit --input workspace.json --expected --scan-start 0 --scan-stop 5 --scan-points 201
 nextstat version
 ```
@@ -266,7 +267,7 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
                           │ implemented by
 ┌─────────────────────────┴───────────────────────────────────────┐
 │                    LOW-LEVEL IMPLEMENTATIONS                     │
-│  ns-translate (pyhf + ntuple → Workspace)  ns-compute (SIMD/GPU) │
+│  ns-translate (pyhf + ntuple → Workspace)  ns-compute (SIMD/CUDA/Metal) │
 │  ns-ad (dual/tape AD)  ns-root (ROOT I/O, TTree, expressions)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -277,7 +278,7 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
 nextstat/
 ├── crates/
 │   ├── ns-core/         # Core types, traits, error handling
-│   ├── ns-compute/      # SIMD kernels, Apple Accelerate, CUDA batch NLL+grad
+│   ├── ns-compute/      # SIMD kernels, Apple Accelerate, CUDA/Metal batch NLL+grad
 │   ├── ns-ad/           # Automatic differentiation (dual/tape)
 │   ├── ns-root/         # Native ROOT file reader (TH1, TTree, expressions, filler)
 │   ├── ns-translate/    # Format translators (pyhf, HistFactory XML, ntuple builder)
@@ -309,6 +310,9 @@ cargo build --workspace
 
 # Build with CUDA support (requires nvcc)
 cargo build --workspace --features cuda
+
+# Build with Metal support (Apple Silicon, macOS)
+cargo build --workspace --features metal
 
 # Tests (including feature-gated backends)
 cargo test --workspace --all-features

@@ -19,11 +19,11 @@ HEP / HistFactory:
 - `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
 - `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json]`
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
-- `nextstat fit --input workspace.json [--gpu]`
+- `nextstat fit --input workspace.json [--gpu cuda]`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
-- `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu]`
+- `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu cuda|metal]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
-- `nextstat scan --input workspace.json --start 0 --stop 5 --points 21 [--gpu]`
+- `nextstat scan --input workspace.json --start 0 --stop 5 --points 21 [--gpu cuda]`
 - `nextstat viz profile --input workspace.json ...`
 - `nextstat viz cls --input workspace.json ...`
 - `nextstat viz ranking --input workspace.json`
@@ -42,32 +42,48 @@ Time series (Phase 8):
 
 ## GPU acceleration
 
-The `--gpu` flag enables CUDA GPU acceleration (requires `cuda` feature and an NVIDIA GPU at runtime). If no CUDA GPU is available at runtime, the command exits with an error. Without `--gpu`, the standard CPU (SIMD/Rayon + Accelerate) path is used.
+The `--gpu <device>` flag enables GPU acceleration, where `<device>` is one of:
 
-Build with CUDA support:
+- **`cuda`** — NVIDIA GPU (f64 precision). Requires `cuda` feature and an NVIDIA GPU at runtime.
+- **`metal`** — Apple Silicon GPU (f32 precision). Requires `metal` feature and Apple Silicon (M1+) at runtime. Currently supported only for `hypotest-toys` (batch toy fitting).
+
+Without `--gpu`, the standard CPU (SIMD/Rayon + Accelerate) path is used. If the requested GPU is not available at runtime, the command exits with an error.
+
+### Build with GPU support
 
 ```bash
+# CUDA (NVIDIA)
 cargo build -p ns-cli --features cuda --release
+
+# Metal (Apple Silicon)
+cargo build -p ns-cli --features metal --release
+
+# Both
+cargo build -p ns-cli --features "cuda,metal" --release
 ```
 
 ### Supported commands
 
-**`fit --gpu`** — Single-model MLE fit on GPU. Uses `GpuSession` for fused NLL+gradient (1 kernel launch per L-BFGS iteration). Hessian computed via finite differences of GPU gradient at the end.
+**`fit --gpu cuda`** — Single-model MLE fit on CUDA GPU. Uses `GpuSession` for fused NLL+gradient (1 kernel launch per L-BFGS iteration). Hessian computed via finite differences of GPU gradient at the end. Metal is not supported for single-model fit (use CPU).
 
 ```bash
-nextstat fit --input workspace.json --gpu
+nextstat fit --input workspace.json --gpu cuda
 ```
 
-**`scan --gpu`** — GPU-accelerated profile likelihood scan. A single `GpuSession` is shared across all scan points with warm-start between mu values.
+**`scan --gpu cuda`** — GPU-accelerated profile likelihood scan. A single `GpuSession` is shared across all scan points with warm-start between mu values. Metal is not supported for scan (use CPU).
 
 ```bash
-nextstat scan --input workspace.json --start 0 --stop 5 --points 21 --gpu
+nextstat scan --input workspace.json --start 0 --stop 5 --points 21 --gpu cuda
 ```
 
-**`hypotest-toys --gpu`** — Batch toy fitting on GPU. The lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration.
+**`hypotest-toys --gpu cuda|metal`** — Batch toy fitting on GPU. The lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration. Both CUDA (f64) and Metal (f32) backends are supported.
 
 ```bash
-nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu
+# CUDA (NVIDIA, f64)
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu cuda
+
+# Metal (Apple Silicon, f32 — tolerance relaxed to 1e-3)
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu metal
 ```
 
 ## Determinism and Parity Mode

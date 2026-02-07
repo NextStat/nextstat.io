@@ -120,6 +120,15 @@ enum HistoSysInterpCode {
     Code4p,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NormSysInterpCode {
+    /// Exponential (InterpCode=1). pyhf default for NormSys.
+    /// factor = hi^alpha (alpha>=0) or lo^(-alpha) (alpha<0).
+    Code1,
+    /// Polynomial + exponential extrapolation (InterpCode=4). Smooth at alpha=0.
+    Code4,
+}
+
 /// Model modifier (processed)
 #[derive(Debug, Clone)]
 enum ModelModifier {
@@ -137,7 +146,7 @@ enum ModelModifier {
     /// Shape factor - free per-bin multiplicative factors (unconstrained)
     ShapeFactor { param_indices: Vec<usize> },
     /// Normalization systematic - log-normal constraint
-    NormSys { param_idx: usize, hi_factor: f64, lo_factor: f64 },
+    NormSys { param_idx: usize, hi_factor: f64, lo_factor: f64, interp_code: NormSysInterpCode },
     /// Histogram systematic - shape interpolation
     HistoSys { param_idx: usize, hi_template: Vec<f64>, lo_template: Vec<f64>, interp_code: HistoSysInterpCode },
     /// Statistical error - per-bin multiplicative factors (constrained by normal)
@@ -224,8 +233,29 @@ impl HistFactoryModel {
         ln_gamma(n + 1.0)
     }
 
-    /// Create model from pyhf workspace
+    /// Create model from pyhf workspace with explicit modifier interpolation settings.
+    ///
+    /// `normsys_interp`: interpolation code for NormSys (code1 = pyhf default, code4 = polynomial).
+    /// `histosys_interp`: interpolation code for HistoSys (code0 = pyhf default, code4p = polynomial).
+    pub fn from_workspace_with_settings(
+        ws: &Workspace,
+        normsys_interp: NormSysInterpCode,
+        histosys_interp: HistoSysInterpCode,
+    ) -> Result<Self> {
+        Self::from_workspace_impl(ws, normsys_interp, histosys_interp)
+    }
+
+    /// Create model from pyhf workspace using parity harness defaults:
+    /// normsys=code4, histosys=code4p.
     pub fn from_workspace(ws: &Workspace) -> Result<Self> {
+        Self::from_workspace_impl(ws, NormSysInterpCode::Code4, HistoSysInterpCode::Code4p)
+    }
+
+    fn from_workspace_impl(
+        ws: &Workspace,
+        normsys_interp: NormSysInterpCode,
+        histosys_interp: HistoSysInterpCode,
+    ) -> Result<Self> {
         let mut parameters = Vec::new();
         let mut param_map: HashMap<String, usize> = HashMap::new();
 
@@ -596,6 +626,7 @@ impl HistFactoryModel {
                                     param_idx: idx,
                                     hi_factor: data.hi,
                                     lo_factor: data.lo,
+                                    interp_code: NormSysInterpCode::Code4,
                                 });
                             }
                         }
@@ -960,7 +991,7 @@ impl HistFactoryModel {
                                 }
                             }
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
@@ -968,7 +999,10 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            let factor = match interp_code {
+                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                            };
                             vec_scale(&mut sample_factors, factor);
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
@@ -1119,7 +1153,7 @@ impl HistFactoryModel {
                                 }
                             }
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
@@ -1127,7 +1161,10 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            let factor = match interp_code {
+                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                            };
                             vec_scale(sf, factor);
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
@@ -1280,7 +1317,7 @@ impl HistFactoryModel {
                                 }
                             }
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
@@ -1288,7 +1325,10 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            let factor = match interp_code {
+                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                            };
                             vec_scale(&mut sample_factors, factor);
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
@@ -1759,7 +1799,7 @@ impl HistFactoryModel {
                                 }
                             }
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
                             let alpha = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
@@ -1767,7 +1807,10 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            let factor = match interp_code {
+                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                            };
                             for fac in &mut sample_factors {
                                 *fac = *fac * factor;
                             }
@@ -2167,7 +2210,7 @@ impl HistFactoryModel {
                                 }
                             }
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
                             let alpha = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
@@ -2175,7 +2218,10 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            let factor = normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor);
+                            let factor = match interp_code {
+                                NormSysInterpCode::Code1 => normsys_code1_on_tape(tape, alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code4 => normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor),
+                            };
                             for fac in &mut sample_factors {
                                 *fac = tape.mul(*fac, factor);
                             }
@@ -2405,9 +2451,9 @@ impl HistFactoryModel {
                                 n_bins: 0,
                             });
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code: _ } => {
+                            // GPU kernel currently only supports code4 polynomial coefficients.
                             let data_off = modifier_data.len() as u32;
-                            // Pre-compute 6 polynomial coefficients + ln(hi) + ln(lo)
                             let hi = *hi_factor;
                             let lo = *lo_factor;
                             if hi > 0.0 && lo > 0.0 {
@@ -3106,6 +3152,32 @@ fn normsys_code4_coeffs(hi: f64, lo: f64) -> [f64; 6] {
     a
 }
 
+/// pyhf interpolators: normsys `code1` (exponential). pyhf default for normsys.
+///
+/// factor = hi^alpha (alpha >= 0) or lo^(-alpha) (alpha < 0).
+/// Equivalent to: exp(alpha * ln(hi)) or exp(-alpha * ln(lo)).
+fn normsys_code1<T: Scalar>(alpha: T, hi: f64, lo: f64) -> T {
+    // Guard against invalid factors (hi <= 0 or lo <= 0).
+    if hi <= 0.0 || lo <= 0.0 {
+        let alpha_val = alpha.value();
+        return if alpha_val >= 0.0 {
+            T::from_f64(1.0) + alpha * T::from_f64(hi - 1.0)
+        } else {
+            T::from_f64(1.0) - alpha * T::from_f64(1.0 - lo)
+        };
+    }
+
+    let alpha_val = alpha.value();
+    if alpha_val >= 0.0 {
+        // hi^alpha = exp(alpha * ln(hi))
+        (alpha * T::from_f64(hi.ln())).exp()
+    } else {
+        // lo^(-alpha) = exp(-alpha * ln(lo))
+        let neg_alpha = T::from_f64(0.0) - alpha;
+        (neg_alpha * T::from_f64(lo.ln())).exp()
+    }
+}
+
 /// pyhf interpolators: normsys `code4` (alpha0=1), specialized for scalar factors.
 fn normsys_code4<T: Scalar>(alpha: T, hi: f64, lo: f64) -> T {
     // Guard against invalid factors.
@@ -3232,6 +3304,40 @@ fn normsys_code4_on_tape(
     out = tape.add(out, t6);
 
     out
+}
+
+fn normsys_code1_on_tape(
+    tape: &mut ns_ad::tape::Tape,
+    alpha: ns_ad::tape::Var,
+    hi: f64,
+    lo: f64,
+) -> ns_ad::tape::Var {
+    if hi <= 0.0 || lo <= 0.0 {
+        let alpha_val = tape.val(alpha);
+        return if alpha_val >= 0.0 {
+            let delta = tape.constant(hi - 1.0);
+            let ad = tape.mul(alpha, delta);
+            tape.add_f64(ad, 1.0)
+        } else {
+            let delta = tape.constant(1.0 - lo);
+            let ad = tape.mul(alpha, delta);
+            tape.f64_sub(1.0, ad)
+        };
+    }
+
+    let alpha_val = tape.val(alpha);
+    if alpha_val >= 0.0 {
+        // hi^alpha = exp(alpha * ln(hi))
+        let ln_hi = tape.constant(hi.ln());
+        let prod = tape.mul(alpha, ln_hi);
+        tape.exp(prod)
+    } else {
+        // lo^(-alpha) = exp(-alpha * ln(lo))
+        let neg_alpha = tape.neg(alpha);
+        let ln_lo = tape.constant(lo.ln());
+        let prod = tape.mul(neg_alpha, ln_lo);
+        tape.exp(prod)
+    }
 }
 
 #[cfg(test)]
@@ -3892,6 +3998,61 @@ mod tests {
             pyhf_nll,
             diff
         );
+    }
+
+    #[test]
+    fn test_nll_reuse_bitexact_vs_nll_simple() {
+        let json = include_str!("../../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+        let prepared = model.prepare();
+        let mut scratch = NllScratch::for_model(&model);
+
+        let param_sets: Vec<Vec<f64>> = vec![
+            model.parameters().iter().map(|p| p.init).collect(),
+            model.parameters().iter().map(|p| p.init + 0.1).collect(),
+            model.parameters().iter().map(|p| p.init - 0.05).collect(),
+        ];
+
+        for (idx, params) in param_sets.iter().enumerate() {
+            let nll_alloc = prepared.nll(params).unwrap();
+            let nll_reuse = prepared.nll_reuse(params, &mut scratch).unwrap();
+            assert_eq!(
+                nll_alloc.to_bits(),
+                nll_reuse.to_bits(),
+                "nll_reuse not bit-exact (simple) at set {}: alloc={:.15}, reuse={:.15}",
+                idx, nll_alloc, nll_reuse,
+            );
+        }
+    }
+
+    #[test]
+    fn test_nll_reuse_bitexact_vs_nll_complex() {
+        let json = include_str!("../../../../tests/fixtures/complex_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+        let prepared = model.prepare();
+        let mut scratch = NllScratch::for_model(&model);
+
+        let param_sets: Vec<Vec<f64>> = vec![
+            model.parameters().iter().map(|p| p.init).collect(),
+            model.parameters().iter().map(|p| p.init + 0.1).collect(),
+            model.parameters().iter().map(|p| {
+                let base = if p.constrained { p.constraint_center.unwrap_or(p.init) } else { p.init };
+                base + 0.5
+            }).collect(),
+        ];
+
+        for (idx, params) in param_sets.iter().enumerate() {
+            let nll_alloc = prepared.nll(params).unwrap();
+            let nll_reuse = prepared.nll_reuse(params, &mut scratch).unwrap();
+            assert_eq!(
+                nll_alloc.to_bits(),
+                nll_reuse.to_bits(),
+                "nll_reuse not bit-exact (complex) at set {}: alloc={:.15}, reuse={:.15}",
+                idx, nll_alloc, nll_reuse,
+            );
+        }
     }
 
     proptest! {
