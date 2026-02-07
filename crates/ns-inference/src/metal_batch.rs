@@ -97,6 +97,9 @@ pub fn fit_toys_batch_metal(
 
     let mut active_mask: Vec<bool> = vec![true; n_toys];
 
+    // Pre-allocate compaction buffer (worst case: all toys active)
+    let mut params_flat = vec![0.0f64; n_toys * n_params];
+
     // 7. Lockstep iteration loop
     for _iter in 0..config.max_iter {
         let active_indices: Vec<usize> = (0..n_toys)
@@ -109,15 +112,14 @@ pub fn fit_toys_batch_metal(
 
         let n_active = active_indices.len();
 
-        // Compact active params into contiguous buffer
-        let mut params_flat = vec![0.0f64; n_active * n_params];
+        // Compact active params into preallocated contiguous buffer
         for (ai, &toy_idx) in active_indices.iter().enumerate() {
             let src = &states[toy_idx].x;
             params_flat[ai * n_params..(ai + 1) * n_params].copy_from_slice(src);
         }
 
         // GPU: batch NLL + gradient (f64→f32→f64 round-trip inside accelerator)
-        let (nlls, grads) = accel.batch_nll_grad(&params_flat, n_active)?;
+        let (nlls, grads) = accel.batch_nll_grad(&params_flat[..n_active * n_params], n_active)?;
 
         // CPU: update each active toy's L-BFGS-B state
         for (ai, &toy_idx) in active_indices.iter().enumerate() {

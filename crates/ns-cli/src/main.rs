@@ -12,6 +12,7 @@ mod analysis_spec;
 mod discover;
 mod report;
 mod run;
+mod survival;
 
 const SCHEMA_ANALYSIS_SPEC_V0: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -378,6 +379,12 @@ enum Commands {
     Timeseries {
         #[command(subcommand)]
         command: TimeseriesCommands,
+    },
+
+    /// Survival analysis (Phase 9)
+    Survival {
+        #[command(subcommand)]
+        command: SurvivalCommands,
     },
 
     /// Configuration helpers (schemas, etc.)
@@ -873,6 +880,36 @@ enum TimeseriesCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum SurvivalCommands {
+    /// Cox proportional hazards (partial likelihood) fit (with optional robust/cluster-robust SE)
+    CoxPhFit {
+        /// Input JSON file (see docs/tutorials/phase-9-survival.md)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Ties approximation: breslow or efron.
+        #[arg(long, default_value = "efron", value_parser = ["breslow", "efron"])]
+        ties: String,
+
+        /// Disable robust (sandwich) standard errors.
+        #[arg(long, default_value_t = false)]
+        no_robust: bool,
+
+        /// Disable small-sample correction for clustered robust covariance (G/(G-1)).
+        #[arg(long, default_value_t = false)]
+        no_cluster_correction: bool,
+
+        /// Disable baseline cumulative hazard output (Breslow/Efron increments).
+        #[arg(long, default_value_t = false)]
+        no_baseline: bool,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -1239,6 +1276,24 @@ fn main() -> Result<()> {
             TimeseriesCommands::KalmanSimulate { input, t_max, seed, output } => {
                 cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref(), cli.bundle.as_ref())
             }
+        },
+        Commands::Survival { command } => match command {
+            SurvivalCommands::CoxPhFit {
+                input,
+                output,
+                ties,
+                no_robust,
+                no_cluster_correction,
+                no_baseline,
+            } => survival::cmd_survival_cox_ph_fit(
+                &input,
+                output.as_ref(),
+                ties.as_str(),
+                /*robust*/ !no_robust,
+                /*cluster_correction*/ !no_cluster_correction,
+                /*baseline*/ !no_baseline,
+                cli.bundle.as_ref(),
+            ),
         },
         Commands::Config { command } => match command {
             ConfigCommands::Schema { name } => cmd_config_schema(name.as_deref()),

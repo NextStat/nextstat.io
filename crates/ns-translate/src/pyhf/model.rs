@@ -112,7 +112,7 @@ struct ModelSample {
 
 /// Interpolation code for HistoSys shape systematics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HistoSysInterpCode {
+pub enum HistoSysInterpCode {
     /// Piecewise linear (InterpCode=0). pyhf default for HistoSys.
     /// Kink at alpha=0 (discontinuous first derivative).
     Code0,
@@ -121,7 +121,7 @@ enum HistoSysInterpCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NormSysInterpCode {
+pub enum NormSysInterpCode {
     /// Exponential (InterpCode=1). pyhf default for NormSys.
     /// factor = hi^alpha (alpha>=0) or lo^(-alpha) (alpha<0).
     Code1,
@@ -626,7 +626,7 @@ impl HistFactoryModel {
                                     param_idx: idx,
                                     hi_factor: data.hi,
                                     lo_factor: data.lo,
-                                    interp_code: NormSysInterpCode::Code4,
+                                    interp_code: normsys_interp,
                                 });
                             }
                         }
@@ -648,8 +648,7 @@ impl HistFactoryModel {
                                     param_idx: idx,
                                     hi_template: data.hi_data.clone(),
                                     lo_template: data.lo_data.clone(),
-                                    // Match the parity harness (pyhf modifier_settings histosys=code4p).
-                                    interp_code: HistoSysInterpCode::Code4p,
+                                    interp_code: histosys_interp,
                                 });
                             }
                         }

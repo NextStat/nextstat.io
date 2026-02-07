@@ -62,6 +62,10 @@ pub struct MetalBatchAccelerator {
     n_main_bins: usize,
     scalar_args: ScalarArgs,
     max_batch: usize,
+
+    // --- CPU scratch buffers (preallocated for max_batch, reused per call) ---
+    scratch_params_f32: Vec<f32>,  // max_batch * n_params
+    scratch_zeros_f32: Vec<f32>,   // max_batch * n_params
 }
 
 impl MetalBatchAccelerator {
@@ -146,6 +150,11 @@ impl MetalBatchAccelerator {
             constraint_const: data.constraint_const,
         };
 
+        // Pre-allocate CPU scratch buffers for f64→f32 conversion (avoids per-call allocation)
+        let scratch_size = max_batch * data.n_params;
+        let scratch_params_f32 = vec![0.0f32; scratch_size];
+        let scratch_zeros_f32 = vec![0.0f32; scratch_size];
+
         Ok(Self {
             device,
             queue,
@@ -169,6 +178,8 @@ impl MetalBatchAccelerator {
             n_main_bins: data.n_main_bins,
             scalar_args,
             max_batch,
+            scratch_params_f32,
+            scratch_zeros_f32,
         })
     }
 
@@ -212,13 +223,19 @@ impl MetalBatchAccelerator {
         assert!(n_active <= self.max_batch);
         assert_eq!(params_flat.len(), n_active * self.n_params);
 
-        // Upload params (f64→f32)
-        let params_f32: Vec<f32> = params_flat.iter().map(|&v| v as f32).collect();
-        Self::copy_to_buffer(&self.buf_params, &params_f32);
+        // Upload params (f64→f32) — reuse preallocated scratch buffer
+        let count = n_active * self.n_params;
+        for (i, &v) in params_flat.iter().enumerate() {
+            self.scratch_params_f32[i] = v as f32;
+        }
+        Self::copy_to_buffer(&self.buf_params, &self.scratch_params_f32[..count]);
 
-        // Zero gradient output
-        let zeros = vec![0.0f32; n_active * self.n_params];
-        Self::copy_to_buffer(&self.buf_grad_out, &zeros);
+        // Zero gradient output — reuse preallocated scratch buffer
+        // scratch_zeros_f32 is always zeroed; we just need to ensure the right length
+        for i in 0..count {
+            self.scratch_zeros_f32[i] = 0.0;
+        }
+        Self::copy_to_buffer(&self.buf_grad_out, &self.scratch_zeros_f32[..count]);
 
         // Dispatch kernel
         let block_size = self.n_main_bins.min(256);
@@ -261,8 +278,12 @@ impl MetalBatchAccelerator {
         assert!(n_active <= self.max_batch);
         assert_eq!(params_flat.len(), n_active * self.n_params);
 
-        let params_f32: Vec<f32> = params_flat.iter().map(|&v| v as f32).collect();
-        Self::copy_to_buffer(&self.buf_params, &params_f32);
+        // Upload params (f64→f32) — reuse preallocated scratch buffer
+        let count = n_active * self.n_params;
+        for (i, &v) in params_flat.iter().enumerate() {
+            self.scratch_params_f32[i] = v as f32;
+        }
+        Self::copy_to_buffer(&self.buf_params, &self.scratch_params_f32[..count]);
 
         let block_size = self.n_main_bins.min(256);
         let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
