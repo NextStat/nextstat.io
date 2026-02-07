@@ -601,6 +601,7 @@ enum SystKind {
     Weight,
     Tree,
     Histo,
+    Shape,
 }
 
 /// One TREx systematic block.
@@ -631,6 +632,10 @@ pub struct TrexSystematic {
     histo_name_down: Option<String>,
     histo_file_up: Option<PathBuf>,
     histo_file_down: Option<PathBuf>,
+    // Optional TREx knobs (currently parsed for coverage/parity work).
+    smoothing: Option<String>,
+    drop_norm: Option<String>,
+    pruning: Option<String>,
 }
 
 /// A single unrecognized `key: value` attribute encountered while parsing a TREx config.
@@ -1038,6 +1043,21 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "DownFile",
                 "TreeName",
                 "Tree",
+                // HISTO/SHAPE systematics.
+                "HistoNameUp",
+                "HistoNameDown",
+                "HistoUp",
+                "HistoDown",
+                "NameUp",
+                "NameDown",
+                "HistoFileUp",
+                "HistoFileDown",
+                "HistoPathUp",
+                "HistoPathDown",
+                // Optional TREx knobs.
+                "Smoothing",
+                "DropNorm",
+                "Pruning",
             ]
             .iter()
             .any(|k| key_eq(key, k)),
@@ -1397,6 +1417,7 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         "weight" | "weightsys" => Some(SystKind::Weight),
         "tree" | "treesys" => Some(SystKind::Tree),
         "histo" | "histosys" => Some(SystKind::Histo),
+        "shape" | "shapesys" => Some(SystKind::Shape),
         _ => None,
         }
     }
@@ -1489,6 +1510,9 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         histo_name_down: None,
         histo_file_up: None,
         histo_file_down: None,
+        smoothing: last_attr_value(&b.attrs, "Smoothing"),
+        drop_norm: last_attr_value(&b.attrs, "DropNorm"),
+        pruning: last_attr_value(&b.attrs, "Pruning"),
     };
 
     match kind {
@@ -1597,7 +1621,7 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
             out.tree_name =
                 last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
         }
-        SystKind::Histo => {
+        SystKind::Histo | SystKind::Shape => {
             // TREx HISTO: read up/down variation histograms (TH1) from ROOT files.
             // Keys: HistoNameUp/HistoNameDown (histogram object names),
             //       HistoFileUp/HistoFileDown or HistoPathUp/HistoPathDown (ROOT files).
@@ -1848,7 +1872,7 @@ fn sys_to_modifier(sys: &TrexSystematic, base_weight: Option<&str>) -> Result<Nt
             })?,
             tree_name: sys.tree_name.clone(),
         }),
-        SystKind::Histo => Ok(NtupleModifier::HistoSys {
+        SystKind::Histo | SystKind::Shape => Ok(NtupleModifier::HistoSys {
             name: sys.name.clone(),
             histo_name_up: sys.histo_name_up.clone().ok_or_else(|| {
                 Error::Validation(format!("Systematic '{}' missing histo_name_up", sys.name))
@@ -2395,6 +2419,83 @@ WeightDown: weight_jes_down
             .collect();
         kinds.sort();
         assert_eq!(kinds, vec!["histosys", "normfactor", "staterror"]);
+    }
+
+    #[test]
+    fn trex_parse_systematic_type_shape() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+
+Systematic: jes
+Type: SHAPE
+Samples: signal
+Regions: SR
+HistoNameUp: jes_up
+HistoNameDown: jes_down
+Smoothing: 1
+DropNorm: false
+Pruning: 0.02
+"#;
+
+        let cfg = TrexConfig::parse_str(cfg).expect("parse");
+        assert_eq!(cfg.systematics.len(), 1);
+        let sys = &cfg.systematics[0];
+        assert_eq!(sys.kind, SystKind::Shape);
+        assert_eq!(sys.histo_name_up.as_deref(), Some("jes_up"));
+        assert_eq!(sys.histo_name_down.as_deref(), Some("jes_down"));
+        assert_eq!(sys.smoothing.as_deref(), Some("1"));
+        assert_eq!(sys.drop_norm.as_deref(), Some("false"));
+        assert_eq!(sys.pruning.as_deref(), Some("0.02"));
+    }
+
+    #[test]
+    fn trex_coverage_recognizes_smoothing_and_pruning_attrs() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+
+Systematic: jes
+Type: SHAPE
+Samples: signal
+Regions: SR
+HistoNameUp: jes_up
+HistoNameDown: jes_down
+Smoothing: 1
+DropNorm: false
+Pruning: 0.02
+"#;
+
+        let (_cfg, report) = TrexConfig::parse_str_with_coverage(cfg).expect("parse");
+        assert!(
+            report.unknown.is_empty(),
+            "unexpected unknown attrs: {:?}",
+            report.unknown
+        );
     }
 
     #[test]

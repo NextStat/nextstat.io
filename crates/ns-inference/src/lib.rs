@@ -101,6 +101,8 @@ pub use differentiable::{DifferentiableSession, ProfiledDifferentiableSession};
 pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]
 pub use gpu_single::{GpuSession, is_cuda_single_available};
+#[cfg(feature = "cuda")]
+pub use mle::ranking_gpu;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};

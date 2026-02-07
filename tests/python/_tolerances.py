@@ -30,3 +30,20 @@ EXPECTED_DATA_PER_BIN_ATOL = 1e-12
 
 # Coverage regression (NextStat vs pyhf deltas)
 COVERAGE_DELTA_MAX = 0.05
+
+# ---------------------------------------------------------------------------
+# GPU parity (CUDA, f64, Code4/Code4p — same interpolation as CPU default)
+# ---------------------------------------------------------------------------
+GPU_NLL_ATOL = 1e-8       # NLL at same params: |gpu − cpu| < atol
+GPU_NLL_RTOL = 1e-6       # NLL at same params: relative
+GPU_GRAD_ATOL = 1e-5      # Per-element gradient (slightly relaxed for reduction order)
+GPU_PARAM_ATOL = 2e-4     # Best-fit parameter values
+GPU_FIT_NLL_ATOL = 1e-6   # NLL at best-fit point
+
+# ---------------------------------------------------------------------------
+# Metal parity (f32 compute — Apple Silicon has no hardware f64)
+# ---------------------------------------------------------------------------
+METAL_NLL_ATOL = 1e-3
+METAL_GRAD_ATOL = 1e-2
+METAL_PARAM_ATOL = 1e-2
+METAL_FIT_NLL_ATOL = 1e-3

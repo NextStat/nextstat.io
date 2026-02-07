@@ -165,6 +165,44 @@ enum ModelModifier {
 }
 
 impl HistFactoryModel {
+    /// Return per-parameter 1σ widths for parameters constrained by auxiliary Poisson terms
+    /// (Barlow–Beeston `shapesys`).
+    ///
+    /// In pyhf's Barlow–Beeston, each gamma parameter is constrained by an auxiliary Poisson
+    /// with `tau = (nominal / sigma_abs)^2`. Around the nominal point (gamma≈1),
+    /// the approximate standard deviation is `sigma_gamma ≈ 1 / sqrt(tau)`.
+    ///
+    /// This map is intentionally *best-effort* and is primarily used by higher-level utilities
+    /// (e.g. ranking) that need a "±1σ" notion for Poisson-constrained parameters.
+    pub fn poisson_constraint_sigmas(&self) -> HashMap<usize, f64> {
+        let mut sigmas: HashMap<usize, f64> = HashMap::new();
+
+        for channel in &self.channels {
+            for constraint in &channel.auxiliary_data {
+                let Some(sample) = channel.samples.get(constraint.sample_idx) else { continue };
+                let Some(modifier) = sample.modifiers.get(constraint.modifier_idx) else { continue };
+
+                let ModelModifier::ShapeSys { param_indices, .. } = modifier else { continue };
+                if param_indices.len() != constraint.tau.len() {
+                    continue;
+                }
+
+                for (&pidx, &tau) in param_indices.iter().zip(constraint.tau.iter()) {
+                    if tau.is_finite() && tau > 0.0 {
+                        let sigma = 1.0 / tau.sqrt();
+                        // If a param shows up multiple times (unexpected), keep the tightest sigma.
+                        sigmas
+                            .entry(pidx)
+                            .and_modify(|s| *s = s.min(sigma))
+                            .or_insert(sigma);
+                    }
+                }
+            }
+        }
+
+        sigmas
+    }
+
     fn validate_params_len(&self, got: usize) -> Result<()> {
         let expected = self.parameters.len();
         if got != expected {
@@ -314,6 +352,45 @@ impl HistFactoryModel {
             "Signal sample '{}' not found in any channel",
             sample_name
         )))
+    }
+
+    /// Return GPU indexing info for ALL occurrences of a signal sample across channels.
+    ///
+    /// For multi-channel models where the same sample name appears in multiple channels,
+    /// this returns one `(flat_sample_idx, main_bin_offset, n_bins)` tuple per channel.
+    /// For single-channel models, this returns a `Vec` with one element (identical to
+    /// `signal_sample_gpu_info`).
+    pub fn signal_sample_gpu_info_all(
+        &self,
+        sample_name: &str,
+    ) -> Result<Vec<(u32, u32, u32)>> {
+        let mut flat_sample_idx: u32 = 0;
+        let mut main_bin_offset: u32 = 0;
+        let mut entries = Vec::new();
+
+        for channel in &self.channels {
+            let channel_n_bins =
+                channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0) as u32;
+
+            for sample in &channel.samples {
+                if sample.name == sample_name {
+                    let n_bins = sample.nominal.len() as u32;
+                    entries.push((flat_sample_idx, main_bin_offset, n_bins));
+                }
+                flat_sample_idx += 1;
+            }
+
+            main_bin_offset += channel_n_bins;
+        }
+
+        if entries.is_empty() {
+            return Err(ns_core::Error::Validation(format!(
+                "Signal sample '{}' not found in any channel",
+                sample_name
+            )));
+        }
+
+        Ok(entries)
     }
 
     /// Borrow the nominal main-bin yields for a given channel/sample.

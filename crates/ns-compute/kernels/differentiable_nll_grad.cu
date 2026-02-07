@@ -12,6 +12,10 @@
  *
  * Architecture: single CUDA block (1 model, not batch).
  * Threads process bins via grid-stride loop.
+ *
+ * Multi-channel signal: the signal sample may appear in multiple channels.
+ * Signal entries (arrays of sample_idx, first_bin, n_bins) describe each occurrence.
+ * The external signal buffer is laid out as [ch0_bins..., ch1_bins..., ...].
  */
 
 #include "common.cuh"
@@ -36,12 +40,13 @@ extern "C" __global__ void differentiable_nll_grad(
     double* __restrict__ g_nll_out,            /* [1] */
     double* __restrict__ g_grad_params_out,    /* [n_params] */
     /* === PyTorch zero-copy pointers === */
-    const double* __restrict__ g_external_signal,  /* [signal_n_bins] — PyTorch signal tensor */
-    double* __restrict__ g_grad_signal_out,        /* [signal_n_bins] — PyTorch grad tensor */
-    /* Signal sample metadata */
-    unsigned int signal_sample_idx,  /* flat sample index in g_samples[] */
-    unsigned int signal_first_bin,   /* first bin offset in main bins for signal */
-    unsigned int signal_n_bins,      /* number of signal bins */
+    const double* __restrict__ g_external_signal,  /* [total_signal_bins] — PyTorch signal tensor */
+    double* __restrict__ g_grad_signal_out,        /* [total_signal_bins] — PyTorch grad tensor */
+    /* Multi-channel signal entry arrays */
+    const unsigned int* __restrict__ g_signal_sample_indices,  /* [n_signal_entries] */
+    const unsigned int* __restrict__ g_signal_first_bins,      /* [n_signal_entries] */
+    const unsigned int* __restrict__ g_signal_n_bins_arr,      /* [n_signal_entries] */
+    unsigned int n_signal_entries,
     /* Scalar metadata */
     unsigned int n_params,
     unsigned int n_main_bins,
@@ -73,6 +78,7 @@ extern "C" __global__ void differentiable_nll_grad(
         /* Track signal sample's factor_product for gradient computation */
         double signal_factor = 0.0;
         int has_signal = 0;
+        unsigned int sig_local_bin = 0;
 
         for (unsigned int s = 0; s < n_samples; s++) {
             struct GpuSampleInfo sinfo = g_samples[s];
@@ -82,14 +88,20 @@ extern "C" __global__ void differentiable_nll_grad(
             unsigned int local_bin = bin - sinfo.main_bin_offset;
             unsigned int sample_bin = sinfo.first_sample_bin + local_bin;
 
-            /* For the signal sample, replace nominal with external signal */
-            double nom;
-            if (s == signal_sample_idx
-                && bin >= signal_first_bin
-                && bin < signal_first_bin + signal_n_bins) {
-                nom = g_external_signal[bin - signal_first_bin];
-            } else {
-                nom = g_nominal[sample_bin];
+            /* Check if this sample+bin is in a signal entry */
+            double nom = g_nominal[sample_bin];
+            unsigned int sig_global_offset = 0;
+            for (unsigned int se = 0; se < n_signal_entries; se++) {
+                unsigned int se_sidx = g_signal_sample_indices[se];
+                unsigned int se_first = g_signal_first_bins[se];
+                unsigned int se_nbins = g_signal_n_bins_arr[se];
+                if (s == se_sidx && bin >= se_first && bin < se_first + se_nbins) {
+                    nom = g_external_signal[sig_global_offset + (bin - se_first)];
+                    has_signal = 1;
+                    sig_local_bin = sig_global_offset + (bin - se_first);
+                    break;
+                }
+                sig_global_offset += se_nbins;
             }
 
             double delta = 0.0;
@@ -126,12 +138,9 @@ extern "C" __global__ void differentiable_nll_grad(
             double sample_expected = (nom + delta) * factor;
             expected_bin += sample_expected;
 
-            /* Remember signal factor for gradient */
-            if (s == signal_sample_idx
-                && bin >= signal_first_bin
-                && bin < signal_first_bin + signal_n_bins) {
+            /* Remember signal factor for gradient (last match wins — only one per bin) */
+            if (has_signal) {
                 signal_factor = factor;
-                has_signal = 1;
             }
         }
 
@@ -149,17 +158,8 @@ extern "C" __global__ void differentiable_nll_grad(
         double w = 1.0 - obs / expected_bin;
 
         /* ----- Gradient w.r.t. signal bins (zero-copy into PyTorch) ----- */
-        /*
-         * expected_i = (signal_i + delta_i) * factor_i  [for signal sample]
-         *            + Σ_{other samples} (nom_j + delta_j) * factor_j
-         *
-         * ∂NLL/∂signal_i = w * factor_i
-         *
-         * (signal_i contributes linearly to expected_i via (signal_i + delta) * factor)
-         */
         if (has_signal) {
-            unsigned int sig_bin_idx = bin - signal_first_bin;
-            atomicAdd(&g_grad_signal_out[sig_bin_idx], w * signal_factor);
+            atomicAdd(&g_grad_signal_out[sig_local_bin], w * signal_factor);
         }
 
         /* ----- Gradient w.r.t. nuisance parameters ----- */
@@ -172,13 +172,17 @@ extern "C" __global__ void differentiable_nll_grad(
             unsigned int sample_bin2 = sinfo.first_sample_bin + local_bin2;
 
             /* Re-read nominal (signal or standard) */
-            double nom;
-            if (s == signal_sample_idx
-                && bin >= signal_first_bin
-                && bin < signal_first_bin + signal_n_bins) {
-                nom = g_external_signal[bin - signal_first_bin];
-            } else {
-                nom = g_nominal[sample_bin2];
+            double nom = g_nominal[sample_bin2];
+            unsigned int sig_global_offset2 = 0;
+            for (unsigned int se = 0; se < n_signal_entries; se++) {
+                unsigned int se_sidx = g_signal_sample_indices[se];
+                unsigned int se_first = g_signal_first_bins[se];
+                unsigned int se_nbins = g_signal_n_bins_arr[se];
+                if (s == se_sidx && bin >= se_first && bin < se_first + se_nbins) {
+                    nom = g_external_signal[sig_global_offset2 + (bin - se_first)];
+                    break;
+                }
+                sig_global_offset2 += se_nbins;
             }
 
             double delta = 0.0;

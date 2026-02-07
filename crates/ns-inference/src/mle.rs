@@ -726,6 +726,7 @@ impl MaximumLikelihoodEstimator {
     /// `RankingEntry` per constrained NP, sorted by |impact| descending.
     pub fn ranking(&self, model: &HistFactoryModel) -> Result<Vec<RankingEntry>> {
         use rayon::prelude::*;
+        use std::collections::HashSet;
 
         let poi_idx = model
             .poi_index()
@@ -736,15 +737,27 @@ impl MaximumLikelihoodEstimator {
         let mu_hat = nominal_result.parameters[poi_idx];
         let base_bounds = model.parameter_bounds();
 
-        // Only constrained NPs (constraint_width.is_some()), skip POI and
-        // unconstrained normfactors / shapefactors.
-        let np_indices: Vec<usize> = model
+        // Ranking applies to nuisance parameters constrained by either:
+        // - explicit Gaussian constraints (constraint_width.is_some()), OR
+        // - auxiliary Poisson constraints (Barlow–Beeston ShapeSys).
+        //
+        // We intentionally *exclude* unconstrained normfactors/shapefactors: they have
+        // neither a Gaussian width nor an aux-poisson sigma.
+        let poisson_sigmas = model.poisson_constraint_sigmas();
+        let mut np_set: HashSet<usize> = model
             .parameters()
             .iter()
             .enumerate()
             .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
             .map(|(i, _)| i)
             .collect();
+        for (&idx, _) in &poisson_sigmas {
+            if idx != poi_idx {
+                np_set.insert(idx);
+            }
+        }
+        let mut np_indices: Vec<usize> = np_set.into_iter().collect();
+        np_indices.sort_unstable();
 
         let tape_capacity = model.n_params() * 20;
 
@@ -762,10 +775,14 @@ impl MaximumLikelihoodEstimator {
                 |(tape, scratch), &np_idx| {
                     let param = &model.parameters()[np_idx];
                     let center = param.constraint_center.unwrap_or(param.init);
-                    let sigma = param.constraint_width.unwrap(); // guaranteed by filter
+                    let sigma = param
+                        .constraint_width
+                        .or_else(|| poisson_sigmas.get(&np_idx).copied())
+                        .unwrap_or(0.1);
 
                     // --- +1σ: fix NP via bounds-clamping (no model clone) ---
-                    let val_up = center + sigma;
+                    let (b_lo, b_hi) = base_bounds[np_idx];
+                    let val_up = (center + sigma).min(b_hi);
                     let mut bounds_up = base_bounds.clone();
                     bounds_up[np_idx] = (val_up, val_up);
                     let mut warm = nominal_result.parameters.clone();
@@ -777,7 +794,7 @@ impl MaximumLikelihoodEstimator {
                     let mu_up = result_up.parameters[poi_idx];
 
                     // --- -1σ ---
-                    let val_down = center - sigma;
+                    let val_down = (center - sigma).max(b_lo);
                     let mut bounds_down = base_bounds.clone();
                     bounds_down[np_idx] = (val_down, val_down);
                     warm = nominal_result.parameters.clone();
@@ -1236,6 +1253,98 @@ impl Default for MaximumLikelihoodEstimator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ---------------------------------------------------------------------------
+// GPU-accelerated ranking
+// ---------------------------------------------------------------------------
+
+/// Compute NP ranking using GPU for per-NP refits.
+///
+/// Nominal fit uses CPU (needs Hessian for pull/constraint). Per-NP ±1σ refits
+/// use a shared `GpuSession` with warm-start and bounds-clamping — sequential
+/// but each refit is GPU-accelerated.
+#[cfg(feature = "cuda")]
+pub fn ranking_gpu(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+) -> Result<Vec<RankingEntry>> {
+    let poi_idx = model
+        .poi_index()
+        .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
+
+    // Nominal fit WITH Hessian (CPU — need uncertainties for constraint)
+    let nominal_result = mle.fit_histfactory(model)?;
+    let mu_hat = nominal_result.parameters[poi_idx];
+    let base_bounds = model.parameter_bounds();
+
+    // Only constrained NPs
+    let np_indices: Vec<usize> = model
+        .parameters()
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
+        .map(|(i, _)| i)
+        .collect();
+
+    // Shared GPU session — model uploaded once
+    let session = crate::gpu_single::GpuSession::new(model)?;
+    let config = mle.config().clone();
+
+    let mut entries = Vec::with_capacity(np_indices.len());
+
+    for &np_idx in &np_indices {
+        let param = &model.parameters()[np_idx];
+        let center = param.constraint_center.unwrap_or(param.init);
+        let sigma = param.constraint_width.unwrap(); // guaranteed by filter
+
+        // +1σ: fix NP via bounds-clamping
+        let val_up = center + sigma;
+        let mut bounds_up = base_bounds.clone();
+        bounds_up[np_idx] = (val_up, val_up);
+        let mut warm = nominal_result.parameters.clone();
+        warm[np_idx] = val_up;
+
+        let result_up =
+            session.fit_minimum_from_with_bounds(model, &warm, &bounds_up, &config)?;
+        let mu_up = result_up.parameters[poi_idx];
+
+        // -1σ
+        let val_down = center - sigma;
+        let mut bounds_down = base_bounds.clone();
+        bounds_down[np_idx] = (val_down, val_down);
+        warm = nominal_result.parameters.clone();
+        warm[np_idx] = val_down;
+
+        let result_down =
+            session.fit_minimum_from_with_bounds(model, &warm, &bounds_down, &config)?;
+        let mu_down = result_down.parameters[poi_idx];
+
+        // Pull and constraint
+        let theta_hat = nominal_result.parameters[np_idx];
+        let pull = (theta_hat - center) / sigma;
+        let constraint = nominal_result.uncertainties[np_idx] / sigma;
+
+        entries.push(RankingEntry {
+            name: param.name.clone(),
+            delta_mu_up: mu_up - mu_hat,
+            delta_mu_down: mu_down - mu_hat,
+            pull,
+            constraint,
+        });
+    }
+
+    // Sort by |impact| descending
+    entries.sort_by(|a, b| {
+        let impact_a = a.delta_mu_up.abs().max(a.delta_mu_down.abs());
+        let impact_b = b.delta_mu_up.abs().max(b.delta_mu_down.abs());
+        impact_b
+            .partial_cmp(&impact_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(entries)
 }
 
 #[cfg(test)]

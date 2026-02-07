@@ -196,3 +196,225 @@ impl ObjectiveFunction for GpuObjective<'_> {
 pub fn is_cuda_single_available() -> bool {
     CudaBatchAccelerator::is_available()
 }
+
+// ---------------------------------------------------------------------------
+// GPU parity contract — tolerance constants for integration tests
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GPU parity contract — tolerance constants
+// ---------------------------------------------------------------------------
+
+/// NLL at same params: |gpu − cpu| < atol
+pub const GPU_NLL_ATOL: f64 = 1e-8;
+/// Per-element gradient (slightly relaxed for reduction order)
+pub const GPU_GRAD_ATOL: f64 = 1e-5;
+/// Best-fit parameter values
+pub const GPU_PARAM_ATOL: f64 = 2e-4;
+/// NLL at best-fit point
+pub const GPU_FIT_NLL_ATOL: f64 = 1e-6;
+
+// ---------------------------------------------------------------------------
+// Integration tests — run on CUDA machines only
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::optimizer::OptimizerConfig;
+    use ns_translate::pyhf::{HistFactoryModel, Workspace};
+
+    fn load_simple_model() -> HistFactoryModel {
+        let json = include_str!("../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        HistFactoryModel::from_workspace(&ws).unwrap()
+    }
+
+    fn load_complex_model() -> HistFactoryModel {
+        let json = include_str!("../../../tests/fixtures/complex_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        HistFactoryModel::from_workspace(&ws).unwrap()
+    }
+
+    #[test]
+    fn test_gpu_nll_matches_cpu() {
+        let model = load_simple_model();
+        let session = GpuSession::new(&model).unwrap();
+
+        // Test at init params
+        let params = model.parameter_init();
+        let cpu_nll = model.nll(&params).unwrap();
+        let (gpu_nll, _grad) = session.nll_grad(&params).unwrap();
+        assert!(
+            (gpu_nll - cpu_nll).abs() < GPU_NLL_ATOL,
+            "NLL mismatch at init: gpu={gpu_nll:.15}, cpu={cpu_nll:.15}, diff={:.2e}",
+            (gpu_nll - cpu_nll).abs()
+        );
+
+        // Test at perturbed params
+        let mut perturbed = params.clone();
+        for p in &mut perturbed {
+            *p *= 1.1;
+        }
+        let cpu_nll2 = model.nll(&perturbed).unwrap();
+        let (gpu_nll2, _) = session.nll_grad(&perturbed).unwrap();
+        assert!(
+            (gpu_nll2 - cpu_nll2).abs() < GPU_NLL_ATOL,
+            "NLL mismatch at perturbed: gpu={gpu_nll2:.15}, cpu={cpu_nll2:.15}, diff={:.2e}",
+            (gpu_nll2 - cpu_nll2).abs()
+        );
+    }
+
+    #[test]
+    fn test_gpu_grad_matches_cpu() {
+        let model = load_simple_model();
+        let session = GpuSession::new(&model).unwrap();
+        let params = model.parameter_init();
+
+        let cpu_grad = model.gradient_reverse(&params).unwrap();
+        let (_nll, gpu_grad) = session.nll_grad(&params).unwrap();
+
+        assert_eq!(cpu_grad.len(), gpu_grad.len());
+        for (i, (&cpu_g, &gpu_g)) in cpu_grad.iter().zip(gpu_grad.iter()).enumerate() {
+            assert!(
+                (gpu_g - cpu_g).abs() < GPU_GRAD_ATOL,
+                "Gradient[{i}] mismatch: gpu={gpu_g:.10}, cpu={cpu_g:.10}, diff={:.2e}",
+                (gpu_g - cpu_g).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpu_fit_matches_cpu() {
+        let model = load_simple_model();
+        let config = OptimizerConfig::default();
+
+        // CPU fit
+        let cpu_result = crate::mle::MaximumLikelihoodEstimator::new()
+            .fit_histfactory(&model)
+            .unwrap();
+
+        // GPU fit
+        let session = GpuSession::new(&model).unwrap();
+        let gpu_result = session.fit_minimum(&model, &config).unwrap();
+
+        // NLL at minimum
+        assert!(
+            (gpu_result.fval - cpu_result.nll).abs() < GPU_FIT_NLL_ATOL,
+            "Fit NLL mismatch: gpu={:.10}, cpu={:.10}, diff={:.2e}",
+            gpu_result.fval, cpu_result.nll,
+            (gpu_result.fval - cpu_result.nll).abs()
+        );
+
+        // Parameters
+        for (i, (&gpu_p, &cpu_p)) in gpu_result.parameters.iter()
+            .zip(cpu_result.parameters.iter()).enumerate()
+        {
+            assert!(
+                (gpu_p - cpu_p).abs() < GPU_PARAM_ATOL,
+                "Param[{i}] mismatch: gpu={gpu_p:.8}, cpu={cpu_p:.8}, diff={:.2e}",
+                (gpu_p - cpu_p).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpu_session_reuse() {
+        let model = load_simple_model();
+        let config = OptimizerConfig::default();
+        let session = GpuSession::new(&model).unwrap();
+
+        // First fit (unconditional)
+        let r1 = session.fit_minimum(&model, &config).unwrap();
+
+        // Conditional fit (fix POI)
+        let mut bounds = model.parameter_bounds();
+        let poi = model.poi_index().unwrap();
+        bounds[poi] = (0.0, 0.0);
+        let mut warm = r1.parameters.clone();
+        warm[poi] = 0.0;
+        let r2 = session.fit_minimum_from_with_bounds(&model, &warm, &bounds, &config).unwrap();
+
+        // Third fit (unconditional again — must match first)
+        let r3 = session.fit_minimum(&model, &config).unwrap();
+
+        assert!(
+            (r1.fval - r3.fval).abs() < 1e-10,
+            "Session reuse non-deterministic: first={:.15}, third={:.15}",
+            r1.fval, r3.fval
+        );
+        assert!(r2.fval >= r1.fval - 1e-10, "Conditional NLL should be >= free NLL");
+    }
+
+    #[test]
+    fn test_gpu_complex_workspace() {
+        let model = load_complex_model();
+        let session = GpuSession::new(&model).unwrap();
+        let config = OptimizerConfig::default();
+
+        // NLL parity
+        let params = model.parameter_init();
+        let cpu_nll = model.nll(&params).unwrap();
+        let (gpu_nll, _) = session.nll_grad(&params).unwrap();
+        assert!(
+            (gpu_nll - cpu_nll).abs() < GPU_NLL_ATOL,
+            "Complex NLL mismatch: gpu={gpu_nll:.15}, cpu={cpu_nll:.15}, diff={:.2e}",
+            (gpu_nll - cpu_nll).abs()
+        );
+
+        // Fit parity
+        let cpu_result = crate::mle::MaximumLikelihoodEstimator::new()
+            .fit_histfactory(&model)
+            .unwrap();
+        let gpu_result = session.fit_minimum(&model, &config).unwrap();
+
+        assert!(
+            (gpu_result.fval - cpu_result.nll).abs() < GPU_FIT_NLL_ATOL,
+            "Complex fit NLL mismatch: gpu={:.10}, cpu={:.10}, diff={:.2e}",
+            gpu_result.fval, cpu_result.nll,
+            (gpu_result.fval - cpu_result.nll).abs()
+        );
+    }
+
+    #[test]
+    fn test_gpu_nll_and_grad_at_multiple_points() {
+        let model = load_simple_model();
+        let session = GpuSession::new(&model).unwrap();
+
+        // Test at several parameter configurations to stress-test the kernel
+        let init = model.parameter_init();
+        let n = init.len();
+
+        let test_points: Vec<Vec<f64>> = vec![
+            init.clone(),
+            // All params shifted up
+            init.iter().map(|&p| p * 1.2).collect(),
+            // All params shifted down
+            init.iter().map(|&p| p * 0.8).collect(),
+            // Alternating shifts
+            init.iter().enumerate().map(|(i, &p)| {
+                if i % 2 == 0 { p * 1.3 } else { p * 0.7 }
+            }).collect(),
+        ];
+
+        for (j, params) in test_points.iter().enumerate() {
+            let cpu_nll = model.nll(params).unwrap();
+            let cpu_grad = model.gradient_reverse(params).unwrap();
+            let (gpu_nll, gpu_grad) = session.nll_grad(params).unwrap();
+
+            assert!(
+                (gpu_nll - cpu_nll).abs() < GPU_NLL_ATOL,
+                "Point {j}: NLL gpu={gpu_nll:.15}, cpu={cpu_nll:.15}, diff={:.2e}",
+                (gpu_nll - cpu_nll).abs()
+            );
+
+            for (i, (&gg, &cg)) in gpu_grad.iter().zip(cpu_grad.iter()).enumerate() {
+                assert!(
+                    (gg - cg).abs() < GPU_GRAD_ATOL,
+                    "Point {j}, grad[{i}]: gpu={gg:.10}, cpu={cg:.10}, diff={:.2e}",
+                    (gg - cg).abs()
+                );
+            }
+        }
+    }
+}

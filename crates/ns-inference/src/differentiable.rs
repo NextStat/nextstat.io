@@ -36,16 +36,20 @@ impl DifferentiableSession {
     ///
     /// Serializes the model, uploads it to GPU, and uploads observed data.
     pub fn new(model: &HistFactoryModel, signal_sample_name: &str) -> Result<Self> {
-        let (flat_idx, first_bin, n_bins) = model.signal_sample_gpu_info(signal_sample_name)?;
-        let signal_info = SignalSampleInfo {
-            sample_idx: flat_idx,
-            first_bin,
-            n_bins,
-        };
+        let entries_raw = model.signal_sample_gpu_info_all(signal_sample_name)?;
+        let signal_entries: Vec<SignalSampleInfo> = entries_raw
+            .iter()
+            .map(|&(idx, first, n)| SignalSampleInfo {
+                sample_idx: idx,
+                first_bin: first,
+                n_bins: n,
+            })
+            .collect();
+        let total_signal_bins: usize = signal_entries.iter().map(|e| e.n_bins as usize).sum();
 
         let gpu_data = model.serialize_for_gpu()?;
         let n_params = gpu_data.n_params;
-        let mut accel = DifferentiableAccelerator::from_gpu_data(&gpu_data, signal_info)?;
+        let mut accel = DifferentiableAccelerator::from_gpu_data(&gpu_data, &signal_entries)?;
 
         // Upload observed data
         let (observed, ln_facts, obs_mask) = Self::prepare_observed(model);
@@ -56,7 +60,7 @@ impl DifferentiableSession {
         Ok(Self {
             accel,
             n_params,
-            signal_n_bins: n_bins as usize,
+            signal_n_bins: total_signal_bins,
             init_params,
         })
     }
@@ -146,16 +150,20 @@ impl ProfiledDifferentiableSession {
             ns_core::Error::Validation("No POI defined — cannot compute profiled q₀".into())
         })?;
 
-        let (flat_idx, first_bin, n_bins) = model.signal_sample_gpu_info(signal_sample_name)?;
-        let signal_info = SignalSampleInfo {
-            sample_idx: flat_idx,
-            first_bin,
-            n_bins,
-        };
+        let entries_raw = model.signal_sample_gpu_info_all(signal_sample_name)?;
+        let signal_entries: Vec<SignalSampleInfo> = entries_raw
+            .iter()
+            .map(|&(idx, first, n)| SignalSampleInfo {
+                sample_idx: idx,
+                first_bin: first,
+                n_bins: n,
+            })
+            .collect();
+        let total_signal_bins: usize = signal_entries.iter().map(|e| e.n_bins as usize).sum();
 
         let gpu_data = model.serialize_for_gpu()?;
         let n_params = gpu_data.n_params;
-        let mut accel = DifferentiableAccelerator::from_gpu_data(&gpu_data, signal_info)?;
+        let mut accel = DifferentiableAccelerator::from_gpu_data(&gpu_data, &signal_entries)?;
 
         let (observed, ln_facts, obs_mask) = DifferentiableSession::prepare_observed(model);
         accel.upload_observed(&observed, &ln_facts, &obs_mask)?;
@@ -167,7 +175,7 @@ impl ProfiledDifferentiableSession {
             accel,
             poi_index,
             n_params,
-            signal_n_bins: n_bins as usize,
+            signal_n_bins: total_signal_bins,
             init_params,
             bounds,
         })

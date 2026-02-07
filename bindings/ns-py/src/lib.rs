@@ -4113,6 +4113,34 @@ fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<
     mle.ranking(py, model)
 }
 
+/// GPU-accelerated nuisance-parameter ranking (impact on POI).
+///
+/// Nominal fit uses CPU (needs Hessian for pull/constraint). Per-NP refits
+/// use GPU with shared session, warm-start, and bounds-clamping.
+#[cfg(feature = "cuda")]
+#[pyfunction]
+fn ranking_gpu<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
+    let mle = RustMLE::new();
+    let m = model.inner.clone();
+
+    let entries = py
+        .detach(move || ns_inference::ranking_gpu(&mle, &m))
+        .map_err(|e| PyValueError::new_err(format!("GPU ranking failed: {}", e)))?;
+
+    entries
+        .into_iter()
+        .map(|e| {
+            let d = PyDict::new(py);
+            d.set_item("name", e.name)?;
+            d.set_item("delta_mu_up", e.delta_mu_up)?;
+            d.set_item("delta_mu_down", e.delta_mu_down)?;
+            d.set_item("pull", e.pull)?;
+            d.set_item("constraint", e.constraint)?;
+            Ok(d.into_any().unbind())
+        })
+        .collect()
+}
+
 /// Fixed-step RK4 integration for a linear ODE system `dy/dt = A y`.
 ///
 /// Returns a dict: {"t": [...], "y": [[...], ...]}.
@@ -4750,6 +4778,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
+    #[cfg(feature = "cuda")]
+    m.add_function(wrap_pyfunction!(ranking_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;

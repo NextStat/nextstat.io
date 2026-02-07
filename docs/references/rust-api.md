@@ -9,33 +9,101 @@ This page summarizes the main Rust crates and their public entry points.
 
 ## Crates
 
-- `ns-core`: core types and traits (model interface, `FitResult`, error handling).
-- `ns-root`: native ROOT file I/O (TH1 histograms, TTree columnar access, expression engine, histogram filler).
-- `ns-inference`: inference algorithms and model packs (MLE, NUTS, CLs, time series, PK/NLME, etc.).
-- `ns-translate`: ingestion and translation layers (pyhf JSON, HistFactory XML, ntuple-to-workspace builder).
-- `ns-viz`: plot-friendly artifacts (CLs curves, profile scans).
-- `ns-cli`: `nextstat` CLI.
-- `ns-wasm` (in `bindings/ns-wasm`): `wasm-bindgen` bindings used by the static `playground/` demo.
+| Crate | Purpose |
+|-------|---------|
+| `ns-core` | Core types and traits (model interface, `FitResult`, error handling) |
+| `ns-ad` | Automatic differentiation primitives (forward-mode Dual, reverse-mode Tape, `Scalar` trait) |
+| `ns-prob` | Probability distributions and math (logpdf, cdf, transforms) |
+| `ns-compute` | Compute backends: SIMD, Apple Accelerate, CUDA, Metal |
+| `ns-root` | Native ROOT file I/O (TH1, TTree, expression engine, histogram filler) |
+| `ns-translate` | Format translators: pyhf JSON, HistFactory XML, TRExFitter config, ntuple builder |
+| `ns-inference` | Inference algorithms and model packs (MLE, NUTS, CLs, time series, PK/NLME, etc.) |
+| `ns-viz` | Plot-friendly artifacts (CLs curves, profile scans) |
+| `ns-cli` | `nextstat` CLI |
+| `ns-wasm` | WebAssembly bindings for the browser playground |
+| `ns-py` | Python bindings via PyO3/maturin |
+
+---
 
 ## `ns-core`
 
 Key exports:
-- `ns_core::traits::{Model, LogDensityModel, PreparedNll, ComputeBackend}`
+- `ns_core::traits::{Model, LogDensityModel, PreparedNll, ComputeBackend, PoiModel, FixedParamModel}`
 - `ns_core::{FitResult, Error, Result}`
 
+`FitResult` fields:
+- `nll`, `params`, `uncertainties`, `converged`, `n_iter`, `n_fev`, `n_gev`
+- `termination_reason: String` — optimizer termination reason
+- `final_grad_norm: f64` — final gradient norm
+- `initial_nll: f64` — NLL at start
+- `n_active_bounds: usize` — number of active box constraints
+
 The stable integration point for new models is `LogDensityModel` (NLL + gradient + metadata).
+
+---
+
+## `ns-ad`
+
+Automatic differentiation primitives. `#![warn(missing_docs)]`.
+
+Key exports:
+- `ns_ad::dual::Dual` — forward-mode dual number (`value + epsilon * derivative`). Implements all standard math ops (`exp`, `ln`, `powi`, `powf`, `sqrt`, `abs`, `max`).
+- `ns_ad::dual32::Dual32` — f32 variant for Metal GPU validation.
+- `ns_ad::tape::Tape` — reverse-mode computation tape for efficient gradient computation with many parameters. `gradient_reverse_reuse()` clears and reuses a tape across optimizer iterations.
+- `ns_ad::scalar::Scalar` — trait abstracting `f64`, `Dual`, and tape variables. Enables writing generic code that works for both evaluation and AD:
+
+```rust
+use ns_ad::scalar::Scalar;
+
+fn poisson_nll<T: Scalar>(expected: T, observed: f64) -> T {
+    expected - T::from_f64(observed) * expected.ln()
+}
+```
+
+---
+
+## `ns-prob`
+
+Probability building blocks. Reusable across all inference domains.
+
+Modules:
+- `ns_prob::normal` — `logpdf(x, mu, sigma)`, `cdf(x, mu, sigma)`, `quantile(p, mu, sigma)`
+- `ns_prob::poisson` — `logpmf(k, lambda)`
+- `ns_prob::exponential` — `logpdf(x, rate)`, `cdf(x, rate)`
+- `ns_prob::gamma` — `logpdf(x, shape, rate)`
+- `ns_prob::beta` — `logpdf(x, alpha, beta)`
+- `ns_prob::weibull` — `logpdf(x, k, lambda)`
+- `ns_prob::student_t` — `logpdf(x, df, mu, sigma)`
+- `ns_prob::bernoulli` — `logpmf(k, p)`
+- `ns_prob::binomial` — `logpmf(k, n, p)`
+- `ns_prob::neg_binomial` — `logpmf(k, r, p)`
+- `ns_prob::math` — stable numeric helpers (`log1pexp`, `logsumexp`, `sigmoid`)
+- `ns_prob::transforms` — bijective transforms for unconstrained parameterization (`log`, `logit`, `softplus`)
+- `ns_prob::distributions` — trait-based distribution interface
+
+---
 
 ## `ns-inference`
 
 Key exports (see `crates/ns-inference/src/lib.rs`):
-- MLE: `MaximumLikelihoodEstimator`, `OptimizerConfig`, `OptimizationResult`
+- MLE: `MaximumLikelihoodEstimator`, `OptimizerConfig`, `OptimizationResult`, `RankingEntry`
 - Posterior + priors: `Posterior`, `Prior`
 - NUTS: `NutsConfig`, `sample_nuts`, `sample_nuts_multichain`
 - Frequentist: `AsymptoticCLsContext`, `HypotestResult`
-- Profile likelihood: `ProfileLikelihoodScan`, `ProfilePoint`
+- Toy-based: `hypotest_qtilde_toys`, `hypotest_qtilde_toys_expected_set`, `ToyHypotestResult`
+- Profile likelihood: `ProfileLikelihoodScan`, `ProfilePoint`, `scan_histfactory`
 - Laplace: `laplace_log_marginal`, `LaplaceResult`
+- Model builder: `ModelBuilder`, `ComposedGlmModel` (hierarchical GLMs)
+- Regression: `LinearRegressionModel`, `LogisticRegressionModel`, `PoissonRegressionModel`, `ols_fit`
+- Ordinal: `OrderedLogitModel`, `OrderedProbitModel`
+- LMM: `LmmMarginalModel`, `LmmRandomEffects`
+- Survival: `ExponentialSurvivalModel`, `WeibullSurvivalModel`, `LogNormalAftModel`, `CoxPhModel`
 - Time series: Kalman / EM / forecasting utilities (see `ns_inference::timeseries::*`)
-- Pharmacometrics: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `LloqPolicy`
+- PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `LloqPolicy`
+- ODE: `rk4_linear`, `OdeSolution`
+- Optimizer: `LbfgsbOptimizer`, `ObjectiveFunction`
+- Batch: `fit_toys_batch`, `is_accelerate_available`
+- Transforms: `ParameterTransform`
 
 Minimal MLE example:
 
@@ -52,6 +120,22 @@ let fit = mle.fit(&model)?;
 println!("nll={}", fit.nll);
 ```
 
+### Differentiable Layer (CUDA, feature-gated)
+
+Zero-copy PyTorch integration for ML workflows:
+
+- `ns_inference::differentiable::DifferentiableSession` — GPU session for differentiable NLL evaluation.
+  - `new(model, signal_sample_name)` — upload model to GPU, identify signal sample.
+  - `nll_grad_signal(params, d_signal, d_grad_signal)` — compute NLL and write `dNLL/d(signal)` gradient directly into a PyTorch CUDA tensor (zero-copy via raw device pointers).
+  - `signal_n_bins()`, `n_params()`, `parameter_init()` — metadata accessors.
+
+- `ns_inference::differentiable::ProfiledDifferentiableSession` — GPU session for profiled test statistics.
+  - `new(model, signal_sample_name)` — upload model, require POI defined.
+  - `profiled_q0_and_grad(d_signal) -> (f64, Vec<f64>)` — discovery test statistic q0 and its gradient w.r.t. signal bins. Runs two GPU L-BFGS-B fits (null + unconditional) and applies the envelope theorem: `dq0/ds = 2*(dNLL/ds|_{theta_hat_0} - dNLL/ds|_{theta_hat})`.
+  - `profiled_qmu_and_grad(mu_test, d_signal) -> (f64, Vec<f64>)` — exclusion test statistic qmu.
+
+---
+
 ## `ns-root`
 
 Native ROOT file reader — zero dependency on ROOT C++.
@@ -60,7 +144,7 @@ Key exports:
 - `ns_root::RootFile` — open ROOT files (mmap or owned bytes), read TH1 histograms and TTrees.
 - `ns_root::{Tree, BranchInfo, LeafType}` — TTree metadata and branch descriptors.
 - `ns_root::BranchReader` — columnar data extraction with parallel basket decompression (rayon).
-- `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` → `eval_row()` / `eval_bulk()`). Supports ternary `cond ? a : b`; parse errors include `line/col`.
+- `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` -> `eval_row()` / `eval_bulk()`). Supports ternary `cond ? a : b`; parse errors include `line/col`.
 - `ns_root::{HistogramSpec, FilledHistogram, fill_histograms}` — single-pass histogram filling.
 
 TTree example:
@@ -91,10 +175,17 @@ let spec = ns_root::HistogramSpec {
 let histos = ns_root::fill_histograms(&[spec], &columns)?;
 ```
 
+---
+
 ## `ns-translate`
 
-Key exports (in addition to existing pyhf/HistFactory):
-- `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples → HistFactory `Workspace`.
+Format translators. Ingestion from multiple HEP/analysis formats into the internal model.
+
+Key exports:
+- `ns_translate::pyhf::{Workspace, HistFactoryModel, NllScratch, PreparedModel}` — pyhf JSON format (full HistFactory probability model).
+- `ns_translate::histfactory` — HistFactory XML format (ROOT-style workspace definition).
+- `ns_translate::trex` — TRExFitter configuration files (`.txt` and `.yaml` formats). Parses Region/Sample/Systematic/NormFactor blocks and converts to `Workspace`.
+- `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples -> HistFactory `Workspace`.
 - `ns_translate::ntuple::{ChannelConfig, SampleConfig, NtupleModifier}` — configuration types.
 
 Ntuple-to-workspace example:
@@ -120,8 +211,10 @@ let ws = NtupleWorkspaceBuilder::new()
                .staterror()
           })
     })
-    .build()?;  // → Workspace
+    .build()?;  // -> Workspace
 ```
+
+---
 
 ## `ns-compute` — Evaluation Modes and GPU Backends
 
@@ -170,14 +263,14 @@ per-bin 1e-12 to toy ensemble 0.05.
 `PreparedModel::nll()` dispatches to the appropriate backend via `dispatch_poisson_nll()`:
 
 ```
-EvalMode::Parity →
-  has_zero_obs? → poisson_nll_simd_sparse_kahan()
-  otherwise    → poisson_nll_simd_kahan()
+EvalMode::Parity ->
+  has_zero_obs? -> poisson_nll_simd_sparse_kahan()
+  otherwise    -> poisson_nll_simd_kahan()
 
-EvalMode::Fast →
-  accelerate_enabled()? → poisson_nll_accelerate()
-  has_zero_obs?         → poisson_nll_simd_sparse()
-  otherwise             → poisson_nll_simd()
+EvalMode::Fast ->
+  accelerate_enabled()? -> poisson_nll_accelerate()
+  has_zero_obs?         -> poisson_nll_simd_sparse()
+  otherwise             -> poisson_nll_simd()
 ```
 
 ### Batch Toy Fitting (CPU)
@@ -208,6 +301,7 @@ Key CUDA exports (feature-gated):
   - `single_nll_grad(params)` — convenience wrapper for single-model NLL+gradient (n_active=1).
   - `single_nll(params)` — NLL-only for single model.
   - `upload_observed_single(obs, ln_facts, mask)` — upload observed data for one model.
+- `ns_compute::differentiable::DifferentiableAccelerator` — CUDA accelerator for differentiable NLL with per-signal-bin gradients (zero-copy PyTorch integration).
 
 Key inference exports — **batch** (feature-gated):
 - `ns_inference::gpu_batch::fit_toys_batch_gpu(model, params, n_toys, seed, config)` — Lockstep L-BFGS-B batch optimizer using GPU kernel.
@@ -234,12 +328,12 @@ Profile likelihood GPU:
 
 Key Metal exports (feature-gated):
 - `ns_compute::metal_types::{MetalModelData, MetalAuxPoissonEntry, MetalGaussConstraintEntry}` — f32 `#[repr(C)]` structs for Metal GPU data layout (always available, no feature gate).
-- `ns_compute::metal_batch::MetalBatchAccelerator` — Metal GPU orchestrator: MSL compilation, buffer management, kernel dispatch. f64↔f32 conversion at API boundary.
+- `ns_compute::metal_batch::MetalBatchAccelerator` — Metal GPU orchestrator: MSL compilation, buffer management, kernel dispatch. f64<->f32 conversion at API boundary.
   - `from_metal_data(data, max_batch)` — Compile MSL, upload static model buffers, pre-allocate dynamic buffers.
   - `batch_nll_grad(params, n_active) -> (Vec<f64>, Vec<f64>)` — Fused NLL + gradient for all active toys.
   - `batch_nll(params, n_active) -> Vec<f64>` — NLL-only (for line search).
   - `single_nll_grad(params)`, `single_nll(params)` — Convenience wrappers for n_active=1.
-  - `upload_observed(obs, ln_facts, mask, n_toys)` — Upload toy observed data (f64→f32).
+  - `upload_observed(obs, ln_facts, mask, n_toys)` — Upload toy observed data (f64->f32).
 - `ns_inference::metal_batch::fit_toys_batch_metal(model, params, n_toys, seed, config)` — Lockstep L-BFGS-B batch optimizer using Metal kernel. Tolerance clamped to max(tol, 1e-3) for f32.
 - `ns_inference::batch::is_metal_batch_available()` — Runtime Metal availability check.
 - `ns_inference::lbfgs::LbfgsState` — Shared standalone L-BFGS-B state machine (used by both CUDA and Metal batch fitters).
@@ -247,6 +341,14 @@ Key Metal exports (feature-gated):
 Model serialization:
 - `HistFactoryModel::serialize_for_gpu() -> Result<GpuModelData>` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints). Returns `Err(Validation)` if any NormSys modifier has non-positive hi/lo factors (the GPU polynomial kernel cannot represent the CPU piecewise-linear fallback).
 - `MetalModelData::from_gpu_data(&GpuModelData)` — Converts f64 GPU data to f32 Metal data with pre-computed `lgamma` for auxiliary Poisson constraints.
+
+---
+
+## `ns-viz`
+
+Lightweight, dependency-free artifacts for plot-friendly output. Models return plain structs that can be serialized to JSON or consumed directly.
+
+---
 
 ## CLI
 

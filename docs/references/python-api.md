@@ -10,40 +10,92 @@ This page documents the public Python surface exported by `nextstat`.
 Notes:
 - The compiled extension is `nextstat._core` (PyO3/maturin).
 - Convenience wrappers and optional modules live under `nextstat.*`.
+- The full typed surface (including overloads) is in `bindings/ns-py/python/nextstat/_core.pyi`.
 
 ## Top-level functions
 
-- `nextstat.from_pyhf(json_str) -> HistFactoryModel`
-- `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str`
-- `nextstat.fit(model, *, data=None) -> FitResult`
-- `nextstat.map_fit(posterior) -> FitResult`
-- `nextstat.fit_batch(models_or_model, datasets=None) -> list[FitResult]`
-- `nextstat.sample(model_or_posterior, ...) -> dict` (NUTS)
-- `nextstat.hypotest(poi_test, model, *, data=None, return_tail_probs=False) -> float | (float, list[float])`
-- `nextstat.hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, data=None, return_tail_probs=False, return_meta=False) -> float | tuple | dict`
-- `nextstat.profile_scan(model, *, start=0.0, stop=5.0, points=21, data=None) -> dict`
-- `nextstat.upper_limit(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, expected=False, data=None) -> float | (float, list[float])`
-- `nextstat.upper_limits(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> (float, list[float])`
-- `nextstat.upper_limits_root(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> (float, list[float])`
+### Model construction
 
-The full typed surface (including overloads) is in:
-- `bindings/ns-py/python/nextstat/_core.pyi`
+- `nextstat.from_pyhf(json_str) -> HistFactoryModel` — create model from pyhf JSON workspace.
+- `nextstat.from_histfactory(xml_path) -> HistFactoryModel` — create model from HistFactory XML.
+- `nextstat.workspace_audit(json_str) -> dict` — audit pyhf workspace for compatibility (counts channels, samples, modifiers; flags unsupported features).
+- `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str` — apply a pyhf patchset.
+- `nextstat.read_root_histogram(root_path, hist_path) -> dict` — read a TH1 histogram from a ROOT file. Returns `{name, title, bin_edges, bin_content, sumw2, underflow, overflow}`.
+- `nextstat.histfactory_bin_edges_by_channel(xml_path) -> dict[str, list[float]]` — extract bin edges per channel from HistFactory XML.
+
+### Fitting
+
+- `nextstat.fit(model, *, data=None, init_pars=None) -> FitResult` — maximum likelihood estimation.
+- `nextstat.map_fit(posterior) -> FitResult` — MAP estimation for Bayesian posteriors.
+- `nextstat.fit_batch(models_or_model, datasets=None) -> list[FitResult]` — batch fitting (homogeneous model lists or single model + multiple datasets).
+
+### Hypothesis testing
+
+- `nextstat.hypotest(poi_test, model, *, data=None, return_tail_probs=False) -> float | (float, list[float])` — asymptotic CLs.
+- `nextstat.hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, data=None, return_tail_probs=False, return_meta=False) -> float | tuple | dict` — toy-based CLs.
+
+### Profile likelihood
+
+- `nextstat.profile_scan(model, mu_values, *, data=None) -> dict` — profile likelihood scan.
+- `nextstat.upper_limit(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, expected=False, data=None) -> float | (float, list[float])` — upper limit via bisection.
+- `nextstat.upper_limits(model, scan, *, alpha=0.05, data=None) -> (float, list[float])` — observed + expected limits from scan.
+- `nextstat.upper_limits_root(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> (float, list[float])` — ROOT-style limits.
+
+### Sampling
+
+- `nextstat.sample(model_or_posterior, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, ...) -> dict` — NUTS (No-U-Turn Sampler).
+
+### Toy data
+
+- `nextstat.asimov_data(model, params) -> list[float]` — Asimov dataset (expected counts).
+- `nextstat.poisson_toys(model, params, *, n_toys=1000, seed=42) -> list[list[float]]` — Poisson fluctuated toy datasets.
+- `nextstat.fit_toys(model, params, *, n_toys=1000, seed=42) -> list[FitResult]` — generate and fit toys sequentially.
+- `nextstat.fit_toys_batch(model, params, *, n_toys=1000, seed=42) -> list[FitResult]` — CPU parallel batch toy fitting (Rayon, one AD tape per thread).
+- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — GPU-accelerated batch toy fitting (see GPU section below).
+
+### Visualization artifacts
+
+- `nextstat.cls_curve(model, scan, *, alpha=0.05, data=None) -> dict` — asymptotic CLs exclusion curve. Returns `{alpha, nsigma_order, obs_limit, exp_limits, scan, cls_obs, cls_exp}`.
+- `nextstat.profile_curve(model, mu_values, *, data=None) -> dict` — profile likelihood curve. Returns `{poi_index, mu_hat, nll_hat, mu_values, q_mu_values, twice_delta_nll, points}`.
+
+### Parameter ranking
+
+- `nextstat.ranking(model) -> list[dict]` — nuisance parameter ranking (impact on POI).
+
+### Utilities
+
+- `nextstat.ols_fit(x, y, *, include_intercept=True) -> list[float]` — closed-form OLS.
+- `nextstat.rk4_linear(a, y0, t0, t1, dt, *, max_steps=100000) -> dict` — RK4 ODE solver for linear systems.
+- `nextstat.set_eval_mode(mode: str) -> None` — set evaluation mode (`"fast"` or `"parity"`).
+- `nextstat.get_eval_mode() -> str` — query current evaluation mode.
+- `nextstat.has_accelerate() -> bool` — check Apple Accelerate backend availability.
+- `nextstat.has_cuda() -> bool` — check CUDA backend availability.
+- `nextstat.has_metal() -> bool` — check Metal backend availability.
+
+---
 
 ## Core classes
 
 ### `FitResult`
 
 Fields:
-- `parameters`: best-fit parameters (NextStat order)
-- `uncertainties`: 1-sigma uncertainties (diagonal or covariance-derived baseline)
-- `nll`: NLL at the optimum
-- `converged`, `n_iter`, `n_fev`, `n_gev`
+- `parameters: list[float]` — best-fit parameters (NextStat order)
+- `uncertainties: list[float]` — 1-sigma uncertainties (diagonal or covariance-derived)
+- `nll: float` — NLL at the optimum
+- `converged: bool` — optimizer convergence flag
+- `n_iter: int` — number of optimizer iterations
+- `n_fev: int` — number of function evaluations
+- `n_gev: int` — number of gradient evaluations
+- `termination_reason: str` — optimizer termination reason (e.g. `"gradient_tolerance"`, `"max_iterations"`)
+- `final_grad_norm: float` — L-infinity norm of the gradient at minimum
+- `initial_nll: float` — NLL at the starting point
+- `n_active_bounds: int` — number of parameters at their box constraint boundary
 
 Compatibility aliases:
 - `bestfit` (same as `parameters`)
 - `twice_nll = 2 * nll`
 - `success` (same as `converged`)
-- `n_evaluations` (back-compat)
+- `n_evaluations` (back-compat alias for `n_iter`)
 
 ### `MaximumLikelihoodEstimator`
 
@@ -56,7 +108,12 @@ mle = nextstat.MaximumLikelihoodEstimator(max_iter=1000, tol=1e-6, m=10)
 res = mle.fit(model)
 ```
 
-Also supports `fit_batch(...)` for homogeneous lists of models.
+Also supports:
+- `fit_batch(...)` for homogeneous lists of models.
+- `fit_toys(model, params, *, n_toys=1000, seed=42) -> list[FitResult]`
+- `ranking(model) -> list[dict]` — nuisance parameter ranking.
+- `q0_like_loss_and_grad_nominal(model, *, channel, sample, nominal) -> (float, list[float])` — discovery q0 and gradient w.r.t. one sample's nominal yields. For ML training loops.
+- `qmu_like_loss_and_grad_nominal(model, *, mu_test, channel, sample, nominal) -> (float, list[float])` — exclusion qmu and gradient.
 
 ### `Posterior`
 
@@ -70,46 +127,58 @@ post.set_prior_normal("mu", center=0.0, width=5.0)
 res = nextstat.map_fit(post)
 ```
 
+Methods:
+- `dim()`, `parameter_names()`, `suggested_init()`, `suggested_bounds()`
+- `set_prior_flat(name)`, `set_prior_normal(name, center, width)`, `clear_priors()`, `priors() -> dict`
+- `logpdf(theta)`, `grad(theta)` — constrained space
+- `to_unconstrained(theta)`, `to_constrained(z)` — bijective transforms
+- `logpdf_unconstrained(z)`, `grad_unconstrained(z)` — unconstrained space (for NUTS)
+
+---
+
 ## Models
 
 All models implement a shared minimal contract:
-- `n_params()`
-- `dim()` (alias of `n_params()`)
-- `nll(params)`
-- `grad_nll(params)`
-- `parameter_names()`
-- `suggested_init()`
-- `suggested_bounds()`
+- `n_params()` / `dim()`
+- `nll(params)`, `grad_nll(params)`
+- `parameter_names()`, `suggested_init()`, `suggested_bounds()`
 
 ### HEP (HistFactory / pyhf JSON)
 
 - `HistFactoryModel`: build from pyhf JSON (via `nextstat.from_pyhf` or `HistFactoryModel.from_workspace`).
-  - ML/RL helper: `HistFactoryModel.set_sample_nominal(channel=..., sample=..., nominal=...)` to override one sample’s main-bin nominal yields in-place.
+  - `expected_data(params, *, include_auxdata=True) -> list[float]`
+  - `with_observed_main(observed_main) -> HistFactoryModel` — return model with replaced observed data.
+  - `set_sample_nominal(*, channel, sample, nominal)` — override one sample's nominal yields in-place (for ML/RL).
+  - `poi_index() -> int | None`
+  - `observed_main_by_channel() -> list[dict]`
+  - `expected_main_by_channel_sample(params) -> list[dict]`
 
 ### Regression / GLM
 
-- `LinearRegressionModel`
-- `LogisticRegressionModel`
-- `PoissonRegressionModel`
-- `NegativeBinomialRegressionModel`
-- `ComposedGlmModel`
-- `ols_fit(...)` (closed-form OLS helper)
+- `LinearRegressionModel(x, y, *, include_intercept=True)`
+- `LogisticRegressionModel(x, y, *, include_intercept=True)`
+- `PoissonRegressionModel(x, y, *, include_intercept=True, offset=None)`
+- `NegativeBinomialRegressionModel(x, y, *, include_intercept=True, offset=None)`
+- `ComposedGlmModel` — hierarchical GLMs via static constructors:
+  - `.linear_regression(x, y, *, group_idx, n_groups, random_intercept_non_centered, random_slope_feature_idx, correlated_feature_idx, lkj_eta, ...)`
+  - `.logistic_regression(x, y, *, ...)`
+  - `.poisson_regression(x, y, *, ...)`
 
 ### Ordinal regression
 
-- `OrderedLogitModel`
-- `OrderedProbitModel`
+- `OrderedLogitModel(x, y, *, n_levels)`
+- `OrderedProbitModel(x, y, *, n_levels)`
 
 ### Hierarchical / mixed models
 
-- `LmmMarginalModel` (Gaussian mixed model, marginal likelihood baseline)
+- `LmmMarginalModel(x, y, *, include_intercept, group_idx, n_groups, random_slope_feature_idx)` — Gaussian mixed model (marginal likelihood).
 
 ### Survival analysis
 
-- `ExponentialSurvivalModel`
-- `WeibullSurvivalModel`
-- `LogNormalAftModel`
-- `CoxPhModel`
+- `ExponentialSurvivalModel(times, events)`
+- `WeibullSurvivalModel(times, events)`
+- `LogNormalAftModel(times, events)`
+- `CoxPhModel(times, events, x, *, ties="efron")`
 
 High-level helpers (recommended for most users):
 
@@ -119,35 +188,104 @@ High-level helpers (recommended for most users):
 - `nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=None) -> CoxPhFit`
   - `robust=True` returns sandwich SE (`fit.robust_se`)
   - `groups=...` switches sandwich SE to cluster-robust (`fit.robust_kind == "cluster"`)
-  - `fit.predict_survival(x_new, times=grid)` returns Cox survival curves using a baseline cumulative hazard.
+  - `fit.predict_survival(x_new, times=grid)` returns Cox survival curves.
 
-### Time series / state space (Phase 8)
+### Time series / state space
 
 Low-level:
-- `KalmanModel`
-- `nextstat.kalman_filter(...)`, `nextstat.kalman_smooth(...)`, `nextstat.kalman_em(...)`, `nextstat.kalman_forecast(...)`, `nextstat.kalman_simulate(...)`
+- `KalmanModel(f, q, h, r, m0, p0)` — linear state-space model (matrices as lists of lists).
+  - `n_state()`, `n_obs()`
+- `nextstat.kalman_filter(model, ys) -> dict` — forward Kalman filter (supports missing obs as `None`).
+- `nextstat.kalman_smooth(model, ys) -> dict` — RTS smoother.
+- `nextstat.kalman_em(model, ys, *, max_iter, tol, estimate_q, estimate_r, estimate_f, estimate_h, min_diag) -> dict` — EM parameter estimation.
+- `nextstat.kalman_forecast(model, ys, *, steps, alpha) -> dict` — multi-step forecast with intervals.
+- `nextstat.kalman_simulate(model, *, t_max, seed, init, x0) -> dict` — simulate from state-space model.
 
 High-level wrappers:
-- `nextstat.timeseries.*` convenience helpers and plotting artifacts.
+- `nextstat.timeseries.*` — convenience helpers and plotting artifacts.
 
-### Pharmacometrics (Phase 13)
+### Pharmacometrics
 
-- `OneCompartmentOralPkModel` (oral dosing, first-order absorption)
-  - Adds `predict(params) -> list[float]` for predicted concentrations at the model times.
-- `OneCompartmentOralPkNlmeModel` (population + per-subject log-normal random effects; diagonal Omega baseline)
+- `OneCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, sigma=1.0, lloq=None, lloq_policy="ignore")` — oral dosing, first-order absorption.
+  - `predict(params) -> list[float]` — predicted concentrations.
+- `OneCompartmentOralPkNlmeModel(times, y, subject_idx, n_subjects, *, dose, ...)` — population PK (NLME with per-subject random effects).
+
+### Test / utility models
+
+- `GaussianMeanModel(y, sigma)` — simple Gaussian mean estimation.
+- `FunnelModel()` — Neal's funnel (sampler stress test).
+- `StdNormalModel(dim=2)` — standard normal (sampler validation).
+
+---
 
 ## Optional modules
 
-These modules live under `nextstat.*` as convenience helpers. Some require optional dependencies and are intended to be imported on demand.
+These modules live under `nextstat.*` as convenience helpers. Some require optional dependencies.
 
-- `nextstat.viz`: plot-friendly artifacts for CLs curves and profile scans.
-- `nextstat.bayes`: Bayesian helpers (ArviZ integration).
-- `nextstat.torch`: PyTorch helpers (`torch.autograd.Function` wrappers). CUDA builds expose zero-copy GPU sessions.
-- `nextstat.timeseries`: higher-level time series helpers and plotting.
-- `nextstat.survival`: high-level survival helpers (parametric right-censoring + Cox PH fit helpers).
-- `nextstat.econometrics`: robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting helpers.
-- `nextstat.causal`: propensity + AIPW baselines and sensitivity hooks.
-- `nextstat.gym`: Gymnasium/Gym environments for quick RL / design-of-experiments playgrounds (requires `gymnasium`/`gym` + `numpy`).
+- `nextstat.viz` — plot-friendly artifacts for CLs curves and profile scans.
+- `nextstat.bayes` — Bayesian helpers (ArviZ integration).
+- `nextstat.torch` — PyTorch differentiable wrappers (see below).
+- `nextstat.timeseries` — higher-level time series helpers and plotting.
+- `nextstat.survival` — high-level survival helpers (parametric right-censoring + Cox PH).
+- `nextstat.econometrics` — robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting.
+- `nextstat.causal` — propensity + AIPW baselines and sensitivity hooks.
+- `nextstat.gym` — Gymnasium/Gym environments for RL / design-of-experiments (requires `gymnasium` + `numpy`).
+- `nextstat.glm` — regression/GLM convenience wrappers.
+- `nextstat.ordinal` — ordinal regression convenience wrappers.
+- `nextstat.formula` — Patsy-like formula interface.
+- `nextstat.ppc` — posterior predictive checks.
+- `nextstat.missing` — missing data helpers.
+
+---
+
+## Differentiable Layer (PyTorch integration)
+
+The `nextstat.torch` module provides `torch.autograd.Function` wrappers for end-to-end differentiable HEP inference. Two backends:
+
+### CPU path (no CUDA required)
+
+- `nextstat.torch.NextStatQ0` — `torch.autograd.Function` for discovery q0. CPU profile fit with envelope-theorem gradient.
+- `nextstat.torch.NextStatZ0` — same but returns signed significance Z0.
+- `nextstat.torch.create_session(model, signal_sample_name) -> dict` — create a CPU session.
+- `nextstat.torch.nll_loss(session, signal_tensor) -> torch.Tensor` — differentiable NLL.
+
+### CUDA path (zero-copy, requires `cuda` feature build)
+
+- `DifferentiableSession(model, signal_sample_name)` — GPU session for differentiable NLL.
+  - `nll_grad_signal(params, signal_ptr, grad_signal_ptr) -> float` — compute NLL and write gradient directly into a PyTorch CUDA tensor via raw device pointers (zero-copy).
+  - `signal_n_bins() -> int`, `n_params() -> int`, `parameter_init() -> list[float]`
+
+- `ProfiledDifferentiableSession(model, signal_sample_name)` — GPU session for profiled test statistics.
+  - `profiled_q0_and_grad(signal_ptr) -> (float, list[float])` — discovery q0 with envelope-theorem gradient. Runs two GPU L-BFGS-B fits internally.
+  - `profiled_qmu_and_grad(mu_test, signal_ptr) -> (float, list[float])` — exclusion qmu.
+  - `signal_n_bins() -> int`, `n_params() -> int`, `parameter_init() -> list[float]`
+
+- `nextstat.torch.NextStatNLL` — `torch.autograd.Function` wrapping `DifferentiableSession` (CUDA zero-copy).
+- `nextstat.torch.ProfiledQ0Loss` / `ProfiledQmuLoss` — `torch.autograd.Function` wrapping `ProfiledDifferentiableSession`.
+
+Convenience constructors:
+- `nextstat.torch.create_profiled_session(model, signal_sample_name) -> ProfiledDifferentiableSession`
+- `nextstat.torch.profiled_q0_loss(session, signal) -> torch.Tensor`
+- `nextstat.torch.profiled_z0_loss(session, signal) -> torch.Tensor`
+- `nextstat.torch.profiled_qmu_loss(session, signal, mu_test) -> torch.Tensor`
+- `nextstat.torch.profiled_zmu_loss(session, signal, mu_test) -> torch.Tensor`
+
+Example (CUDA):
+
+```python
+import torch
+import nextstat
+from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+model = nextstat.from_pyhf(json_str)
+session = create_profiled_session(model, "signal")
+
+signal = torch.randn(n_bins, device="cuda", requires_grad=True)
+loss = profiled_q0_loss(session, signal)
+loss.backward()  # signal.grad now contains dq0/d(signal)
+```
+
+---
 
 ## Evaluation Modes (Parity / Fast)
 
@@ -202,17 +340,14 @@ converged = sum(1 for r in results if r.converged)
 print(f"{converged}/{len(results)} toys converged")
 ```
 
-- `nextstat.fit_toys_batch(model, params, *, n_toys=1000, seed=42) -> list[FitResult]`
-- `nextstat.has_accelerate() -> bool` — Check if Apple Accelerate backend is active.
-
 ## GPU acceleration
 
-- `nextstat.has_cuda() -> bool` — Check if CUDA GPU batch backend is available at runtime.
-- `nextstat.has_metal() -> bool` — Check if Metal GPU batch backend is available at runtime (Apple Silicon).
-- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — Batch toy fitting with GPU support:
+- `nextstat.has_cuda() -> bool` — check CUDA availability.
+- `nextstat.has_metal() -> bool` — check Metal availability (Apple Silicon).
+- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]`:
   - `device="cuda"` — NVIDIA GPU, f64 precision, lockstep L-BFGS-B with fused NLL+gradient kernel.
   - `device="metal"` — Apple Silicon GPU, f32 precision, lockstep L-BFGS-B with Metal kernel. Tolerance relaxed to 1e-3.
-  - `device="cpu"` (default) — Falls back to CPU (Rayon parallel, f64).
+  - `device="cpu"` (default) — falls back to CPU (Rayon parallel, f64).
 
 Build with GPU support:
 
@@ -242,7 +377,7 @@ if nextstat.has_cuda():
 elif nextstat.has_metal():
     results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="metal")
 else:
-    results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="cpu")
+    results = nextstat.fit_toys_batch(model, params, n_toys=10000)
 ```
 
 ## CLI parity
