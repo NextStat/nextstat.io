@@ -98,7 +98,7 @@ fn fit_minimum_only(
 
 /// Check if Accelerate batch backend is available.
 pub fn is_accelerate_available() -> bool {
-    cfg!(all(feature = "accelerate", target_os = "macos"))
+    ns_compute::accelerate_enabled()
 }
 
 #[cfg(test)]
