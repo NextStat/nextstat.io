@@ -1,5 +1,6 @@
 //! pyhf JSON format parser
 
+pub mod audit;
 pub mod model;
 pub mod patchset;
 pub mod schema;

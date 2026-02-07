@@ -15,9 +15,9 @@ HEP / HistFactory:
 - `nextstat validate --config analysis.yaml`
 - `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
-- `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json]`
+- `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
 - `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
-- `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json]`
+- `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
 - `nextstat fit --input workspace.json [--gpu cuda]`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
@@ -198,6 +198,8 @@ Partial TREx semantics in `ReadFrom: HIST`:
 Optional outputs:
 - `--analysis-yaml` writes an analysis spec v0 wrapper (`inputs.mode=trex_config_txt`) to drive `nextstat run`.
 - `--coverage-json` writes a best-effort report of unknown keys/attrs to help parity work against legacy configs.
+- `--expr-coverage-json` writes a report of expression-bearing keys (selection/weight/variable + weight systematics) and
+  whether they compile under NextStat's ROOT-dialect expression engine.
 
 `nextstat trex import-config` is a best-effort migration helper for TRExFitter `.config` files:
 - it emits an analysis spec v0 YAML using `inputs.mode=trex_config_yaml`

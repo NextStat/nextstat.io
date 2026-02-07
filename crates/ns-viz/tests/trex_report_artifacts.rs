@@ -125,15 +125,10 @@ fn trex_report_pulls_and_corr_golden_simple_fit() {
         cov[i * n + i] = uncs[i] * uncs[i];
     }
 
-    let fit = ns_core::FitResult {
-        parameters: params,
-        uncertainties: uncs,
-        covariance: Some(cov),
-        nll: 0.0,
-        converged: true,
-        n_iter: 0,
-        n_fev: 0,
-        n_gev: 0,
+    let fit = {
+        let mut fr = ns_core::FitResult::new(params, uncs, 0.0, true, 0, 0, 0);
+        fr.covariance = Some(cov);
+        fr
     };
 
     let pulls = ns_viz::pulls::pulls_artifact(&model, &fit, 1).expect("pulls artifact");

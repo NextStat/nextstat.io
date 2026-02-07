@@ -3043,6 +3043,14 @@ struct PyFitResult {
     n_fev: usize,
     #[pyo3(get)]
     n_gev: usize,
+    #[pyo3(get)]
+    termination_reason: String,
+    #[pyo3(get)]
+    final_grad_norm: f64,
+    #[pyo3(get)]
+    initial_nll: f64,
+    #[pyo3(get)]
+    n_active_bounds: usize,
 }
 
 #[pymethods]
@@ -3069,6 +3077,24 @@ impl PyFitResult {
     #[getter]
     fn n_evaluations(&self) -> usize {
         self.n_iter
+    }
+}
+
+impl From<ns_core::FitResult> for PyFitResult {
+    fn from(r: ns_core::FitResult) -> Self {
+        PyFitResult {
+            parameters: r.parameters,
+            uncertainties: r.uncertainties,
+            nll: r.nll,
+            converged: r.converged,
+            n_iter: r.n_iter,
+            n_fev: r.n_fev,
+            n_gev: r.n_gev,
+            termination_reason: r.termination_reason,
+            final_grad_norm: r.final_grad_norm,
+            initial_nll: r.initial_nll,
+            n_active_bounds: r.n_active_bounds,
+        }
     }
 }
 
@@ -3122,15 +3148,7 @@ impl PyMaximumLikelihoodEstimator {
             })
             .map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
 
-        Ok(PyFitResult {
-            parameters: result.parameters,
-            uncertainties: result.uncertainties,
-            nll: result.nll,
-            converged: result.converged,
-            n_iter: result.n_iter,
-            n_fev: result.n_fev,
-            n_gev: result.n_gev,
-        })
+        Ok(PyFitResult::from(result))
     }
 
     /// Fit multiple models in parallel (Rayon).
@@ -3174,15 +3192,7 @@ impl PyMaximumLikelihoodEstimator {
                 .into_iter()
                 .map(|r| {
                     let r = r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                    Ok(PyFitResult {
-                        parameters: r.parameters,
-                        uncertainties: r.uncertainties,
-                        nll: r.nll,
-                        converged: r.converged,
-                        n_iter: r.n_iter,
-                        n_fev: r.n_fev,
-                        n_gev: r.n_gev,
-                    })
+                    Ok(PyFitResult::from(r))
                 })
                 .collect()
         } else {
@@ -3215,15 +3225,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3243,15 +3245,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3274,15 +3268,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3305,15 +3291,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3333,15 +3311,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3361,15 +3331,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3392,15 +3354,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3425,15 +3379,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3453,15 +3399,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3481,15 +3419,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3512,15 +3442,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3540,15 +3462,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3568,15 +3482,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3596,15 +3502,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3627,15 +3525,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3660,15 +3550,7 @@ impl PyMaximumLikelihoodEstimator {
                     .map(|r| {
                         let r =
                             r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
-                        Ok(PyFitResult {
-                            parameters: r.parameters,
-                            uncertainties: r.uncertainties,
-                            nll: r.nll,
-                            converged: r.converged,
-                            n_iter: r.n_iter,
-                            n_fev: r.n_fev,
-                            n_gev: r.n_gev,
-                        })
+                        Ok(PyFitResult::from(r))
                     })
                     .collect();
             }
@@ -3698,15 +3580,7 @@ impl PyMaximumLikelihoodEstimator {
             .into_iter()
             .map(|r| {
                 let r = r.map_err(|e| PyValueError::new_err(format!("Toy fit failed: {}", e)))?;
-                Ok(PyFitResult {
-                    parameters: r.parameters,
-                    uncertainties: r.uncertainties,
-                    nll: r.nll,
-                    converged: r.converged,
-                    n_iter: r.n_iter,
-                    n_fev: r.n_fev,
-                    n_gev: r.n_gev,
-                })
+                Ok(PyFitResult::from(r))
             })
             .collect()
     }
@@ -3745,6 +3619,46 @@ impl PyMaximumLikelihoodEstimator {
 #[pyfunction]
 fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_workspace(json_str)
+}
+
+/// Audit a pyhf workspace JSON string for compatibility.
+///
+/// Returns a dict with channels, modifier types, unsupported features, etc.
+#[pyfunction]
+fn workspace_audit(py: Python<'_>, json_str: &str) -> PyResult<Py<PyAny>> {
+    let json: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let audit = ns_translate::pyhf::audit::workspace_audit(&json);
+    let audit_json = serde_json::to_value(&audit)
+        .map_err(|e| PyValueError::new_err(format!("Serialization failed: {}", e)))?;
+    json_value_to_py(py, &audit_json)
+}
+
+fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<Py<PyAny>> {
+    use pyo3::types::{PyDict, PyFloat, PyList};
+    match val {
+        serde_json::Value::Null => Ok(py.None()),
+        serde_json::Value::Bool(b) => Ok(b.into_pyobject(py).unwrap().to_owned().into_any().unbind()),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i.into_pyobject(py).unwrap().into_any().unbind())
+            } else {
+                Ok(PyFloat::new(py, n.as_f64().unwrap_or(0.0)).into_any().unbind())
+            }
+        }
+        serde_json::Value::String(s) => Ok(s.into_pyobject(py).unwrap().into_any().unbind()),
+        serde_json::Value::Array(arr) => {
+            let items: Vec<Py<PyAny>> = arr.iter().map(|v| json_value_to_py(py, v)).collect::<PyResult<_>>()?;
+            Ok(PyList::new(py, &items).unwrap().into_any().unbind())
+        }
+        serde_json::Value::Object(map) => {
+            let dict = PyDict::new(py);
+            for (k, v) in map {
+                dict.set_item(k, json_value_to_py(py, v)?)?;
+            }
+            Ok(dict.into_any().unbind())
+        }
+    }
 }
 
 /// Apply a pyhf PatchSet (HEPData) to a base workspace JSON string.
@@ -3884,15 +3798,7 @@ fn fit<'py>(
             })
             .map_err(|e| PyValueError::new_err(format!("GPU fit failed: {}", e)))?;
 
-        return Ok(PyFitResult {
-            parameters: result.parameters,
-            uncertainties: result.uncertainties,
-            nll: result.nll,
-            converged: result.converged,
-            n_iter: result.n_iter,
-            n_fev: result.n_fev,
-            n_gev: result.n_gev,
-        });
+        return Ok(PyFitResult::from(result));
     }
 
     let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
@@ -3914,15 +3820,7 @@ fn map_fit<'py>(py: Python<'py>, posterior: &Bound<'py, PyAny>) -> PyResult<PyFi
         .detach(move || model.fit_map(&mle, priors))
         .map_err(|e| PyValueError::new_err(format!("MAP fit failed: {}", e)))?;
 
-    Ok(PyFitResult {
-        parameters: result.parameters,
-        uncertainties: result.uncertainties,
-        nll: result.nll,
-        converged: result.converged,
-        n_iter: result.n_iter,
-        n_fev: result.n_fev,
-        n_gev: result.n_gev,
-    })
+    Ok(PyFitResult::from(result))
 }
 
 /// Convenience wrapper: fit multiple models in parallel (Rayon).
@@ -3977,15 +3875,7 @@ fn fit_toys_batch(
         .into_iter()
         .map(|r| {
             let r = r.map_err(|e| PyValueError::new_err(format!("Batch toy fit failed: {}", e)))?;
-            Ok(PyFitResult {
-                parameters: r.parameters,
-                uncertainties: r.uncertainties,
-                nll: r.nll,
-                converged: r.converged,
-                n_iter: r.n_iter,
-                n_fev: r.n_fev,
-                n_gev: r.n_gev,
-            })
+            Ok(PyFitResult::from(r))
         })
         .collect()
 }
@@ -4105,15 +3995,7 @@ fn fit_toys_batch_gpu(
         .map(|r| {
             let r =
                 r.map_err(|e| PyValueError::new_err(format!("GPU batch toy fit failed: {}", e)))?;
-            Ok(PyFitResult {
-                parameters: r.parameters,
-                uncertainties: r.uncertainties,
-                nll: r.nll,
-                converged: r.converged,
-                n_iter: r.n_iter,
-                n_fev: r.n_fev,
-                n_gev: r.n_gev,
-            })
+            Ok(PyFitResult::from(r))
         })
         .collect()
 }
@@ -4631,6 +4513,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
+    m.add_function(wrap_pyfunction!(workspace_audit, m)?)?;
     m.add_function(wrap_pyfunction!(apply_patchset, m)?)?;
     m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
     m.add_function(wrap_pyfunction!(histfactory_bin_edges_by_channel, m)?)?;

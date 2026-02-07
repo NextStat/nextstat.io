@@ -672,66 +672,94 @@ impl MaximumLikelihoodEstimator {
 
     /// Compute ranking: impact of each nuisance parameter on POI.
     ///
-    /// For each NP, fixes it at ±1σ and re-fits. The shift in POI
-    /// measures the NP's impact.
+    /// For each constrained NP, fixes it at ±1σ and re-fits (NLL-only,
+    /// no Hessian). The shift in POI measures the NP's impact.
+    ///
+    /// Performance: uses bounds-clamping (no model clone), warm-start from
+    /// nominal fit, and per-thread tape + NllScratch reuse.
     ///
     /// # Returns
-    /// Vector of `(param_name, delta_mu_up, delta_mu_down, pull, constraint)`
-    /// sorted by |impact| descending.
+    /// `RankingEntry` per constrained NP, sorted by |impact| descending.
     pub fn ranking(&self, model: &HistFactoryModel) -> Result<Vec<RankingEntry>> {
         use rayon::prelude::*;
 
-        // First: unconditional fit
-        let nominal_result = self.fit(model)?;
         let poi_idx = model
             .poi_index()
             .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
-        let mu_hat = nominal_result.parameters[poi_idx];
 
-        // Identify nuisance parameters (all non-POI parameters)
+        // Nominal fit WITH Hessian (need uncertainties for constraint = σ̂/σ).
+        let nominal_result = self.fit_histfactory(model)?;
+        let mu_hat = nominal_result.parameters[poi_idx];
+        let base_bounds = model.parameter_bounds();
+
+        // Only constrained NPs (constraint_width.is_some()), skip POI and
+        // unconstrained normfactors / shapefactors.
         let np_indices: Vec<usize> = model
             .parameters()
             .iter()
             .enumerate()
-            .filter(|(i, p)| *i != poi_idx && p.bounds.0 != p.bounds.1)
+            .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
             .map(|(i, _)| i)
             .collect();
 
-        // For each NP, fit with NP fixed at ±1σ
+        let tape_capacity = model.n_params() * 20;
+
+        // Per-NP refits: NLL-only (no Hessian), warm-start, bounds-clamp.
+        // map_init allocates one Tape + NllScratch per Rayon worker thread.
         let entries: Vec<Result<RankingEntry>> = np_indices
             .par_iter()
-            .map(|&np_idx| {
-                let param = &model.parameters()[np_idx];
-                let center = param.constraint_center.unwrap_or(param.init);
-                // For Barlow-Beeston gammas: use sqrt(1/tau) ≈ relative uncertainty
-                let sigma =
-                    param.constraint_width.unwrap_or(if center > 0.0 { 0.1 * center } else { 1.0 });
+            .map_init(
+                || {
+                    (
+                        ns_ad::tape::Tape::with_capacity(tape_capacity),
+                        NllScratch::for_model(model),
+                    )
+                },
+                |(tape, _scratch), &np_idx| {
+                    let param = &model.parameters()[np_idx];
+                    let center = param.constraint_center.unwrap_or(param.init);
+                    let sigma = param.constraint_width.unwrap(); // guaranteed by filter
 
-                // Fix NP at +1σ
-                let model_up = model.with_fixed_param(np_idx, center + sigma);
-                let result_up = self.fit(&model_up)?;
-                let mu_up = result_up.parameters[poi_idx];
+                    // --- +1σ: fix NP via bounds-clamping (no model clone) ---
+                    let val_up = center + sigma;
+                    let mut bounds_up = base_bounds.clone();
+                    bounds_up[np_idx] = (val_up, val_up);
+                    let mut warm = nominal_result.parameters.clone();
+                    warm[np_idx] = val_up;
 
-                // Fix NP at -1σ
-                let model_down = model.with_fixed_param(np_idx, center - sigma);
-                let result_down = self.fit(&model_down)?;
-                let mu_down = result_down.parameters[poi_idx];
+                    let result_up = self.fit_minimum_histfactory_from_with_bounds_with_tape(
+                        model, &warm, &bounds_up, tape,
+                    )?;
+                    let mu_up = result_up.parameters[poi_idx];
 
-                // Pull: (θ̂ - θ₀) / σ
-                let theta_hat = nominal_result.parameters[np_idx];
-                let pull = (theta_hat - center) / sigma;
+                    // --- -1σ ---
+                    let val_down = center - sigma;
+                    let mut bounds_down = base_bounds.clone();
+                    bounds_down[np_idx] = (val_down, val_down);
+                    warm = nominal_result.parameters.clone();
+                    warm[np_idx] = val_down;
 
-                // Constraint: σ̂ / σ (should be ≤ 1)
-                let constraint = nominal_result.uncertainties[np_idx] / sigma;
+                    let result_down = self.fit_minimum_histfactory_from_with_bounds_with_tape(
+                        model, &warm, &bounds_down, tape,
+                    )?;
+                    let mu_down = result_down.parameters[poi_idx];
 
-                Ok(RankingEntry {
-                    name: param.name.clone(),
-                    delta_mu_up: mu_up - mu_hat,
-                    delta_mu_down: mu_down - mu_hat,
-                    pull,
-                    constraint,
-                })
-            })
+                    // Pull: (θ̂ - θ₀) / σ
+                    let theta_hat = nominal_result.parameters[np_idx];
+                    let pull = (theta_hat - center) / sigma;
+
+                    // Constraint: σ̂ / σ (should be ≤ 1)
+                    let constraint = nominal_result.uncertainties[np_idx] / sigma;
+
+                    Ok(RankingEntry {
+                        name: param.name.clone(),
+                        delta_mu_up: mu_up - mu_hat,
+                        delta_mu_down: mu_down - mu_hat,
+                        pull,
+                        constraint,
+                    })
+                },
+            )
             .collect::<Vec<_>>();
 
         // Collect results, sort by |impact|
@@ -1392,5 +1420,51 @@ mod tests {
             }
             assert!(p.is_finite(), "Param[{}] should be finite: {}", i, p);
         }
+    }
+
+    #[test]
+    fn test_fit_diagnostics() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let result = mle.fit(&model).unwrap();
+
+        // termination_reason should be non-empty
+        assert!(
+            !result.termination_reason.is_empty(),
+            "termination_reason should be set, got empty string"
+        );
+
+        // final_grad_norm should be finite (L-BFGS always has a gradient)
+        assert!(
+            result.final_grad_norm.is_finite(),
+            "final_grad_norm should be finite, got {}",
+            result.final_grad_norm
+        );
+
+        // initial_nll should be >= nll (optimizer should improve)
+        assert!(
+            result.initial_nll >= result.nll - 1e-10,
+            "initial_nll ({}) should be >= nll ({})",
+            result.initial_nll,
+            result.nll
+        );
+
+        // n_active_bounds should be reasonable
+        assert!(
+            result.n_active_bounds <= result.parameters.len(),
+            "n_active_bounds ({}) should be <= n_params ({})",
+            result.n_active_bounds,
+            result.parameters.len()
+        );
+
+        println!(
+            "Diagnostics: reason='{}', grad_norm={:.2e}, initial_nll={:.4}, n_active_bounds={}",
+            result.termination_reason,
+            result.final_grad_norm,
+            result.initial_nll,
+            result.n_active_bounds
+        );
     }
 }

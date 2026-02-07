@@ -78,5 +78,15 @@ Not implemented (and we should only add them based on real config corpus):
 ## How to extend safely (TDD)
 
 1) Add a unit test to `crates/ns-root/src/expr.rs` that compiles + evaluates the new construct.
+
+## Tooling: expression coverage report
+
+To scan a TREx config and see which expressions compile (and which branches they reference), run:
+
+```bash
+nextstat import trex-config --config trex.txt --base-dir . --output workspace.json --expr-coverage-json expr_coverage.json
+```
+
+This report is **compile-only**: it does not validate that branches exist in a particular ROOT file.
 2) Keep the vectorized bulk path deterministic (no data-dependent branching unless it falls back to row-wise).
 3) Only then wire it into NTUP ingestion (which already compiles `Selection`/`Weight`/`Variable` via `CompiledExpr::compile`).

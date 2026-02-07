@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
+use ns_root::CompiledExpr;
 use serde::Serialize;
 
 use crate::ntuple::{ChannelConfig, NtupleModifier, NtupleWorkspaceBuilder, SampleConfig};
@@ -577,6 +578,54 @@ pub struct TrexCoverageReport {
     pub unknown: Vec<TrexUnknownAttr>,
 }
 
+/// A single expression-bearing `key: value` attribute encountered while parsing a TREx config.
+///
+/// Used for NTUP-mode parity work: surfaces unsupported constructs and required branch names early.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrexExprCoverageItem {
+    /// Where it was found: `"global"` or `"block"`.
+    pub scope: String,
+    /// Block kind when `scope="block"` (e.g. `Region`, `Sample`, `Systematic`).
+    pub block_kind: Option<String>,
+    /// Block name when `scope="block"` (e.g. region/sample/systematic name).
+    pub block_name: Option<String>,
+    /// Nested block context: parent Region name, when present.
+    pub ctx_region: Option<String>,
+    /// Nested block context: parent Sample name, when present.
+    pub ctx_sample: Option<String>,
+    /// 1-based line number in the original config text (best effort).
+    pub line: usize,
+    /// Attribute key as it appeared in the config (e.g. `Selection`, `WeightUp`).
+    pub key: String,
+    /// Semantic role of the expression (`selection`, `weight`, `variable`, `weight_up`, ...).
+    pub role: String,
+    /// Expression text (unquoted/unescaped). For derived expressions, this is the derived value.
+    pub expr: String,
+    /// Whether this expression was derived (e.g. WeightBase + suffix expansion).
+    pub derived: bool,
+    /// Whether compilation succeeded.
+    pub ok: bool,
+    /// Compilation error message when `ok=false`.
+    pub error: Option<String>,
+    /// Branch names referenced by this expression (ordered by first occurrence).
+    pub required_branches: Vec<String>,
+}
+
+/// Best-effort report of which TREx config expressions compile under NextStat's ROOT-dialect engine.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrexExprCoverageReport {
+    /// Schema identifier for this JSON report.
+    pub schema_version: String,
+    /// Count of expressions discovered.
+    pub n_exprs: usize,
+    /// Count of expressions that compiled successfully.
+    pub n_ok: usize,
+    /// Count of expressions that failed compilation.
+    pub n_err: usize,
+    /// Per-expression records (includes successes + failures).
+    pub items: Vec<TrexExprCoverageItem>,
+}
+
 impl TrexConfig {
     /// Parse a TRExFitter-style config file from a string.
     pub fn parse_str(text: &str) -> Result<Self> {
@@ -675,6 +724,16 @@ impl TrexConfig {
             systematics,
         })
     }
+}
+
+/// Parse a TRExFitter-style config from text and produce an expression-coverage report.
+///
+/// This is intended to help parity work against legacy configs: it reports expression-bearing
+/// attributes (selection/weight/variable + weight systematics), their compilation status, and
+/// required branch names.
+pub fn expr_coverage_from_str(text: &str) -> Result<TrexExprCoverageReport> {
+    let (globals, blocks) = parse_raw(text)?;
+    Ok(trex_expr_coverage_from_raw(&globals, &blocks))
 }
 
 fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
@@ -813,6 +872,209 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
         n_blocks: blocks.len(),
         n_block_attrs,
         unknown,
+    }
+}
+
+fn last_attr<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a Attr> {
+    attrs.iter().rev().find(|a| key_eq(&a.key, key))
+}
+
+fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExprCoverageReport {
+    fn compile(expr: &str) -> (bool, Option<String>, Vec<String>) {
+        match CompiledExpr::compile(expr) {
+            Ok(c) => (true, None, c.required_branches),
+            Err(e) => (false, Some(e.to_string()), Vec::new()),
+        }
+    }
+
+    fn push_item(
+        out: &mut Vec<TrexExprCoverageItem>,
+        scope: &str,
+        block_kind: Option<String>,
+        block_name: Option<String>,
+        ctx_region: Option<String>,
+        ctx_sample: Option<String>,
+        line: usize,
+        key: &str,
+        role: &str,
+        expr: String,
+        derived: bool,
+    ) {
+        let expr_trim = expr.trim();
+        if expr_trim.is_empty() {
+            return;
+        }
+        let (ok, error, required_branches) = compile(expr_trim);
+        out.push(TrexExprCoverageItem {
+            scope: scope.to_string(),
+            block_kind,
+            block_name,
+            ctx_region,
+            ctx_sample,
+            line,
+            key: key.to_string(),
+            role: role.to_string(),
+            expr: expr_trim.to_string(),
+            derived,
+            ok,
+            error,
+            required_branches,
+        });
+    }
+
+    fn role_for_global_key(key: &str) -> Option<&'static str> {
+        if key_eq(key, "Selection") || key_eq(key, "Cut") {
+            Some("selection")
+        } else if key_eq(key, "Weight") {
+            Some("weight")
+        } else if key_eq(key, "Variable") || key_eq(key, "Var") {
+            Some("variable")
+        } else {
+            None
+        }
+    }
+
+    fn role_for_block_key(
+        kind: BlockKind,
+        syst_kind: Option<SystKind>,
+        key: &str,
+    ) -> Option<&'static str> {
+        match kind {
+            BlockKind::Region | BlockKind::Sample => {
+                if key_eq(key, "Selection") || key_eq(key, "Cut") {
+                    Some("selection")
+                } else if key_eq(key, "Weight") {
+                    Some("weight")
+                } else if key_eq(key, "Variable") || key_eq(key, "Var") {
+                    Some("variable")
+                } else {
+                    None
+                }
+            }
+            BlockKind::Systematic => {
+                if syst_kind != Some(SystKind::Weight) {
+                    return None;
+                }
+                if key_eq(key, "WeightUp") || key_eq(key, "Up") {
+                    Some("weight_up")
+                } else if key_eq(key, "WeightDown") || key_eq(key, "Down") {
+                    Some("weight_down")
+                } else if key_eq(key, "WeightBase") || key_eq(key, "Weight") {
+                    Some("weight_base")
+                } else {
+                    None
+                }
+            }
+            BlockKind::Job => None,
+        }
+    }
+
+    let mut items: Vec<TrexExprCoverageItem> = Vec::new();
+
+    for a in globals {
+        if let Some(role) = role_for_global_key(&a.key) {
+            push_item(
+                &mut items,
+                "global",
+                None,
+                None,
+                None,
+                None,
+                a.line,
+                &a.key,
+                role,
+                a.value.clone(),
+                false,
+            );
+        }
+    }
+
+    for b in blocks {
+        let syst_kind = if b.kind == BlockKind::Systematic {
+            last_attr_value(&b.attrs, "Type").and_then(|t| parse_syst_kind(&t))
+        } else {
+            None
+        };
+
+        for a in &b.attrs {
+            if let Some(role) = role_for_block_key(b.kind, syst_kind, &a.key) {
+                push_item(
+                    &mut items,
+                    "block",
+                    Some(format!("{:?}", b.kind)),
+                    Some(b.name.clone()),
+                    b.ctx_region.clone(),
+                    b.ctx_sample.clone(),
+                    a.line,
+                    &a.key,
+                    role,
+                    a.value.clone(),
+                    false,
+                );
+            }
+        }
+
+        // For weight systematics, also validate derived WeightUp/WeightDown from suffix expansion.
+        if b.kind == BlockKind::Systematic && syst_kind == Some(SystKind::Weight) {
+            let has_explicit_up =
+                last_attr(&b.attrs, "WeightUp").is_some() || last_attr(&b.attrs, "Up").is_some();
+            let has_explicit_down = last_attr(&b.attrs, "WeightDown").is_some()
+                || last_attr(&b.attrs, "Down").is_some();
+            if !(has_explicit_up || has_explicit_down) {
+                let base = last_attr(&b.attrs, "WeightBase").or_else(|| last_attr(&b.attrs, "Weight"));
+                let up_suf = last_attr(&b.attrs, "WeightUpSuffix")
+                    .or_else(|| last_attr(&b.attrs, "UpSuffix"))
+                    .or_else(|| last_attr(&b.attrs, "SuffixUp"));
+                let down_suf = last_attr(&b.attrs, "WeightDownSuffix")
+                    .or_else(|| last_attr(&b.attrs, "DownSuffix"))
+                    .or_else(|| last_attr(&b.attrs, "SuffixDown"));
+                if let (Some(base), Some(up_suf), Some(down_suf)) = (base, up_suf, down_suf) {
+                    let line = base.line;
+                    let base_trim = base.value.trim();
+                    let up_trim = up_suf.value.trim();
+                    let down_trim = down_suf.value.trim();
+                    if !(base_trim.is_empty() || up_trim.is_empty() || down_trim.is_empty()) {
+                        push_item(
+                            &mut items,
+                            "block",
+                            Some(format!("{:?}", b.kind)),
+                            Some(b.name.clone()),
+                            b.ctx_region.clone(),
+                            b.ctx_sample.clone(),
+                            line,
+                            "WeightUp",
+                            "weight_up",
+                            format!("{base_trim}{up_trim}"),
+                            true,
+                        );
+                        push_item(
+                            &mut items,
+                            "block",
+                            Some(format!("{:?}", b.kind)),
+                            Some(b.name.clone()),
+                            b.ctx_region.clone(),
+                            b.ctx_sample.clone(),
+                            line,
+                            "WeightDown",
+                            "weight_down",
+                            format!("{base_trim}{down_trim}"),
+                            true,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let n_exprs = items.len();
+    let n_ok = items.iter().filter(|x| x.ok).count();
+    let n_err = n_exprs - n_ok;
+    TrexExprCoverageReport {
+        schema_version: "trex_expr_coverage_v0".to_string(),
+        n_exprs,
+        n_ok,
+        n_err,
+        items,
     }
 }
 
@@ -2135,5 +2397,47 @@ EndRegion: SR
         assert_eq!(parsed.systematics.len(), 1);
         assert_eq!(parsed.systematics[0].samples, vec!["signal".to_string()]);
         assert_eq!(parsed.systematics[0].regions.as_ref().unwrap(), &vec!["SR".to_string()]);
+    }
+
+    #[test]
+    fn trex_expr_coverage_reports_ok_and_err() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: jet_pt[0]
+Selection: njet >= 4 && (pt_lead > 25.0)
+
+Sample: signal
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+
+Systematic: jes
+Type: weight
+WeightBase: weight_jes
+WeightUpSuffix: _up
+WeightDownSuffix: _down
+
+Sample: bad
+File: tests/fixtures/simple_tree.root
+Selection: x +
+"#;
+
+        let rep = expr_coverage_from_str(cfg).expect("expr coverage");
+        assert_eq!(rep.schema_version, "trex_expr_coverage_v0");
+        assert!(rep.n_exprs >= 4, "expected at least 4 expressions, got={}", rep.n_exprs);
+        assert!(rep.n_err >= 1, "expected at least one compile error");
+
+        let bad = rep
+            .items
+            .iter()
+            .find(|x| x.block_kind.as_deref() == Some("Sample") && x.block_name.as_deref() == Some("bad"))
+            .expect("bad sample item");
+        assert!(!bad.ok, "expected bad expression to fail");
+
+        let derived_up = rep.items.iter().find(|x| x.derived && x.key == "WeightUp").expect("derived WeightUp");
+        assert!(derived_up.ok, "derived WeightUp should compile, err={:?}", derived_up.error);
+        assert!(derived_up.required_branches.iter().any(|b| b == "weight_jes_up"));
     }
 }

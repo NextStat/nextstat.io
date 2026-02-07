@@ -116,6 +116,13 @@ enum Commands {
         /// Also emit a JSON coverage report (unknown keys/attrs) to this path.
         #[arg(long)]
         coverage_json: Option<PathBuf>,
+
+        /// Also emit a JSON expression coverage report (selection/weight/variable + weight systematics).
+        ///
+        /// This is intended to help parity work against legacy TREx configs by flagging unsupported
+        /// constructs early and listing required branch names.
+        #[arg(long)]
+        expr_coverage_json: Option<PathBuf>,
     },
 
     /// Perform MLE fit
@@ -153,6 +160,21 @@ enum Commands {
         /// Intended for validation regions (VR) that should not constrain the fit.
         #[arg(long, value_delimiter = ',', num_args = 0..)]
         validation_regions: Vec<String>,
+    },
+
+    /// Audit a pyhf workspace: list channels, modifiers, unsupported features
+    Audit {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format: "text" (human-readable) or "json"
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 
     /// Asymptotic CLs hypotest (qtilde)
@@ -601,6 +623,10 @@ enum ImportCommands {
         /// Also emit a JSON coverage report (unknown keys/attrs) to this path.
         #[arg(long)]
         coverage_json: Option<PathBuf>,
+
+        /// Also emit a JSON expression coverage report (selection/weight/variable + weight systematics).
+        #[arg(long)]
+        expr_coverage_json: Option<PathBuf>,
     },
 
     /// Apply a pyhf PatchSet (HEPData) to a base workspace JSON (typically background-only).
@@ -932,8 +958,15 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Run { config } => cmd_run(&config, cli.bundle.as_ref()),
         Commands::Validate { config } => cmd_validate(&config),
-        Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json } => {
-            cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
+        Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json, expr_coverage_json } => {
+            cmd_build_hists(
+                &config,
+                base_dir.as_ref(),
+                &out_dir,
+                overwrite,
+                coverage_json.as_ref(),
+                expr_coverage_json.as_ref(),
+            )
         }
         Commands::Fit { input, output, threads, gpu, parity, fit_regions, validation_regions } => {
             if let Some(ref dev) = gpu {
@@ -974,6 +1007,9 @@ fn main() -> Result<()> {
                 &fit_regions,
                 &validation_regions,
             )
+        }
+        Commands::Audit { input, format, output } => {
+            cmd_audit(&input, &format, output.as_ref())
         }
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
@@ -1190,12 +1226,14 @@ fn main() -> Result<()> {
                 output,
                 analysis_yaml,
                 coverage_json,
+                expr_coverage_json,
             } => cmd_import_trex_config(
                 &config,
                 base_dir.as_ref(),
                 output.as_ref(),
                 analysis_yaml.as_ref(),
                 coverage_json.as_ref(),
+                expr_coverage_json.as_ref(),
                 cli.bundle.as_ref(),
             ),
             ImportCommands::Patchset { workspace, patchset, patch_name, output } => {
@@ -1724,6 +1762,7 @@ fn cmd_import_trex_config(
     output: Option<&PathBuf>,
     analysis_yaml: Option<&PathBuf>,
     coverage_json: Option<&PathBuf>,
+    expr_coverage_json: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     tracing::info!(path = %config.display(), "importing TRExFitter config");
@@ -1732,6 +1771,11 @@ fn cmd_import_trex_config(
     let base_dir_override = base_dir.map(|p| p.as_path());
     let resolved_base_dir =
         base_dir_override.or_else(|| config.parent()).unwrap_or_else(|| std::path::Path::new("."));
+
+    if let Some(path) = expr_coverage_json {
+        let rep = ns_translate::trex::expr_coverage_from_str(&text)?;
+        write_json_file(path, &serde_json::to_value(&rep)?)?;
+    }
 
     let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
     let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
@@ -1745,6 +1789,7 @@ fn cmd_import_trex_config(
                 "base_dir": base_dir_override,
                 "analysis_yaml": analysis_yaml,
                 "coverage_json": coverage_json,
+                "expr_coverage_json": expr_coverage_json,
             }),
             config,
             &output_json,
@@ -2048,6 +2093,10 @@ fn cmd_fit(
         "n_fev": result.n_fev,
         "n_gev": result.n_gev,
         "covariance": result.covariance,
+        "termination_reason": result.termination_reason,
+        "final_grad_norm": if result.final_grad_norm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.final_grad_norm) },
+        "initial_nll": if result.initial_nll.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.initial_nll) },
+        "n_active_bounds": result.n_active_bounds,
         "fit_regions": if fit_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(fit_regions) },
         "validation_regions": if validation_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(validation_regions) },
     });
@@ -2061,6 +2110,57 @@ fn cmd_fit(
             input,
             &output_json,
         )?;
+    }
+    Ok(())
+}
+
+fn cmd_audit(input: &PathBuf, format: &str, output: Option<&PathBuf>) -> Result<()> {
+    let json_str = std::fs::read_to_string(input)?;
+    let json: serde_json::Value = serde_json::from_str(&json_str)?;
+    let audit = ns_translate::pyhf::audit::workspace_audit(&json);
+
+    let text = match format {
+        "json" => serde_json::to_string_pretty(&audit)?,
+        _ => {
+            let mut s = String::new();
+            s.push_str(&format!("Workspace: {}\n", input.display()));
+            s.push_str(&format!(
+                "  Channels: {}, Bins: {}, Samples: {}, Modifiers: {}\n",
+                audit.channel_count, audit.total_bins, audit.total_samples, audit.total_modifiers
+            ));
+            s.push_str(&format!("  Parameters (est): {}\n", audit.parameter_count_estimate));
+            s.push_str("\nMeasurements:\n");
+            for m in &audit.measurements {
+                s.push_str(&format!(
+                    "  - {} (POI: {}, {} fixed params)\n",
+                    m.name, m.poi, m.n_fixed_params
+                ));
+            }
+            s.push_str("\nModifier types:\n");
+            let mut types: Vec<_> = audit.modifier_types_used.iter().collect();
+            types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+            for (typ, count) in &types {
+                let marker = if ns_translate::pyhf::audit::KNOWN_MODIFIER_TYPES.contains(&typ.as_str()) {
+                    "+"
+                } else {
+                    "!"
+                };
+                s.push_str(&format!("  {} {} (x{})\n", marker, typ, count));
+            }
+            if !audit.unsupported_features.is_empty() {
+                s.push_str("\nWarnings:\n");
+                for w in &audit.unsupported_features {
+                    s.push_str(&format!("  - {}\n", w));
+                }
+            }
+            s
+        }
+    };
+
+    if let Some(path) = output {
+        std::fs::write(path, &text)?;
+    } else {
+        print!("{}", text);
     }
     Ok(())
 }
@@ -3813,21 +3913,24 @@ fn cmd_report(
         let fit_result = if uncs_postfit.is_empty() {
             None
         } else {
-            Some(ns_core::FitResult {
-                parameters: params_postfit.clone(),
-                uncertainties: uncs_postfit,
-                covariance: fit_json.covariance,
-                nll: fit_json.nll,
-                converged: fit_json.converged,
-                n_iter: fit_json.n_iter,
-                n_fev: fit_json.n_fev,
-                n_gev: fit_json.n_gev,
+            Some({
+                let mut fr = ns_core::FitResult::new(
+                    params_postfit.clone(),
+                    uncs_postfit,
+                    fit_json.nll,
+                    fit_json.converged,
+                    fit_json.n_iter,
+                    fit_json.n_fev,
+                    fit_json.n_gev,
+                );
+                fr.covariance = fit_json.covariance;
+                fr
             })
         };
 
         (params_postfit, fit_result)
     } else {
-        // Default: run the fit here (so `nextstat report` is “one command”).
+        // Default: run the fit here (so `nextstat report` is "one command").
         let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
         let result = mle.fit(&model)?;
 
@@ -3852,16 +3955,7 @@ fn cmd_report(
             if deterministic { normalize_json_for_determinism(fit_json_out) } else { fit_json_out };
         write_json_file(&out_dir.join("fit.json"), &fit_json_out)?;
 
-        let fit_result = Some(ns_core::FitResult {
-            parameters: result.parameters.clone(),
-            uncertainties: result.uncertainties.clone(),
-            covariance: result.covariance.clone(),
-            nll: result.nll,
-            converged: result.converged,
-            n_iter: result.n_iter,
-            n_fev: result.n_fev,
-            n_gev: result.n_gev,
-        });
+        let fit_result = Some(result.clone());
 
         (result.parameters, fit_result)
     };
@@ -4090,15 +4184,18 @@ fn cmd_viz_pulls(
         out
     };
 
-    let fit_result = ns_core::FitResult {
-        parameters: params_postfit,
-        uncertainties: uncs_postfit,
-        covariance: fit_json.covariance,
-        nll: fit_json.nll,
-        converged: fit_json.converged,
-        n_iter: fit_json.n_iter,
-        n_fev: fit_json.n_fev,
-        n_gev: fit_json.n_gev,
+    let fit_result = {
+        let mut fr = ns_core::FitResult::new(
+            params_postfit,
+            uncs_postfit,
+            fit_json.nll,
+            fit_json.converged,
+            fit_json.n_iter,
+            fit_json.n_fev,
+            fit_json.n_gev,
+        );
+        fr.covariance = fit_json.covariance;
+        fr
     };
     let artifact = ns_viz::pulls::pulls_artifact(&model, &fit_result, threads)?;
     let output_json = serde_json::to_value(&artifact)?;
@@ -4157,15 +4254,18 @@ fn cmd_viz_corr(
         out
     };
 
-    let fit_result = ns_core::FitResult {
-        parameters: params_postfit,
-        uncertainties: uncs_postfit,
-        covariance: fit_json.covariance,
-        nll: fit_json.nll,
-        converged: fit_json.converged,
-        n_iter: fit_json.n_iter,
-        n_fev: fit_json.n_fev,
-        n_gev: fit_json.n_gev,
+    let fit_result = {
+        let mut fr = ns_core::FitResult::new(
+            params_postfit,
+            uncs_postfit,
+            fit_json.nll,
+            fit_json.converged,
+            fit_json.n_iter,
+            fit_json.n_fev,
+            fit_json.n_gev,
+        );
+        fr.covariance = fit_json.covariance;
+        fr
     };
 
     let artifact = ns_viz::corr::corr_artifact(&model, &fit_result, threads, include_covariance)?;
