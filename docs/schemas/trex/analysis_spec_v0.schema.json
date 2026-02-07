@@ -321,7 +321,19 @@
           "required": ["enabled", "output_json"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "output_json": { "$ref": "#/$defs/path", "description": "Fit result output path (JSON)." }
+            "output_json": { "$ref": "#/$defs/path", "description": "Fit result output path (JSON)." },
+            "fit_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels included in the fit likelihood. If non-empty, only these regions contribute to the main Poisson likelihood."
+            },
+            "validation_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels excluded from the fit likelihood (validation regions)."
+            }
           }
         },
         "profile_scan": {

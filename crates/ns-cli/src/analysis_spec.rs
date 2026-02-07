@@ -266,6 +266,10 @@ pub struct ImportStep {
 pub struct FitStep {
     pub enabled: bool,
     pub output_json: PathBuf,
+    #[serde(default)]
+    pub fit_regions: Vec<String>,
+    #[serde(default)]
+    pub validation_regions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

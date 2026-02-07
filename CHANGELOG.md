@@ -9,8 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Phase 2C — CUDA GPU Batch Backend
+#### Phase 2C — Compute Backends & Determinism
 
+**EvalMode: Parity vs Fast (deterministic validation system)**
+- `EvalMode` enum (`ns-compute`): process-wide atomic flag controlling summation strategy and backend dispatch.
+- **Parity mode**: Kahan compensated summation, Apple Accelerate disabled, threads forced to 1.
+  Produces bit-exact reproducible NLL/gradient across runs.
+- **Fast mode** (default): naive summation, SIMD/Accelerate/CUDA enabled, Rayon multi-threaded.
+- `set_eval_mode()` / `eval_mode()` Rust API; `dispatch_poisson_nll()` routes to Kahan or naive at runtime.
+- Kahan summation variants: `poisson_nll_simd_kahan()`, `poisson_nll_simd_sparse_kahan()`,
+  `poisson_nll_scalar_kahan()`, `poisson_nll_accelerate_kahan()` — all use f64x4 compensated accumulation.
+- **CLI**: `--parity` flag on `fit`, `scan`, `hypotest`, `hypotest-toys` commands.
+- **Python**: `nextstat.set_eval_mode("parity")` / `nextstat.get_eval_mode()`.
+- **Measured overhead**: <5% (Kahan vs naive at same thread count, confirmed across simple/complex/tHu/tttt).
+- 7-tier tolerance contract vs pyhf NumPy: per-bin 1e-12 → toy ensemble 0.05 (`docs/pyhf-parity-contract.md`).
+- 45+ new parity tests: gradient parity, per-bin golden, batch toys, eval mode, fast-vs-parity tolerance.
+
+**Apple Accelerate backend (macOS)**
+- Feature `accelerate` enables Apple vDSP/vForce for Poisson NLL computation.
+- `vvlog()` vectorized ln() for entire arrays; `vDSP_vsubD`, `vDSP_vmulD`, `vDSP_sveD` for arithmetic.
+- FFI via `unsafe extern "C"`, linked via `build.rs` (`cargo:rustc-link-lib=framework=Accelerate`).
+- Three-layer disable gate: compile-time feature, `EvalMode::Parity`, env var `NEXTSTAT_DISABLE_ACCELERATE=1`.
+- `nextstat.has_accelerate() -> bool` Python binding.
+- Feature chain: `ns-compute/accelerate` → `ns-translate` → `ns-inference` → `ns-cli`, `ns-py`.
+
+**CUDA GPU batch backend**
 - **CUDA fused NLL+Gradient kernel** (`crates/ns-compute/kernels/batch_nll_grad.cu`):
   All 7 modifier types (NormFactor, ShapeSys, ShapeFactor, NormSys/Code4, HistoSys/Code4p, StatError, Lumi)
   with analytical gradient in a single kernel launch. 1 block = 1 toy, threads = bins, shared memory for params.
@@ -20,10 +43,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to flat GPU-friendly buffers (nominal counts, modifier descriptors, per-bin param indices, constraints).
 - **Lockstep batch optimizer** (`ns-inference::gpu_batch`): standalone `LbfgsState` L-BFGS-B stepper,
   all toys at same iteration with convergence masking. `fit_toys_batch_gpu()` entry point.
-- **CLI**: `--gpu` flag on `hypotest-toys` command for CUDA acceleration.
-- **Python**: `nextstat.has_cuda()` and `nextstat.fit_toys_batch_gpu(model, params, device="cuda")`.
 - **Feature chain**: `ns-compute/cuda` → `ns-translate/cuda` → `ns-inference/cuda` → `ns-cli/cuda`, `ns-py/cuda`.
 - **PTX build system**: `build.rs` compiles `.cu` kernel via `nvcc --ptx -arch=sm_70`, embedded via `include_str!`.
+
+**CUDA single-model fit path**
+- `GpuSession` (`ns-inference::gpu_single`): shared GPU state — serializes model once, reuses for
+  multiple fits (profile scans, ranking). `upload_observed_single()` for observed data.
+- `GpuObjective`: `ObjectiveFunction` with fused NLL+gradient caching via `RefCell<GpuCache>`.
+  argmin calls `cost(x)` then `gradient(x)` with same x → 1 GPU launch per L-BFGS iteration, not 2.
+- `fit_gpu()`, `fit_minimum_gpu()`, `fit_minimum_gpu_from()`, `fit_minimum_gpu_from_with_bounds()` MLE methods.
+- `compute_hessian_gpu()`: finite differences of GPU gradient (N+1 kernel launches).
+- `scan_gpu()`: shared GpuSession across all scan points, warm-start between mu values.
+- **CLI**: `--gpu` flag on `fit` and `scan` commands.
+- **Python**: `nextstat.fit(model, device="cuda")`, `nextstat.profile_scan(model, ..., device="cuda")`.
+- **Python**: `nextstat.has_cuda()`, `nextstat.fit_toys_batch_gpu(model, params, device="cuda")`.
+
+**Metal/f32 GPU types (infrastructure)**
+- `MetalModelData` (`ns-compute::metal_types`): f32-precision flat buffers for Apple Metal GPU.
+- `MetalAuxPoissonEntry`, `MetalGaussConstraintEntry` with pre-computed `lgamma` (Metal has no `lgamma()`).
+- `MetalBackend` stub (feature-gated `--features metal`); kernel implementation pending.
+
+**f32 / Dual32 precision PoC (Metal feasibility study)**
+- `impl Scalar for f32` in `ns-ad` — enables `nll_generic::<f32>()` for precision analysis.
+- `Dual32` (f32-based dual numbers) in `ns-ad` — enables analytical gradient in f32.
+- Validated on tHu (184 params): NLL rel error 3.4e-7, analytical gradient max error 3.2e-4, zero sign flips.
+- **Verdict**: f32 analytical gradients are viable for L-BFGS-B on large models (Metal path confirmed feasible).
+
+**Batch toy fitting (CPU)**
+- `fit_toys_batch()` in `ns-inference::batch`: Rayon parallel toy fitting with per-thread AD Tape reuse.
+- `par_iter().map_init()` pattern: one Tape per Rayon worker thread (~12), not per toy (1000+).
+- Skips Hessian/covariance for speed; seed-based reproducibility (`toy_seed = base_seed + toy_index`).
+- **Python**: `nextstat.fit_toys_batch(model, params, n_toys=1000, seed=42)`.
+
+**Reverse-mode tape memory optimization**
+- `gradient_reverse_reuse(&self, params, &mut tape)`: clears + reuses tape capacity (zero realloc).
+- `fit_minimum_histfactory_with_tape()`: takes external `&mut Tape` for caller-controlled lifetime.
+- All tape ops (`var`, `constant`, `add`, `mul`, `ln`, etc.) marked `#[inline]`.
 
 #### HistoSys Interpolation Code 0 (Piecewise Linear)
 - `HistoSysInterpCode` enum: `Code0` (piecewise linear) and `Code4p` (polynomial+linear extrapolation).
@@ -43,11 +98,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 9 leaf types: `f32`, `f64`, `i32`, `i64`, `u32`, `u64`, `i16`, `i8`, `bool`.
 - `RootFile::get_tree()`, `branch_reader()`, `branch_data()` public API.
 
-**ns-root: Expression engine**
+**ns-root: Expression engine (bytecode-compiled, vectorized)**
 - Recursive descent parser for string-based selections, weights, and variable expressions.
 - Full grammar: arithmetic (`+`, `-`, `*`, `/`), comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`),
-  boolean logic (`&&`, `||`, `!`), built-in functions (`abs`, `sqrt`, `log`, `exp`, `pow`, `min`, `max`).
-- `CompiledExpr::compile()` → `eval_row()` / `eval_bulk()` API.
+  boolean logic (`&&`, `||`, `!`), ternary (`cond ? a : b`),
+  built-in functions (`abs`, `sqrt`, `log`, `exp`, `pow`, `min`, `max`).
+- Bytecode compilation: `CompiledExpr::compile()` → stack-based VM for efficient evaluation.
+- `eval_row()` for single-row evaluation; `eval_bulk()` for vectorized column-wise evaluation (all rows at once).
+- Span-aware error reporting with line/column positions.
 - Variables resolved by branch name; bulk evaluation over columnar data.
 
 **ns-root: Histogram filler**

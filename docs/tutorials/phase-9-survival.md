@@ -55,16 +55,18 @@ x = [
     [0.5, 0.5],
 ]
 
-model = nextstat.CoxPhModel(times, events, x, ties="efron")
-res = nextstat.fit(model)
+fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True)
 
-beta_hat = [float(v) for v in res.bestfit]
-print("converged:", res.converged, "nll:", res.nll)
+beta_hat = [float(v) for v in fit.coef]
+print("converged:", fit.converged, "nll:", fit.nll)
 print("beta_hat:", beta_hat)
 
 # Hazard ratios (per 1-unit increase in each covariate).
-hr = [math.exp(b) for b in beta_hat]
-print("hazard ratios:", hr)
+print("hazard ratios:", fit.hazard_ratios())
+
+# Wald confidence intervals.
+print("beta CI:", fit.confint(level=0.95, robust=True))
+print("HR CI:", fit.hazard_ratio_confint(level=0.95, robust=True))
 ```
 
 ### Choosing a ties policy
@@ -87,9 +89,8 @@ import nextstat
 times = [0.5, 1.2, 0.7, 2.0, 0.9]
 events = [True, False, True, False, True]
 
-m_exp = nextstat.ExponentialSurvivalModel(times, events)
-fit_exp = nextstat.fit(m_exp)
-print("exp nll:", fit_exp.nll, "params:", fit_exp.bestfit)
+fit_exp = nextstat.survival.exponential.fit(times, events)
+print("exp nll:", fit_exp.nll, "params:", fit_exp.params)
 
 m_w = nextstat.WeibullSurvivalModel(times, events)
 fit_w = nextstat.fit(m_w)

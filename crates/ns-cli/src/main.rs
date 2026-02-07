@@ -125,6 +125,19 @@ enum Commands {
         /// For bit-exact validation against pyhf NumPy backend.
         #[arg(long)]
         parity: bool,
+
+        /// Regions/channels included in the fit likelihood (comma-separated).
+        ///
+        /// If provided, only these regions contribute to the main Poisson likelihood.
+        /// Mutually exclusive with regions listed in `--validation-regions`.
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        fit_regions: Vec<String>,
+
+        /// Regions/channels excluded from the fit likelihood (comma-separated).
+        ///
+        /// Intended for validation regions (VR) that should not constrain the fit.
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        validation_regions: Vec<String>,
     },
 
     /// Asymptotic CLs hypotest (qtilde)
@@ -865,7 +878,7 @@ fn main() -> Result<()> {
         Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json } => {
             cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
         }
-        Commands::Fit { input, output, threads, gpu, parity } => {
+        Commands::Fit { input, output, threads, gpu, parity, fit_regions, validation_regions } => {
             if gpu {
                 #[cfg(feature = "cuda")]
                 {
@@ -879,7 +892,16 @@ fn main() -> Result<()> {
             if parity {
                 eprintln!("Parity mode: Kahan summation, threads=1, Accelerate disabled");
             }
-            cmd_fit(&input, output.as_ref(), threads, gpu, cli.bundle.as_ref(), parity)
+            cmd_fit(
+                &input,
+                output.as_ref(),
+                threads,
+                gpu,
+                cli.bundle.as_ref(),
+                parity,
+                &fit_regions,
+                &validation_regions,
+            )
         }
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
@@ -1478,7 +1500,16 @@ fn cmd_run_spec_v0(
         if let Some(parent) = fit_out.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, false, /*bundle*/ None, false)?;
+        cmd_fit(
+            &plan.workspace_json,
+            Some(fit_out),
+            plan.threads,
+            false,
+            /*bundle*/ None,
+            false,
+            &spec.execution.fit.fit_regions,
+            &spec.execution.fit.validation_regions,
+        )?;
     }
 
     if let Some(scan) = plan.profile_scan.as_ref() {
@@ -1833,8 +1864,16 @@ fn cmd_fit(
     gpu: bool,
     bundle: Option<&PathBuf>,
     parity: bool,
+    fit_regions: &[String],
+    validation_regions: &[String],
 ) -> Result<()> {
-    let model = load_model(input, threads, parity)?;
+    let model = {
+        let base = load_model(input, threads, parity)?;
+        base.with_fit_channel_selection(
+            (!fit_regions.is_empty()).then_some(fit_regions),
+            (!validation_regions.is_empty()).then_some(validation_regions),
+        )?
+    };
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
     let result = if gpu {
@@ -1867,6 +1906,8 @@ fn cmd_fit(
         "n_fev": result.n_fev,
         "n_gev": result.n_gev,
         "covariance": result.covariance,
+        "fit_regions": if fit_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(fit_regions) },
+        "validation_regions": if validation_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(validation_regions) },
     });
 
     write_json(output, &output_json)?;
