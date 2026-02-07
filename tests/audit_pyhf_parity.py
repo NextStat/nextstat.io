@@ -79,6 +79,48 @@ def _shift_params(params: list[float], bounds: list[tuple[float | None, float | 
     return out
 
 
+def _projected_grad(
+    grad: list[float],
+    params: list[float],
+    bounds: list[tuple[float, float]],
+    *,
+    eps: float = 1e-12,
+) -> list[float]:
+    """Projected gradient for box bounds (L-BFGS-B style)."""
+    out: list[float] = []
+    for g, x, (lo, hi) in zip(grad, params, bounds):
+        lo_f = float(lo)
+        hi_f = float(hi)
+        x_f = float(x)
+        g_f = float(g)
+
+        # Fixed param
+        if lo_f == hi_f:
+            out.append(0.0)
+            continue
+
+        # At lower bound, positive gradient would push further down.
+        if x_f <= lo_f + eps and g_f > 0.0:
+            out.append(0.0)
+            continue
+
+        # At upper bound, negative gradient would push further up.
+        if x_f >= hi_f - eps and g_f < 0.0:
+            out.append(0.0)
+            continue
+
+        out.append(g_f)
+    return out
+
+
+def _norm_l2(xs: list[float]) -> float:
+    return float(math.sqrt(sum(float(x) * float(x) for x in xs)))
+
+
+def _norm_inf(xs: list[float]) -> float:
+    return float(max((abs(float(x)) for x in xs), default=0.0))
+
+
 def _bench(fn, iters: int) -> dict[str, float]:
     if iters <= 0:
         return {"iters": 0, "mean_s": float("nan"), "p50_s": float("nan"), "p90_s": float("nan")}
@@ -244,6 +286,7 @@ def audit_workspace(
 
     ns_names = list(model_ns.parameter_names())
     ns_init = [float(x) for x in model_ns.suggested_init()]
+    ns_bounds = [(float(lo), float(hi)) for (lo, hi) in model_ns.suggested_bounds()]
 
     meta["n_params"] = len(pyhf_names)
 
@@ -373,6 +416,29 @@ def audit_workspace(
             except Exception:
                 errors.append({"where": "cross_eval", "traceback": traceback.format_exc()})
 
+            # Optimizer quality: projected-gradient norms (NextStat) at both best-fit points.
+            #
+            # We compute these in NextStat space because (1) the objective is identical by
+            # construction (NLL parity) and (2) NextStat has a cheap exact gradient.
+            try:
+                pyhf_bestfit_in_ns = _map_params_by_name(pyhf_names, pyhf_bestfit, ns_names, ns_init)
+                ns_hat = [float(x) for x in list(ns_fit.parameters)]
+
+                g_pyhf = [float(x) for x in model_ns.grad_nll(pyhf_bestfit_in_ns)]
+                g_ns = [float(x) for x in model_ns.grad_nll(ns_hat)]
+
+                pg_pyhf = _projected_grad(g_pyhf, pyhf_bestfit_in_ns, ns_bounds)
+                pg_ns = _projected_grad(g_ns, ns_hat, ns_bounds)
+
+                parity["optimizer_quality"] = {
+                    "pg_inf_at_pyhf_hat": _norm_inf(pg_pyhf),
+                    "pg_l2_at_pyhf_hat": _norm_l2(pg_pyhf),
+                    "pg_inf_at_nextstat_hat": _norm_inf(pg_ns),
+                    "pg_l2_at_nextstat_hat": _norm_l2(pg_ns),
+                }
+            except Exception:
+                errors.append({"where": "optimizer_quality", "traceback": traceback.format_exc()})
+
             try:
                 diffs["top_bestfit_param_diffs"] = _top_param_diffs(
                     pyhf_names,
@@ -457,8 +523,8 @@ def _write_md(path: Path, report: dict[str, Any]) -> None:
     lines.append("")
     lines.append("## Results")
     lines.append("")
-    lines.append("| Workspace | Status | n_params | Init Δtwice_nll | Shift Δtwice_nll | Δnll_hat | Max |Δ bestfit| | pyhf fit (s) | NextStat fit (s) | Notes |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("| Workspace | Status | n_params | Init Δtwice_nll | Shift Δtwice_nll | Δnll_hat | MaxΔ bestfit | pg∞(pyhf_hat) | pg∞(ns_hat) | pyhf fit (s) | NextStat fit (s) | Notes |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for r in rows:
         rel = r["path"]
         status = "OK" if r["ok"] else (r.get("reason") or "FAIL")
@@ -467,6 +533,13 @@ def _write_md(path: Path, report: dict[str, Any]) -> None:
         sh = r.get("parity", {}).get("twice_nll_shift", {}).get("abs_diff", float("nan"))
         dnll_hat = r.get("parity", {}).get("nll_hat", {}).get("abs_diff", float("nan"))
         max_d = r.get("diffs", {}).get("bestfit_max_abs_diff", float("nan"))
+        oq = r.get("parity", {}).get("optimizer_quality")
+        if isinstance(oq, dict):
+            pg_pyhf = oq.get("pg_inf_at_pyhf_hat", float("nan"))
+            pg_ns = oq.get("pg_inf_at_nextstat_hat", float("nan"))
+        else:
+            pg_pyhf = float("nan")
+            pg_ns = float("nan")
         t_pyhf = r.get("timings", {}).get("pyhf_fit_s", float("nan"))
         t_ns = r.get("timings", {}).get("nextstat_fit_s", float("nan"))
         notes = ""
@@ -490,7 +563,7 @@ def _write_md(path: Path, report: dict[str, Any]) -> None:
             elif float(nll_hat["nextstat"]) > float(nll_hat["pyhf"]):
                 notes = (notes + "; " if notes else "") + "pyhf nll < nextstat"
         lines.append(
-            f"| `{rel}` | {status} | {n_params} | {init:.3e} | {sh:.3e} | {dnll_hat:.3e} | {max_d:.3e} | {t_pyhf:.2f} | {t_ns:.2f} | {notes} |"
+            f"| `{rel}` | {status} | {n_params} | {init:.3e} | {sh:.3e} | {dnll_hat:.3e} | {max_d:.3e} | {pg_pyhf:.3e} | {pg_ns:.3e} | {t_pyhf:.2f} | {t_ns:.2f} | {notes} |"
         )
 
     bestfit_bad = [
@@ -526,6 +599,20 @@ def _write_md(path: Path, report: dict[str, Any]) -> None:
                                 f"n_iter={fs.get('n_iter')}",
                                 f"n_fev={fs.get('n_fev')}",
                                 f"n_gev={fs.get('n_gev')}",
+                            ]
+                        )
+                    )
+            if "optimizer_quality" in r.get("parity", {}):
+                oq = r["parity"]["optimizer_quality"]
+                if isinstance(oq, dict):
+                    lines.append(
+                        "- Optimizer quality (NextStat projected grad): "
+                        + ", ".join(
+                            [
+                                f"||pg||∞(pyhf_hat)={oq.get('pg_inf_at_pyhf_hat', float('nan')):.6g}",
+                                f"||pg||∞(ns_hat)={oq.get('pg_inf_at_nextstat_hat', float('nan')):.6g}",
+                                f"||pg||2(pyhf_hat)={oq.get('pg_l2_at_pyhf_hat', float('nan')):.6g}",
+                                f"||pg||2(ns_hat)={oq.get('pg_l2_at_nextstat_hat', float('nan')):.6g}",
                             ]
                         )
                     )

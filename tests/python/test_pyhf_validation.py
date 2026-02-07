@@ -8,7 +8,13 @@ import pytest
 
 import nextstat
 
-from _tolerances import TWICE_NLL_ATOL, TWICE_NLL_RTOL
+from _tolerances import (
+    TWICE_NLL_ATOL,
+    TWICE_NLL_RTOL,
+    GRADIENT_ATOL,
+    GRADIENT_RTOL,
+    EXPECTED_DATA_PER_BIN_ATOL,
+)
 
 
 pyhf = pytest.importorskip("pyhf")
@@ -192,3 +198,119 @@ def test_simple_mle_parity_bestfit_uncertainties(ns_timing):
     pyhf_unc_by_name = dict(zip(model.config.par_names, pyhf_unc.tolist()))
     for name in model.config.par_names:
         assert abs(ns_unc_by_name[name] - pyhf_unc_by_name[name]) < 5e-4
+
+
+def _pyhf_nll_gradient_fd(model, data, params, h=1e-5):
+    """Central finite-difference gradient of NLL (= twice_nll / 2)."""
+    params = np.asarray(params, dtype=float)
+    n = len(params)
+    grad = np.zeros(n, dtype=float)
+    for i in range(n):
+        hi = h * max(abs(params[i]), 1.0)
+        xp = params.copy()
+        xm = params.copy()
+        xp[i] += hi
+        xm[i] -= hi
+        fp = pyhf_twice_nll(model, data, xp.tolist()) / 2.0
+        fm = pyhf_twice_nll(model, data, xm.tolist()) / 2.0
+        grad[i] = (fp - fm) / (2.0 * hi)
+    return grad
+
+
+def _gradient_parity_at_point(pyhf_model, pyhf_data, ns_model, pyhf_params, label):
+    """Compare pyhf FD gradient vs NextStat AD gradient at a parameter point."""
+    ns_params = map_params_by_name(
+        pyhf_model.config.par_names,
+        pyhf_params,
+        ns_model.parameter_names(),
+        ns_model.suggested_init(),
+    )
+
+    pyhf_grad = _pyhf_nll_gradient_fd(pyhf_model, pyhf_data, pyhf_params)
+    ns_grad = np.array(ns_model.grad_nll(ns_params), dtype=float)
+
+    # Reorder NS gradient to pyhf parameter ordering for comparison
+    ns_names = ns_model.parameter_names()
+    ns_name_to_idx = {name: i for i, name in enumerate(ns_names)}
+    ns_grad_reordered = np.array(
+        [ns_grad[ns_name_to_idx[name]] for name in pyhf_model.config.par_names],
+        dtype=float,
+    )
+
+    for i, name in enumerate(pyhf_model.config.par_names):
+        diff = abs(ns_grad_reordered[i] - pyhf_grad[i])
+        scale = max(abs(pyhf_grad[i]), 1.0)
+        assert diff < GRADIENT_ATOL + GRADIENT_RTOL * scale, (
+            f"{label} param '{name}' [#{i}]: "
+            f"NS_grad={ns_grad_reordered[i]:.8e}, pyhf_FD={pyhf_grad[i]:.8e}, "
+            f"diff={diff:.2e}, tol={GRADIENT_ATOL + GRADIENT_RTOL * scale:.2e}"
+        )
+
+
+def test_gradient_parity_simple():
+    """NextStat AD gradient vs pyhf central FD gradient — simple workspace."""
+    workspace = load_fixture("simple_workspace.json")
+    model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
+    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+
+    # Test at suggested_init
+    init = model.config.suggested_init()
+    _gradient_parity_at_point(model, data, ns_model, init, "simple@init")
+
+    # Test at a perturbed point (shift each param by small amount)
+    rng = np.random.default_rng(42)
+    perturbed = [p + rng.normal(0, 0.1) for p in init]
+    # Clamp to bounds
+    bounds = model.config.suggested_bounds()
+    perturbed = [
+        np.clip(p, lo + 1e-6, hi - 1e-6) for p, (lo, hi) in zip(perturbed, bounds)
+    ]
+    _gradient_parity_at_point(model, data, ns_model, perturbed, "simple@perturbed")
+
+
+def test_gradient_parity_complex():
+    """NextStat AD gradient vs pyhf central FD gradient — complex workspace."""
+    workspace = load_fixture("complex_workspace.json")
+    model, data = pyhf_model_and_data(workspace, measurement_name="measurement")
+    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+
+    init = model.config.suggested_init()
+    _gradient_parity_at_point(model, data, ns_model, init, "complex@init")
+
+    rng = np.random.default_rng(123)
+    perturbed = [p + rng.normal(0, 0.05) for p in init]
+    bounds = model.config.suggested_bounds()
+    perturbed = [
+        np.clip(p, lo + 1e-6, hi - 1e-6) for p, (lo, hi) in zip(perturbed, bounds)
+    ]
+    _gradient_parity_at_point(model, data, ns_model, perturbed, "complex@perturbed")
+
+
+def test_expected_data_per_bin_parity_simple():
+    """Per-bin expected data must match pyhf at near-machine precision."""
+    workspace = load_fixture("simple_workspace.json")
+    model, data = pyhf_model_and_data(workspace, measurement_name="GaussExample")
+    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+
+    pyhf_params = model.config.suggested_init()
+    ns_params = map_params_by_name(
+        model.config.par_names,
+        pyhf_params,
+        ns_model.parameter_names(),
+        ns_model.suggested_init(),
+    )
+
+    pyhf_expected = np.array(model.expected_data(pyhf_params), dtype=float)
+    ns_expected = np.array(ns_model.expected_data(ns_params), dtype=float)
+
+    # pyhf expected_data includes main + aux; compare lengths
+    n_main = sum(model.config.channel_nbins.values())
+    # Compare main data bins
+    pyhf_main = pyhf_expected[:n_main]
+    ns_main = ns_expected[:n_main]
+
+    for i in range(n_main):
+        diff = abs(ns_main[i] - pyhf_main[i])
+        assert diff < EXPECTED_DATA_PER_BIN_ATOL, (
+            f"Bin {i}: NS={ns_main[i]:.15e}, pyhf={pyhf_main[i]:.15e}, diff={diff:.2e}"
+        )

@@ -6,6 +6,7 @@ This exercises the Python binding `HistFactoryModel.expected_data`.
 from __future__ import annotations
 
 import json
+import os
 import random
 from array import array
 from pathlib import Path
@@ -14,7 +15,7 @@ import pytest
 
 import nextstat
 
-from _tolerances import EXPECTED_DATA_ATOL
+from _tolerances import EXPECTED_DATA_ATOL, EXPECTED_DATA_PER_BIN_ATOL
 
 
 pyhf = pytest.importorskip("pyhf")
@@ -217,3 +218,95 @@ def test_expected_data_matches_pyhf_at_random_points(fixture: str, measurement: 
         with ns_timing.time("nextstat"):
             exp_ns_main = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
         assert exp_ns_main == pytest.approx(exp_pyhf_main, rel=0.0, abs=EXPECTED_DATA_ATOL)
+
+
+def _per_bin_report(ns_bins: list[float], pyhf_bins: list[float], label: str) -> dict:
+    """Build per-bin comparison report with worst-bin identification."""
+    n = len(ns_bins)
+    assert n == len(pyhf_bins), f"{label}: length mismatch NS={n} vs pyhf={len(pyhf_bins)}"
+
+    deltas = [abs(ns_bins[i] - pyhf_bins[i]) for i in range(n)]
+    max_delta = max(deltas) if deltas else 0.0
+    mean_delta = sum(deltas) / n if n > 0 else 0.0
+    worst_idx = deltas.index(max_delta) if deltas else -1
+
+    report = {
+        "label": label,
+        "n_bins": n,
+        "max_abs_delta": max_delta,
+        "mean_abs_delta": mean_delta,
+        "worst_bin_index": worst_idx,
+        "worst_bin_ns": ns_bins[worst_idx] if worst_idx >= 0 else None,
+        "worst_bin_pyhf": pyhf_bins[worst_idx] if worst_idx >= 0 else None,
+        "worst_bin_delta": deltas[worst_idx] if worst_idx >= 0 else None,
+        "pass": max_delta < EXPECTED_DATA_PER_BIN_ATOL,
+    }
+    return report
+
+
+# All workspaces available in the fixtures directory.
+_ALL_WORKSPACES = [
+    ("simple_workspace.json", "GaussExample"),
+    ("complex_workspace.json", "measurement"),
+    ("histfactory/workspace.json", "NominalMeasurement"),
+]
+
+
+@pytest.mark.parametrize(
+    ("fixture", "measurement"),
+    _ALL_WORKSPACES,
+)
+def test_expected_data_per_bin_golden(fixture: str, measurement: str, ns_timing):
+    """Per-bin expected_data parity at near-machine precision (1e-12).
+
+    For each workspace, at suggested_init and 3 random points, compare every bin
+    individually. Generates a JSON report if NEXTSTAT_GOLDEN_REPORT_DIR is set.
+    """
+    workspace = load_fixture(fixture)
+    with ns_timing.time("pyhf"):
+        model = pyhf_model(workspace, measurement)
+        pyhf_init = list(map(float, model.config.suggested_init()))
+        pyhf_bounds = [(float(a), float(b)) for a, b in model.config.suggested_bounds()]
+
+    with ns_timing.time("nextstat"):
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_names = ns_model.parameter_names()
+        ns_init = ns_model.suggested_init()
+
+    reports: list[dict] = []
+    rng = random.Random(2025)
+
+    # Parameter points: suggested_init + 3 random
+    param_sets = [("init", pyhf_init)]
+    for k in range(3):
+        param_sets.append((f"rand_{k}", sample_params(rng, pyhf_init, pyhf_bounds)))
+
+    for point_label, pyhf_params in param_sets:
+        ns_params = map_params_by_name(
+            model.config.par_names, pyhf_params, ns_names, ns_init
+        )
+
+        with ns_timing.time("pyhf"):
+            exp_pyhf = [float(x) for x in model.expected_data(pyhf_params, include_auxdata=False)]
+        with ns_timing.time("nextstat"):
+            exp_ns = [float(x) for x in ns_model.expected_data(ns_params, include_auxdata=False)]
+
+        label = f"{fixture}@{point_label}"
+        report = _per_bin_report(exp_ns, exp_pyhf, label)
+        reports.append(report)
+
+        # Assert per-bin
+        for i in range(len(exp_ns)):
+            diff = abs(exp_ns[i] - exp_pyhf[i])
+            assert diff < EXPECTED_DATA_PER_BIN_ATOL, (
+                f"{label} bin {i}: NS={exp_ns[i]:.15e}, pyhf={exp_pyhf[i]:.15e}, "
+                f"diff={diff:.2e}, tol={EXPECTED_DATA_PER_BIN_ATOL:.0e}"
+            )
+
+    # Optionally write JSON report for CI
+    report_dir = os.environ.get("NEXTSTAT_GOLDEN_REPORT_DIR")
+    if report_dir:
+        Path(report_dir).mkdir(parents=True, exist_ok=True)
+        safe_name = fixture.replace("/", "_").replace(".json", "")
+        report_path = Path(report_dir) / f"expected_data_perbin_{safe_name}.json"
+        report_path.write_text(json.dumps(reports, indent=2))

@@ -23,7 +23,7 @@ HEP / HistFactory:
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
 - `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
-- `nextstat scan --input workspace.json --start 0 --stop 5 --points 21`
+- `nextstat scan --input workspace.json --start 0 --stop 5 --points 21 [--gpu]`
 - `nextstat viz profile --input workspace.json ...`
 - `nextstat viz cls --input workspace.json ...`
 - `nextstat viz ranking --input workspace.json`

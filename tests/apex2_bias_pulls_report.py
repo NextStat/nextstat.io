@@ -671,6 +671,8 @@ def main() -> int:
         "n_error": int(n_err),
         "wall_s": float(time.time() - t0),
     }
+    # Convenience top-level status (common across Apex2 runners).
+    report["status"] = str(status)
 
     write_report_json(args.out, report, deterministic=bool(args.deterministic))
     print(f"Wrote: {args.out}")

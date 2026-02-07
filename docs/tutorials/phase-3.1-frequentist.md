@@ -58,6 +58,8 @@ Runs a small suite of HistFactory workspaces through pyhf and NextStat and check
 - NLL parity (init + random points)
 - expected_data parity (full + main-only)
 
+Requires `pyhf` installed in the active venv.
+
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
   --out tmp/apex2_pyhf_report.json
@@ -70,6 +72,14 @@ This produces one aggregated JSON artifact, and embeds sub-reports.
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
   --out tmp/apex2_master_report.json
+```
+
+In addition, the master report runs a fast HistFactory golden regression harness that
+does **not** import `pyhf` at runtime (`tests/python/test_pyhf_model_zoo_goldens.py`).
+Goldens live at `tests/fixtures/pyhf_model_zoo_goldens.json` and can be regenerated via:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/python/generate_pyhf_model_zoo_goldens.py
 ```
 
 In addition to the pyhf + golden regression checks, the master report also includes a

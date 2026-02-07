@@ -154,6 +154,43 @@ mod tests {
     }
 
     #[test]
+    fn test_fit_toys_batch_parity_mode_deterministic() {
+        // In parity mode, batch toy fitting must produce bit-exact results
+        // across multiple runs. This test enables parity mode (Kahan summation)
+        // and verifies that two runs with the same seed produce identical results.
+        ns_compute::set_eval_mode(ns_compute::EvalMode::Parity);
+
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+
+        let results1 = fit_toys_batch(&model, &params, 3, 777, None);
+        let results2 = fit_toys_batch(&model, &params, 3, 777, None);
+
+        for (i, (r1, r2)) in results1.iter().zip(results2.iter()).enumerate() {
+            if let (Ok(a), Ok(b)) = (r1, r2) {
+                // Bit-exact parameters (not just approx)
+                assert_eq!(
+                    a.parameters, b.parameters,
+                    "Parity mode: toy {} parameters must be bit-exact",
+                    i
+                );
+                assert_eq!(
+                    a.nll.to_bits(),
+                    b.nll.to_bits(),
+                    "Parity mode: toy {} NLL must be bit-exact: {} vs {}",
+                    i,
+                    a.nll,
+                    b.nll,
+                );
+            }
+        }
+
+        // Restore fast mode
+        ns_compute::set_eval_mode(ns_compute::EvalMode::Fast);
+    }
+
+    #[test]
     fn test_fit_toys_batch_matches_standard() {
         let workspace = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&workspace).unwrap();

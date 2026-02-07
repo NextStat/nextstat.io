@@ -170,12 +170,9 @@ static RooStats::ModelConfig* find_model_config(RooWorkspace& w) {{
 static RooAbsData* find_data(RooWorkspace& w) {{
   if (auto* d = w.data("obsData")) return d;
   if (auto* d = w.data("data")) return d;
-  // Fallback: first dataset in workspace.
-  auto all = w.allData();
-  if (all.getSize() == 0) return nullptr;
-  auto* obj = all.first();
-  if (!obj) return nullptr;
-  return w.data(obj->GetName());
+  // HistFactory workspaces should provide "obsData". Avoid version-dependent
+  // RooWorkspace::allData() container APIs (ROOT 6.38 changed this surface).
+  return nullptr;
 }}
 
 static int minimize_nll(RooAbsReal& nll) {{
@@ -236,8 +233,8 @@ void profile_scan() {{
 
   // Build NLL (HistFactory convention).
   RooArgSet empty;
-  RooArgSet* nuis = mc->GetNuisanceParameters();
-  RooArgSet* globs = mc->GetGlobalObservables();
+  const RooArgSet* nuis = mc->GetNuisanceParameters();
+  const RooArgSet* globs = mc->GetGlobalObservables();
   if (!nuis) nuis = &empty;
   if (!globs) globs = &empty;
   std::unique_ptr<RooAbsReal> nll(pdf->createNLL(
@@ -276,8 +273,14 @@ void profile_scan() {{
     ));
     int st = minimize_nll(*nll_fixed);
     double v = nll_fixed->getVal();
-    double q = 2.0 * (v - nll_hat);
-    if (q < 0.0) q = 0.0;
+    // Match NextStat `profile_scan` semantics: one-sided q(mu).
+    // If the unconditional best-fit POI exceeds the tested mu, q(mu)=0.
+    // Otherwise q(mu)=2*(nll_mu - nll_hat), clamped at 0 for numerical jitter.
+    double q = 0.0;
+    if (mu >= mu_hat) {{
+      q = 2.0 * (v - nll_hat);
+      if (q < 0.0) q = 0.0;
+    }}
     nll_mu.push_back(v);
     q_mu.push_back(q);
     status_mu.push_back(st);

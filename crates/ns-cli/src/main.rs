@@ -1466,7 +1466,7 @@ fn cmd_run_spec_v0(
         if let Some(parent) = fit_out.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, false, /*bundle*/ None)?;
+        cmd_fit(&plan.workspace_json, Some(fit_out), plan.threads, false, /*bundle*/ None, false)?;
     }
 
     if let Some(scan) = plan.profile_scan.as_ref() {
