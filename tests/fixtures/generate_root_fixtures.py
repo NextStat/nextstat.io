@@ -355,9 +355,59 @@ def create_vector_tree():
         json.dump(expected, f, indent=2)
     print(f"Created {expected_path}")
 
+def create_fixed_array_tree():
+    """Create a ROOT file with a TTree containing a fixed-length array branch.
+
+    This is used to validate expressions like `eig[0]` when the underlying storage
+    is fixed-size per entry (no entry-offset table).
+    """
+    path = os.path.join(FIXTURES_DIR, "fixed_array_tree.root")
+    expected_path = os.path.join(FIXTURES_DIR, "fixed_array_tree_expected.json")
+
+    # 8 entries, 4 elements each.
+    eig = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [10.0, 20.0, 30.0, 40.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [5.5, 6.5, 7.5, 8.5],
+            [9.0, 8.0, 7.0, 6.0],
+            [100.0, 200.0, 300.0, 400.0],
+            [11.0, 22.0, 33.0, 44.0],
+            [3.14, 2.71, 1.61, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    with uproot.recreate(path) as f:
+        f.mktree(
+            "events",
+            {
+                "eig": "4 * float32",
+            },
+        )
+        f["events"].extend(
+            {
+                "eig": eig,
+            }
+        )
+
+    expected = {
+        "n_entries": int(eig.shape[0]),
+        "eig_0": eig[:, 0].astype(np.float64).tolist(),
+        "eig_1": eig[:, 1].astype(np.float64).tolist(),
+        "eig_3": eig[:, 3].astype(np.float64).tolist(),
+    }
+    with open(expected_path, "w") as f:
+        json.dump(expected, f, indent=2)
+
+    print(f"Created {path}")
+    print(f"Created {expected_path}")
+
 if __name__ == "__main__":
     create_simple_root()
     create_histfactory_fixtures()
     create_simple_tree()
     create_vector_tree()
+    create_fixed_array_tree()
     print("\nAll fixtures created successfully.")

@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "name": "tchannel_vb23",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/tchannel_workspace.json",
+      "measurement": "vb23",
+      "mu_grid": { "start": 0.0, "stop": 5.0, "points": 31 }
+    },
+    {
+      "name": "fourtop_prod",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/tttt-prod_workspace.json",
+      "measurement": "FourTop",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 31 }
+    },
+    {
+      "name": "tHu_utH_syst",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/workspace_tHu.json",
+      "measurement": "tHq_ML_utH_syst",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 31 }
+    }
+  ]
+}

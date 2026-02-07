@@ -32,15 +32,46 @@ impl<'a> BranchReader<'a> {
     ///
     /// If an entry has fewer than `index + 1` elements, `out_of_range_value` is used.
     pub fn as_f64_indexed(&self, index: usize, out_of_range_value: f64) -> Result<Vec<f64>> {
-        // Fast path: non-array branch.
+        // Fast path: fixed-size arrays (no entry offsets, but basket contains N = entries * len).
         if self.branch.entry_offset_len == 0 {
-            if index == 0 {
-                return self.as_f64();
+            let flat = self.as_f64()?;
+            let entries = self.branch.entries as usize;
+            if entries == 0 {
+                return Ok(Vec::new());
             }
-            return Err(RootError::TypeMismatch(format!(
-                "indexed access [{}] requested for non-array branch '{}'",
-                index, self.branch.name
-            )));
+
+            if flat.len() == entries {
+                if index == 0 {
+                    return Ok(flat);
+                }
+                return Err(RootError::TypeMismatch(format!(
+                    "indexed access [{}] requested for scalar branch '{}'",
+                    index, self.branch.name
+                )));
+            }
+
+            if flat.len() % entries != 0 {
+                return Err(RootError::Deserialization(format!(
+                    "branch '{}' decoded to {} values, not divisible by entries={}",
+                    self.branch.name,
+                    flat.len(),
+                    entries
+                )));
+            }
+
+            let len = flat.len() / entries;
+            if index >= len {
+                return Err(RootError::TypeMismatch(format!(
+                    "indexed access [{}] out of range for fixed-size array branch '{}' (len={})",
+                    index, self.branch.name, len
+                )));
+            }
+
+            let mut out_col: Vec<f64> = Vec::with_capacity(entries);
+            for i in 0..entries {
+                out_col.push(flat[i * len + index]);
+            }
+            return Ok(out_col);
         }
 
         let elem_size = self.branch.leaf_type.byte_size();
