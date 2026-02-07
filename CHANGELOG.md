@@ -99,6 +99,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fit_minimum_histfactory_with_tape()`: takes external `&mut Tape` for caller-controlled lifetime.
 - All tape ops (`var`, `constant`, `add`, `mul`, `ln`, etc.) marked `#[inline]`.
 
+#### Differentiable NextStat Layer (PyTorch Integration)
+
+**DifferentiableSession — Phase 1: NLL at fixed nuisance parameters**
+- `DifferentiableAccelerator` (`ns-compute::differentiable`): GPU accelerator that reads/writes
+  directly from/to PyTorch CUDA tensors via raw device pointers (zero-copy).
+- `differentiable_nll_grad.cu` CUDA kernel: reads signal sample nominal from an external PyTorch
+  tensor, writes ∂NLL/∂signal_bins into PyTorch's grad buffer — no D→H→D roundtrip.
+- `DifferentiableSession` (`ns-inference::differentiable`): model-level wrapper that serializes
+  the HistFactory model once, uploads observed data, and provides `nll_grad_wrt_signal()`.
+- `SignalSampleInfo`: identifies which sample in the model is the signal (by name or index)
+  and its bin range within the flattened GPU buffer.
+
+**ProfiledDifferentiableSession — Phase 2: Profiled q₀/qμ**
+- `ProfiledDifferentiableSession` (`ns-inference::differentiable`): computes profiled test
+  statistics (q₀, qμ) with envelope theorem gradients and GPU-accelerated L-BFGS-B fits.
+- Returns NLL scalar + gradient w.r.t. signal bins, enabling end-to-end differentiable
+  analysis pipelines (NN → signal histogram → profiled CLs → loss).
+
+**Python: `nextstat.torch` module**
+- `NextStatNLLFunction` (torch.autograd.Function): custom autograd op wrapping DifferentiableSession.
+- `NextStatProfiledQ0Function`: autograd op for profiled q₀ with envelope theorem gradients.
+- `NextStatLayer(nn.Module)`: drop-in PyTorch module — forward pass returns NLL, backward
+  pass provides ∂NLL/∂signal via the CUDA kernel (zero-copy).
+- Requires PyTorch (optional dependency, imported lazily).
+- Test: `tests/python/test_torch_layer.py` (219 lines).
+
+#### TREx HIST Mode (Histogram-Based TRExFitter Pipeline)
+
+- **HIST mode** in TREx config parser: reads pre-built ROOT histograms instead of ntuples,
+  supporting `ReadFrom: HIST` workflows alongside existing `ReadFrom: NTUP`.
+- `nextstat build-hists` extended to support HIST mode inputs.
+- **Jagged column support** in TTree reader: `Vec<f32>` / `Vec<f64>` branches for
+  variable-length per-event data (jet collections, etc.).
+- **NTUP expression compatibility**: expression engine extended to handle TRExFitter-style
+  weight and selection strings with implicit variable resolution.
+- TREx config parser refactored for multi-mode dispatch (NTUP/HIST/NTUP+HIST).
+
+#### WASM Playground Crate
+
+- `bindings/ns-wasm/` crate: `wasm-bindgen` wrapper exposing `fit_json()`,
+  `hypotest_json()`, `upper_limit_json()` for browser-based inference.
+- Compiled via `wasm32-unknown-unknown` target, served as static WASM module.
+- Drag-and-drop `workspace.json` → asymptotic CLs Brazil bands in the browser.
+
+#### Systematics Preprocessing Pipeline (CLI + Cache)
+
+- `nextstat.analysis.preprocess.cli`: `nextstat preprocess` CLI command for batch
+  smoothing/pruning of workspaces with YAML config.
+- `nextstat.analysis.preprocess.config`: declarative YAML config for pipeline steps
+  (hygiene, symmetrize, smooth, prune) with per-step thresholds.
+- `nextstat.analysis.preprocess.cache`: deterministic content-hash caching of
+  intermediate preprocessing results (avoids recomputation on unchanged inputs).
+
+#### Expression Evaluator Python Wrapper
+
+- `nextstat.analysis.expr_eval`: Python-side expression evaluation for TRExFitter-style
+  selection and weight strings. Wraps the Rust `CompiledExpr` engine with column-dict input.
+- Supports vectorized evaluation over pandas/numpy columns.
+
+#### Survival Enhancements
+
+- **Survival CLI commands** (`ns-cli::survival`): `nextstat survival fit`, `nextstat survival predict`
+  for parametric models and Cox PH from the command line.
+- **Schoenfeld correlation helpers**: `nextstat.survival.schoenfeld_residuals()` and
+  correlation test for proportional hazards assumption checking.
+
+#### Report Enhancements
+
+- **Blinding parameter**: `--blind` flag on `nextstat report` to mask observed data in
+  distributions and yields artifacts (prefit-only mode for unblinded regions).
+- **Best-NLL parity rationale**: documented and enforced best-NLL selection policy
+  (use model-global best NLL for all profile points, not per-point best).
+
 #### HistoSys Interpolation Code 0 (Piecewise Linear)
 - `HistoSysInterpCode` enum: `Code0` (piecewise linear) and `Code4p` (polynomial+linear extrapolation).
 - Default for HistoSys changed to Code 0, matching pyhf default.
@@ -323,6 +396,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Optimizer early-stop bug: removed `target_cost(0.0)` that broke models with NLL < 0.
 - `kalman_simulate()` now supports `init="sample|mean"` and `x0=...` for custom start.
+- StatError histogram handling: fixed incorrect `sqrt(sumw2)` propagation when stat error
+  bins had zero nominal counts.
+- Metal GPU batch: scratch buffer reuse optimization — reduced GPU memory allocation overhead
+  by ~40% on repeated batch calls.
 
 ## [0.1.0] - 2026-02-05
 
