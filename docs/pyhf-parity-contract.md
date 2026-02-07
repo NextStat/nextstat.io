@@ -250,6 +250,10 @@ non-positive NormSys factors (hi ≤ 0 or lo ≤ 0). The GPU polynomial kernel c
 the CPU piecewise-linear fallback for these pathological cases. No real workspace is affected
 (0 of 8+ tested fixtures). pyhf itself produces NaN for such inputs.
 
+**NormSys load-time validation:** `from_workspace()` emits `log::warn!` when a NormSys
+modifier has non-positive hi/lo factors. The CPU path still applies the piecewise-linear
+fallback, but the warning alerts users to potentially pathological workspace definitions.
+
 ### Performance Characteristics
 
 | Operation | vs Baseline |

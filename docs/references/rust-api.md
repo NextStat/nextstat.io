@@ -224,6 +224,7 @@ Key inference exports — **single-model** (feature-gated):
 
 MLE GPU methods (on `MaximumLikelihoodEstimator`, feature-gated):
 - `fit_gpu(model)` — Full fit with Hessian (GPU minimization + CPU Hessian via finite differences of GPU gradient).
+- `fit_gpu_from(model, init)` — Full fit with warm-start + Hessian (GPU minimization from explicit starting point + CPU Hessian).
 - `fit_minimum_gpu(model)` — NLL minimization only (no Hessian).
 - `fit_minimum_gpu_from(model, init)` — With warm-start.
 - `fit_minimum_gpu_from_with_bounds(model, init, bounds)` — With custom bounds (for fixed-param fits).
