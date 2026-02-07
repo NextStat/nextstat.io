@@ -61,10 +61,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Python**: `nextstat.fit(model, device="cuda")`, `nextstat.profile_scan(model, ..., device="cuda")`.
 - **Python**: `nextstat.has_cuda()`, `nextstat.fit_toys_batch_gpu(model, params, device="cuda")`.
 
-**Metal/f32 GPU types (infrastructure)**
-- `MetalModelData` (`ns-compute::metal_types`): f32-precision flat buffers for Apple Metal GPU.
-- `MetalAuxPoissonEntry`, `MetalGaussConstraintEntry` with pre-computed `lgamma` (Metal has no `lgamma()`).
-- `MetalBackend` stub (feature-gated `--features metal`); kernel implementation pending.
+**Metal GPU batch backend (Apple Silicon, f32)**
+- **Metal fused NLL+Gradient kernel** (`crates/ns-compute/kernels/batch_nll_grad.metal`):
+  All 7 modifier types ported from CUDA `.cu` to MSL with f32 precision.
+  `atomic_fetch_add_explicit` for gradient accumulation (requires Apple GPU family 7+, M1+).
+- **`MetalBatchAccelerator`** (`ns-compute::metal_batch`): GPU orchestrator for Apple Silicon.
+  Runtime MSL compilation via `device.new_library_with_source()`, `StorageModeShared` for zero-copy unified memory.
+  API mirrors `CudaBatchAccelerator`: `from_metal_data()`, `upload_observed()`, `batch_nll_grad()`, `batch_nll()`.
+- **`MetalModelData`** (`ns-compute::metal_types`): f32-precision flat buffers for Metal GPU.
+  `MetalAuxPoissonEntry` with pre-computed `lgamma` (Metal has no `lgamma()` built-in).
+  Conversion: `MetalModelData::from_gpu_data(&GpuModelData)` handles f64→f32.
+- **Shared `LbfgsState`** (`ns-inference::lbfgs`): standalone L-BFGS-B state machine extracted
+  from `gpu_batch.rs`, now shared between CUDA and Metal batch fitters.
+- **Lockstep batch optimizer** (`ns-inference::metal_batch`): `fit_toys_batch_metal()` entry point.
+  Tolerance clamped to `max(tol, 1e-3)` for f32 gradient noise.
+- **Feature chain**: `ns-compute/metal` → `ns-translate/metal` → `ns-inference/metal` → `ns-cli/metal`, `ns-py/metal`.
+- **CLI**: `--gpu` flag now accepts `cuda` or `metal` (changed from bool to `Option<String>`).
+  `--gpu metal` supported for `hypotest-toys` (batch). Single-model `fit` and `scan` remain CUDA-only.
+- **Python**: `nextstat.has_metal() -> bool`, `nextstat.fit_toys_batch_gpu(model, params, device="metal")`.
+- **NLL parity at init**: 1.27e-6 relative diff (Metal f32 vs CPU f64 on simple_workspace).
+- **Dependencies**: `metal` 0.30, `objc` 0.2, `block` 0.1 (macOS-only, optional).
 
 **f32 / Dual32 precision PoC (Metal feasibility study)**
 - `impl Scalar for f32` in `ns-ad` — enables `nll_generic::<f32>()` for precision analysis.

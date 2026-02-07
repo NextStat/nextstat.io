@@ -205,13 +205,25 @@ print(f"{converged}/{len(results)} toys converged")
 ## GPU acceleration
 
 - `nextstat.has_cuda() -> bool` — Check if CUDA GPU batch backend is available at runtime.
-- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — Batch toy fitting. When `device="cuda"`, uses GPU-accelerated lockstep L-BFGS-B with fused NLL+gradient kernel. Falls back to CPU (Rayon) when `device="cpu"`.
+- `nextstat.has_metal() -> bool` — Check if Metal GPU batch backend is available at runtime (Apple Silicon).
+- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — Batch toy fitting with GPU support:
+  - `device="cuda"` — NVIDIA GPU, f64 precision, lockstep L-BFGS-B with fused NLL+gradient kernel.
+  - `device="metal"` — Apple Silicon GPU, f32 precision, lockstep L-BFGS-B with Metal kernel. Tolerance relaxed to 1e-3.
+  - `device="cpu"` (default) — Falls back to CPU (Rayon parallel, f64).
 
-Build with CUDA support:
+Build with GPU support:
 
 ```bash
 cd bindings/ns-py
+
+# CUDA (NVIDIA)
 maturin develop --release --features cuda
+
+# Metal (Apple Silicon)
+maturin develop --release --features metal
+
+# Both
+maturin develop --release --features "cuda,metal"
 ```
 
 Example:
@@ -224,6 +236,8 @@ params = model.suggested_init()
 
 if nextstat.has_cuda():
     results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="cuda")
+elif nextstat.has_metal():
+    results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="metal")
 else:
     results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="cpu")
 ```

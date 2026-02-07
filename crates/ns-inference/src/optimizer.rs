@@ -185,6 +185,92 @@ impl LbfgsbOptimizer {
 
         let init_clamped = clamp_params(init_params, bounds);
 
+        // Special-case 1D problems: argmin's L-BFGS + clamping can behave poorly with
+        // box constraints, even when the optimum is in the interior. For 1D likelihoods
+        // (e.g. minimal examples), use a robust bracketed golden-section search instead.
+        if bounds.len() == 1 {
+            let (lo, hi) = bounds[0];
+            if !(lo.is_finite() && hi.is_finite() && lo <= hi) {
+                return Err(ns_core::Error::Validation(format!(
+                    "invalid bounds for 1D minimize: lo={} hi={}",
+                    lo, hi
+                )));
+            }
+            if (hi - lo).abs() <= 0.0 {
+                let x = lo;
+                let fval = objective.eval(&[x])?;
+                return Ok(OptimizationResult {
+                    parameters: vec![x],
+                    fval,
+                    n_iter: 0,
+                    n_fev: 1,
+                    n_gev: 0,
+                    converged: true,
+                    message: "1D bounds degenerate".to_string(),
+                });
+            }
+
+            let mut n_fev = 0usize;
+            let mut eval = |x: f64| -> Result<f64> {
+                n_fev += 1;
+                objective.eval(&[x])
+            };
+
+            // Golden-section search on [a, b]
+            let mut a = lo;
+            let mut b = hi;
+            let phi = (5.0_f64.sqrt() - 1.0) / 2.0; // ~0.618
+            let mut c = b - phi * (b - a);
+            let mut d = a + phi * (b - a);
+
+            // Respect an explicit initial value by shrinking the bracket if possible.
+            let x0 = init_clamped[0];
+            if x0 > a && x0 < b {
+                // Keep a symmetric-ish bracket around x0, bounded by [lo, hi].
+                let span = (b - a) * 0.5;
+                a = (x0 - span).max(lo);
+                b = (x0 + span).min(hi);
+                c = b - phi * (b - a);
+                d = a + phi * (b - a);
+            }
+
+            let mut fc = eval(c)?;
+            let mut fd = eval(d)?;
+
+            let tol_x = if self.config.tol > 0.0 { self.config.tol } else { 1e-8 };
+            let mut it = 0u64;
+            while it < self.config.max_iter {
+                it += 1;
+                if (b - a).abs() <= tol_x * (1.0 + 0.5 * (a.abs() + b.abs())) {
+                    break;
+                }
+                if fc < fd {
+                    b = d;
+                    d = c;
+                    fd = fc;
+                    c = b - phi * (b - a);
+                    fc = eval(c)?;
+                } else {
+                    a = c;
+                    c = d;
+                    fc = fd;
+                    d = a + phi * (b - a);
+                    fd = eval(d)?;
+                }
+            }
+
+            let (x_best, f_best) = if fc < fd { (c, fc) } else { (d, fd) };
+            return Ok(OptimizationResult {
+                parameters: vec![x_best],
+                fval: f_best,
+                n_iter: it,
+                n_fev,
+                n_gev: 0,
+                converged: it < self.config.max_iter,
+                message: "1D golden-section search".to_string(),
+            });
+        }
+
         let counts = Arc::new(FuncCounts::default());
 
         // Create argmin problem

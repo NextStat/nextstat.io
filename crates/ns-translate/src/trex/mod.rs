@@ -22,7 +22,7 @@ use ns_core::{Error, Result};
 use serde::Serialize;
 
 use crate::ntuple::{ChannelConfig, NtupleModifier, NtupleWorkspaceBuilder, SampleConfig};
-use crate::pyhf::Workspace;
+use crate::pyhf::{Channel, Observation, Sample, Workspace};
 
 #[derive(Debug, Clone)]
 struct Attr {
@@ -1510,10 +1510,26 @@ fn discover_single_combination_xml(dir: &Path) -> Result<PathBuf> {
 }
 
 fn workspace_from_hist_mode(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspace> {
+    // Resolve `combination.xml` path.
+    //
+    // Important: TREx-style HIST workflows typically treat `HistoPath` as the export root,
+    // even when `combination.xml` lives under `config/`. HistFactory XML then references
+    // ROOT files and channel XMLs via paths relative to that export root.
+    //
+    // Therefore, when `HistoPath` is provided, we use it as the base directory for
+    // resolving relative paths during HistFactory import.
+    let mut basedir: Option<PathBuf> = None;
+
     let combo = if let Some(ref p) = cfg.combination_xml {
-        resolve_rel(base_dir, p)
+        let combo = resolve_rel(base_dir, p);
+        // If the caller also provided `HistoPath`, prefer it as the base directory (TREx semantics).
+        if basedir.is_none() {
+            basedir = cfg.histo_path.as_ref().map(|hp| resolve_rel(base_dir, hp));
+        }
+        combo
     } else if let Some(ref p) = cfg.histo_path {
         let resolved = resolve_rel(base_dir, p);
+        basedir = Some(resolved.clone());
         if resolved.is_file() {
             resolved
         } else {
@@ -1525,7 +1541,152 @@ fn workspace_from_hist_mode(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspa
         ));
     };
 
-    crate::histfactory::from_xml(&combo)
+    let basedir = basedir
+        .as_ref()
+        .map(|p| if p.is_file() { p.parent().unwrap_or_else(|| Path::new(".")).to_path_buf() } else { p.clone() });
+
+    let mut ws = crate::histfactory::from_xml_with_basedir(&combo, basedir.as_deref())?;
+
+    // Partial TREx semantics: region/sample filtering in HIST mode.
+    //
+    // In full TRExFitter, the `.config` can be used to select a subset of regions (channels)
+    // and to mask samples per-region via `Sample: ... Regions: ...`. When importing from an
+    // existing HistFactory export, we treat these as *filters* over the imported workspace.
+    ws = apply_hist_mode_filters(ws, cfg)?;
+
+    Ok(ws)
+}
+
+fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Workspace> {
+    let explicit_channel_selection = !cfg.regions.is_empty();
+
+    // Region/channel selection: if the config defines Region blocks, we treat them as the
+    // include-list for channels, in the config order.
+    if explicit_channel_selection {
+        let mut want: Vec<String> = Vec::new();
+        let mut seen: HashSet<&str> = HashSet::new();
+        for r in &cfg.regions {
+            if !seen.insert(r.name.as_str()) {
+                return Err(Error::Validation(format!("duplicate Region name: {}", r.name)));
+            }
+            want.push(r.name.clone());
+        }
+
+        let mut by_name: HashMap<String, Channel> =
+            ws.channels.drain(..).map(|c| (c.name.clone(), c)).collect();
+        let mut obs_by_name: HashMap<String, Observation> =
+            ws.observations.drain(..).map(|o| (o.name.clone(), o)).collect();
+
+        let mut channels: Vec<Channel> = Vec::with_capacity(want.len());
+        let mut observations: Vec<Observation> = Vec::with_capacity(want.len());
+        let mut missing: Vec<String> = Vec::new();
+
+        for name in want {
+            let Some(ch) = by_name.remove(&name) else {
+                missing.push(name);
+                continue;
+            };
+            let Some(obs) = obs_by_name.remove(&ch.name) else {
+                return Err(Error::Validation(format!(
+                    "missing Observation for channel '{}' in imported workspace",
+                    ch.name
+                )));
+            };
+            channels.push(ch);
+            observations.push(obs);
+        }
+
+        if !missing.is_empty() {
+            missing.sort();
+            return Err(Error::Validation(format!(
+                "HIST mode region selection requested missing channel(s): {}",
+                missing.join(", ")
+            )));
+        }
+
+        ws.channels = channels;
+        ws.observations = observations;
+    }
+
+    // Sample selection: if the config defines Sample blocks, treat them as an include-list
+    // per channel, respecting per-sample `Regions:` filters.
+    if !cfg.samples.is_empty() {
+        // Preserve config sample order.
+        let mut want: Vec<&TrexSample> = Vec::new();
+        let mut seen: HashSet<&str> = HashSet::new();
+        for s in &cfg.samples {
+            if s.kind == SampleKind::Data {
+                continue;
+            }
+            if !seen.insert(s.name.as_str()) {
+                return Err(Error::Validation(format!("duplicate Sample name: {}", s.name)));
+            }
+            want.push(s);
+        }
+
+        let mut kept_channels: Vec<Channel> = Vec::with_capacity(ws.channels.len());
+        let mut kept_observations: Vec<Observation> = Vec::with_capacity(ws.observations.len());
+        let mut obs_by_name: HashMap<String, Observation> =
+            ws.observations.drain(..).map(|o| (o.name.clone(), o)).collect();
+
+        for mut ch in ws.channels.drain(..) {
+            let mut by_name: HashMap<String, Sample> =
+                ch.samples.drain(..).map(|s| (s.name.clone(), s)).collect();
+
+            let mut new_samples: Vec<Sample> = Vec::new();
+            for s in &want {
+                // Respect per-sample region filter: if the sample doesn't apply to this region,
+                // skip it even if it's in the global include-list.
+                if !sample_applies(s, &ch.name) {
+                    continue;
+                }
+
+                match by_name.remove(&s.name) {
+                    Some(sample) => new_samples.push(sample),
+                    None => {
+                        return Err(Error::Validation(format!(
+                            "HIST mode sample selection requested missing sample '{}' in channel '{}'",
+                            s.name, ch.name
+                        )))
+                    }
+                }
+            }
+
+            if new_samples.is_empty() {
+                if explicit_channel_selection {
+                    return Err(Error::Validation(format!(
+                        "HIST mode filters removed all samples from explicitly selected channel '{}'",
+                        ch.name
+                    )));
+                }
+                // TREx-like behavior: if channels were not explicitly selected, drop empty channels.
+                continue;
+            }
+
+            ch.samples = new_samples;
+
+            let obs = obs_by_name.remove(&ch.name).ok_or_else(|| {
+                Error::Validation(format!(
+                    "missing Observation for channel '{}' in imported workspace",
+                    ch.name
+                ))
+            })?;
+
+            kept_channels.push(ch);
+            kept_observations.push(obs);
+        }
+
+        if kept_channels.is_empty() {
+            return Err(Error::Validation(
+                "HIST mode sample filters removed all channels (no non-empty channels remain)".to_string(),
+            ));
+        }
+
+        ws.channels = kept_channels;
+        ws.observations = kept_observations;
+    }
+
+    Ok(ws)
 }
 
 #[cfg(test)]
@@ -1834,6 +1995,82 @@ HistoPath: tests/fixtures/histfactory
         )
         .expect("fixture JSON");
         assert_eq!(got, want, "workspace mismatch for HIST-mode import");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_uses_histopath_as_basedir_for_pyhf_fixtures() {
+        // In the pyhf validation fixtures, combination.xml lives under `config/` but ROOT inputs
+        // are referenced relative to the export root. HIST mode should treat HistoPath as basedir.
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+"#;
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (pyhf fixture)");
+        let names: Vec<&str> = ws.channels.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["channel1", "channel2"]);
+    }
+
+    #[test]
+    fn trex_import_hist_mode_filters_channels_by_region_blocks() {
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+
+Region: channel2
+Variable: x
+Binning: 0, 1
+"#;
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (filtered)");
+        assert_eq!(ws.channels.len(), 1);
+        assert_eq!(ws.channels[0].name, "channel2");
+        assert_eq!(ws.observations.len(), 1);
+        assert_eq!(ws.observations[0].name, "channel2");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_filters_samples_by_sample_blocks_and_regions_list() {
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+
+Sample: bkg
+Type: BACKGROUND
+File: ignored.root
+Regions: channel1, channel2
+"#;
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (sample filtered)");
+        assert_eq!(ws.channels.len(), 2);
+        assert_eq!(ws.channels[0].name, "channel1");
+        assert_eq!(ws.channels[0].samples.len(), 1);
+        assert_eq!(ws.channels[0].samples[0].name, "bkg");
+        assert_eq!(ws.channels[1].name, "channel2");
+        assert_eq!(ws.channels[1].samples.len(), 1);
+        assert_eq!(ws.channels[1].samples[0].name, "bkg");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_errors_when_requested_sample_missing_in_channel() {
+        // `signal` does not exist in channel2 in the imported workspace, so if the config
+        // requests it in channel2 we should fail loudly.
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+
+Sample: signal
+Type: SIGNAL
+File: ignored.root
+Regions: channel2
+"#;
+        let err = workspace_from_str(cfg, &repo_root()).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing sample 'signal'") && msg.contains("channel 'channel2'"),
+            "unexpected error message: {msg}"
+        );
     }
 
     #[test]

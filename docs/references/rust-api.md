@@ -200,6 +200,7 @@ In addition to the SIMD Poisson NLL path, `ns-compute` provides optional GPU bac
     - env var: `NEXTSTAT_DISABLE_ACCELERATE=1`
     - CLI: `--threads 1` (auto-disables Accelerate)
 - **`cuda` feature** (Linux/NVIDIA): CUDA batch NLL + analytical gradient via cudarc 0.19 (dynamic loading — binary works without CUDA installed).
+- **`metal` feature** (macOS/Apple Silicon): Metal GPU batch NLL + analytical gradient in f32. Runtime MSL compilation, `StorageModeShared` (zero-copy unified memory). Requires Apple GPU family 7+ (M1+).
 
 Key CUDA exports (feature-gated):
 - `ns_compute::cuda_types::{GpuModelData, GpuModifierEntry, GpuModifierDesc, ...}` — `#[repr(C)]` structs for GPU data layout (always available, no feature gate).
@@ -230,8 +231,21 @@ MLE GPU methods (on `MaximumLikelihoodEstimator`, feature-gated):
 Profile likelihood GPU:
 - `ns_inference::profile_likelihood::scan_gpu(mle, model, mu_values)` — GPU-accelerated profile scan with shared `GpuSession` and warm-start between mu values.
 
+Key Metal exports (feature-gated):
+- `ns_compute::metal_types::{MetalModelData, MetalAuxPoissonEntry, MetalGaussConstraintEntry}` — f32 `#[repr(C)]` structs for Metal GPU data layout (always available, no feature gate).
+- `ns_compute::metal_batch::MetalBatchAccelerator` — Metal GPU orchestrator: MSL compilation, buffer management, kernel dispatch. f64↔f32 conversion at API boundary.
+  - `from_metal_data(data, max_batch)` — Compile MSL, upload static model buffers, pre-allocate dynamic buffers.
+  - `batch_nll_grad(params, n_active) -> (Vec<f64>, Vec<f64>)` — Fused NLL + gradient for all active toys.
+  - `batch_nll(params, n_active) -> Vec<f64>` — NLL-only (for line search).
+  - `single_nll_grad(params)`, `single_nll(params)` — Convenience wrappers for n_active=1.
+  - `upload_observed(obs, ln_facts, mask, n_toys)` — Upload toy observed data (f64→f32).
+- `ns_inference::metal_batch::fit_toys_batch_metal(model, params, n_toys, seed, config)` — Lockstep L-BFGS-B batch optimizer using Metal kernel. Tolerance clamped to max(tol, 1e-3) for f32.
+- `ns_inference::batch::is_metal_batch_available()` — Runtime Metal availability check.
+- `ns_inference::lbfgs::LbfgsState` — Shared standalone L-BFGS-B state machine (used by both CUDA and Metal batch fitters).
+
 Model serialization:
 - `HistFactoryModel::serialize_for_gpu() -> GpuModelData` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints).
+- `MetalModelData::from_gpu_data(&GpuModelData)` — Converts f64 GPU data to f32 Metal data with pre-computed `lgamma` for auxiliary Poisson constraints.
 
 ## CLI
 

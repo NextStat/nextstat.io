@@ -585,6 +585,9 @@ pub fn sample_nuts<M: LogDensityModel>(
 
     // Initialize state
     let mut state = integrator.init_state(z_init)?;
+    let mut last_good_q = state.q.clone();
+    let mut last_good_potential = state.potential;
+    let mut last_good_grad = state.grad_potential.clone();
 
     // Warmup
     for i in 0..n_warmup {
@@ -598,7 +601,21 @@ pub fn sample_nuts<M: LogDensityModel>(
         state.potential = transition.potential;
         state.grad_potential = transition.grad_potential;
 
-        adaptation.update(i, &state.q, transition.accept_prob);
+        let mut accept_prob = transition.accept_prob;
+        if state.q.iter().any(|v| !v.is_finite()) {
+            // Defensive: never allow non-finite unconstrained positions to escape warmup.
+            // Treat as a hard divergence and keep the previous valid state.
+            state.q = last_good_q.clone();
+            state.potential = last_good_potential;
+            state.grad_potential = last_good_grad.clone();
+            accept_prob = 0.0;
+        } else {
+            last_good_q.clone_from(&state.q);
+            last_good_potential = state.potential;
+            last_good_grad.clone_from(&state.grad_potential);
+        }
+
+        adaptation.update(i, &state.q, accept_prob);
     }
 
     // Sampling with fixed adapted parameters
@@ -616,16 +633,34 @@ pub fn sample_nuts<M: LogDensityModel>(
     for _ in 0..n_samples {
         let transition = nuts_transition(&sample_integrator, &state, config.max_treedepth, &mut rng)?;
 
+        let mut divergent = transition.divergent;
+        let mut accept_prob = transition.accept_prob;
+        let depth = transition.depth;
+        let energy = transition.energy;
+
         state.q = transition.q;
         state.potential = transition.potential;
         state.grad_potential = transition.grad_potential;
 
+        if state.q.iter().any(|v| !v.is_finite()) {
+            // Same defensive policy as warmup: reject the transition and keep last good state.
+            state.q = last_good_q.clone();
+            state.potential = last_good_potential;
+            state.grad_potential = last_good_grad.clone();
+            divergent = true;
+            accept_prob = 0.0;
+        } else {
+            last_good_q.clone_from(&state.q);
+            last_good_potential = state.potential;
+            last_good_grad.clone_from(&state.grad_potential);
+        }
+
         draws_unconstrained.push(state.q.clone());
         draws_constrained.push(posterior.to_constrained(&state.q)?);
-        divergences.push(transition.divergent);
-        tree_depths.push(transition.depth);
-        accept_probs.push(transition.accept_prob);
-        energies.push(transition.energy);
+        divergences.push(divergent);
+        tree_depths.push(depth);
+        accept_probs.push(accept_prob);
+        energies.push(energy);
     }
 
     let mass_diag: Vec<f64> = final_metric.mass_diag();

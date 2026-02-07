@@ -168,6 +168,14 @@ For the frequentist (CLs) workflow, see:
 - Provide `HistoPath: /path/to/export_dir` (must contain exactly one `combination.xml` under it), or
 - Provide `CombinationXml: /path/to/combination.xml` explicitly.
 
+Partial TREx semantics in `ReadFrom: HIST`:
+- If the config includes `Region:` blocks, they act as an **include-list** for channels (in config order).
+- If the config includes `Sample:` blocks, they act as an **include-list** for samples; per-sample `Regions:` filters
+  are respected to mask samples per-channel. Empty channels are dropped unless channels were explicitly selected via
+  `Region:` blocks (then it is an error).
+- When `HistoPath` is provided, it is used as the **base directory** for resolving relative paths inside the HistFactory XML
+  (common when `combination.xml` lives under `config/` but ROOT inputs are referenced from the export root).
+
 Optional outputs:
 - `--analysis-yaml` writes an analysis spec v0 wrapper (`inputs.mode=trex_config_txt`) to drive `nextstat run`.
 - `--coverage-json` writes a best-effort report of unknown keys/attrs to help parity work against legacy configs.

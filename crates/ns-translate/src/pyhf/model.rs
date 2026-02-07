@@ -1848,6 +1848,10 @@ impl HistFactoryModel {
         let mut bin_idx = 0;
         for channel in &self.channels {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            if !channel.include_in_fit {
+                bin_idx += n_bins;
+                continue;
+            }
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
                 let exp = expected.get(bin_idx).copied().ok_or_else(|| {
