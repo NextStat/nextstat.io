@@ -2,7 +2,7 @@ use anyhow::Result;
 use nalgebra::DMatrix;
 use ns_core::traits::LogDensityModel;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -272,7 +272,7 @@ fn cox_baseline_cumhaz(
 
     let min_tail = 1e-300_f64;
     let mut risk0 = 0.0_f64;
-    let mut deltas_by_time: BTreeMap<f64, f64> = BTreeMap::new();
+    let mut deltas_desc: Vec<(f64, f64)> = Vec::new();
 
     for (g, &start) in starts.iter().enumerate() {
         let end = starts.get(g + 1).copied().unwrap_or(n);
@@ -307,17 +307,19 @@ fn cox_baseline_cumhaz(
             }
             other => anyhow::bail!("ties must be 'breslow' or 'efron', got: {other}"),
         };
-        *deltas_by_time.entry(t0).or_insert(0.0) += inc;
+        deltas_desc.push((t0, inc));
     }
 
-    if deltas_by_time.is_empty() {
+    if deltas_desc.is_empty() {
         return Ok((vec![], vec![]));
     }
 
-    let mut ts = Vec::with_capacity(deltas_by_time.len());
-    let mut hs = Vec::with_capacity(deltas_by_time.len());
+    // We swept times in descending order; reverse to ascending for output.
+    deltas_desc.reverse();
+    let mut ts = Vec::with_capacity(deltas_desc.len());
+    let mut hs = Vec::with_capacity(deltas_desc.len());
     let mut cum = 0.0_f64;
-    for (t0, delta) in deltas_by_time {
+    for (t0, delta) in deltas_desc {
         ts.push(t0);
         cum += delta;
         hs.push(cum);

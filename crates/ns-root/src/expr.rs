@@ -54,6 +54,28 @@ enum Func {
     Max,
 }
 
+fn func_from_ident(name: &str) -> Option<Func> {
+    // Accept TREx/ROOT spellings by stripping namespaces and lowercasing.
+    //
+    // Examples:
+    // - abs(x)
+    // - fabs(x)
+    // - TMath::Abs(x)
+    // - TMath::Power(x, 2)
+    let leaf = name.rsplit("::").next().unwrap_or(name);
+    let leaf = leaf.trim().to_ascii_lowercase();
+    match leaf.as_str() {
+        "abs" | "fabs" => Some(Func::Abs),
+        "sqrt" => Some(Func::Sqrt),
+        "log" => Some(Func::Log),
+        "exp" => Some(Func::Exp),
+        "pow" | "power" => Some(Func::Pow),
+        "min" => Some(Func::Min),
+        "max" => Some(Func::Max),
+        _ => None,
+    }
+}
+
 // ── Bytecode (vectorized evaluator) ────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -1086,6 +1108,11 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                         i += 1;
                         continue;
                     }
+                    // Allow C++-style namespace qualifier inside identifiers (e.g. `TMath::Abs`).
+                    if bytes[i] == b':' && i + 1 < bytes.len() && bytes[i + 1] == b':' {
+                        i += 2;
+                        continue;
+                    }
                     break;
                 }
                 TokenKind::Ident(input[start..i].to_string())
@@ -1323,21 +1350,12 @@ impl<'a> Parser<'a> {
                 // Check for function call
                 if matches!(self.peek().map(|t| &t.kind), Some(TokenKind::LParen)) {
                     self.advance(); // consume '('
-                    let func = match name.as_str() {
-                        "abs" => Func::Abs,
-                        "sqrt" => Func::Sqrt,
-                        "log" => Func::Log,
-                        "exp" => Func::Exp,
-                        "pow" => Func::Pow,
-                        "min" => Func::Min,
-                        "max" => Func::Max,
-                        _ => {
-                            return Err(expr_err(
-                                self.input,
-                                span,
-                                format!("unknown function: '{name}'"),
-                            ));
-                        }
+                    let Some(func) = func_from_ident(&name) else {
+                        return Err(expr_err(
+                            self.input,
+                            span,
+                            format!("unknown function: '{name}'"),
+                        ));
                     };
 
                     let mut args = Vec::new();
@@ -1448,6 +1466,21 @@ mod tests {
 
         let e = CompiledExpr::compile("max(a, b)").unwrap();
         assert!((e.eval_row(&[3.0, 7.0]) - 7.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn root_function_aliases() {
+        let e = CompiledExpr::compile("fabs(x)").unwrap();
+        assert!((e.eval_row(&[-2.0]) - 2.0).abs() < 1e-10);
+        let x = [-2.0, -1.0, 0.5];
+        let got = e.eval_bulk(&[&x]);
+        assert_eq!(got, vec![2.0, 1.0, 0.5]);
+
+        let e = CompiledExpr::compile("TMath::Abs(x)").unwrap();
+        assert!((e.eval_row(&[-3.0]) - 3.0).abs() < 1e-10);
+
+        let e = CompiledExpr::compile("TMath::Power(x, 2)").unwrap();
+        assert!((e.eval_row(&[4.0]) - 16.0).abs() < 1e-10);
     }
 
     #[test]

@@ -11,9 +11,9 @@
 //! - Supports `Systematic:` blocks (norm/weight/tree) applied by sample/region.
 //!
 //! Not implemented (yet):
-//! - Full TRExFitter `ReadFrom: HIST` semantics (we support HIST only as a thin wrapper
-//!   over an existing HistFactory export dir containing `combination.xml`).
-//! - More advanced TRExFitter features (smoothing, pruning, symmetrisation, multi-POI, etc.).
+//! - Full TRExFitter config surface (many optional blocks/knobs are ignored).
+//! - `ReadFrom: HIST` supports importing a HistFactory export (`combination.xml`) plus TREx-like
+//!   region/sample masking; it does **not** re-derive histograms/variations from NTUP inputs.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

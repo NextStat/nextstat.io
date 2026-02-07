@@ -73,6 +73,29 @@ grid = [0.0, 0.5, 1.0, 2.0]
 print("S(t | x0):", fit.predict_survival([[0.0, 0.0]], times=grid)[0])
 ```
 
+## Quick start: Cox PH (CLI)
+
+The CLI uses a JSON in / JSON out contract. Example input:
+
+```json
+{
+  "times": [2.0, 1.0, 1.0, 0.5, 0.5, 0.2],
+  "events": [true, true, false, true, false, false],
+  "x": [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0], [0.0, -1.0], [0.5, 0.5]],
+  "groups": [1, 1, 2, 2, 3, 3]
+}
+```
+
+Run:
+
+```bash
+nextstat survival cox-ph-fit --input cox.json --ties efron
+```
+
+Notes:
+- If `groups` are provided, robust SE are **cluster-robust** by default.
+- Use `--no-robust` to disable sandwich SE, and `--no-cluster-correction` to disable the small-sample factor `G/(G-1)`.
+
 ### Choosing a ties policy
 
 If your data has repeated event times (common with discretized time), you must choose a ties
@@ -163,7 +186,8 @@ print("PH test:", nextstat.survival.cox_ph_ph_test(times, events, x, ties="efron
 ## Notes and limitations (baseline)
 
 - Cox PH uses partial likelihood; the baseline hazard is not modeled, so absolute survival curves
-  are not produced in this baseline.
-- No robust SE / sandwich variance yet for Cox PH.
+  require a baseline hazard estimate. NextStat outputs a baseline cumulative hazard estimate
+  (Breslow/Efron increments) to enable `S(t | x)` prediction in the baseline implementation.
+- Robust (sandwich) SE are supported (HC0 or cluster-robust when `groups` are provided).
 - Parametric models currently do not include covariates (intercept-only baselines).
 - Left truncation and time-varying covariates are out of scope for this baseline.

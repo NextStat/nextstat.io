@@ -40,6 +40,9 @@ Time series (Phase 8):
 - `nextstat timeseries kalman-forecast --input kalman_1d.json ...`
 - `nextstat timeseries kalman-simulate --input kalman_1d.json ...`
 
+Survival analysis (Phase 9):
+- `nextstat survival cox-ph-fit --input cox.json [--ties efron|breslow] [--no-robust] [--no-cluster-correction] [--no-baseline]`
+
 ## GPU acceleration
 
 The `--gpu <device>` flag enables GPU acceleration, where `<device>` is one of:
