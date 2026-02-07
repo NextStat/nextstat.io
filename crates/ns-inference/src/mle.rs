@@ -688,6 +688,146 @@ impl MaximumLikelihoodEstimator {
 
         Ok(ranking)
     }
+
+    // --- GPU-accelerated methods (requires `cuda` feature) ---
+
+    /// GPU-accelerated NLL minimization (no Hessian).
+    ///
+    /// Creates a `GpuSession` internally. For repeated fits on the same model
+    /// structure (e.g. profile scan, ranking), prefer using `GpuSession` directly
+    /// via [`gpu_single::GpuSession`].
+    #[cfg(feature = "cuda")]
+    pub fn fit_minimum_gpu(
+        &self,
+        model: &HistFactoryModel,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_single::GpuSession::new(model)?;
+        session.fit_minimum(model, &self.config)
+    }
+
+    /// GPU-accelerated NLL minimization from an explicit starting point.
+    #[cfg(feature = "cuda")]
+    pub fn fit_minimum_gpu_from(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_single::GpuSession::new(model)?;
+        session.fit_minimum_from(model, initial_params, &self.config)
+    }
+
+    /// GPU-accelerated NLL minimization with warm-start + custom bounds.
+    ///
+    /// Enables fixed-parameter fits without cloning the model: clamp the bounds
+    /// of the fixed parameter to `(value, value)`.
+    #[cfg(feature = "cuda")]
+    pub fn fit_minimum_gpu_from_with_bounds(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+        bounds: &[(f64, f64)],
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_single::GpuSession::new(model)?;
+        session.fit_minimum_from_with_bounds(model, initial_params, bounds, &self.config)
+    }
+
+    /// GPU-accelerated full fit with Hessian and uncertainties.
+    ///
+    /// Uses GPU for NLL minimization, then falls back to CPU for Hessian
+    /// computation (finite differences of GPU NLL+gradient).
+    #[cfg(feature = "cuda")]
+    pub fn fit_gpu(&self, model: &HistFactoryModel) -> Result<FitResult> {
+        let session = crate::gpu_single::GpuSession::new(model)?;
+        let result = session.fit_minimum(model, &self.config)?;
+
+        // Compute Hessian via finite differences of GPU gradient
+        let n = result.parameters.len();
+        let hessian = self.compute_hessian_gpu(&session, &result.parameters)?;
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    Ok(FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                } else {
+                    log::warn!("GPU fit: invalid covariance diagonal; omitting covariance matrix");
+                    Ok(FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                }
+            }
+            None => {
+                log::warn!("GPU fit: Hessian inversion failed, using diagonal approximation");
+                Ok(FitResult::new(
+                    result.parameters,
+                    diag_uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                ))
+            }
+        }
+    }
+
+    /// Compute Hessian via finite differences of GPU gradient.
+    #[cfg(feature = "cuda")]
+    fn compute_hessian_gpu(
+        &self,
+        session: &crate::gpu_single::GpuSession,
+        best_params: &[f64],
+    ) -> Result<DMatrix<f64>> {
+        let n = best_params.len();
+        let (_, grad_center) = session.nll_grad(best_params)?;
+
+        let mut hessian = DMatrix::zeros(n, n);
+
+        for j in 0..n {
+            let eps = 1e-4 * best_params[j].abs().max(1.0);
+
+            let mut params_plus = best_params.to_vec();
+            params_plus[j] += eps;
+            let (_, grad_plus) = session.nll_grad(&params_plus)?;
+
+            for i in 0..n {
+                hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
+            }
+        }
+
+        // Symmetrise: H = (H + H^T) / 2
+        let ht = hessian.transpose();
+        hessian = (&hessian + &ht) * 0.5;
+
+        Ok(hessian)
+    }
 }
 
 /// Entry in ranking plot: impact of a nuisance parameter on the POI.

@@ -6,6 +6,8 @@
 use crate::MaximumLikelihoodEstimator;
 use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel};
 use ns_core::{Error, Result};
+#[cfg(feature = "cuda")]
+use ns_translate::pyhf::HistFactoryModel;
 
 /// Single point in a profile likelihood scan.
 #[derive(Debug, Clone)]
