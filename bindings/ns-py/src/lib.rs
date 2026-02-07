@@ -3868,6 +3868,48 @@ fn fit_toys(
     mle.fit_toys(py, model, params, n_toys, seed)
 }
 
+/// Batch toy fitting (skips Hessian/covariance for speed).
+///
+/// Uses Accelerate (vDSP/vForce) for Poisson NLL when built with `--features accelerate`.
+/// Returns FitResult with parameters + NLL only (uncertainties = 0).
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+fn fit_toys_batch(
+    py: Python<'_>,
+    model: &PyHistFactoryModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+) -> PyResult<Vec<PyFitResult>> {
+    let m = model.inner.clone();
+
+    let results = py.detach(move || {
+        ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None)
+    });
+
+    results
+        .into_iter()
+        .map(|r| {
+            let r = r.map_err(|e| PyValueError::new_err(format!("Batch toy fit failed: {}", e)))?;
+            Ok(PyFitResult {
+                parameters: r.parameters,
+                uncertainties: r.uncertainties,
+                nll: r.nll,
+                converged: r.converged,
+                n_iter: r.n_iter,
+                n_fev: r.n_fev,
+                n_gev: r.n_gev,
+            })
+        })
+        .collect()
+}
+
+/// Check if Accelerate backend is available.
+#[pyfunction]
+fn has_accelerate() -> bool {
+    ns_inference::batch::is_accelerate_available()
+}
+
 /// Generate an Asimov (deterministic expected) **main** dataset for a HistFactory model.
 ///
 /// Returns a flat vector of main-bin expectations (no auxdata), suitable for passing to
@@ -4288,6 +4330,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;

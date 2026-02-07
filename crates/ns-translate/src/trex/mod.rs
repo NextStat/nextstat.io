@@ -11,8 +11,9 @@
 //! - Supports `Systematic:` blocks (norm/weight/tree) applied by sample/region.
 //!
 //! Not implemented (yet):
-//! - `ReadFrom: HIST` and more advanced TRExFitter features (smoothing, pruning,
-//!   symmetrisation, multi-POI, etc.).
+//! - Full TRExFitter `ReadFrom: HIST` semantics (we support HIST only as a thin wrapper
+//!   over an existing HistFactory export dir containing `combination.xml`).
+//! - More advanced TRExFitter features (smoothing, pruning, symmetrisation, multi-POI, etc.).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -461,6 +462,10 @@ fn has_attr(attrs: &[Attr], key: &str) -> bool {
 pub struct TrexConfig {
     /// `ReadFrom` mode, e.g. `NTUP` or `HIST`.
     pub read_from: Option<String>,
+    /// HistFactory export directory (HIST mode) for resolving `combination.xml`.
+    pub histo_path: Option<PathBuf>,
+    /// Optional explicit HistFactory `combination.xml` path (HIST mode).
+    pub combination_xml: Option<PathBuf>,
     /// Default TTree name for ntuple mode.
     pub tree_name: Option<String>,
     /// Measurement name (HistFactory/pyhf concept).
@@ -599,6 +604,12 @@ impl TrexConfig {
     fn parse_from_raw(globals: Vec<Attr>, blocks: Vec<RawBlock>) -> Result<Self> {
         // Globals (can also be present inside a Job block).
         let mut read_from = last_attr_value(&globals, "ReadFrom");
+        let mut histo_path = last_attr_value(&globals, "HistoPath")
+            .or_else(|| last_attr_value(&globals, "HistPath"))
+            .or_else(|| last_attr_value(&globals, "ExportDir"));
+        let mut combination_xml = last_attr_value(&globals, "CombinationXml")
+            .or_else(|| last_attr_value(&globals, "HistFactoryXml"))
+            .or_else(|| last_attr_value(&globals, "CombinationXML"));
         let mut tree_name =
             last_attr_value(&globals, "TreeName").or_else(|| last_attr_value(&globals, "Tree"));
         let mut measurement = last_attr_value(&globals, "Measurement");
@@ -614,6 +625,18 @@ impl TrexConfig {
                     // Treat Job attrs as global overrides.
                     if let Some(v) = last_attr_value(&b.attrs, "ReadFrom") {
                         read_from = Some(v);
+                    }
+                    if let Some(v) = last_attr_value(&b.attrs, "HistoPath")
+                        .or_else(|| last_attr_value(&b.attrs, "HistPath"))
+                        .or_else(|| last_attr_value(&b.attrs, "ExportDir"))
+                    {
+                        histo_path = Some(v);
+                    }
+                    if let Some(v) = last_attr_value(&b.attrs, "CombinationXml")
+                        .or_else(|| last_attr_value(&b.attrs, "HistFactoryXml"))
+                        .or_else(|| last_attr_value(&b.attrs, "CombinationXML"))
+                    {
+                        combination_xml = Some(v);
                     }
                     if let Some(v) = last_attr_value(&b.attrs, "TreeName")
                         .or_else(|| last_attr_value(&b.attrs, "Tree"))
@@ -649,7 +672,17 @@ impl TrexConfig {
             }
         }
 
-        Ok(Self { read_from, tree_name, measurement, poi, regions, samples, systematics })
+        Ok(Self {
+            read_from,
+            histo_path: histo_path.map(PathBuf::from),
+            combination_xml: combination_xml.map(PathBuf::from),
+            tree_name,
+            measurement,
+            poi,
+            regions,
+            samples,
+            systematics,
+        })
     }
 }
 
@@ -682,7 +715,20 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
 
 fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverageReport {
     fn known_global(key: &str) -> bool {
-        ["ReadFrom", "TreeName", "Tree", "Measurement", "POI", "Poi"]
+        [
+            "ReadFrom",
+            "HistoPath",
+            "HistPath",
+            "ExportDir",
+            "CombinationXml",
+            "CombinationXML",
+            "HistFactoryXml",
+            "TreeName",
+            "Tree",
+            "Measurement",
+            "POI",
+            "Poi",
+        ]
             .iter()
             .any(|k| key_eq(key, k))
     }
@@ -1183,6 +1229,9 @@ fn sys_to_modifier(sys: &TrexSystematic) -> Result<NtupleModifier> {
 /// `NtupleWorkspaceBuilder::ntuple_path`).
 pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspace> {
     let read_from = cfg.read_from.as_deref().unwrap_or("NTUP").trim().to_ascii_uppercase();
+    if read_from == "HIST" {
+        return workspace_from_hist_mode(cfg, base_dir);
+    }
     if read_from != "NTUP" {
         return Err(Error::NotImplemented(format!(
             "TREx config ReadFrom={read_from} is not supported yet (only NTUP)"
@@ -1285,6 +1334,9 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
 
     // Re-implement `workspace_from_config` with override-aware composition rules.
     let read_from = cfg.read_from.as_deref().unwrap_or("NTUP").trim().to_ascii_uppercase();
+    if read_from == "HIST" {
+        return workspace_from_hist_mode(&cfg, base_dir);
+    }
     if read_from != "NTUP" {
         return Err(Error::NotImplemented(format!(
             "TREx config ReadFrom={read_from} is not supported yet (only NTUP)"
@@ -1408,6 +1460,72 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
     }
 
     builder.build()
+}
+
+fn resolve_rel(base_dir: &Path, p: &Path) -> PathBuf {
+    if p.is_absolute() { p.to_path_buf() } else { base_dir.join(p) }
+}
+
+fn discover_single_combination_xml(dir: &Path) -> Result<PathBuf> {
+    let direct = dir.join("combination.xml");
+    if direct.is_file() {
+        return Ok(direct);
+    }
+
+    let mut hits: Vec<PathBuf> = Vec::new();
+    let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for ent in std::fs::read_dir(&d)? {
+            let ent = ent?;
+            let p = ent.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.file_name().and_then(|s| s.to_str()) == Some("combination.xml") {
+                hits.push(p);
+                if hits.len() > 1 {
+                    break;
+                }
+            }
+        }
+        if hits.len() > 1 {
+            break;
+        }
+    }
+
+    if hits.is_empty() {
+        return Err(Error::Validation(format!(
+            "HIST mode requires a HistFactory export directory containing combination.xml (none found under {})",
+            dir.display()
+        )));
+    }
+    if hits.len() > 1 {
+        return Err(Error::Validation(format!(
+            "multiple combination.xml found under {} (expected exactly 1)",
+            dir.display()
+        )));
+    }
+    Ok(hits.remove(0))
+}
+
+fn workspace_from_hist_mode(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspace> {
+    let combo = if let Some(ref p) = cfg.combination_xml {
+        resolve_rel(base_dir, p)
+    } else if let Some(ref p) = cfg.histo_path {
+        let resolved = resolve_rel(base_dir, p);
+        if resolved.is_file() {
+            resolved
+        } else {
+            discover_single_combination_xml(&resolved)?
+        }
+    } else {
+        return Err(Error::Validation(
+            "ReadFrom=HIST requires HistoPath (export dir) or CombinationXml (path to combination.xml)".to_string(),
+        ));
+    };
+
+    crate::histfactory::from_xml(&combo)
 }
 
 #[cfg(test)]
@@ -1703,19 +1821,19 @@ WeightDownSuffix: _down
     }
 
     #[test]
-    fn trex_import_rejects_hist_mode() {
+    fn trex_import_hist_mode_from_histfactory_export_dir() {
         let cfg = r#"
 ReadFrom: HIST
-Region: SR
-Variable: mbb
-Binning: 0, 1
-Sample: x
-File: tests/fixtures/simple_tree.root
+HistoPath: tests/fixtures/histfactory
 "#;
-        let err = workspace_from_str(cfg, &repo_root()).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("Not implemented"));
-        assert!(msg.contains("HIST"));
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace");
+        let got: serde_json::Value = serde_json::to_value(&ws).expect("to_value");
+        let want: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(repo_root().join("tests/fixtures/histfactory/workspace.json"))
+                .unwrap(),
+        )
+        .expect("fixture JSON");
+        assert_eq!(got, want, "workspace mismatch for HIST-mode import");
     }
 
     #[test]

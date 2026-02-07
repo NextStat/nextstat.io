@@ -54,6 +54,8 @@ pub mod survival;
 pub mod timeseries;
 /// Toy data generation (Asimov + Poisson).
 pub mod toys;
+/// Batch toy fitting with optional Accelerate-optimized NLL.
+pub mod batch;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -81,6 +83,7 @@ pub use survival::{
     CoxPhModel, CoxTies, ExponentialSurvivalModel, LogNormalAftModel, WeibullSurvivalModel,
 };
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
+pub use batch::{fit_toys_batch, is_accelerate_available};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

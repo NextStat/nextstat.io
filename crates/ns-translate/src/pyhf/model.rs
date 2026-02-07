@@ -1862,46 +1862,68 @@ impl PreparedModel<'_> {
     ///
     /// Equivalent to [`HistFactoryModel::nll`] but faster for f64 evaluation.
     pub fn nll(&self, params: &[f64]) -> Result<f64> {
-        use ns_compute::simd::{
-            poisson_nll_scalar_sparse, poisson_nll_simd, poisson_nll_simd_sparse,
-        };
-
         // 1. Compute expected data (scalar — modifier application is branchy)
         let mut expected = self.model.expected_data(params)?;
 
         // 2. Clamp expected >= 1e-10
-        for val in &mut expected {
-            if *val < 1e-10 {
-                *val = 1e-10;
+        #[cfg(feature = "accelerate")]
+        {
+            ns_compute::accelerate::clamp_expected_inplace(&mut expected, 1e-10);
+        }
+        #[cfg(not(feature = "accelerate"))]
+        {
+            for val in &mut expected {
+                if *val < 1e-10 {
+                    *val = 1e-10;
+                }
             }
         }
 
         // expected_data returns exactly n_main_bins values
         debug_assert_eq!(expected.len(), self.n_main_bins);
 
-        // 3. SIMD Poisson NLL for main bins
-        let mut nll = if self.has_zero_obs {
-            // Sparse observations: avoid computing ln(exp) where obs==0.
-            //
-            // Heuristic: for very sparse datasets, scalar can still win due to lower SIMD overhead.
-            let zero_frac = (self.n_zero_obs as f64) / (self.n_main_bins as f64).max(1.0);
-            if zero_frac >= 0.50 {
-                poisson_nll_scalar_sparse(
-                    &expected,
-                    &self.observed_flat,
-                    &self.ln_factorials,
-                    &self.obs_mask,
-                )
+        // 3. Poisson NLL for main bins
+        //    When the `accelerate` feature is enabled, use Apple Accelerate
+        //    (vvlog + vDSP) for the entire vector at once.
+        //    Otherwise fall back to SIMD (wide::f64x4) or scalar.
+        #[cfg(feature = "accelerate")]
+        let mut nll = ns_compute::accelerate::poisson_nll_accelerate(
+            &expected,
+            &self.observed_flat,
+            &self.ln_factorials,
+            &self.obs_mask,
+        );
+
+        #[cfg(not(feature = "accelerate"))]
+        let mut nll = {
+            use ns_compute::simd::{
+                poisson_nll_scalar_sparse, poisson_nll_simd, poisson_nll_simd_sparse,
+            };
+            if self.has_zero_obs {
+                let zero_frac = (self.n_zero_obs as f64) / (self.n_main_bins as f64).max(1.0);
+                if zero_frac >= 0.50 {
+                    poisson_nll_scalar_sparse(
+                        &expected,
+                        &self.observed_flat,
+                        &self.ln_factorials,
+                        &self.obs_mask,
+                    )
+                } else {
+                    poisson_nll_simd_sparse(
+                        &expected,
+                        &self.observed_flat,
+                        &self.ln_factorials,
+                        &self.obs_mask,
+                    )
+                }
             } else {
-                poisson_nll_simd_sparse(
+                poisson_nll_simd(
                     &expected,
                     &self.observed_flat,
                     &self.ln_factorials,
                     &self.obs_mask,
                 )
             }
-        } else {
-            poisson_nll_simd(&expected, &self.observed_flat, &self.ln_factorials, &self.obs_mask)
         };
 
         // 4. Barlow-Beeston auxiliary constraints (scalar — same as generic path)

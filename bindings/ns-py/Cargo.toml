@@ -32,4 +32,8 @@ ns-viz.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }
 
+[features]
+default = []
+accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
+
 [dev-dependencies]

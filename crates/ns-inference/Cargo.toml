@@ -27,6 +27,10 @@ rand.workspace = true
 rand_distr.workspace = true
 statrs.workspace = true
 
+[features]
+default = []
+accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
+
 [dev-dependencies]
 approx.workspace = true
 criterion.workspace = true

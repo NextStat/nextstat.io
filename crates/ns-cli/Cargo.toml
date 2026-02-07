@@ -33,4 +33,8 @@ serde_yaml_ng.workspace = true
 statrs.workspace = true
 sha2 = "0.10"
 
+[features]
+default = []
+accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
+
 [dev-dependencies]
