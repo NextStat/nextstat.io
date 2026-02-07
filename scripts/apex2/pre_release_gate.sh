@@ -24,6 +24,8 @@ set -euo pipefail
 #   - APEX2_CARGO_TEST_ARGS: override cargo test args (default: "--workspace --all-features")
 #   - APEX2_SKIP_TREX_SPEC: set to 1 to skip TREx analysis-spec baseline compare
 #   - APEX2_TREX_COMPARE_ARGS: extra args for trex compare (default: "--require-same-host")
+#   - APEX2_SKIP_ROOT_SUITE: set to 1 to skip ROOT suite baseline compare
+#   - APEX2_ROOT_CASES: path to ROOT suite cases JSON (default: tests/fixtures/trex_parity_pack/cases_minimal.json)
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
@@ -42,11 +44,15 @@ cargo_build_args="${APEX2_CARGO_BUILD_ARGS:---workspace --release}"
 cargo_test_args="${APEX2_CARGO_TEST_ARGS:---workspace --all-features}"
 skip_trex="${APEX2_SKIP_TREX_SPEC:-0}"
 trex_compare_args="${APEX2_TREX_COMPARE_ARGS:---require-same-host}"
+skip_root_suite="${APEX2_SKIP_ROOT_SUITE:-0}"
+root_cases="${APEX2_ROOT_CASES:-tests/fixtures/trex_parity_pack/cases_minimal.json}"
 
 manifest="tmp/baselines/latest_manifest.json"
 report="tmp/baseline_compare_report.json"
 trex_manifest="tmp/baselines/latest_trex_analysis_spec_manifest.json"
 trex_report="tmp/trex_analysis_spec_compare_report.json"
+root_manifest="tmp/baselines/latest_root_manifest.json"
+root_report="tmp/root_suite_compare_report.json"
 
 if [[ "${allow_dirty}" != "1" ]]; then
   if command -v git >/dev/null 2>&1; then
@@ -132,7 +138,12 @@ fi
 echo
 echo "OK. Report: ${report}"
 
-if [[ "${skip_trex}" != "1" && -f "${trex_manifest}" ]]; then
+if [[ "${skip_trex}" != "1" ]]; then
+  if [[ ! -f "${trex_manifest}" ]]; then
+    echo "FAIL: TREx analysis-spec baseline missing: ${trex_manifest}" >&2
+    echo "Record baselines first:  make apex2-baseline-record" >&2
+    exit 9
+  fi
   echo
   echo "Running TREx analysis-spec baseline compare..."
   echo "  manifest: ${trex_manifest}"
@@ -144,4 +155,30 @@ if [[ "${skip_trex}" != "1" && -f "${trex_manifest}" ]]; then
     ${trex_compare_args}
   echo
   echo "OK. TREx report: ${trex_report}"
+fi
+
+# ── ROOT suite baseline ──────────────────────────────────────────────────
+if [[ "${skip_root_suite}" != "1" ]]; then
+  if [[ ! -f "${root_manifest}" ]]; then
+    echo "FAIL: ROOT suite baseline missing: ${root_manifest}" >&2
+    echo "Record baselines first:" >&2
+    echo "  PYTHONPATH=${py_path} ${py} tests/apex2_root_suite_report.py \\" >&2
+    echo "    --cases ${root_cases} --keep-going --out tmp/apex2_root_suite_report.json" >&2
+    echo "  PYTHONPATH=${py_path} ${py} tests/record_baseline.py --only root \\" >&2
+    echo "    --root-suite-existing tmp/apex2_root_suite_report.json \\" >&2
+    echo "    --root-cases-existing ${root_cases}" >&2
+    exit 9
+  fi
+  echo
+  echo "Running ROOT suite baseline compare..."
+  echo "  manifest: ${root_manifest}"
+  echo "  cases:    ${root_cases}"
+  echo "  report:   ${root_report}"
+  echo
+  PYTHONPATH="${py_path}" "${py}" tests/apex2_root_suite_report.py \
+    --cases "${root_cases}" \
+    --keep-going \
+    --out "${root_report}"
+  echo
+  echo "OK. ROOT suite report: ${root_report}"
 fi
