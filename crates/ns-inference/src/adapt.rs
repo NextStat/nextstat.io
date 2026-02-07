@@ -145,6 +145,7 @@ impl WelfordCovariance {
     pub fn update(&mut self, x: &[f64]) {
         self.count += 1;
         let n = self.count as f64;
+        let dim = self.dim;
 
         let mut delta = vec![0.0; self.dim];
         for i in 0..self.dim {
@@ -157,9 +158,10 @@ impl WelfordCovariance {
             delta2[i] = x[i] - self.mean[i];
         }
 
-        for i in 0..self.dim {
-            for j in 0..self.dim {
-                self.m2[self.idx(i, j)] += delta[i] * delta2[j];
+        for i in 0..dim {
+            for j in 0..dim {
+                let idx = i * dim + j;
+                self.m2[idx] += delta[i] * delta2[j];
             }
         }
     }

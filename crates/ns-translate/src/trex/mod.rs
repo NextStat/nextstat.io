@@ -14,7 +14,7 @@
 //! - `ReadFrom: HIST` and more advanced TRExFitter features (smoothing, pruning,
 //!   symmetrisation, multi-POI, etc.).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
@@ -451,6 +451,10 @@ fn all_attr_values(attrs: &[Attr], key: &str) -> Vec<String> {
     attrs.iter().filter(|a| key_eq(&a.key, key)).map(|a| a.value.clone()).collect()
 }
 
+fn has_attr(attrs: &[Attr], key: &str) -> bool {
+    attrs.iter().any(|a| key_eq(&a.key, key))
+}
+
 /// Parsed TRExFitter-style configuration (subset).
 #[derive(Debug, Clone)]
 pub struct TrexConfig {
@@ -611,6 +615,14 @@ impl TrexConfig {
                     regions.push(parse_region_block(&b)?);
                 }
                 BlockKind::Sample => {
+                    // Skip override-only nested samples (Region → Sample without File/Path).
+                    // These are handled by `workspace_from_str` composition rules.
+                    if b.ctx_region.is_some()
+                        && !has_attr(&b.attrs, "File")
+                        && !has_attr(&b.attrs, "Path")
+                    {
+                        continue;
+                    }
                     samples.push(parse_sample_block(&b)?);
                 }
                 BlockKind::Systematic => {
@@ -774,7 +786,7 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         .map(|xs| xs.into_iter().collect::<Vec<_>>())
         .filter(|xs| !xs.is_empty());
     // Legacy nested configs often scope samples inside a Region block instead of using `Regions:`.
-    if regions.is_none() && b.closed_explicitly {
+    if regions.is_none() {
         if let Some(ref r) = b.ctx_region {
             regions = Some(vec![r.clone()]);
         }
@@ -835,11 +847,9 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
 
     let mut samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
         parse_list(&samples_val)
-    } else if b.closed_explicitly {
+    } else {
         // Nested systematic under a Sample block: infer the sample scope.
         b.ctx_sample.clone().map(|s| vec![s]).unwrap_or_default()
-    } else {
-        Vec::new()
     };
     if samples.is_empty() {
         return Err(Error::Validation(format!("Systematic '{name}' Samples list is empty")));
@@ -847,7 +857,7 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
 
     let mut regions =
         last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
-    if regions.is_none() && b.closed_explicitly {
+    if regions.is_none() {
         if let Some(ref r) = b.ctx_region {
             regions = Some(vec![r.clone()]);
         }
@@ -971,6 +981,149 @@ fn sample_applies(sample: &TrexSample, region_name: &str) -> bool {
     } else {
         true
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RegionSampleOverrides {
+    selection: Option<String>,
+    weight: Option<String>,
+    variable: Option<String>,
+}
+
+fn expr_mul(parts: impl IntoIterator<Item = String>) -> Option<String> {
+    let mut out: Option<String> = None;
+    for raw in parts {
+        let p = raw.trim();
+        if p.is_empty() {
+            continue;
+        }
+        out = Some(match out {
+            None => format!("({p})"),
+            Some(prev) => format!("{prev} * ({p})"),
+        });
+    }
+    out
+}
+
+fn expr_and(parts: impl IntoIterator<Item = String>) -> Option<String> {
+    let mut out: Option<String> = None;
+    for raw in parts {
+        let p = raw.trim();
+        if p.is_empty() {
+            continue;
+        }
+        out = Some(match out {
+            None => format!("({p})"),
+            Some(prev) => format!("{prev} && ({p})"),
+        });
+    }
+    out
+}
+
+fn collect_region_weights_and_sample_overrides(
+    blocks: &[RawBlock],
+) -> (
+    HashMap<String, String>,
+    HashMap<(String, String), RegionSampleOverrides>,
+    HashMap<String, String>,
+    HashMap<String, String>,
+) {
+    let mut region_weight: HashMap<String, String> = HashMap::new();
+    let mut overrides: HashMap<(String, String), RegionSampleOverrides> = HashMap::new();
+    let mut sample_selection: HashMap<String, String> = HashMap::new();
+    let mut sample_variable: HashMap<String, String> = HashMap::new();
+
+    for b in blocks {
+        match b.kind {
+            BlockKind::Region => {
+                // Top-level region: capture region-wide Weight (applies to all samples in the region).
+                if b.ctx_region.is_none() && b.ctx_sample.is_none() {
+                    if let Some(w) = last_attr_value(&b.attrs, "Weight") {
+                        if !w.trim().is_empty() {
+                            region_weight.insert(b.name.clone(), w);
+                        }
+                    }
+                }
+            }
+            BlockKind::Sample => {
+                // Override-only sample nested under a Region (no File/Path): per-(region,sample) overrides.
+                if b.ctx_region.is_some()
+                    && !has_attr(&b.attrs, "File")
+                    && !has_attr(&b.attrs, "Path")
+                {
+                    let region_name = b.ctx_region.clone().unwrap();
+                    let key = (region_name, b.name.clone());
+                    let entry = overrides.entry(key).or_default();
+
+                    if let Some(sel) =
+                        last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"))
+                    {
+                        if !sel.trim().is_empty() {
+                            entry.selection = Some(sel);
+                        }
+                    }
+                    if let Some(w) = last_attr_value(&b.attrs, "Weight") {
+                        if !w.trim().is_empty() {
+                            entry.weight = Some(w);
+                        }
+                    }
+                    if let Some(v) =
+                        last_attr_value(&b.attrs, "Variable").or_else(|| last_attr_value(&b.attrs, "Var"))
+                    {
+                        if !v.trim().is_empty() {
+                            entry.variable = Some(v);
+                        }
+                    }
+                    continue;
+                }
+
+                // Full sample blocks (with File/Path): capture optional global Selection/Cut and Variable/Var.
+                if has_attr(&b.attrs, "File") || has_attr(&b.attrs, "Path") {
+                    if let Some(sel) =
+                        last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"))
+                    {
+                        if !sel.trim().is_empty() {
+                            sample_selection.insert(b.name.clone(), sel);
+                        }
+                    }
+                    if let Some(v) =
+                        last_attr_value(&b.attrs, "Variable").or_else(|| last_attr_value(&b.attrs, "Var"))
+                    {
+                        if !v.trim().is_empty() {
+                            sample_variable.insert(b.name.clone(), v);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    (region_weight, overrides, sample_selection, sample_variable)
+}
+
+fn enforce_variable_rules(
+    region_name: &str,
+    region_variable: &str,
+    sample_name: &str,
+    sample_var: Option<&String>,
+    override_var: Option<&String>,
+) -> Result<()> {
+    if let Some(v) = sample_var {
+        if !v.trim().is_empty() && v != region_variable {
+            return Err(Error::Validation(format!(
+                "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Sample.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
+            )));
+        }
+    }
+    if let Some(v) = override_var {
+        if !v.trim().is_empty() && v != region_variable {
+            return Err(Error::Validation(format!(
+                "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Override.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn sys_to_modifier(sys: &TrexSystematic) -> Result<NtupleModifier> {
@@ -1106,8 +1259,137 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
 
 /// Convenience: parse + build workspace in one step.
 pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
-    let cfg = TrexConfig::parse_str(text)?;
-    workspace_from_config(&cfg, base_dir)
+    let (globals, blocks) = parse_raw(text)?;
+    let cfg = TrexConfig::parse_from_raw(globals, blocks.clone())?;
+
+    let (region_weight, overrides, sample_selection, sample_variable) =
+        collect_region_weights_and_sample_overrides(&blocks);
+
+    // Re-implement `workspace_from_config` with override-aware composition rules.
+    let read_from = cfg.read_from.as_deref().unwrap_or("NTUP").trim().to_ascii_uppercase();
+    if read_from != "NTUP" {
+        return Err(Error::NotImplemented(format!(
+            "TREx config ReadFrom={read_from} is not supported yet (only NTUP)"
+        )));
+    }
+
+    let tree_name = cfg.tree_name.clone().unwrap_or_else(|| "events".to_string());
+    let measurement = cfg.measurement.clone().unwrap_or_else(|| "meas".to_string());
+    let poi = cfg.poi.clone().unwrap_or_else(|| "mu".to_string());
+
+    if cfg.regions.is_empty() {
+        return Err(Error::Validation("TREx config has no Region blocks".into()));
+    }
+    if cfg.samples.is_empty() {
+        return Err(Error::Validation("TREx config has no Sample blocks".into()));
+    }
+
+    // Basic validation: sample names are unique.
+    let mut seen: HashSet<&str> = HashSet::new();
+    for s in &cfg.samples {
+        if !seen.insert(s.name.as_str()) {
+            return Err(Error::Validation(format!("duplicate Sample name: {}", s.name)));
+        }
+    }
+
+    let mut builder = NtupleWorkspaceBuilder::new()
+        .ntuple_path(base_dir.to_path_buf())
+        .tree_name(tree_name)
+        .measurement(measurement, poi);
+
+    // Quick index for data sample discovery.
+    let data_samples: Vec<&TrexSample> =
+        cfg.samples.iter().filter(|s| s.kind == SampleKind::Data).collect();
+
+    for region in &cfg.regions {
+        let mut ch =
+            ChannelConfig::new(&region.name).variable(&region.variable).binning(&region.binning);
+
+        if let Some(ref sel) = region.selection {
+            ch = ch.selection(sel);
+        }
+
+        if let Some(ref data_file) = region.data_file {
+            ch.data_file = Some(data_file.clone());
+            ch.data_tree_name = region.data_tree_name.clone();
+        } else {
+            // Optional: infer data file from a DATA sample that applies to this region.
+            let mut data_hits: Vec<&TrexSample> =
+                data_samples.iter().copied().filter(|s| sample_applies(s, &region.name)).collect();
+            data_hits.sort_by(|a, b| a.name.cmp(&b.name));
+            if data_hits.len() > 1 {
+                return Err(Error::Validation(format!(
+                    "Region '{}' has multiple DATA samples (specify DataFile in Region): {}",
+                    region.name,
+                    data_hits.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ")
+                )));
+            }
+            if let Some(ds) = data_hits.pop() {
+                ch.data_file = Some(ds.file.clone());
+                ch.data_tree_name = ds.tree_name.clone();
+            }
+        }
+
+        // Add samples in the input order.
+        for s in &cfg.samples {
+            if s.kind == SampleKind::Data {
+                continue;
+            }
+            if !sample_applies(s, &region.name) {
+                continue;
+            }
+
+            let ov = overrides.get(&(region.name.clone(), s.name.clone()));
+            enforce_variable_rules(
+                &region.name,
+                &region.variable,
+                &s.name,
+                sample_variable.get(&s.name),
+                ov.and_then(|x| x.variable.as_ref()),
+            )?;
+
+            // Composition rules:
+            // - channel selection = region.Selection (shared)
+            // - per-sample Selection/Cut is applied multiplicatively via the sample weight (selection evaluates to 0/1)
+            // - Weight = region.Weight * sample.Weight * override.Weight
+            let sel = expr_and(
+                [
+                    sample_selection.get(&s.name).cloned(),
+                    ov.and_then(|x| x.selection.clone()),
+                ]
+                .into_iter()
+                .flatten(),
+            );
+
+            let w = expr_mul(
+                [
+                    region_weight.get(&region.name).cloned(),
+                    s.weight.clone(),
+                    ov.and_then(|x| x.weight.clone()),
+                    sel,
+                ]
+                .into_iter()
+                .flatten(),
+            );
+
+            let mut sc = SampleConfig::new(&s.name, s.file.clone());
+            sc.tree_name = s.tree_name.clone();
+            sc.weight = w;
+            sc.modifiers = s.modifiers.clone();
+
+            for sys in &cfg.systematics {
+                if sys_applies(sys, &region.name, &s.name) {
+                    sc.modifiers.push(sys_to_modifier(sys)?);
+                }
+            }
+
+            ch.samples.push(sc);
+        }
+
+        builder = builder.add_channel(ch);
+    }
+
+    builder.build()
 }
 
 #[cfg(test)]
@@ -1179,6 +1461,144 @@ WeightDown: weight_jes_down
             .collect();
         kinds.sort();
         assert_eq!(kinds, vec!["histosys", "normfactor", "staterror"]);
+    }
+
+    #[test]
+    fn trex_import_applies_sample_specific_selection_via_weight() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: a
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Selection: njet >= 4
+Regions: SR
+
+Sample: b
+Type: BACKGROUND
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace build");
+        let ch = &ws.channels[0];
+        assert_eq!(ch.samples.len(), 2);
+
+        let sum_a: f64 = ch.samples.iter().find(|s| s.name == "a").unwrap().data.iter().sum();
+        let sum_b: f64 = ch.samples.iter().find(|s| s.name == "b").unwrap().data.iter().sum();
+        assert!(sum_a < sum_b, "sample-specific selection should reduce only sample a");
+    }
+
+    #[test]
+    fn trex_import_applies_region_weight_to_all_samples() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+Weight: 2
+
+Sample: a
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+
+Sample: b
+Type: BACKGROUND
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace build");
+        let ch = &ws.channels[0];
+        let sum_a: f64 = ch.samples.iter().find(|s| s.name == "a").unwrap().data.iter().sum();
+        let sum_b: f64 = ch.samples.iter().find(|s| s.name == "b").unwrap().data.iter().sum();
+        assert!((sum_a - sum_b).abs() < 1e-9, "region Weight should scale both samples equally");
+    }
+
+    #[test]
+    fn trex_import_applies_nested_sample_override_weight() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: a
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+EndSample: a
+
+Sample: b
+Type: BACKGROUND
+File: tests/fixtures/simple_tree.root
+Weight: 1
+EndSample: b
+
+# Override-only sample scoped to SR (no File): multiplies sample a weights by 3.
+Sample: a
+Weight: 3
+EndSample: a
+EndRegion: SR
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace build");
+        let ch = &ws.channels[0];
+        let sum_a: f64 = ch.samples.iter().find(|s| s.name == "a").unwrap().data.iter().sum();
+        let sum_b: f64 = ch.samples.iter().find(|s| s.name == "b").unwrap().data.iter().sum();
+        assert!(
+            (sum_a - 3.0 * sum_b).abs() < 1e-8,
+            "nested override Weight should multiply only sample a"
+        );
+    }
+
+    #[test]
+    fn trex_import_rejects_variable_override_mismatch() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: a
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+EndSample: a
+
+Sample: a
+Variable: other_var
+EndSample: a
+EndRegion: SR
+"#;
+
+        let err = workspace_from_str(cfg, &repo_root()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("per-sample variable override is not supported"), "msg={msg}");
     }
 
     #[test]

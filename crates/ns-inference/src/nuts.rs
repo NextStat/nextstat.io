@@ -126,7 +126,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     direction: i32,
     log_u: f64,
     h0: f64,
-    inv_mass: &[f64],
+    metric: &crate::hmc::Metric,
 ) -> Result<NutsTree> {
     let mut new_state = state.clone();
 
@@ -155,7 +155,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
         });
     }
 
-    let h = new_state.hamiltonian(inv_mass);
+    let h = new_state.hamiltonian(metric);
     let energy_error = h - h0;
     let divergent =
         !h.is_finite() || !energy_error.is_finite() || energy_error.abs() > DIVERGENCE_THRESHOLD;
@@ -196,15 +196,15 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     direction: i32,
     log_u: f64,
     h0: f64,
-    inv_mass: &[f64],
+    metric: &crate::hmc::Metric,
     rng: &mut impl Rng,
 ) -> Result<NutsTree> {
     if depth == 0 {
-        return build_leaf(integrator, state, direction, log_u, h0, inv_mass);
+        return build_leaf(integrator, state, direction, log_u, h0, metric);
     }
 
     // Build first half-tree
-    let mut inner = build_tree(integrator, state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
+    let mut inner = build_tree(integrator, state, depth - 1, direction, log_u, h0, metric, rng)?;
 
     if inner.divergent || inner.turning {
         return Ok(inner);
@@ -229,7 +229,7 @@ fn build_tree<M: LogDensityModel + ?Sized>(
 
     // Recompute potential for the edge state
     let outer =
-        build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, inv_mass, rng)?;
+        build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, metric, rng)?;
 
     // Merge trees
     let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
@@ -272,7 +272,7 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     let dq: Vec<f64> =
         inner.q_right.iter().zip(inner.q_left.iter()).map(|(&r, &l)| r - l).collect();
     inner.turning =
-        inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, inv_mass);
+        inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, metric);
 
     inner.depth = depth;
     Ok(inner)
@@ -283,22 +283,15 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
     integrator: &LeapfrogIntegrator<'_, '_, M>,
     current: &HmcState,
     max_treedepth: usize,
-    inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> Result<NutsTransition> {
-    use rand_distr::{Distribution, Normal};
-
-    let n = current.q.len();
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let metric = integrator.metric();
 
     // Sample momentum ~ N(0, M)
     let mut state = current.clone();
-    for i in 0..n {
-        let sigma = (1.0 / inv_mass[i]).sqrt();
-        state.p[i] = sigma * normal.sample(rng);
-    }
+    state.p = metric.sample_momentum(rng);
 
-    let h0 = state.hamiltonian(inv_mass);
+    let h0 = state.hamiltonian(metric);
     if !h0.is_finite() {
         return Err(ns_core::Error::Validation(
             "non-finite initial Hamiltonian in NUTS transition".to_string(),
@@ -354,8 +347,7 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             }
         };
 
-        let subtree =
-            build_tree(integrator, &edge_state, depth, direction, log_u, h0, inv_mass, rng)?;
+        let subtree = build_tree(integrator, &edge_state, depth, direction, log_u, h0, metric, rng)?;
 
         // Multinomial merge: accept subtree proposal with probability
         // exp(subtree.log_sum_weight - new_log_sum_weight)
@@ -396,7 +388,7 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         // Check U-turn on full tree
         let dq: Vec<f64> =
             tree.q_right.iter().zip(tree.q_left.iter()).map(|(&r, &l)| r - l).collect();
-        if is_turning(&dq, &tree.p_left, &tree.p_right, inv_mass) {
+        if is_turning(&dq, &tree.p_left, &tree.p_right, metric) {
             tree.turning = true;
             break;
         }
@@ -569,12 +561,12 @@ pub fn sample_nuts<M: LogDensityModel>(
         z_init
     };
 
-    let inv_mass = vec![1.0; dim];
-    let init_eps = find_reasonable_step_size(&posterior, &z_init, &inv_mass);
+    let metric = crate::hmc::Metric::identity(dim);
+    let init_eps = find_reasonable_step_size(&posterior, &z_init, &metric);
 
     let mut adaptation = WindowedAdaptation::new(dim, n_warmup, config.target_accept, init_eps);
 
-    let integrator = LeapfrogIntegrator::new(&posterior, init_eps, inv_mass);
+    let integrator = LeapfrogIntegrator::new(&posterior, init_eps, metric.clone());
 
     // Initialize state
     let mut state = integrator.init_state(z_init)?;
@@ -582,11 +574,10 @@ pub fn sample_nuts<M: LogDensityModel>(
     // Warmup
     for i in 0..n_warmup {
         let eps = adaptation.step_size();
-        let inv_m = adaptation.inv_mass_diag().to_vec();
-        let warmup_integrator = LeapfrogIntegrator::new(&posterior, eps, inv_m.clone());
+        let metric = adaptation.metric().clone();
+        let warmup_integrator = LeapfrogIntegrator::new(&posterior, eps, metric);
 
-        let transition =
-            nuts_transition(&warmup_integrator, &state, config.max_treedepth, &inv_m, &mut rng)?;
+        let transition = nuts_transition(&warmup_integrator, &state, config.max_treedepth, &mut rng)?;
 
         state.q = transition.q;
         state.potential = transition.potential;
@@ -597,8 +588,8 @@ pub fn sample_nuts<M: LogDensityModel>(
 
     // Sampling with fixed adapted parameters
     let final_eps = adaptation.adapted_step_size();
-    let final_inv_mass = adaptation.inv_mass_diag().to_vec();
-    let sample_integrator = LeapfrogIntegrator::new(&posterior, final_eps, final_inv_mass.clone());
+    let final_metric = adaptation.metric().clone();
+    let sample_integrator = LeapfrogIntegrator::new(&posterior, final_eps, final_metric.clone());
 
     let mut draws_unconstrained = Vec::with_capacity(n_samples);
     let mut draws_constrained = Vec::with_capacity(n_samples);
@@ -608,13 +599,7 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut energies = Vec::with_capacity(n_samples);
 
     for _ in 0..n_samples {
-        let transition = nuts_transition(
-            &sample_integrator,
-            &state,
-            config.max_treedepth,
-            &final_inv_mass,
-            &mut rng,
-        )?;
+        let transition = nuts_transition(&sample_integrator, &state, config.max_treedepth, &mut rng)?;
 
         state.q = transition.q;
         state.potential = transition.potential;
@@ -628,7 +613,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         energies.push(transition.energy);
     }
 
-    let mass_diag: Vec<f64> = final_inv_mass.iter().map(|&m| 1.0 / m).collect();
+    let mass_diag: Vec<f64> = final_metric.mass_diag();
 
     Ok(crate::chain::Chain {
         draws_unconstrained,
@@ -662,15 +647,15 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let dim = posterior.dim();
-        let inv_mass = vec![1.0; dim];
-        let integrator = LeapfrogIntegrator::new(&posterior, 0.1, inv_mass.clone());
+        let metric = crate::hmc::Metric::identity(dim);
+        let integrator = LeapfrogIntegrator::new(&posterior, 0.1, metric);
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let state = integrator.init_state(z_init).unwrap();
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let transition = nuts_transition(&integrator, &state, 10, &inv_mass, &mut rng).unwrap();
+        let transition = nuts_transition(&integrator, &state, 10, &mut rng).unwrap();
 
         assert!(transition.depth <= 10);
         assert!(
@@ -697,18 +682,18 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let dim = posterior.dim();
-        let inv_mass = vec![1.0; dim];
-        let integrator = LeapfrogIntegrator::new(&posterior, 0.1, inv_mass.clone());
+        let metric = crate::hmc::Metric::identity(dim);
+        let integrator = LeapfrogIntegrator::new(&posterior, 0.1, metric);
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let z_init = posterior.to_unconstrained(&theta_init).unwrap();
         let state = integrator.init_state(z_init).unwrap();
 
         let mut rng1 = rand::rngs::StdRng::seed_from_u64(42);
-        let t1 = nuts_transition(&integrator, &state, 10, &inv_mass, &mut rng1).unwrap();
+        let t1 = nuts_transition(&integrator, &state, 10, &mut rng1).unwrap();
 
         let mut rng2 = rand::rngs::StdRng::seed_from_u64(42);
-        let t2 = nuts_transition(&integrator, &state, 10, &inv_mass, &mut rng2).unwrap();
+        let t2 = nuts_transition(&integrator, &state, 10, &mut rng2).unwrap();
 
         assert_eq!(t1.q, t2.q, "NUTS should be deterministic with same seed");
         assert_eq!(t1.depth, t2.depth);

@@ -360,10 +360,10 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let n = model.n_params();
-        let inv_mass = vec![1.0; n];
+        let metric = Metric::identity(n);
         let eps = 0.001; // very small step for good energy conservation
 
-        let integrator = LeapfrogIntegrator::new(&posterior, eps, inv_mass.clone());
+        let integrator = LeapfrogIntegrator::new(&posterior, eps, metric.clone());
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let z_init = posterior.to_unconstrained(&theta_init).unwrap();
@@ -377,11 +377,11 @@ mod tests {
             state.p[i] = normal.sample(&mut rng);
         }
 
-        let h_initial = state.hamiltonian(&inv_mass);
+        let h_initial = state.hamiltonian(&metric);
 
         // Take 100 leapfrog steps
         let state = integrator.integrate(state, 100).unwrap();
-        let h_final = state.hamiltonian(&inv_mass);
+        let h_final = state.hamiltonian(&metric);
 
         let dh = (h_final - h_initial).abs();
         assert!(
@@ -400,8 +400,8 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let n = model.n_params();
-        let inv_mass = vec![1.0; n];
-        let sampler = StaticHmcSampler::new(&posterior, 0.1, 10, inv_mass.clone());
+        let metric = Metric::identity(n);
+        let sampler = StaticHmcSampler::new(&posterior, 0.1, 10, metric);
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let z_init = posterior.to_unconstrained(&theta_init).unwrap();
@@ -425,8 +425,8 @@ mod tests {
         let posterior = Posterior::new(&model);
 
         let n = model.n_params();
-        let inv_mass = vec![1.0; n];
-        let sampler = StaticHmcSampler::new(&posterior, 0.05, 20, inv_mass.clone());
+        let metric = Metric::identity(n);
+        let sampler = StaticHmcSampler::new(&posterior, 0.05, 20, metric);
 
         let theta_init: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let z_init = posterior.to_unconstrained(&theta_init).unwrap();

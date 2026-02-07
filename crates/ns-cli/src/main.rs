@@ -267,6 +267,12 @@ enum Commands {
         command: ImportCommands,
     },
 
+    /// TRExFitter migration helpers
+    Trex {
+        #[command(subcommand)]
+        command: TrexCommands,
+    },
+
     /// Export NextStat inputs into external formats (for cross-checks)
     Export {
         #[command(subcommand)]
@@ -465,7 +471,7 @@ enum ImportCommands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Also emit an analysis spec YAML (mode=trex_config_yaml) to this path.
+        /// Also emit an analysis spec YAML (mode=trex_config_txt) to this path.
         #[arg(long)]
         analysis_yaml: Option<PathBuf>,
 
@@ -498,6 +504,40 @@ enum ExportCommands {
         /// Python executable to use (default: python3).
         #[arg(long)]
         python: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrexCommands {
+    /// Convert a TRExFitter `.config` file into an analysis spec v0 YAML + mapping report.
+    ImportConfig {
+        /// Path to TRExFitter `.config` file.
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Output analysis spec path (YAML).
+        #[arg(long)]
+        out: PathBuf,
+
+        /// Output mapping report path (JSON). Defaults to `<out>.mapping.json`.
+        #[arg(long)]
+        report: Option<PathBuf>,
+
+        /// Determinism threads in the generated spec.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+
+        /// `execution.import.output_json` path written into the generated spec.
+        #[arg(long, default_value = "tmp/trex_workspace.json")]
+        workspace_out: PathBuf,
+
+        /// Python executable to use (default: `.venv/bin/python` if present, else `python3`).
+        #[arg(long)]
+        python: Option<PathBuf>,
+
+        /// Overwrite existing output files.
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
     },
 }
 
@@ -1252,6 +1292,8 @@ fn cmd_import_trex_config(
     config: &PathBuf,
     base_dir: Option<&PathBuf>,
     output: Option<&PathBuf>,
+    analysis_yaml: Option<&PathBuf>,
+    coverage_json: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if bundle.is_some() {
@@ -1261,14 +1303,98 @@ fn cmd_import_trex_config(
     tracing::info!(path = %config.display(), "importing TRExFitter config");
     let text = std::fs::read_to_string(config)?;
 
-    let base_dir = base_dir
-        .map(|p| p.as_path())
+    let base_dir_override = base_dir.map(|p| p.as_path());
+    let resolved_base_dir = base_dir_override
         .or_else(|| config.parent())
         .unwrap_or_else(|| std::path::Path::new("."));
 
-    let ws = ns_translate::trex::workspace_from_str(&text, base_dir)?;
+    let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
+    let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
+
+    if let Some(path) = coverage_json {
+        let cov_json = serde_json::to_value(&coverage)?;
+        write_json_file(path, &cov_json)?;
+    }
+
+    if let Some(path) = analysis_yaml {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        let stem = config
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("trex_config");
+        let ws_out = format!("tmp/{stem}_workspace.json");
+        let fit_out = format!("tmp/{stem}_fit.json");
+        let scan_out = format!("tmp/{stem}_scan.json");
+        let report_out = format!("tmp/{stem}_report");
+
+        let spec = serde_json::json!({
+            "$schema": "https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json",
+            "schema_version": "trex_analysis_spec_v0",
+            "analysis": {
+                "name": format!("TREx Config ({stem})"),
+                "description": "Generated from `nextstat import trex-config`.",
+                "tags": ["trex-config", "generated"],
+            },
+            "inputs": {
+                "mode": "trex_config_txt",
+                "trex_config_txt": {
+                    "config_path": config,
+                    "base_dir": base_dir_override,
+                }
+            },
+            "execution": {
+                "determinism": { "threads": 1 },
+                "import": {
+                    "enabled": true,
+                    "output_json": ws_out,
+                },
+                "fit": {
+                    "enabled": false,
+                    "output_json": fit_out,
+                },
+                "profile_scan": {
+                    "enabled": false,
+                    "start": 0.0,
+                    "stop": 5.0,
+                    "points": 21,
+                    "output_json": scan_out,
+                },
+                "report": {
+                    "enabled": false,
+                    "out_dir": report_out,
+                    "overwrite": false,
+                    "include_covariance": false,
+                    "histfactory_xml": serde_json::Value::Null,
+                    "render": {
+                        "enabled": false,
+                        "pdf": serde_json::Value::Null,
+                        "svg_dir": serde_json::Value::Null,
+                        "python": serde_json::Value::Null,
+                    },
+                    "skip_uncertainty": true,
+                    "uncertainty_grouping": "prefix_1",
+                },
+            },
+            "gates": {
+                "baseline_compare": {
+                    "enabled": false,
+                    "baseline_dir": "tmp/baselines",
+                    "require_same_host": true,
+                    "max_slowdown": 1.3,
+                }
+            }
+        });
+
+        std::fs::write(path, serde_yaml_ng::to_string(&spec)?)?;
+    }
+
     Ok(())
 }
 
