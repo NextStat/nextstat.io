@@ -59,6 +59,12 @@ OneCompartmentOralPkModel = _get("OneCompartmentOralPkModel")
 OneCompartmentOralPkNlmeModel = _get("OneCompartmentOralPkNlmeModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
+fit_toys_batch = _get("fit_toys_batch")
+fit_toys_batch_gpu = _get("fit_toys_batch_gpu")
+set_eval_mode = _get("set_eval_mode")
+get_eval_mode = _get("get_eval_mode")
+has_accelerate = _get("has_accelerate")
+has_cuda = _get("has_cuda")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
@@ -159,6 +165,12 @@ __all__ = [
     "Posterior",
     "ols_fit",
     "fit_toys",
+    "fit_toys_batch",
+    "fit_toys_batch_gpu",
+    "set_eval_mode",
+    "get_eval_mode",
+    "has_accelerate",
+    "has_cuda",
     "asimov_data",
     "poisson_toys",
     "ranking",

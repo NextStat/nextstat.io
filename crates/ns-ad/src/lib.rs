@@ -11,5 +11,6 @@
 #![warn(clippy::all)]
 
 pub mod dual;
+pub mod dual32;
 pub mod scalar;
 pub mod tape;

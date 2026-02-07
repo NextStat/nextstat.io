@@ -89,6 +89,96 @@ impl Scalar for f64 {
     }
 }
 
+// --- f32 implementation (for Metal f32 precision analysis) ---
+
+impl Scalar for f32 {
+    #[inline]
+    fn from_f64(v: f64) -> Self {
+        v as f32
+    }
+
+    #[inline]
+    fn value(&self) -> f64 {
+        *self as f64
+    }
+
+    #[inline]
+    fn ln(self) -> Self {
+        f32::ln(self)
+    }
+
+    #[inline]
+    fn exp(self) -> Self {
+        f32::exp(self)
+    }
+
+    #[inline]
+    fn powf(self, n: f64) -> Self {
+        f32::powf(self, n as f32)
+    }
+
+    #[inline]
+    fn powi(self, n: i32) -> Self {
+        f32::powi(self, n)
+    }
+
+    #[inline]
+    fn abs(self) -> Self {
+        f32::abs(self)
+    }
+
+    #[inline]
+    fn max_s(self, other: Self) -> Self {
+        f32::max(self, other)
+    }
+}
+
+// --- Dual32 implementation (f32-based forward-mode AD for Metal GPU validation) ---
+
+use crate::dual32::Dual32;
+
+impl Scalar for Dual32 {
+    #[inline]
+    fn from_f64(v: f64) -> Self {
+        Dual32::constant(v as f32)
+    }
+
+    #[inline]
+    fn value(&self) -> f64 {
+        self.val as f64
+    }
+
+    #[inline]
+    fn ln(self) -> Self {
+        Dual32::ln(self)
+    }
+
+    #[inline]
+    fn exp(self) -> Self {
+        Dual32::exp(self)
+    }
+
+    #[inline]
+    fn powf(self, n: f64) -> Self {
+        Dual32::powf(self, n as f32)
+    }
+
+    #[inline]
+    fn powi(self, n: i32) -> Self {
+        Dual32::powi(self, n)
+    }
+
+    #[inline]
+    fn abs(self) -> Self {
+        Dual32::abs(self)
+    }
+
+    #[inline]
+    fn max_s(self, other: Self) -> Self {
+        Dual32::max(self, other)
+    }
+}
+
 // --- Dual implementation ---
 
 impl Scalar for Dual {

@@ -114,6 +114,45 @@ def _hist2workspace(combination_xml: Path) -> Path:
         )
     return new_root_files[0]
 
+def _stage_histfactory_export(
+    *,
+    combination_xml: Path,
+    rootdir: Path,
+    run_dir: Path,
+) -> Path:
+    """Stage a HistFactory export directory into `run_dir`.
+
+    `hist2workspace` resolves paths in `combination.xml` relative to the current working
+    directory (and expects the DTD and channel XMLs to be available relative to it).
+    Many exports (including those created by `pyhf.writexml`) use relative paths.
+
+    To make runs reproducible and independent of the source location, we copy the
+    export directory contents into `run_dir` and run `hist2workspace` there.
+    """
+    rootdir = rootdir.resolve()
+    run_dir = run_dir.resolve()
+
+    if not rootdir.exists() or not rootdir.is_dir():
+        raise RuntimeError(f"rootdir does not exist or is not a directory: {rootdir}")
+
+    # Best-effort: copy top-level files/dirs (channels/, data.root, DTD, etc.).
+    for p in sorted(rootdir.iterdir(), key=lambda x: x.name):
+        dest = run_dir / p.name
+        if p.is_dir():
+            # Merge into an existing destination if re-running with --keep.
+            shutil.copytree(p, dest, dirs_exist_ok=True)
+        elif p.is_file():
+            # Avoid copying previously generated hist2workspace outputs which would
+            # break our before/after detection logic (and can confuse ROOT).
+            if p.suffix == ".root" and p.name.endswith("_model.root"):
+                continue
+            shutil.copy2(p, dest)
+
+    staged_combo = run_dir / "combination.xml"
+    if combination_xml.resolve() != staged_combo:
+        shutil.copy2(combination_xml, staged_combo)
+    return staged_combo
+
 
 def _write_root_macro_profile_scan(
     macro_path: Path,
@@ -385,10 +424,16 @@ def main() -> int:
     # ROOT reference: combination.xml -> RooWorkspace -> profile scan
     # ---------------------------------------------------------------------
     t1 = time.perf_counter()
-    # Ensure combination.xml is available in run_dir for a clean cwd.
-    if combo_xml.parent != run_dir:
-        shutil.copy2(combo_xml, run_dir / "combination.xml")
-        combo_xml = run_dir / "combination.xml"
+    # Stage HistFactory export into run_dir so `hist2workspace` can resolve relative paths.
+    if args.pyhf_json:
+        # Already exported into `run_dir` via `_export_pyhf_to_histfactory`.
+        combo_xml = (run_dir / "combination.xml").resolve()
+    else:
+        combo_xml = _stage_histfactory_export(
+            combination_xml=combo_xml,
+            rootdir=rootdir,
+            run_dir=run_dir,
+        )
     root_ws_file = _hist2workspace(combo_xml)
     t_hist2ws = time.perf_counter() - t1
 
@@ -416,13 +461,42 @@ def main() -> int:
     ns_out.write_text(json.dumps(ns_scan, indent=2))
 
     # Normalize NextStat scan into comparable format.
-    ns_points_by_mu = {float(p["mu"]): p for p in ns_scan["points"]}
+    #
+    # Do not key by float(mu): ROOT and Rust/Python can serialize the same nominal
+    # grid point with slightly different binary floats (e.g. 0.3 vs 0.30000000000000004),
+    # which would cause spurious KeyErrors.
+    root_points = list(root_result.get("points") or [])
+    ns_points = list(ns_scan.get("points") or [])
+    if len(root_points) != len(mu_values) or len(ns_points) != len(mu_values):
+        raise RuntimeError(
+            f"unexpected point count: root={len(root_points)} nextstat={len(ns_points)} expected={len(mu_values)}"
+        )
+
+    def _nearest_point(points: list[dict[str, Any]], mu: float) -> dict[str, Any]:
+        best = min(points, key=lambda p: abs(float(p.get("mu")) - float(mu)))
+        if abs(float(best.get("mu")) - float(mu)) > 1e-8:
+            raise RuntimeError(f"no matching mu point found: mu={mu} best={best.get('mu')}")
+        return best
+
     diffs: List[Tuple[float, float]] = []
-    for p in root_result["points"]:
-        mu = float(p["mu"])
-        q_root = float(p["q_mu"])
-        q_ns = float(ns_points_by_mu[mu]["q_mu"])
-        diffs.append((mu, q_ns - q_root))
+    for i, mu_expected in enumerate(mu_values):
+        p_root = root_points[i]
+        p_ns = ns_points[i]
+        mu_root = float(p_root.get("mu"))
+        mu_ns = float(p_ns.get("mu"))
+
+        # Defensive: if ordering drifts for any reason, fall back to nearest matching point.
+        if abs(mu_root - float(mu_expected)) > 1e-8:
+            p_root = _nearest_point(root_points, float(mu_expected))
+            mu_root = float(p_root.get("mu"))
+        if abs(mu_ns - float(mu_expected)) > 1e-8:
+            p_ns = _nearest_point(ns_points, float(mu_expected))
+            mu_ns = float(p_ns.get("mu"))
+
+        # Compare using the expected grid coordinate (stable for reporting).
+        q_root = float(p_root.get("q_mu"))
+        q_ns = float(p_ns.get("q_mu"))
+        diffs.append((float(mu_expected), q_ns - q_root))
 
     max_abs_dq = max(abs(d) for _, d in diffs) if diffs else 0.0
     max_abs_dq_mu = None

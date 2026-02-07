@@ -978,23 +978,25 @@ def main(argv: Optional[List[str]] = None) -> int:
                 _write_jsonl_line(fp, rec)
                 continue
 
-            _write_jsonl_line(
-                fp,
-                meta_rec := {
-                    "type": "workspace_meta",
-                    "workspace_id": ws_id,
-                    "path": str(p),
-                    "measurement": meas,
-                    "load_json_s": load_s,
-                    "pyhf": {"build_s": pyhf_build_s, "n_params": len(prep_py.names), "names": prep_py.names},
-                    "nextstat": {
-                        "build_s": nextstat_build_s,
-                        "n_params": len(prep_ns.names),
-                        "names": prep_ns.names,
-                    },
+            meta_rec = {
+                "type": "workspace_meta",
+                "workspace_id": ws_id,
+                "path": str(p),
+                "measurement": meas,
+                "load_json_s": load_s,
+                "pyhf": {"build_s": pyhf_build_s, "n_params": len(prep_py.names), "names": prep_py.names},
+                "nextstat": {
+                    "build_s": nextstat_build_s,
+                    "n_params": len(prep_ns.names),
+                    "names": prep_ns.names,
                 },
+            }
+            already_has_meta = any(
+                (r.get("type") == "workspace_meta") and (str(r.get("workspace_id")) == ws_id) for r in records
             )
-            records.append(meta_rec)
+            if not (bool(args.resume) and already_has_meta):
+                _write_jsonl_line(fp, meta_rec)
+                records.append(meta_rec)
 
             # Warmup + measured runs.
             mle = nextstat.MaximumLikelihoodEstimator(**nextstat_mle_config)

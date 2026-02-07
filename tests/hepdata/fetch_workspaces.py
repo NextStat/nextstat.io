@@ -123,6 +123,13 @@ def _find_one(root: Path, filename: str) -> Path:
     return matches[0]
 
 
+def _find_optional(root: Path, filename: str | None, *, default: str) -> Path:
+    """Find a file by explicit filename (preferred) or fall back to a default name."""
+    if filename is not None:
+        return _find_one(root, filename)
+    return _find_one(root, default)
+
+
 def _load_json(path: Path) -> Any:
     return json.loads(path.read_text())
 
@@ -132,18 +139,24 @@ def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _materialize_bkgonly(extracted_dir: Path, out_dir: Path) -> Path:
-    bkg = _find_one(extracted_dir, "BkgOnly.json")
+def _materialize_bkgonly(extracted_dir: Path, out_dir: Path, *, bkgonly_filename: str | None) -> Path:
+    bkg = _find_optional(extracted_dir, bkgonly_filename, default="BkgOnly.json")
     out = out_dir / "BkgOnly.json"
     shutil.copy2(bkg, out)
     return out
 
 
 def _materialize_patch(
-    extracted_dir: Path, out_dir: Path, patch_id: str, patch_name: str | None
+    extracted_dir: Path,
+    out_dir: Path,
+    *,
+    patch_id: str,
+    patch_name: str | None,
+    bkgonly_filename: str | None,
+    patchset_filename: str | None,
 ) -> Path:
-    bkg = _load_json(_find_one(extracted_dir, "BkgOnly.json"))
-    patchset = _load_json(_find_one(extracted_dir, "patchset.json"))
+    bkg = _load_json(_find_optional(extracted_dir, bkgonly_filename, default="BkgOnly.json"))
+    patchset = _load_json(_find_optional(extracted_dir, patchset_filename, default="patchset.json"))
 
     patched: dict[str, Any] | None = None
 
@@ -201,6 +214,8 @@ class Dataset:
     doi: str
     materialize_bkgonly: bool
     patches: list[dict[str, Any]]
+    bkgonly_filename: str | None
+    patchset_filename: str | None
 
 
 def _load_manifest(manifest_path: Path) -> list[Dataset]:
@@ -215,6 +230,8 @@ def _load_manifest(manifest_path: Path) -> list[Dataset]:
                 doi=str(d["doi"]),
                 materialize_bkgonly=bool(mat.get("bkgonly", True)),
                 patches=list(mat.get("patches", [])),
+                bkgonly_filename=mat.get("bkgonly_filename"),
+                patchset_filename=mat.get("patchset_filename"),
             )
         )
     return datasets
@@ -264,8 +281,12 @@ def main(argv: list[str] | None = None) -> int:
         extracted_dir = ds_cache / "extracted"
         ds_out_dir = out_dir / slug
 
-        print(f"[hepdata] {d.id}: downloading {d.doi}")
-        meta = _download_with_redirects(d.doi, archive_path)
+        if archive_path.exists() and archive_path.stat().st_size > 0:
+            print(f"[hepdata] {d.id}: using cached download: {archive_path}")
+            meta = {"url": d.doi, "cached": True, "path": str(archive_path)}
+        else:
+            print(f"[hepdata] {d.id}: downloading {d.doi}")
+            meta = _download_with_redirects(d.doi, archive_path)
 
         print(f"[hepdata] {d.id}: extracting archive")
         if extracted_dir.exists():
@@ -281,14 +302,19 @@ def main(argv: list[str] | None = None) -> int:
         materialized: list[dict[str, Any]] = []
 
         if d.materialize_bkgonly:
-            p = _materialize_bkgonly(extracted_dir, ds_out_dir)
+            p = _materialize_bkgonly(extracted_dir, ds_out_dir, bkgonly_filename=d.bkgonly_filename)
             materialized.append({"kind": "bkgonly", "path": str(p), "sha256": _sha256_file(p)})
 
         for patch in d.patches:
             patch_id = str(patch.get("id") or "patch")
             patch_name = patch.get("patch_name")
             p = _materialize_patch(
-                extracted_dir, ds_out_dir, patch_id=patch_id, patch_name=patch_name
+                extracted_dir,
+                ds_out_dir,
+                patch_id=patch_id,
+                patch_name=patch_name,
+                bkgonly_filename=patch.get("bkgonly_filename", d.bkgonly_filename),
+                patchset_filename=patch.get("patchset_filename", d.patchset_filename),
             )
             materialized.append(
                 {

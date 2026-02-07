@@ -3986,6 +3986,36 @@ fn fit_toys_batch(
         .collect()
 }
 
+/// Set the process-wide evaluation mode.
+///
+/// - `"fast"` (default): maximum speed, naive summation, multi-threaded.
+/// - `"parity"`: Kahan summation, Accelerate disabled, single-thread recommended.
+///   Used for deterministic pyhf parity validation.
+#[pyfunction]
+fn set_eval_mode(mode: &str) -> PyResult<()> {
+    let m = match mode {
+        "fast" => ns_compute::EvalMode::Fast,
+        "parity" => ns_compute::EvalMode::Parity,
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unknown eval mode '{}'. Use 'fast' or 'parity'.",
+                mode
+            )));
+        }
+    };
+    ns_compute::set_eval_mode(m);
+    Ok(())
+}
+
+/// Get the current evaluation mode ("fast" or "parity").
+#[pyfunction]
+fn get_eval_mode() -> &'static str {
+    match ns_compute::eval_mode() {
+        ns_compute::EvalMode::Fast => "fast",
+        ns_compute::EvalMode::Parity => "parity",
+    }
+}
+
 /// Check if Accelerate backend is available.
 #[pyfunction]
 fn has_accelerate() -> bool {
@@ -4576,6 +4606,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(set_eval_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(get_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
     m.add_function(wrap_pyfunction!(has_cuda, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch_gpu, m)?)?;

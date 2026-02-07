@@ -206,6 +206,23 @@ Beyond HistFactory parity, NextStat maintains:
 - Hierarchical model contract tests (random intercept/slope and correlated random effects) across Rust and Python surfaces.
 - Kalman filter parity tests against independent scalar references (and optional parity vs statsmodels when available).
 
+### 7.5 Apex2 reproducibility pipeline (one entry point)
+
+NextStat bundles an "Apex2" validation harness that produces a machine-readable report and serves as a single command to run the core correctness gates.
+
+- Orchestrator: `tests/apex2_master_report.py`
+- Components (non-exhaustive): NUTS quality gates, HistFactory deterministic parity, ROOT profile-scan parity, and bias/pulls toy regressions.
+- Deterministic JSON mode: `--deterministic` (omits timestamps/timings and uses stable ordering).
+- "Goldens without heavy deps": selected reference outputs are checked in as JSON fixtures so parity regressions can run without requiring the full external stack at test time.
+
+Example:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --deterministic \
+  --nuts-quality --nuts-quality-strict
+```
+
 ## 8. Performance and Benchmarks
 
 Performance goals focus on the dominant costs in typical workflows:

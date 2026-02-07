@@ -19,6 +19,8 @@
       "name": "ATLAS 2L2J (HEPData 116034 v1 r34)",
       "doi": "https://doi.org/10.17182/hepdata.116034.v1/r34",
       "materialize": {
+        "bkgonly_filename": "ewk_discovery_bkgonly.json",
+        "patchset_filename": "ewk_discovery_patchset.json",
         "bkgonly": true,
         "patches": [
           {
@@ -30,4 +32,3 @@
     }
   ]
 }
-

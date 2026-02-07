@@ -9,7 +9,9 @@ mod channel;
 mod combination;
 
 pub use builder::bin_edges_by_channel_from_xml;
+pub use builder::bin_edges_by_channel_from_xml_with_basedir;
 pub use builder::from_xml;
+pub use builder::from_xml_with_basedir;
 
 #[cfg(test)]
 mod tests;

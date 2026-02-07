@@ -218,3 +218,487 @@ fn test_model_rejects_histosys_template_length_mismatch() {
         msg
     );
 }
+
+/// f32 vs f64 precision PoC for Metal GPU feasibility.
+///
+/// Tests whether f32 NLL computation produces results accurate enough
+/// for L-BFGS-B optimization on real HistFactory models.
+///
+/// Run with: `cargo test -p ns-translate --release test_f32_precision_poc -- --nocapture`
+#[test]
+fn test_f32_precision_poc() {
+    use ns_ad::scalar::Scalar;
+    use ns_core::traits::LogDensityModel;
+
+    println!("\n================================================================================");
+    println!("f32 vs f64 Precision PoC -- Metal GPU Feasibility");
+    println!("================================================================================");
+
+    // ---- Test 1: Simple workspace (2 bins, 2 params) ----
+    {
+        let json = include_str!("../../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = super::HistFactoryModel::from_workspace(&ws).unwrap();
+        let n = model.n_params();
+        let init = model.parameter_init();
+
+        println!("\n--- Simple workspace ({n} params) ---");
+
+        let params_f64: Vec<f64> = init.clone();
+        let params_f32: Vec<f32> = init.iter().map(|&x| x as f32).collect();
+
+        let nll_f64: f64 = model.nll_generic(&params_f64).unwrap();
+        let nll_f32: f32 = model.nll_generic(&params_f32).unwrap();
+
+        let abs_diff = (nll_f64 - nll_f32.value()).abs();
+        let rel_diff = abs_diff / nll_f64.abs();
+
+        println!("  NLL f64:     {nll_f64:.15}");
+        println!("  NLL f32:     {:.15}", nll_f32.value());
+        println!("  Abs diff:    {abs_diff:.6e}");
+        println!("  Rel diff:    {rel_diff:.6e}");
+
+        // f32 gradient via finite differences
+        let eps = 1e-4_f64;
+        let mut grad_f32_fd = vec![0.0f64; n];
+        for i in 0..n {
+            let mut p_plus: Vec<f32> = params_f32.clone();
+            p_plus[i] += eps as f32;
+            let mut p_minus: Vec<f32> = params_f32.clone();
+            p_minus[i] -= eps as f32;
+            let nll_plus: f32 = model.nll_generic(&p_plus).unwrap();
+            let nll_minus: f32 = model.nll_generic(&p_minus).unwrap();
+            grad_f32_fd[i] = (nll_plus.value() - nll_minus.value()) / (2.0 * eps);
+        }
+
+        // f64 gradient via finite differences (reference)
+        let eps_f64 = 1e-8_f64;
+        let mut grad_f64_fd = vec![0.0f64; n];
+        for i in 0..n {
+            let mut p_plus = params_f64.clone();
+            p_plus[i] += eps_f64;
+            let mut p_minus = params_f64.clone();
+            p_minus[i] -= eps_f64;
+            let nll_plus: f64 = model.nll_generic(&p_plus).unwrap();
+            let nll_minus: f64 = model.nll_generic(&p_minus).unwrap();
+            grad_f64_fd[i] = (nll_plus - nll_minus) / (2.0 * eps_f64);
+        }
+
+        println!("  Gradient (f64 fd vs f32 fd):");
+        let mut max_grad_diff = 0.0f64;
+        for i in 0..n {
+            let diff = (grad_f64_fd[i] - grad_f32_fd[i]).abs();
+            let rel = if grad_f64_fd[i].abs() > 1e-10 {
+                diff / grad_f64_fd[i].abs()
+            } else {
+                diff
+            };
+            max_grad_diff = max_grad_diff.max(rel);
+            println!(
+                "    param[{i}]: f64={:.8e}  f32={:.8e}  rel_diff={rel:.4e}",
+                grad_f64_fd[i], grad_f32_fd[i]
+            );
+        }
+        println!("  Max gradient rel diff: {max_grad_diff:.4e}");
+    }
+
+    // ---- Test 2: tHu workspace (184 params, NLL~179) ----
+    {
+        let json = include_str!("../../../../tests/fixtures/workspace_tHu.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = super::HistFactoryModel::from_workspace(&ws).unwrap();
+        let n = model.n_params();
+        let init = model.parameter_init();
+        let bounds = model.parameter_bounds();
+
+        println!("\n--- tHu workspace ({n} params) ---");
+
+        // Test at init params
+        let params_f64: Vec<f64> = init.clone();
+        let params_f32: Vec<f32> = init.iter().map(|&x| x as f32).collect();
+
+        let nll_f64_init: f64 = model.nll_generic(&params_f64).unwrap();
+        let nll_f32_init: f32 = model.nll_generic(&params_f32).unwrap();
+
+        let abs_diff_init = (nll_f64_init - nll_f32_init.value()).abs();
+        let rel_diff_init = abs_diff_init / nll_f64_init.abs();
+
+        println!("  At init params:");
+        println!("    NLL f64:   {nll_f64_init:.15}");
+        println!("    NLL f32:   {:.15}", nll_f32_init.value());
+        println!("    Abs diff:  {abs_diff_init:.6e}");
+        println!("    Rel diff:  {rel_diff_init:.6e}");
+
+        // Test at perturbed params (simulating optimizer mid-iteration)
+        let mut rng_state = 42u64;
+        let mut perturbed = init.clone();
+        for p in &mut perturbed {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let noise = ((rng_state >> 33) as f64 / (1u64 << 31) as f64) * 0.2 - 0.1;
+            *p = (*p + noise).max(0.01);
+        }
+
+        let perturbed_f32: Vec<f32> = perturbed.iter().map(|&x| x as f32).collect();
+        let nll_f64_pert: f64 = model.nll_generic(&perturbed).unwrap();
+        let nll_f32_pert: f32 = model.nll_generic(&perturbed_f32).unwrap();
+
+        let abs_diff_pert = (nll_f64_pert - nll_f32_pert.value()).abs();
+        let rel_diff_pert = abs_diff_pert / nll_f64_pert.abs();
+
+        println!("  At perturbed params:");
+        println!("    NLL f64:   {nll_f64_pert:.15}");
+        println!("    NLL f32:   {:.15}", nll_f32_pert.value());
+        println!("    Abs diff:  {abs_diff_pert:.6e}");
+        println!("    Rel diff:  {rel_diff_pert:.6e}");
+
+        // Gradient comparison (finite differences, 10 evenly-spaced params)
+        println!("  Gradient comparison (10 params):");
+        let eps = 1e-4_f64;
+        let eps_f64 = 1e-8_f64;
+        let mut max_grad_rel_diff = 0.0f64;
+        let mut grad_rel_diffs: Vec<f64> = Vec::new();
+
+        let test_indices: Vec<usize> = (0..10).map(|i| i * n / 10).collect();
+        for &idx in &test_indices {
+            // f32 finite-diff gradient
+            let mut p_plus_f32: Vec<f32> = perturbed_f32.clone();
+            p_plus_f32[idx] += eps as f32;
+            let mut p_minus_f32: Vec<f32> = perturbed_f32.clone();
+            p_minus_f32[idx] -= eps as f32;
+            let nll_p: f32 = model.nll_generic(&p_plus_f32).unwrap();
+            let nll_m: f32 = model.nll_generic(&p_minus_f32).unwrap();
+            let grad_f32_val = (nll_p.value() - nll_m.value()) / (2.0 * eps);
+
+            // f64 finite-diff gradient (reference)
+            let mut p_plus_f64 = perturbed.clone();
+            p_plus_f64[idx] += eps_f64;
+            let mut p_minus_f64 = perturbed.clone();
+            p_minus_f64[idx] -= eps_f64;
+            let nll_p64: f64 = model.nll_generic(&p_plus_f64).unwrap();
+            let nll_m64: f64 = model.nll_generic(&p_minus_f64).unwrap();
+            let grad_f64_val = (nll_p64 - nll_m64) / (2.0 * eps_f64);
+
+            let rel = if grad_f64_val.abs() > 1e-10 {
+                (grad_f64_val - grad_f32_val).abs() / grad_f64_val.abs()
+            } else {
+                (grad_f64_val - grad_f32_val).abs()
+            };
+            max_grad_rel_diff = max_grad_rel_diff.max(rel);
+            grad_rel_diffs.push(rel);
+
+            println!(
+                "    param[{idx:3}]: f64={:+.8e}  f32={:+.8e}  rel_diff={rel:.4e}",
+                grad_f64_val, grad_f32_val
+            );
+        }
+
+        grad_rel_diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median_grad_diff = grad_rel_diffs[grad_rel_diffs.len() / 2];
+
+        println!("  Max gradient rel diff:    {max_grad_rel_diff:.4e}");
+        println!("  Median gradient rel diff: {median_grad_diff:.4e}");
+
+        // ---- Mini optimization comparison: 5 steps of gradient descent ----
+        // (Only 5 steps because 184-param FD gradient is slow in debug)
+        println!("\n  Mini optimization (5 gradient descent steps, lr=0.01):");
+        let lr = 0.01;
+        let n_steps = 5;
+
+        // f64 path
+        let mut x_f64 = init.clone();
+        for step in 0..n_steps {
+            let mut grad = vec![0.0f64; n];
+            for i in 0..n {
+                let mut p_plus = x_f64.clone();
+                p_plus[i] += eps_f64;
+                let mut p_minus = x_f64.clone();
+                p_minus[i] -= eps_f64;
+                let np: f64 = model.nll_generic(&p_plus).unwrap();
+                let nm: f64 = model.nll_generic(&p_minus).unwrap();
+                grad[i] = (np - nm) / (2.0 * eps_f64);
+            }
+            for i in 0..n {
+                x_f64[i] -= lr * grad[i];
+                x_f64[i] = x_f64[i].clamp(bounds[i].0, bounds[i].1);
+            }
+            let nll: f64 = model.nll_generic(&x_f64).unwrap();
+            println!("    f64 step {step}: NLL = {nll:.10}");
+        }
+
+        // f32 path
+        let mut x_f32: Vec<f32> = init.iter().map(|&x| x as f32).collect();
+        for step in 0..n_steps {
+            let mut grad = vec![0.0f32; n];
+            for i in 0..n {
+                let mut p_plus = x_f32.clone();
+                p_plus[i] += eps as f32;
+                let mut p_minus = x_f32.clone();
+                p_minus[i] -= eps as f32;
+                let np: f32 = model.nll_generic(&p_plus).unwrap();
+                let nm: f32 = model.nll_generic(&p_minus).unwrap();
+                grad[i] = (np - nm) / (2.0 * eps as f32);
+            }
+            for i in 0..n {
+                x_f32[i] -= lr as f32 * grad[i];
+                x_f32[i] = x_f32[i].clamp(bounds[i].0 as f32, bounds[i].1 as f32);
+            }
+            // Evaluate in f64 for fair comparison
+            let x_as_f64: Vec<f64> = x_f32.iter().map(|&x| x as f64).collect();
+            let nll: f64 = model.nll_generic(&x_as_f64).unwrap();
+            println!("    f32 step {step}: NLL = {nll:.10} (eval in f64)");
+        }
+
+        // Compare final params
+        let x_f32_as_f64: Vec<f64> = x_f32.iter().map(|&x| x as f64).collect();
+        let nll_final_f64: f64 = model.nll_generic(&x_f64).unwrap();
+        let nll_final_f32: f64 = model.nll_generic(&x_f32_as_f64).unwrap();
+        let mut max_param_diff = 0.0f64;
+        for i in 0..n {
+            let diff = (x_f64[i] - x_f32[i] as f64).abs();
+            max_param_diff = max_param_diff.max(diff);
+        }
+
+        println!("  Final comparison after {n_steps} steps:");
+        println!("    NLL f64:          {nll_final_f64:.10}");
+        println!("    NLL f32 (->f64):  {nll_final_f32:.10}");
+        println!("    NLL diff:         {:.6e}", (nll_final_f64 - nll_final_f32).abs());
+        println!("    Max param diff:   {max_param_diff:.6e}");
+    }
+
+    println!("\n================================================================================");
+    println!("PoC complete. See numbers above for Metal f32 feasibility decision.");
+    println!("================================================================================\n");
+}
+
+/// Dual32 analytical gradient vs Dual (f64) analytical gradient.
+///
+/// This is the critical Metal GPU feasibility test: Metal computes analytical
+/// gradients (not finite differences), so what matters is Dual32 accuracy,
+/// not f32 FD accuracy.
+///
+/// Run with: `cargo test -p ns-translate --release test_f32_analytical_gradient_poc -- --nocapture`
+#[test]
+fn test_f32_analytical_gradient_poc() {
+    use ns_ad::dual::Dual;
+    use ns_ad::dual32::Dual32;
+    use ns_core::traits::LogDensityModel;
+
+    println!("\n================================================================================");
+    println!("Dual32 (f32 analytical) vs Dual (f64 analytical) Gradient PoC");
+    println!("================================================================================");
+
+    // ---- Test 1: Simple workspace (2 params) ----
+    {
+        let json = include_str!("../../../../tests/fixtures/simple_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = super::HistFactoryModel::from_workspace(&ws).unwrap();
+        let n = model.n_params();
+        let init = model.parameter_init();
+
+        println!("\n--- Simple workspace ({n} params) ---");
+
+        // f64 analytical gradient (reference)
+        let mut grad_f64 = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual: Vec<Dual> = init.iter().map(|&x| Dual::constant(x)).collect();
+            params_dual[i] = Dual::var(init[i]);
+            let nll: Dual = model.nll_generic(&params_dual).unwrap();
+            grad_f64[i] = nll.dot;
+        }
+
+        // f32 analytical gradient (what Metal would compute)
+        let mut grad_f32 = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual32: Vec<Dual32> =
+                init.iter().map(|&x| Dual32::constant(x as f32)).collect();
+            params_dual32[i] = Dual32::var(init[i] as f32);
+            let nll: Dual32 = model.nll_generic(&params_dual32).unwrap();
+            grad_f32[i] = nll.dot as f64;
+        }
+
+        println!("  Analytical gradient comparison:");
+        let mut max_rel = 0.0f64;
+        for i in 0..n {
+            let rel = if grad_f64[i].abs() > 1e-10 {
+                (grad_f64[i] - grad_f32[i]).abs() / grad_f64[i].abs()
+            } else {
+                (grad_f64[i] - grad_f32[i]).abs()
+            };
+            max_rel = max_rel.max(rel);
+            println!(
+                "    param[{i}]: f64={:+.12e}  f32={:+.12e}  rel={rel:.6e}",
+                grad_f64[i], grad_f32[i]
+            );
+        }
+        println!("  Max analytical grad rel diff: {max_rel:.6e}");
+    }
+
+    // ---- Test 2: tHu workspace (184 params) ----
+    {
+        let json = include_str!("../../../../tests/fixtures/workspace_tHu.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = super::HistFactoryModel::from_workspace(&ws).unwrap();
+        let n = model.n_params();
+        let init = model.parameter_init();
+
+        println!("\n--- tHu workspace ({n} params) ---");
+
+        // NLL values first (for reference)
+        {
+            use ns_ad::scalar::Scalar;
+            let nll_f64: f64 = model.nll_generic(&init).unwrap();
+            let p32: Vec<f32> = init.iter().map(|&x| x as f32).collect();
+            let nll_f32: f32 = model.nll_generic(&p32).unwrap();
+            let nll_f32_value = nll_f32.value();
+            println!("  NLL f64: {nll_f64:.15}");
+            println!("  NLL f32: {nll_f32_value:.15}");
+            println!("  NLL rel diff: {:.6e}", (nll_f64 - nll_f32_value).abs() / nll_f64.abs());
+        }
+
+        // Full gradient: all 184 params
+        println!("\n  Computing full f64 analytical gradient ({n} params)...");
+        let mut grad_f64 = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual: Vec<Dual> = init.iter().map(|&x| Dual::constant(x)).collect();
+            params_dual[i] = Dual::var(init[i]);
+            let nll: Dual = model.nll_generic(&params_dual).unwrap();
+            grad_f64[i] = nll.dot;
+        }
+
+        println!("  Computing full f32 analytical gradient ({n} params)...");
+        let mut grad_f32 = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual32: Vec<Dual32> =
+                init.iter().map(|&x| Dual32::constant(x as f32)).collect();
+            params_dual32[i] = Dual32::var(init[i] as f32);
+            let nll: Dual32 = model.nll_generic(&params_dual32).unwrap();
+            grad_f32[i] = nll.dot as f64;
+        }
+
+        // Collect statistics
+        let mut rel_diffs: Vec<(usize, f64, f64, f64, f64)> = Vec::new(); // (idx, f64_grad, f32_grad, abs_diff, rel_diff)
+        for i in 0..n {
+            let abs_diff = (grad_f64[i] - grad_f32[i]).abs();
+            let rel = if grad_f64[i].abs() > 1e-10 {
+                abs_diff / grad_f64[i].abs()
+            } else {
+                abs_diff
+            };
+            rel_diffs.push((i, grad_f64[i], grad_f32[i], abs_diff, rel));
+        }
+
+        // Sort by rel diff descending to show worst cases
+        rel_diffs.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap());
+
+        println!("\n  Top 20 worst analytical gradient components:");
+        for &(idx, g64, g32, _abs, rel) in rel_diffs.iter().take(20) {
+            let sign_match = if g64.signum() == g32.signum() { " " } else { "!" };
+            println!(
+                "    {sign_match} param[{idx:3}]: f64={g64:+.8e}  f32={g32:+.8e}  rel={rel:.6e}"
+            );
+        }
+
+        // Overall stats
+        let all_rels: Vec<f64> = rel_diffs.iter().map(|r| r.4).collect();
+        let max_rel = all_rels.iter().cloned().fold(0.0f64, f64::max);
+        let mean_rel = all_rels.iter().sum::<f64>() / all_rels.len() as f64;
+        let mut sorted_rels = all_rels.clone();
+        sorted_rels.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median_rel = sorted_rels[sorted_rels.len() / 2];
+        let p90_rel = sorted_rels[(sorted_rels.len() as f64 * 0.9) as usize];
+        let p99_rel = sorted_rels[(sorted_rels.len() as f64 * 0.99) as usize];
+
+        // Sign disagreements
+        let sign_mismatches: Vec<_> = rel_diffs
+            .iter()
+            .filter(|r| r.1.signum() != r.2.signum() && r.1.abs() > 1e-6)
+            .collect();
+
+        println!("\n  Analytical gradient statistics (all {n} params):");
+        println!("    Max rel diff:    {max_rel:.6e}");
+        println!("    Mean rel diff:   {mean_rel:.6e}");
+        println!("    Median rel diff: {median_rel:.6e}");
+        println!("    P90 rel diff:    {p90_rel:.6e}");
+        println!("    P99 rel diff:    {p99_rel:.6e}");
+        println!(
+            "    Sign mismatches: {} / {n} (where |grad_f64| > 1e-6)",
+            sign_mismatches.len()
+        );
+
+        // ---- Test at perturbed point ----
+        println!("\n  --- At perturbed point ---");
+        let mut rng_state = 42u64;
+        let mut perturbed = init.clone();
+        for p in &mut perturbed {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let noise = ((rng_state >> 33) as f64 / (1u64 << 31) as f64) * 0.2 - 0.1;
+            *p = (*p + noise).max(0.01);
+        }
+
+        let mut grad_f64_pert = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual: Vec<Dual> =
+                perturbed.iter().map(|&x| Dual::constant(x)).collect();
+            params_dual[i] = Dual::var(perturbed[i]);
+            let nll: Dual = model.nll_generic(&params_dual).unwrap();
+            grad_f64_pert[i] = nll.dot;
+        }
+
+        let mut grad_f32_pert = vec![0.0f64; n];
+        for i in 0..n {
+            let mut params_dual32: Vec<Dual32> =
+                perturbed.iter().map(|&x| Dual32::constant(x as f32)).collect();
+            params_dual32[i] = Dual32::var(perturbed[i] as f32);
+            let nll: Dual32 = model.nll_generic(&params_dual32).unwrap();
+            grad_f32_pert[i] = nll.dot as f64;
+        }
+
+        let mut rel_diffs_pert: Vec<f64> = Vec::new();
+        let mut sign_mismatch_pert = 0usize;
+        for i in 0..n {
+            let abs_diff = (grad_f64_pert[i] - grad_f32_pert[i]).abs();
+            let rel = if grad_f64_pert[i].abs() > 1e-10 {
+                abs_diff / grad_f64_pert[i].abs()
+            } else {
+                abs_diff
+            };
+            rel_diffs_pert.push(rel);
+            if grad_f64_pert[i].signum() != grad_f32_pert[i].signum()
+                && grad_f64_pert[i].abs() > 1e-6
+            {
+                sign_mismatch_pert += 1;
+            }
+        }
+
+        rel_diffs_pert.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let max_rel_pert = rel_diffs_pert.iter().cloned().fold(0.0f64, f64::max);
+        let median_rel_pert = rel_diffs_pert[rel_diffs_pert.len() / 2];
+        let p99_rel_pert = rel_diffs_pert[(rel_diffs_pert.len() as f64 * 0.99) as usize];
+
+        println!("  Perturbed gradient statistics:");
+        println!("    Max rel diff:    {max_rel_pert:.6e}");
+        println!("    Median rel diff: {median_rel_pert:.6e}");
+        println!("    P99 rel diff:    {p99_rel_pert:.6e}");
+        println!(
+            "    Sign mismatches: {sign_mismatch_pert} / {n} (where |grad_f64| > 1e-6)"
+        );
+
+        // Verdict
+        println!("\n  ================================================================");
+        if max_rel < 0.01 && sign_mismatches.is_empty() {
+            println!("  VERDICT: f32 analytical gradients SUFFICIENT for Metal GPU");
+            println!("  Max error < 1%, no sign flips. L-BFGS-B should converge.");
+        } else if max_rel < 0.1 && sign_mismatches.len() <= 2 {
+            println!("  VERDICT: f32 analytical gradients MARGINAL for Metal GPU");
+            println!("  Some components have >1% error. May need Kahan or mixed precision.");
+        } else {
+            println!("  VERDICT: f32 analytical gradients INSUFFICIENT for Metal GPU");
+            println!("  Large errors or sign flips. Need f64 accumulation or different approach.");
+        }
+        println!("  ================================================================");
+    }
+
+    println!("\n================================================================================");
+    println!("Dual32 analytical gradient PoC complete.");
+    println!("================================================================================\n");
+}

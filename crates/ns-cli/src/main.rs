@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use nalgebra::{DMatrix, DVector};
 use serde::Deserialize;
 use statrs::distribution::ContinuousCDF;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod analysis_spec;
@@ -526,6 +526,13 @@ enum ImportCommands {
         #[arg(long, required_unless_present = "xml", conflicts_with = "xml")]
         dir: Option<PathBuf>,
 
+        /// Base directory for resolving relative paths in XML (ROOT files, sub-XMLs).
+        ///
+        /// Defaults to the parent directory of `--xml`. Needed for pyhf validation
+        /// fixtures where paths are relative to the export root, not to the XML file.
+        #[arg(long)]
+        basedir: Option<PathBuf>,
+
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -1028,14 +1035,19 @@ fn main() -> Result<()> {
             }
         },
         Commands::Import { command } => match command {
-            ImportCommands::Histfactory { xml, dir, output } => {
+            ImportCommands::Histfactory { xml, dir, basedir, output } => {
                 let xml_path = if let Some(xml) = xml {
                     xml
                 } else {
                     let dir = dir.expect("clap enforces: --xml or --dir");
                     discover::discover_single_combination_xml(&dir)?
                 };
-                cmd_import_histfactory(&xml_path, output.as_ref(), cli.bundle.as_ref())
+                cmd_import_histfactory(
+                    &xml_path,
+                    basedir.as_deref(),
+                    output.as_ref(),
+                    cli.bundle.as_ref(),
+                )
             }
             ImportCommands::TrexConfig {
                 config,
@@ -1525,11 +1537,12 @@ fn cmd_run_spec_v0(
 
 fn cmd_import_histfactory(
     xml: &PathBuf,
+    basedir: Option<&Path>,
     output: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     tracing::info!(path = %xml.display(), "importing HistFactory combination.xml");
-    let ws = ns_translate::histfactory::from_xml(xml)?;
+    let ws = ns_translate::histfactory::from_xml_with_basedir(xml, basedir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {

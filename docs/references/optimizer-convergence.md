@@ -7,77 +7,77 @@ status: stable
 
 ## TL;DR
 
-NextStat использует L-BFGS-B и по умолчанию стремится к **наилучшему минимуму NLL** (best-NLL).
-Расхождения с pyhf в bestfit параметрах на больших моделях (>100 params) —
-**ожидаемое и задокументированное** поведение, а не баг.
+NextStat uses L-BFGS-B and, by default, targets the **best NLL minimum** ("best-NLL").
+Differences vs pyhf in best-fit parameters on large models (>100 params) are **expected and
+documented behavior**, not a bug.
 
 ---
 
-## 1. Позиция: Best-NLL по умолчанию
+## 1. Position: Best-NLL by default
 
-### Принцип
+### Principle
 
-NextStat **не ограничивает** оптимизатор ради совпадения с конкретным инструментом.
-Если L-BFGS-B находит более глубокий минимум, чем SLSQP pyhf — это корректный результат.
+NextStat does **not** intentionally constrain the optimizer just to match a specific external tool.
+If L-BFGS-B finds a deeper minimum than pyhf's SLSQP, that is a correct result.
 
-### Обоснование
+### Rationale
 
-1. **Objective parity подтверждена**: NLL вычисления NextStat и pyhf совпадают на уровне 1e-9 — 1e-13
-   при одинаковых параметрах (cross-eval). Модели идентичны.
+1. **Objective parity is validated**: NextStat and pyhf compute the same NLL at the same parameter
+   point (cross-eval), typically agreeing at ~1e-9 to 1e-13. The underlying likelihood model is the same.
 
-2. **Различия — в оптимизаторе, не в модели**: pyhf SLSQP останавливается с ||grad|| = 1.4–4.6
-   на больших моделях, не достигая истинного минимума. L-BFGS-B с quasi-Newton Hessian approximation
-   продолжает спуск.
+2. **Differences come from the optimizer, not the model**: on large models, pyhf's SLSQP can stop
+   with a relatively large gradient norm (e.g. ||grad|| ~ 1.4 to 4.6) before reaching the true minimum.
+   L-BFGS-B, with a quasi-Newton Hessian approximation, often continues descending.
 
-3. **Кросс-валидация**: pyhf(init=NS_hat) достигает того же NLL, что NS → минимум доступен обоим.
-   NS(init=pyhf_hat) уходит ещё ниже → NS робастнее к начальной точке.
+3. **Cross-validation**: pyhf(init=NS_hat) can reach the same NLL as NextStat, meaning the minimum is
+   accessible to both. NextStat(init=pyhf_hat) may still go lower, indicating better robustness to init.
 
-4. **Multi-start анализ**: SLSQP multi-start (20 starts) на больших моделях converges
-   в <25% случаев; лучший результат всё равно хуже NS.
+4. **Multi-start analysis**: on large models, SLSQP multi-start (e.g. 20 restarts) may converge in
+   <25% of runs; the best outcome can still be worse than NextStat's best-NLL.
 
-### Масштаб расхождений
+### Typical mismatch scale
 
-| Модель | Параметры | ΔNLL (NS - pyhf) | Причина |
+| Model | Parameters | ΔNLL (NS - pyhf) | Reason |
 |--------|-----------|-------------------|---------|
-| simple_workspace | 2 | 0.0 | Оба converge |
-| complex_workspace | 9 | 0.0 | Оба converge |
+| simple_workspace | 2 | 0.0 | Both converge |
+| complex_workspace | 9 | 0.0 | Both converge |
 | tchannel | 184 | -0.01 to -0.08 | pyhf SLSQP premature stop |
 | tHu | ~200 | -0.08 | pyhf SLSQP premature stop |
 | tttt | 249 | -0.01 | pyhf SLSQP premature stop |
 
-> Отрицательный ΔNLL означает: NextStat находит **лучший** (более низкий) минимум.
+> Negative ΔNLL means NextStat finds a **better** (lower) minimum.
 
 ---
 
-## 2. Уровни parity
+## 2. Parity levels
 
-### Level 1: Objective Parity (P0, обязательный)
+### Level 1: Objective parity (P0, required)
 
-NLL(params) совпадает между NextStat и pyhf при одинаковых params.
+NLL(params) matches between NextStat and pyhf at the same params.
 
-- Tolerance: rtol=1e-6, atol=1e-8 (см. `docs/plans/standards.md` §2.2)
-- Проверяется: golden tests на fixture workspaces
-- Статус: **выполнен** для всех 7 fixture workspaces
+- Tolerance: rtol=1e-6, atol=1e-8 (see `docs/plans/standards.md` §2.2)
+- Verified by: golden tests on fixture workspaces
+- Status: **done** for all 7 fixture workspaces
 
-### Level 2: Fit Parity (P1, conditional)
+### Level 2: Fit parity (P1, conditional)
 
-Bestfit параметры совпадают в пределах допусков.
+Best-fit parameters match within tolerances.
 
-- Tolerance: atol=2e-4 на параметры, atol=5e-4 на uncertainties
-- **Ожидаемое поведение**: полное совпадение на малых моделях (<50 params),
-  расхождения на больших моделях из-за разных оптимизаторов
-- **Не является дефектом**, если NS NLL <= pyhf NLL
+- Tolerance: atol=2e-4 on parameters, atol=5e-4 on uncertainties
+- **Expected behavior**: full agreement on small models (<50 params); mismatches on large models due
+  to different optimizers
+- **Not a defect** if NS NLL <= pyhf NLL
 
-### Level 3: Optimizer Compat (не реализован, не планируется)
+### Level 3: Optimizer compatibility (not implemented, not planned)
 
-Специальная деградация оптимизатора для совпадения с SLSQP. **Отвергнуто** —
-это искусственное ограничение без научной ценности.
+Intentionally degrading the optimizer to match SLSQP is **rejected**: it is an artificial constraint
+with no scientific value.
 
 ---
 
-## 3. Как верифицировать
+## 3. How to verify
 
-### Для пользователей
+### For users
 
 ```python
 import nextstat, json
@@ -86,67 +86,67 @@ ws = json.load(open("workspace.json"))
 model = nextstat.from_pyhf(json.dumps(ws))
 result = nextstat.fit(model)
 
-# NLL в минимуме — чем ниже, тем лучше
+# NLL at the minimum: lower is better
 print(f"NLL: {result.nll}")
-print(f"||grad||: ...")  # доступно через диагностику
+print(f"||grad||: ...")  # available via diagnostics
 ```
 
-### Для разработчиков (parity check)
+### For developers (parity checks)
 
 ```bash
-# Objective parity (должен пройти всегда)
+# Objective parity (must always pass)
 make pyhf-audit-nll
 
-# Fit parity (может расходиться на больших моделях — ожидаемо)
+# Fit parity (may differ on large models; expected)
 make pyhf-audit-fit
 ```
 
-### Диагностический скрипт
+### Diagnostic script
 
 ```bash
-# Cross-eval: проверяет что NS и pyhf вычисляют одинаковый NLL в точках друг друга
+# Cross-eval: verifies that NS and pyhf compute the same NLL at each other's best-fit points
 python tests/diagnose_optimizer.py workspace.json
 ```
 
 ---
 
-## 4. Warm-start для pyhf-совместимости
+## 4. Warm-start for pyhf reproducibility
 
-Если **конкретный** use case требует совпадения с pyhf (например, воспроизведение
-опубликованного результата), можно использовать warm-start от точки pyhf:
+If a **specific** use case requires matching pyhf (e.g. reproducing a published result), use a
+warm-start from the pyhf best-fit point:
 
 ```python
 import pyhf, nextstat, json
 
-# 1. Fit в pyhf
+# 1. Fit in pyhf
 ws = json.load(open("workspace.json"))
 model = pyhf.Workspace(ws).model()
 pyhf_pars, _ = pyhf.infer.mle.fit(model.config.suggested_init(), model, return_uncertainties=True)
 
-# 2. Warm-start в NextStat от точки pyhf
+# 2. Warm-start NextStat from the pyhf point
 ns_model = nextstat.from_pyhf(json.dumps(ws))
 result = nextstat.fit(ns_model, init_pars=pyhf_pars.tolist())
-# result.nll <= pyhf NLL (гарантировано)
+# result.nll <= pyhf NLL (guaranteed)
 ```
 
-Это **не** режим совместимости — NS всё равно может уйти ниже.
-Но если SLSQP действительно нашёл минимум, NS подтвердит это.
+This is **not** a "compatibility mode": NextStat can still go lower.
+But if SLSQP truly found the minimum, NextStat will confirm it.
 
 ---
 
-## 5. L-BFGS-B vs SLSQP: технические детали
+## 5. L-BFGS-B vs SLSQP: technical details
 
-| Аспект | L-BFGS-B (NextStat) | SLSQP (pyhf/scipy) |
+| Aspect | L-BFGS-B (NextStat) | SLSQP (pyhf/scipy) |
 |--------|---------------------|---------------------|
 | Hessian | Quasi-Newton (m=10 history) | Rank-1 update |
 | Bounds | Native box constraints | Native box constraints |
-| Constraints | Через reparameterization | Native linear/nonlinear |
+| Constraints | Via reparameterization | Native linear/nonlinear |
 | Convergence | ||proj_grad|| < ftol | ||grad|| threshold (tunable) |
 | Scaling | O(m*n) per iteration | O(n^2) per iteration |
-| Большие модели (>100 params) | Robust | Часто premature stop |
+| Large models (>100 params) | Robust | Often premature stop |
 
-L-BFGS-B с m=10 хранит 10 пар (s, y) для аппроксимации Hessian —
-это даёт лучшую curvature information при N>100, чем rank-1 update SLSQP.
+L-BFGS-B with m=10 keeps 10 (s, y) pairs to approximate the Hessian. This often provides better
+curvature information for N>100 than SLSQP's rank-1 updates.
 
 ---
 
