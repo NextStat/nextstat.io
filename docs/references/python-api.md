@@ -134,6 +134,32 @@ These are imported from `nextstat/__init__.py` as convenience wrappers. Some req
 - `nextstat.econometrics`: robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting helpers.
 - `nextstat.causal`: propensity + AIPW baselines and sensitivity hooks.
 
+## GPU acceleration
+
+- `nextstat.has_cuda() -> bool` — Check if CUDA GPU batch backend is available at runtime.
+- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — Batch toy fitting. When `device="cuda"`, uses GPU-accelerated lockstep L-BFGS-B with fused NLL+gradient kernel. Falls back to CPU (Rayon) when `device="cpu"`.
+
+Build with CUDA support:
+
+```bash
+cd bindings/ns-py
+maturin develop --release --features cuda
+```
+
+Example:
+
+```python
+import nextstat
+
+model = nextstat.from_pyhf(json_str)
+params = model.suggested_init()
+
+if nextstat.has_cuda():
+    results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="cuda")
+else:
+    results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="cpu")
+```
+
 ## CLI parity
 
 The CLI mirrors the core workflows for HEP (fit/hypotest/scan/limits) and time series.

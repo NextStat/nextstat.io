@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 2C — CUDA GPU Batch Backend
+
+- **CUDA fused NLL+Gradient kernel** (`crates/ns-compute/kernels/batch_nll_grad.cu`):
+  All 7 modifier types (NormFactor, ShapeSys, ShapeFactor, NormSys/Code4, HistoSys/Code4p, StatError, Lumi)
+  with analytical gradient in a single kernel launch. 1 block = 1 toy, threads = bins, shared memory for params.
+- **cudarc 0.19 integration** (dynamic loading — binary works without CUDA installed):
+  `CudaBatchAccelerator` in `ns-compute::cuda_batch` manages GPU buffers, kernel launches, and H↔D transfers.
+- **GPU model serialization**: `HistFactoryModel::serialize_for_gpu() -> GpuModelData` converts HistFactory model
+  to flat GPU-friendly buffers (nominal counts, modifier descriptors, per-bin param indices, constraints).
+- **Lockstep batch optimizer** (`ns-inference::gpu_batch`): standalone `LbfgsState` L-BFGS-B stepper,
+  all toys at same iteration with convergence masking. `fit_toys_batch_gpu()` entry point.
+- **CLI**: `--gpu` flag on `hypotest-toys` command for CUDA acceleration.
+- **Python**: `nextstat.has_cuda()` and `nextstat.fit_toys_batch_gpu(model, params, device="cuda")`.
+- **Feature chain**: `ns-compute/cuda` → `ns-translate/cuda` → `ns-inference/cuda` → `ns-cli/cuda`, `ns-py/cuda`.
+- **PTX build system**: `build.rs` compiles `.cu` kernel via `nvcc --ptx -arch=sm_70`, embedded via `include_str!`.
+
+#### HistoSys Interpolation Code 0 (Piecewise Linear)
+- `HistoSysInterpCode` enum: `Code0` (piecewise linear) and `Code4p` (polynomial+linear extrapolation).
+- Default for HistoSys changed to Code 0, matching pyhf default.
+- SIMD kernel `histosys_code0_delta_accumulate()` in ns-compute.
+- Generic `histosys_code0_delta<T: Scalar>()` for forward-mode AD.
+- Tape AD path supports both codes via `interp_code` dispatch.
+- 5 new unit tests: scalar parity, zero-delta, Code0/Code4p agreement at α=0 and α=±1.
+
 #### Phase 4 — Native TTree Reader & Ntuple-to-Workspace Pipeline
 
 **ns-root: TTree/TBranch binary reader**

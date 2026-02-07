@@ -21,7 +21,7 @@ HEP / HistFactory:
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
 - `nextstat fit --input workspace.json`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
-- `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0]`
+- `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
 - `nextstat scan --input workspace.json --start 0 --stop 5 --points 21`
 - `nextstat viz profile --input workspace.json ...`
@@ -39,6 +39,24 @@ Time series (Phase 8):
 - `nextstat timeseries kalman-fit --input kalman_1d.json ...`
 - `nextstat timeseries kalman-forecast --input kalman_1d.json ...`
 - `nextstat timeseries kalman-simulate --input kalman_1d.json ...`
+
+## GPU acceleration
+
+`hypotest-toys` supports `--gpu` to use CUDA GPU acceleration for batch toy fitting (requires `cuda` feature and an NVIDIA GPU at runtime). When `--gpu` is passed, the lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration.
+
+Build with CUDA support:
+
+```bash
+cargo build -p ns-cli --features cuda --release
+```
+
+Usage:
+
+```bash
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu
+```
+
+If no CUDA GPU is available at runtime, the command exits with an error. Without `--gpu`, the standard CPU (Rayon + Accelerate) path is used.
 
 ## Determinism and parity
 

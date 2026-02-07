@@ -280,7 +280,7 @@ $$\sigma_b^\text{rel} = \frac{\sqrt{\sum_s \delta_{s,b}^2}}{\sum_s \nu^0_{s,b}}$
 
 The treatment of systematic uncertainties requires defining interpolation algorithms to produce continuous functions $\eta_s(\boldsymbol{\alpha})$ and $\sigma_{sb}(\boldsymbol{\alpha})$ from the discrete $\pm 1\sigma$ variations. Following [1], we parametrize $\alpha_p$ such that $\alpha_p = 0$ is the nominal value and $\alpha_p = \pm 1$ are the "$\pm 1\sigma$ variations."
 
-Four interpolation strategies are available. NextStat implements all four for completeness, with defaults matching pyhf.
+Four interpolation strategies are available. NextStat implements Code 0 (piecewise linear) and Code 4/4p (polynomial+exponential), with defaults matching pyhf. Codes 1 and 2 are documented for reference but not yet implemented.
 
 ### 5.1 Piecewise Linear (InterpCode=0)
 
@@ -382,7 +382,7 @@ where $p(\alpha) = 24\alpha^4 - 40\alpha^2 + 15$ is a polynomial satisfying $p(0
 | OverallSys ($\eta$) | 4 (poly+exp) | Multiplicative | Yes |
 | HistoSys ($\sigma$) | 0 (piecewise linear) | Additive | Yes |
 
-NextStat matches these defaults exactly for pyhf parity.
+NextStat matches these defaults exactly for pyhf parity. Both Code 0 and Code 4p are implemented for HistoSys and selectable via `HistoSysInterpCode`.
 
 ## 6. Constraint Terms
 

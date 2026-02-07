@@ -123,6 +123,24 @@ let ws = NtupleWorkspaceBuilder::new()
     .build()?;  // → Workspace
 ```
 
+## `ns-compute` — GPU backends
+
+In addition to the SIMD Poisson NLL path, `ns-compute` provides optional GPU backends:
+
+- **`accelerate` feature** (macOS): Apple Accelerate (vDSP/vForce) for vectorized `ln()` and subtraction. Enabled automatically on Apple Silicon.
+- **`cuda` feature** (Linux/NVIDIA): CUDA batch NLL + analytical gradient via cudarc 0.19 (dynamic loading — binary works without CUDA installed).
+
+Key CUDA exports (feature-gated):
+- `ns_compute::cuda_types::{GpuModelData, GpuModifierEntry, GpuModifierDesc, ...}` — `#[repr(C)]` structs for GPU data layout (always available, no feature gate).
+- `ns_compute::cuda_batch::CudaBatchAccelerator` — GPU orchestrator: model upload, batch NLL+gradient kernel launch, result download.
+
+Key inference exports (feature-gated):
+- `ns_inference::gpu_batch::fit_toys_batch_gpu(model, params, n_toys, seed, config)` — Lockstep L-BFGS-B batch optimizer using GPU kernel.
+- `ns_inference::batch::is_cuda_batch_available()` — Runtime CUDA availability check.
+
+Model serialization:
+- `HistFactoryModel::serialize_for_gpu() -> GpuModelData` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints).
+
 ## CLI
 
 The CLI is implemented in `crates/ns-cli` and wraps `ns-inference` surfaces.

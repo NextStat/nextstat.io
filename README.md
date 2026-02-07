@@ -36,7 +36,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py
 - Negative log-likelihood (Poisson + constraints), including Barlow-Beeston auxiliary terms
 - Maximum Likelihood Estimation (L-BFGS-B) with uncertainties via (damped) Hessian-based covariance + diagonal fallback
 - NUTS sampling surface (generic `Posterior` API) + optional ArviZ integration
-- SIMD kernels and Rayon parallelism where it matters
+- SIMD kernels, Rayon parallelism, Apple Accelerate (vDSP/vForce), and optional CUDA GPU batch acceleration
 - Rust library, Python package (PyO3/maturin), and a CLI
 - Implemented packs: regression/GLM, hierarchical models, time series (Kalman/EM/forecast), econometrics/causal helpers, and PK/NLME baselines
 
@@ -235,6 +235,7 @@ let expr = ns_root::CompiledExpr::compile("pt > 25.0 && abs(eta) < 2.5")?;
 nextstat fit --input workspace.json
 nextstat hypotest --input workspace.json --mu 1.0 --expected-set
 nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --seed 42 --threads 0
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu  # CUDA GPU acceleration
 nextstat upper-limit --input workspace.json --expected --scan-start 0 --scan-stop 5 --scan-points 201
 nextstat version
 ```
