@@ -1876,6 +1876,7 @@ fn cmd_build_hists(
     out_dir: &PathBuf,
     overwrite: bool,
     coverage_json: Option<&PathBuf>,
+    expr_coverage_json: Option<&PathBuf>,
 ) -> Result<()> {
     // Reuse the report/run convention: require empty dir unless --overwrite.
     ensure_out_dir(out_dir, overwrite)?;
@@ -1886,6 +1887,11 @@ fn cmd_build_hists(
     let base_dir_override = base_dir.map(|p| p.as_path());
     let resolved_base_dir =
         base_dir_override.or_else(|| config.parent()).unwrap_or_else(|| std::path::Path::new("."));
+
+    if let Some(path) = expr_coverage_json {
+        let rep = ns_translate::trex::expr_coverage_from_str(&text)?;
+        write_json_file(path, &serde_json::to_value(&rep)?)?;
+    }
 
     let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
     let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;

@@ -30,7 +30,7 @@ fn fixture_path(rel: &str) -> PathBuf {
 }
 
 #[test]
-fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
+fn import_trex_config_emits_analysis_yaml_and_coverage_json_and_expr_coverage_json() {
     let root = repo_root();
     let config = root.join("docs/examples/trex_config_ntup_minimal.txt");
     assert!(config.exists(), "missing config: {}", config.display());
@@ -38,6 +38,7 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
     let ws_path = tmp_path("trex_ws.json");
     let yaml_path = tmp_path("trex_analysis.yaml");
     let cov_path = tmp_path("trex_coverage.json");
+    let expr_cov_path = tmp_path("trex_expr_coverage.json");
 
     let out = run(&[
         "import",
@@ -52,6 +53,8 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
         yaml_path.to_string_lossy().as_ref(),
         "--coverage-json",
         cov_path.to_string_lossy().as_ref(),
+        "--expr-coverage-json",
+        expr_cov_path.to_string_lossy().as_ref(),
     ]);
     assert!(
         out.status.success(),
@@ -62,6 +65,7 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
     assert!(ws_path.exists(), "missing workspace output: {}", ws_path.display());
     assert!(yaml_path.exists(), "missing analysis yaml: {}", yaml_path.display());
     assert!(cov_path.exists(), "missing coverage json: {}", cov_path.display());
+    assert!(expr_cov_path.exists(), "missing expr coverage json: {}", expr_cov_path.display());
 
     let spec: serde_yaml_ng::Value =
         serde_yaml_ng::from_slice(&std::fs::read(&yaml_path).unwrap()).unwrap();
@@ -97,9 +101,20 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
     let unknown = cov.get("unknown").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     assert!(unknown.is_empty(), "expected no unknown keys in minimal config, got={unknown:?}");
 
+    let rep: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&expr_cov_path).unwrap()).unwrap();
+    assert_eq!(
+        rep.get("schema_version").and_then(|v| v.as_str()),
+        Some("trex_expr_coverage_v0")
+    );
+    assert_eq!(rep.get("n_err").and_then(|v| v.as_u64()), Some(0));
+    let items = rep.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    assert!(!items.is_empty(), "expected some expressions in report");
+
     let _ = std::fs::remove_file(&ws_path);
     let _ = std::fs::remove_file(&yaml_path);
     let _ = std::fs::remove_file(&cov_path);
+    let _ = std::fs::remove_file(&expr_cov_path);
 }
 
 #[test]
