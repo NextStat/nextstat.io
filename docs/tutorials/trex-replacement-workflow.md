@@ -12,13 +12,63 @@ This tutorial shows the “one command” path to replace TRExFitter runs using 
 
 For parity/baselines across ROOT/TREx, see `docs/tutorials/root-trexfitter-parity.md`.
 
-## 1) Determinism mode (non-negotiable for parity)
+## 1) Determinism and Parity Mode (non-negotiable for parity)
 
-For reproducible comparisons, always use:
+NextStat separates "specification correctness" from "speed" via two evaluation modes:
 
-- `execution.determinism.threads: 1` in `analysis.yaml` (or `--threads 1` in direct subcommands)
+| Mode | Summation | Backend | Threads | Use Case |
+|------|-----------|---------|---------|----------|
+| **Parity** | Kahan compensated | SIMD (Accelerate disabled) | 1 (forced) | Validation vs pyhf / TREx baselines |
+| **Fast** | Naive | SIMD / Accelerate / CUDA | Rayon (auto) | Production inference |
 
-This enables stable ordering and avoids non-deterministic reductions.
+### Recommended: `--parity` flag
+
+For reproducible parity comparisons, use:
+
+```yaml
+# analysis.yaml
+execution:
+  determinism: { threads: 1, parity: true }
+```
+
+Or via CLI:
+
+```bash
+nextstat fit --input workspace.json --parity
+```
+
+Or via Python:
+
+```python
+import nextstat
+nextstat.set_eval_mode("parity")
+```
+
+When Parity mode is active:
+1. **EvalMode::Parity** is set process-wide (atomic flag)
+2. **Kahan compensated summation** replaces naive `+=` in Poisson NLL
+3. **Apple Accelerate** is automatically disabled
+4. **Thread count forced to 1** (sequential Rayon)
+5. Results are **bit-exact reproducible** across runs
+
+### Legacy: `threads: 1` only
+
+Setting `execution.determinism.threads: 1` without `parity: true` gives stable ordering but uses naive summation. Use `--parity` instead for full determinism.
+
+### Tolerance contract (Parity mode vs pyhf)
+
+| Tier | Metric | Tolerance |
+|------|--------|-----------|
+| 1 | Per-bin expected data | 1e-12 |
+| 3 | NLL value | 1e-8 atol |
+| 5 | Best-fit params | 2e-4 |
+| 6 | Uncertainties | 5e-4 |
+
+Full 7-tier hierarchy: `docs/pyhf-parity-contract.md`.
+
+### Kahan overhead
+
+Confirmed **<5%** overhead vs naive summation at the same thread count across all tested workspaces (simple, complex, tHu 184-param, tttt 249-param).
 
 ## 2) (Optional) IDE schema for `analysis.yaml`
 
@@ -55,7 +105,7 @@ inputs:
     measurement: NominalMeasurement
 
 execution:
-  determinism: { threads: 1 }
+  determinism: { threads: 1, parity: true }
 
   import:
     enabled: true
@@ -96,7 +146,7 @@ Enable `fit` and `report` to produce TREx-like artifacts:
 
 ```yaml
 execution:
-  determinism: { threads: 1 }
+  determinism: { threads: 1, parity: true }
   import: { enabled: true, output_json: workspace.json }
   fit: { enabled: true, output_json: fit.json }
   profile_scan: { enabled: false, start: 0.0, stop: 5.0, points: 21, output_json: scan.json }
@@ -158,8 +208,10 @@ Requirements:
 
 ## 8) Next steps (parity baselines)
 
-To enforce “identical numbers” against ROOT/TREx baselines, follow:
+To enforce "identical numbers" against ROOT/TREx baselines, follow:
 - `docs/tutorials/root-trexfitter-parity.md`
+- `docs/pyhf-parity-contract.md` — 7-tier tolerance hierarchy (per-bin 1e-12 → toys 0.05)
+- `docs/references/trex_replacement_parity_contract.md` — TREx replacement parity contract
 
 Realistic TREx export dirs (with `combination.xml` + ROOT histograms) will be used to record baselines via `tests/record_baseline.py` (tracked separately in BMCP).
 

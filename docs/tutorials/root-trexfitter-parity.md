@@ -1053,6 +1053,8 @@ The `--rootdir` option is needed only if relative paths in XML should be resolve
 
 ## 2) What counts as a "match"
 
+**Important:** All NextStat parity runs should use `--parity` mode (or `nextstat.set_eval_mode("parity")`) to enable Kahan compensated summation, disable Accelerate, and force single-threaded execution. This ensures bit-exact reproducibility. See `docs/pyhf-parity-contract.md` for the full 7-tier tolerance hierarchy.
+
 Expected sources of differences between ROOT vs pyhf/NextStat:
 - different minimizers/strategies and stopping criteria
 - different default constraints/parameterizations (especially near boundaries)

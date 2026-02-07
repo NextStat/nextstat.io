@@ -4,7 +4,7 @@
 //! Always available (no feature gate) so ns-translate can serialize
 //! `MetalModelData` without requiring Metal at compile time.
 
-use crate::cuda_types::{GpuModelData, GpuModifierType, GpuSampleInfo, GpuModifierDesc};
+use crate::cuda_types::{GpuModelData, GpuSampleInfo, GpuModifierDesc};
 
 /// Barlow-Beeston auxiliary Poisson constraint (Metal f32 version).
 ///
@@ -66,6 +66,7 @@ pub struct MetalModelData {
     pub modifier_desc_offsets: Vec<u32>,
 
     // --- Per-bin parameter indices (unchanged, all u32) ---
+    /// Flat array of parameter indices for per-bin modifiers.
     pub per_bin_param_indices: Vec<u32>,
 
     // --- Extra modifier data (f64→f32) ---
@@ -139,5 +140,3 @@ impl MetalModelData {
     }
 }
 
-// Re-export types that are shared with CUDA (integer-only, no precision change).
-pub use crate::cuda_types::GpuModifierType;

@@ -93,7 +93,15 @@ def test_hepdata_workspaces_twice_nll_parity(relpath: str, workspace: dict[str, 
     measurement_name = workspace["measurements"][0]["name"]
 
     with ns_timing.time(f"pyhf:model+data:{relpath}"):
-        pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
+        try:
+            pyhf_model, pyhf_data = _pyhf_model_and_data(workspace, measurement_name)
+        except (
+            pyhf.exceptions.InvalidModel,
+            pyhf.exceptions.InvalidMeasurement,
+            pyhf.exceptions.InvalidSpecification,
+            pyhf.exceptions.InvalidWorkspaceOperation,
+        ) as e:
+            pytest.skip(f"pyhf cannot build model for {relpath}: {e}")
         pyhf_init = list(pyhf_model.config.suggested_init())
         pyhf_bounds = list(pyhf_model.config.suggested_bounds())
 
