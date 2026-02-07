@@ -145,6 +145,40 @@ Optional compare vs the latest recorded ROOT baseline manifest:
 make apex2-root-suite-compare-latest ROOT_CURRENT_SUITE="${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json"
 ```
 
+## TREx replacement baseline recorder (external)
+
+In addition to the ROOT-suite parity baseline (profile-scan report), we also support recording a compact
+**TREx replacement baseline** (`trex_baseline_v0`) from a real TRExFitter/HistFactory export directory.
+
+This is meant to run only in environments where ROOT/HistFactory are available; it is **not** part of PR CI.
+
+Prereq check (prints JSON and exits `0/3`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_trex_baseline.py \
+  --export-dir /abs/path/to/trex/export \
+  --prereq-only
+```
+
+Record a baseline starting from an existing export dir (contains `combination.xml`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_trex_baseline.py \
+  --export-dir /abs/path/to/trex/export \
+  --case mycase
+```
+
+Output (per case):
+- `tests/baselines/trex/<case>/baseline.json` (schema: `docs/schemas/trex/baseline_v0.schema.json`)
+
+Optional: compare two baselines (numbers-only; no ROOT needed for the compare step):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/compare_trex_baseline_files.py \
+  --baseline /abs/path/to/old/baseline.json \
+  --candidate tests/baselines/trex/mycase/baseline.json
+```
+
 ## Apex2 workflow (Planning → Exploration → Execution → Verification)
 
 Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).

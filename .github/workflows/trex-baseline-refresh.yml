@@ -1,0 +1,101 @@
+name: TREx Baseline Refresh (External)
+
+on:
+  workflow_dispatch:
+    inputs:
+      export_dir:
+        description: "Absolute path to a TREx/HistFactory export dir containing combination.xml (must be visible on the runner)"
+        required: true
+      case:
+        description: "Case name (used for output folder naming)"
+        required: true
+        default: "trex_case"
+      rootdir:
+        description: "Optional rootdir for pyhf.readxml (defaults to export_dir)"
+        required: false
+        default: ""
+      trex_config:
+        description: "Optional TRExFitter config to run first (advanced; requires trex-fitter on runner)"
+        required: false
+        default: ""
+      trex_cmd:
+        description: "TRExFitter executable (only used if trex_config is set)"
+        required: false
+        default: "trex-fitter"
+      trex_args:
+        description: "Extra TRExFitter args (space-separated; only used if trex_config is set)"
+        required: false
+        default: ""
+      compare_to:
+        description: "Optional path to an existing baseline.json to compare against (must be visible on runner)"
+        required: false
+        default: ""
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  refresh:
+    # Requires ROOT + HistFactory + TRExFitter (optional) on the runner.
+    runs-on: [self-hosted, trex]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Python build + validation deps
+        run: |
+          pip install "maturin>=1.11,<2.0"
+          pip install "pyhf>=0.7.6" "uproot>=5.0" "jsonschema>=4.0"
+
+      - name: Build + install NextStat Python bindings (editable)
+        working-directory: bindings/ns-py
+        run: maturin develop --release
+
+      - name: Prereq check (ROOT/TREx)
+        run: |
+          PYTHONPATH=bindings/ns-py/python python tests/record_trex_baseline.py \
+            --export-dir "${{ inputs.export_dir }}" \
+            --prereq-only
+
+      - name: Record baseline
+        run: |
+          mkdir -p artifacts/trex_baselines
+          extra=()
+          if [[ -n "${{ inputs.rootdir }}" ]]; then extra+=(--rootdir "${{ inputs.rootdir }}"); fi
+          if [[ -n "${{ inputs.trex_config }}" ]]; then
+            extra+=(--trex-config "${{ inputs.trex_config }}")
+            extra+=(--trex-cmd "${{ inputs.trex_cmd }}")
+            extra+=(--trex-args "${{ inputs.trex_args }}")
+          fi
+          PYTHONPATH=bindings/ns-py/python python tests/record_trex_baseline.py \
+            --export-dir "${{ inputs.export_dir }}" \
+            --case "${{ inputs.case }}" \
+            --out-root artifacts/trex_baselines \
+            "${extra[@]}"
+
+      - name: Compare to existing baseline (optional)
+        if: ${{ inputs.compare_to != '' }}
+        run: |
+          PYTHONPATH=bindings/ns-py/python python tests/compare_trex_baseline_files.py \
+            --baseline "${{ inputs.compare_to }}" \
+            --candidate "artifacts/trex_baselines/${{ inputs.case }}/baseline.json" \
+            --out "artifacts/trex_baselines/${{ inputs.case }}/compare_report.json"
+
+      - name: Upload baseline artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trex-baseline-${{ inputs.case }}
+          path: artifacts/trex_baselines/${{ inputs.case }}
+

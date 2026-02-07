@@ -9,7 +9,7 @@
     "path": {
       "type": "string",
       "minLength": 1,
-      "description": "Filesystem path (absolute or relative to the working directory)."
+      "description": "Filesystem path (absolute or relative to the analysis spec file directory)."
     },
     "nullable_path": {
       "type": ["string", "null"],
@@ -100,7 +100,7 @@
         "trex_config_yaml": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["read_from", "tree_name", "measurement", "poi", "regions", "samples", "systematics"],
+          "required": ["read_from", "tree_name", "measurement", "poi", "regions", "samples"],
           "properties": {
             "base_dir": {
               "$ref": "#/$defs/nullable_path",
@@ -120,7 +120,7 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "variable", "binning_edges", "selection"],
+                "required": ["name", "variable", "binning_edges"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1 },
                   "variable": { "type": "string", "minLength": 1 },
@@ -132,7 +132,17 @@
                   },
                   "selection": {
                     "$ref": "#/$defs/nullable_string",
-                    "description": "Optional selection/cut expression."
+                    "description": "Optional selection/cut expression.",
+                    "default": null
+                  },
+                  "data_file": {
+                    "$ref": "#/$defs/path",
+                    "description": "Optional explicit data ROOT file path for this region."
+                  },
+                  "data_tree_name": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional explicit data TTree override for this region.",
+                    "default": null
                   }
                 }
               }
@@ -143,25 +153,31 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "name",
-                  "kind",
-                  "file",
-                  "tree_name",
-                  "weight",
-                  "regions",
-                  "norm_factors",
-                  "norm_sys",
-                  "stat_error"
-                ],
+                "required": ["name", "kind", "file"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1 },
                   "kind": { "type": "string", "enum": ["data", "mc"] },
                   "file": { "$ref": "#/$defs/path", "description": "ROOT file path." },
-                  "tree_name": { "$ref": "#/$defs/nullable_path", "description": "Optional per-sample TTree override." },
-                  "weight": { "$ref": "#/$defs/nullable_string", "description": "Optional weight expression." },
-                  "regions": { "$ref": "#/$defs/string_list", "description": "Optional region filter list." },
-                  "norm_factors": { "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+                  "tree_name": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional per-sample TTree override.",
+                    "default": null
+                  },
+                  "weight": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional weight expression.",
+                    "default": null
+                  },
+                  "regions": {
+                    "$ref": "#/$defs/string_list",
+                    "description": "Optional region filter list.",
+                    "default": null
+                  },
+                  "norm_factors": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "default": []
+                  },
                   "norm_sys": {
                     "type": "array",
                     "default": [],
@@ -186,19 +202,19 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "type", "samples", "regions"],
+                "required": ["name", "type", "samples"],
                 "properties": {
                   "name": { "type": "string", "minLength": 1 },
                   "type": { "type": "string", "enum": ["norm", "weight", "tree"] },
                   "samples": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-                  "regions": { "$ref": "#/$defs/string_list" },
+                  "regions": { "$ref": "#/$defs/string_list", "default": null },
                   "lo": { "type": "number" },
                   "hi": { "type": "number" },
                   "weight_up": { "type": "string", "minLength": 1 },
                   "weight_down": { "type": "string", "minLength": 1 },
                   "file_up": { "$ref": "#/$defs/path" },
                   "file_down": { "$ref": "#/$defs/path" },
-                  "tree_name": { "$ref": "#/$defs/nullable_path" }
+                  "tree_name": { "$ref": "#/$defs/nullable_string", "default": null }
                 },
                 "allOf": [
                   {
@@ -371,4 +387,3 @@
     }
   ]
 }
-

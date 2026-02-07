@@ -73,6 +73,9 @@ Exit codes:
 ROOT/HistFactory parity baselines are recorded separately on a cluster environment (e.g. lxplus) via:
 - `tests/record_baseline.py --only root ...`
 
+TREx replacement baselines (numbers-only: fit + expected_data surfaces) can also be recorded from a TRExFitter/HistFactory export dir via:
+- `tests/record_trex_baseline.py --export-dir ...`
+
 Typical cluster gate workflow:
 - Record a ROOT baseline once (on the cluster machine where ROOT/TRExFitter are available).
 - Run the ROOT suite via HTCondor (single job or array), then aggregate JSON outputs.
@@ -83,3 +86,6 @@ Notes:
   `tests/record_baseline.py --only root --root-suite-existing ... --root-cases-existing ...`.
 
 See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, baseline registration, aggregation, and perf compare.
+
+Manual refresh (GitHub Actions, external runner):
+- Workflow: `.github/workflows/trex-baseline-refresh.yml` (workflow_dispatch only; requires a self-hosted runner with label `trex` and ROOT installed).

@@ -294,6 +294,212 @@ fn resolve_path(base_dir: &Path, p: &Path) -> PathBuf {
     if p.is_absolute() { p.to_path_buf() } else { base_dir.join(p) }
 }
 
+fn contains_duplicates(values: &[String]) -> Option<String> {
+    let mut xs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+    xs.sort();
+    for w in xs.windows(2) {
+        if w[0] == w[1] {
+            return Some(w[0].to_string());
+        }
+    }
+    None
+}
+
+fn quote_if_needed(raw: &str) -> Result<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        anyhow::bail!("value cannot be empty");
+    }
+    let needs_quote = s.chars().any(|c| c.is_whitespace()) || s.contains('#');
+    if !needs_quote {
+        return Ok(s.to_string());
+    }
+    if !s.contains('"') {
+        return Ok(format!("\"{s}\""));
+    }
+    if !s.contains('\'') {
+        return Ok(format!("'{s}'"));
+    }
+    anyhow::bail!("cannot safely quote value containing both single and double quotes: {s:?}");
+}
+
+fn fmt_edges(edges: &[f64]) -> String {
+    edges.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", ")
+}
+
+fn fmt_list(values: &[String]) -> String {
+    values.join(", ")
+}
+
+fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> {
+    let read_from = cfg.read_from.trim().to_ascii_uppercase();
+    if read_from != "NTUP" {
+        anyhow::bail!(
+            "inputs.trex_config_yaml.read_from must be NTUP in v0, got={}",
+            cfg.read_from
+        );
+    }
+    if cfg.regions.is_empty() {
+        anyhow::bail!("inputs.trex_config_yaml.regions must be non-empty");
+    }
+    if cfg.samples.is_empty() {
+        anyhow::bail!("inputs.trex_config_yaml.samples must be non-empty");
+    }
+
+    let region_names: Vec<String> = cfg.regions.iter().map(|r| r.name.clone()).collect();
+    if let Some(dup) = contains_duplicates(&region_names) {
+        anyhow::bail!("duplicate region name: {dup}");
+    }
+    let sample_names: Vec<String> = cfg.samples.iter().map(|s| s.name.clone()).collect();
+    if let Some(dup) = contains_duplicates(&sample_names) {
+        anyhow::bail!("duplicate sample name: {dup}");
+    }
+
+    for r in &cfg.regions {
+        if r.binning_edges.len() < 2 {
+            anyhow::bail!("region '{}' binning_edges must have >= 2 edges", r.name);
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!("ReadFrom: {read_from}\n"));
+    out.push_str(&format!("TreeName: {}\n", quote_if_needed(&cfg.tree_name)?));
+    out.push_str(&format!(
+        "Measurement: {}\n",
+        quote_if_needed(&cfg.measurement)?
+    ));
+    out.push_str(&format!("POI: {}\n\n", quote_if_needed(&cfg.poi)?));
+
+    for r in &cfg.regions {
+        out.push_str(&format!("Region: {}\n", quote_if_needed(&r.name)?));
+        out.push_str(&format!("Variable: {}\n", r.variable.trim()));
+        out.push_str(&format!("Binning: {}\n", fmt_edges(&r.binning_edges)));
+        if let Some(ref sel) = r.selection {
+            let sel = sel.trim();
+            if !sel.is_empty() {
+                out.push_str(&format!("Selection: {sel}\n"));
+            }
+        }
+        if let Some(ref df) = r.data_file {
+            out.push_str(&format!(
+                "DataFile: {}\n",
+                quote_if_needed(&df.display().to_string())?
+            ));
+            if let Some(ref tn) = r.data_tree_name {
+                out.push_str(&format!("DataTreeName: {}\n", quote_if_needed(tn)?));
+            }
+        }
+        out.push('\n');
+    }
+
+    for s in &cfg.samples {
+        out.push_str(&format!("Sample: {}\n", quote_if_needed(&s.name)?));
+        let kind = match s.kind {
+            TrexYamlSampleKind::Data => "data",
+            TrexYamlSampleKind::Mc => "mc",
+        };
+        out.push_str(&format!("Type: {kind}\n"));
+        out.push_str(&format!(
+            "File: {}\n",
+            quote_if_needed(&s.file.display().to_string())?
+        ));
+        if let Some(ref tn) = s.tree_name {
+            out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
+        }
+        if let Some(ref w) = s.weight {
+            let w = w.trim();
+            if !w.is_empty() {
+                out.push_str(&format!("Weight: {w}\n"));
+            }
+        }
+        if let Some(ref rs) = s.regions {
+            if !rs.is_empty() {
+                out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+            }
+        }
+        for nf in &s.norm_factors {
+            let nf = nf.trim();
+            if !nf.is_empty() {
+                out.push_str(&format!("NormFactor: {nf}\n"));
+            }
+        }
+        for ns in &s.norm_sys {
+            out.push_str(&format!(
+                "NormSys: {} {} {}\n",
+                ns.name.trim(),
+                ns.lo,
+                ns.hi
+            ));
+        }
+        if s.stat_error {
+            out.push_str("StatError: true\n");
+        }
+        out.push('\n');
+    }
+
+    for sys in &cfg.systematics {
+        if sys.samples.is_empty() {
+            anyhow::bail!("systematic '{}' samples must be non-empty", sys.name);
+        }
+        out.push_str(&format!("Systematic: {}\n", quote_if_needed(&sys.name)?));
+        let t = match sys.kind {
+            TrexYamlSystematicType::Norm => "norm",
+            TrexYamlSystematicType::Weight => "weight",
+            TrexYamlSystematicType::Tree => "tree",
+        };
+        out.push_str(&format!("Type: {t}\n"));
+        out.push_str(&format!("Samples: {}\n", fmt_list(&sys.samples)));
+        if let Some(ref rs) = sys.regions {
+            if !rs.is_empty() {
+                out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+            }
+        }
+
+        match sys.kind {
+            TrexYamlSystematicType::Norm => {
+                let (Some(lo), Some(hi)) = (sys.lo, sys.hi) else {
+                    anyhow::bail!("systematic '{}' type=norm requires lo and hi", sys.name);
+                };
+                out.push_str(&format!("Lo: {lo}\n"));
+                out.push_str(&format!("Hi: {hi}\n"));
+            }
+            TrexYamlSystematicType::Weight => {
+                let (Some(up), Some(down)) = (&sys.weight_up, &sys.weight_down) else {
+                    anyhow::bail!(
+                        "systematic '{}' type=weight requires weight_up and weight_down",
+                        sys.name
+                    );
+                };
+                out.push_str(&format!("WeightUp: {}\n", up.trim()));
+                out.push_str(&format!("WeightDown: {}\n", down.trim()));
+            }
+            TrexYamlSystematicType::Tree => {
+                let (Some(up), Some(down)) = (&sys.file_up, &sys.file_down) else {
+                    anyhow::bail!(
+                        "systematic '{}' type=tree requires file_up and file_down",
+                        sys.name
+                    );
+                };
+                out.push_str(&format!(
+                    "FileUp: {}\n",
+                    quote_if_needed(&up.display().to_string())?
+                ));
+                out.push_str(&format!(
+                    "FileDown: {}\n",
+                    quote_if_needed(&down.display().to_string())?
+                ));
+                if let Some(ref tn) = sys.tree_name {
+                    out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
+                }
+            }
+        }
+
+        out.push('\n');
+    }
+
+    Ok(out)
+}
+
 fn find_combination_xml(export_dir: &Path) -> Result<PathBuf> {
     // First: common TREx/HistFactory convention.
     let direct = export_dir.join("combination.xml");
@@ -423,7 +629,28 @@ impl AnalysisSpecV0 {
                 (p, None, None)
             }
             "trex_config_yaml" => {
-                anyhow::bail!("mode=trex_config_yaml is not supported by `nextstat run` yet")
+                let ty = self.inputs.trex_config_yaml.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("inputs.trex_config_yaml is required for mode=trex_config_yaml")
+                })?;
+                if !self.execution.import.enabled {
+                    anyhow::bail!(
+                        "execution.import.enabled must be true for mode=trex_config_yaml (needs a workspace.json path)"
+                    );
+                }
+
+                let base_dir = if let Some(ref p) = ty.base_dir {
+                    resolve_path(cfg_dir, p)
+                } else {
+                    cfg_dir.to_path_buf()
+                };
+
+                let config_text = render_trex_config_yaml_to_txt(ty)?;
+                let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
+                (
+                    ws_out,
+                    Some(ImportPlan::TrexConfigYaml { config_text, base_dir }),
+                    None,
+                )
             }
             other => anyhow::bail!("unknown inputs.mode: {other}"),
         };

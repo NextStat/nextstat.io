@@ -54,6 +54,7 @@ Renderers must treat artifacts as canonical numeric truth. Artifacts are stable,
 
 Schemas (v0):
 - `docs/schemas/trex/analysis_spec_v0.schema.json` (analysis config YAML)
+- `docs/schemas/trex/baseline_v0.schema.json` (numbers-first baseline: fit + expected_data)
 - `docs/schemas/trex/report_distributions_v0.schema.json`
 - `docs/schemas/trex/report_pulls_v0.schema.json`
 - `docs/schemas/trex/report_corr_v0.schema.json`

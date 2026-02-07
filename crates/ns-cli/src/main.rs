@@ -1108,6 +1108,11 @@ fn cmd_run_spec_v0(
                 let ws = ns_translate::trex::workspace_from_str(&text, base_dir)?;
                 write_json_file(&plan.workspace_json, &serde_json::to_value(&ws)?)?;
             }
+            analysis_spec::ImportPlan::TrexConfigYaml { config_text, base_dir } => {
+                tracing::info!(path = %base_dir.display(), "importing TREx YAML config");
+                let ws = ns_translate::trex::workspace_from_str(config_text, base_dir)?;
+                write_json_file(&plan.workspace_json, &serde_json::to_value(&ws)?)?;
+            }
         }
     }
 

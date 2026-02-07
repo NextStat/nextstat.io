@@ -55,6 +55,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Bug fixes:**
 - HistFactory XML parser: strip `<!DOCTYPE>` declarations before parsing (roxmltree rejects DTD by default).
 
+#### Systematics Preprocessing: Smoothing + Pruning
+
+**Smoothing (`nextstat.analysis.preprocess.smooth`)**
+- 353QH,twice algorithm (ROOT `TH1::Smooth` equivalent): running median(3→5→3) + Hanning + residual smooth, applied twice.
+- Gaussian kernel smoothing with configurable bandwidth (`sigma` in bin units).
+- MAXVARIATION cap: `|smoothed_delta[i]| <= max(|original_delta|)`.
+- Top-level `smooth_variation(nominal, up, down)` API working on deltas.
+- `SmoothHistoSysStep` pipeline step for workspace-wide smoothing.
+
+**Pruning (`nextstat.analysis.preprocess.prune`)**
+- Shape pruning: prune if `max |delta/nominal| < threshold` for both up/down.
+- Norm pruning: prune if `|hi - 1| < threshold` and `|lo - 1| < threshold`.
+- Overall pruning: decompose histosys into norm (integral ratio) + shape (residual), prune if both negligible.
+- `PruneSystematicsStep` pipeline step with two-pass approach (collect decisions, then remove modifiers).
+- `PruneDecision` dataclass with human-readable `reason` string for audit.
+
+**Recommended pipeline order:** `hygiene → symmetrize → smooth → prune`.
+
 #### Phase 4.1 — TRExFitter Interop (Config Import + Analysis Spec)
 
 **ns-cli: TRExFitter config importer (NTUP subset)**
