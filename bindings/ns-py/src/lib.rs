@@ -1316,6 +1316,31 @@ impl PyHistFactoryModel {
             })
             .collect()
     }
+
+    /// Override the **nominal yields** of a single sample (main bins only) in-place.
+    ///
+    /// This is intended for ML/RL loops where you want to repeatedly evaluate the model
+    /// while varying a single sample's nominal histogram (e.g. signal yields from a NN).
+    ///
+    /// Notes:
+    /// - The override is applied to main bins only (auxdata unchanged).
+    /// - The sample must be override-safe (linear) as validated by the core model.
+    #[pyo3(signature = (*, channel, sample, nominal))]
+    fn set_sample_nominal(
+        &mut self,
+        channel: &str,
+        sample: &str,
+        nominal: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let nominal = extract_f64_vec(nominal)?;
+        if nominal.iter().any(|v| !v.is_finite()) {
+            return Err(PyValueError::new_err("nominal must contain only finite values"));
+        }
+        self.inner
+            .set_sample_nominal_by_name(channel, sample, &nominal)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set sample nominal: {}", e)))?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

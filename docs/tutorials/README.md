@@ -15,6 +15,11 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 - TREx analysis spec (YAML + schema + one-command runner): `docs/tutorials/trex-analysis-spec.md`
 - TREx replacement workflow (config → run → report): `docs/tutorials/trex-replacement-workflow.md`
 
+## ML integration
+
+- Differentiable HistFactory layer for PyTorch: `docs/differentiable-layer.md`
+- Gymnasium RL environment (optional): `docs/tutorials/ml-gymnasium.md`
+
 ## General statistics and modeling packs
 
 - Phase 6 (regression / GLM): `docs/tutorials/phase-6-regression.md`

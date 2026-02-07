@@ -97,6 +97,48 @@ Available as `nextstat._core.DifferentiableSession` when built with CUDA.
 - `.n_params()` — number of model parameters
 - `.parameter_init()` — default parameter values
 
+## Profiled significance (q₀ / qμ) on GPU (CUDA)
+
+NextStat also provides a CUDA-accelerated **profiled** layer for the common
+profile-likelihood test statistics:
+
+- Discovery: `q₀ = 2·(NLL(μ=0, θ̂₀) − NLL(μ̂, θ̂))`
+- Upper limits: `qμ = 2·(NLL(μ_test, θ̂_μ) − NLL(μ̂, θ̂))` with one-sided clipping
+
+These require two profile fits per forward pass; they are more expensive than
+`nll_loss` but directly optimize a physics test statistic.
+
+```python
+import torch
+from nextstat.torch import (
+    create_profiled_session,
+    profiled_q0_loss,
+    profiled_z0_loss,
+    profiled_qmu_loss,
+)
+
+session = create_profiled_session(model, "signal")
+signal = nn(batch).double().cuda().requires_grad_(True)
+
+q0 = profiled_q0_loss(signal, session)     # maximize discovery power
+z0 = profiled_z0_loss(signal, session)     # sqrt(q0)
+qmu = profiled_qmu_loss(signal, session, mu_test=5.0)  # upper-limit statistic
+```
+
+### Gradient formula (envelope theorem)
+
+For profiled objectives of the form `NLL(θ̂(s), s)`, the envelope theorem gives:
+
+```
+ d/ds NLL(θ̂(s), s) = ∂/∂s NLL(θ, s) |_{θ = θ̂(s)}
+```
+
+So for `q₀` the gradient w.r.t. the signal histogram is:
+
+```
+∂q₀/∂s = 2 · ( ∂NLL/∂s |_{θ̂₀} − ∂NLL/∂s |_{θ̂} )
+```
+
 ## Phase 1 Gradient Formula
 
 For fixed nuisance parameters, the gradient of NLL w.r.t. signal bin `i` is:
@@ -153,7 +195,10 @@ Zero-copy approach: PyTorch GPU ← CUDA kernel → PyTorch GPU. The kernel read
 
 ### Phase 2 (future): Implicit differentiation
 
-For profiled significance (where nuisance parameters are optimized), the gradient requires implicit differentiation:
+For **derived profiled metrics** (e.g. interpolated upper limits `μ_up(α)` or full CLs bands),
+you generally need implicit differentiation through the solver/root-finding layer.
+The simple envelope-theorem gradient is sufficient for `q₀` and `qμ`, but not for
+all downstream quantities.
 
 ```
 dq/ds = dq/ds|_{theta fixed} - (d2NLL/ds dtheta)^T (d2NLL/dtheta^2)^{-1} dq/dtheta|_{s fixed}

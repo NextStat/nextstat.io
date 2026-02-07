@@ -102,13 +102,11 @@ enum Instr {
     Div,
     Eq,
     Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    And,
-    Or,
-    Abs,
+	    Lt,
+	    Le,
+	    Gt,
+	    Ge,
+	    Abs,
     Sqrt,
     Log,
     Log10,
@@ -528,16 +526,14 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             Instr::Ne => {
                 bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 })
             }
-            Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
-            Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
-            Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
-            Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
-            Instr::And => bin2(&mut stack, |a, b| if a > 0.0 && b > 0.0 { 1.0 } else { 0.0 }),
-            Instr::Or => bin2(&mut stack, |a, b| if a > 0.0 || b > 0.0 { 1.0 } else { 0.0 }),
-            Instr::Abs => {
-                let a = stack.pop().unwrap();
-                stack.push(a.abs());
-            }
+	            Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
+	            Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
+	            Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
+	            Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
+	            Instr::Abs => {
+	                let a = stack.pop().unwrap();
+	                stack.push(a.abs());
+	            }
             Instr::Sqrt => {
                 let a = stack.pop().unwrap();
                 stack.push(a.sqrt());
@@ -654,16 +650,14 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 Instr::Ne => {
                     bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 })
                 }
-                Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
-                Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
-                Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
-                Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
-                Instr::And => bin2(&mut stack, |a, b| if a > 0.0 && b > 0.0 { 1.0 } else { 0.0 }),
-                Instr::Or => bin2(&mut stack, |a, b| if a > 0.0 || b > 0.0 { 1.0 } else { 0.0 }),
-                Instr::Abs => {
-                    let a = stack.pop().unwrap();
-                    stack.push(a.abs());
-                }
+	                Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
+	                Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
+	                Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
+	                Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
+	                Instr::Abs => {
+	                    let a = stack.pop().unwrap();
+	                    stack.push(a.abs());
+	                }
                 Instr::Sqrt => {
                     let a = stack.pop().unwrap();
                     stack.push(a.sqrt());
@@ -745,6 +739,524 @@ struct BulkEvalState<'a> {
     n: usize,
 }
 
+// ── SIMD helpers (optional) ─────────────────────────────────────
+
+#[cfg(target_arch = "aarch64")]
+mod simd_arm {
+    use std::arch::aarch64::*;
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn add_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vaddq_f64(a, b));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] += rhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn sub_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vsubq_f64(a, b));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] -= rhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn mul_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vmulq_f64(a, b));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] *= rhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn div_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vdivq_f64(a, b));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] /= rhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn add_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vaddq_f64(a, s));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] += scalar;
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn sub_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vsubq_f64(a, s));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] -= scalar;
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn mul_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vmulq_f64(a, s));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] *= scalar;
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn div_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vdivq_f64(a, s));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] /= scalar;
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn rsub_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vsubq_f64(s, a));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = scalar - lhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn rdiv_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vdivq_f64(s, a));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = scalar / lhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn rsub_col_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vsubq_f64(b, a));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = rhs[j] - lhs[j];
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn rdiv_col_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            vst1q_f64(lhs.as_mut_ptr().add(i), vdivq_f64(b, a));
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = rhs[j] / lhs[j];
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+mod simd_x86 {
+    use std::arch::x86_64::*;
+
+    macro_rules! impl_avx_binop_inplace {
+        ($name:ident, $op:ident, $scalar_fallback:expr) => {
+            #[allow(unsafe_op_in_unsafe_fn)]
+            #[target_feature(enable = "avx")]
+            pub unsafe fn $name(lhs: &mut [f64], rhs: &[f64]) {
+                let mut i = 0usize;
+                let n = lhs.len();
+                while i + 4 <= n {
+                    let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+                    let b = _mm256_loadu_pd(rhs.as_ptr().add(i));
+                    _mm256_storeu_pd(lhs.as_mut_ptr().add(i), $op(a, b));
+                    i += 4;
+                }
+                for j in i..n {
+                    lhs[j] = $scalar_fallback(lhs[j], rhs[j]);
+                }
+            }
+        };
+    }
+
+    macro_rules! impl_avx_scalar_inplace {
+        ($name:ident, $op:ident, $scalar_fallback:expr) => {
+            #[allow(unsafe_op_in_unsafe_fn)]
+            #[target_feature(enable = "avx")]
+            pub unsafe fn $name(lhs: &mut [f64], scalar: f64) {
+                let mut i = 0usize;
+                let n = lhs.len();
+                let s = _mm256_set1_pd(scalar);
+                while i + 4 <= n {
+                    let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+                    _mm256_storeu_pd(lhs.as_mut_ptr().add(i), $op(a, s));
+                    i += 4;
+                }
+                for j in i..n {
+                    lhs[j] = $scalar_fallback(lhs[j], scalar);
+                }
+            }
+        };
+    }
+
+    macro_rules! impl_avx_rscalar_inplace {
+        ($name:ident, $op:ident, $scalar_fallback:expr) => {
+            #[allow(unsafe_op_in_unsafe_fn)]
+            #[target_feature(enable = "avx")]
+            pub unsafe fn $name(lhs: &mut [f64], scalar: f64) {
+                let mut i = 0usize;
+                let n = lhs.len();
+                let s = _mm256_set1_pd(scalar);
+                while i + 4 <= n {
+                    let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+                    _mm256_storeu_pd(lhs.as_mut_ptr().add(i), $op(s, a));
+                    i += 4;
+                }
+                for j in i..n {
+                    lhs[j] = $scalar_fallback(lhs[j], scalar);
+                }
+            }
+        };
+    }
+
+    macro_rules! impl_avx_rcol_inplace {
+        ($name:ident, $op:ident, $scalar_fallback:expr) => {
+            #[allow(unsafe_op_in_unsafe_fn)]
+            #[target_feature(enable = "avx")]
+            pub unsafe fn $name(lhs: &mut [f64], rhs: &[f64]) {
+                let mut i = 0usize;
+                let n = lhs.len();
+                while i + 4 <= n {
+                    let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+                    let b = _mm256_loadu_pd(rhs.as_ptr().add(i));
+                    _mm256_storeu_pd(lhs.as_mut_ptr().add(i), $op(b, a));
+                    i += 4;
+                }
+                for j in i..n {
+                    lhs[j] = $scalar_fallback(lhs[j], rhs[j]);
+                }
+            }
+        };
+    }
+
+    impl_avx_binop_inplace!(add_inplace_avx, _mm256_add_pd, |a, b| a + b);
+    impl_avx_binop_inplace!(sub_inplace_avx, _mm256_sub_pd, |a, b| a - b);
+    impl_avx_binop_inplace!(mul_inplace_avx, _mm256_mul_pd, |a, b| a * b);
+    impl_avx_binop_inplace!(div_inplace_avx, _mm256_div_pd, |a, b| a / b);
+
+    impl_avx_scalar_inplace!(add_scalar_inplace_avx, _mm256_add_pd, |a, s| a + s);
+    impl_avx_scalar_inplace!(sub_scalar_inplace_avx, _mm256_sub_pd, |a, s| a - s);
+    impl_avx_scalar_inplace!(mul_scalar_inplace_avx, _mm256_mul_pd, |a, s| a * s);
+    impl_avx_scalar_inplace!(div_scalar_inplace_avx, _mm256_div_pd, |a, s| a / s);
+
+    impl_avx_rscalar_inplace!(rsub_scalar_inplace_avx, _mm256_sub_pd, |a, s| s - a);
+    impl_avx_rscalar_inplace!(rdiv_scalar_inplace_avx, _mm256_div_pd, |a, s| s / a);
+
+    impl_avx_rcol_inplace!(rsub_col_inplace_avx, _mm256_sub_pd, |a, b| b - a);
+    impl_avx_rcol_inplace!(rdiv_col_inplace_avx, _mm256_div_pd, |a, b| b / a);
+}
+
+#[cfg(target_arch = "aarch64")]
+fn add_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    // SAFETY: aarch64 guarantees NEON.
+    unsafe { simd_arm::add_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn add_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            // SAFETY: guarded by runtime feature detection.
+            unsafe { simd_x86::add_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x += y;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn sub_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::sub_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn sub_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::sub_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x -= y;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn mul_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::mul_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn mul_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::mul_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x *= y;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn div_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::div_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn div_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::div_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x /= y;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn add_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::add_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn add_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::add_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x += scalar;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn sub_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::sub_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn sub_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::sub_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x -= scalar;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn mul_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::mul_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn mul_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::mul_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x *= scalar;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn div_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::div_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn div_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::div_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x /= scalar;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn rsub_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::rsub_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn rsub_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::rsub_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x = scalar - *x;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn rdiv_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::rdiv_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn rdiv_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::rdiv_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x = scalar / *x;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn rsub_col_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::rsub_col_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn rsub_col_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::rsub_col_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x = y - *x;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn rdiv_col_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::rdiv_col_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn rdiv_col_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::rdiv_col_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x = y / *x;
+    }
+}
+
 impl<'a> BulkEvalState<'a> {
     fn new(n: usize) -> Self {
         Self { arena: Vec::new(), slots: Vec::with_capacity(16), stack: Vec::with_capacity(16), n }
@@ -758,6 +1270,232 @@ impl<'a> BulkEvalState<'a> {
     fn pop(&mut self) -> Slot<'a> {
         let idx = self.stack.pop().unwrap();
         self.slots[idx]
+    }
+
+    fn neg(&mut self, v: Slot<'a>) -> Slot<'a> {
+        match v {
+            Slot::Scalar(a) => Slot::Scalar(-a),
+            Slot::Col(c) => {
+                let mut out = c.to_vec();
+                mul_scalar_inplace(&mut out, -1.0);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            Slot::Owned(i) => {
+                mul_scalar_inplace(&mut self.arena[i], -1.0);
+                Slot::Owned(i)
+            }
+        }
+    }
+
+    fn add(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x + y),
+            (Slot::Owned(i), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Owned(i)) => {
+                add_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) | (Slot::Col(c), Slot::Owned(i)) => {
+                add_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Col(ca)) => {
+                let mut out = ca.to_vec();
+                add_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                add_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    mul_scalar_inplace(&mut self.arena[i], 2.0);
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    add_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    add_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
+    }
+
+    fn sub(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x - y),
+            (Slot::Owned(i), Slot::Scalar(y)) => {
+                sub_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Scalar(x), Slot::Owned(i)) => {
+                rsub_scalar_inplace(&mut self.arena[i], x);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) => {
+                sub_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(c), Slot::Owned(i)) => {
+                rsub_col_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) => {
+                let mut out = ca.to_vec();
+                sub_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Scalar(x), Slot::Col(cb)) => {
+                let mut out = cb.to_vec();
+                rsub_scalar_inplace(&mut out, x);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                sub_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    self.arena[i].fill(0.0);
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    sub_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    sub_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
+    }
+
+    fn mul(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x * y),
+            (Slot::Owned(i), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Owned(i)) => {
+                mul_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) | (Slot::Col(c), Slot::Owned(i)) => {
+                mul_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Col(ca)) => {
+                let mut out = ca.to_vec();
+                mul_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                mul_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    for x in self.arena[i].iter_mut() {
+                        *x *= *x;
+                    }
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    mul_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    mul_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
+    }
+
+    fn div(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x / y),
+            (Slot::Owned(i), Slot::Scalar(y)) => {
+                div_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Scalar(x), Slot::Owned(i)) => {
+                rdiv_scalar_inplace(&mut self.arena[i], x);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) => {
+                div_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(c), Slot::Owned(i)) => {
+                rdiv_col_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) => {
+                let mut out = ca.to_vec();
+                div_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Scalar(x), Slot::Col(cb)) => {
+                let mut out = cb.to_vec();
+                rdiv_scalar_inplace(&mut out, x);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                div_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    self.arena[i].fill(1.0);
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    div_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    div_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
     }
 
     fn unary<F>(&mut self, v: Slot<'a>, f: F) -> Slot<'a>
@@ -911,7 +1649,7 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             Instr::Load(i) => st.push(Slot::Col(cols[i])),
             Instr::Neg => {
                 let a = st.pop();
-                let r = st.unary(a, |x| -x);
+                let r = st.neg(a);
                 st.push(r);
             }
             Instr::Not => {
@@ -957,25 +1695,25 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             Instr::Add => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x + y);
+                let r = st.add(a, b);
                 st.push(r);
             }
             Instr::Sub => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x - y);
+                let r = st.sub(a, b);
                 st.push(r);
             }
             Instr::Mul => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x * y);
+                let r = st.mul(a, b);
                 st.push(r);
             }
             Instr::Div => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x / y);
+                let r = st.div(a, b);
                 st.push(r);
             }
             Instr::Eq => {
@@ -1014,18 +1752,6 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 let b = st.pop();
                 let a = st.pop();
                 let r = st.binary(a, b, |x, y| if x >= y { 1.0 } else { 0.0 });
-                st.push(r);
-            }
-            Instr::And => {
-                let b = st.pop();
-                let a = st.pop();
-                let r = st.binary(a, b, |x, y| if x > 0.0 && y > 0.0 { 1.0 } else { 0.0 });
-                st.push(r);
-            }
-            Instr::Or => {
-                let b = st.pop();
-                let a = st.pop();
-                let r = st.binary(a, b, |x, y| if x > 0.0 || y > 0.0 { 1.0 } else { 0.0 });
                 st.push(r);
             }
             Instr::Pow => {

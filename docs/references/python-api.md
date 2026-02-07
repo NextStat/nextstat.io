@@ -84,6 +84,7 @@ All models implement a shared minimal contract:
 ### HEP (HistFactory / pyhf JSON)
 
 - `HistFactoryModel`: build from pyhf JSON (via `nextstat.from_pyhf` or `HistFactoryModel.from_workspace`).
+  - ML/RL helper: `HistFactoryModel.set_sample_nominal(channel=..., sample=..., nominal=...)` to override one sample’s main-bin nominal yields in-place.
 
 ### Regression / GLM
 
@@ -137,14 +138,16 @@ High-level wrappers:
 
 ## Optional modules
 
-These are imported from `nextstat/__init__.py` as convenience wrappers. Some require optional dependencies.
+These modules live under `nextstat.*` as convenience helpers. Some require optional dependencies and are intended to be imported on demand.
 
 - `nextstat.viz`: plot-friendly artifacts for CLs curves and profile scans.
 - `nextstat.bayes`: Bayesian helpers (ArviZ integration).
+- `nextstat.torch`: PyTorch helpers (`torch.autograd.Function` wrappers). CUDA builds expose zero-copy GPU sessions.
 - `nextstat.timeseries`: higher-level time series helpers and plotting.
 - `nextstat.survival`: high-level survival helpers (parametric right-censoring + Cox PH fit helpers).
 - `nextstat.econometrics`: robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting helpers.
 - `nextstat.causal`: propensity + AIPW baselines and sensitivity hooks.
+- `nextstat.gym`: Gymnasium/Gym environments for quick RL / design-of-experiments playgrounds (requires `gymnasium`/`gym` + `numpy`).
 
 ## Evaluation Modes (Parity / Fast)
 
