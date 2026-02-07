@@ -110,7 +110,7 @@ pub use pk::{LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeMode
 pub use posterior::{Posterior, Prior};
 #[cfg(feature = "cuda")]
 pub use profile_likelihood::scan_gpu;
-pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint};
+pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint, scan_histfactory};
 pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };

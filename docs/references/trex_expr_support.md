@@ -25,7 +25,9 @@ Source of truth:
 
 ### Indexing syntax (parsing)
 - `branch[idx]` is accepted syntactically and rewritten into a required scalar “virtual” branch name `branch[idx]`.
-- Reading of variable-length (jagged) *leaflist-style* branches is supported via `RootFile::branch_data("name[idx]")` (materialized scalar column with out-of-range → `0.0`).
+- Reading `branch[idx]` from ROOT TTrees is supported via `RootFile::branch_data("name[idx]")`:
+  - **Jagged/variable-length leaflist** branches (per-basket entry-offset table): out-of-range → `0.0`.
+  - **Fixed-length array** branches (flat storage with `N = entries * len`): out-of-range index is an error (compile is fine; read fails).
 
 ### Functions (case-insensitive, namespace-insensitive)
 The engine matches functions by:
@@ -58,8 +60,10 @@ Binary:
 Goal: allow expressions like `jet_pt[0]` when `jet_pt` is stored as a vector branch in a ROOT TTree.
 
 Current status:
-- Implemented for uproot-style jagged leaflist branches with per-basket entry-offset tables.
-- Not yet implemented for `TBranchElement` / STL `std::vector<T>` branches (different streamer/layout).
+- Implemented for:
+  - uproot-style jagged leaflist branches with per-basket entry-offset tables,
+  - fixed-length arrays (heuristic based on decoded length vs entries).
+- Not yet implemented for true `TBranchElement` / STL `std::vector<T>` branches (different streamer/layout).
 
 BMCP:
 - Epic: `TREx Replacement: Expression Compatibility (TTreeFormula subset + vector branches)` (`53b3d3fc-ef1f-42b2-b067-b4df90c1044e`)

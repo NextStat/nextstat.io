@@ -4330,7 +4330,7 @@ fn profile_scan(
             ));
         }
     } else {
-        pl::scan(&mle, &fit_model, &mu_values)
+        pl::scan_histfactory(&mle, &fit_model, &mu_values)
             .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
     };
 
@@ -4592,7 +4592,7 @@ fn profile_curve(
         model.inner.clone()
     };
 
-    let scan = pl::scan(&mle, &fit_model, &mu_values)
+    let scan = pl::scan_histfactory(&mle, &fit_model, &mu_values)
         .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?;
     let art: ProfileCurveArtifact = scan.into();
 
