@@ -41,6 +41,7 @@ fn trex_report_distributions_artifact_contract_smoke() {
         &params_prefit,
         &params_postfit,
         1,
+        None,
     )
     .expect("distributions artifact");
 
@@ -67,6 +68,47 @@ fn trex_report_distributions_artifact_contract_smoke() {
             }
         }
     }
+}
+
+#[test]
+fn trex_report_distributions_supports_blinding() {
+    let (ws, model) = load_histfactory_fixture();
+
+    let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
+    let params_postfit = params_prefit.clone();
+
+    let mut data_by_channel: HashMap<String, Vec<f64>> = HashMap::new();
+    for obs in &ws.observations {
+        data_by_channel.insert(obs.name.clone(), obs.data.clone());
+    }
+
+    let root = repo_root();
+    let xml = root.join("tests/fixtures/histfactory/combination.xml");
+    let edges =
+        ns_translate::histfactory::bin_edges_by_channel_from_xml(&xml).expect("bin edges from xml");
+
+    let mut blinded = std::collections::HashSet::new();
+    blinded.insert("SR".to_string());
+
+    let artifact = ns_viz::distributions::distributions_artifact(
+        &model,
+        &data_by_channel,
+        &edges,
+        &params_prefit,
+        &params_postfit,
+        1,
+        Some(&blinded),
+    )
+    .expect("distributions artifact");
+
+    let sr = artifact
+        .channels
+        .iter()
+        .find(|c| c.channel_name == "SR")
+        .expect("SR channel");
+    assert_eq!(sr.data_is_blinded, Some(true));
+    assert!(sr.data_y.iter().all(|&v| v == 0.0));
+    assert!(sr.ratio_y.iter().all(|&v| v == 0.0));
 }
 
 #[test]
@@ -126,7 +168,7 @@ fn trex_report_yields_invariants_prefit_equals_postfit() {
     let (_ws, model) = load_histfactory_fixture();
 
     let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
-    let artifact = ns_viz::yields::yields_artifact(&model, &params_prefit, &params_prefit, 1)
+    let artifact = ns_viz::yields::yields_artifact(&model, &params_prefit, &params_prefit, 1, None)
         .expect("yields artifact");
 
     assert_eq!(artifact.schema_version, "trex_report_yields_v0");

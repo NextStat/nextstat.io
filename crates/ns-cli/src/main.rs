@@ -3690,6 +3690,7 @@ fn cmd_report(
         &params_prefit,
         &params_postfit,
         threads,
+        None,
     )?;
     let mut dist_json = serde_json::to_value(&dist_artifact)?;
     if deterministic {
@@ -3699,7 +3700,7 @@ fn cmd_report(
 
     // Yields
     let yields_artifact =
-        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads)?;
+        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads, None)?;
     let mut yields_json = serde_json::to_value(&yields_artifact)?;
     if deterministic {
         yields_json = normalize_json_for_determinism(yields_json);
@@ -3826,6 +3827,7 @@ fn cmd_viz_distributions(
         &params_prefit,
         &params_postfit,
         threads,
+        None,
     )?;
 
     let output_json = serde_json::to_value(&artifact)?;
