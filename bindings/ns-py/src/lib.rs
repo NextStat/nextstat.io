@@ -4623,6 +4623,82 @@ impl PyDiffSession {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ProfiledDifferentiableSession — profiled q₀/qμ with envelope gradient (CUDA)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "cuda")]
+#[pyclass(name = "ProfiledDifferentiableSession")]
+struct PyProfiledDiffSession {
+    inner: ns_inference::ProfiledDifferentiableSession,
+}
+
+#[cfg(feature = "cuda")]
+#[pymethods]
+impl PyProfiledDiffSession {
+    /// Create a profiled differentiable GPU session.
+    ///
+    /// Args:
+    ///     model: HistFactoryModel
+    ///     signal_sample_name: name of the signal sample in the workspace
+    #[new]
+    fn new(model: &PyHistFactoryModel, signal_sample_name: &str) -> PyResult<Self> {
+        let inner =
+            ns_inference::ProfiledDifferentiableSession::new(&model.inner, signal_sample_name)
+                .map_err(|e| PyValueError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Compute profiled q₀ and its gradient w.r.t. signal bins.
+    ///
+    /// Args:
+    ///     signal_ptr: int — from torch.Tensor.data_ptr() (CUDA device pointer)
+    ///
+    /// Returns:
+    ///     tuple[float, list[float]] — (q0, grad_signal)
+    fn profiled_q0_and_grad(
+        &mut self,
+        signal_ptr: u64,
+    ) -> PyResult<(f64, Vec<f64>)> {
+        self.inner
+            .profiled_q0_and_grad(signal_ptr)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Compute profiled qμ and its gradient w.r.t. signal bins.
+    ///
+    /// Args:
+    ///     mu_test: float — signal strength hypothesis to test
+    ///     signal_ptr: int — from torch.Tensor.data_ptr() (CUDA device pointer)
+    ///
+    /// Returns:
+    ///     tuple[float, list[float]] — (qmu, grad_signal)
+    fn profiled_qmu_and_grad(
+        &mut self,
+        mu_test: f64,
+        signal_ptr: u64,
+    ) -> PyResult<(f64, Vec<f64>)> {
+        self.inner
+            .profiled_qmu_and_grad(mu_test, signal_ptr)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Number of signal bins.
+    fn signal_n_bins(&self) -> usize {
+        self.inner.signal_n_bins()
+    }
+
+    /// Number of model parameters.
+    fn n_params(&self) -> usize {
+        self.inner.n_params()
+    }
+
+    /// Default initial parameter values.
+    fn parameter_init(&self) -> Vec<f64> {
+        self.inner.parameter_init().to_vec()
+    }
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -4693,6 +4769,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // DifferentiableSession (CUDA only)
     #[cfg(feature = "cuda")]
     m.add_class::<PyDiffSession>()?;
+    #[cfg(feature = "cuda")]
+    m.add_class::<PyProfiledDiffSession>()?;
 
     // Back-compat aliases used in plans/docs.
     let model_cls = m.getattr("HistFactoryModel")?;

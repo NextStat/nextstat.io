@@ -388,6 +388,7 @@ impl HistFactoryModel {
     /// - NormFactor
     /// - NormSys
     /// - Lumi
+    /// - ShapeFactor
     pub fn validate_sample_nominal_override_linear_safe(
         &self,
         channel_idx: usize,
@@ -407,7 +408,8 @@ impl HistFactoryModel {
             match m {
                 ModelModifier::NormFactor { .. }
                 | ModelModifier::NormSys { .. }
-                | ModelModifier::Lumi { .. } => {}
+                | ModelModifier::Lumi { .. }
+                | ModelModifier::ShapeFactor { .. } => {}
                 _ => {
                     return Err(ns_core::Error::Validation(format!(
                         "Nominal override is not supported for samples with per-bin/shape modifiers (channel_idx={}, sample_idx={})",
@@ -490,6 +492,20 @@ impl HistFactoryModel {
                         ))
                     })?;
                     vec_scale(out, lumi);
+                }
+                ModelModifier::ShapeFactor { param_indices } => {
+                    for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                        if bin_idx < out.len() {
+                            let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "ShapeFactor gamma index out of range: idx={} len={}",
+                                    gamma_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            out[bin_idx] *= gamma_val;
+                        }
+                    }
                 }
                 _ => unreachable!("validate_sample_nominal_override_linear_safe enforced"),
             }

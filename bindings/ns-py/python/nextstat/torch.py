@@ -269,3 +269,170 @@ def nll_loss(signal_histogram, session, params=None):
         params = torch.tensor(session.parameter_init(), dtype=torch.float64)
     return NextStatNLL.apply(signal_histogram, session, params)
 
+
+# ---------------------------------------------------------------------------
+# CUDA Profiled Significance (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def _get_profiled_session_class():
+    """Import ProfiledDifferentiableSession from native extension (CUDA only)."""
+    try:
+        from nextstat._core import ProfiledDifferentiableSession  # type: ignore
+
+        return ProfiledDifferentiableSession
+    except ImportError:
+        return None
+
+
+class ProfiledQ0Loss:
+    """GPU-accelerated profiled q₀ with envelope theorem gradient.
+
+    Computes q₀ = 2·(NLL(μ=0,θ̂₀) − NLL(μ̂,θ̂)) and ∂q₀/∂signal
+    using two GPU L-BFGS-B fits per forward pass. The gradient uses
+    the envelope theorem (exact at convergence).
+
+    Example::
+
+        from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+        session = create_profiled_session(model, "signal")
+
+        for batch in dataloader:
+            signal_hist = nn(batch).double().cuda()
+            loss = -profiled_q0_loss(signal_hist, session)  # maximize q₀
+            loss.backward()
+            optimizer.step()
+    """
+
+    @staticmethod
+    def apply(signal_histogram, session):
+        torch = _require_torch()
+
+        class _Fn(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, signal):
+                assert signal.is_cuda, "signal must be on CUDA"
+                assert signal.dtype == torch.float64, "signal must be float64"
+                assert signal.is_contiguous(), "signal must be contiguous"
+
+                torch.cuda.synchronize()
+
+                q0, grad_list = session.profiled_q0_and_grad(signal.data_ptr())
+
+                torch.cuda.synchronize()
+
+                grad_signal = torch.tensor(
+                    grad_list, dtype=torch.float64, device=signal.device
+                )
+                ctx.save_for_backward(grad_signal)
+                return signal.new_tensor(q0)
+
+            @staticmethod
+            def backward(ctx, grad_output):
+                (grad_signal,) = ctx.saved_tensors
+                return grad_output * grad_signal
+
+        return _Fn.apply(signal_histogram)
+
+
+class ProfiledQmuLoss:
+    """GPU-accelerated profiled qμ with envelope theorem gradient."""
+
+    @staticmethod
+    def apply(signal_histogram, session, mu_test):
+        torch = _require_torch()
+
+        class _Fn(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, signal):
+                assert signal.is_cuda, "signal must be on CUDA"
+                assert signal.dtype == torch.float64, "signal must be float64"
+                assert signal.is_contiguous(), "signal must be contiguous"
+
+                torch.cuda.synchronize()
+
+                qmu, grad_list = session.profiled_qmu_and_grad(mu_test, signal.data_ptr())
+
+                torch.cuda.synchronize()
+
+                grad_signal = torch.tensor(
+                    grad_list, dtype=torch.float64, device=signal.device
+                )
+                ctx.save_for_backward(grad_signal)
+                return signal.new_tensor(qmu)
+
+            @staticmethod
+            def backward(ctx, grad_output):
+                (grad_signal,) = ctx.saved_tensors
+                return grad_output * grad_signal
+
+        return _Fn.apply(signal_histogram)
+
+
+def create_profiled_session(model, signal_sample_name: str = "signal"):
+    """Create a GPU session for profiled significance training.
+
+    Args:
+        model: nextstat.HistFactoryModel
+        signal_sample_name: name of the signal sample in the workspace
+
+    Returns:
+        ProfiledDifferentiableSession ready for use in training loop
+
+    Raises:
+        ImportError: if CUDA support is not compiled in
+        ValueError: if signal sample not found or no POI defined
+    """
+    cls = _get_profiled_session_class()
+    if cls is None:
+        raise ImportError(
+            "ProfiledDifferentiableSession requires CUDA support. "
+            "Build nextstat with --features cuda."
+        )
+    return cls(model, signal_sample_name)
+
+
+def profiled_q0_loss(signal_histogram, session):
+    """Compute differentiable profiled q₀ loss.
+
+    Main entry point for training NNs to maximize discovery significance.
+
+    Args:
+        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        session: ProfiledDifferentiableSession from create_profiled_session()
+
+    Returns:
+        q₀ scalar (torch.Tensor with grad_fn, differentiable w.r.t. signal)
+    """
+    return ProfiledQ0Loss.apply(signal_histogram, session)
+
+
+def profiled_z0_loss(signal_histogram, session, eps=1e-12):
+    """Compute differentiable Z₀ = sqrt(q₀) loss.
+
+    Args:
+        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        session: ProfiledDifferentiableSession from create_profiled_session()
+        eps: small constant for numerical stability
+
+    Returns:
+        Z₀ scalar (torch.Tensor with grad_fn)
+    """
+    q0 = profiled_q0_loss(signal_histogram, session)
+    return (q0 + eps).sqrt()
+
+
+def profiled_qmu_loss(signal_histogram, session, mu_test):
+    """Compute differentiable profiled qμ loss.
+
+    Args:
+        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        session: ProfiledDifferentiableSession from create_profiled_session()
+        mu_test: float — signal strength hypothesis
+
+    Returns:
+        qμ scalar (torch.Tensor with grad_fn)
+    """
+    return ProfiledQmuLoss.apply(signal_histogram, session, mu_test)
+

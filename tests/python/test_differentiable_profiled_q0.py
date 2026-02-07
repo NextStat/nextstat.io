@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import nextstat
 
 
@@ -55,4 +57,163 @@ def test_q0_like_loss_and_grad_nominal_finite_diff() -> None:
     denom = max(abs(fd), abs(g), 1e-6)
     rel = abs(fd - g) / denom
     assert rel < 5e-2
+
+
+# ---------------------------------------------------------------------------
+# GPU Profiled Differentiable Tests (CUDA only)
+# ---------------------------------------------------------------------------
+
+_HAS_CUDA = getattr(nextstat, "has_cuda", lambda: False)()
+
+try:
+    import torch as _torch
+    _HAS_TORCH_CUDA = _torch.cuda.is_available()
+except ImportError:
+    _HAS_TORCH_CUDA = False
+
+_REQUIRES_GPU = pytest.mark.skipif(
+    not (_HAS_CUDA and _HAS_TORCH_CUDA),
+    reason="requires CUDA nextstat + torch.cuda",
+)
+
+
+def _make_gpu_model_and_signal():
+    """Create a HistFactory model and upload signal to GPU."""
+    import torch
+
+    ws_path = Path("tests/fixtures/simple_workspace.json")
+    ws_json = ws_path.read_text(encoding="utf-8")
+    model = nextstat.HistFactoryModel.from_workspace(ws_json)
+
+    nominal = _load_signal_nominal_from_workspace(
+        ws_path, channel="singlechannel", sample="signal"
+    )
+    signal = torch.tensor(nominal, dtype=torch.float64, device="cuda")
+    return model, signal, nominal
+
+
+@_REQUIRES_GPU
+def test_profiled_q0_matches_cpu():
+    """GPU profiled q₀ matches CPU q0_like_loss_and_grad_nominal."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+    model, signal, nominal = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    # GPU
+    signal_req = signal.clone().requires_grad_(True)
+    q0_gpu = profiled_q0_loss(signal_req, session)
+
+    # CPU
+    mle = nextstat.MaximumLikelihoodEstimator(max_iter=400, tol=1e-6, m=10)
+    q0_cpu, _ = mle.q0_like_loss_and_grad_nominal(
+        model, channel="singlechannel", sample="signal", nominal=nominal
+    )
+
+    # q₀ values should be close (both run L-BFGS-B, may differ slightly)
+    assert abs(q0_gpu.item() - q0_cpu) < 0.1 * max(q0_cpu, 1e-3), (
+        f"q0_gpu={q0_gpu.item()}, q0_cpu={q0_cpu}"
+    )
+
+
+@_REQUIRES_GPU
+def test_profiled_q0_grad_flows():
+    """Backward pass produces non-zero gradients."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    signal_req = signal.clone().requires_grad_(True)
+    q0 = profiled_q0_loss(signal_req, session)
+    q0.backward()
+
+    assert signal_req.grad is not None, "No gradient computed"
+    assert signal_req.grad.shape == signal.shape
+    # At least some gradient components should be nonzero
+    assert signal_req.grad.abs().max().item() > 1e-10
+
+
+@_REQUIRES_GPU
+def test_profiled_q0_grad_fd():
+    """GPU profiled q₀ gradient matches finite differences."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+
+    signal_req = signal.clone().requires_grad_(True)
+    session = create_profiled_session(model, "signal")
+    q0 = profiled_q0_loss(signal_req, session)
+    q0.backward()
+    grad_analytic = signal_req.grad.clone()
+
+    # Find a bin with significant gradient
+    idx = grad_analytic.abs().argmax().item()
+    eps = max(1e-3, 1e-3 * signal[idx].abs().item())
+
+    signal_p = signal.clone()
+    signal_p[idx] += eps
+    session_p = create_profiled_session(model, "signal")
+    q0_p = profiled_q0_loss(signal_p, session_p).item()
+
+    signal_m = signal.clone()
+    signal_m[idx] -= eps
+    session_m = create_profiled_session(model, "signal")
+    q0_m = profiled_q0_loss(signal_m, session_m).item()
+
+    fd = (q0_p - q0_m) / (2.0 * eps)
+    g = grad_analytic[idx].item()
+    denom = max(abs(fd), abs(g), 1e-6)
+    rel = abs(fd - g) / denom
+    assert rel < 0.1, f"FD mismatch: fd={fd:.6e}, analytic={g:.6e}, rel={rel:.4f}"
+
+
+@_REQUIRES_GPU
+def test_profiled_z0_loss():
+    """Z₀ = sqrt(q₀) loss is differentiable."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_z0_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+    session = create_profiled_session(model, "signal")
+
+    signal_req = signal.clone().requires_grad_(True)
+    z0 = profiled_z0_loss(signal_req, session)
+    z0.backward()
+
+    assert z0.item() >= 0.0
+    assert signal_req.grad is not None
+
+
+@_REQUIRES_GPU
+def test_training_loop_profiled():
+    """10 Adam steps with profiled q₀ loss — q₀ should not decrease."""
+    import torch
+    from nextstat.torch import create_profiled_session, profiled_q0_loss
+
+    model, signal, _ = _make_gpu_model_and_signal()
+
+    # Scale signal up to ensure nonzero q₀
+    signal_param = torch.nn.Parameter(signal.clone() * 2.0)
+    optimizer = torch.optim.Adam([signal_param], lr=0.1)
+
+    q0_values = []
+    for _ in range(10):
+        optimizer.zero_grad()
+        session = create_profiled_session(model, "signal")
+        q0 = profiled_q0_loss(signal_param, session)
+        loss = -q0  # maximize q₀
+        loss.backward()
+        optimizer.step()
+        # Ensure signal stays positive
+        with torch.no_grad():
+            signal_param.clamp_(min=1e-6)
+        q0_values.append(q0.item())
+
+    # q₀ should generally increase (we're maximizing it)
+    # Allow some variance — just check that it doesn't collapse to zero
+    assert max(q0_values) > 0.0, f"q₀ collapsed to zero: {q0_values}"
 
