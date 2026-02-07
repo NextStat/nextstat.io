@@ -288,6 +288,82 @@ pub fn vec_mul_pairwise(dst: &mut [f64], src: &[f64]) {
     }
 }
 
+/// Accumulate pyhf `histosys` `code0` (piecewise linear) interpolation deltas into `dst`.
+///
+/// Computes the per-bin delta term (to be added to nominal) for a single histosys modifier:
+/// `dst[i] += delta(alpha, lo[i], nom[i], hi[i])`.
+///
+/// Code 0 is simple piecewise linear interpolation:
+/// - `alpha >= 0`: `delta = alpha * (hi - nom)`
+/// - `alpha < 0`:  `delta = alpha * (nom - lo)`
+///
+/// This is pyhf's default for HistoSys. Note the first derivative is discontinuous at `alpha = 0`.
+///
+/// # Panics
+/// Panics if the input slice lengths are not equal.
+pub fn histosys_code0_delta_accumulate(
+    dst: &mut [f64],
+    alpha: f64,
+    lo: &[f64],
+    nom: &[f64],
+    hi: &[f64],
+) {
+    let n = dst.len();
+    assert_eq!(n, lo.len());
+    assert_eq!(n, nom.len());
+    assert_eq!(n, hi.len());
+
+    if alpha >= 0.0 {
+        if !use_simd() {
+            for i in 0..n {
+                dst[i] += (hi[i] - nom[i]) * alpha;
+            }
+            return;
+        }
+
+        let chunks = n / 4;
+        let remainder = n % 4;
+        let alpha4 = f64x4::splat(alpha);
+        for i in 0..chunks {
+            let offset = i * 4;
+            let mut d = f64x4::from(&dst[offset..offset + 4]);
+            let h = f64x4::from(&hi[offset..offset + 4]);
+            let m = f64x4::from(&nom[offset..offset + 4]);
+            d += (h - m) * alpha4;
+            let arr: [f64; 4] = d.into();
+            dst[offset..offset + 4].copy_from_slice(&arr);
+        }
+        let start = chunks * 4;
+        for i in start..start + remainder {
+            dst[i] += (hi[i] - nom[i]) * alpha;
+        }
+    } else {
+        if !use_simd() {
+            for i in 0..n {
+                dst[i] += (nom[i] - lo[i]) * alpha;
+            }
+            return;
+        }
+
+        let chunks = n / 4;
+        let remainder = n % 4;
+        let alpha4 = f64x4::splat(alpha);
+        for i in 0..chunks {
+            let offset = i * 4;
+            let mut d = f64x4::from(&dst[offset..offset + 4]);
+            let m = f64x4::from(&nom[offset..offset + 4]);
+            let l = f64x4::from(&lo[offset..offset + 4]);
+            d += (m - l) * alpha4;
+            let arr: [f64; 4] = d.into();
+            dst[offset..offset + 4].copy_from_slice(&arr);
+        }
+        let start = chunks * 4;
+        for i in start..start + remainder {
+            dst[i] += (nom[i] - lo[i]) * alpha;
+        }
+    }
+}
+
 /// Accumulate pyhf `histosys` `code4p` interpolation deltas into `dst`.
 ///
 /// Computes the per-bin delta term (to be added to nominal) for a single histosys modifier:

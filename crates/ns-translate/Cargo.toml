@@ -28,6 +28,7 @@ json-patch.workspace = true
 [features]
 default = []
 accelerate = ["ns-compute/accelerate"]
+cuda = ["ns-compute/cuda"]
 
 [dev-dependencies]
 approx.workspace = true

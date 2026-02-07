@@ -3,6 +3,7 @@
 
 This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
+  - HistFactory golden (no pyhf runtime): `tests/python/test_pyhf_model_zoo_goldens.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
   - P6 benchmarks (GLM fit/predict): `tests/apex2_p6_glm_benchmark_report.py` (optional)
   - bias/pulls: `tests/apex2_bias_pulls_report.py` (optional; slow)
@@ -63,6 +64,30 @@ def _module_available(name: str) -> bool:
         return importlib.util.find_spec(name) is not None
     except Exception:
         return False
+
+
+def _run_pytest(paths: list[str], *, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+    cmd = [sys.executable, "-m", "pytest", "-q", *paths]
+    rc, out = _run_json(cmd, cwd=cwd, env=env)
+    return {
+        "status": "ok" if rc == 0 else "fail",
+        "returncode": int(rc),
+        "stdout_tail": out[-4000:],
+        "paths": list(paths),
+    }
+
+
+def _run_histfactory_goldens(*, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+    repo = _repo_root()
+    gold = repo / "tests" / "fixtures" / "pyhf_model_zoo_goldens.json"
+    if not gold.exists():
+        return {
+            "status": "skipped",
+            "reason": f"missing_goldens:{gold}",
+            "hint": "Generate with: PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/python/generate_pyhf_model_zoo_goldens.py",
+        }
+
+    return _run_pytest(["tests/python/test_pyhf_model_zoo_goldens.py"], cwd=cwd, env=env)
 
 
 def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
@@ -514,6 +539,7 @@ def main() -> int:
             "platform": platform.platform(),
         },
         "pyhf": None,
+        "histfactory_golden": None,
         "regression_golden": None,
         "nuts_quality": None,
         "nuts_quality_report": None,
@@ -555,6 +581,11 @@ def main() -> int:
             "report_path": str(args.pyhf_out),
             "report": _read_json(args.pyhf_out) if args.pyhf_out.exists() else None,
         }
+
+    # ------------------------------------------------------------------
+    # HistFactory golden (no pyhf runtime required)
+    # ------------------------------------------------------------------
+    report["histfactory_golden"] = _run_histfactory_goldens(cwd=cwd, env=env)
 
     # ------------------------------------------------------------------
     # Regression golden fixtures (GLM surface)

@@ -25,6 +25,10 @@ fn run(args: &[&str]) -> Output {
         .unwrap_or_else(|e| panic!("failed to run {:?} {:?}: {}", bin_path(), args, e))
 }
 
+fn fixture_path(rel: &str) -> PathBuf {
+    repo_root().join("tests/fixtures").join(rel)
+}
+
 #[test]
 fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
     let root = repo_root();
@@ -109,3 +113,37 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
     let _ = std::fs::remove_file(&cov_path);
 }
 
+#[test]
+fn import_trex_config_hist_mode_matches_histfactory_fixture() {
+    let root = repo_root();
+    let config = root.join("docs/examples/trex_config_hist_minimal.txt");
+    let expected = fixture_path("histfactory/workspace.json");
+    assert!(config.exists(), "missing config: {}", config.display());
+    assert!(expected.exists(), "missing fixture: {}", expected.display());
+
+    let ws_path = tmp_path("trex_hist_ws.json");
+
+    let out = run(&[
+        "import",
+        "trex-config",
+        "--config",
+        config.to_string_lossy().as_ref(),
+        "--base-dir",
+        root.to_string_lossy().as_ref(),
+        "--output",
+        ws_path.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        out.status.success(),
+        "import trex-config (HIST) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let got: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&ws_path).unwrap()).expect("output should be JSON");
+    let want: serde_json::Value = serde_json::from_slice(&std::fs::read(&expected).unwrap())
+        .expect("expected fixture should be valid JSON");
+    assert_eq!(got, want, "workspace JSON mismatch (HIST mode)");
+
+    let _ = std::fs::remove_file(&ws_path);
+}

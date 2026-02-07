@@ -164,6 +164,11 @@ pub struct ParameterConfig {
     /// Bounds [[min, max]]
     #[serde(default)]
     pub bounds: Vec<[f64; 2]>,
+    /// Whether this parameter is fixed (frozen) in fits.
+    ///
+    /// Mirrors pyhf: `measurements[].config.parameters[].fixed`.
+    #[serde(default)]
+    pub fixed: bool,
     /// Auxiliary data (constraint centers)
     #[serde(default)]
     pub auxdata: Vec<f64>,

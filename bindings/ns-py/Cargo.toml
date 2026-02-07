@@ -35,5 +35,6 @@ serde_json = { workspace = true }
 [features]
 default = []
 accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
+cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
 
 [dev-dependencies]

@@ -83,6 +83,10 @@ For the frequentist (CLs) workflow, see:
 - `Sample:` blocks with `File`, optional `Weight`, and optional simple modifiers (`NormFactor`, `NormSys`, `StatError`).
 - `Systematic:` blocks for `Type: norm|weight|tree` applied by `Samples:` and optional `Regions:`.
 
+`ReadFrom: HIST` is supported only as a wrapper over an existing HistFactory export:
+- Provide `HistoPath: /path/to/export_dir` (must contain exactly one `combination.xml` under it), or
+- Provide `CombinationXml: /path/to/combination.xml` explicitly.
+
 Optional outputs:
 - `--analysis-yaml` writes an analysis spec v0 wrapper (`inputs.mode=trex_config_txt`) to drive `nextstat run`.
 - `--coverage-json` writes a best-effort report of unknown keys/attrs to help parity work against legacy configs.
@@ -92,3 +96,4 @@ Optional outputs:
 - it also writes a mapping report listing mapped and unmapped keys
 
 Example config: `docs/examples/trex_config_ntup_minimal.txt`.
+Example config (HIST wrapper): `docs/examples/trex_config_hist_minimal.txt`.

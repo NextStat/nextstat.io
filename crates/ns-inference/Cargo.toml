@@ -31,6 +31,7 @@ statrs.workspace = true
 [features]
 default = []
 accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
+cuda = ["ns-translate/cuda", "ns-compute/cuda"]
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
