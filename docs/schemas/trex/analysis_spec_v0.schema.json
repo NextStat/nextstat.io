@@ -100,7 +100,7 @@
         "trex_config_yaml": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["read_from", "tree_name", "measurement", "poi", "regions", "samples"],
+          "required": ["read_from"],
           "properties": {
             "base_dir": {
               "$ref": "#/$defs/nullable_path",
@@ -108,15 +108,22 @@
             },
             "read_from": {
               "type": "string",
-              "enum": ["NTUP"],
-              "description": "TREx ReadFrom mode. v0 supports only NTUP."
+              "enum": ["NTUP", "HIST"],
+              "description": "TREx ReadFrom mode. v0 supports NTUP and a HIST wrapper over HistFactory exports."
             },
-            "tree_name": { "type": "string", "minLength": 1, "description": "Default TTree name." },
-            "measurement": { "type": "string", "minLength": 1, "description": "Measurement name." },
-            "poi": { "type": "string", "minLength": 1, "description": "Parameter of interest name." },
+            "histo_path": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "HIST mode: HistFactory export dir (containing combination.xml) or a directory to scan for it."
+            },
+            "combination_xml": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "HIST mode: explicit path to combination.xml (alternative to histo_path)."
+            },
+            "tree_name": { "type": "string", "minLength": 1, "description": "Default TTree name (NTUP mode)." },
+            "measurement": { "type": "string", "minLength": 1, "description": "Measurement name (NTUP mode; optional in HIST wrapper)." },
+            "poi": { "type": "string", "minLength": 1, "description": "Parameter of interest name (NTUP mode; optional in HIST wrapper)." },
             "regions": {
               "type": "array",
-              "minItems": 1,
               "items": {
                 "type": "object",
                 "additionalProperties": false,
@@ -149,7 +156,6 @@
             },
             "samples": {
               "type": "array",
-              "minItems": 1,
               "items": {
                 "type": "object",
                 "additionalProperties": false,
@@ -232,7 +238,25 @@
                 ]
               }
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "read_from": { "const": "NTUP" } }, "required": ["read_from"] },
+              "then": {
+                "required": ["tree_name", "measurement", "poi", "regions", "samples"],
+                "properties": {
+                  "regions": { "minItems": 1 },
+                  "samples": { "minItems": 1 }
+                }
+              }
+            },
+            {
+              "if": { "properties": { "read_from": { "const": "HIST" } }, "required": ["read_from"] },
+              "then": {
+                "anyOf": [{ "required": ["histo_path"] }, { "required": ["combination_xml"] }]
+              }
+            }
+          ]
         },
         "workspace_json": {
           "type": "object",

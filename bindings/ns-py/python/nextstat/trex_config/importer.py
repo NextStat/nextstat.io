@@ -184,7 +184,8 @@ def trex_doc_to_analysis_spec_v0(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Best-effort conversion: TREx `.config` doc -> analysis spec v0 + mapping report.
 
-    This maps only the subset supported by the v0 TREx replacement pipeline (ReadFrom=NTUP).
+    This maps only the subset supported by the v0 TREx replacement pipeline (ReadFrom=NTUP
+    and a HIST wrapper over HistFactory exports).
     Unsupported keys are recorded in the report.
     """
     if threads < 1:
@@ -215,8 +216,8 @@ def trex_doc_to_analysis_spec_v0(
     # Defaults match Rust importer behavior.
     read_from_e = take_global(["ReadFrom"])
     read_from = (read_from_e.value.raw.strip() if read_from_e else "NTUP").upper()
-    if read_from != "NTUP":
-        raise TrexConfigImportError(f"ReadFrom={read_from} is not supported yet (only NTUP)")
+    if read_from not in ("NTUP", "HIST"):
+        raise TrexConfigImportError(f"ReadFrom={read_from} is not supported yet (only NTUP or HIST)")
     if read_from_e is not None:
         mapped.append(
             _Mapping(
@@ -230,6 +231,132 @@ def trex_doc_to_analysis_spec_v0(
                 ),
             )
         )
+
+    if read_from == "HIST":
+        # HIST wrapper: use an existing HistFactory export dir containing combination.xml.
+        histo_e = take_global(["HistoPath", "HistPath", "ExportDir"])
+        combo_e = take_global(["CombinationXml", "CombinationXML", "HistFactoryXml"])
+        if histo_e is None and combo_e is None:
+            raise TrexConfigImportError("ReadFrom=HIST requires HistoPath/ExportDir or CombinationXml")
+
+        meas_e = take_global(["Measurement"])
+        poi_e = take_global(["POI", "Poi"])
+
+        # base_dir: relative path from out_path directory to source config directory if possible.
+        base_dir_value: str | None = None
+        if source_path is not None:
+            cfg_dir = source_path.parent
+            if out_path is None:
+                base_dir_value = "."
+            else:
+                out_dir = out_path.parent
+                try:
+                    rel = os.path.relpath(str(cfg_dir.resolve()), str(out_dir.resolve()))
+                    base_dir_value = "." if rel == "." else rel
+                except Exception:
+                    base_dir_value = str(cfg_dir)
+
+        trex_yaml: dict[str, Any] = {
+            "base_dir": base_dir_value,
+            "read_from": "HIST",
+        }
+        if histo_e is not None and histo_e.value.raw.strip():
+            trex_yaml["histo_path"] = _parse_atom(histo_e.value.raw)
+            mapped.append(
+                _Mapping(
+                    target="inputs.trex_config_yaml.histo_path",
+                    source=_Source("Global", None, histo_e.key, histo_e.line, histo_e.value.raw),
+                )
+            )
+        if combo_e is not None and combo_e.value.raw.strip():
+            trex_yaml["combination_xml"] = _parse_atom(combo_e.value.raw)
+            mapped.append(
+                _Mapping(
+                    target="inputs.trex_config_yaml.combination_xml",
+                    source=_Source("Global", None, combo_e.key, combo_e.line, combo_e.value.raw),
+                )
+            )
+
+        if meas_e is not None and meas_e.value.raw.strip():
+            trex_yaml["measurement"] = meas_e.value.raw.strip()
+            mapped.append(
+                _Mapping(
+                    target="inputs.trex_config_yaml.measurement",
+                    source=_Source("Global", None, meas_e.key, meas_e.line, meas_e.value.raw),
+                )
+            )
+        if poi_e is not None and poi_e.value.raw.strip():
+            trex_yaml["poi"] = poi_e.value.raw.strip()
+            mapped.append(
+                _Mapping(
+                    target="inputs.trex_config_yaml.poi",
+                    source=_Source("Global", None, poi_e.key, poi_e.line, poi_e.value.raw),
+                )
+            )
+
+        spec: dict[str, Any] = {
+            "$schema": "https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json",
+            "schema_version": "trex_analysis_spec_v0",
+            "analysis": {"name": "TREx Config (HIST)", "description": "Converted from TREx config (HIST).", "tags": ["trex-config", "hist"]},
+            "inputs": {"mode": "trex_config_yaml", "trex_config_yaml": trex_yaml},
+            "execution": {
+                "determinism": {"threads": int(threads)},
+                "import": {"enabled": True, "output_json": workspace_out},
+                "fit": {"enabled": False, "output_json": "tmp/trex_fit.json"},
+                "profile_scan": {"enabled": False, "start": 0.0, "stop": 5.0, "points": 21, "output_json": "tmp/trex_scan.json"},
+                "report": {
+                    "enabled": False,
+                    "out_dir": "tmp/trex_report",
+                    "overwrite": True,
+                    "include_covariance": False,
+                    "histfactory_xml": None,
+                    "render": {"enabled": False, "pdf": None, "svg_dir": None, "python": None},
+                    "skip_uncertainty": False,
+                    "uncertainty_grouping": "prefix_1",
+                },
+                "gates": {
+                    "baseline_compare": {
+                        "enabled": False,
+                        "baseline_dir": "tmp/baselines",
+                        "require_same_host": True,
+                        "max_slowdown": 1.3,
+                    }
+                },
+            },
+            "gates": {"baseline_compare": {"enabled": False, "baseline_dir": "tmp/baselines", "require_same_host": True, "max_slowdown": 1.3}},
+        }
+
+        # Unmapped keys from global blocks too.
+        used_globals: set[str] = set()
+        for k in ("readfrom", "histopath", "histpath", "exportdir", "combinationxml", "combinationxml", "histfactoryxml", "measurement", "poi", "poi"):
+            used_globals.add(k)
+        for gb in globals_blocks:
+            unmapped.extend(_collect_unmapped(block=gb, used_keys=used_globals))
+
+        report: dict[str, Any] = {
+            "version": 1,
+            "source_path": str(source_path) if source_path is not None else None,
+            "out_path": str(out_path) if out_path is not None else None,
+            "mapped": [
+                {
+                    "target": m.target,
+                    "source": {
+                        "kind": m.source.kind,
+                        "name": m.source.name,
+                        "key": m.source.key,
+                        "line": m.source.line,
+                        "value": m.source.value,
+                    },
+                }
+                for m in mapped
+            ],
+            "unmapped": [
+                {"kind": u.kind, "name": u.name, "key": u.key, "line": u.line, "value": u.value}
+                for u in unmapped
+            ],
+            "notes": notes,
+        }
+        return spec, report
 
     tree_e = take_global(["TreeName", "Tree"])
     tree_name = tree_e.value.raw.strip() if tree_e and tree_e.value.raw.strip() else "events"

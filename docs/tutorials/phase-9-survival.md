@@ -141,6 +141,17 @@ print("robust kind:", fit.robust_kind)  # "cluster"
 print("cluster-robust SE:", fit.robust_se)
 ```
 
+### PH diagnostics (Schoenfeld residuals)
+
+Schoenfeld residuals are a standard diagnostic for the proportional hazards assumption.
+NextStat exposes a dependency-light residual calculator (event rows only):
+
+```python
+sr = nextstat.survival.cox_ph_schoenfeld(times, events, x, ties="efron", coef=fit.coef)
+print("corr(log time):", sr.corr_log_time())
+print("slope(log time):", sr.slope_log_time())
+```
+
 ## Notes and limitations (baseline)
 
 - Cox PH uses partial likelihood; the baseline hazard is not modeled, so absolute survival curves

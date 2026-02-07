@@ -93,3 +93,34 @@ def test_survival_cox_cluster_robust_unique_clusters_matches_hc0() -> None:
     assert [float(v) for v in fit_cl.robust_se] == pytest.approx(
         [float(v) for v in fit_hc0.robust_se], rel=0.0, abs=1e-10
     )
+
+
+def test_survival_cox_schoenfeld_sum_matches_score() -> None:
+    times = [2.0, 1.0, 1.0, 0.5, 0.5, 0.2]
+    events = [True, True, False, True, False, False]
+    x = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, -1.0],
+        [0.0, -1.0],
+        [0.5, 0.5],
+    ]
+
+    fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=False, compute_cov=False)
+    beta = [float(v) for v in fit.coef]
+
+    # Score identity: sum Schoenfeld residuals == grad_ll == -grad_nll.
+    sr = nextstat.survival.cox_ph_schoenfeld(times, events, x, ties="efron", coef=beta)
+    assert len(sr.event_times) == sum(1 for v in events if v)
+    assert len(sr.residuals) == len(sr.event_times)
+
+    score = [0.0, 0.0]
+    for r in sr.residuals:
+        score[0] += float(r[0])
+        score[1] += float(r[1])
+
+    m = nextstat.CoxPhModel(times, events, x, ties="efron")
+    g = [float(v) for v in m.grad_nll(beta)]
+    assert score[0] == pytest.approx(-g[0], rel=0.0, abs=1e-10)
+    assert score[1] == pytest.approx(-g[1], rel=0.0, abs=1e-10)

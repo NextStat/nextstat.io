@@ -386,6 +386,166 @@ class CoxPhFit:
 
 
 @dataclass(frozen=True)
+class SchoenfeldResult:
+    event_times: List[float]
+    residuals: List[List[float]]  # n_events x p
+    ties: str
+    coef: List[float]
+
+    def corr_log_time(self) -> List[float]:
+        # Pearson correlation between residual_j and log(time).
+        if not self.event_times:
+            return []
+        ts = [math.log(max(float(t), 1e-300)) for t in self.event_times]
+        mt = sum(ts) / len(ts)
+        vt = sum((t - mt) ** 2 for t in ts)
+        if vt <= 0.0:
+            return [0.0] * (len(self.residuals[0]) if self.residuals else 0)
+
+        p = len(self.residuals[0]) if self.residuals else 0
+        out: List[float] = []
+        for j in range(p):
+            rs = [float(r[j]) for r in self.residuals]
+            mr = sum(rs) / len(rs)
+            vr = sum((v - mr) ** 2 for v in rs)
+            if vr <= 0.0:
+                out.append(0.0)
+                continue
+            cov = sum((t - mt) * (r - mr) for t, r in zip(ts, rs))
+            out.append(float(cov) / math.sqrt(float(vt) * float(vr)))
+        return out
+
+    def slope_log_time(self) -> List[float]:
+        # OLS slope of residual_j ~ a + b*log(time) for each covariate.
+        if not self.event_times:
+            return []
+        ts = [math.log(max(float(t), 1e-300)) for t in self.event_times]
+        mt = sum(ts) / len(ts)
+        vt = sum((t - mt) ** 2 for t in ts)
+        if vt <= 0.0:
+            return [0.0] * (len(self.residuals[0]) if self.residuals else 0)
+
+        p = len(self.residuals[0]) if self.residuals else 0
+        out: List[float] = []
+        for j in range(p):
+            rs = [float(r[j]) for r in self.residuals]
+            mr = sum(rs) / len(rs)
+            cov = sum((t - mt) * (r - mr) for t, r in zip(ts, rs))
+            out.append(float(cov) / float(vt))
+        return out
+
+
+def _cox_schoenfeld_residuals(
+    *,
+    times: list[float],
+    events: list[bool],
+    x: list[list[float]],
+    beta: list[float],
+    ties: str,
+) -> SchoenfeldResult:
+    n = len(times)
+    if n == 0:
+        return SchoenfeldResult(event_times=[], residuals=[], ties=str(ties), coef=[float(v) for v in beta])
+    p = len(x[0]) if x else 0
+    if p == 0:
+        return SchoenfeldResult(event_times=[], residuals=[], ties=str(ties), coef=[float(v) for v in beta])
+
+    order = sorted(range(n), key=lambda i: float(times[i]), reverse=True)
+    times_s = [float(times[i]) for i in order]
+    events_s = [bool(events[i]) for i in order]
+    x_s = [[float(v) for v in x[i]] for i in order]
+
+    group_starts = [0]
+    for i in range(1, n):
+        if times_s[i] != times_s[i - 1]:
+            group_starts.append(i)
+
+    eta = [sum(float(xij) * float(bj) for xij, bj in zip(xi, beta)) for xi in x_s]
+    w = [_exp_clamped(e) for e in eta]
+
+    risk0 = 0.0
+    risk1 = [0.0] * p
+    min_tail = 1e-300
+
+    out_t: List[float] = []
+    out_r: List[List[float]] = []
+
+    for g, start in enumerate(group_starts):
+        end = group_starts[g + 1] if g + 1 < len(group_starts) else n
+
+        for i in range(start, end):
+            wi = float(w[i])
+            risk0 += wi
+            for j in range(p):
+                risk1[j] += wi * float(x_s[i][j])
+
+        event_idx: list[int] = []
+        d0 = 0.0
+        d1 = [0.0] * p
+        for i in range(start, end):
+            if not events_s[i]:
+                continue
+            event_idx.append(i)
+            wi = float(w[i])
+            d0 += wi
+            for j in range(p):
+                d1[j] += wi * float(x_s[i][j])
+
+        m = len(event_idx)
+        if m == 0:
+            continue
+
+        if ties == "breslow":
+            denom = max(float(risk0), min_tail)
+            xbar = [float(risk1[j]) / denom for j in range(p)]
+        elif ties == "efron":
+            mf = float(m)
+            sum_xbar = [0.0] * p
+            for r in range(m):
+                frac = float(r) / mf
+                denom = max(float(risk0) - frac * float(d0), min_tail)
+                for j in range(p):
+                    num = float(risk1[j]) - frac * float(d1[j])
+                    sum_xbar[j] += num / denom
+            xbar = [float(v) / mf for v in sum_xbar]
+        else:
+            raise ValueError("ties must be 'breslow' or 'efron'")
+
+        t0 = float(times_s[start])
+        for i in event_idx:
+            out_t.append(t0)
+            out_r.append([float(x_s[i][j]) - float(xbar[j]) for j in range(p)])
+
+    return SchoenfeldResult(event_times=out_t, residuals=out_r, ties=str(ties), coef=[float(v) for v in beta])
+
+
+def cox_ph_schoenfeld(
+    times: Any,
+    events: Any,
+    x: Any,
+    *,
+    ties: str = "efron",
+    coef: Optional[Sequence[float]] = None,
+) -> SchoenfeldResult:
+    """Compute Schoenfeld residuals for Cox PH.
+
+    - If `coef` is None, fits Cox PH first (cheap for small problems), then computes residuals.
+    - Residuals are returned for event rows only (n_events x p), along with the corresponding event times.
+    """
+    import nextstat
+
+    t = _as_1d_float_list(times, name="times")
+    e = _as_1d_bool_list(events, name="events")
+    xx = _as_2d_float_list(x, name="x")
+
+    if coef is None:
+        m = nextstat.CoxPhModel(t, e, xx, ties=str(ties))
+        r = nextstat.fit(m)
+        coef = [float(v) for v in r.bestfit]
+    beta = [float(v) for v in coef]
+    return _cox_schoenfeld_residuals(times=t, events=e, x=xx, beta=beta, ties=str(ties))
+
+@dataclass(frozen=True)
 class ParametricSurvivalFit:
     model: str
     params: List[float]
@@ -559,4 +719,6 @@ __all__ = [
     "cox_ph",
     "CoxPhFit",
     "ParametricSurvivalFit",
+    "SchoenfeldResult",
+    "cox_ph_schoenfeld",
 ]

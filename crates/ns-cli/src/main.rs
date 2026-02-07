@@ -117,9 +117,9 @@ enum Commands {
         #[arg(long, default_value = "1")]
         threads: usize,
 
-        /// Use GPU (CUDA) for NLL+gradient. Requires --features cuda and NVIDIA GPU.
+        /// Use GPU for NLL+gradient. Values: "cuda" (NVIDIA, f64) or "metal" (Apple Silicon, f32).
         #[arg(long)]
-        gpu: bool,
+        gpu: Option<String>,
 
         /// Parity mode: Kahan summation, single-thread, deterministic.
         /// For bit-exact validation against pyhf NumPy backend.
@@ -193,9 +193,9 @@ enum Commands {
         #[arg(long, default_value = "0")]
         threads: usize,
 
-        /// Use GPU (CUDA) for batch toy fits. Requires --features cuda and NVIDIA GPU.
+        /// Use GPU for batch toy fits. Values: "cuda" (NVIDIA, f64) or "metal" (Apple Silicon, f32).
         #[arg(long)]
-        gpu: bool,
+        gpu: Option<String>,
     },
 
     /// Observed CLs upper limit via bisection (asymptotics, qtilde)
@@ -278,9 +278,9 @@ enum Commands {
         #[arg(long, default_value = "1")]
         threads: usize,
 
-        /// Use GPU (CUDA) for NLL+gradient. Requires --features cuda and NVIDIA GPU.
+        /// Use GPU for NLL+gradient. Values: "cuda" (NVIDIA, f64) or "metal" (Apple Silicon, f32).
         #[arg(long)]
-        gpu: bool,
+        gpu: Option<String>,
     },
 
     /// TREx-like report artifacts (+ optional PDF/SVG rendering)
@@ -885,14 +885,21 @@ fn main() -> Result<()> {
             cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
         }
         Commands::Fit { input, output, threads, gpu, parity, fit_regions, validation_regions } => {
-            if gpu {
-                #[cfg(feature = "cuda")]
-                {
-                    eprintln!("GPU mode enabled (CUDA single-model)");
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    anyhow::bail!("--gpu requires building with --features cuda");
+            if let Some(ref dev) = gpu {
+                match dev.as_str() {
+                    "cuda" => {
+                        #[cfg(feature = "cuda")]
+                        { eprintln!("GPU mode enabled (CUDA single-model)"); }
+                        #[cfg(not(feature = "cuda"))]
+                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                    }
+                    "metal" => {
+                        #[cfg(feature = "metal")]
+                        { eprintln!("GPU mode enabled (Metal single-model, f32)"); }
+                        #[cfg(not(feature = "metal"))]
+                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                    }
+                    other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
             }
             if parity {
@@ -902,7 +909,7 @@ fn main() -> Result<()> {
                 &input,
                 output.as_ref(),
                 threads,
-                gpu,
+                gpu.as_deref(),
                 cli.bundle.as_ref(),
                 parity,
                 &fit_regions,
@@ -913,17 +920,23 @@ fn main() -> Result<()> {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
         }
         Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads, gpu } => {
-            if gpu {
-                #[cfg(feature = "cuda")]
-                {
-                    eprintln!("GPU mode enabled (CUDA batch)");
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    anyhow::bail!("--gpu requires building with --features cuda");
+            if let Some(ref dev) = gpu {
+                match dev.as_str() {
+                    "cuda" => {
+                        #[cfg(feature = "cuda")]
+                        { eprintln!("GPU mode enabled (CUDA batch)"); }
+                        #[cfg(not(feature = "cuda"))]
+                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                    }
+                    "metal" => {
+                        #[cfg(feature = "metal")]
+                        { eprintln!("GPU mode enabled (Metal batch, f32)"); }
+                        #[cfg(not(feature = "metal"))]
+                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                    }
+                    other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
             }
-            let _ = gpu; // suppress unused warning when cuda feature is off
             cmd_hypotest_toys(
                 &input,
                 mu,
@@ -932,6 +945,7 @@ fn main() -> Result<()> {
                 expected_set,
                 output.as_ref(),
                 threads,
+                gpu.as_deref(),
                 cli.bundle.as_ref(),
             )
         }
@@ -964,17 +978,24 @@ fn main() -> Result<()> {
             cli.bundle.as_ref(),
         ),
         Commands::Scan { input, start, stop, points, output, threads, gpu } => {
-            if gpu {
-                #[cfg(feature = "cuda")]
-                {
-                    eprintln!("GPU mode enabled (CUDA profile scan)");
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    anyhow::bail!("--gpu requires building with --features cuda");
+            if let Some(ref dev) = gpu {
+                match dev.as_str() {
+                    "cuda" => {
+                        #[cfg(feature = "cuda")]
+                        { eprintln!("GPU mode enabled (CUDA profile scan)"); }
+                        #[cfg(not(feature = "cuda"))]
+                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                    }
+                    "metal" => {
+                        #[cfg(feature = "metal")]
+                        { eprintln!("GPU mode enabled (Metal profile scan, f32)"); }
+                        #[cfg(not(feature = "metal"))]
+                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                    }
+                    other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
             }
-            cmd_scan(&input, start, stop, points, output.as_ref(), threads, gpu, cli.bundle.as_ref())
+            cmd_scan(&input, start, stop, points, output.as_ref(), threads, gpu.as_deref(), cli.bundle.as_ref())
         }
         Commands::Report {
             input,
@@ -1513,7 +1534,7 @@ fn cmd_run_spec_v0(
             &plan.workspace_json,
             Some(fit_out),
             plan.threads,
-            false,
+            None,
             /*bundle*/ None,
             false,
             &spec.execution.fit.fit_regions,
@@ -1871,13 +1892,13 @@ fn cmd_fit(
     input: &PathBuf,
     output: Option<&PathBuf>,
     threads: usize,
-    gpu: bool,
+    gpu: Option<&str>,
     bundle: Option<&PathBuf>,
     parity: bool,
     fit_regions: &[String],
     validation_regions: &[String],
 ) -> Result<()> {
-    if gpu && (!fit_regions.is_empty() || !validation_regions.is_empty()) {
+    if gpu.is_some() && (!fit_regions.is_empty() || !validation_regions.is_empty()) {
         anyhow::bail!(
             "fit/validation region selection is not supported in --gpu mode yet (run on CPU or omit region filters)"
         );
@@ -1891,17 +1912,19 @@ fn cmd_fit(
     };
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
-    let result = if gpu {
-        #[cfg(feature = "cuda")]
-        {
-            mle.fit_gpu(&model)?
+    let result = match gpu {
+        Some("cuda") => {
+            #[cfg(feature = "cuda")]
+            { mle.fit_gpu(&model)? }
+            #[cfg(not(feature = "cuda"))]
+            { unreachable!("--gpu cuda check should have bailed earlier") }
         }
-        #[cfg(not(feature = "cuda"))]
-        {
-            unreachable!("--gpu check should have bailed earlier")
+        Some("metal") => {
+            // Metal single-model fit not implemented yet (only batch toys).
+            anyhow::bail!("--gpu metal is only supported for hypotest-toys (batch toy fitting), not single-model fit");
         }
-    } else {
-        mle.fit(&model)?
+        Some(_) => unreachable!("unknown device should have bailed earlier"),
+        None => mle.fit(&model)?,
     };
     tracing::info!(nll = result.nll, converged = result.converged, "fit complete");
 
@@ -3222,8 +3245,10 @@ fn cmd_hypotest_toys(
     expected_set: bool,
     output: Option<&PathBuf>,
     threads: usize,
+    gpu: Option<&str>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
+    let _ = gpu; // TODO: wire GPU batch toy fitting into hypotest flow
     let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
@@ -3379,7 +3404,7 @@ fn cmd_scan(
     points: usize,
     output: Option<&PathBuf>,
     threads: usize,
-    gpu: bool,
+    gpu: Option<&str>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
@@ -3390,17 +3415,18 @@ fn cmd_scan(
 
     let step = (stop - start) / (points as f64 - 1.0);
     let mu_values: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
-    let scan = if gpu {
-        #[cfg(feature = "cuda")]
-        {
-            ns_inference::profile_likelihood::scan_gpu(&mle, &model, &mu_values)?
+    let scan = match gpu {
+        Some("cuda") => {
+            #[cfg(feature = "cuda")]
+            { ns_inference::profile_likelihood::scan_gpu(&mle, &model, &mu_values)? }
+            #[cfg(not(feature = "cuda"))]
+            { unreachable!("--gpu cuda check should have bailed earlier") }
         }
-        #[cfg(not(feature = "cuda"))]
-        {
-            unreachable!("--gpu check should have bailed earlier")
+        Some("metal") => {
+            anyhow::bail!("--gpu metal is only supported for hypotest-toys (batch toy fitting), not profile scan");
         }
-    } else {
-        ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?
+        Some(_) => unreachable!("unknown device should have bailed earlier"),
+        None => ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?,
     };
 
     let output_json = serde_json::json!({

@@ -110,6 +110,16 @@ All models implement a shared minimal contract:
 - `LogNormalAftModel`
 - `CoxPhModel`
 
+High-level helpers (recommended for most users):
+
+- `nextstat.survival.exponential.fit(times, events) -> ParametricSurvivalFit`
+- `nextstat.survival.weibull.fit(times, events) -> ParametricSurvivalFit`
+- `nextstat.survival.lognormal_aft.fit(times, events) -> ParametricSurvivalFit`
+- `nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=None) -> CoxPhFit`
+  - `robust=True` returns sandwich SE (`fit.robust_se`)
+  - `groups=...` switches sandwich SE to cluster-robust (`fit.robust_kind == "cluster"`)
+  - `fit.predict_survival(x_new, times=grid)` returns Cox survival curves using a baseline cumulative hazard.
+
 ### Time series / state space (Phase 8)
 
 Low-level:
