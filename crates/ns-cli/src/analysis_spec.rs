@@ -313,12 +313,14 @@ pub struct RenderStep {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Gates {
     pub baseline_compare: BaselineCompareGate,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct BaselineCompareGate {
+    #[allow(dead_code)]
     pub enabled: bool,
     #[allow(dead_code)]
     pub baseline_dir: PathBuf,
@@ -447,11 +449,10 @@ fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> 
                         out.push_str(&format!("Weight: {w}\n"));
                     }
                 }
-                if let Some(ref rs) = s.regions {
-                    if !rs.is_empty() {
+                if let Some(ref rs) = s.regions
+                    && !rs.is_empty() {
                         out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
                     }
-                }
                 for nf in &s.norm_factors {
                     let nf = nf.trim();
                     if !nf.is_empty() {
@@ -459,12 +460,7 @@ fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> 
                     }
                 }
                 for ns in &s.norm_sys {
-                    out.push_str(&format!(
-                        "NormSys: {} {} {}\n",
-                        ns.name.trim(),
-                        ns.lo,
-                        ns.hi
-                    ));
+                    out.push_str(&format!("NormSys: {} {} {}\n", ns.name.trim(), ns.lo, ns.hi));
                 }
                 if s.stat_error {
                     out.push_str("StatError: true\n");
@@ -484,11 +480,10 @@ fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> 
                 };
                 out.push_str(&format!("Type: {t}\n"));
                 out.push_str(&format!("Samples: {}\n", fmt_list(&sys.samples)));
-                if let Some(ref rs) = sys.regions {
-                    if !rs.is_empty() {
+                if let Some(ref rs) = sys.regions
+                    && !rs.is_empty() {
                         out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
                     }
-                }
 
                 match sys.kind {
                     TrexYamlSystematicType::Norm => {
@@ -722,11 +717,7 @@ impl AnalysisSpecV0 {
 
                 let config_text = render_trex_config_yaml_to_txt(ty)?;
                 let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
-                (
-                    ws_out,
-                    Some(ImportPlan::TrexConfigYaml { config_text, base_dir }),
-                    None,
-                )
+                (ws_out, Some(ImportPlan::TrexConfigYaml { config_text, base_dir }), None)
             }
             other => anyhow::bail!("unknown inputs.mode: {other}"),
         };
@@ -807,10 +798,7 @@ impl AnalysisSpecV0 {
                     .parent()
                     .unwrap_or_else(|| Path::new("."))
                     .join("_preprocess_config.json");
-                let provenance_json = pp
-                    .provenance_json
-                    .as_ref()
-                    .map(|p| resolve_path(cfg_dir, p));
+                let provenance_json = pp.provenance_json.as_ref().map(|p| resolve_path(cfg_dir, p));
                 Some(PreprocessPlan { config_json, provenance_json })
             } else {
                 None
@@ -819,6 +807,14 @@ impl AnalysisSpecV0 {
             None
         };
 
-        Ok(RunPlan { threads, workspace_json, import: import_plan, preprocess, fit, profile_scan, report })
+        Ok(RunPlan {
+            threads,
+            workspace_json,
+            import: import_plan,
+            preprocess,
+            fit,
+            profile_scan,
+            report,
+        })
     }
 }

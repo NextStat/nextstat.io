@@ -759,7 +759,7 @@ mod tests {
             if yt.is_nan() {
                 m_filt.push(m_pred);
                 p_filt.push(p_pred);
-                m_pred = f * m_pred;
+                m_pred *= f;
                 p_pred = f * f * p_pred + q;
                 continue;
             }
@@ -836,7 +836,7 @@ mod tests {
         )
         .unwrap();
 
-        let y = vec![0.9, 1.2, 0.8, 1.1];
+        let y = [0.9, 1.2, 0.8, 1.1];
         let ys: Vec<DVector<f64>> = y.iter().map(|&v| DVector::from_row_slice(&[v])).collect();
         let fr = kalman_filter(&model, &ys).unwrap();
         let sr = rts_smoother(&model, &fr).unwrap();

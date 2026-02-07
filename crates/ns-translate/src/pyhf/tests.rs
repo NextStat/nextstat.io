@@ -288,11 +288,7 @@ fn test_f32_precision_poc() {
         let mut max_grad_diff = 0.0f64;
         for i in 0..n {
             let diff = (grad_f64_fd[i] - grad_f32_fd[i]).abs();
-            let rel = if grad_f64_fd[i].abs() > 1e-10 {
-                diff / grad_f64_fd[i].abs()
-            } else {
-                diff
-            };
+            let rel = if grad_f64_fd[i].abs() > 1e-10 { diff / grad_f64_fd[i].abs() } else { diff };
             max_grad_diff = max_grad_diff.max(rel);
             println!(
                 "    param[{i}]: f64={:.8e}  f32={:.8e}  rel_diff={rel:.4e}",
@@ -579,11 +575,8 @@ fn test_f32_analytical_gradient_poc() {
         let mut rel_diffs: Vec<(usize, f64, f64, f64, f64)> = Vec::new(); // (idx, f64_grad, f32_grad, abs_diff, rel_diff)
         for i in 0..n {
             let abs_diff = (grad_f64[i] - grad_f32[i]).abs();
-            let rel = if grad_f64[i].abs() > 1e-10 {
-                abs_diff / grad_f64[i].abs()
-            } else {
-                abs_diff
-            };
+            let rel =
+                if grad_f64[i].abs() > 1e-10 { abs_diff / grad_f64[i].abs() } else { abs_diff };
             rel_diffs.push((i, grad_f64[i], grad_f32[i], abs_diff, rel));
         }
 
@@ -609,10 +602,8 @@ fn test_f32_analytical_gradient_poc() {
         let p99_rel = sorted_rels[(sorted_rels.len() as f64 * 0.99) as usize];
 
         // Sign disagreements
-        let sign_mismatches: Vec<_> = rel_diffs
-            .iter()
-            .filter(|r| r.1.signum() != r.2.signum() && r.1.abs() > 1e-6)
-            .collect();
+        let sign_mismatches: Vec<_> =
+            rel_diffs.iter().filter(|r| r.1.signum() != r.2.signum() && r.1.abs() > 1e-6).collect();
 
         println!("\n  Analytical gradient statistics (all {n} params):");
         println!("    Max rel diff:    {max_rel:.6e}");
@@ -620,10 +611,7 @@ fn test_f32_analytical_gradient_poc() {
         println!("    Median rel diff: {median_rel:.6e}");
         println!("    P90 rel diff:    {p90_rel:.6e}");
         println!("    P99 rel diff:    {p99_rel:.6e}");
-        println!(
-            "    Sign mismatches: {} / {n} (where |grad_f64| > 1e-6)",
-            sign_mismatches.len()
-        );
+        println!("    Sign mismatches: {} / {n} (where |grad_f64| > 1e-6)", sign_mismatches.len());
 
         // ---- Test at perturbed point ----
         println!("\n  --- At perturbed point ---");
@@ -637,8 +625,7 @@ fn test_f32_analytical_gradient_poc() {
 
         let mut grad_f64_pert = vec![0.0f64; n];
         for i in 0..n {
-            let mut params_dual: Vec<Dual> =
-                perturbed.iter().map(|&x| Dual::constant(x)).collect();
+            let mut params_dual: Vec<Dual> = perturbed.iter().map(|&x| Dual::constant(x)).collect();
             params_dual[i] = Dual::var(perturbed[i]);
             let nll: Dual = model.nll_generic(&params_dual).unwrap();
             grad_f64_pert[i] = nll.dot;
@@ -679,9 +666,7 @@ fn test_f32_analytical_gradient_poc() {
         println!("    Max rel diff:    {max_rel_pert:.6e}");
         println!("    Median rel diff: {median_rel_pert:.6e}");
         println!("    P99 rel diff:    {p99_rel_pert:.6e}");
-        println!(
-            "    Sign mismatches: {sign_mismatch_pert} / {n} (where |grad_f64| > 1e-6)"
-        );
+        println!("    Sign mismatches: {sign_mismatch_pert} / {n} (where |grad_f64| > 1e-6)");
 
         // Verdict
         println!("\n  ================================================================");

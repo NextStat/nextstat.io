@@ -152,14 +152,13 @@ impl LmmMarginalModel {
         if group_idx.iter().any(|&g| g >= n_groups) {
             return Err(Error::Validation("group_idx must be in [0, n_groups)".to_string()));
         }
-        if let RandomEffects::InterceptSlope { feature_idx } = re {
-            if feature_idx >= x.p {
+        if let RandomEffects::InterceptSlope { feature_idx } = re
+            && feature_idx >= x.p {
                 return Err(Error::Validation(format!(
                     "feature_idx must be in [0, p), got {} (p={})",
                     feature_idx, x.p
                 )));
             }
-        }
 
         let mut groups: Vec<GroupData> = (0..n_groups)
             .map(|_| GroupData { indices: Vec::new(), s00: 0.0, s01: 0.0, s11: 0.0 })
@@ -240,11 +239,10 @@ impl LmmMarginalModel {
         if !tau_alpha.is_finite() || tau_alpha <= 0.0 {
             return Err(Error::Validation("tau_alpha must be finite and > 0".to_string()));
         }
-        if let Some(tu) = tau_u {
-            if !tu.is_finite() || tu <= 0.0 {
+        if let Some(tu) = tau_u
+            && (!tu.is_finite() || tu <= 0.0) {
                 return Err(Error::Validation("tau_u must be finite and > 0".to_string()));
             }
-        }
 
         let inv_a = 1.0 / (sigma_y * sigma_y);
         let log_a = (sigma_y * sigma_y).ln();

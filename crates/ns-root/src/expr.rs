@@ -48,8 +48,12 @@ enum Func {
     Abs,
     Sqrt,
     Log,
+    Log10,
     Exp,
+    Sin,
+    Cos,
     Pow,
+    Atan2,
     Min,
     Max,
 }
@@ -68,8 +72,12 @@ fn func_from_ident(name: &str) -> Option<Func> {
         "abs" | "fabs" => Some(Func::Abs),
         "sqrt" => Some(Func::Sqrt),
         "log" => Some(Func::Log),
+        "log10" => Some(Func::Log10),
         "exp" => Some(Func::Exp),
+        "sin" => Some(Func::Sin),
+        "cos" => Some(Func::Cos),
         "pow" | "power" => Some(Func::Pow),
+        "atan2" => Some(Func::Atan2),
         "min" => Some(Func::Min),
         "max" => Some(Func::Max),
         _ => None,
@@ -99,8 +107,12 @@ enum Instr {
     Abs,
     Sqrt,
     Log,
+    Log10,
     Exp,
+    Sin,
+    Cos,
     Pow,
+    Atan2,
     Min,
     Max,
     /// Jump to absolute instruction index if condition (popped) is <= 0.
@@ -133,7 +145,11 @@ impl CompiledExpr {
         let mut ast = parser.parse_ternary()?;
         if parser.pos < parser.tokens.len() {
             let t = &parser.tokens[parser.pos];
-            return Err(expr_err(input, t.span, format!("unexpected token after expression: {:?}", t.kind)));
+            return Err(expr_err(
+                input,
+                t.span,
+                format!("unexpected token after expression: {:?}", t.kind),
+            ));
         }
         // Indexing is supported only as syntactic sugar for selecting a scalar "view" of
         // a branch, i.e. `jet_pt[0]` becomes a required branch named `jet_pt[0]`.
@@ -250,7 +266,11 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
             }
         }
         Expr::Ternary(c, t, f) => {
-            if eval_expr(c, vals) > 0.0 { eval_expr(t, vals) } else { eval_expr(f, vals) }
+            if eval_expr(c, vals) > 0.0 {
+                eval_expr(t, vals)
+            } else {
+                eval_expr(f, vals)
+            }
         }
         Expr::Call(f, args) => {
             let a0 = || eval_expr(&args[0], vals);
@@ -259,8 +279,12 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                 Func::Abs => a0().abs(),
                 Func::Sqrt => a0().sqrt(),
                 Func::Log => a0().ln(),
+                Func::Log10 => a0().log10(),
                 Func::Exp => a0().exp(),
+                Func::Sin => a0().sin(),
+                Func::Cos => a0().cos(),
                 Func::Pow => a0().powf(a1()),
+                Func::Atan2 => a0().atan2(a1()),
                 Func::Min => a0().min(a1()),
                 Func::Max => a0().max(a1()),
             }
@@ -323,8 +347,12 @@ fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
                 Func::Abs => Instr::Abs,
                 Func::Sqrt => Instr::Sqrt,
                 Func::Log => Instr::Log,
+                Func::Log10 => Instr::Log10,
                 Func::Exp => Instr::Exp,
+                Func::Sin => Instr::Sin,
+                Func::Cos => Instr::Cos,
                 Func::Pow => Instr::Pow,
+                Func::Atan2 => Instr::Atan2,
                 Func::Min => Instr::Min,
                 Func::Max => Instr::Max,
             });
@@ -358,8 +386,12 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             Instr::Sub => bin2(&mut stack, |a, b| a - b),
             Instr::Mul => bin2(&mut stack, |a, b| a * b),
             Instr::Div => bin2(&mut stack, |a, b| a / b),
-            Instr::Eq => bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 }),
-            Instr::Ne => bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 }),
+            Instr::Eq => {
+                bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 })
+            }
+            Instr::Ne => {
+                bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 })
+            }
             Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
             Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
             Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
@@ -378,11 +410,24 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 let a = stack.pop().unwrap();
                 stack.push(a.ln());
             }
+            Instr::Log10 => {
+                let a = stack.pop().unwrap();
+                stack.push(a.log10());
+            }
             Instr::Exp => {
                 let a = stack.pop().unwrap();
                 stack.push(a.exp());
             }
+            Instr::Sin => {
+                let a = stack.pop().unwrap();
+                stack.push(a.sin());
+            }
+            Instr::Cos => {
+                let a = stack.pop().unwrap();
+                stack.push(a.cos());
+            }
             Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
+            Instr::Atan2 => bin2(&mut stack, |a, b| a.atan2(b)),
             Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
             Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
             Instr::Jz(target) => {
@@ -423,6 +468,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
     let mut out = Vec::with_capacity(n);
     let mut stack: Vec<f64> = Vec::with_capacity(16);
 
+    #[allow(clippy::needless_range_loop)]
     for row in 0..n {
         stack.clear();
         let mut ip = 0usize;
@@ -442,8 +488,12 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 Instr::Sub => bin2(&mut stack, |a, b| a - b),
                 Instr::Mul => bin2(&mut stack, |a, b| a * b),
                 Instr::Div => bin2(&mut stack, |a, b| a / b),
-                Instr::Eq => bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 }),
-                Instr::Ne => bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 }),
+                Instr::Eq => {
+                    bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 })
+                }
+                Instr::Ne => {
+                    bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 })
+                }
                 Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
                 Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
                 Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
@@ -462,11 +512,24 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                     let a = stack.pop().unwrap();
                     stack.push(a.ln());
                 }
+                Instr::Log10 => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.log10());
+                }
                 Instr::Exp => {
                     let a = stack.pop().unwrap();
                     stack.push(a.exp());
                 }
+                Instr::Sin => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.sin());
+                }
+                Instr::Cos => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.cos());
+                }
                 Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
+                Instr::Atan2 => bin2(&mut stack, |a, b| a.atan2(b)),
                 Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
                 Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
                 Instr::Jz(target) => {
@@ -513,12 +576,7 @@ struct BulkEvalState<'a> {
 
 impl<'a> BulkEvalState<'a> {
     fn new(n: usize) -> Self {
-        Self {
-            arena: Vec::new(),
-            slots: Vec::with_capacity(16),
-            stack: Vec::with_capacity(16),
-            n,
-        }
+        Self { arena: Vec::new(), slots: Vec::with_capacity(16), stack: Vec::with_capacity(16), n }
     }
 
     fn push(&mut self, s: Slot<'a>) {
@@ -678,9 +736,24 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 let r = st.unary(a, f64::ln);
                 st.push(r);
             }
+            Instr::Log10 => {
+                let a = st.pop();
+                let r = st.unary(a, f64::log10);
+                st.push(r);
+            }
             Instr::Exp => {
                 let a = st.pop();
                 let r = st.unary(a, f64::exp);
+                st.push(r);
+            }
+            Instr::Sin => {
+                let a = st.pop();
+                let r = st.unary(a, f64::sin);
+                st.push(r);
+            }
+            Instr::Cos => {
+                let a = st.pop();
+                let r = st.unary(a, f64::cos);
                 st.push(r);
             }
             Instr::Add => {
@@ -710,17 +783,15 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             Instr::Eq => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| {
-                    if (x - y).abs() < f64::EPSILON { 1.0 } else { 0.0 }
-                });
+                let r =
+                    st.binary(a, b, |x, y| if (x - y).abs() < f64::EPSILON { 1.0 } else { 0.0 });
                 st.push(r);
             }
             Instr::Ne => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| {
-                    if (x - y).abs() >= f64::EPSILON { 1.0 } else { 0.0 }
-                });
+                let r =
+                    st.binary(a, b, |x, y| if (x - y).abs() >= f64::EPSILON { 1.0 } else { 0.0 });
                 st.push(r);
             }
             Instr::Lt => {
@@ -750,23 +821,25 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             Instr::And => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| {
-                    if x > 0.0 && y > 0.0 { 1.0 } else { 0.0 }
-                });
+                let r = st.binary(a, b, |x, y| if x > 0.0 && y > 0.0 { 1.0 } else { 0.0 });
                 st.push(r);
             }
             Instr::Or => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| {
-                    if x > 0.0 || y > 0.0 { 1.0 } else { 0.0 }
-                });
+                let r = st.binary(a, b, |x, y| if x > 0.0 || y > 0.0 { 1.0 } else { 0.0 });
                 st.push(r);
             }
             Instr::Pow => {
                 let b = st.pop();
                 let a = st.pop();
                 let r = st.binary(a, b, |x, y| x.powf(y));
+                st.push(r);
+            }
+            Instr::Atan2 => {
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x.atan2(y));
                 st.push(r);
             }
             Instr::Min => {
@@ -858,13 +931,13 @@ fn rewrite_indexing(input: &str, ast: &mut Expr, branches: &mut Vec<String>) -> 
                 match &**base {
                     Expr::Var(i) => {
                         let name = branches.get(*i).ok_or_else(|| {
-                            RootError::Expression("internal error: branch index out of bounds".to_string())
+                            RootError::Expression(
+                                "internal error: branch index out of bounds".to_string(),
+                            )
                         })?;
                         let indexed = format!("{name}[{index}]");
-                        let new_i = branches
-                            .iter()
-                            .position(|s| s == &indexed)
-                            .unwrap_or_else(|| {
+                        let new_i =
+                            branches.iter().position(|s| s == &indexed).unwrap_or_else(|| {
                                 branches.push(indexed);
                                 branches.len() - 1
                             });
@@ -1095,16 +1168,16 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
                     break;
                 }
                 let s = &input[start..i];
-                let n: f64 = s
-                    .parse()
-                    .map_err(|_| expr_err(input, Span { start, end: i }, format!("invalid number: '{s}'")))?;
+                let n: f64 = s.parse().map_err(|_| {
+                    expr_err(input, Span { start, end: i }, format!("invalid number: '{s}'"))
+                })?;
                 TokenKind::Num(n)
             }
             _ if (b as char).is_ascii_alphabetic() || b == b'_' => {
                 i += 1;
                 while i < bytes.len() {
                     let c = bytes[i] as char;
-                    if c.is_ascii_alphanumeric() || bytes[i] == b'_' {
+                    if c.is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'.' {
                         i += 1;
                         continue;
                     }
@@ -1293,34 +1366,33 @@ impl<'a> Parser<'a> {
     fn parse_postfix(&mut self) -> Result<Expr> {
         let mut e = self.parse_atom()?;
 
-        loop {
-            match self.peek().map(|t| &t.kind) {
-                Some(TokenKind::LBracket) => {
-                    let lb = self.advance().unwrap();
-                    let idx_tok = self.advance().ok_or_else(|| {
-                        expr_err(self.input, lb.span, "expected index after '['".to_string())
-                    })?;
-                    let index = match idx_tok.kind {
-                        TokenKind::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
-                        _ => {
-                            return Err(expr_err(
-                                self.input,
-                                idx_tok.span,
-                                "index must be a non-negative integer literal".to_string(),
-                            ));
-                        }
-                    };
-                    let rb = self.advance().ok_or_else(|| {
-                        expr_err(self.input, lb.span, "expected ']'".to_string())
-                    })?;
-                    if rb.kind != TokenKind::RBracket {
-                        return Err(expr_err(self.input, rb.span, format!("expected ']', got {:?}", rb.kind)));
-                    }
-                    let span = Span { start: lb.span.start, end: rb.span.end };
-                    e = Expr::Index { base: Box::new(e), index, span };
+        while let Some(TokenKind::LBracket) = self.peek().map(|t| &t.kind) {
+            let lb = self.advance().unwrap();
+            let idx_tok = self.advance().ok_or_else(|| {
+                expr_err(self.input, lb.span, "expected index after '['".to_string())
+            })?;
+            let index = match idx_tok.kind {
+                TokenKind::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
+                _ => {
+                    return Err(expr_err(
+                        self.input,
+                        idx_tok.span,
+                        "index must be a non-negative integer literal".to_string(),
+                    ));
                 }
-                _ => break,
+            };
+            let rb = self
+                .advance()
+                .ok_or_else(|| expr_err(self.input, lb.span, "expected ']'".to_string()))?;
+            if rb.kind != TokenKind::RBracket {
+                return Err(expr_err(
+                    self.input,
+                    rb.span,
+                    format!("expected ']', got {:?}", rb.kind),
+                ));
             }
+            let span = Span { start: lb.span.start, end: rb.span.end };
+            e = Expr::Index { base: Box::new(e), index, span };
         }
 
         Ok(e)
@@ -1336,11 +1408,7 @@ impl<'a> Parser<'a> {
                         self.advance();
                         Ok(e)
                     } else {
-                        Err(expr_err(
-                            self.input,
-                            t.span,
-                            format!("expected ')', got {:?}", t.kind),
-                        ))
+                        Err(expr_err(self.input, t.span, format!("expected ')', got {:?}", t.kind)))
                     }
                 } else {
                     Err(expr_err(self.input, span, "expected ')'".to_string()))
@@ -1448,6 +1516,13 @@ mod tests {
     }
 
     #[test]
+    fn variable_names_can_contain_dots() {
+        let e = CompiledExpr::compile("jet.pt + 1").unwrap();
+        assert_eq!(e.required_branches, vec!["jet.pt"]);
+        assert!((e.eval_row(&[2.0]) - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
     fn comparison_and_boolean() {
         let e = CompiledExpr::compile("njet >= 4 && pt_lead > 25.0").unwrap();
         assert_eq!(e.required_branches, vec!["njet", "pt_lead"]);
@@ -1481,6 +1556,32 @@ mod tests {
 
         let e = CompiledExpr::compile("TMath::Power(x, 2)").unwrap();
         assert!((e.eval_row(&[4.0]) - 16.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn additional_math_functions() {
+        let e = CompiledExpr::compile("log10(x)").unwrap();
+        assert!((e.eval_row(&[100.0]) - 2.0).abs() < 1e-12);
+
+        let e = CompiledExpr::compile("TMath::Log10(x)").unwrap();
+        assert!((e.eval_row(&[1e3]) - 3.0).abs() < 1e-12);
+
+        let e = CompiledExpr::compile("sin(x) + cos(x)").unwrap();
+        let got = e.eval_row(&[0.0]);
+        assert!((got - 1.0).abs() < 1e-12);
+
+        let e = CompiledExpr::compile("atan2(y, x)").unwrap();
+        assert!((e.eval_row(&[1.0, 0.0]) - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+
+        // Vectorized bulk path (no control flow).
+        let e = CompiledExpr::compile("atan2(y, x) + log10(x)").unwrap();
+        let x = [10.0, 100.0, 1000.0];
+        let y = [0.0, 1.0, 1.0];
+        let got = e.eval_bulk(&[&y, &x]);
+        assert_eq!(got.len(), 3);
+        assert!((got[0] - (0.0 + 1.0)).abs() < 1e-12);
+        assert!((got[1] - (y[1].atan2(x[1]) + 2.0)).abs() < 1e-12);
+        assert!((got[2] - (y[2].atan2(x[2]) + 3.0)).abs() < 1e-12);
     }
 
     #[test]

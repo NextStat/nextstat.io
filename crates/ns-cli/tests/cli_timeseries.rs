@@ -187,16 +187,16 @@ fn timeseries_kalman_filter_partial_missing_2d_contract() {
     let fm =
         v.get("filtered_means").and_then(|x| x.as_array()).expect("filtered_means should be array");
     assert_eq!(fm.len(), 4);
-    for t in 0..fm.len() {
-        let row = fm[t].as_array().expect("filtered_means[t] should be array");
+    for item in fm {
+        let row = item.as_array().expect("filtered_means[t] should be array");
         assert_eq!(row.len(), 2);
     }
 
     let fc =
         v.get("filtered_covs").and_then(|x| x.as_array()).expect("filtered_covs should be array");
     assert_eq!(fc.len(), 4);
-    for t in 0..fc.len() {
-        let rows = fc[t].as_array().expect("filtered_covs[t] should be array");
+    for item in fc {
+        let rows = item.as_array().expect("filtered_covs[t] should be array");
         assert_eq!(rows.len(), 2);
         for r in rows {
             let row = r.as_array().expect("filtered_covs[t][i] should be array");

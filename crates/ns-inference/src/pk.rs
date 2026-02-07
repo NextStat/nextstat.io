@@ -159,11 +159,10 @@ impl OneCompartmentOralPkModel {
         if !sigma.is_finite() || sigma <= 0.0 {
             return Err(Error::Validation("sigma must be finite and > 0".to_string()));
         }
-        if let Some(lloq) = lloq {
-            if !lloq.is_finite() || lloq < 0.0 {
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0) {
                 return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
             }
-        }
         Ok(Self { times, y, dose, bioavailability, sigma, lloq, lloq_policy })
     }
 
@@ -252,11 +251,10 @@ impl OneCompartmentOralPkNlmeModel {
         if !sigma.is_finite() || sigma <= 0.0 {
             return Err(Error::Validation("sigma must be finite and > 0".to_string()));
         }
-        if let Some(lloq) = lloq {
-            if !lloq.is_finite() || lloq < 0.0 {
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0) {
                 return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
             }
-        }
         Ok(Self {
             times,
             y,
@@ -458,8 +456,8 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                 t,
             );
 
-            if let Some(lloq) = self.lloq {
-                if yobs < lloq {
+            if let Some(lloq) = self.lloq
+                && yobs < lloq {
                     match self.lloq_policy {
                         LloqPolicy::Ignore => continue,
                         LloqPolicy::ReplaceHalf => {
@@ -475,7 +473,6 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                     }
                     continue;
                 }
-            }
 
             let r = yobs - c;
             nll += 0.5 * r * r * inv_s2 + s.ln();
@@ -519,8 +516,8 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                 t,
             );
 
-            if let Some(lloq) = self.lloq {
-                if yobs < lloq {
+            if let Some(lloq) = self.lloq
+                && yobs < lloq {
                     match self.lloq_policy {
                         LloqPolicy::Ignore => continue,
                         LloqPolicy::ReplaceHalf => {
@@ -550,7 +547,6 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                     }
                     continue;
                 }
-            }
 
             let r = c - yobs;
             let w = r * inv_s2;
@@ -637,8 +633,8 @@ impl LogDensityModel for OneCompartmentOralPkModel {
         for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
             let c = self.conc(cl, v, ka, t);
 
-            if let Some(lloq) = self.lloq {
-                if yobs < lloq {
+            if let Some(lloq) = self.lloq
+                && yobs < lloq {
                     match self.lloq_policy {
                         LloqPolicy::Ignore => continue,
                         LloqPolicy::ReplaceHalf => {
@@ -654,7 +650,6 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                     }
                     continue;
                 }
-            }
 
             let r = yobs - c;
             nll += 0.5 * r * r * inv_s2 + s.ln();
@@ -681,8 +676,8 @@ impl LogDensityModel for OneCompartmentOralPkModel {
         for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
             let (c, dc_dcl, dc_dv, dc_dka) = self.conc_and_grad(cl, v, ka, t);
 
-            if let Some(lloq) = self.lloq {
-                if yobs < lloq {
+            if let Some(lloq) = self.lloq
+                && yobs < lloq {
                     match self.lloq_policy {
                         LloqPolicy::Ignore => continue,
                         LloqPolicy::ReplaceHalf => {
@@ -706,7 +701,6 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                     }
                     continue;
                 }
-            }
 
             let r = c - yobs;
             let w = r * inv_s2;

@@ -117,11 +117,10 @@ fn ensure_empty_dir(dir: &Path) -> Result<()> {
 }
 
 fn copy_file_into(src: &Path, dst: &Path) -> Result<()> {
-    if let Some(parent) = dst.parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = dst.parent()
+        && !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)?;
         }
-    }
     std::fs::copy(src, dst)?;
     Ok(())
 }
@@ -259,11 +258,7 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
 
     // Copy run outputs (inputs+artifacts) verbatim.
     let run_outputs = outputs_dir.join("run");
-    copy_tree_filtered(
-        &cfg.out_dir,
-        &run_outputs,
-        &["json", "csv", "tex", "pdf", "svg"],
-    )?;
+    copy_tree_filtered(&cfg.out_dir, &run_outputs, &["json", "csv", "tex", "pdf", "svg"])?;
 
     // Provenance (intermediate hashes).
     let mut prov_inputs = Vec::new();
@@ -275,7 +270,13 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
     let hf_rel = cfg.histfactory_xml.strip_prefix(hf_dir).unwrap_or(cfg.histfactory_xml.as_path());
     let hf_copy = inputs_dir.join("histfactory").join(hf_rel);
     if hf_copy.is_file() {
-        record_prov_file(&mut prov_inputs, "histfactory_xml", &cfg.histfactory_xml, bundle_dir, &hf_copy)?;
+        record_prov_file(
+            &mut prov_inputs,
+            "histfactory_xml",
+            &cfg.histfactory_xml,
+            bundle_dir,
+            &hf_copy,
+        )?;
     } else {
         notes.push(format!(
             "histfactory_xml copy not found at expected path (original={}, expected_copy={})",
@@ -366,11 +367,10 @@ pub fn write_run_bundle_spec_v0(
 
     // Copy HistFactory inputs when available (best-effort).
     let mut histfactory_xmls: Vec<PathBuf> = Vec::new();
-    if let Some(import) = plan.import.as_ref() {
-        if let crate::analysis_spec::ImportPlan::HistfactoryXml { histfactory_xml } = import {
+    if let Some(import) = plan.import.as_ref()
+        && let crate::analysis_spec::ImportPlan::HistfactoryXml { histfactory_xml } = import {
             histfactory_xmls.push(histfactory_xml.clone());
         }
-    }
     if let Some(report) = plan.report.as_ref() {
         histfactory_xmls.push(report.histfactory_xml.clone());
     }
@@ -394,8 +394,8 @@ pub fn write_run_bundle_spec_v0(
     }
 
     // Copy trex config text if used.
-    if let Some(import) = plan.import.as_ref() {
-        if let crate::analysis_spec::ImportPlan::TrexConfigTxt { config_path, .. } = import {
+    if let Some(import) = plan.import.as_ref()
+        && let crate::analysis_spec::ImportPlan::TrexConfigTxt { config_path, .. } = import {
             let dst = inputs_dir.join("trex").join("config.txt");
             copy_file_into(config_path, &dst)?;
             record_prov_file(&mut prov_inputs, "trex_config_txt", config_path, bundle_dir, &dst)?;
@@ -404,7 +404,6 @@ pub fn write_run_bundle_spec_v0(
                     .to_string(),
             );
         }
-    }
 
     // Workspace input (workspace_json mode): copy the input workspace.
     if spec.inputs.mode == "workspace_json" {
@@ -423,29 +422,29 @@ pub fn write_run_bundle_spec_v0(
     if plan.import.is_some() && plan.workspace_json.exists() {
         let dst = outputs_dir.join("workspace.json");
         copy_file_into(&plan.workspace_json, &dst)?;
-        record_prov_file(&mut prov_outputs, "workspace_json", &plan.workspace_json, bundle_dir, &dst)?;
+        record_prov_file(
+            &mut prov_outputs,
+            "workspace_json",
+            &plan.workspace_json,
+            bundle_dir,
+            &dst,
+        )?;
     }
-    if let Some(fit) = plan.fit.as_ref() {
-        if fit.exists() {
+    if let Some(fit) = plan.fit.as_ref()
+        && fit.exists() {
             let dst = outputs_dir.join("fit.json");
             copy_file_into(fit, &dst)?;
             record_prov_file(&mut prov_outputs, "fit_json", fit, bundle_dir, &dst)?;
         }
-    }
-    if let Some(scan) = plan.profile_scan.as_ref() {
-        if scan.output_json.exists() {
+    if let Some(scan) = plan.profile_scan.as_ref()
+        && scan.output_json.exists() {
             let dst = outputs_dir.join("scan.json");
             copy_file_into(&scan.output_json, &dst)?;
             record_prov_file(&mut prov_outputs, "scan_json", &scan.output_json, bundle_dir, &dst)?;
         }
-    }
     if let Some(report) = plan.report.as_ref() {
         let dst_dir = outputs_dir.join("report");
-        copy_tree_filtered(
-            &report.out_dir,
-            &dst_dir,
-            &["json", "csv", "tex", "pdf", "svg"],
-        )?;
+        copy_tree_filtered(&report.out_dir, &dst_dir, &["json", "csv", "tex", "pdf", "svg"])?;
 
         let key_reports: &[(&str, &str)] = &[
             ("report_fit_json", "fit.json"),

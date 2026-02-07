@@ -69,7 +69,7 @@ impl SamplerResult {
 ///
 /// Each chain gets seed `seed + chain_id`.
 pub fn sample_nuts_multichain(
-    model: &(impl LogDensityModel + Sync),
+    model: &impl LogDensityModel,
     n_chains: usize,
     n_warmup: usize,
     n_samples: usize,

@@ -143,11 +143,10 @@ fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
     let mut modifiers = Vec::new();
 
     for child in node.children() {
-        if child.is_element() {
-            if let Some(m) = parse_modifier(child)? {
+        if child.is_element()
+            && let Some(m) = parse_modifier(child)? {
                 modifiers.push(m);
             }
-        }
     }
 
     Ok(SampleXml { name, histo_name, input_file, histo_path, modifiers })

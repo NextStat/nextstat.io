@@ -193,37 +193,42 @@ pub fn distributions_artifact(
             ))
         })?;
 
-        let blinded = blinded_channels
-            .as_ref()
-            .map(|xs| xs.contains(&ch_pre.channel_name))
-            .unwrap_or(false);
+        let blinded =
+            blinded_channels.as_ref().map(|xs| xs.contains(&ch_pre.channel_name)).unwrap_or(false);
 
         let n_bins = edges.len().saturating_sub(1);
-        let (data_y, data_err_lo, data_err_hi, data_error_model, ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
-            if blinded {
-                (
-                    vec![0.0; n_bins],
-                    vec![0.0; n_bins],
-                    vec![0.0; n_bins],
-                    None,
-                    vec![0.0; n_bins],
-                    vec![0.0; n_bins],
-                    vec![0.0; n_bins],
-                )
-            } else {
-                let (data_err_lo, data_err_hi, data_error_model) = data_errors(data);
-                let (ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
-                    ratio_from_data_over_mc(data, &data_err_lo, &data_err_hi, &ch_post.total);
-                (
-                    data.clone(),
-                    data_err_lo,
-                    data_err_hi,
-                    data_error_model,
-                    ratio_y,
-                    ratio_yerr_lo,
-                    ratio_yerr_hi,
-                )
-            };
+        let (
+            data_y,
+            data_err_lo,
+            data_err_hi,
+            data_error_model,
+            ratio_y,
+            ratio_yerr_lo,
+            ratio_yerr_hi,
+        ) = if blinded {
+            (
+                vec![0.0; n_bins],
+                vec![0.0; n_bins],
+                vec![0.0; n_bins],
+                None,
+                vec![0.0; n_bins],
+                vec![0.0; n_bins],
+                vec![0.0; n_bins],
+            )
+        } else {
+            let (data_err_lo, data_err_hi, data_error_model) = data_errors(data);
+            let (ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
+                ratio_from_data_over_mc(data, &data_err_lo, &data_err_hi, &ch_post.total);
+            (
+                data.clone(),
+                data_err_lo,
+                data_err_hi,
+                data_error_model,
+                ratio_y,
+                ratio_yerr_lo,
+                ratio_yerr_hi,
+            )
+        };
 
         let mut samples = Vec::with_capacity(ch_pre.samples.len());
         for s_pre in &ch_pre.samples {

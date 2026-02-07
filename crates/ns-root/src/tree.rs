@@ -42,6 +42,12 @@ pub struct BranchInfo {
     pub name: String,
     /// Data type of leaves.
     pub leaf_type: LeafType,
+    /// Entry offset length for variable-length data (`fEntryOffsetLen`).
+    ///
+    /// ROOT stores this as a bit width in many cases (e.g. 32/64). If `> 0`,
+    /// baskets may contain an entry-offset table enabling per-entry slicing for
+    /// leaflist/jagged data.
+    pub entry_offset_len: usize,
     /// Total number of entries in this branch.
     pub entries: u64,
     /// Compressed byte sizes for each basket.

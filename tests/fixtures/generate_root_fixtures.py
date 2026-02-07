@@ -8,6 +8,7 @@ import json
 import os
 
 import numpy as np
+import awkward as ak
 import uproot
 
 FIXTURES_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -311,9 +312,52 @@ def create_simple_tree():
         json.dump(expected, f, indent=2)
     print(f"Created {expected_path}")
 
+def create_vector_tree():
+    """Create a ROOT file with a TTree containing a jagged (variable-length) array branch.
+
+    This fixture is used to test expression-style indexing like `jet_pt[0]`.
+    """
+    path = os.path.join(FIXTURES_DIR, "vector_tree.root")
+
+    jet_pt = ak.Array([
+        [10.0, 11.0],
+        [20.0],
+        [],
+        [30.0, 31.0, 32.0],
+        [40.0],
+        [],
+        [50.0, 51.0],
+        [60.0],
+    ])
+    n = len(jet_pt)
+
+    # Expected materialized scalar columns for indexing.
+    jet_pt_0 = [10.0, 20.0, 0.0, 30.0, 40.0, 0.0, 50.0, 60.0]
+    jet_pt_1 = [11.0, 0.0, 0.0, 31.0, 0.0, 0.0, 51.0, 0.0]
+
+    with uproot.recreate(path) as f:
+        f.mktree("events", {
+            "jet_pt": "var * float32",
+        })
+        f["events"].extend({
+            "jet_pt": ak.values_astype(jet_pt, np.float32),
+        })
+
+    print(f"Created {path}")
+
+    expected = {
+        "n_entries": n,
+        "jet_pt_0": jet_pt_0,
+        "jet_pt_1": jet_pt_1,
+    }
+    expected_path = os.path.join(FIXTURES_DIR, "vector_tree_expected.json")
+    with open(expected_path, "w") as f:
+        json.dump(expected, f, indent=2)
+    print(f"Created {expected_path}")
 
 if __name__ == "__main__":
     create_simple_root()
     create_histfactory_fixtures()
     create_simple_tree()
+    create_vector_tree()
     print("\nAll fixtures created successfully.")

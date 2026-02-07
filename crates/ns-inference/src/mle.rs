@@ -306,7 +306,12 @@ impl MaximumLikelihoodEstimator {
         }
 
         let bounds: Vec<(f64, f64)> = model.parameter_bounds();
-        self.fit_minimum_histfactory_from_with_bounds_with_tape(model, initial_params, &bounds, tape)
+        self.fit_minimum_histfactory_from_with_bounds_with_tape(
+            model,
+            initial_params,
+            &bounds,
+            tape,
+        )
     }
 
     /// Minimize NLL for a [`HistFactoryModel`] from an explicit starting point and explicit bounds,

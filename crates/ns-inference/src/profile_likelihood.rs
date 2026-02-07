@@ -112,9 +112,7 @@ pub fn scan_gpu(
     model: &HistFactoryModel,
     mu_values: &[f64],
 ) -> Result<ProfileLikelihoodScan> {
-    let poi = model
-        .poi_index()
-        .ok_or_else(|| Error::Validation("No POI defined".to_string()))?;
+    let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))?;
 
     let session = crate::gpu_single::GpuSession::new(model)?;
     let config = mle.config().clone();
@@ -134,12 +132,7 @@ pub fn scan_gpu(
         bounds[poi] = (mu, mu);
         warm_params[poi] = mu;
 
-        let fixed = session.fit_minimum_from_with_bounds(
-            model,
-            &warm_params,
-            &bounds,
-            &config,
-        )?;
+        let fixed = session.fit_minimum_from_with_bounds(model, &warm_params, &bounds, &config)?;
 
         let llr = 2.0 * (fixed.fval - nll_hat);
         let mut q = llr.max(0.0);

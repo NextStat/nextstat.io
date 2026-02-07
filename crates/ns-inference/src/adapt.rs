@@ -252,8 +252,8 @@ impl WindowedAdaptation {
                     self.metric = crate::hmc::Metric::Diag(inv_mass_diag);
 
                     // Try dense metric when available.
-                    if let Some(wc) = self.welford_cov.as_ref() {
-                        if let Some(mut cov) = wc.covariance() {
+                    if let Some(wc) = self.welford_cov.as_ref()
+                        && let Some(mut cov) = wc.covariance() {
                             let n = cov.nrows();
                             let count = wc.count().max(1) as f64;
                             // Stan-like shrinkage towards scaled identity for stability.
@@ -277,7 +277,6 @@ impl WindowedAdaptation {
                                 }
                             }
                         }
-                    }
 
                     self.welford.reset();
                     if let Some(wc) = self.welford_cov.as_mut() {
@@ -375,14 +374,14 @@ pub fn find_reasonable_step_size(
     for p in &mut state.p {
         *p = 1.0;
     }
-    let h0 = state.hamiltonian(&metric);
+    let h0 = state.hamiltonian(metric);
 
     // Test a single leapfrog step at given eps
     let test_accept = |eps_test: f64| -> Option<f64> {
         let int_test = crate::hmc::LeapfrogIntegrator::new(posterior, eps_test, metric.clone());
         let mut s = state.clone();
         int_test.step(&mut s).ok()?;
-        let h1 = s.hamiltonian(&metric);
+        let h1 = s.hamiltonian(metric);
         let a = (h0 - h1).exp();
         if a.is_finite() { Some(a.min(1.0)) } else { None }
     };
@@ -405,7 +404,7 @@ pub fn find_reasonable_step_size(
 
     for _ in 0..50 {
         let new_eps = eps * 2.0_f64.powf(direction);
-        if new_eps > 1e3 || new_eps < 1e-10 {
+        if !(1e-10..=1e3).contains(&new_eps) {
             break;
         }
 

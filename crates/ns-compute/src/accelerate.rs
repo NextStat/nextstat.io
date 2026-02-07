@@ -29,42 +29,49 @@ unsafe extern "C" {
     // vDSP: vectorized DSP routines
     /// `vDSP_vaddD(a, 1, b, 1, c, 1, n)` — c[i] = a[i] + b[i]
     fn vDSP_vaddD(
-        a: *const f64, a_stride: isize,
-        b: *const f64, b_stride: isize,
-        c: *mut f64, c_stride: isize,
+        a: *const f64,
+        a_stride: isize,
+        b: *const f64,
+        b_stride: isize,
+        c: *mut f64,
+        c_stride: isize,
         n: usize,
     );
 
     /// `vDSP_vsubD(b, 1, a, 1, c, 1, n)` — c[i] = a[i] - b[i]
     /// Note: vDSP_vsubD subtracts first arg FROM second: c = B - A
     fn vDSP_vsubD(
-        a: *const f64, a_stride: isize,
-        b: *const f64, b_stride: isize,
-        c: *mut f64, c_stride: isize,
+        a: *const f64,
+        a_stride: isize,
+        b: *const f64,
+        b_stride: isize,
+        c: *mut f64,
+        c_stride: isize,
         n: usize,
     );
 
     /// `vDSP_vmulD(a, 1, b, 1, c, 1, n)` — c[i] = a[i] * b[i]
     fn vDSP_vmulD(
-        a: *const f64, a_stride: isize,
-        b: *const f64, b_stride: isize,
-        c: *mut f64, c_stride: isize,
+        a: *const f64,
+        a_stride: isize,
+        b: *const f64,
+        b_stride: isize,
+        c: *mut f64,
+        c_stride: isize,
         n: usize,
     );
 
     /// `vDSP_sveD(a, 1, &sum, n)` — sum = Σ a[i]
-    fn vDSP_sveD(
-        a: *const f64, a_stride: isize,
-        result: *mut f64,
-        n: usize,
-    );
+    fn vDSP_sveD(a: *const f64, a_stride: isize, result: *mut f64, n: usize);
 
     /// `vDSP_vclipD(a, 1, &lo, &hi, c, 1, n)` — c[i] = clamp(a[i], lo, hi)
     fn vDSP_vclipD(
-        a: *const f64, a_stride: isize,
+        a: *const f64,
+        a_stride: isize,
         lo: *const f64,
         hi: *const f64,
-        c: *mut f64, c_stride: isize,
+        c: *mut f64,
+        c_stride: isize,
         n: usize,
     );
 }
@@ -139,9 +146,7 @@ pub fn poisson_nll_accelerate(
         return 0.0;
     }
 
-    let ni: c_int = n
-        .try_into()
-        .expect("poisson_nll_accelerate: n does not fit in c_int");
+    let ni: c_int = n.try_into().expect("poisson_nll_accelerate: n does not fit in c_int");
 
     POISSON_SCRATCH.with(|scratch| {
         let mut scratch = scratch.borrow_mut();
@@ -153,34 +158,46 @@ pub fn poisson_nll_accelerate(
 
             // 2. obs_ln_exp[i] = observed[i] * ln_exp[i]
             vDSP_vmulD(
-                observed.as_ptr(), 1,
-                scratch.ln_exp.as_ptr(), 1,
-                scratch.obs_ln_exp.as_mut_ptr(), 1,
+                observed.as_ptr(),
+                1,
+                scratch.ln_exp.as_ptr(),
+                1,
+                scratch.obs_ln_exp.as_mut_ptr(),
+                1,
                 n,
             );
 
             // 3. bracket[i] = ln_factorials[i] - obs_ln_exp[i]
             // vDSP_vsubD(A, ..., B, ..., C, ...) => C = B - A
             vDSP_vsubD(
-                scratch.obs_ln_exp.as_ptr(), 1,
-                ln_factorials.as_ptr(), 1,
-                scratch.bracket.as_mut_ptr(), 1,
+                scratch.obs_ln_exp.as_ptr(),
+                1,
+                ln_factorials.as_ptr(),
+                1,
+                scratch.bracket.as_mut_ptr(),
+                1,
                 n,
             );
 
             // 4. masked[i] = obs_mask[i] * bracket[i]
             vDSP_vmulD(
-                obs_mask.as_ptr(), 1,
-                scratch.bracket.as_ptr(), 1,
-                scratch.masked.as_mut_ptr(), 1,
+                obs_mask.as_ptr(),
+                1,
+                scratch.bracket.as_ptr(),
+                1,
+                scratch.masked.as_mut_ptr(),
+                1,
                 n,
             );
 
             // 5. terms[i] = expected[i] + masked[i]
             vDSP_vaddD(
-                expected.as_ptr(), 1,
-                scratch.masked.as_ptr(), 1,
-                scratch.terms.as_mut_ptr(), 1,
+                expected.as_ptr(),
+                1,
+                scratch.masked.as_ptr(),
+                1,
+                scratch.terms.as_mut_ptr(),
+                1,
                 n,
             );
 
@@ -253,27 +270,39 @@ pub fn batch_poisson_nll_accelerate(
 
             // 2-5: Same chain, all vectorized over total_bins
             vDSP_vmulD(
-                observed_flat.as_ptr(), 1,
-                ln_exp.as_ptr(), 1,
-                obs_ln_exp.as_mut_ptr(), 1,
+                observed_flat.as_ptr(),
+                1,
+                ln_exp.as_ptr(),
+                1,
+                obs_ln_exp.as_mut_ptr(),
+                1,
                 total_bins,
             );
             vDSP_vsubD(
-                obs_ln_exp.as_ptr(), 1,
-                ln_factorials_flat.as_ptr(), 1,
-                bracket.as_mut_ptr(), 1,
+                obs_ln_exp.as_ptr(),
+                1,
+                ln_factorials_flat.as_ptr(),
+                1,
+                bracket.as_mut_ptr(),
+                1,
                 total_bins,
             );
             vDSP_vmulD(
-                obs_mask_flat.as_ptr(), 1,
-                bracket.as_ptr(), 1,
-                masked.as_mut_ptr(), 1,
+                obs_mask_flat.as_ptr(),
+                1,
+                bracket.as_ptr(),
+                1,
+                masked.as_mut_ptr(),
+                1,
                 total_bins,
             );
             vDSP_vaddD(
-                expected_flat.as_ptr(), 1,
-                masked.as_ptr(), 1,
-                terms.as_mut_ptr(), 1,
+                expected_flat.as_ptr(),
+                1,
+                masked.as_ptr(),
+                1,
+                terms.as_mut_ptr(),
+                1,
                 total_bins,
             );
         }
@@ -292,30 +321,42 @@ pub fn batch_poisson_nll_accelerate(
             unsafe {
                 // obs_ln_exp[offset..] = observed * ln_exp[offset..]
                 vDSP_vmulD(
-                    observed_flat.as_ptr(), 1,
-                    ln_exp_slice.as_ptr(), 1,
-                    obs_ln_exp[offset..].as_mut_ptr(), 1,
+                    observed_flat.as_ptr(),
+                    1,
+                    ln_exp_slice.as_ptr(),
+                    1,
+                    obs_ln_exp[offset..].as_mut_ptr(),
+                    1,
                     n_bins,
                 );
                 // bracket = ln_factorials - obs_ln_exp
                 vDSP_vsubD(
-                    obs_ln_exp[offset..].as_ptr(), 1,
-                    ln_factorials_flat.as_ptr(), 1,
-                    bracket[offset..].as_mut_ptr(), 1,
+                    obs_ln_exp[offset..].as_ptr(),
+                    1,
+                    ln_factorials_flat.as_ptr(),
+                    1,
+                    bracket[offset..].as_mut_ptr(),
+                    1,
                     n_bins,
                 );
                 // masked = obs_mask * bracket
                 vDSP_vmulD(
-                    obs_mask_flat.as_ptr(), 1,
-                    bracket[offset..].as_ptr(), 1,
-                    masked[offset..].as_mut_ptr(), 1,
+                    obs_mask_flat.as_ptr(),
+                    1,
+                    bracket[offset..].as_ptr(),
+                    1,
+                    masked[offset..].as_mut_ptr(),
+                    1,
                     n_bins,
                 );
                 // terms = expected + masked
                 vDSP_vaddD(
-                    exp_slice.as_ptr(), 1,
-                    masked[offset..].as_ptr(), 1,
-                    terms[offset..].as_mut_ptr(), 1,
+                    exp_slice.as_ptr(),
+                    1,
+                    masked[offset..].as_ptr(),
+                    1,
+                    terms[offset..].as_mut_ptr(),
+                    1,
                     n_bins,
                 );
             }
@@ -327,11 +368,7 @@ pub fn batch_poisson_nll_accelerate(
     for toy_idx in 0..n_toys {
         let offset = toy_idx * n_bins;
         unsafe {
-            vDSP_sveD(
-                terms[offset..].as_ptr(), 1,
-                &mut results[toy_idx],
-                n_bins,
-            );
+            vDSP_sveD(terms[offset..].as_ptr(), 1, &mut results[toy_idx], n_bins);
         }
     }
 
@@ -358,9 +395,7 @@ pub fn poisson_nll_accelerate_kahan(
         return 0.0;
     }
 
-    let ni: c_int = n
-        .try_into()
-        .expect("poisson_nll_accelerate_kahan: n does not fit in c_int");
+    let ni: c_int = n.try_into().expect("poisson_nll_accelerate_kahan: n does not fit in c_int");
 
     POISSON_SCRATCH.with(|scratch| {
         let mut scratch = scratch.borrow_mut();
@@ -370,30 +405,42 @@ pub fn poisson_nll_accelerate_kahan(
             vvlog(scratch.ln_exp.as_mut_ptr(), expected.as_ptr(), &ni);
 
             vDSP_vmulD(
-                observed.as_ptr(), 1,
-                scratch.ln_exp.as_ptr(), 1,
-                scratch.obs_ln_exp.as_mut_ptr(), 1,
+                observed.as_ptr(),
+                1,
+                scratch.ln_exp.as_ptr(),
+                1,
+                scratch.obs_ln_exp.as_mut_ptr(),
+                1,
                 n,
             );
 
             vDSP_vsubD(
-                scratch.obs_ln_exp.as_ptr(), 1,
-                ln_factorials.as_ptr(), 1,
-                scratch.bracket.as_mut_ptr(), 1,
+                scratch.obs_ln_exp.as_ptr(),
+                1,
+                ln_factorials.as_ptr(),
+                1,
+                scratch.bracket.as_mut_ptr(),
+                1,
                 n,
             );
 
             vDSP_vmulD(
-                obs_mask.as_ptr(), 1,
-                scratch.bracket.as_ptr(), 1,
-                scratch.masked.as_mut_ptr(), 1,
+                obs_mask.as_ptr(),
+                1,
+                scratch.bracket.as_ptr(),
+                1,
+                scratch.masked.as_mut_ptr(),
+                1,
                 n,
             );
 
             vDSP_vaddD(
-                expected.as_ptr(), 1,
-                scratch.masked.as_ptr(), 1,
-                scratch.terms.as_mut_ptr(), 1,
+                expected.as_ptr(),
+                1,
+                scratch.masked.as_ptr(),
+                1,
+                scratch.terms.as_mut_ptr(),
+                1,
                 n,
             );
         }
@@ -422,13 +469,7 @@ pub fn clamp_expected_inplace(expected: &mut [f64], floor: f64) {
     }
     let hi = f64::MAX;
     unsafe {
-        vDSP_vclipD(
-            expected.as_ptr(), 1,
-            &floor,
-            &hi,
-            expected.as_mut_ptr(), 1,
-            n,
-        );
+        vDSP_vclipD(expected.as_ptr(), 1, &floor, &hi, expected.as_mut_ptr(), 1, n);
     }
 }
 
@@ -476,7 +517,8 @@ mod tests {
     ) -> f64 {
         let mut total = 0.0;
         for i in 0..expected.len() {
-            total += expected[i] + obs_mask[i] * (ln_factorials[i] - observed[i] * expected[i].ln());
+            total +=
+                expected[i] + obs_mask[i] * (ln_factorials[i] - observed[i] * expected[i].ln());
         }
         total
     }
@@ -491,7 +533,10 @@ mod tests {
             assert!(
                 rel_err < 1e-10,
                 "n={}: accelerate={} scalar={} rel_err={}",
-                n, accel_result, scalar_result, rel_err
+                n,
+                accel_result,
+                scalar_result,
+                rel_err
             );
         }
     }
@@ -508,7 +553,10 @@ mod tests {
             assert!(
                 rel_err < 1e-10,
                 "n={}: accelerate={} simd={} rel_err={}",
-                n, accel_result, simd_result, rel_err
+                n,
+                accel_result,
+                simd_result,
+                rel_err
             );
         }
     }
@@ -552,24 +600,24 @@ mod tests {
             }
         }
 
-        let batch_results = batch_poisson_nll_accelerate(
-            &expected_flat, &obs, &lnf, &mask, n_bins, n_toys,
-        );
+        let batch_results =
+            batch_poisson_nll_accelerate(&expected_flat, &obs, &lnf, &mask, n_bins, n_toys);
 
         assert_eq!(batch_results.len(), n_toys);
 
         // Verify each toy matches individual computation
         for toy_idx in 0..n_toys {
             let offset = toy_idx * n_bins;
-            let single = poisson_nll_accelerate(
-                &expected_flat[offset..offset + n_bins],
-                &obs, &lnf, &mask,
-            );
+            let single =
+                poisson_nll_accelerate(&expected_flat[offset..offset + n_bins], &obs, &lnf, &mask);
             let rel_err = (batch_results[toy_idx] - single).abs() / single.abs().max(1e-15);
             assert!(
                 rel_err < 1e-12,
                 "toy {}: batch={} single={} rel_err={}",
-                toy_idx, batch_results[toy_idx], single, rel_err
+                toy_idx,
+                batch_results[toy_idx],
+                single,
+                rel_err
             );
         }
     }
@@ -600,7 +648,12 @@ mod tests {
         }
 
         let batch_results = batch_poisson_nll_accelerate(
-            &expected_flat, &observed_flat, &lnf_flat, &mask_flat, n_bins, n_toys,
+            &expected_flat,
+            &observed_flat,
+            &lnf_flat,
+            &mask_flat,
+            n_bins,
+            n_toys,
         );
 
         assert_eq!(batch_results.len(), n_toys);
@@ -617,7 +670,10 @@ mod tests {
             assert!(
                 rel_err < 1e-12,
                 "toy {}: batch={} single={} rel_err={}",
-                toy_idx, batch_results[toy_idx], single, rel_err
+                toy_idx,
+                batch_results[toy_idx],
+                single,
+                rel_err
             );
         }
     }

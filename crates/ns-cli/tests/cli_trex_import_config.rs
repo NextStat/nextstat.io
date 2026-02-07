@@ -67,4 +67,3 @@ fn trex_import_config_writes_analysis_spec_and_mapping_report() {
 
     let _ = std::fs::remove_dir_all(&out_dir);
 }
-

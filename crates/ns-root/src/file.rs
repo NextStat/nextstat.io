@@ -15,6 +15,7 @@ use crate::rbuffer::RBuffer;
 use crate::tree::Tree;
 
 /// Parsed ROOT file header.
+#[allow(dead_code)]
 struct FileHeader {
     /// Offset of first data record (also where top-level TKey sits).
     begin: u64,
@@ -290,11 +291,13 @@ impl RootFile {
     }
 
     /// Access the raw file data.
+    #[allow(dead_code)]
     pub(crate) fn file_data(&self) -> &[u8] {
         &self.data
     }
 
     /// Whether file uses 64-bit seek pointers.
+    #[allow(dead_code)]
     pub(crate) fn is_large(&self) -> bool {
         self.header.is_large
     }
@@ -327,8 +330,33 @@ impl RootFile {
 
     /// Convenience: read all entries from a branch as `f64`.
     pub fn branch_data(&self, tree: &Tree, branch: &str) -> Result<Vec<f64>> {
-        self.branch_reader(tree, branch)?.as_f64()
+        match self.branch_reader(tree, branch) {
+            Ok(r) => r.as_f64(),
+            Err(RootError::BranchNotFound(_)) => {
+                if let Some((base, idx)) = parse_indexed_branch_name(branch) {
+                    let r = self.branch_reader(tree, base)?;
+                    // ROOT/TTreeFormula convention for out-of-range indexing is effectively 0.0
+                    // for numeric types (common in analysis selections/weights).
+                    return r.as_f64_indexed(idx, 0.0);
+                }
+                Err(RootError::BranchNotFound(branch.to_string()))
+            }
+            Err(e) => Err(e),
+        }
     }
+}
+
+fn parse_indexed_branch_name(s: &str) -> Option<(&str, usize)> {
+    // Accept `name[0]` where name may contain dots/underscores/etc.
+    let rb = s.strip_suffix(']')?;
+    let lb_pos = rb.rfind('[')?;
+    let (base, idx_str) = rb.split_at(lb_pos);
+    let idx_str = &idx_str[1..]; // drop '['
+    if base.is_empty() || idx_str.is_empty() {
+        return None;
+    }
+    let idx: usize = idx_str.parse().ok()?;
+    Some((base, idx))
 }
 
 /// Shared helper: read and decompress a TKey payload from raw file bytes.

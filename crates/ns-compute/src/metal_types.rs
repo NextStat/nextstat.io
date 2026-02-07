@@ -4,7 +4,7 @@
 //! Always available (no feature gate) so ns-translate can serialize
 //! `MetalModelData` without requiring Metal at compile time.
 
-use crate::cuda_types::{GpuModelData, GpuSampleInfo, GpuModifierDesc};
+use crate::cuda_types::{GpuModelData, GpuModifierDesc, GpuSampleInfo};
 
 /// Barlow-Beeston auxiliary Poisson constraint (Metal f32 version).
 ///
@@ -139,4 +139,3 @@ impl MetalModelData {
         }
     }
 }
-

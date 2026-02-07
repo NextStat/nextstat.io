@@ -18,7 +18,7 @@ pub fn logpdf(x: f64, a: f64, b: f64) -> Result<f64> {
     if !b.is_finite() || b <= 0.0 {
         return Err(Error::Validation(format!("b must be finite and > 0, got {}", b)));
     }
-    if x < 0.0 || x > 1.0 {
+    if !(0.0..=1.0).contains(&x) {
         return Ok(f64::NEG_INFINITY);
     }
 

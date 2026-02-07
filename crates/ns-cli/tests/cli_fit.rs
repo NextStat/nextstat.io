@@ -182,10 +182,8 @@ fn fit_validation_regions_exclude_channels_from_likelihood() {
     let v_ex: serde_json::Value = serde_json::from_slice(&out_vr_excluded.stdout).expect("json");
 
     fn bestfit_mu(v: &serde_json::Value) -> f64 {
-        let names = v
-            .get("parameter_names")
-            .and_then(|x| x.as_array())
-            .expect("parameter_names array");
+        let names =
+            v.get("parameter_names").and_then(|x| x.as_array()).expect("parameter_names array");
         let bestfit = v.get("bestfit").and_then(|x| x.as_array()).expect("bestfit array");
         let mut mu_idx = None;
         for (i, n) in names.iter().enumerate() {

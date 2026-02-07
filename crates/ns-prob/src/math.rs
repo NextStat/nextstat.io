@@ -72,7 +72,7 @@ mod tests {
         let xs: [f64; 7] = [-50.0, -10.0, -1.0, 0.0, 1.0, 10.0, 50.0];
         for x in xs {
             let s = sigmoid(x);
-            assert!(s >= 0.0 && s <= 1.0, "sigmoid({})={}", x, s);
+            assert!((0.0..=1.0).contains(&s), "sigmoid({})={}", x, s);
             let t = sigmoid(-x);
             assert!((s + t - 1.0).abs() < 1e-15, "sigmoid symmetry failed at {}", x);
         }

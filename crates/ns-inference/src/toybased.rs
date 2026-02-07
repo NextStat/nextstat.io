@@ -33,9 +33,7 @@ fn safe_cls(clsb: f64, clb: f64) -> f64 {
 }
 
 fn poi_index(model: &HistFactoryModel) -> Result<usize> {
-    model
-        .poi_index()
-        .ok_or_else(|| Error::Validation("No POI defined".to_string()))
+    model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
 
 fn tail_prob_counts(n_ge: usize, n_valid: usize) -> f64 {
@@ -219,17 +217,16 @@ fn generate_q_ensemble(
                 let toy_data = crate::toys::poisson_main_from_expected(expected_main, toy_seed);
                 let toy_model = base_model.with_observed_main(&toy_data)?;
 
-                let (q, _mu_hat, _free_nll, free_conv, fixed_conv) =
-                    qtilde_for_dataset(
-                        mle,
-                        &toy_model,
-                        poi,
-                        mu_test,
-                        init_free,
-                        bounds,
-                        bounds_fixed,
-                        tape,
-                    )?;
+                let (q, _mu_hat, _free_nll, free_conv, fixed_conv) = qtilde_for_dataset(
+                    mle,
+                    &toy_model,
+                    poi,
+                    mu_test,
+                    init_free,
+                    bounds,
+                    bounds_fixed,
+                    tape,
+                )?;
                 Ok((q, free_conv && fixed_conv))
             },
         )
@@ -317,7 +314,8 @@ pub fn hypotest_qtilde_toys_expected_set(
     n_toys: usize,
     seed: u64,
 ) -> Result<ToyHypotestExpectedSet> {
-    let (observed, expected_opt) = hypotest_qtilde_toys_impl(mle, model, mu_test, n_toys, seed, true)?;
+    let (observed, expected_opt) =
+        hypotest_qtilde_toys_impl(mle, model, mu_test, n_toys, seed, true)?;
     let expected = expected_opt.ok_or_else(|| {
         Error::Validation("internal error: expected_set requested but not produced".to_string())
     })?;
@@ -398,11 +396,7 @@ fn hypotest_qtilde_toys_impl(
     }
 
     // Observed qtilde(mu_test) uses the same fixed(mu_test) fit; apply qtilde definition.
-    let q_obs = if mu_hat > mu_test {
-        0.0
-    } else {
-        (2.0 * (fixed_mu.fval - free_nll)).max(0.0)
-    };
+    let q_obs = if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed_mu.fval - free_nll)).max(0.0) };
 
     let expected_sb = model.expected_data_pyhf_main(&fixed_mu.parameters)?;
     let expected_b = model.expected_data_pyhf_main(&fixed_0.parameters)?;

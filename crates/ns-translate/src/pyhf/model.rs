@@ -148,7 +148,12 @@ enum ModelModifier {
     /// Normalization systematic - log-normal constraint
     NormSys { param_idx: usize, hi_factor: f64, lo_factor: f64, interp_code: NormSysInterpCode },
     /// Histogram systematic - shape interpolation
-    HistoSys { param_idx: usize, hi_template: Vec<f64>, lo_template: Vec<f64>, interp_code: HistoSysInterpCode },
+    HistoSys {
+        param_idx: usize,
+        hi_template: Vec<f64>,
+        lo_template: Vec<f64>,
+        interp_code: HistoSysInterpCode,
+    },
     /// Statistical error - per-bin multiplicative factors (constrained by normal)
     StatError {
         param_indices: Vec<usize>,
@@ -213,16 +218,15 @@ impl HistFactoryModel {
                         "Aux constraint modifier_idx out of range".to_string(),
                     )
                 })?;
-                if let ModelModifier::ShapeSys { param_indices, .. } = modifier {
-                    if constraint.tau.len() != param_indices.len()
-                        || constraint.observed.len() != param_indices.len()
+                if let ModelModifier::ShapeSys { param_indices, .. } = modifier
+                    && (constraint.tau.len() != param_indices.len()
+                        || constraint.observed.len() != param_indices.len())
                     {
                         return Err(ns_core::Error::Validation(
                             "Aux constraint length mismatch (tau/observed/param_indices)"
                                 .to_string(),
                         ));
                     }
-                }
             }
         }
         Ok(())
@@ -949,7 +953,9 @@ impl HistFactoryModel {
     /// - hoist `alpha`-only `code4p` polynomial terms out of the bin loop
     /// - use SIMD kernels for the `histosys` `code4p` hot-path and scalar factor scaling
     fn expected_data_f64_fast(&self, params: &[f64]) -> Result<Vec<f64>> {
-        use ns_compute::simd::{histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale};
+        use ns_compute::simd::{
+            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+        };
 
         let mut result = Vec::new();
 
@@ -999,12 +1005,21 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = match interp_code {
-                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
-                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code1 => {
+                                    normsys_code1(alpha, *hi_factor, *lo_factor)
+                                }
+                                NormSysInterpCode::Code4 => {
+                                    normsys_code4(alpha, *hi_factor, *lo_factor)
+                                }
                             };
                             vec_scale(&mut sample_factors, factor);
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "HistoSys param index out of range: idx={} len={}",
@@ -1017,21 +1032,34 @@ impl HistFactoryModel {
                             if hi_template.len() == sample_len && lo_template.len() == sample_len {
                                 match interp_code {
                                     HistoSysInterpCode::Code0 => histosys_code0_delta_accumulate(
-                                        &mut sample_deltas, alpha, lo_template, sample_nominal, hi_template,
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
-                                        &mut sample_deltas, alpha, lo_template, sample_nominal, hi_template,
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                 }
                             } else {
                                 // Fallback: tolerate length mismatches.
                                 for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let nom_val =
+                                        sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
                                     let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let delta = match interp_code {
-                                        HistoSysInterpCode::Code0 => histosys_code0_delta(alpha, lo, nom_val, hi),
-                                        HistoSysInterpCode::Code4p => histosys_code4p_delta(alpha, lo, nom_val, hi),
+                                        HistoSysInterpCode::Code0 => {
+                                            histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code4p => {
+                                            histosys_code4p_delta(alpha, lo, nom_val, hi)
+                                        }
                                     };
                                     *delta_slot += delta;
                                 }
@@ -1080,9 +1108,9 @@ impl HistFactoryModel {
 
                 if sample_len == n_bins {
                     for bin_idx in 0..n_bins {
-                        channel_expected[bin_idx] +=
-                            (sample_nominal[bin_idx] + sample_deltas[bin_idx])
-                                * sample_factors[bin_idx];
+                        channel_expected[bin_idx] += (sample_nominal[bin_idx]
+                            + sample_deltas[bin_idx])
+                            * sample_factors[bin_idx];
                     }
                 } else {
                     for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
@@ -1105,7 +1133,9 @@ impl HistFactoryModel {
     /// Equivalent to [`expected_data_f64_fast`] but avoids all heap allocation by reusing
     /// the buffers in `scratch`. The result is written to `scratch.expected[..n_main_bins]`.
     fn expected_data_f64_fast_into(&self, params: &[f64], scratch: &mut NllScratch) -> Result<()> {
-        use ns_compute::simd::{histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale};
+        use ns_compute::simd::{
+            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+        };
 
         let mut offset = 0usize;
 
@@ -1161,12 +1191,21 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = match interp_code {
-                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
-                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code1 => {
+                                    normsys_code1(alpha, *hi_factor, *lo_factor)
+                                }
+                                NormSysInterpCode::Code4 => {
+                                    normsys_code4(alpha, *hi_factor, *lo_factor)
+                                }
                             };
                             vec_scale(sf, factor);
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "HistoSys param index out of range: idx={} len={}",
@@ -1178,20 +1217,33 @@ impl HistFactoryModel {
                             if hi_template.len() == sample_len && lo_template.len() == sample_len {
                                 match interp_code {
                                     HistoSysInterpCode::Code0 => histosys_code0_delta_accumulate(
-                                        sd, alpha, lo_template, sample_nominal, hi_template,
+                                        sd,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
-                                        sd, alpha, lo_template, sample_nominal, hi_template,
+                                        sd,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                 }
                             } else {
                                 for (bin_idx, delta_slot) in sd.iter_mut().enumerate() {
-                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let nom_val =
+                                        sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
                                     let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let delta = match interp_code {
-                                        HistoSysInterpCode::Code0 => histosys_code0_delta(alpha, lo, nom_val, hi),
-                                        HistoSysInterpCode::Code4p => histosys_code4p_delta(alpha, lo, nom_val, hi),
+                                        HistoSysInterpCode::Code0 => {
+                                            histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code4p => {
+                                            histosys_code4p_delta(alpha, lo, nom_val, hi)
+                                        }
                                     };
                                     *delta_slot += delta;
                                 }
@@ -1271,7 +1323,9 @@ impl HistFactoryModel {
         &self,
         params: &[f64],
     ) -> Result<Vec<ExpectedChannelSampleYields>> {
-        use ns_compute::simd::{histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale};
+        use ns_compute::simd::{
+            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+        };
 
         self.validate_params_len(params.len())?;
 
@@ -1325,12 +1379,21 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = match interp_code {
-                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
-                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code1 => {
+                                    normsys_code1(alpha, *hi_factor, *lo_factor)
+                                }
+                                NormSysInterpCode::Code4 => {
+                                    normsys_code4(alpha, *hi_factor, *lo_factor)
+                                }
                             };
                             vec_scale(&mut sample_factors, factor);
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "HistoSys param index out of range: idx={} len={}",
@@ -1342,20 +1405,33 @@ impl HistFactoryModel {
                             if hi_template.len() == sample_len && lo_template.len() == sample_len {
                                 match interp_code {
                                     HistoSysInterpCode::Code0 => histosys_code0_delta_accumulate(
-                                        &mut sample_deltas, alpha, lo_template, sample_nominal, hi_template,
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
-                                        &mut sample_deltas, alpha, lo_template, sample_nominal, hi_template,
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
                                     ),
                                 }
                             } else {
                                 for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let nom_val =
+                                        sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
                                     let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
                                     let delta = match interp_code {
-                                        HistoSysInterpCode::Code0 => histosys_code0_delta(alpha, lo, nom_val, hi),
-                                        HistoSysInterpCode::Code4p => histosys_code4p_delta(alpha, lo, nom_val, hi),
+                                        HistoSysInterpCode::Code0 => {
+                                            histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code4p => {
+                                            histosys_code4p_delta(alpha, lo, nom_val, hi)
+                                        }
                                     };
                                     *delta_slot += delta;
                                 }
@@ -1807,14 +1883,23 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = match interp_code {
-                                NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
-                                NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code1 => {
+                                    normsys_code1(alpha, *hi_factor, *lo_factor)
+                                }
+                                NormSysInterpCode::Code4 => {
+                                    normsys_code4(alpha, *hi_factor, *lo_factor)
+                                }
                             };
                             for fac in &mut sample_factors {
                                 *fac = *fac * factor;
                             }
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
                             let alpha = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "HistoSys param index out of range: idx={} len={}",
@@ -1827,30 +1912,70 @@ impl HistFactoryModel {
                                 HistoSysInterpCode::Code0 => {
                                     // Piecewise linear: kink at alpha=0
                                     if alpha_val >= 0.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                            let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
-                                            let hi = T::from_f64(hi_template.get(bin_idx).copied().unwrap_or(nom.value()));
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
+                                            let nom = sample_nominal
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(T::from_f64(0.0));
+                                            let hi = T::from_f64(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom.value()),
+                                            );
                                             *delta_slot = *delta_slot + (hi - nom) * alpha;
                                         }
                                     } else {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                            let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
-                                            let lo = T::from_f64(lo_template.get(bin_idx).copied().unwrap_or(nom.value()));
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
+                                            let nom = sample_nominal
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(T::from_f64(0.0));
+                                            let lo = T::from_f64(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom.value()),
+                                            );
                                             *delta_slot = *delta_slot + (nom - lo) * alpha;
                                         }
                                     }
                                 }
                                 HistoSysInterpCode::Code4p => {
                                     if alpha_val > 1.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                            let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
-                                            let hi = T::from_f64(hi_template.get(bin_idx).copied().unwrap_or(nom.value()));
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
+                                            let nom = sample_nominal
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(T::from_f64(0.0));
+                                            let hi = T::from_f64(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom.value()),
+                                            );
                                             *delta_slot = *delta_slot + (hi - nom) * alpha;
                                         }
                                     } else if alpha_val < -1.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                            let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
-                                            let lo = T::from_f64(lo_template.get(bin_idx).copied().unwrap_or(nom.value()));
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
+                                            let nom = sample_nominal
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(T::from_f64(0.0));
+                                            let lo = T::from_f64(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom.value()),
+                                            );
                                             *delta_slot = *delta_slot + (nom - lo) * alpha;
                                         }
                                     } else {
@@ -1861,11 +1986,26 @@ impl HistFactoryModel {
                                         let half = T::from_f64(0.5);
                                         let a_const = T::from_f64(0.0625);
 
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                            let nom = sample_nominal.get(bin_idx).copied().unwrap_or(T::from_f64(0.0));
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
+                                            let nom = sample_nominal
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(T::from_f64(0.0));
                                             let nom_val = nom.value();
-                                            let hi = T::from_f64(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
-                                            let lo = T::from_f64(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let hi = T::from_f64(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
+                                            let lo = T::from_f64(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_up = hi - nom;
                                             let delta_dn = nom - lo;
                                             let s = half * (delta_up + delta_dn);
@@ -2218,14 +2358,23 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = match interp_code {
-                                NormSysInterpCode::Code1 => normsys_code1_on_tape(tape, alpha, *hi_factor, *lo_factor),
-                                NormSysInterpCode::Code4 => normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor),
+                                NormSysInterpCode::Code1 => {
+                                    normsys_code1_on_tape(tape, alpha, *hi_factor, *lo_factor)
+                                }
+                                NormSysInterpCode::Code4 => {
+                                    normsys_code4_on_tape(tape, alpha, *hi_factor, *lo_factor)
+                                }
                             };
                             for fac in &mut sample_factors {
                                 *fac = tape.mul(*fac, factor);
                             }
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
                             let alpha = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "HistoSys param index out of range: idx={} len={}",
@@ -2238,19 +2387,33 @@ impl HistFactoryModel {
                             match interp_code {
                                 HistoSysInterpCode::Code0 => {
                                     if alpha_val >= 0.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
                                             let nom = sample_nominal[bin_idx];
                                             let nom_val = tape.val(nom);
-                                            let hi = tape.constant(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let hi = tape.constant(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_up = tape.sub(hi, nom);
                                             let delta = tape.mul(alpha, delta_up);
                                             *delta_slot = tape.add(*delta_slot, delta);
                                         }
                                     } else {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
                                             let nom = sample_nominal[bin_idx];
                                             let nom_val = tape.val(nom);
-                                            let lo = tape.constant(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let lo = tape.constant(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_dn = tape.sub(nom, lo);
                                             let delta = tape.mul(alpha, delta_dn);
                                             *delta_slot = tape.add(*delta_slot, delta);
@@ -2259,19 +2422,33 @@ impl HistFactoryModel {
                                 }
                                 HistoSysInterpCode::Code4p => {
                                     if alpha_val > 1.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
                                             let nom = sample_nominal[bin_idx];
                                             let nom_val = tape.val(nom);
-                                            let hi = tape.constant(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let hi = tape.constant(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_up = tape.sub(hi, nom);
                                             let delta = tape.mul(alpha, delta_up);
                                             *delta_slot = tape.add(*delta_slot, delta);
                                         }
                                     } else if alpha_val < -1.0 {
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
                                             let nom = sample_nominal[bin_idx];
                                             let nom_val = tape.val(nom);
-                                            let lo = tape.constant(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let lo = tape.constant(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_dn = tape.sub(nom, lo);
                                             let delta = tape.mul(alpha, delta_dn);
                                             *delta_slot = tape.add(*delta_slot, delta);
@@ -2290,11 +2467,23 @@ impl HistFactoryModel {
                                         let tmp2 = tape.add(asq_tmp1, c_fifteen);
                                         let tmp3 = tape.mul(asq, tmp2);
 
-                                        for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                        for (bin_idx, delta_slot) in
+                                            sample_deltas.iter_mut().enumerate()
+                                        {
                                             let nom = sample_nominal[bin_idx];
                                             let nom_val = tape.val(nom);
-                                            let hi = tape.constant(hi_template.get(bin_idx).copied().unwrap_or(nom_val));
-                                            let lo = tape.constant(lo_template.get(bin_idx).copied().unwrap_or(nom_val));
+                                            let hi = tape.constant(
+                                                hi_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
+                                            let lo = tape.constant(
+                                                lo_template
+                                                    .get(bin_idx)
+                                                    .copied()
+                                                    .unwrap_or(nom_val),
+                                            );
                                             let delta_up = tape.sub(hi, nom);
                                             let delta_dn = tape.sub(nom, lo);
                                             let sum = tape.add(delta_up, delta_dn);
@@ -2450,7 +2639,12 @@ impl HistFactoryModel {
                                 n_bins: 0,
                             });
                         }
-                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code: _ } => {
+                        ModelModifier::NormSys {
+                            param_idx,
+                            hi_factor,
+                            lo_factor,
+                            interp_code: _,
+                        } => {
                             // GPU kernel currently only supports code4 polynomial coefficients.
                             let data_off = modifier_data.len() as u32;
                             let hi = *hi_factor;
@@ -2465,7 +2659,14 @@ impl HistFactoryModel {
                                 // coeffs = [hi-1, 0, 0, 0, 0, 0] for alpha>=0
                                 // or [1-lo, 0, 0, 0, 0, 0] for alpha<0
                                 // The kernel handles this via the same polynomial path
-                                modifier_data.extend_from_slice(&[hi - 1.0, 1.0 - lo, 0.0, 0.0, 0.0, 0.0]);
+                                modifier_data.extend_from_slice(&[
+                                    hi - 1.0,
+                                    1.0 - lo,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                ]);
                                 modifier_data.push(0.0); // ln_hi placeholder
                                 modifier_data.push(0.0); // ln_lo placeholder
                             }
@@ -2546,7 +2747,7 @@ impl HistFactoryModel {
                 modifier_desc_offsets.push(mod_desc_start);
 
                 samples_info.push(GpuSampleInfo {
-                    first_sample_bin: first_sample_bin,
+                    first_sample_bin,
                     n_bins: s_n_bins as u32,
                     main_bin_offset: main_bin_offset as u32,
                     n_modifiers: mod_desc_end - mod_desc_start,
@@ -2557,8 +2758,8 @@ impl HistFactoryModel {
 
             // Barlow-Beeston auxiliary Poisson constraints
             for constraint in &channel.auxiliary_data {
-                if let Some(sample) = channel.samples.get(constraint.sample_idx) {
-                    if let Some(ModelModifier::ShapeSys { param_indices, .. }) =
+                if let Some(sample) = channel.samples.get(constraint.sample_idx)
+                    && let Some(ModelModifier::ShapeSys { param_indices, .. }) =
                         sample.modifiers.get(constraint.modifier_idx)
                     {
                         for (i, &gamma_idx) in param_indices.iter().enumerate() {
@@ -2575,7 +2776,6 @@ impl HistFactoryModel {
                             }
                         }
                     }
-                }
             }
         }
 
@@ -2588,8 +2788,8 @@ impl HistFactoryModel {
             if !param.constrained {
                 continue;
             }
-            if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width) {
-                if width > 0.0 {
+            if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
+                && width > 0.0 {
                     gauss_constraints.push(GpuGaussConstraintEntry {
                         param_idx: param_idx as u16,
                         _pad: 0,
@@ -2599,7 +2799,6 @@ impl HistFactoryModel {
                     });
                     constraint_const += width.ln() + 0.5 * (2.0 * std::f64::consts::PI).ln();
                 }
-            }
         }
 
         // Ensure per_bin_param_indices is non-empty (GPU needs valid pointer)
@@ -2737,7 +2936,8 @@ impl HistFactoryModel {
                 // For excluded bins, force a "safe" sparse Poisson evaluation:
                 // - observed=0 => obs_mask=0, ln_factorial=0
                 // - expected is later zeroed via fit_bin_mask, so nll_i becomes 0.
-                let obs = if include { channel.observed.get(i).copied().unwrap_or(0.0) } else { 0.0 };
+                let obs =
+                    if include { channel.observed.get(i).copied().unwrap_or(0.0) } else { 0.0 };
                 observed_flat.push(obs);
                 ln_factorials.push(if obs == 0.0 { 0.0 } else { Self::ln_factorial(obs) });
                 obs_mask.push(if obs > 0.0 { 1.0 } else { 0.0 });
@@ -3215,11 +3415,7 @@ fn normsys_code4<T: Scalar>(alpha: T, hi: f64, lo: f64) -> T {
 
 /// pyhf interpolators: histosys `code0` (piecewise linear) delta term (added to nominal).
 fn histosys_code0_delta<T: Scalar>(alpha: T, down: T, nom: T, up: T) -> T {
-    if alpha.value() >= 0.0 {
-        (up - nom) * alpha
-    } else {
-        (nom - down) * alpha
-    }
+    if alpha.value() >= 0.0 { (up - nom) * alpha } else { (nom - down) * alpha }
 }
 
 /// pyhf interpolators: histosys `code4p` delta term (added to nominal).
@@ -3400,13 +3596,12 @@ mod tests {
         for channel in &mut corrupted.channels {
             for sample in &mut channel.samples {
                 for m in &mut sample.modifiers {
-                    if let ModelModifier::ShapeSys { param_indices, .. } = m {
-                        if !param_indices.is_empty() {
+                    if let ModelModifier::ShapeSys { param_indices, .. } = m
+                        && !param_indices.is_empty() {
                             param_indices[0] = bad;
                             changed = true;
                             break;
                         }
-                    }
                 }
                 if changed {
                     break;
@@ -4020,7 +4215,9 @@ mod tests {
                 nll_alloc.to_bits(),
                 nll_reuse.to_bits(),
                 "nll_reuse not bit-exact (simple) at set {}: alloc={:.15}, reuse={:.15}",
-                idx, nll_alloc, nll_reuse,
+                idx,
+                nll_alloc,
+                nll_reuse,
             );
         }
     }
@@ -4036,10 +4233,15 @@ mod tests {
         let param_sets: Vec<Vec<f64>> = vec![
             model.parameters().iter().map(|p| p.init).collect(),
             model.parameters().iter().map(|p| p.init + 0.1).collect(),
-            model.parameters().iter().map(|p| {
-                let base = if p.constrained { p.constraint_center.unwrap_or(p.init) } else { p.init };
-                base + 0.5
-            }).collect(),
+            model
+                .parameters()
+                .iter()
+                .map(|p| {
+                    let base =
+                        if p.constrained { p.constraint_center.unwrap_or(p.init) } else { p.init };
+                    base + 0.5
+                })
+                .collect(),
         ];
 
         for (idx, params) in param_sets.iter().enumerate() {
@@ -4049,7 +4251,9 @@ mod tests {
                 nll_alloc.to_bits(),
                 nll_reuse.to_bits(),
                 "nll_reuse not bit-exact (complex) at set {}: alloc={:.15}, reuse={:.15}",
-                idx, nll_alloc, nll_reuse,
+                idx,
+                nll_alloc,
+                nll_reuse,
             );
         }
     }

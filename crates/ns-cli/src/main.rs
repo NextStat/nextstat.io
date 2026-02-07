@@ -1,4 +1,18 @@
 //! NextStat CLI
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+#![allow(clippy::ptr_arg)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::enum_variant_names)]
+#![allow(clippy::approx_constant)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::manual_clamp)]
+#![allow(clippy::overly_complex_bool_expr)]
+#![allow(clippy::suspicious_operation_groupings)]
+#![allow(dead_code)]
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -926,15 +940,23 @@ fn main() -> Result<()> {
                 match dev.as_str() {
                     "cuda" => {
                         #[cfg(feature = "cuda")]
-                        { eprintln!("GPU mode enabled (CUDA single-model)"); }
+                        {
+                            eprintln!("GPU mode enabled (CUDA single-model)");
+                        }
                         #[cfg(not(feature = "cuda"))]
-                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                        {
+                            anyhow::bail!("--gpu cuda requires building with --features cuda");
+                        }
                     }
                     "metal" => {
                         #[cfg(feature = "metal")]
-                        { eprintln!("GPU mode enabled (Metal single-model, f32)"); }
+                        {
+                            eprintln!("GPU mode enabled (Metal single-model, f32)");
+                        }
                         #[cfg(not(feature = "metal"))]
-                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                        {
+                            anyhow::bail!("--gpu metal requires building with --features metal");
+                        }
                     }
                     other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
@@ -961,15 +983,23 @@ fn main() -> Result<()> {
                 match dev.as_str() {
                     "cuda" => {
                         #[cfg(feature = "cuda")]
-                        { eprintln!("GPU mode enabled (CUDA batch)"); }
+                        {
+                            eprintln!("GPU mode enabled (CUDA batch)");
+                        }
                         #[cfg(not(feature = "cuda"))]
-                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                        {
+                            anyhow::bail!("--gpu cuda requires building with --features cuda");
+                        }
                     }
                     "metal" => {
                         #[cfg(feature = "metal")]
-                        { eprintln!("GPU mode enabled (Metal batch, f32)"); }
+                        {
+                            eprintln!("GPU mode enabled (Metal batch, f32)");
+                        }
                         #[cfg(not(feature = "metal"))]
-                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                        {
+                            anyhow::bail!("--gpu metal requires building with --features metal");
+                        }
                     }
                     other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
@@ -1019,20 +1049,37 @@ fn main() -> Result<()> {
                 match dev.as_str() {
                     "cuda" => {
                         #[cfg(feature = "cuda")]
-                        { eprintln!("GPU mode enabled (CUDA profile scan)"); }
+                        {
+                            eprintln!("GPU mode enabled (CUDA profile scan)");
+                        }
                         #[cfg(not(feature = "cuda"))]
-                        { anyhow::bail!("--gpu cuda requires building with --features cuda"); }
+                        {
+                            anyhow::bail!("--gpu cuda requires building with --features cuda");
+                        }
                     }
                     "metal" => {
                         #[cfg(feature = "metal")]
-                        { eprintln!("GPU mode enabled (Metal profile scan, f32)"); }
+                        {
+                            eprintln!("GPU mode enabled (Metal profile scan, f32)");
+                        }
                         #[cfg(not(feature = "metal"))]
-                        { anyhow::bail!("--gpu metal requires building with --features metal"); }
+                        {
+                            anyhow::bail!("--gpu metal requires building with --features metal");
+                        }
                     }
                     other => anyhow::bail!("unknown --gpu device: {other}. Use 'cuda' or 'metal'"),
                 }
             }
-            cmd_scan(&input, start, stop, points, output.as_ref(), threads, gpu.as_deref(), cli.bundle.as_ref())
+            cmd_scan(
+                &input,
+                start,
+                stop,
+                points,
+                output.as_ref(),
+                threads,
+                gpu.as_deref(),
+                cli.bundle.as_ref(),
+            )
         }
         Commands::Report {
             input,
@@ -1151,13 +1198,15 @@ fn main() -> Result<()> {
                 coverage_json.as_ref(),
                 cli.bundle.as_ref(),
             ),
-            ImportCommands::Patchset { workspace, patchset, patch_name, output } => cmd_import_patchset(
-                &workspace,
-                &patchset,
-                patch_name.as_deref(),
-                output.as_ref(),
-                cli.bundle.as_ref(),
-            ),
+            ImportCommands::Patchset { workspace, patchset, patch_name, output } => {
+                cmd_import_patchset(
+                    &workspace,
+                    &patchset,
+                    patch_name.as_deref(),
+                    output.as_ref(),
+                    cli.bundle.as_ref(),
+                )
+            }
         },
         Commands::Trex { command } => match command {
             TrexCommands::ImportConfig {
@@ -1411,12 +1460,11 @@ fn cmd_trex_import_config(
         }
         dir = Some(parent);
     }
-    if let Some(existing) = std::env::var_os("PYTHONPATH") {
-        if !existing.is_empty() {
+    if let Some(existing) = std::env::var_os("PYTHONPATH")
+        && !existing.is_empty() {
             pythonpath.push(":");
             pythonpath.push(existing);
         }
-    }
 
     let mut cmd = Command::new(&python);
     cmd.env("PYTHONPATH", pythonpath)
@@ -1439,9 +1487,13 @@ fn cmd_trex_import_config(
         cmd.arg("--overwrite");
     }
 
-    let outp = cmd
-        .output()
-        .map_err(|e| anyhow::anyhow!("failed to run trex import-config helper (python={}): {}", python.display(), e))?;
+    let outp = cmd.output().map_err(|e| {
+        anyhow::anyhow!(
+            "failed to run trex import-config helper (python={}): {}",
+            python.display(),
+            e
+        )
+    })?;
     if !outp.status.success() {
         anyhow::bail!(
             "trex import-config helper failed (python={}, status={}):\nstdout:\n{}\nstderr:\n{}",
@@ -1553,10 +1605,7 @@ fn cmd_run_spec_v0(
             if let Some(parent) = preprocess.config_json.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(
-                &preprocess.config_json,
-                serde_json::to_string_pretty(&config_val)?,
-            )?;
+            std::fs::write(&preprocess.config_json, serde_json::to_string_pretty(&config_val)?)?;
         }
 
         tracing::info!("running preprocessing pipeline");
@@ -1663,13 +1712,7 @@ fn cmd_import_histfactory(
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {
-        report::write_bundle(
-            dir,
-            "import_histfactory",
-            serde_json::json!({}),
-            xml,
-            &output_json,
-        )?;
+        report::write_bundle(dir, "import_histfactory", serde_json::json!({}), xml, &output_json)?;
     }
     Ok(())
 }
@@ -1686,9 +1729,8 @@ fn cmd_import_trex_config(
     let text = std::fs::read_to_string(config)?;
 
     let base_dir_override = base_dir.map(|p| p.as_path());
-    let resolved_base_dir = base_dir_override
-        .or_else(|| config.parent())
-        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolved_base_dir =
+        base_dir_override.or_else(|| config.parent()).unwrap_or_else(|| std::path::Path::new("."));
 
     let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
     let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
@@ -1714,16 +1756,12 @@ fn cmd_import_trex_config(
     }
 
     if let Some(path) = analysis_yaml {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
-        }
 
-        let stem = config
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("trex_config");
+        let stem = config.file_stem().and_then(|s| s.to_str()).unwrap_or("trex_config");
         let ws_out = format!("tmp/{stem}_workspace.json");
         let fit_out = format!("tmp/{stem}_fit.json");
         let scan_out = format!("tmp/{stem}_scan.json");
@@ -1844,9 +1882,8 @@ fn cmd_build_hists(
     let text = std::fs::read_to_string(config)?;
 
     let base_dir_override = base_dir.map(|p| p.as_path());
-    let resolved_base_dir = base_dir_override
-        .or_else(|| config.parent())
-        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolved_base_dir =
+        base_dir_override.or_else(|| config.parent()).unwrap_or_else(|| std::path::Path::new("."));
 
     let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
     let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
@@ -1873,9 +1910,9 @@ fn cmd_export_histfactory(
         anyhow::bail!("--prefix must be non-empty");
     }
 
-    let input = input
-        .canonicalize()
-        .map_err(|e| anyhow::anyhow!("failed to resolve input workspace: {}: {}", input.display(), e))?;
+    let input = input.canonicalize().map_err(|e| {
+        anyhow::anyhow!("failed to resolve input workspace: {}: {}", input.display(), e)
+    })?;
     if !input.is_file() {
         anyhow::bail!("input workspace not found: {}", input.display());
     }
@@ -1897,9 +1934,7 @@ fn cmd_export_histfactory(
         std::fs::create_dir_all(out_dir)?;
     }
 
-    let py = python
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("python3"));
+    let py = python.map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("python3"));
 
     let code = r#"
 import json
@@ -1970,13 +2005,19 @@ fn cmd_fit(
     let result = match gpu {
         Some("cuda") => {
             #[cfg(feature = "cuda")]
-            { mle.fit_gpu(&model)? }
+            {
+                mle.fit_gpu(&model)?
+            }
             #[cfg(not(feature = "cuda"))]
-            { unreachable!("--gpu cuda check should have bailed earlier") }
+            {
+                unreachable!("--gpu cuda check should have bailed earlier")
+            }
         }
         Some("metal") => {
             // Metal single-model fit not implemented yet (only batch toys).
-            anyhow::bail!("--gpu metal is only supported for hypotest-toys (batch toy fitting), not single-model fit");
+            anyhow::bail!(
+                "--gpu metal is only supported for hypotest-toys (batch toy fitting), not single-model fit"
+            );
         }
         Some(_) => unreachable!("unknown device should have bailed earlier"),
         None => mle.fit(&model)?,
@@ -2026,9 +2067,7 @@ fn setup_runtime(threads: usize, parity: bool) {
     let effective_threads = if parity { 1 } else { threads };
     if effective_threads > 0 {
         // Best-effort; if a global pool already exists, keep going.
-        let _ = rayon::ThreadPoolBuilder::new()
-            .num_threads(effective_threads)
-            .build_global();
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(effective_threads).build_global();
     }
     if parity {
         ns_compute::set_eval_mode(ns_compute::EvalMode::Parity);
@@ -2039,7 +2078,11 @@ fn setup_runtime(threads: usize, parity: bool) {
     }
 }
 
-fn load_model(input: &PathBuf, threads: usize, parity: bool) -> Result<ns_translate::pyhf::HistFactoryModel> {
+fn load_model(
+    input: &PathBuf,
+    threads: usize,
+    parity: bool,
+) -> Result<ns_translate::pyhf::HistFactoryModel> {
     setup_runtime(threads, parity);
 
     tracing::info!(path = %input.display(), "loading workspace");
@@ -2142,11 +2185,10 @@ fn ensure_out_dir(out_dir: &std::path::Path, overwrite: bool) -> Result<()> {
 }
 
 fn write_json_file(path: &std::path::Path, value: &serde_json::Value) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)?;
         }
-    }
     let value = canonicalize_json(value);
     std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     Ok(())
@@ -2166,8 +2208,8 @@ fn write_yields_tables(
                 ch.channel_name,
                 "sample",
                 s.name,
-                s.prefit.to_string(),
-                s.postfit.to_string()
+                s.prefit,
+                s.postfit
             ));
         }
         csv.push_str(&format!(
@@ -2175,8 +2217,8 @@ fn write_yields_tables(
             ch.channel_name,
             "total",
             "TOTAL",
-            ch.total_prefit.to_string(),
-            ch.total_postfit.to_string()
+            ch.total_prefit,
+            ch.total_postfit
         ));
         csv.push_str(&format!(
             "{},{},{},{},\n",
@@ -2202,19 +2244,23 @@ fn write_yields_tables(
             tex.push_str(&format!(
                 "{} & {} & {} \\\\\n",
                 s.name,
-                s.prefit.to_string(),
-                s.postfit.to_string()
+                s.prefit,
+                s.postfit
             ));
         }
         tex.push_str("\\midrule\n");
         tex.push_str(&format!(
             "Total & {} & {} \\\\\n",
-            ch.total_prefit.to_string(),
-            ch.total_postfit.to_string()
+            ch.total_prefit,
+            ch.total_postfit
         ));
         tex.push_str(&format!(
             "Data & {} & \\\\\n",
-            if ch.data_is_blinded == Some(true) { "\\textit{blinded}".to_string() } else { ch.data.to_string() }
+            if ch.data_is_blinded == Some(true) {
+                "\\textit{blinded}".to_string()
+            } else {
+                ch.data.to_string()
+            }
         ));
         tex.push_str("\\bottomrule\n");
         tex.push_str("\\end{tabular}\n\n");
@@ -2900,7 +2946,7 @@ fn cmd_ts_kalman_fit(
 }
 
 fn z_for_level(level: f64) -> Result<(f64, f64)> {
-    if !level.is_finite() || !(0.0 < level && level < 1.0) {
+    if !(level.is_finite() && 0.0 < level && level < 1.0) {
         anyhow::bail!("level must be finite and in (0, 1)");
     }
     let alpha = 1.0 - level;
@@ -3473,12 +3519,18 @@ fn cmd_scan(
     let scan = match gpu {
         Some("cuda") => {
             #[cfg(feature = "cuda")]
-            { ns_inference::profile_likelihood::scan_gpu(&mle, &model, &mu_values)? }
+            {
+                ns_inference::profile_likelihood::scan_gpu(&mle, &model, &mu_values)?
+            }
             #[cfg(not(feature = "cuda"))]
-            { unreachable!("--gpu cuda check should have bailed earlier") }
+            {
+                unreachable!("--gpu cuda check should have bailed earlier")
+            }
         }
         Some("metal") => {
-            anyhow::bail!("--gpu metal is only supported for hypotest-toys (batch toy fitting), not profile scan");
+            anyhow::bail!(
+                "--gpu metal is only supported for hypotest-toys (batch toy fitting), not profile scan"
+            );
         }
         Some(_) => unreachable!("unknown device should have bailed earlier"),
         None => ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?,
@@ -3781,13 +3833,7 @@ fn cmd_report(
     let blinded_set: Option<std::collections::HashSet<String>> = if blind_regions.is_empty() {
         None
     } else {
-        Some(
-            blind_regions
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
-        )
+        Some(blind_regions.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
     };
     let blinded_ref = blinded_set.as_ref();
 
@@ -3807,8 +3853,13 @@ fn cmd_report(
     write_json_file(&out_dir.join("distributions.json"), &dist_json)?;
 
     // Yields
-    let yields_artifact =
-        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads, blinded_ref)?;
+    let yields_artifact = ns_viz::yields::yields_artifact(
+        &model,
+        &params_prefit,
+        &params_postfit,
+        threads,
+        blinded_ref,
+    )?;
     let mut yields_json = serde_json::to_value(&yields_artifact)?;
     if deterministic {
         yields_json = normalize_json_for_determinism(yields_json);
@@ -3868,12 +3919,11 @@ fn cmd_report(
 
         let mut pythonpath = std::ffi::OsString::new();
         pythonpath.push("bindings/ns-py/python");
-        if let Some(existing) = std::env::var_os("PYTHONPATH") {
-            if !existing.is_empty() {
+        if let Some(existing) = std::env::var_os("PYTHONPATH")
+            && !existing.is_empty() {
                 pythonpath.push(":");
                 pythonpath.push(existing);
             }
-        }
 
         let status = Command::new(&python)
             .env("PYTHONPATH", pythonpath)

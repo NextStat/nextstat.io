@@ -34,12 +34,7 @@ fn sorted_desc(
 ) -> Result<(Vec<f64>, Vec<bool>, Vec<Vec<f64>>, Option<Vec<i64>>)> {
     let n = times.len();
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&i, &j| {
-        times[j]
-            .partial_cmp(&times[i])
-            .unwrap()
-            .then_with(|| i.cmp(&j))
-    });
+    order.sort_by(|&i, &j| times[j].partial_cmp(&times[i]).unwrap().then_with(|| i.cmp(&j)));
 
     let mut times_s = Vec::with_capacity(n);
     let mut events_s = Vec::with_capacity(n);
@@ -78,7 +73,7 @@ fn hessian_from_grad<M: LogDensityModel>(model: &M, beta: &[f64]) -> Result<DMat
     if p == 0 {
         return Ok(DMatrix::zeros(0, 0));
     }
-    let base: Vec<f64> = beta.iter().copied().collect();
+    let base: Vec<f64> = beta.to_vec();
     let mut h = DMatrix::zeros(p, p);
 
     for j in 0..p {
@@ -204,8 +199,7 @@ fn cox_score_residual_outer(
                 r[j] = x_s[i][j] - xbar[j];
             }
 
-            if let (Some(ref mut map), Some(ref gs)) = (cluster_sums.as_mut(), groups_s.as_ref())
-            {
+            if let (Some(ref mut map), Some(gs)) = (cluster_sums.as_mut(), groups_s.as_ref()) {
                 let gid = gs[i];
                 match map.get_mut(&gid) {
                     Some(acc) => {
@@ -376,11 +370,10 @@ pub fn cmd_survival_cox_ph_fit(
     }
 
     let groups: Option<Vec<i64>> = injson.groups;
-    if let Some(ref g) = groups {
-        if g.len() != injson.times.len() {
+    if let Some(ref g) = groups
+        && g.len() != injson.times.len() {
             anyhow::bail!("groups must have length n");
         }
-    }
 
     let ties_enum = match ties {
         "breslow" => ns_inference::CoxTies::Breslow,
@@ -460,12 +453,7 @@ pub fn cmd_survival_cox_ph_fit(
         }
         (Some(rcov), Some(rse), Some(kind.to_string()), meta)
     } else {
-        (
-            None,
-            None,
-            None,
-            serde_json::json!({ "enabled": false }),
-        )
+        (None, None, None, serde_json::json!({ "enabled": false }))
     };
 
     let (baseline_times, baseline_cumhaz) = if baseline {

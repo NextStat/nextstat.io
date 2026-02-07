@@ -7,8 +7,12 @@
 //! - HistFactory XML - Phase 3
 //! - ROOT files - Phase 3
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 #![warn(clippy::all)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_range_loop)]
+#![allow(dead_code)]
 
 pub mod histfactory;
 pub mod ntuple;

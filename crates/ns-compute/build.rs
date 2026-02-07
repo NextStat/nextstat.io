@@ -17,7 +17,7 @@ fn main() {
         let status = std::process::Command::new("nvcc")
             .args([
                 "--ptx",
-                "-arch=sm_70",    // Volta minimum, forward-compatible via JIT
+                "-arch=sm_70", // Volta minimum, forward-compatible via JIT
                 "-O3",
                 "--use_fast_math",
                 "-o",
@@ -25,7 +25,9 @@ fn main() {
                 kernel_src,
             ])
             .status()
-            .expect("nvcc not found — install CUDA toolkit (https://developer.nvidia.com/cuda-toolkit)");
+            .expect(
+                "nvcc not found — install CUDA toolkit (https://developer.nvidia.com/cuda-toolkit)",
+            );
 
         assert!(status.success(), "nvcc failed to compile {}", kernel_src);
         println!("cargo:rustc-env=CUDA_PTX_PATH={}", ptx_path);

@@ -29,9 +29,7 @@ fn run(args: &[&str]) -> Output {
 }
 
 fn python_supports_pyhf_writexml() -> bool {
-    let out = Command::new("python3")
-        .args(["-c", "import pyhf, uproot, pyhf.writexml"])
-        .output();
+    let out = Command::new("python3").args(["-c", "import pyhf, uproot, pyhf.writexml"]).output();
     matches!(out, Ok(o) if o.status.success())
 }
 
@@ -71,12 +69,7 @@ fn export_histfactory_writes_expected_files_when_python_available() {
     assert!(out_dir.join("channels").is_dir());
 
     // Smoke: we can re-import what we just exported.
-    let out2 = run(&[
-        "import",
-        "histfactory",
-        "--dir",
-        out_dir.to_string_lossy().as_ref(),
-    ]);
+    let out2 = run(&["import", "histfactory", "--dir", out_dir.to_string_lossy().as_ref()]);
     assert!(
         out2.status.success(),
         "re-import should succeed, stderr={}",
@@ -90,4 +83,3 @@ fn export_histfactory_writes_expected_files_when_python_available() {
 
     let _ = std::fs::remove_dir_all(&out_dir);
 }
-

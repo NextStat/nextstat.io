@@ -605,7 +605,7 @@ mod tests {
         for z in [-100.0, -10.0, 0.0, 10.0, 100.0] {
             let theta = b.forward(z);
             // At extreme z, sigmoid saturates to boundary (IEEE-754 rounding)
-            assert!(theta >= 0.0 && theta <= 10.0, "theta={} out of bounds for z={}", theta, z);
+            assert!((0.0..=10.0).contains(&theta), "theta={} out of bounds for z={}", theta, z);
         }
         // Moderate values should be strictly inside
         for z in [-5.0, -1.0, 0.0, 1.0, 5.0] {

@@ -231,9 +231,6 @@ impl LbfgsState {
     }
 
     fn clamp_to_bounds(x: &[f64], bounds: &[(f64, f64)]) -> Vec<f64> {
-        x.iter()
-            .zip(bounds.iter())
-            .map(|(&v, &(lo, hi))| v.clamp(lo, hi))
-            .collect()
+        x.iter().zip(bounds.iter()).map(|(&v, &(lo, hi))| v.clamp(lo, hi)).collect()
     }
 }

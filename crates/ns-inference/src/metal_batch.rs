@@ -102,9 +102,8 @@ pub fn fit_toys_batch_metal(
 
     // 7. Lockstep iteration loop
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> = (0..n_toys)
-            .filter(|&i| active_mask[i] && !states[i].converged)
-            .collect();
+        let active_indices: Vec<usize> =
+            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
 
         if active_indices.is_empty() {
             break;
@@ -280,9 +279,6 @@ mod tests {
         }
         // Most toys should match within 1.0 (f32 optimizer may diverge on some)
         eprintln!("{n_close}/5 toys match within 1.0 NLL");
-        assert!(
-            n_close >= 3,
-            "Too few toys match: {n_close}/5. Metal kernel may have a bug."
-        );
+        assert!(n_close >= 3, "Too few toys match: {n_close}/5. Metal kernel may have a bug.");
     }
 }

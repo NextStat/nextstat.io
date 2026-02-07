@@ -8,7 +8,7 @@ use statrs::function::gamma::ln_gamma;
 /// Parameterization:
 /// - `shape > 0`
 /// - `rate > 0` (inverse scale)
-/// Support: `x >= 0`.
+/// - Support: `x >= 0`.
 pub fn logpdf_shape_rate(x: f64, shape: f64, rate: f64) -> Result<f64> {
     if !shape.is_finite() || shape <= 0.0 {
         return Err(Error::Validation(format!("shape must be finite and > 0, got {}", shape)));
@@ -39,7 +39,7 @@ pub fn logpdf_shape_rate(x: f64, shape: f64, rate: f64) -> Result<f64> {
 /// Parameterization:
 /// - `shape > 0`
 /// - `scale > 0`
-/// Support: `x >= 0`.
+/// - Support: `x >= 0`.
 pub fn logpdf_shape_scale(x: f64, shape: f64, scale: f64) -> Result<f64> {
     if !scale.is_finite() || scale <= 0.0 {
         return Err(Error::Validation(format!("scale must be finite and > 0, got {}", scale)));

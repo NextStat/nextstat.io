@@ -230,8 +230,8 @@ pub fn ols_fit(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> Result
             for a in 0..p {
                 let xa = row[a];
                 xty[1 + a] += xa * yi;
-                xtx[0 * d + (1 + a)] += xa;
-                xtx[(1 + a) * d + 0] += xa;
+                xtx[1 + a] += xa;
+                xtx[(1 + a) * d] += xa;
                 for b in 0..p {
                     xtx[(1 + a) * d + (1 + b)] += xa * row[b];
                 }

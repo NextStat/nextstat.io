@@ -47,7 +47,9 @@ impl Metric {
     /// Multiply by inverse mass: `v = M^{-1} p`.
     pub fn mul_inv_mass(&self, p: &[f64]) -> Vec<f64> {
         match self {
-            Metric::Diag(inv_mass_diag) => inv_mass_diag.iter().zip(p.iter()).map(|(&m, &pi)| m * pi).collect(),
+            Metric::Diag(inv_mass_diag) => {
+                inv_mass_diag.iter().zip(p.iter()).map(|(&m, &pi)| m * pi).collect()
+            }
             Metric::DenseCholesky { dim, l } => {
                 let n = *dim;
                 debug_assert_eq!(p.len(), n);
@@ -127,7 +129,9 @@ impl Metric {
     /// Mass matrix diagonal (for reporting): `diag(M)`.
     pub fn mass_diag(&self) -> Vec<f64> {
         match self {
-            Metric::Diag(inv_mass_diag) => inv_mass_diag.iter().map(|&q| if q > 0.0 { 1.0 / q } else { 1.0 }).collect(),
+            Metric::Diag(inv_mass_diag) => {
+                inv_mass_diag.iter().map(|&q| if q > 0.0 { 1.0 / q } else { 1.0 }).collect()
+            }
             Metric::DenseCholesky { dim, l } => {
                 // We have Q = M^{-1} = L L^T. We need diag(M) = diag(Q^{-1}).
                 // Compute diag(Q^{-1}) by solving Q x = e_i and taking x_i.
@@ -143,7 +147,8 @@ impl Metric {
                             rhs -= Self::l_at(l, n, r, c) * y[c];
                         }
                         let diag = Self::l_at(l, n, r, r);
-                        y[r] = if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
+                        y[r] =
+                            if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
                     }
 
                     // Backward solve: L^T x = y
@@ -155,7 +160,8 @@ impl Metric {
                             rhs -= Self::l_at(l, n, c, r) * x[c];
                         }
                         let diag = Self::l_at(l, n, r, r);
-                        x[r] = if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
+                        x[r] =
+                            if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
                     }
 
                     out[i] = x[i].max(1e-12);

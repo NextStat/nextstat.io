@@ -92,9 +92,8 @@ pub fn fit_toys_batch_gpu(
 
     // 7. Lockstep iteration loop
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> = (0..n_toys)
-            .filter(|&i| active_mask[i] && !states[i].converged)
-            .collect();
+        let active_indices: Vec<usize> =
+            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
 
         if active_indices.is_empty() {
             break;

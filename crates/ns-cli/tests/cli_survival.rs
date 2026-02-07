@@ -56,10 +56,7 @@ fn survival_cox_ph_fit_contract_cluster_robust_default() {
         assert!(s.is_finite() && s >= 0.0);
     }
 
-    assert_eq!(
-        v.get("robust_kind").and_then(|x| x.as_str()).unwrap(),
-        "cluster"
-    );
+    assert_eq!(v.get("robust_kind").and_then(|x| x.as_str()).unwrap(), "cluster");
     let rse = v.get("robust_se").and_then(|x| x.as_array()).expect("robust_se should be array");
     assert_eq!(rse.len(), 2);
     for s in rse {
@@ -67,15 +64,14 @@ fn survival_cox_ph_fit_contract_cluster_robust_default() {
         assert!(s.is_finite() && s >= 0.0);
     }
 
-    let meta = v.get("robust_meta").and_then(|x| x.as_object()).expect("robust_meta should be object");
-    assert_eq!(meta.get("enabled").and_then(|x| x.as_bool()).unwrap(), true);
+    let meta =
+        v.get("robust_meta").and_then(|x| x.as_object()).expect("robust_meta should be object");
+    assert!(meta.get("enabled").and_then(|x| x.as_bool()).unwrap());
     assert_eq!(meta.get("kind").and_then(|x| x.as_str()).unwrap(), "cluster");
     assert_eq!(meta.get("n_groups").and_then(|x| x.as_u64()).unwrap(), 3);
 
-    let bt = v
-        .get("baseline_times")
-        .and_then(|x| x.as_array())
-        .expect("baseline_times should be array");
+    let bt =
+        v.get("baseline_times").and_then(|x| x.as_array()).expect("baseline_times should be array");
     let bh = v
         .get("baseline_cumhaz")
         .and_then(|x| x.as_array())
@@ -111,8 +107,9 @@ fn survival_cox_ph_fit_allows_disabling_robust() {
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
     assert!(v.get("robust_kind").unwrap().is_null());
     assert!(v.get("robust_se").unwrap().is_null());
-    let meta = v.get("robust_meta").and_then(|x| x.as_object()).expect("robust_meta should be object");
-    assert_eq!(meta.get("enabled").and_then(|x| x.as_bool()).unwrap(), false);
+    let meta =
+        v.get("robust_meta").and_then(|x| x.as_object()).expect("robust_meta should be object");
+    assert!(!meta.get("enabled").and_then(|x| x.as_bool()).unwrap());
 }
 
 #[test]
@@ -137,10 +134,7 @@ fn survival_cox_ph_fit_supports_breslow_ties() {
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
     assert_eq!(v.get("ties").and_then(|x| x.as_str()).unwrap(), "breslow");
-    let bt = v
-        .get("baseline_times")
-        .and_then(|x| x.as_array())
-        .expect("baseline_times should be array");
+    let bt =
+        v.get("baseline_times").and_then(|x| x.as_array()).expect("baseline_times should be array");
     assert!(bt.len() >= 2);
 }
-

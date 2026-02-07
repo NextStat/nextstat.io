@@ -295,11 +295,11 @@ impl NtupleWorkspaceBuilder {
         let var_expr = CompiledExpr::compile(variable)
             .map_err(|e| Error::RootFile(format!("compiling variable '{}': {}", variable, e)))?;
         let weight_expr = weight
-            .map(|w| CompiledExpr::compile(w))
+            .map(CompiledExpr::compile)
             .transpose()
             .map_err(|e| Error::RootFile(format!("compiling weight: {}", e)))?;
         let sel_expr = selection
-            .map(|s| CompiledExpr::compile(s))
+            .map(CompiledExpr::compile)
             .transpose()
             .map_err(|e| Error::RootFile(format!("compiling selection: {}", e)))?;
 

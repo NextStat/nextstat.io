@@ -104,6 +104,7 @@ struct AxisInfo {
 /// Read the TH1 base class.
 ///
 /// Returns (name, title, n_cells, axis_info, sumw2).
+#[allow(clippy::type_complexity)]
 fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Option<Vec<f64>>)> {
     // TH1 version header
     let (th1_ver, th1_end) = r.read_version()?;
@@ -178,10 +179,10 @@ fn read_th1_base(r: &mut RBuffer) -> Result<(String, String, i32, AxisInfo, Opti
     }
 
     // If there's a known end position, seek to it to skip any fields we missed.
-    if let Some(end) = th1_end {
-        if end > r.pos() {
-            r.set_pos(end);
-        }
+    if let Some(end) = th1_end
+        && end > r.pos()
+    {
+        r.set_pos(end);
     }
 
     Ok((name, title, n_cells, axis, sumw2))
@@ -206,10 +207,10 @@ fn read_taxis(r: &mut RBuffer) -> Result<AxisInfo> {
     let bin_edges = if xbins_n > 0 { r.read_array_f64(xbins_n)? } else { Vec::new() };
 
     // Skip remaining axis fields to end
-    if let Some(e) = end {
-        if e > r.pos() {
-            r.set_pos(e);
-        }
+    if let Some(e) = end
+        && e > r.pos()
+    {
+        r.set_pos(e);
     }
 
     Ok(AxisInfo { n_bins, x_min, x_max, bin_edges })

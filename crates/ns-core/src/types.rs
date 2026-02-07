@@ -54,6 +54,7 @@ impl FitResult {
     }
 
     /// Create a fit result with covariance matrix
+    #[allow(clippy::too_many_arguments)]
     pub fn with_covariance(
         parameters: Vec<f64>,
         uncertainties: Vec<f64>,

@@ -6,7 +6,6 @@
 //! All computation in f32. Conversion f64↔f32 happens at the API boundary.
 
 use crate::metal_types::*;
-use crate::cuda_types::{GpuSampleInfo, GpuModifierDesc};
 use metal::*;
 use std::mem;
 
@@ -33,6 +32,7 @@ fn metal_err(msg: impl std::fmt::Display) -> ns_core::Error {
 ///
 /// Holds all GPU buffers (static model data + dynamic per-iteration data)
 /// and provides `batch_nll_grad()` for the lockstep optimizer.
+#[allow(dead_code)]
 pub struct MetalBatchAccelerator {
     device: Device,
     queue: CommandQueue,
@@ -64,8 +64,8 @@ pub struct MetalBatchAccelerator {
     max_batch: usize,
 
     // --- CPU scratch buffers (preallocated for max_batch, reused per call) ---
-    scratch_params_f32: Vec<f32>,  // max_batch * n_params
-    scratch_zeros_f32: Vec<f32>,   // max_batch * n_params
+    scratch_params_f32: Vec<f32>, // max_batch * n_params
+    scratch_zeros_f32: Vec<f32>,  // max_batch * n_params
 }
 
 impl MetalBatchAccelerator {
@@ -79,8 +79,7 @@ impl MetalBatchAccelerator {
     /// Compiles MSL at runtime, uploads all static model buffers.
     /// Pre-allocates dynamic buffers for up to `max_batch` concurrent toy experiments.
     pub fn from_metal_data(data: &MetalModelData, max_batch: usize) -> ns_core::Result<Self> {
-        let device = Device::system_default()
-            .ok_or_else(|| metal_err("no Metal device found"))?;
+        let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
         let queue = device.new_command_queue();
 
         // Compile MSL source at runtime
@@ -108,38 +107,29 @@ impl MetalBatchAccelerator {
         // Upload static model buffers (shared memory = zero-copy on Apple Silicon)
         let buf_nominal = Self::create_buffer_from_slice(&device, &data.nominal, opts);
         let buf_samples = Self::create_buffer_from_slice(&device, &data.samples, opts);
-        let buf_modifier_descs = Self::create_buffer_from_slice(&device, &data.modifier_descs, opts);
-        let buf_modifier_desc_offsets = Self::create_buffer_from_slice(&device, &data.modifier_desc_offsets, opts);
-        let buf_per_bin_param_indices = Self::create_buffer_from_slice(&device, &data.per_bin_param_indices, opts);
+        let buf_modifier_descs =
+            Self::create_buffer_from_slice(&device, &data.modifier_descs, opts);
+        let buf_modifier_desc_offsets =
+            Self::create_buffer_from_slice(&device, &data.modifier_desc_offsets, opts);
+        let buf_per_bin_param_indices =
+            Self::create_buffer_from_slice(&device, &data.per_bin_param_indices, opts);
         let buf_modifier_data = Self::create_buffer_from_slice(&device, &data.modifier_data, opts);
         let buf_aux_poisson = Self::create_buffer_from_slice(&device, &data.aux_poisson, opts);
-        let buf_gauss_constr = Self::create_buffer_from_slice(&device, &data.gauss_constraints, opts);
+        let buf_gauss_constr =
+            Self::create_buffer_from_slice(&device, &data.gauss_constraints, opts);
 
         // Pre-allocate dynamic buffers
-        let buf_params = device.new_buffer(
-            (max_batch * data.n_params * mem::size_of::<f32>()) as u64,
-            opts,
-        );
-        let buf_observed = device.new_buffer(
-            (max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64,
-            opts,
-        );
-        let buf_ln_facts = device.new_buffer(
-            (max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64,
-            opts,
-        );
-        let buf_obs_mask = device.new_buffer(
-            (max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64,
-            opts,
-        );
-        let buf_nll_out = device.new_buffer(
-            (max_batch * mem::size_of::<f32>()) as u64,
-            opts,
-        );
-        let buf_grad_out = device.new_buffer(
-            (max_batch * data.n_params * mem::size_of::<f32>()) as u64,
-            opts,
-        );
+        let buf_params =
+            device.new_buffer((max_batch * data.n_params * mem::size_of::<f32>()) as u64, opts);
+        let buf_observed =
+            device.new_buffer((max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64, opts);
+        let buf_ln_facts =
+            device.new_buffer((max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64, opts);
+        let buf_obs_mask =
+            device.new_buffer((max_batch * data.n_main_bins * mem::size_of::<f32>()) as u64, opts);
+        let buf_nll_out = device.new_buffer((max_batch * mem::size_of::<f32>()) as u64, opts);
+        let buf_grad_out =
+            device.new_buffer((max_batch * data.n_params * mem::size_of::<f32>()) as u64, opts);
 
         let scalar_args = ScalarArgs {
             n_params: data.n_params as u32,
@@ -270,11 +260,7 @@ impl MetalBatchAccelerator {
     }
 
     /// NLL-only batch (for line search steps where gradient is not needed).
-    pub fn batch_nll(
-        &mut self,
-        params_flat: &[f64],
-        n_active: usize,
-    ) -> ns_core::Result<Vec<f64>> {
+    pub fn batch_nll(&mut self, params_flat: &[f64], n_active: usize) -> ns_core::Result<Vec<f64>> {
         assert!(n_active <= self.max_batch);
         assert_eq!(params_flat.len(), n_active * self.n_params);
 
@@ -368,14 +354,18 @@ impl MetalBatchAccelerator {
         encoder.set_buffer(12, Some(&self.buf_nll_out), 0);
     }
 
-    fn create_buffer_from_slice<T>(device: &Device, data: &[T], opts: MTLResourceOptions) -> Buffer {
+    fn create_buffer_from_slice<T>(
+        device: &Device,
+        data: &[T],
+        opts: MTLResourceOptions,
+    ) -> Buffer {
         if data.is_empty() {
             // Metal doesn't allow zero-length buffers
             return device.new_buffer(mem::size_of::<T>().max(4) as u64, opts);
         }
         device.new_buffer_with_data(
             data.as_ptr() as *const std::ffi::c_void,
-            (data.len() * mem::size_of::<T>()) as u64,
+            std::mem::size_of_val(data) as u64,
             opts,
         )
     }

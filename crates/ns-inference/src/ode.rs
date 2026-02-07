@@ -91,7 +91,7 @@ pub fn rk4_linear(
         let k3 = a * (&y + k2.scale(0.5 * h));
         let k4 = a * (&y + k3.scale(h));
 
-        y = y + (k1 + k2.scale(2.0) + k3.scale(2.0) + k4).scale(h / 6.0);
+        y += (k1 + k2.scale(2.0) + k3.scale(2.0) + k4).scale(h / 6.0);
         t += h;
 
         sol.push(t, &y);

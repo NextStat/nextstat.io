@@ -256,7 +256,7 @@ fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
     // Branch fields
     let _compress = r.read_i32()?; // fCompress
     let _basket_size = r.read_i32()?; // fBasketSize
-    let _entry_offset_len = r.read_i32()?; // fEntryOffsetLen
+    let entry_offset_len = r.read_i32()?; // fEntryOffsetLen
     let write_basket = r.read_i32()?; // fWriteBasket (= number of valid baskets)
     let _entry_number = r.read_i64()?; // fEntryNumber
 
@@ -331,6 +331,7 @@ fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
     Ok(BranchInfo {
         name,
         leaf_type: leaf,
+        entry_offset_len: entry_offset_len.max(0) as usize,
         entries,
         basket_bytes,
         basket_entry,

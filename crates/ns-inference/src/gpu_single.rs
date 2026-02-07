@@ -20,7 +20,7 @@
 //! Result: 1 GPU kernel launch per iteration (not 2), because argmin's
 //! L-BFGS always calls `cost(x)` then `gradient(x)` with the same params.
 
-use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizerConfig, OptimizationResult};
+use crate::optimizer::{LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig};
 use ns_compute::cuda_batch::CudaBatchAccelerator;
 use ns_core::Result;
 use ns_translate::pyhf::HistFactoryModel;
@@ -54,11 +54,7 @@ impl GpuSession {
         let (observed, ln_facts, obs_mask) = Self::prepare_observed(model);
         accel.upload_observed_single(&observed, &ln_facts, &obs_mask)?;
 
-        Ok(Self {
-            accel: RefCell::new(accel),
-            n_params,
-            n_main_bins,
-        })
+        Ok(Self { accel: RefCell::new(accel), n_params, n_main_bins })
     }
 
     /// Upload new observed data (e.g. after `model.with_observed_main()`).

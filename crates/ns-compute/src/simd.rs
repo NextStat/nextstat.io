@@ -250,8 +250,8 @@ pub fn vec_scale(data: &mut [f64], factor: f64) {
     }
 
     let start = chunks * 4;
-    for i in start..start + remainder {
-        data[i] *= factor;
+    for item in data.iter_mut().skip(start).take(remainder) {
+        *item *= factor;
     }
 }
 
@@ -578,7 +578,10 @@ pub fn poisson_nll_simd_kahan(
     let start = chunks * 4;
     for i in start..start + remainder {
         let term = poisson_nll_bin_scalar_branchless(
-            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
         );
         let y = term - k;
         let t = total + y;
@@ -647,7 +650,10 @@ pub fn poisson_nll_simd_sparse_kahan(
     let start = chunks * 4;
     for i in start..start + remainder {
         let term = poisson_nll_bin_scalar_skip_zeros(
-            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
         );
         let y = term - k;
         let t = total + y;
@@ -674,7 +680,10 @@ pub fn poisson_nll_scalar_kahan(
     let mut comp = 0.0_f64;
     for i in 0..n {
         let term = poisson_nll_bin_scalar_branchless(
-            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+            expected[i],
+            observed[i],
+            ln_factorials[i],
+            obs_mask[i],
         );
         let y = term - comp;
         let t = sum + y;
@@ -813,7 +822,7 @@ mod tests {
     fn test_vec_mul_pairwise() {
         let mut dst = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let src = vec![10.0, 20.0, 30.0, 40.0, 50.0];
-        let expected = vec![10.0, 40.0, 90.0, 160.0, 250.0];
+        let expected = [10.0, 40.0, 90.0, 160.0, 250.0];
         vec_mul_pairwise(&mut dst, &src);
         for (a, b) in dst.iter().zip(expected.iter()) {
             assert_relative_eq!(a, b, epsilon = 1e-15);
@@ -1099,9 +1108,7 @@ mod tests {
 
         // Compute per-bin terms
         let terms: Vec<f64> = (0..n)
-            .map(|i| {
-                expected[i] + mask[i] * (ln_facts[i] - observed[i] * expected[i].ln())
-            })
+            .map(|i| expected[i] + mask[i] * (ln_facts[i] - observed[i] * expected[i].ln()))
             .collect();
         let reference = pairwise_sum(&terms);
 

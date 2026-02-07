@@ -28,7 +28,7 @@ pub fn poisson_main_from_expected(expected_main: &[f64], seed: u64) -> Vec<f64> 
                 return 0.0;
             }
             let pois = Poisson::new(lam).expect("Poisson::new(lambda>0)");
-            pois.sample(&mut rng) as f64
+            pois.sample(&mut rng)
         })
         .collect()
 }

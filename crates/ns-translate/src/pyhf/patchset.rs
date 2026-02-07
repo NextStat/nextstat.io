@@ -95,10 +95,9 @@ mod tests {
 
     #[test]
     fn apply_patchset_add_and_replace() {
-        let base_ws: Workspace = serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/simple_workspace.json"
-        ))
-        .expect("parse base workspace");
+        let base_ws: Workspace =
+            serde_json::from_str(include_str!("../../../../tests/fixtures/simple_workspace.json"))
+                .expect("parse base workspace");
         let base_json = serde_json::to_value(&base_ws).expect("base to Value");
 
         let patchset_json = serde_json::json!({
@@ -135,10 +134,9 @@ mod tests {
 
     #[test]
     fn apply_patchset_defaults_to_first_patch() {
-        let base_ws: Workspace = serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/simple_workspace.json"
-        ))
-        .expect("parse base workspace");
+        let base_ws: Workspace =
+            serde_json::from_str(include_str!("../../../../tests/fixtures/simple_workspace.json"))
+                .expect("parse base workspace");
         let base_json = serde_json::to_value(&base_ws).expect("base to Value");
 
         let patchset_json = serde_json::json!({
@@ -154,4 +152,3 @@ mod tests {
         assert_eq!(ws.measurements[0].config.poi, "first");
     }
 }
-

@@ -110,9 +110,7 @@ fn bench_gradient_reuse(c: &mut Criterion) {
 
     group.bench_function("complex_reuse_tape", |b| {
         let mut tape = ns_ad::tape::Tape::with_capacity(complex.n_params() * 20);
-        b.iter(|| {
-            black_box(complex.gradient_reverse_reuse(black_box(&params), &mut tape)).unwrap()
-        })
+        b.iter(|| black_box(complex.gradient_reverse_reuse(black_box(&params), &mut tape)).unwrap())
     });
 
     group.finish();

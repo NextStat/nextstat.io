@@ -35,8 +35,7 @@ impl LogDensityModel for NormalMeanModel {
     }
 
     fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
-        let mu = params
-            .get(0)
+        let mu = params.first()
             .copied()
             .ok_or_else(|| ns_core::Error::Validation("expected 1 parameter (mu)".to_string()))?;
         if !self.sigma.is_finite() || self.sigma <= 0.0 {
@@ -65,8 +64,7 @@ impl LogDensityModel for NormalMeanModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
-        let mu = params
-            .get(0)
+        let mu = params.first()
             .copied()
             .ok_or_else(|| ns_core::Error::Validation("expected 1 parameter (mu)".to_string()))?;
         let inv_var = 1.0 / (self.sigma * self.sigma);

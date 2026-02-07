@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 pub(crate) fn find_combination_xmls(root: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
@@ -16,10 +16,8 @@ pub(crate) fn discover_single_combination_xml(root: &Path) -> Result<PathBuf> {
         0 => bail!("No HistFactory `combination.xml` found under {}", root.display()),
         1 => Ok(found[0].clone()),
         _ => {
-            let mut msg = format!(
-                "Found multiple HistFactory `combination.xml` under {}:\n",
-                root.display()
-            );
+            let mut msg =
+                format!("Found multiple HistFactory `combination.xml` under {}:\n", root.display());
             for p in &found {
                 msg.push_str(&format!("  {}\n", p.display()));
             }
@@ -32,9 +30,8 @@ fn walk_dir_for_combination_xml(root: &Path, out: &mut Vec<PathBuf>) -> Result<(
     let rd = fs::read_dir(root).with_context(|| format!("read_dir {}", root.display()))?;
     for entry in rd {
         let entry = entry.with_context(|| format!("iter dir {}", root.display()))?;
-        let ft = entry
-            .file_type()
-            .with_context(|| format!("file_type {}", entry.path().display()))?;
+        let ft =
+            entry.file_type().with_context(|| format!("file_type {}", entry.path().display()))?;
 
         // Avoid symlink loops when scanning arbitrary export trees.
         if ft.is_symlink() {
@@ -47,13 +44,11 @@ fn walk_dir_for_combination_xml(root: &Path, out: &mut Vec<PathBuf>) -> Result<(
             continue;
         }
 
-        if ft.is_file() {
-            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                if name == "combination.xml" {
+        if ft.is_file()
+            && let Some(name) = path.file_name().and_then(|s| s.to_str())
+                && name == "combination.xml" {
                     out.push(path);
                 }
-            }
-        }
     }
     Ok(())
 }
@@ -65,10 +60,7 @@ mod tests {
 
     fn tmp_dir(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         p.push(format!("ns-cli-{}-{}-{}", name, std::process::id(), nanos));
         p
     }
@@ -109,4 +101,3 @@ mod tests {
         rm_rf(&root);
     }
 }
-

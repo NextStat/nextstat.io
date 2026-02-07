@@ -221,7 +221,10 @@ mod tests {
                 assert!(
                     nll_diff < 1e-8,
                     "Toy {}: batch NLL={} standard NLL={} diff={}",
-                    i, b.nll, s.nll, nll_diff
+                    i,
+                    b.nll,
+                    s.nll,
+                    nll_diff
                 );
 
                 // Parameters should match closely
@@ -230,7 +233,11 @@ mod tests {
                     assert!(
                         diff < 1e-6,
                         "Toy {} param {}: batch={} std={} diff={}",
-                        i, j, pb, ps, diff
+                        i,
+                        j,
+                        pb,
+                        ps,
+                        diff
                     );
                 }
             }

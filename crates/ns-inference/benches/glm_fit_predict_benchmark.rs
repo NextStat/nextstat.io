@@ -1,3 +1,6 @@
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_range_loop)]
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ns_inference::regression::NegativeBinomialRegressionModel;
 use ns_inference::{

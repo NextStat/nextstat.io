@@ -212,7 +212,7 @@ pub fn accelerate_enabled() -> bool {
 
 #[cfg(test)]
 mod runtime_tests {
-    use super::{accelerate_enabled, set_accelerate_enabled, ACCELERATE_DISABLED};
+    use super::{ACCELERATE_DISABLED, accelerate_enabled, set_accelerate_enabled};
     use std::sync::Mutex;
     use std::sync::atomic::Ordering;
 

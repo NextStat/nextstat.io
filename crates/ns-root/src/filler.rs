@@ -143,10 +143,10 @@ pub fn fill_histograms(
     for entry in 0..n_entries {
         for (i, _spec) in specs.iter().enumerate() {
             // Check selection
-            if let Some(ref sel) = sel_vals[i] {
-                if sel[entry] <= 0.0 {
-                    continue;
-                }
+            if let Some(ref sel) = sel_vals[i]
+                && sel[entry] <= 0.0
+            {
+                continue;
             }
 
             let val = var_vals[i][entry];

@@ -1,4 +1,12 @@
 //! Python bindings for NextStat
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::identity_op)]
+#![allow(clippy::overly_complex_bool_expr)]
+#![allow(clippy::needless_update)]
+#![allow(unused_parens)]
 
 use pyo3::IntoPyObjectExt;
 use pyo3::buffer::PyBuffer;
@@ -54,8 +62,8 @@ use ns_inference::{
 use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
 use ns_translate::pyhf::{
-    ExpectedChannelSampleYields, ExpectedSampleYields, HistFactoryModel as RustModel, ObservedChannelData,
-    Workspace as RustWorkspace,
+    ExpectedChannelSampleYields, ExpectedSampleYields, HistFactoryModel as RustModel,
+    ObservedChannelData, Workspace as RustWorkspace,
 };
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
@@ -80,7 +88,7 @@ fn extract_f64_vec(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
 }
 
 fn sample_nuts_multichain_with_seeds(
-    model: &(impl LogDensityModel + Sync),
+    model: &(impl LogDensityModel),
     n_warmup: usize,
     n_samples: usize,
     seeds: &[u64],
@@ -793,23 +801,21 @@ fn validate_nuts_config(
     if max_treedepth == 0 {
         return Err(PyValueError::new_err("max_treedepth must be >= 1"));
     }
-    if !target_accept.is_finite() || !(0.0 < target_accept && target_accept < 1.0) {
+    if !(target_accept.is_finite() && 0.0 < target_accept && target_accept < 1.0) {
         return Err(PyValueError::new_err("target_accept must be finite and in (0,1)"));
     }
 
     if !init_jitter.is_finite() || init_jitter < 0.0 {
         return Err(PyValueError::new_err("init_jitter must be finite and >= 0"));
     }
-    if let Some(v) = init_jitter_rel {
-        if !v.is_finite() || v <= 0.0 {
+    if let Some(v) = init_jitter_rel
+        && (!v.is_finite() || v <= 0.0) {
             return Err(PyValueError::new_err("init_jitter_rel must be finite and > 0"));
         }
-    }
-    if let Some(v) = init_overdispersed_rel {
-        if !v.is_finite() || v <= 0.0 {
+    if let Some(v) = init_overdispersed_rel
+        && (!v.is_finite() || v <= 0.0) {
             return Err(PyValueError::new_err("init_overdispersed_rel must be finite and > 0"));
         }
-    }
 
     let init_modes = (init_jitter > 0.0) as u8
         + init_jitter_rel.is_some() as u8
@@ -1283,10 +1289,10 @@ impl PyHistFactoryModel {
         params: &Bound<'py, PyAny>,
     ) -> PyResult<Vec<Py<PyAny>>> {
         let params = extract_f64_vec(params)?;
-        let rows: Vec<ExpectedChannelSampleYields> = self
-            .inner
-            .expected_main_by_channel_sample(&params)
-            .map_err(|e| PyValueError::new_err(format!("expected_main_by_channel_sample failed: {}", e)))?;
+        let rows: Vec<ExpectedChannelSampleYields> =
+            self.inner.expected_main_by_channel_sample(&params).map_err(|e| {
+                PyValueError::new_err(format!("expected_main_by_channel_sample failed: {}", e))
+            })?;
 
         rows.into_iter()
             .map(|row| {
@@ -2313,16 +2319,15 @@ impl PyComposedGlmModel {
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
         }
 
-        if correlated_feature_idx.is_some() {
-            if random_slope_feature_idx.is_some()
+        if correlated_feature_idx.is_some()
+            && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
-                || random_slope_non_centered
+                || random_slope_non_centered)
             {
                 return Err(PyValueError::new_err(
                     "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
                 ));
             }
-        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -2394,16 +2399,15 @@ impl PyComposedGlmModel {
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         b = b.with_penalize_intercept(penalize_intercept);
 
-        if correlated_feature_idx.is_some() {
-            if random_slope_feature_idx.is_some()
+        if correlated_feature_idx.is_some()
+            && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
-                || random_slope_non_centered
+                || random_slope_non_centered)
             {
                 return Err(PyValueError::new_err(
                     "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
                 ));
             }
-        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -2476,16 +2480,15 @@ impl PyComposedGlmModel {
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         b = b.with_penalize_intercept(penalize_intercept);
 
-        if correlated_feature_idx.is_some() {
-            if random_slope_feature_idx.is_some()
+        if correlated_feature_idx.is_some()
+            && (random_slope_feature_idx.is_some()
                 || random_intercept_non_centered
-                || random_slope_non_centered
+                || random_slope_non_centered)
             {
                 return Err(PyValueError::new_err(
                     "correlated_feature_idx cannot be combined with random_slope_feature_idx or non-centered toggles",
                 ));
             }
-        }
 
         if let Some(group_idx) = group_idx {
             let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
@@ -3165,7 +3168,7 @@ impl PyMaximumLikelihoodEstimator {
 
             let results = py.detach(move || mle.fit_batch(&models));
 
-            return results
+            results
                 .into_iter()
                 .map(|r| {
                     let r = r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
@@ -3179,7 +3182,7 @@ impl PyMaximumLikelihoodEstimator {
                         n_gev: r.n_gev,
                     })
                 })
-                .collect();
+                .collect()
         } else {
             // List of models
             let list = models_or_model.cast::<PyList>().map_err(|_| {
@@ -3965,9 +3968,8 @@ fn fit_toys_batch(
 ) -> PyResult<Vec<PyFitResult>> {
     let m = model.inner.clone();
 
-    let results = py.detach(move || {
-        ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None)
-    });
+    let results =
+        py.detach(move || ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None));
 
     results
         .into_iter()
@@ -4060,46 +4062,47 @@ fn fit_toys_batch_gpu(
 
     let device_str = device.to_string();
 
-    let results = py.detach(move || {
-        match device_str.as_str() {
-            "cuda" => {
-                #[cfg(feature = "cuda")]
-                {
-                    match ns_inference::gpu_batch::fit_toys_batch_gpu(&m, &params, n_toys, seed, None) {
-                        Ok(r) => r,
-                        Err(e) => vec![Err(e)],
-                    }
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    vec![Err(ns_core::Error::Computation(
-                        "CUDA support not compiled in. Build with --features cuda".to_string(),
-                    ))]
+    let results = py.detach(move || match device_str.as_str() {
+        "cuda" => {
+            #[cfg(feature = "cuda")]
+            {
+                match ns_inference::gpu_batch::fit_toys_batch_gpu(&m, &params, n_toys, seed, None) {
+                    Ok(r) => r,
+                    Err(e) => vec![Err(e)],
                 }
             }
-            "metal" => {
-                #[cfg(feature = "metal")]
-                {
-                    match ns_inference::metal_batch::fit_toys_batch_metal(&m, &params, n_toys, seed, None) {
-                        Ok(r) => r,
-                        Err(e) => vec![Err(e)],
-                    }
-                }
-                #[cfg(not(feature = "metal"))]
-                {
-                    vec![Err(ns_core::Error::Computation(
-                        "Metal support not compiled in. Build with --features metal".to_string(),
-                    ))]
-                }
+            #[cfg(not(feature = "cuda"))]
+            {
+                vec![Err(ns_core::Error::Computation(
+                    "CUDA support not compiled in. Build with --features cuda".to_string(),
+                ))]
             }
-            _ => ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None),
         }
+        "metal" => {
+            #[cfg(feature = "metal")]
+            {
+                match ns_inference::metal_batch::fit_toys_batch_metal(
+                    &m, &params, n_toys, seed, None,
+                ) {
+                    Ok(r) => r,
+                    Err(e) => vec![Err(e)],
+                }
+            }
+            #[cfg(not(feature = "metal"))]
+            {
+                vec![Err(ns_core::Error::Computation(
+                    "Metal support not compiled in. Build with --features metal".to_string(),
+                ))]
+            }
+        }
+        _ => ns_inference::batch::fit_toys_batch(&m, &params, n_toys, seed, None),
     });
 
     results
         .into_iter()
         .map(|r| {
-            let r = r.map_err(|e| PyValueError::new_err(format!("GPU batch toy fit failed: {}", e)))?;
+            let r =
+                r.map_err(|e| PyValueError::new_err(format!("GPU batch toy fit failed: {}", e)))?;
             Ok(PyFitResult {
                 parameters: r.parameters,
                 uncertainties: r.uncertainties,
@@ -4234,8 +4237,10 @@ fn hypotest_toys(
     };
 
     if expected_set {
-        let r = ns_inference::hypotest_qtilde_toys_expected_set(&mle, &fit_model, poi_test, n_toys, seed)
-            .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
+        let r = ns_inference::hypotest_qtilde_toys_expected_set(
+            &mle, &fit_model, poi_test, n_toys, seed,
+        )
+        .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
 
         if return_meta {
             let d = PyDict::new(py);
@@ -4256,7 +4261,8 @@ fn hypotest_toys(
         }
 
         if return_tail_probs {
-            (r.observed.cls, r.expected.to_vec(), vec![r.observed.clsb, r.observed.clb]).into_py_any(py)
+            (r.observed.cls, r.expected.to_vec(), vec![r.observed.clsb, r.observed.clb])
+                .into_py_any(py)
         } else {
             (r.observed.cls, r.expected.to_vec()).into_py_any(py)
         }

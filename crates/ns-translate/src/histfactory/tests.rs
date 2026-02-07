@@ -6,7 +6,8 @@ use serde_json::Value;
 use super::{bin_edges_by_channel_from_xml, from_xml};
 
 fn fixture_combination_xml() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/histfactory/combination.xml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/histfactory/combination.xml")
 }
 
 #[test]
@@ -43,10 +44,5 @@ fn histfactory_from_xml_is_fast_enough_smoke() {
     let t0 = Instant::now();
     let _ = from_xml(&xml).expect("from_xml");
     let elapsed = t0.elapsed();
-    assert!(
-        elapsed < Duration::from_secs(10),
-        "HistFactory ingest too slow: {:?}",
-        elapsed
-    );
+    assert!(elapsed < Duration::from_secs(10), "HistFactory ingest too slow: {:?}", elapsed);
 }
-

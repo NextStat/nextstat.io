@@ -527,10 +527,6 @@ def record_root_suite_baseline(
     t0 = time.time()
     rc_suite, out_suite = _run(cmd_suite, cwd=repo, env=env_dict)
     wall = time.time() - t0
-    if rc_suite != 0:
-        print(f"[root] FAILED (exit {rc_suite})")
-        print(out_suite[-2000:])
-        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": None}
 
     if suite_out.exists():
         report = json.loads(suite_out.read_text())
@@ -540,6 +536,20 @@ def record_root_suite_baseline(
             meta["recorded_as_baseline"] = True
             meta["wall_s"] = float(wall)
         suite_out.write_text(json.dumps(report, indent=2))
+
+    if rc_suite != 0:
+        # Suite ran but some cases failed (exit 2 = partial failure).
+        # We still record the baseline file — it captures the actual state
+        # (ROOT optimizer failures are expected and documented).
+        # The compare-latest pipeline will detect regressions vs this baseline.
+        if suite_out.exists():
+            print(f"[root] PARTIAL ({rc_suite})  ({wall:.1f}s) -> {suite_out}")
+            print(out_suite[-2000:])
+            return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": suite_out}
+        else:
+            print(f"[root] FAILED (exit {rc_suite})")
+            print(out_suite[-2000:])
+            return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": None}
 
     print(f"[root] OK  ({wall:.1f}s) -> {suite_out}")
     return {"prereq": prereq_out if prereq_out.exists() else None, "cases": cases_out, "suite": suite_out}

@@ -213,10 +213,7 @@ fn parse_list(value: &str) -> Vec<String> {
     // - "[a, b, \"c d\"]"
     // - "\"a b\" c"
     let v = value.trim();
-    let inner = v
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(v);
+    let inner = v.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(v);
 
     let mut out: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -298,7 +295,7 @@ fn parse_binning(value: &str) -> Result<Vec<f64>> {
     // Accept "0, 50, 100, ...", "0; 50; 100; ...", and "[0,50,100]".
     let v = value.trim().trim_start_matches('[').trim_end_matches(']');
     let parts: Vec<&str> =
-        v.split(|c| c == ',' || c == ';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        v.split([',', ';']).map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     if parts.len() >= 2 {
         let mut edges = Vec::with_capacity(parts.len());
         for p in parts {
@@ -408,16 +405,10 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
                 close_top(&mut stack, &mut blocks, false);
             }
 
-            let ctx_region = stack
-                .iter()
-                .rev()
-                .find(|b| b.kind == BlockKind::Region)
-                .map(|b| b.name.clone());
-            let ctx_sample = stack
-                .iter()
-                .rev()
-                .find(|b| b.kind == BlockKind::Sample)
-                .map(|b| b.name.clone());
+            let ctx_region =
+                stack.iter().rev().find(|b| b.kind == BlockKind::Region).map(|b| b.name.clone());
+            let ctx_sample =
+                stack.iter().rev().find(|b| b.kind == BlockKind::Sample).map(|b| b.name.clone());
             stack.push(RawBlock {
                 kind: k,
                 name,
@@ -729,8 +720,8 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
             "POI",
             "Poi",
         ]
-            .iter()
-            .any(|k| key_eq(key, k))
+        .iter()
+        .any(|k| key_eq(key, k))
     }
 
     fn known_in_block(kind: BlockKind, key: &str) -> bool {
@@ -850,11 +841,10 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         .map(|xs| xs.into_iter().collect::<Vec<_>>())
         .filter(|xs| !xs.is_empty());
     // Legacy nested configs often scope samples inside a Region block instead of using `Regions:`.
-    if regions.is_none() {
-        if let Some(ref r) = b.ctx_region {
+    if regions.is_none()
+        && let Some(ref r) = b.ctx_region {
             regions = Some(vec![r.clone()]);
         }
-    }
 
     let mut modifiers: Vec<NtupleModifier> = Vec::new();
 
@@ -921,11 +911,10 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
 
     let mut regions =
         last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
-    if regions.is_none() {
-        if let Some(ref r) = b.ctx_region {
+    if regions.is_none()
+        && let Some(ref r) = b.ctx_region {
             regions = Some(vec![r.clone()]);
         }
-    }
 
     let mut out = TrexSystematic {
         name,
@@ -969,7 +958,8 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
             //   WeightBase: weight_jes
             //   WeightUpSuffix: _up
             //   WeightDownSuffix: _down
-            let base = last_attr_value(&b.attrs, "WeightBase").or_else(|| last_attr_value(&b.attrs, "Weight"));
+            let base = last_attr_value(&b.attrs, "WeightBase")
+                .or_else(|| last_attr_value(&b.attrs, "Weight"));
             let up_suf = last_attr_value(&b.attrs, "WeightUpSuffix")
                 .or_else(|| last_attr_value(&b.attrs, "UpSuffix"))
                 .or_else(|| last_attr_value(&b.attrs, "SuffixUp"));
@@ -1101,13 +1091,11 @@ fn collect_region_weights_and_sample_overrides(
         match b.kind {
             BlockKind::Region => {
                 // Top-level region: capture region-wide Weight (applies to all samples in the region).
-                if b.ctx_region.is_none() && b.ctx_sample.is_none() {
-                    if let Some(w) = last_attr_value(&b.attrs, "Weight") {
-                        if !w.trim().is_empty() {
+                if b.ctx_region.is_none() && b.ctx_sample.is_none()
+                    && let Some(w) = last_attr_value(&b.attrs, "Weight")
+                        && !w.trim().is_empty() {
                             region_weight.insert(b.name.clone(), w);
                         }
-                    }
-                }
             }
             BlockKind::Sample => {
                 // Override-only sample nested under a Region (no File/Path): per-(region,sample) overrides.
@@ -1119,44 +1107,35 @@ fn collect_region_weights_and_sample_overrides(
                     let key = (region_name, b.name.clone());
                     let entry = overrides.entry(key).or_default();
 
-                    if let Some(sel) =
-                        last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"))
-                    {
-                        if !sel.trim().is_empty() {
+                    if let Some(sel) = last_attr_value(&b.attrs, "Selection")
+                        .or_else(|| last_attr_value(&b.attrs, "Cut"))
+                        && !sel.trim().is_empty() {
                             entry.selection = Some(sel);
                         }
-                    }
-                    if let Some(w) = last_attr_value(&b.attrs, "Weight") {
-                        if !w.trim().is_empty() {
+                    if let Some(w) = last_attr_value(&b.attrs, "Weight")
+                        && !w.trim().is_empty() {
                             entry.weight = Some(w);
                         }
-                    }
-                    if let Some(v) =
-                        last_attr_value(&b.attrs, "Variable").or_else(|| last_attr_value(&b.attrs, "Var"))
-                    {
-                        if !v.trim().is_empty() {
+                    if let Some(v) = last_attr_value(&b.attrs, "Variable")
+                        .or_else(|| last_attr_value(&b.attrs, "Var"))
+                        && !v.trim().is_empty() {
                             entry.variable = Some(v);
                         }
-                    }
                     continue;
                 }
 
                 // Full sample blocks (with File/Path): capture optional global Selection/Cut and Variable/Var.
                 if has_attr(&b.attrs, "File") || has_attr(&b.attrs, "Path") {
-                    if let Some(sel) =
-                        last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"))
-                    {
-                        if !sel.trim().is_empty() {
+                    if let Some(sel) = last_attr_value(&b.attrs, "Selection")
+                        .or_else(|| last_attr_value(&b.attrs, "Cut"))
+                        && !sel.trim().is_empty() {
                             sample_selection.insert(b.name.clone(), sel);
                         }
-                    }
-                    if let Some(v) =
-                        last_attr_value(&b.attrs, "Variable").or_else(|| last_attr_value(&b.attrs, "Var"))
-                    {
-                        if !v.trim().is_empty() {
+                    if let Some(v) = last_attr_value(&b.attrs, "Variable")
+                        .or_else(|| last_attr_value(&b.attrs, "Var"))
+                        && !v.trim().is_empty() {
                             sample_variable.insert(b.name.clone(), v);
                         }
-                    }
                 }
             }
             _ => {}
@@ -1173,20 +1152,18 @@ fn enforce_variable_rules(
     sample_var: Option<&String>,
     override_var: Option<&String>,
 ) -> Result<()> {
-    if let Some(v) = sample_var {
-        if !v.trim().is_empty() && v != region_variable {
+    if let Some(v) = sample_var
+        && !v.trim().is_empty() && v != region_variable {
             return Err(Error::Validation(format!(
                 "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Sample.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
             )));
         }
-    }
-    if let Some(v) = override_var {
-        if !v.trim().is_empty() && v != region_variable {
+    if let Some(v) = override_var
+        && !v.trim().is_empty() && v != region_variable {
             return Err(Error::Validation(format!(
                 "per-sample variable override is not supported (variable is channel-scoped): region='{region_name}' sample='{sample_name}' Override.Variable='{v}' != Region.Variable='{region_variable}'. Split into separate Regions if you need different variables."
             )));
         }
-    }
     Ok(())
 }
 
@@ -1423,12 +1400,9 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
             // - per-sample Selection/Cut is applied multiplicatively via the sample weight (selection evaluates to 0/1)
             // - Weight = region.Weight * sample.Weight * override.Weight
             let sel = expr_and(
-                [
-                    sample_selection.get(&s.name).cloned(),
-                    ov.and_then(|x| x.selection.clone()),
-                ]
-                .into_iter()
-                .flatten(),
+                [sample_selection.get(&s.name).cloned(), ov.and_then(|x| x.selection.clone())]
+                    .into_iter()
+                    .flatten(),
             );
 
             let w = expr_mul(
@@ -1530,20 +1504,20 @@ fn workspace_from_hist_mode(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspa
     } else if let Some(ref p) = cfg.histo_path {
         let resolved = resolve_rel(base_dir, p);
         basedir = Some(resolved.clone());
-        if resolved.is_file() {
-            resolved
-        } else {
-            discover_single_combination_xml(&resolved)?
-        }
+        if resolved.is_file() { resolved } else { discover_single_combination_xml(&resolved)? }
     } else {
         return Err(Error::Validation(
             "ReadFrom=HIST requires HistoPath (export dir) or CombinationXml (path to combination.xml)".to_string(),
         ));
     };
 
-    let basedir = basedir
-        .as_ref()
-        .map(|p| if p.is_file() { p.parent().unwrap_or_else(|| Path::new(".")).to_path_buf() } else { p.clone() });
+    let basedir = basedir.as_ref().map(|p| {
+        if p.is_file() {
+            p.parent().unwrap_or_else(|| Path::new(".")).to_path_buf()
+        } else {
+            p.clone()
+        }
+    });
 
     let mut ws = crate::histfactory::from_xml_with_basedir(&combo, basedir.as_deref())?;
 
@@ -1647,7 +1621,7 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
                         return Err(Error::Validation(format!(
                             "HIST mode sample selection requested missing sample '{}' in channel '{}'",
                             s.name, ch.name
-                        )))
+                        )));
                     }
                 }
             }
@@ -1678,7 +1652,8 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
 
         if kept_channels.is_empty() {
             return Err(Error::Validation(
-                "HIST mode sample filters removed all channels (no non-empty channels remain)".to_string(),
+                "HIST mode sample filters removed all channels (no non-empty channels remain)"
+                    .to_string(),
             ));
         }
 
@@ -2041,7 +2016,8 @@ Type: BACKGROUND
 File: ignored.root
 Regions: channel1, channel2
 "#;
-        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (sample filtered)");
+        let ws =
+            workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (sample filtered)");
         assert_eq!(ws.channels.len(), 2);
         assert_eq!(ws.channels[0].name, "channel1");
         assert_eq!(ws.channels[0].samples.len(), 1);
@@ -2101,7 +2077,10 @@ WeightDown: "w_jes_down"
         assert_eq!(parsed.samples.len(), 1);
         assert_eq!(parsed.systematics.len(), 1);
         assert_eq!(parsed.samples[0].weight.as_deref(), Some("w#mc"));
-        assert_eq!(parsed.samples[0].regions.as_ref().unwrap(), &vec!["SR".to_string(), "CR 1".to_string()]);
+        assert_eq!(
+            parsed.samples[0].regions.as_ref().unwrap(),
+            &vec!["SR".to_string(), "CR 1".to_string()]
+        );
         assert_eq!(parsed.systematics[0].samples, vec!["signal".to_string()]);
         assert_eq!(parsed.systematics[0].regions.as_ref().unwrap(), &vec!["SR".to_string()]);
     }

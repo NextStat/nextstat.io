@@ -89,12 +89,7 @@ struct NutsTree {
 const DIVERGENCE_THRESHOLD: f64 = 1000.0;
 
 /// Check the no-U-turn criterion.
-fn is_turning(
-    dq: &[f64],
-    p_left: &[f64],
-    p_right: &[f64],
-    metric: &crate::hmc::Metric,
-) -> bool {
+fn is_turning(dq: &[f64], p_left: &[f64], p_right: &[f64], metric: &crate::hmc::Metric) -> bool {
     let v_left = metric.mul_inv_mass(p_left);
     let v_right = metric.mul_inv_mass(p_right);
     let dot_left: f64 = dq.iter().zip(v_left.iter()).map(|(&d, &v)| d * v).sum();
@@ -228,8 +223,7 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     };
 
     // Recompute potential for the edge state
-    let outer =
-        build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, metric, rng)?;
+    let outer = build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, metric, rng)?;
 
     // Merge trees
     let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
@@ -347,7 +341,8 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             }
         };
 
-        let subtree = build_tree(integrator, &edge_state, depth, direction, log_u, h0, metric, rng)?;
+        let subtree =
+            build_tree(integrator, &edge_state, depth, direction, log_u, h0, metric, rng)?;
 
         // Multinomial merge: accept subtree proposal with probability
         // exp(subtree.log_sum_weight - new_log_sum_weight)
@@ -597,7 +592,8 @@ pub fn sample_nuts<M: LogDensityModel>(
         let metric = adaptation.metric().clone();
         let warmup_integrator = LeapfrogIntegrator::new(&posterior, eps, metric);
 
-        let transition = nuts_transition(&warmup_integrator, &state, config.max_treedepth, &mut rng)?;
+        let transition =
+            nuts_transition(&warmup_integrator, &state, config.max_treedepth, &mut rng)?;
 
         state.q = transition.q;
         state.potential = transition.potential;
@@ -633,7 +629,8 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut energies = Vec::with_capacity(n_samples);
 
     for _ in 0..n_samples {
-        let transition = nuts_transition(&sample_integrator, &state, config.max_treedepth, &mut rng)?;
+        let transition =
+            nuts_transition(&sample_integrator, &state, config.max_treedepth, &mut rng)?;
 
         let mut divergent = transition.divergent;
         let mut accept_prob = transition.accept_prob;
@@ -659,9 +656,9 @@ pub fn sample_nuts<M: LogDensityModel>(
 
         draws_unconstrained.push(state.q.clone());
         draws_constrained.push(
-            posterior
-                .to_constrained(&state.q)
-                .map_err(|e| ns_core::Error::Validation(format!("NUTS to_constrained failed: {e}")))?,
+            posterior.to_constrained(&state.q).map_err(|e| {
+                ns_core::Error::Validation(format!("NUTS to_constrained failed: {e}"))
+            })?,
         );
         divergences.push(divergent);
         tree_depths.push(depth);
@@ -1155,7 +1152,7 @@ mod tests {
         }
 
         fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
-            let mu = params.get(0).copied().ok_or_else(|| {
+            let mu = params.first().copied().ok_or_else(|| {
                 ns_core::Error::Validation("expected 1 parameter (mu)".to_string())
             })?;
             let inv_var = 1.0 / (self.sigma * self.sigma);
@@ -1340,7 +1337,7 @@ mod tests {
         }
 
         fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
-            let mu1 = params.get(0).copied().ok_or_else(|| {
+            let mu1 = params.first().copied().ok_or_else(|| {
                 ns_core::Error::Validation("expected 2 parameters (mu1, mu2)".to_string())
             })?;
             let mu2 = params.get(1).copied().ok_or_else(|| {

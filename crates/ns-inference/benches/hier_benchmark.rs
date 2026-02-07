@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ns_core::traits::LogDensityModel;
 use ns_inference::ModelBuilder;

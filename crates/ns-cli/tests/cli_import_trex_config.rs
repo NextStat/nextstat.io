@@ -65,14 +65,9 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
 
     let spec: serde_yaml_ng::Value =
         serde_yaml_ng::from_slice(&std::fs::read(&yaml_path).unwrap()).unwrap();
+    assert_eq!(spec.get("schema_version").and_then(|v| v.as_str()), Some("trex_analysis_spec_v0"));
     assert_eq!(
-        spec.get("schema_version").and_then(|v| v.as_str()),
-        Some("trex_analysis_spec_v0")
-    );
-    assert_eq!(
-        spec.get("inputs")
-            .and_then(|v| v.get("mode"))
-            .and_then(|v| v.as_str()),
+        spec.get("inputs").and_then(|v| v.get("mode")).and_then(|v| v.as_str()),
         Some("trex_config_txt")
     );
     let cfg_path = spec
@@ -98,15 +93,9 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json() {
 
     let cov: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&cov_path).unwrap()).unwrap();
-    assert_eq!(
-        cov.get("schema_version").and_then(|v| v.as_str()),
-        Some("trex_config_coverage_v0")
-    );
+    assert_eq!(cov.get("schema_version").and_then(|v| v.as_str()), Some("trex_config_coverage_v0"));
     let unknown = cov.get("unknown").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    assert!(
-        unknown.is_empty(),
-        "expected no unknown keys in minimal config, got={unknown:?}"
-    );
+    assert!(unknown.is_empty(), "expected no unknown keys in minimal config, got={unknown:?}");
 
     let _ = std::fs::remove_file(&ws_path);
     let _ = std::fs::remove_file(&yaml_path);

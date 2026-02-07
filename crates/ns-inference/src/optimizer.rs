@@ -188,14 +188,9 @@ impl LbfgsbOptimizer {
         // Special-case 1D problems: argmin's L-BFGS + clamping can behave poorly with
         // box constraints, even when the optimum is in the interior. For 1D likelihoods
         // (e.g. minimal examples), use a robust bracketed golden-section search instead.
-        if bounds.len() == 1 {
+        // Only use golden-section when bounds are finite; otherwise fall through to L-BFGS.
+        if bounds.len() == 1 && bounds[0].0.is_finite() && bounds[0].1.is_finite() && bounds[0].0 <= bounds[0].1 {
             let (lo, hi) = bounds[0];
-            if !(lo.is_finite() && hi.is_finite() && lo <= hi) {
-                return Err(ns_core::Error::Validation(format!(
-                    "invalid bounds for 1D minimize: lo={} hi={}",
-                    lo, hi
-                )));
-            }
             if (hi - lo).abs() <= 0.0 {
                 let x = lo;
                 let fval = objective.eval(&[x])?;
@@ -562,10 +557,50 @@ mod tests {
         );
 
         // Should not need many iterations for a simple 1D case
-        assert!(
-            result.n_iter < 20,
-            "Should converge quickly, used {} iterations",
-            result.n_iter
-        );
+        assert!(result.n_iter < 20, "Should converge quickly, used {} iterations", result.n_iter);
+    }
+
+    #[test]
+    fn test_optimizer_1d_unbounded() {
+        // f(x) = (x - 3)^2, min at x = 3
+        // Bounds: (-inf, inf) — should fall through to L-BFGS
+        struct Quad;
+        impl ObjectiveFunction for Quad {
+            fn eval(&self, p: &[f64]) -> Result<f64> {
+                Ok((p[0] - 3.0).powi(2))
+            }
+            fn gradient(&self, p: &[f64]) -> Result<Vec<f64>> {
+                Ok(vec![2.0 * (p[0] - 3.0)])
+            }
+        }
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+        let result = optimizer
+            .minimize(&Quad, &[0.0], &[(f64::NEG_INFINITY, f64::INFINITY)])
+            .unwrap();
+        assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);
+        assert!(result.converged);
+    }
+
+    #[test]
+    fn test_optimizer_1d_semi_bounded() {
+        // f(x) = (x - 3)^2, min at x = 3
+        // Bounds: (0, inf) — should fall through to L-BFGS
+        struct Quad;
+        impl ObjectiveFunction for Quad {
+            fn eval(&self, p: &[f64]) -> Result<f64> {
+                Ok((p[0] - 3.0).powi(2))
+            }
+            fn gradient(&self, p: &[f64]) -> Result<Vec<f64>> {
+                Ok(vec![2.0 * (p[0] - 3.0)])
+            }
+        }
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+        let result = optimizer
+            .minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)])
+            .unwrap();
+        assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);
+        assert!(result.converged);
     }
 }

@@ -223,4 +223,3 @@ fn bundle_viz_pulls_and_corr() {
     let _ = std::fs::remove_dir_all(&pulls_bundle);
     let _ = std::fs::remove_dir_all(&corr_bundle);
 }
-

@@ -80,4 +80,3 @@ fn build_hists_writes_workspace_json_deterministically() {
     let _ = std::fs::remove_dir_all(&out_a);
     let _ = std::fs::remove_dir_all(&out_b);
 }
-

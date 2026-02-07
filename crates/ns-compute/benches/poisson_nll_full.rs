@@ -3,6 +3,7 @@
 //! Goal: isolate where time goes (log/ln vs arithmetic vs masking/branches) and
 //! show the upper bound on SIMD speedups when `ln(exp)` is removed from the hot loop.
 //!
+#![allow(clippy::needless_range_loop)]
 //! Enable bigger sizes with: `NS_BENCH_BIG=1 cargo bench -p ns-compute --bench poisson_nll_full`
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -14,6 +15,7 @@ use std::env;
 use std::hint::black_box;
 use wide::f64x4;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug)]
 enum ObsPattern {
     AllNonZero,

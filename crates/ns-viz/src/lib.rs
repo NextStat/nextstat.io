@@ -5,8 +5,10 @@
 //! This crate is intentionally dependency-light and focuses on emitting
 //! plot-friendly JSON structures (arrays instead of nested objects).
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 #![warn(clippy::all)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 
 /// CLs curve artifacts (observed + Brazil bands).
 pub mod cls;

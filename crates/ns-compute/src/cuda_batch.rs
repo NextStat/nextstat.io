@@ -12,7 +12,9 @@
 //! ```
 
 use crate::cuda_types::*;
-use cudarc::driver::{CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg};
+use cudarc::driver::{
+    CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
+};
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
@@ -96,26 +98,20 @@ impl CudaBatchAccelerator {
             stream.clone_htod(&data.per_bin_param_indices).map_err(|e| cuda_err(e))?;
         let d_modifier_data = stream.clone_htod(&data.modifier_data).map_err(|e| cuda_err(e))?;
         let d_aux_poisson = stream.clone_htod(&data.aux_poisson).map_err(|e| cuda_err(e))?;
-        let d_gauss_constr =
-            stream.clone_htod(&data.gauss_constraints).map_err(|e| cuda_err(e))?;
+        let d_gauss_constr = stream.clone_htod(&data.gauss_constraints).map_err(|e| cuda_err(e))?;
 
         // Pre-allocate dynamic buffers (zeroed)
-        let d_params = stream
-            .alloc_zeros::<f64>(max_batch * data.n_params)
-            .map_err(|e| cuda_err(e))?;
-        let d_observed = stream
-            .alloc_zeros::<f64>(max_batch * data.n_main_bins)
-            .map_err(|e| cuda_err(e))?;
-        let d_ln_facts = stream
-            .alloc_zeros::<f64>(max_batch * data.n_main_bins)
-            .map_err(|e| cuda_err(e))?;
-        let d_obs_mask = stream
-            .alloc_zeros::<f64>(max_batch * data.n_main_bins)
-            .map_err(|e| cuda_err(e))?;
+        let d_params =
+            stream.alloc_zeros::<f64>(max_batch * data.n_params).map_err(|e| cuda_err(e))?;
+        let d_observed =
+            stream.alloc_zeros::<f64>(max_batch * data.n_main_bins).map_err(|e| cuda_err(e))?;
+        let d_ln_facts =
+            stream.alloc_zeros::<f64>(max_batch * data.n_main_bins).map_err(|e| cuda_err(e))?;
+        let d_obs_mask =
+            stream.alloc_zeros::<f64>(max_batch * data.n_main_bins).map_err(|e| cuda_err(e))?;
         let d_nll_out = stream.alloc_zeros::<f64>(max_batch).map_err(|e| cuda_err(e))?;
-        let d_grad_out = stream
-            .alloc_zeros::<f64>(max_batch * data.n_params)
-            .map_err(|e| cuda_err(e))?;
+        let d_grad_out =
+            stream.alloc_zeros::<f64>(max_batch * data.n_params).map_err(|e| cuda_err(e))?;
 
         Ok(Self {
             ctx,
@@ -165,12 +161,8 @@ impl CudaBatchAccelerator {
         self.stream
             .memcpy_htod(&observed_flat[..n], &mut self.d_observed)
             .map_err(|e| cuda_err(e))?;
-        self.stream
-            .memcpy_htod(&ln_facts[..n], &mut self.d_ln_facts)
-            .map_err(|e| cuda_err(e))?;
-        self.stream
-            .memcpy_htod(&obs_mask[..n], &mut self.d_obs_mask)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(&ln_facts[..n], &mut self.d_ln_facts).map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(&obs_mask[..n], &mut self.d_obs_mask).map_err(|e| cuda_err(e))?;
         Ok(())
     }
 
@@ -189,15 +181,11 @@ impl CudaBatchAccelerator {
         assert_eq!(params_flat.len(), n_active * self.n_params);
 
         // H→D: upload current parameters
-        self.stream
-            .memcpy_htod(params_flat, &mut self.d_params)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(params_flat, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
         // Zero gradient output by re-uploading zeros
         let zeros = vec![0.0f64; n_active * self.n_params];
-        self.stream
-            .memcpy_htod(&zeros, &mut self.d_grad_out)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(&zeros, &mut self.d_grad_out).map_err(|e| cuda_err(e))?;
 
         // Kernel launch: 1 block = 1 toy, threads = min(n_main_bins, 256)
         let block_size = self.n_main_bins.min(256) as u32;
@@ -216,20 +204,14 @@ impl CudaBatchAccelerator {
         self.push_scalar_args(&mut builder);
 
         unsafe {
-            builder
-                .launch(config)
-                .map_err(|e| cuda_err(format!("launch batch_nll_grad: {e}")))?;
+            builder.launch(config).map_err(|e| cuda_err(format!("launch batch_nll_grad: {e}")))?;
         }
 
         // D→H: download results
         let mut nll_out = vec![0.0f64; n_active];
         let mut grad_out = vec![0.0f64; n_active * self.n_params];
-        self.stream
-            .memcpy_dtoh(&self.d_nll_out, &mut nll_out)
-            .map_err(|e| cuda_err(e))?;
-        self.stream
-            .memcpy_dtoh(&self.d_grad_out, &mut grad_out)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_dtoh(&self.d_grad_out, &mut grad_out).map_err(|e| cuda_err(e))?;
         self.stream.synchronize().map_err(|e| cuda_err(e))?;
 
         Ok((nll_out, grad_out))
@@ -239,17 +221,11 @@ impl CudaBatchAccelerator {
     ///
     /// `params_flat` is `[n_active × n_params]` row-major.
     /// Returns `nll[n_active]`.
-    pub fn batch_nll(
-        &mut self,
-        params_flat: &[f64],
-        n_active: usize,
-    ) -> ns_core::Result<Vec<f64>> {
+    pub fn batch_nll(&mut self, params_flat: &[f64], n_active: usize) -> ns_core::Result<Vec<f64>> {
         assert!(n_active <= self.max_batch);
         assert_eq!(params_flat.len(), n_active * self.n_params);
 
-        self.stream
-            .memcpy_htod(params_flat, &mut self.d_params)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_htod(params_flat, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
         let block_size = self.n_main_bins.min(256) as u32;
         let shared_bytes =
@@ -266,15 +242,11 @@ impl CudaBatchAccelerator {
         self.push_scalar_args(&mut builder);
 
         unsafe {
-            builder
-                .launch(config)
-                .map_err(|e| cuda_err(format!("launch batch_nll_only: {e}")))?;
+            builder.launch(config).map_err(|e| cuda_err(format!("launch batch_nll_only: {e}")))?;
         }
 
         let mut nll_out = vec![0.0f64; n_active];
-        self.stream
-            .memcpy_dtoh(&self.d_nll_out, &mut nll_out)
-            .map_err(|e| cuda_err(e))?;
+        self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
         self.stream.synchronize().map_err(|e| cuda_err(e))?;
 
         Ok(nll_out)

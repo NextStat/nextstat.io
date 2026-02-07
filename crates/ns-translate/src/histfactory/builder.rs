@@ -31,9 +31,8 @@ pub fn bin_edges_by_channel_from_xml_with_basedir(
     combination_path: &Path,
     base_dir: Option<&Path>,
 ) -> Result<HashMap<String, Vec<f64>>> {
-    let base_dir = base_dir.unwrap_or_else(|| {
-        combination_path.parent().unwrap_or_else(|| Path::new("."))
-    });
+    let base_dir =
+        base_dir.unwrap_or_else(|| combination_path.parent().unwrap_or_else(|| Path::new(".")));
 
     let config = combination::parse_combination(combination_path)?;
     let channels_xml: Vec<ChannelXml> = config
@@ -95,9 +94,8 @@ pub fn from_xml_with_basedir(
     combination_path: &Path,
     base_dir: Option<&Path>,
 ) -> Result<Workspace> {
-    let base_dir = base_dir.unwrap_or_else(|| {
-        combination_path.parent().unwrap_or_else(|| Path::new("."))
-    });
+    let base_dir =
+        base_dir.unwrap_or_else(|| combination_path.parent().unwrap_or_else(|| Path::new(".")));
 
     let config = combination::parse_combination(combination_path)?;
 
@@ -254,7 +252,8 @@ fn build_modifier(
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
-                let rel = resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content;
+                let rel =
+                    resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content;
                 if rel.len() != nominal.bin_content.len() {
                     return Err(Error::Xml(format!(
                         "StatError histogram '{}' bin count mismatch: got={} expected={} (channel={})",
@@ -264,10 +263,7 @@ fn build_modifier(
                         channel_name,
                     )));
                 }
-                rel.iter()
-                    .zip(nominal.bin_content.iter())
-                    .map(|(r, n)| r * n)
-                    .collect()
+                rel.iter().zip(nominal.bin_content.iter()).map(|(r, n)| r * n).collect()
             } else {
                 // Prefer nominal sumw2 if available (weighted MC templates).
                 if let Some(sw2) = nominal.sumw2.as_ref() {

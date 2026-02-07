@@ -2,7 +2,8 @@
 title: "ROOT/HistFactory 3-Way Comparison: ROOT vs NextStat vs pyhf"
 status: stable
 created: 2026-02-07
-fixtures: xmlimport, multichannel, coupled_histosys
+updated: 2026-02-07
+fixtures: xmlimport, multichannel, coupled_histosys, hepdata_EWK, tttt-prod
 ---
 
 # ROOT/HistFactory 3-Way Comparison
@@ -19,14 +20,26 @@ ATLAS reference implementation. Agreement with pyhf is **sub-1e-5 on q(mu)** acr
 canonical validation fixtures. Where ROOT/RooFit disagrees, ROOT's own fit diagnostics
 report convergence failure (`status = -1`).
 
+### Canonical fixtures (pyhf validation suite)
+
 | Fixture | Modifiers | NS vs pyhf max |dq(mu)| | NS vs ROOT max |dq(mu)| | ROOT status |
 |---------|-----------|----------------------------|-----------------------------|-------------|
 | xmlimport | OverallSys + StatError | **1e-7** | 0.051 | 0 (converged) |
 | multichannel | ShapeSys | **4e-7** | 3.4e-8 | 0 (converged) |
 | coupled_histosys | HistoSys (coupled NP) | **5e-6** | **22.5** | **-1 (FAILED)** |
 
+### Real-world TREx exports (Apex2 baseline, 2026-02-07)
+
+| Case | NS vs ROOT max |dq(mu)| | ROOT issue |
+|------|-------------------------------|------------|
+| simple_fixture | **1.6e-10** | None (perfect) |
+| histfactory_fixture | **1.89** | Optimizer divergence |
+| hepdata EWK | **0.0** (mu_hat diverged) | Free fit blowup (mu_hat = 4.9e23) |
+| tttt-prod (249 params) | **0.04** | Tail optimizer convergence |
+
 **Conclusion:** NextStat's likelihood function is identical to pyhf's. ROOT deviations
 are attributable to ROOT's optimizer convergence and, in one case, ROOT's free fit failure.
+This pattern holds for both canonical fixtures and real-world analyses.
 
 ---
 
@@ -356,6 +369,81 @@ SPECIFICATION (mathematical definition)
 
 ---
 
+## 8. Real-World TREx Export Validation (Apex2 Baseline)
+
+> Added 2026-02-07. Extends the canonical fixture comparison with real physics analyses
+> exported by TRExFitter.
+
+### 8.1 Test Cases
+
+Two realistic TREx exports from `tmp/trex_exports/` were tested alongside the
+built-in smoke fixtures:
+
+| Case | Source | Model size | Status |
+|------|--------|-----------|--------|
+| `simple_fixture` | built-in pyhf JSON | ~5 params | **ok** |
+| `histfactory_fixture` | built-in XML | ~5 params | fail (ROOT) |
+| `hepdata.116034_DR_Int_EWK` | TREx export, EWK analysis | medium | fail (ROOT) |
+| `tttt-prod` | TREx export, 4-top production | ~249 params | fail (ROOT) |
+
+### 8.2 Results
+
+| Case | max \|dq(mu)\| | d_mu_hat | NS time | ROOT time | Diagnosis |
+|------|----------------|----------|---------|-----------|-----------|
+| simple_fixture | **1.6e-10** | -1.4e-6 | 0.016 s | 0.38 s | Near-perfect agreement |
+| histfactory_fixture | **1.89** | 0.002 | 0.021 s | 0.51 s | ROOT optimizer divergence (known, see Section 3) |
+| hepdata EWK | **0.0** | -4.9e+23 | 9.8 s | 2.3 s | ROOT free fit diverged (mu_hat = 4.9e23, NLL = 1.8e23) |
+| tttt-prod | **0.04** | -0.003 | 224 s | 12.1 s | Small tail divergence; ROOT faster on this large model |
+
+### 8.3 Key Observations
+
+**simple_fixture:** Agreement at 1.6e-10 on q(mu) — effectively bit-identical.
+Confirms that the pipeline works correctly end-to-end.
+
+**hepdata EWK:** ROOT's unconditional fit diverged catastrophically
+(mu_hat = 4.9 x 10^23). Despite this, all q(mu) values agree at 0.0 because
+mu_hat >> all scan points, making q_tilde(mu) = 0 everywhere. This demonstrates
+ROOT's Minuit2 optimizer failing on medium-sized HistFactory models, while NextStat
+converges normally (mu_hat = 6.57).
+
+**tttt-prod (249 params):** The largest model tested. Tail divergence of 0.04
+on q(mu) at mu = 5.0 is consistent with the optimizer convergence pattern seen in
+Section 3.2 (ROOT's conditional fits at extreme mu values converge less precisely).
+Notably, ROOT is faster here (12s vs 224s) because the CPU profile scan path is
+not yet optimized for 249-parameter models in NextStat.
+
+### 8.4 Baseline Infrastructure
+
+Results are locked as a regression baseline via the Apex2 suite infrastructure:
+
+```bash
+# Record baseline (requires ROOT in PATH)
+make apex2-root-baseline-record \
+  ROOT_SEARCH_DIR=tmp/trex_exports \
+  ROOT_BASELINE_ARGS="--root-include-fixtures --root-cases-absolute-paths --root-keep-going"
+
+# Compare against baseline (no ROOT needed)
+make apex2-root-suite-compare-latest \
+  ROOT_CURRENT_SUITE=<new_suite_report.json> \
+  ROOT_PERF_ARGS="--max-slowdown 1.30"
+```
+
+The baseline records the **actual state** including failures. The compare pipeline
+detects **regressions**: if a previously-ok case starts failing, or if performance
+degrades beyond the 1.3x threshold. Cases that fail in both baseline and current
+are treated as `expected_failure` (not flagged as regressions).
+
+Manifest: `tmp/baselines/latest_root_manifest.json`
+
+### 8.5 Policy
+
+- **pyhf** = gold standard, CI-gating (hard gate at `dq_atol = 1e-3`)
+- **ROOT** = informational cross-check, baseline-tracked but not CI-gating
+- ROOT optimizer failures are documented, not worked around
+- Regressions in NextStat are caught by pyhf parity, not ROOT comparison
+
+---
+
 ## References
 
 - pyhf parity contract: `docs/pyhf-parity-contract.md`
@@ -367,3 +455,7 @@ SPECIFICATION (mathematical definition)
 - Validation fixtures: `tests/fixtures/pyhf_{xmlimport,multichannel,coupled_histosys}/`
 - Validation script: `tests/validate_root_profile_scan.py`
 - Raw results: `tmp/pyhf_validation_runs/*/run_*/summary.json`
+- Apex2 ROOT baseline manifest: `tmp/baselines/latest_root_manifest.json`
+- Apex2 suite infrastructure: `tests/record_baseline.py`, `tests/apex2_root_suite_report.py`
+- Compare pipeline: `tests/compare_apex2_root_suite_to_baseline.py`
+- Makefile targets: `apex2-root-baseline-record`, `apex2-root-suite-compare-latest`

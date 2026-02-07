@@ -1,7 +1,7 @@
 //! TREx-like yields tables artifact (numbers-first).
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashSet;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::Result;
 use serde::Serialize;
@@ -81,10 +81,8 @@ pub fn yields_artifact(
             ));
         }
 
-        let blinded = blinded_channels
-            .as_ref()
-            .map(|xs| xs.contains(&ch_pre.channel_name))
-            .unwrap_or(false);
+        let blinded =
+            blinded_channels.as_ref().map(|xs| xs.contains(&ch_pre.channel_name)).unwrap_or(false);
         let data_sum: f64 = if blinded { 0.0 } else { ch_obs.y.iter().copied().sum() };
         let total_prefit: f64 = ch_pre.total.iter().copied().sum();
         let total_postfit: f64 = ch_post.total.iter().copied().sum();

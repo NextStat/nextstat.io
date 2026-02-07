@@ -122,12 +122,6 @@ fn ntuple_workspace_builder_weight_sys_and_staterror_are_consistent() {
     let want: Vec<f64> = h.sumw2.iter().map(|&s2| s2.sqrt()).collect();
     assert_eq!(want.len(), stat.len());
     for (i, (got, w)) in stat.iter().zip(want.iter()).enumerate() {
-        assert!(
-            (got - w).abs() <= 1e-9,
-            "staterror[{}]: got {} want {}",
-            i,
-            got,
-            w
-        );
+        assert!((got - w).abs() <= 1e-9, "staterror[{}]: got {} want {}", i, got, w);
     }
 }

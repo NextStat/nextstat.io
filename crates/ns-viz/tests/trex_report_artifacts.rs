@@ -101,11 +101,7 @@ fn trex_report_distributions_supports_blinding() {
     )
     .expect("distributions artifact");
 
-    let sr = artifact
-        .channels
-        .iter()
-        .find(|c| c.channel_name == "SR")
-        .expect("SR channel");
+    let sr = artifact.channels.iter().find(|c| c.channel_name == "SR").expect("SR channel");
     assert_eq!(sr.data_is_blinded, Some(true));
     assert!(sr.data_y.iter().all(|&v| v == 0.0));
     assert!(sr.ratio_y.iter().all(|&v| v == 0.0));
