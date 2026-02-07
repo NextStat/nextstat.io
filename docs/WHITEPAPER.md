@@ -21,6 +21,7 @@ This paper describes the motivation, mathematical foundations, system architectu
 - Python API reference: `docs/references/python-api.md`
 - Rust API reference: `docs/references/rust-api.md`
 - CLI reference: `docs/references/cli.md`
+- Configuration format: `docs/references/analysis-config.md`
 
 ## 1. Motivation
 

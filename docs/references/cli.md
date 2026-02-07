@@ -11,6 +11,8 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 
 ## Commands (high level)
 
+For the configuration file format, see `docs/references/analysis-config.md`.
+
 HEP / HistFactory:
 - `nextstat validate --config analysis.yaml`
 - `nextstat config schema [--name analysis_spec_v0]`
