@@ -501,6 +501,189 @@ pub fn histosys_code4p_delta_accumulate(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Kahan compensated summation variants
+// ---------------------------------------------------------------------------
+
+/// Kahan compensated horizontal sum of a `f64x4` accumulator and its compensation.
+#[inline]
+fn kahan_horizontal_sum(acc: f64x4, comp: f64x4) -> f64 {
+    let a: [f64; 4] = acc.into();
+    let c: [f64; 4] = comp.into();
+    // Sum the 4 partial sums with Kahan compensation
+    let mut sum = 0.0_f64;
+    let mut k = 0.0_f64;
+    for i in 0..4 {
+        // First add the compensation from that lane
+        let y1 = -c[i] - k;
+        let t1 = sum + y1;
+        k = (t1 - sum) - y1;
+        sum = t1;
+        // Then add the accumulator value
+        let y2 = a[i] - k;
+        let t2 = sum + y2;
+        k = (t2 - sum) - y2;
+        sum = t2;
+    }
+    sum
+}
+
+/// Compute Poisson NLL using SIMD with Kahan compensated summation.
+///
+/// Same math as [`poisson_nll_simd`] but uses Kahan summation for higher
+/// numerical precision. Used by parity mode for deterministic validation.
+pub fn poisson_nll_simd_kahan(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    if !use_simd() {
+        return poisson_nll_scalar_kahan(expected, observed, ln_factorials, obs_mask);
+    }
+
+    let chunks = n / 4;
+    let remainder = n % 4;
+
+    let mut acc = f64x4::ZERO;
+    let mut comp = f64x4::ZERO; // Kahan compensation per lane
+
+    for i in 0..chunks {
+        let offset = i * 4;
+        let exp = f64x4::from(&expected[offset..offset + 4]);
+        let obs = f64x4::from(&observed[offset..offset + 4]);
+        let lnf = f64x4::from(&ln_factorials[offset..offset + 4]);
+        let mask = f64x4::from(&obs_mask[offset..offset + 4]);
+
+        let ln_exp = ln_f64x4(exp);
+        let term = exp + mask * (lnf - obs * ln_exp);
+
+        // Kahan step: y = term - comp; t = acc + y; comp = (t - acc) - y; acc = t
+        let y = term - comp;
+        let t = acc + y;
+        comp = (t - acc) - y;
+        acc = t;
+    }
+
+    // Horizontal Kahan sum of the 4 lanes
+    let mut total = kahan_horizontal_sum(acc, comp);
+
+    // Scalar remainder with Kahan continuation
+    let mut k = 0.0_f64;
+    let start = chunks * 4;
+    for i in start..start + remainder {
+        let term = poisson_nll_bin_scalar_branchless(
+            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+        );
+        let y = term - k;
+        let t = total + y;
+        k = (t - total) - y;
+        total = t;
+    }
+
+    total
+}
+
+/// Compute Poisson NLL with sparse fast-path and Kahan compensated summation.
+///
+/// Same math as [`poisson_nll_simd_sparse`] but uses Kahan summation.
+pub fn poisson_nll_simd_sparse_kahan(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    if !use_simd() {
+        return poisson_nll_scalar_kahan(expected, observed, ln_factorials, obs_mask);
+    }
+
+    let chunks = n / 4;
+    let remainder = n % 4;
+
+    let mut acc = f64x4::ZERO;
+    let mut comp = f64x4::ZERO;
+
+    for i in 0..chunks {
+        let offset = i * 4;
+        let exp = f64x4::from(&expected[offset..offset + 4]);
+        let obs = f64x4::from(&observed[offset..offset + 4]);
+        let lnf = f64x4::from(&ln_factorials[offset..offset + 4]);
+        let mask = f64x4::from(&obs_mask[offset..offset + 4]);
+
+        let mask_arr: [f64; 4] = mask.into();
+        let all0 =
+            mask_arr[0] == 0.0 && mask_arr[1] == 0.0 && mask_arr[2] == 0.0 && mask_arr[3] == 0.0;
+
+        let term = if all0 {
+            exp
+        } else {
+            let all1 = mask_arr[0] == 1.0
+                && mask_arr[1] == 1.0
+                && mask_arr[2] == 1.0
+                && mask_arr[3] == 1.0;
+            let ln_exp = if all1 { ln_f64x4(exp) } else { ln_f64x4_masked(exp, mask_arr) };
+            exp + mask * (lnf - obs * ln_exp)
+        };
+
+        let y = term - comp;
+        let t = acc + y;
+        comp = (t - acc) - y;
+        acc = t;
+    }
+
+    let mut total = kahan_horizontal_sum(acc, comp);
+
+    let mut k = 0.0_f64;
+    let start = chunks * 4;
+    for i in start..start + remainder {
+        let term = poisson_nll_bin_scalar_skip_zeros(
+            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+        );
+        let y = term - k;
+        let t = total + y;
+        k = (t - total) - y;
+        total = t;
+    }
+
+    total
+}
+
+/// Scalar Poisson NLL with Kahan compensated summation.
+pub fn poisson_nll_scalar_kahan(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    let mut sum = 0.0_f64;
+    let mut comp = 0.0_f64;
+    for i in 0..n {
+        let term = poisson_nll_bin_scalar_branchless(
+            expected[i], observed[i], ln_factorials[i], obs_mask[i],
+        );
+        let y = term - comp;
+        let t = sum + y;
+        comp = (t - sum) - y;
+        sum = t;
+    }
+    sum
+}
+
 /// Check if SIMD should be used on the current platform.
 #[inline(always)]
 fn use_simd() -> bool {
@@ -829,6 +1012,107 @@ mod tests {
                 assert_eq!(arr[i].to_bits(), scalar_ln.to_bits());
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Kahan summation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_kahan_matches_naive_small_arrays() {
+        // For small arrays, Kahan and naive should agree very closely
+        for n in [1, 2, 3, 4, 5, 7, 8, 15, 16, 100] {
+            let (exp, obs, lnf, mask) = make_test_data(n);
+            let naive = poisson_nll_simd(&exp, &obs, &lnf, &mask);
+            let kahan = poisson_nll_simd_kahan(&exp, &obs, &lnf, &mask);
+            assert_relative_eq!(naive, kahan, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_kahan_simd_matches_kahan_scalar() {
+        for n in [1, 2, 3, 4, 5, 7, 8, 15, 16, 100, 1000] {
+            let (exp, obs, lnf, mask) = make_test_data(n);
+            let simd_kahan = poisson_nll_simd_kahan(&exp, &obs, &lnf, &mask);
+            let scalar_kahan = poisson_nll_scalar_kahan(&exp, &obs, &lnf, &mask);
+            assert_relative_eq!(simd_kahan, scalar_kahan, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_kahan_sparse_matches_kahan_dense() {
+        for n in [1, 4, 16, 100, 1000] {
+            let (exp, obs, lnf, mask) = make_test_data(n);
+            let dense_kahan = poisson_nll_simd_kahan(&exp, &obs, &lnf, &mask);
+            let sparse_kahan = poisson_nll_simd_sparse_kahan(&exp, &obs, &lnf, &mask);
+            assert_relative_eq!(dense_kahan, sparse_kahan, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_kahan_improves_precision_large_array() {
+        // Construct a pathological case: many large terms that nearly cancel.
+        // The sum of (big + small) repeated many times accumulates FP error
+        // with naive summation but not with Kahan.
+        let n = 100_000;
+        let mut expected = vec![0.0f64; n];
+        let mut observed = vec![0.0f64; n];
+        let mut ln_facts = vec![0.0f64; n];
+        let mut mask = vec![0.0f64; n];
+
+        // Alternate between large and small values to maximize cancellation error
+        for i in 0..n {
+            if i % 2 == 0 {
+                expected[i] = 1e6 + (i as f64) * 0.001;
+                observed[i] = 1e6 + (i as f64) * 0.001 + 1.0;
+            } else {
+                expected[i] = 0.001 + (i as f64) * 1e-8;
+                observed[i] = 1.0;
+            }
+            ln_facts[i] = ln_gamma(observed[i] + 1.0);
+            mask[i] = if observed[i] > 0.0 { 1.0 } else { 0.0 };
+        }
+
+        let naive = poisson_nll_scalar(&expected, &observed, &ln_facts, &mask);
+        let kahan = poisson_nll_scalar_kahan(&expected, &observed, &ln_facts, &mask);
+
+        // Both should be finite and close, but Kahan should be at least as good
+        assert!(naive.is_finite());
+        assert!(kahan.is_finite());
+
+        // Compute a high-precision reference using pairwise summation (recursive halving)
+        fn pairwise_sum(terms: &[f64]) -> f64 {
+            if terms.len() <= 16 {
+                let mut s = 0.0;
+                let mut c = 0.0;
+                for &t in terms {
+                    let y = t - c;
+                    let tt = s + y;
+                    c = (tt - s) - y;
+                    s = tt;
+                }
+                return s;
+            }
+            let mid = terms.len() / 2;
+            pairwise_sum(&terms[..mid]) + pairwise_sum(&terms[mid..])
+        }
+
+        // Compute per-bin terms
+        let terms: Vec<f64> = (0..n)
+            .map(|i| {
+                expected[i] + mask[i] * (ln_facts[i] - observed[i] * expected[i].ln())
+            })
+            .collect();
+        let reference = pairwise_sum(&terms);
+
+        let naive_err = (naive - reference).abs();
+        let kahan_err = (kahan - reference).abs();
+
+        // Kahan error should be no worse than naive (typically much better)
+        assert!(
+            kahan_err <= naive_err + 1e-6,
+            "Kahan ({kahan_err:.2e}) should be at least as precise as naive ({naive_err:.2e})"
+        );
     }
 
     proptest! {

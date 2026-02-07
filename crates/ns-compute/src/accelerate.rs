@@ -338,6 +338,79 @@ pub fn batch_poisson_nll_accelerate(
     results
 }
 
+/// Compute Poisson NLL using Accelerate with Kahan compensated final summation.
+///
+/// Uses Accelerate for vectorized `vvlog` and arithmetic, but replaces the
+/// `vDSP_sveD` horizontal sum with a Kahan compensated loop for higher precision.
+/// Used by parity mode for deterministic validation.
+pub fn poisson_nll_accelerate_kahan(
+    expected: &[f64],
+    observed: &[f64],
+    ln_factorials: &[f64],
+    obs_mask: &[f64],
+) -> f64 {
+    let n = expected.len();
+    assert_eq!(n, observed.len());
+    assert_eq!(n, ln_factorials.len());
+    assert_eq!(n, obs_mask.len());
+
+    if n == 0 {
+        return 0.0;
+    }
+
+    let ni: c_int = n
+        .try_into()
+        .expect("poisson_nll_accelerate_kahan: n does not fit in c_int");
+
+    POISSON_SCRATCH.with(|scratch| {
+        let mut scratch = scratch.borrow_mut();
+        scratch.ensure_len(n);
+
+        unsafe {
+            vvlog(scratch.ln_exp.as_mut_ptr(), expected.as_ptr(), &ni);
+
+            vDSP_vmulD(
+                observed.as_ptr(), 1,
+                scratch.ln_exp.as_ptr(), 1,
+                scratch.obs_ln_exp.as_mut_ptr(), 1,
+                n,
+            );
+
+            vDSP_vsubD(
+                scratch.obs_ln_exp.as_ptr(), 1,
+                ln_factorials.as_ptr(), 1,
+                scratch.bracket.as_mut_ptr(), 1,
+                n,
+            );
+
+            vDSP_vmulD(
+                obs_mask.as_ptr(), 1,
+                scratch.bracket.as_ptr(), 1,
+                scratch.masked.as_mut_ptr(), 1,
+                n,
+            );
+
+            vDSP_vaddD(
+                expected.as_ptr(), 1,
+                scratch.masked.as_ptr(), 1,
+                scratch.terms.as_mut_ptr(), 1,
+                n,
+            );
+        }
+
+        // Kahan compensated sum instead of vDSP_sveD
+        let mut sum = 0.0_f64;
+        let mut comp = 0.0_f64;
+        for i in 0..n {
+            let y = scratch.terms[i] - comp;
+            let t = sum + y;
+            comp = (t - sum) - y;
+            sum = t;
+        }
+        sum
+    })
+}
+
 /// Clamp a vector of expected values to `[floor, +inf)` in-place using Accelerate.
 ///
 /// This replaces the scalar loop `for val in &mut expected { if *val < 1e-10 { *val = 1e-10; } }`

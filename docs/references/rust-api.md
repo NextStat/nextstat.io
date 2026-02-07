@@ -138,10 +138,31 @@ In addition to the SIMD Poisson NLL path, `ns-compute` provides optional GPU bac
 Key CUDA exports (feature-gated):
 - `ns_compute::cuda_types::{GpuModelData, GpuModifierEntry, GpuModifierDesc, ...}` — `#[repr(C)]` structs for GPU data layout (always available, no feature gate).
 - `ns_compute::cuda_batch::CudaBatchAccelerator` — GPU orchestrator: model upload, batch NLL+gradient kernel launch, result download.
+  - `single_nll_grad(params)` — convenience wrapper for single-model NLL+gradient (n_active=1).
+  - `single_nll(params)` — NLL-only for single model.
+  - `upload_observed_single(obs, ln_facts, mask)` — upload observed data for one model.
 
-Key inference exports (feature-gated):
+Key inference exports — **batch** (feature-gated):
 - `ns_inference::gpu_batch::fit_toys_batch_gpu(model, params, n_toys, seed, config)` — Lockstep L-BFGS-B batch optimizer using GPU kernel.
 - `ns_inference::batch::is_cuda_batch_available()` — Runtime CUDA availability check.
+
+Key inference exports — **single-model** (feature-gated):
+- `ns_inference::gpu_single::GpuSession` — Shared GPU state for single-model fits. Serializes and uploads model data once; reuses across multiple fits (profile scan, ranking).
+  - `GpuSession::new(model)` — Create session, upload model + observed data.
+  - `upload_observed(model)` — Re-upload observed data (e.g. after `with_observed_main()`).
+  - `nll_grad(params)` — Single NLL+gradient evaluation on GPU.
+  - `fit_minimum(model, config)` — Run L-BFGS-B optimizer with GPU objective.
+  - `fit_minimum_from_with_bounds(model, init, bounds, config)` — Warm-start + custom bounds.
+- `ns_inference::gpu_single::GpuObjective` (internal) — `ObjectiveFunction` with fused NLL+gradient caching. Exploits argmin's cost-then-gradient contract: 1 GPU kernel launch per iteration instead of 2.
+
+MLE GPU methods (on `MaximumLikelihoodEstimator`, feature-gated):
+- `fit_gpu(model)` — Full fit with Hessian (GPU minimization + CPU Hessian via finite differences of GPU gradient).
+- `fit_minimum_gpu(model)` — NLL minimization only (no Hessian).
+- `fit_minimum_gpu_from(model, init)` — With warm-start.
+- `fit_minimum_gpu_from_with_bounds(model, init, bounds)` — With custom bounds (for fixed-param fits).
+
+Profile likelihood GPU:
+- `ns_inference::profile_likelihood::scan_gpu(mle, model, mu_values)` — GPU-accelerated profile scan with shared `GpuSession` and warm-start between mu values.
 
 Model serialization:
 - `HistFactoryModel::serialize_for_gpu() -> GpuModelData` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints).

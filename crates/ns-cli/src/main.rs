@@ -120,6 +120,11 @@ enum Commands {
         /// Use GPU (CUDA) for NLL+gradient. Requires --features cuda and NVIDIA GPU.
         #[arg(long)]
         gpu: bool,
+
+        /// Parity mode: Kahan summation, single-thread, deterministic.
+        /// For bit-exact validation against pyhf NumPy backend.
+        #[arg(long)]
+        parity: bool,
     },
 
     /// Asymptotic CLs hypotest (qtilde)
@@ -853,7 +858,7 @@ fn main() -> Result<()> {
         Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json } => {
             cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
         }
-        Commands::Fit { input, output, threads, gpu } => {
+        Commands::Fit { input, output, threads, gpu, parity } => {
             if gpu {
                 #[cfg(feature = "cuda")]
                 {
@@ -864,7 +869,10 @@ fn main() -> Result<()> {
                     anyhow::bail!("--gpu requires building with --features cuda");
                 }
             }
-            cmd_fit(&input, output.as_ref(), threads, gpu, cli.bundle.as_ref())
+            if parity {
+                eprintln!("Parity mode: Kahan summation, threads=1, Accelerate disabled");
+            }
+            cmd_fit(&input, output.as_ref(), threads, gpu, cli.bundle.as_ref(), parity)
         }
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
@@ -1336,7 +1344,7 @@ fn cmd_run_legacy(
     bundle: Option<&PathBuf>,
     cfg: &run::RunConfig,
 ) -> Result<()> {
-    setup_runtime(cfg.threads);
+    setup_runtime(cfg.threads, false);
     let paths = run::derive_paths(&cfg.out_dir);
 
     ensure_out_dir(&paths.out_dir, cfg.overwrite)?;
@@ -1388,7 +1396,7 @@ fn cmd_run_spec_v0(
 ) -> Result<()> {
     let plan = spec.to_run_plan(config_path.as_path())?;
     let deterministic = plan.threads == 1;
-    setup_runtime(plan.threads);
+    setup_runtime(plan.threads, false);
 
     if let Some(import) = plan.import.as_ref() {
         if let Some(parent) = plan.workspace_json.parent() {
@@ -1811,8 +1819,9 @@ fn cmd_fit(
     threads: usize,
     gpu: bool,
     bundle: Option<&PathBuf>,
+    parity: bool,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, parity)?;
 
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
     let result = if gpu {
@@ -1860,23 +1869,31 @@ fn cmd_fit(
     Ok(())
 }
 
-/// Configure Rayon thread pool and deterministic mode.
+/// Configure Rayon thread pool and deterministic/parity mode.
 ///
 /// When `threads == 1`, Accelerate is automatically disabled to ensure
 /// bit-exact parity with the SIMD/scalar path.
-fn setup_runtime(threads: usize) {
-    if threads > 0 {
+///
+/// When `parity` is true, enables Kahan summation and forces threads=1.
+fn setup_runtime(threads: usize, parity: bool) {
+    let effective_threads = if parity { 1 } else { threads };
+    if effective_threads > 0 {
         // Best-effort; if a global pool already exists, keep going.
-        let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
+        let _ = rayon::ThreadPoolBuilder::new()
+            .num_threads(effective_threads)
+            .build_global();
     }
-    if threads == 1 {
+    if parity {
+        ns_compute::set_eval_mode(ns_compute::EvalMode::Parity);
+        tracing::info!("parity mode: Kahan summation, Accelerate disabled, threads=1");
+    } else if effective_threads == 1 {
         ns_compute::set_accelerate_enabled(false);
         tracing::debug!("deterministic mode: Accelerate disabled");
     }
 }
 
-fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::HistFactoryModel> {
-    setup_runtime(threads);
+fn load_model(input: &PathBuf, threads: usize, parity: bool) -> Result<ns_translate::pyhf::HistFactoryModel> {
+    setup_runtime(threads, parity);
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
@@ -1890,7 +1907,7 @@ fn load_workspace_and_model(
     input: &PathBuf,
     threads: usize,
 ) -> Result<(ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel)> {
-    setup_runtime(threads);
+    setup_runtime(threads, false);
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
@@ -3086,7 +3103,7 @@ fn cmd_hypotest(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
     let r = ctx.hypotest_qtilde(&mle, mu)?;
@@ -3135,7 +3152,7 @@ fn cmd_hypotest_toys(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let output_json = if expected_set {
@@ -3208,7 +3225,7 @@ fn cmd_upper_limit(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
 
@@ -3296,7 +3313,7 @@ fn cmd_scan(
     if points < 2 {
         anyhow::bail!("points must be >= 2");
     }
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let step = (stop - start) / (points as f64 - 1.0);
@@ -3352,7 +3369,7 @@ fn cmd_viz_profile(
     if points < 2 {
         anyhow::bail!("points must be >= 2");
     }
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let step = (stop - start) / (points as f64 - 1.0);
@@ -3391,7 +3408,7 @@ fn cmd_viz_cls(
         anyhow::bail!("scan_stop must be > scan_start");
     }
 
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
 
@@ -3425,7 +3442,7 @@ fn cmd_viz_ranking(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let entries = mle.ranking(&model)?;
@@ -3777,7 +3794,7 @@ fn cmd_viz_pulls(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
 
     let bytes = std::fs::read(fit)?;
     let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
@@ -3841,7 +3858,7 @@ fn cmd_viz_corr(
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads)?;
+    let model = load_model(input, threads, false)?;
 
     let bytes = std::fs::read(fit)?;
     let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;

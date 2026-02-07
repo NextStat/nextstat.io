@@ -19,7 +19,7 @@ HEP / HistFactory:
 - `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
 - `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json]`
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
-- `nextstat fit --input workspace.json`
+- `nextstat fit --input workspace.json [--gpu]`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
 - `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
@@ -42,7 +42,7 @@ Time series (Phase 8):
 
 ## GPU acceleration
 
-`hypotest-toys` supports `--gpu` to use CUDA GPU acceleration for batch toy fitting (requires `cuda` feature and an NVIDIA GPU at runtime). When `--gpu` is passed, the lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration.
+The `--gpu` flag enables CUDA GPU acceleration (requires `cuda` feature and an NVIDIA GPU at runtime). If no CUDA GPU is available at runtime, the command exits with an error. Without `--gpu`, the standard CPU (SIMD/Rayon + Accelerate) path is used.
 
 Build with CUDA support:
 
@@ -50,13 +50,25 @@ Build with CUDA support:
 cargo build -p ns-cli --features cuda --release
 ```
 
-Usage:
+### Supported commands
+
+**`fit --gpu`** — Single-model MLE fit on GPU. Uses `GpuSession` for fused NLL+gradient (1 kernel launch per L-BFGS iteration). Hessian computed via finite differences of GPU gradient at the end.
+
+```bash
+nextstat fit --input workspace.json --gpu
+```
+
+**`scan --gpu`** — GPU-accelerated profile likelihood scan. A single `GpuSession` is shared across all scan points with warm-start between mu values.
+
+```bash
+nextstat scan --input workspace.json --start 0 --stop 5 --points 21 --gpu
+```
+
+**`hypotest-toys --gpu`** — Batch toy fitting on GPU. The lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration.
 
 ```bash
 nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu
 ```
-
-If no CUDA GPU is available at runtime, the command exits with an error. Without `--gpu`, the standard CPU (Rayon + Accelerate) path is used.
 
 ## Determinism and parity
 

@@ -105,6 +105,16 @@ pub mod accelerate {
         results
     }
 
+    /// Compute Poisson NLL with Kahan compensated summation (fallback).
+    pub fn poisson_nll_accelerate_kahan(
+        expected: &[f64],
+        observed: &[f64],
+        ln_factorials: &[f64],
+        obs_mask: &[f64],
+    ) -> f64 {
+        crate::simd::poisson_nll_simd_kahan(expected, observed, ln_factorials, obs_mask)
+    }
+
     /// Clamp a vector of expected values to `[floor, +inf)` in-place (fallback).
     pub fn clamp_expected_inplace(expected: &mut [f64], floor: f64) {
         for v in expected {
@@ -120,7 +130,44 @@ pub mod accelerate {
     }
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
+/// Evaluation mode for NLL computation.
+///
+/// Controls the trade-off between numerical precision and speed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvalMode {
+    /// Maximum speed: SIMD/Accelerate, naive summation, multi-threaded.
+    /// Default mode. Results may vary slightly between runs due to
+    /// non-deterministic thread scheduling.
+    Fast = 0,
+    /// Maximum precision: Kahan summation, Accelerate disabled, deterministic.
+    /// Results are bit-exact between runs. Used for pyhf parity validation.
+    Parity = 1,
+}
+
+static EVAL_MODE: AtomicU8 = AtomicU8::new(0); // 0 = Fast
+
+/// Set the process-wide evaluation mode.
+///
+/// - `EvalMode::Parity`: Kahan summation, Accelerate disabled, single-thread recommended.
+/// - `EvalMode::Fast`: Naive summation, Accelerate/SIMD enabled (default).
+///
+/// When parity mode is activated, it also disables Accelerate automatically.
+pub fn set_eval_mode(mode: EvalMode) {
+    EVAL_MODE.store(mode as u8, Ordering::Relaxed);
+    if mode == EvalMode::Parity {
+        set_accelerate_enabled(false);
+    }
+}
+
+/// Get the current evaluation mode.
+pub fn eval_mode() -> EvalMode {
+    match EVAL_MODE.load(Ordering::Relaxed) {
+        1 => EvalMode::Parity,
+        _ => EvalMode::Fast,
+    }
+}
 
 /// Programmatic Accelerate disable flag.
 ///
