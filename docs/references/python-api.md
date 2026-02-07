@@ -74,6 +74,7 @@ res = nextstat.map_fit(post)
 
 All models implement a shared minimal contract:
 - `n_params()`
+- `dim()` (alias of `n_params()`)
 - `nll(params)`
 - `grad_nll(params)`
 - `parameter_names()`
@@ -133,6 +134,62 @@ These are imported from `nextstat/__init__.py` as convenience wrappers. Some req
 - `nextstat.timeseries`: higher-level time series helpers and plotting.
 - `nextstat.econometrics`: robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting helpers.
 - `nextstat.causal`: propensity + AIPW baselines and sensitivity hooks.
+
+## Evaluation Modes (Parity / Fast)
+
+NextStat supports two evaluation modes for NLL computation, controllable at runtime:
+
+```python
+import nextstat
+
+# Default: maximum speed (naive summation, SIMD/Accelerate/CUDA, multi-threaded)
+nextstat.set_eval_mode("fast")
+
+# Parity: deterministic (Kahan summation, Accelerate disabled, single-thread recommended)
+nextstat.set_eval_mode("parity")
+
+# Query current mode
+print(nextstat.get_eval_mode())  # "fast" or "parity"
+```
+
+| Mode | Summation | Backend | Use Case |
+|------|-----------|---------|----------|
+| `"fast"` | Naive | SIMD / Accelerate / CUDA | Production inference |
+| `"parity"` | Kahan compensated | SIMD only | CI, pyhf parity validation |
+
+**When to use parity mode:**
+- Validating numerical results against pyhf NumPy backend
+- CI regression tests requiring bit-exact reproducibility
+- Debugging numerical discrepancies
+
+**Tolerance contract** (Parity mode vs pyhf):
+- Per-bin expected data: **1e-12** (bit-exact arithmetic)
+- NLL value: **1e-10** absolute
+- Gradient: **1e-6** atol + **1e-4** rtol (AD vs FD noise)
+- Best-fit params: **2e-4** (optimizer surface)
+
+See `docs/pyhf-parity-contract.md` for the full 7-tier tolerance hierarchy.
+
+**Measured overhead:** <5% (Kahan vs naive at same thread count).
+
+## Batch Toy Fitting (CPU)
+
+```python
+import nextstat
+
+model = nextstat.from_pyhf(json_str)
+params = model.suggested_init()
+
+# CPU batch: Rayon parallel, one AD tape per thread
+results = nextstat.fit_toys_batch(model, params, n_toys=1000, seed=42)
+
+# Each result has: .parameters, .nll, .converged, .n_iter, .n_fev, .n_gev
+converged = sum(1 for r in results if r.converged)
+print(f"{converged}/{len(results)} toys converged")
+```
+
+- `nextstat.fit_toys_batch(model, params, *, n_toys=1000, seed=42) -> list[FitResult]`
+- `nextstat.has_accelerate() -> bool` — Check if Apple Accelerate backend is active.
 
 ## GPU acceleration
 

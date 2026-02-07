@@ -85,6 +85,9 @@ clap = { version = "4.5", features = ["derive", "cargo"] }
 
 # GPU backends (Phase 2C - Optional)
 cudarc = { version = "0.19", default-features = false, features = ["driver"] }
+metal = "0.30"
+objc = "0.2"
+block = "0.1"
 
 [profile.release]
 opt-level = 3

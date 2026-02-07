@@ -215,6 +215,15 @@ NextStat bundles an "Apex2" validation harness that produces a machine-readable 
 - Deterministic JSON mode: `--deterministic` (omits timestamps/timings and uses stable ordering).
 - "Goldens without heavy deps": selected reference outputs are checked in as JSON fixtures so parity regressions can run without requiring the full external stack at test time.
 
+Sub-reports (runnable independently):
+
+- pyhf parity/validation: `tests/apex2_pyhf_validation_report.py`
+- NUTS quality gates: `tests/apex2_nuts_quality_report.py`
+- Bias/pulls toy regressions (slow): `tests/apex2_bias_pulls_report.py`
+- SBC (slow): `tests/apex2_sbc_report.py`
+- ROOT suite/parity (optional; requires ROOT): `tests/apex2_root_suite_report.py`
+- P6 GLM fit/predict benchmarks (optional): `tests/apex2_p6_glm_benchmark_report.py`
+
 Example:
 
 ```bash
@@ -344,32 +353,37 @@ fit = nextstat.fit(model)
 ```python
 import nextstat
 
-model = nextstat.timeseries.local_level_model(d=1, sigma_level=0.1, sigma_obs=0.2)
+model = nextstat.timeseries.local_level_model(q=0.1, r=0.2, m0=0.0, p0=1.0)
 fit = nextstat.timeseries.kalman_fit(model, ys, max_iter=5, tol=1e-9, forecast_steps=12)
 artifact = nextstat.timeseries.kalman_viz_artifact(fit, ys, level=0.9)
 ```
 
-### 9.2 Pharma Pack (Phase 9.A, Planned)
+### 9.2 Survival Analysis Pack (Phase 9.A, Baseline Available)
 
-Primary target: **time-to-event endpoints** with censoring/truncation and a clear reproducibility contract suitable for regulated workflows.
+Primary target: **time-to-event endpoints** with censoring and a clear reproducibility contract suitable for regulated workflows.
 
-Planned baseline scope:
+Baseline scope (currently implemented as core models; higher-level fit helpers may evolve):
 
-- Parametric survival models with right censoring (and a path to left truncation): exponential, Weibull, log-normal.
-- Cox proportional hazards (partial likelihood) with explicit ties policy (Breslow/Efron) and stability guidance.
+- Parametric survival models with right censoring: exponential, Weibull, log-normal AFT.
+- Cox proportional hazards via partial likelihood with explicit ties policy (Breslow/Efron).
 
-Explicit assumptions (v1):
+Explicit assumptions (v1 baseline):
 
 - Deterministic handling of ties and censoring policy is part of the public contract (documented and tested).
 - Validation includes golden fixtures and simulation-based checks (bias/pull/coverage), plus parity comparisons where an independent reference exists.
 
-API sketch (proposed):
+Example (low-level model + generic optimizer):
 
 ```python
-from nextstat import survival
+import nextstat
 
-aft = survival.weibull_aft.fit(time, event, x, include_intercept=True)
-cox = survival.cox_ph.fit(time, event, x, ties="efron")
+times = [2.0, 1.0, 1.0, 0.5]
+events = [True, True, False, True]  # False = right-censored
+x = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0]]
+
+model = nextstat.CoxPhModel(times, events, x, ties="efron")
+fit = nextstat.fit(model)
+print(fit.params)
 ```
 
 ### 9.3 Social Sciences Pack (Phase 9.C, Partial)

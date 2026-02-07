@@ -35,6 +35,12 @@ pub mod cuda;
 /// `GpuModelData` without requiring CUDA at compile time.
 pub mod cuda_types;
 
+/// GPU data types for Metal kernels (f32 precision, `#[repr(C)]`).
+///
+/// Always available (no feature gate) so that ns-translate can serialize
+/// `MetalModelData` without requiring Metal at compile time.
+pub mod metal_types;
+
 /// CUDA batch NLL+gradient accelerator (requires `cuda` feature + NVIDIA GPU at runtime).
 #[cfg(feature = "cuda")]
 pub mod cuda_batch;

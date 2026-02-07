@@ -123,7 +123,73 @@ let ws = NtupleWorkspaceBuilder::new()
     .build()?;  // → Workspace
 ```
 
-## `ns-compute` — GPU backends
+## `ns-compute` — Evaluation Modes and GPU Backends
+
+### EvalMode: Parity vs Fast
+
+`ns-compute` provides a process-wide evaluation mode that controls the trade-off between
+numerical precision and speed:
+
+```rust
+use ns_compute::{EvalMode, set_eval_mode, eval_mode};
+
+// Parity mode: Kahan summation, Accelerate disabled, single-thread recommended.
+// Used for deterministic pyhf parity validation.
+set_eval_mode(EvalMode::Parity);
+
+// Fast mode (default): naive summation, SIMD/Accelerate/CUDA enabled.
+set_eval_mode(EvalMode::Fast);
+
+assert_eq!(eval_mode(), EvalMode::Fast);
+```
+
+| Mode | Summation | Backend | Threads | Use Case |
+|------|-----------|---------|---------|----------|
+| `Fast` | Naive `+=` | SIMD / Accelerate / CUDA | Rayon (auto) | Production inference |
+| `Parity` | Kahan compensated | SIMD only (Accelerate OFF) | 1 (forced) | CI, pyhf parity validation |
+
+When `Parity` mode is activated:
+1. `EvalMode::Parity` is set via atomic flag (zero-cost read)
+2. Apple Accelerate is automatically disabled
+3. Kahan compensated summation is used in `PreparedModel::nll()` dispatch
+4. Thread count should be set to 1 for full determinism
+
+Kahan summation variants (in `ns_compute::simd`):
+- `poisson_nll_simd_kahan()` — SIMD f64x4 accumulator + f64x4 compensation
+- `poisson_nll_simd_sparse_kahan()` — sparse variant (skips zero-obs bins)
+- `poisson_nll_scalar_kahan()` — scalar loop with compensation
+- `poisson_nll_accelerate_kahan()` — Accelerate vvlog + Kahan scalar sum
+
+**Measured overhead:** <5% (Kahan vs naive at same thread count).
+
+**Tolerance contract:** See `docs/pyhf-parity-contract.md` for 7 tolerance tiers from
+per-bin 1e-12 to toy ensemble 0.05.
+
+### PreparedModel NLL Dispatch
+
+`PreparedModel::nll()` dispatches to the appropriate backend via `dispatch_poisson_nll()`:
+
+```
+EvalMode::Parity →
+  has_zero_obs? → poisson_nll_simd_sparse_kahan()
+  otherwise    → poisson_nll_simd_kahan()
+
+EvalMode::Fast →
+  accelerate_enabled()? → poisson_nll_accelerate()
+  has_zero_obs?         → poisson_nll_simd_sparse()
+  otherwise             → poisson_nll_simd()
+```
+
+### Batch Toy Fitting (CPU)
+
+```rust
+use ns_inference::batch::fit_toys_batch;
+
+let results = fit_toys_batch(&model, &params, /*n_toys=*/1000, /*seed=*/42, None);
+// Uses par_iter().map_init() — one Tape per Rayon thread (~12), not per toy (1000+)
+```
+
+### GPU Backends
 
 In addition to the SIMD Poisson NLL path, `ns-compute` provides optional GPU backends:
 

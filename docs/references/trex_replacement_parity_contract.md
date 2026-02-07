@@ -10,7 +10,13 @@ This document formalizes what “**identical numbers**” means for a full TRExF
 
 **Source of truth for numeric tolerances:** `docs/plans/standards.md` and `tests/python/_tolerances.py`.
 
+**pyhf parity contract (7-tier tolerance hierarchy):** `docs/pyhf-parity-contract.md`.
+
 **Apex2 reference harness for ROOT/TREx workflows:** `docs/tutorials/root-trexfitter-parity.md`.
+
+**Evaluation modes:** All parity comparisons must use `EvalMode::Parity` (Kahan summation,
+Accelerate disabled, threads=1). Activate via CLI `--parity`, Python `nextstat.set_eval_mode("parity")`,
+or Rust `ns_compute::set_eval_mode(EvalMode::Parity)`.
 
 ## 1) Reference surfaces
 

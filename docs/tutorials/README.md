@@ -26,6 +26,7 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 - Phase 9 (mixed models / LMM): `docs/tutorials/phase-9-lmm.md`
 - Phase 9 (missing data): `docs/tutorials/phase-9-missing-data.md`
 - Phase 9 (ordinal regression): `docs/tutorials/phase-9-ordinal.md`
+- Phase 9 (survival analysis): `docs/tutorials/phase-9-survival.md`
 
 ## Econometrics / causal pack
 

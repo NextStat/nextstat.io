@@ -29,6 +29,7 @@ json-patch.workspace = true
 default = []
 accelerate = ["ns-compute/accelerate"]
 cuda = ["ns-compute/cuda"]
+metal = ["ns-compute/metal"]
 
 [dev-dependencies]
 approx.workspace = true

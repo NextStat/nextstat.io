@@ -217,7 +217,13 @@ static RooAbsData* find_data(RooWorkspace& w) {{
 static int minimize_nll(RooAbsReal& nll) {{
   RooMinimizer m(nll);
   m.setPrintLevel(-1);
-  m.setStrategy(0);
+  // Strategy 0 is fast but can leave noticeable residuals in profile scans for
+  // some HistFactory models. Use a slightly more robust default to reduce
+  // ROOT-vs-pyhf/NextStat numeric deltas.
+  m.setStrategy(1);
+  m.setEps(1e-12);
+  m.setMaxFunctionCalls(200000);
+  m.setMaxIterations(200000);
   m.optimizeConst(2);
   int status = m.minimize("Minuit2", "Migrad");
   return status;

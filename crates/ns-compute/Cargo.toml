@@ -15,6 +15,7 @@ description = "Compute backends (CPU/Metal/CUDA) for NextStat"
 ns-core.workspace = true
 thiserror.workspace = true
 log.workspace = true
+statrs.workspace = true
 
 # CPU parallelism (Priority P0)
 rayon.workspace = true
@@ -25,6 +26,11 @@ wide.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cudarc = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = { workspace = true, optional = true }
+objc = { workspace = true, optional = true }
+block = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx.workspace = true
@@ -44,6 +50,6 @@ harness = false
 [features]
 default = ["cpu"]
 cpu = []
-metal = []       # Phase 2C - Optional
+metal = ["dep:metal", "dep:objc", "dep:block"]
 cuda = ["cudarc"]
 accelerate = []  # Apple Accelerate (vDSP/vForce) - macOS only

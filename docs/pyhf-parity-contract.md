@@ -202,6 +202,61 @@ Tighter ◄───────────────────────
 
 ---
 
+## Architecture: "Spec vs Speed"
+
+The parity system is built on a clean separation of concerns:
+
+```
+┌──────────────────────────────────────────────────────┐
+│  pyhf NumPy = SPEC (oracle for CI/regressions)       │
+│  expected_data(params), nll(params), grad_nll(params) │
+│  in fixed points — NOT "how the optimizer walked"     │
+└───────────────────┬──────────────────────────────────┘
+                    │ tolerance contract (7 tiers above)
+┌───────────────────┴──────────────────────────────────┐
+│  PreparedModel = COMPILED MODEL                       │
+│  workspace JSON → flat layout:                        │
+│    observed_flat, ln_factorials, obs_mask,             │
+│    constraint_const, modifier CSR indices              │
+│  params → nll: zero-alloc, SIMD f64x4, sparse dispatch│
+├──────────────────┬───────────────────────────────────┤
+│  Parity mode     │  Fast mode                         │
+│  Kahan, 1 thread │  Accelerate/CUDA, Rayon            │
+│  CI-gated        │  production                        │
+└──────────────────┴───────────────────────────────────┘
+```
+
+**Key principle:** Parity mode is narrow but bulletproof. Fast mode is wide and aggressive.
+Micro-divergences in the last bits are acceptable in Fast mode, but must remain within the
+tolerance contract above.
+
+**Optimizer philosophy:** Default = best-NLL (L-BFGS-B finds deeper minimum than SLSQP
+on large models). pyhf-compat = warm-start `init_pars=pyhf_hat` for reproducibility.
+These are different layers: parity = identical likelihood function, bestfit = optimizer quality.
+
+### Batch Toy Fitting
+
+Both CPU and GPU batch paths use the same compiled model:
+
+- **CPU:** `fit_toys_batch()` — Rayon `par_iter().map_init()`, one AD Tape per thread
+- **GPU:** `fit_toys_batch_gpu()` — lockstep L-BFGS-B, fused NLL+gradient kernel
+
+Batch fitting skips Hessian computation for speed. Seed-based reproducibility:
+`toy_seed = base_seed + toy_index`.
+
+### Performance Characteristics
+
+| Operation | vs Baseline |
+|-----------|------------|
+| PreparedModel NLL eval | ~200K evals/sec (simple), ~500/sec (184-param tHu) |
+| Kahan overhead | <5% (confirmed benchmark) |
+| Batch toys (1000, CPU Rayon) | ~50x vs serial |
+| Batch toys (1000, CUDA) | ~200x vs serial |
+| TTree parse + histogram fill | ~8.5x vs uproot+numpy |
+| Ranking (16 NPs, autodiff) | ~4x vs pyhf FD |
+
+---
+
 ## CI Integration
 
 ### Golden Report Generation
