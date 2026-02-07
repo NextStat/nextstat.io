@@ -791,7 +791,11 @@ impl MaximumLikelihoodEstimator {
         ranking.sort_by(|a, b| {
             let impact_a = a.delta_mu_up.abs().max(a.delta_mu_down.abs());
             let impact_b = b.delta_mu_up.abs().max(b.delta_mu_down.abs());
-            impact_b.partial_cmp(&impact_a).unwrap_or(std::cmp::Ordering::Equal)
+            impact_b
+                .partial_cmp(&impact_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                // Tie-break for deterministic ordering (important for ML artifacts/logging).
+                .then_with(|| a.name.cmp(&b.name))
         });
 
         Ok(ranking)

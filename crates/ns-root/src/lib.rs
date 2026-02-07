@@ -42,7 +42,7 @@ pub mod tree;
 
 pub use branch_reader::BranchReader;
 pub use error::{Result, RootError};
-pub use expr::CompiledExpr;
+pub use expr::{CompiledExpr, DEFAULT_CHUNK_SIZE};
 pub use file::RootFile;
 pub use filler::{
     FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, fill_histograms,

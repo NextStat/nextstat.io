@@ -1807,8 +1807,8 @@ fn cmd_import_trex_config(
         write_json_file(path, &serde_json::to_value(&rep)?)?;
     }
 
-    let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
-    let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
+    let (_cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
+    let ws = ns_translate::trex::workspace_from_str(&text, resolved_base_dir)?;
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {
@@ -1968,8 +1968,8 @@ fn cmd_build_hists(
         write_json_file(path, &serde_json::to_value(&rep)?)?;
     }
 
-    let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
-    let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
+    let (_cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
+    let ws = ns_translate::trex::workspace_from_str(&text, resolved_base_dir)?;
 
     let ws_json = serde_json::to_value(&ws)?;
     write_json_file(&out_dir.join("workspace.json"), &ws_json)?;

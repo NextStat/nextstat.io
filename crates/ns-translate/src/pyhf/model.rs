@@ -236,6 +236,229 @@ impl HistFactoryModel {
         ln_gamma(n + 1.0)
     }
 
+    /// Find a channel index by name.
+    pub fn channel_index(&self, channel_name: &str) -> Option<usize> {
+        self.channels.iter().position(|c| c.name == channel_name)
+    }
+
+    /// Find a sample index by name within a channel.
+    pub fn sample_index(&self, channel_idx: usize, sample_name: &str) -> Option<usize> {
+        self.channels
+            .get(channel_idx)?
+            .samples
+            .iter()
+            .position(|s| s.name == sample_name)
+    }
+
+    /// Number of main bins in a channel.
+    pub fn channel_bin_count(&self, channel_idx: usize) -> Result<usize> {
+        let ch = self.channels.get(channel_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Channel index out of range: {}", channel_idx))
+        })?;
+        Ok(ch.samples.first().map(|s| s.nominal.len()).unwrap_or(0))
+    }
+
+    /// Flat offset of a channel's main bins in `expected/observed` vectors (workspace order).
+    pub fn channel_bin_offset(&self, channel_idx: usize) -> Result<usize> {
+        if channel_idx >= self.channels.len() {
+            return Err(ns_core::Error::Validation(format!(
+                "Channel index out of range: {}",
+                channel_idx
+            )));
+        }
+        let mut offset = 0usize;
+        for (i, ch) in self.channels.iter().enumerate() {
+            if i == channel_idx {
+                break;
+            }
+            let n_bins = ch.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            offset += n_bins;
+        }
+        Ok(offset)
+    }
+
+    /// Borrow the nominal main-bin yields for a given channel/sample.
+    pub fn sample_nominal(&self, channel_idx: usize, sample_idx: usize) -> Result<&[f64]> {
+        let ch = self.channels.get(channel_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Channel index out of range: {}", channel_idx))
+        })?;
+        let s = ch.samples.get(sample_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!(
+                "Sample index out of range: {} (channel={})",
+                sample_idx, channel_idx
+            ))
+        })?;
+        Ok(s.nominal.as_slice())
+    }
+
+    /// Override the nominal main-bin yields for a given channel/sample (in place).
+    pub fn set_sample_nominal(
+        &mut self,
+        channel_idx: usize,
+        sample_idx: usize,
+        nominal: &[f64],
+    ) -> Result<()> {
+        let expected_len = self.channel_bin_count(channel_idx)?;
+        if nominal.len() != expected_len {
+            return Err(ns_core::Error::Validation(format!(
+                "Nominal length mismatch: expected {}, got {}",
+                expected_len,
+                nominal.len()
+            )));
+        }
+        let ch = self.channels.get_mut(channel_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Channel index out of range: {}", channel_idx))
+        })?;
+        let s = ch.samples.get_mut(sample_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!(
+                "Sample index out of range: {} (channel={})",
+                sample_idx, channel_idx
+            ))
+        })?;
+        s.nominal.clear();
+        s.nominal.extend_from_slice(nominal);
+        Ok(())
+    }
+
+    /// Resolve channel+sample by name and override nominal yields (in place).
+    ///
+    /// Returns the resolved `(channel_idx, sample_idx)` on success.
+    pub fn set_sample_nominal_by_name(
+        &mut self,
+        channel_name: &str,
+        sample_name: &str,
+        nominal: &[f64],
+    ) -> Result<(usize, usize)> {
+        let ch_idx = self.channel_index(channel_name).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Unknown channel: {}", channel_name))
+        })?;
+        let s_idx = self.sample_index(ch_idx, sample_name).ok_or_else(|| {
+            ns_core::Error::Validation(format!(
+                "Unknown sample: {} (channel={})",
+                sample_name, channel_name
+            ))
+        })?;
+        self.set_sample_nominal(ch_idx, s_idx, nominal)?;
+        Ok((ch_idx, s_idx))
+    }
+
+    /// Validate that overriding the nominal vector for this sample is "linear-safe".
+    ///
+    /// We currently only support nominal overrides for samples whose modifiers are purely
+    /// multiplicative and do not reference the nominal vector:
+    /// - NormFactor
+    /// - NormSys
+    /// - Lumi
+    pub fn validate_sample_nominal_override_linear_safe(
+        &self,
+        channel_idx: usize,
+        sample_idx: usize,
+    ) -> Result<()> {
+        let ch = self.channels.get(channel_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Channel index out of range: {}", channel_idx))
+        })?;
+        let s = ch.samples.get(sample_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!(
+                "Sample index out of range: {} (channel={})",
+                sample_idx, channel_idx
+            ))
+        })?;
+
+        for m in &s.modifiers {
+            match m {
+                ModelModifier::NormFactor { .. }
+                | ModelModifier::NormSys { .. }
+                | ModelModifier::Lumi { .. } => {}
+                _ => {
+                    return Err(ns_core::Error::Validation(format!(
+                        "Nominal override is not supported for samples with per-bin/shape modifiers (channel_idx={}, sample_idx={})",
+                        channel_idx, sample_idx
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Fill per-bin multiplicative factors for a given channel/sample (main bins only).
+    ///
+    /// `out` must have length equal to `channel_bin_count(channel_idx)`.
+    pub fn fill_sample_multiplicative_factors_main(
+        &self,
+        params: &[f64],
+        channel_idx: usize,
+        sample_idx: usize,
+        out: &mut [f64],
+    ) -> Result<()> {
+        use ns_compute::simd::vec_scale;
+
+        self.validate_params_len(params.len())?;
+        self.validate_sample_nominal_override_linear_safe(channel_idx, sample_idx)?;
+
+        let n_bins = self.channel_bin_count(channel_idx)?;
+        if out.len() != n_bins {
+            return Err(ns_core::Error::Validation(format!(
+                "out length mismatch: expected {}, got {}",
+                n_bins,
+                out.len()
+            )));
+        }
+
+        out.fill(1.0);
+
+        let ch = self.channels.get(channel_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!("Channel index out of range: {}", channel_idx))
+        })?;
+        let s = ch.samples.get(sample_idx).ok_or_else(|| {
+            ns_core::Error::Validation(format!(
+                "Sample index out of range: {} (channel={})",
+                sample_idx, channel_idx
+            ))
+        })?;
+
+        for modifier in &s.modifiers {
+            match modifier {
+                ModelModifier::NormFactor { param_idx } => {
+                    let norm = *params.get(*param_idx).ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "NormFactor param index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    vec_scale(out, norm);
+                }
+                ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
+                    let alpha = *params.get(*param_idx).ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "NormSys param index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    let factor = match interp_code {
+                        NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
+                        NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
+                    };
+                    vec_scale(out, factor);
+                }
+                ModelModifier::Lumi { param_idx } => {
+                    let lumi = *params.get(*param_idx).ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "Lumi param index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    vec_scale(out, lumi);
+                }
+                _ => unreachable!("validate_sample_nominal_override_linear_safe enforced"),
+            }
+        }
+
+        Ok(())
+    }
+
     /// Create model from pyhf workspace with explicit modifier interpolation settings.
     ///
     /// `normsys_interp`: interpolation code for NormSys (code1 = pyhf default, code4 = polynomial).
@@ -3216,6 +3439,68 @@ impl PreparedModel<'_> {
 
         // 6. Add pre-computed constraint normalization constant
         nll += self.constraint_const;
+
+        Ok(nll)
+    }
+
+    /// Compute ∂NLL/∂nominal for a specific channel/sample (main bins), reusing scratch buffers.
+    ///
+    /// Intended for ML integrations where a network produces the nominal yields vector for one
+    /// sample. The derivative is a partial derivative holding `params` fixed, which is the
+    /// correct gradient for profiled objectives via the envelope theorem.
+    ///
+    /// See [`HistFactoryModel::validate_sample_nominal_override_linear_safe`] for supported
+    /// modifier restrictions.
+    pub fn grad_nll_wrt_sample_nominal_main_reuse(
+        &self,
+        params: &[f64],
+        scratch: &mut NllScratch,
+        channel_idx: usize,
+        sample_idx: usize,
+        out: &mut [f64],
+    ) -> Result<f64> {
+        let nll = self.nll_reuse(params, scratch)?;
+
+        let n_bins = self.model.channel_bin_count(channel_idx)?;
+        if out.len() != n_bins {
+            return Err(ns_core::Error::Validation(format!(
+                "out length mismatch: expected {}, got {}",
+                n_bins,
+                out.len()
+            )));
+        }
+
+        let offset = self.model.channel_bin_offset(channel_idx)?;
+        let expected = &scratch.expected[..self.n_main_bins];
+
+        // Reuse scratch.sample_factors as a local factor buffer for the selected sample.
+        self.model.fill_sample_multiplicative_factors_main(
+            params,
+            channel_idx,
+            sample_idx,
+            &mut scratch.sample_factors[..n_bins],
+        )?;
+        let factors = &scratch.sample_factors[..n_bins];
+
+        for i in 0..n_bins {
+            let flat = offset + i;
+
+            if let Some(mask) = self.fit_bin_mask.as_ref()
+                && mask.get(flat).copied().unwrap_or(0.0) == 0.0
+            {
+                out[i] = 0.0;
+                continue;
+            }
+
+            let e = expected.get(flat).copied().unwrap_or(0.0);
+            if e <= 0.0 {
+                out[i] = 0.0;
+                continue;
+            }
+            let n = self.observed_flat.get(flat).copied().unwrap_or(0.0);
+            let d_nll_d_e = if n > 0.0 { 1.0 - n / e } else { 1.0 };
+            out[i] = d_nll_d_e * factors[i];
+        }
 
         Ok(nll)
     }

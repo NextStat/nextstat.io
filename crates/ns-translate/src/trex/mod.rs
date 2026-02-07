@@ -38,6 +38,7 @@ enum BlockKind {
     Region,
     Sample,
     Systematic,
+    NormFactor,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +52,7 @@ struct RawBlock {
 }
 
 fn strip_comment(line: &str) -> &str {
-    // TRExFitter configs commonly use '#' for comments; sometimes also '//' is used.
+    // TRExFitter configs commonly use '#' for comments; sometimes also '//' or '%' is used.
     // Be quote-aware so values like "w#1" keep the '#'.
     let mut in_single = false;
     let mut in_double = false;
@@ -95,6 +96,9 @@ fn strip_comment(line: &str) -> &str {
             return &line[..i];
         }
         if c == '/' && i + 1 < bytes.len() && (bytes[i + 1] as char) == '/' {
+            return &line[..i];
+        }
+        if c == '%' && (i == 0 || (bytes[i - 1] as char).is_whitespace()) {
             return &line[..i];
         }
 
@@ -279,6 +283,71 @@ fn parse_list(value: &str) -> Vec<String> {
     out
 }
 
+fn parse_semicolon_list(value: &str) -> Vec<String> {
+    // TREx configs sometimes use semicolon-separated lists, commonly for Region names:
+    //   Region: "a";"b"
+    let v = value.trim();
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+
+    let push_cur = |out: &mut Vec<String>, cur: &mut String| {
+        let s = cur.trim();
+        if !s.is_empty() {
+            let s = if (s.starts_with('"') && s.ends_with('"'))
+                || (s.starts_with('\'') && s.ends_with('\''))
+            {
+                unquote(s)
+            } else {
+                s.to_string()
+            };
+            if !s.trim().is_empty() {
+                out.push(s);
+            }
+        }
+        cur.clear();
+    };
+
+    for ch in v.chars() {
+        if escape {
+            cur.push(ch);
+            escape = false;
+            continue;
+        }
+        if in_single || in_double {
+            if ch == '\\' {
+                cur.push(ch);
+                escape = true;
+                continue;
+            }
+            if in_single && ch == '\'' {
+                in_single = false;
+            } else if in_double && ch == '"' {
+                in_double = false;
+            }
+            cur.push(ch);
+            continue;
+        }
+
+        match ch {
+            '\'' => {
+                in_single = true;
+                cur.push(ch);
+            }
+            '"' => {
+                in_double = true;
+                cur.push(ch);
+            }
+            ';' => push_cur(&mut out, &mut cur),
+            _ => cur.push(ch),
+        }
+    }
+    push_cur(&mut out, &mut cur);
+    out
+}
+
 fn parse_bool(value: &str) -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "" => Some(true),
@@ -329,6 +398,7 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             BlockKind::Region => matches!(child, BlockKind::Sample | BlockKind::Systematic),
             BlockKind::Sample => matches!(child, BlockKind::Systematic),
             BlockKind::Systematic => false,
+            BlockKind::NormFactor => false,
         }
     }
 
@@ -349,6 +419,14 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             continue;
         };
 
+        // Ambiguity: some NextStat-compatible minimal configs use `NormFactor:` as a Sample attribute,
+        // while full TREx configs use `NormFactor:` as a dedicated block. To preserve back-compat,
+        // treat `NormFactor:` as a block only when not currently inside Region/Sample/Systematic.
+        let can_start_normfactor_block = match stack.last() {
+            Some(top) => !matches!(top.kind, BlockKind::Region | BlockKind::Sample | BlockKind::Systematic),
+            None => true,
+        };
+
         let kind = if key_eq(&key, "Job") {
             Some(BlockKind::Job)
         } else if key_eq(&key, "Region") || key_eq(&key, "Channel") {
@@ -357,6 +435,8 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             Some(BlockKind::Sample)
         } else if key_eq(&key, "Systematic") {
             Some(BlockKind::Systematic)
+        } else if key_eq(&key, "NormFactor") && can_start_normfactor_block {
+            Some(BlockKind::NormFactor)
         } else if key_eq(&key, "EndJob") {
             Some(BlockKind::Job)
         } else if key_eq(&key, "EndRegion") || key_eq(&key, "EndChannel") {
@@ -365,6 +445,8 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             Some(BlockKind::Sample)
         } else if key_eq(&key, "EndSystematic") {
             Some(BlockKind::Systematic)
+        } else if key_eq(&key, "EndNormFactor") {
+            Some(BlockKind::NormFactor)
         } else {
             None
         };
@@ -652,12 +734,14 @@ impl TrexConfig {
             .or_else(|| last_attr_value(&globals, "CombinationXML"));
         let mut tree_name =
             last_attr_value(&globals, "TreeName").or_else(|| last_attr_value(&globals, "Tree"));
+        tree_name = tree_name.or_else(|| last_attr_value(&globals, "NtupleName"));
         let mut measurement = last_attr_value(&globals, "Measurement");
         let mut poi = last_attr_value(&globals, "POI").or_else(|| last_attr_value(&globals, "Poi"));
 
         let mut regions = Vec::new();
         let mut samples = Vec::new();
         let mut systematics = Vec::new();
+        let mut norm_factors: Vec<(String, Vec<String>)> = Vec::new();
 
         for b in blocks {
             match b.kind {
@@ -683,6 +767,9 @@ impl TrexConfig {
                     {
                         tree_name = Some(v);
                     }
+                    if let Some(v) = last_attr_value(&b.attrs, "NtupleName") {
+                        tree_name = Some(v);
+                    }
                     if let Some(v) = last_attr_value(&b.attrs, "Measurement") {
                         measurement = Some(v);
                     }
@@ -693,7 +780,21 @@ impl TrexConfig {
                     }
                 }
                 BlockKind::Region => {
-                    regions.push(parse_region_block(&b)?);
+                    let base_region = parse_region_block(&b)?;
+                    let names = if base_region.name.contains(';') {
+                        parse_semicolon_list(&base_region.name)
+                    } else {
+                        vec![base_region.name.clone()]
+                    };
+                    if names.len() == 1 {
+                        regions.push(base_region);
+                    } else {
+                        for n in names {
+                            let mut r = base_region.clone();
+                            r.name = n;
+                            regions.push(r);
+                        }
+                    }
                 }
                 BlockKind::Sample => {
                     // Skip override-only nested samples (Region → Sample without File/Path).
@@ -701,13 +802,43 @@ impl TrexConfig {
                     if b.ctx_region.is_some()
                         && !has_attr(&b.attrs, "File")
                         && !has_attr(&b.attrs, "Path")
+                        && !has_attr(&b.attrs, "NtupleFile")
+                        && !has_attr(&b.attrs, "NtupleFiles")
                     {
                         continue;
                     }
                     samples.push(parse_sample_block(&b)?);
                 }
                 BlockKind::Systematic => {
-                    systematics.push(parse_systematic_block(&b)?);
+                    match parse_systematic_block(&b) {
+                        Ok(s) => systematics.push(s),
+                        Err(Error::NotImplemented(_)) => {
+                            // Best-effort: allow parsing full TREx configs even if some systematic types
+                            // are not yet supported by the NTUP importer.
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                BlockKind::NormFactor => {
+                    let nf_name = b.name.clone();
+                    let samples_val =
+                        last_attr_value(&b.attrs, "Samples").unwrap_or_else(|| "all".to_string());
+                    let targets = parse_list(&samples_val);
+                    norm_factors.push((nf_name, targets));
+                }
+            }
+        }
+
+        if !norm_factors.is_empty() {
+            for (nf, targets) in norm_factors {
+                for s in &mut samples {
+                    if s.kind == SampleKind::Data {
+                        continue;
+                    }
+                    if targets.iter().any(|t| t == &s.name || t.eq_ignore_ascii_case("all")) {
+                        s.modifiers.push(NtupleModifier::NormFactor { name: nf.clone() });
+                    }
                 }
             }
         }
@@ -738,7 +869,48 @@ pub fn expr_coverage_from_str(text: &str) -> Result<TrexExprCoverageReport> {
 
 fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
     let name = b.name.clone();
-    let variable = last_attr_value(&b.attrs, "Variable")
+
+    fn parse_variable_spec(value: &str) -> Option<(String, Vec<f64>)> {
+        // TREx configs often encode variable + binning on a single line:
+        //   Variable: "jet_pt",6,200,800
+        //   Variable: "x",0,1,2,3  (edges)
+        let toks = parse_list(value);
+        if toks.len() < 2 {
+            return None;
+        }
+        let expr = toks[0].trim().to_string();
+        let nums: Vec<f64> = toks[1..].iter().filter_map(|s| s.trim().parse::<f64>().ok()).collect();
+        if nums.len() != toks.len() - 1 {
+            return None;
+        }
+
+        // Heuristic:
+        // - 3 numeric fields: treat as (nbins, low, high) if nbins is an integer.
+        // - >=2 numeric fields: treat as explicit edges.
+        if nums.len() == 3 {
+            let nbins_f = nums[0];
+            let nbins = nbins_f.round();
+            if (nbins - nbins_f).abs() < 1e-12 && nbins >= 1.0 {
+                let n = nbins as usize;
+                let lo = nums[1];
+                let hi = nums[2];
+                if hi > lo {
+                    let step = (hi - lo) / (n as f64);
+                    let mut edges = Vec::with_capacity(n + 1);
+                    for i in 0..=n {
+                        edges.push(lo + step * (i as f64));
+                    }
+                    return Some((expr, edges));
+                }
+            }
+        }
+        if nums.len() >= 2 {
+            return Some((expr, nums));
+        }
+        None
+    }
+
+    let variable_raw = last_attr_value(&b.attrs, "Variable")
         .or_else(|| last_attr_value(&b.attrs, "Var"))
         .ok_or_else(|| {
             Error::Validation(format!(
@@ -746,10 +918,19 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
                 b.attrs.first().map(|a| a.line).unwrap_or(0)
             ))
         })?;
-    let binning_str = last_attr_value(&b.attrs, "Binning")
+
+    let (variable, binning) = if let Some(binning_str) = last_attr_value(&b.attrs, "Binning")
         .or_else(|| last_attr_value(&b.attrs, "BinEdges"))
-        .ok_or_else(|| Error::Validation(format!("Region '{name}' missing Binning")))?;
-    let binning = parse_binning(&binning_str)?;
+    {
+        (variable_raw, parse_binning(&binning_str)?)
+    } else if let Some((expr, edges)) = parse_variable_spec(&variable_raw) {
+        (expr, edges)
+    } else {
+        return Err(Error::Validation(format!(
+            "Region '{name}' missing Binning; expected either `Binning:`/`BinEdges:` or a TREx-style `Variable: expr,nbins,lo,hi`"
+        )));
+    };
+
     if binning.len() < 2 {
         return Err(Error::Validation(format!("Region '{name}' Binning must have >=2 edges")));
     }
@@ -793,6 +974,7 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "BinEdges",
                 "Selection",
                 "Cut",
+                "Weight",
                 "DataFile",
                 "DataTreeName",
                 "DataTree",
@@ -803,10 +985,18 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "Type",
                 "File",
                 "Path",
+                "NtupleFile",
+                "NtupleFiles",
+                "NtupleName",
                 "TreeName",
                 "Tree",
                 "Weight",
+                "MCweight",
                 "Regions",
+                "Selection",
+                "Cut",
+                "Variable",
+                "Var",
                 "NormFactor",
                 "NormSys",
                 "StatError",
@@ -821,14 +1011,33 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "Down",
                 "Hi",
                 "Up",
+                "OverallUp",
+                "OverallDown",
                 "WeightUp",
                 "WeightDown",
+                "WeightBase",
+                "WeightUpSuffix",
+                "WeightDownSuffix",
+                "UpSuffix",
+                "DownSuffix",
+                "SuffixUp",
+                "SuffixDown",
                 "FileUp",
                 "UpFile",
                 "FileDown",
                 "DownFile",
                 "TreeName",
                 "Tree",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+            BlockKind::NormFactor => [
+                "Title",
+                "Nominal",
+                "Min",
+                "Max",
+                "Samples",
+                "Constant",
             ]
             .iter()
             .any(|k| key_eq(key, k)),
@@ -887,6 +1096,19 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
         }
     }
 
+    fn normalize_variable_expr(raw: &str) -> String {
+        // TREx configs often encode variable + binning on a single line:
+        //   Variable: "jet_pt",6,200,800
+        // Keep only the first field (variable expression).
+        let s = raw.trim();
+        let first = s.split(',').next().unwrap_or(s).trim();
+        if (first.starts_with('"') && first.ends_with('"')) || (first.starts_with('\'') && first.ends_with('\'')) {
+            unquote(first)
+        } else {
+            first.to_string()
+        }
+    }
+
     fn push_item(
         out: &mut Vec<TrexExprCoverageItem>,
         scope: &str,
@@ -900,7 +1122,8 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
         expr: String,
         derived: bool,
     ) {
-        let expr_trim = expr.trim();
+        let expr_norm = if role == "variable" { normalize_variable_expr(&expr) } else { expr };
+        let expr_trim = expr_norm.trim();
         if expr_trim.is_empty() {
             return;
         }
@@ -925,7 +1148,7 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
     fn role_for_global_key(key: &str) -> Option<&'static str> {
         if key_eq(key, "Selection") || key_eq(key, "Cut") {
             Some("selection")
-        } else if key_eq(key, "Weight") {
+        } else if key_eq(key, "Weight") || key_eq(key, "MCweight") {
             Some("weight")
         } else if key_eq(key, "Variable") || key_eq(key, "Var") {
             Some("variable")
@@ -943,7 +1166,7 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
             BlockKind::Region | BlockKind::Sample => {
                 if key_eq(key, "Selection") || key_eq(key, "Cut") {
                     Some("selection")
-                } else if key_eq(key, "Weight") {
+                } else if key_eq(key, "Weight") || key_eq(key, "MCweight") {
                     Some("weight")
                 } else if key_eq(key, "Variable") || key_eq(key, "Var") {
                     Some("variable")
@@ -966,6 +1189,7 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
                 }
             }
             BlockKind::Job => None,
+            BlockKind::NormFactor => None,
         }
     }
 
@@ -1091,12 +1315,21 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
 
     let file = last_attr_value(&b.attrs, "File")
         .or_else(|| last_attr_value(&b.attrs, "Path"))
-        .ok_or_else(|| Error::Validation(format!("Sample '{name}' missing File")))?;
+        .or_else(|| last_attr_value(&b.attrs, "NtupleFile"))
+        .or_else(|| {
+            last_attr_value(&b.attrs, "NtupleFiles").and_then(|v| parse_list(&v).into_iter().next())
+        })
+        .ok_or_else(|| {
+            Error::Validation(format!(
+                "Sample '{name}' missing File (expected File/Path or NtupleFile/NtupleFiles)"
+            ))
+        })?;
     let file = PathBuf::from(file);
 
-    let tree_name =
-        last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
-    let weight = last_attr_value(&b.attrs, "Weight");
+    let tree_name = last_attr_value(&b.attrs, "TreeName")
+        .or_else(|| last_attr_value(&b.attrs, "Tree"))
+        .or_else(|| last_attr_value(&b.attrs, "NtupleName"));
+    let weight = last_attr_value(&b.attrs, "Weight").or_else(|| last_attr_value(&b.attrs, "MCweight"));
 
     let mut regions = last_attr_value(&b.attrs, "Regions")
         .map(|v| parse_list(&v))
@@ -1143,15 +1376,15 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
     Ok(TrexSample { name, kind, file, tree_name, weight, regions, modifiers })
 }
 
-fn parse_syst_kind(value: &str) -> Option<SystKind> {
-    let v = value.trim().to_ascii_lowercase();
-    match v.as_str() {
-        "norm" | "normsys" => Some(SystKind::Norm),
+    fn parse_syst_kind(value: &str) -> Option<SystKind> {
+        let v = value.trim().to_ascii_lowercase();
+        match v.as_str() {
+        "norm" | "normsys" | "overall" | "overallsys" => Some(SystKind::Norm),
         "weight" | "weightsys" => Some(SystKind::Weight),
         "tree" | "treesys" => Some(SystKind::Tree),
         _ => None,
+        }
     }
-}
 
 fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
     let name = b.name.clone();
@@ -1159,7 +1392,7 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
     let type_str = last_attr_value(&b.attrs, "Type")
         .ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Type")))?;
     let kind = parse_syst_kind(&type_str).ok_or_else(|| {
-        Error::Validation(format!("Systematic '{name}' unknown Type: {type_str:?}"))
+        Error::NotImplemented(format!("Systematic '{name}' unsupported Type: {type_str:?}"))
     })?;
 
     let samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
@@ -1201,14 +1434,28 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         SystKind::Norm => {
             let lo = last_attr_value(&b.attrs, "Lo").or_else(|| last_attr_value(&b.attrs, "Down"));
             let hi = last_attr_value(&b.attrs, "Hi").or_else(|| last_attr_value(&b.attrs, "Up"));
-            let (Some(lo), Some(hi)) = (lo, hi) else {
-                return Err(Error::Validation(format!(
-                    "Systematic '{}' (norm) requires Lo/Hi",
-                    out.name
-                )));
-            };
-            out.lo = Some(parse_f64(&lo)?);
-            out.hi = Some(parse_f64(&hi)?);
+            if let (Some(lo), Some(hi)) = (lo, hi) {
+                out.lo = Some(parse_f64(&lo)?);
+                out.hi = Some(parse_f64(&hi)?);
+            } else {
+                // TREx "OVERALL" systematics use OverallUp/OverallDown.
+                let up = last_attr_value(&b.attrs, "OverallUp");
+                let down = last_attr_value(&b.attrs, "OverallDown");
+                let (Some(up), Some(down)) = (up, down) else {
+                    return Err(Error::Validation(format!(
+                        "Systematic '{}' (norm/overall) requires Lo/Hi (or OverallUp/OverallDown)",
+                        out.name
+                    )));
+                };
+                let up_v = parse_f64(&up)?;
+                let down_v = parse_f64(&down)?;
+
+                // Heuristic: treat small values as fractional shifts (±0.02), else as absolute factors (1.02).
+                let frac = up_v.abs() < 0.5 && down_v.abs() < 0.5;
+                let (hi_v, lo_v) = if frac { (1.0 + up_v, 1.0 + down_v) } else { (up_v, down_v) };
+                out.lo = Some(lo_v);
+                out.hi = Some(hi_v);
+            }
         }
         SystKind::Weight => {
             let up =
@@ -1283,11 +1530,11 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
 }
 
 fn sys_applies(sys: &TrexSystematic, region_name: &str, sample_name: &str) -> bool {
-    if !sys.samples.iter().any(|s| s == sample_name) {
+    if !sys.samples.iter().any(|s| s == sample_name || s.eq_ignore_ascii_case("all")) {
         return false;
     }
     if let Some(ref regions) = sys.regions {
-        regions.iter().any(|r| r == region_name)
+        regions.iter().any(|r| r == region_name || r.eq_ignore_ascii_case("all"))
     } else {
         true
     }
@@ -1295,7 +1542,7 @@ fn sys_applies(sys: &TrexSystematic, region_name: &str, sample_name: &str) -> bo
 
 fn sample_applies(sample: &TrexSample, region_name: &str) -> bool {
     if let Some(ref regions) = sample.regions {
-        regions.iter().any(|r| r == region_name)
+        regions.iter().any(|r| r == region_name || r.eq_ignore_ascii_case("all"))
     } else {
         true
     }
@@ -2439,5 +2686,174 @@ Selection: x +
         let derived_up = rep.items.iter().find(|x| x.derived && x.key == "WeightUp").expect("derived WeightUp");
         assert!(derived_up.ok, "derived WeightUp should compile, err={:?}", derived_up.error);
         assert!(derived_up.required_branches.iter().any(|b| b == "weight_jes_up"));
+    }
+
+    #[test]
+    fn trex_parser_strips_percent_comments() {
+        let cfg = r#"
+Job: foo
+  MCweight: w1 * w2 % comment
+"#;
+        let (_globals, blocks) = parse_raw(cfg).expect("parse_raw");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, BlockKind::Job);
+        let mcw = last_attr_value(&blocks[0].attrs, "MCweight").unwrap_or_default();
+        assert_eq!(mcw.trim(), "w1 * w2");
+    }
+
+    #[test]
+    fn trex_expr_coverage_normalizes_variable_specs_with_commas() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: "lep_Pt_0/1e3",100,0,1000 % nbins,low,high
+Binning: 0, 1
+Selection: lep_Pt_0 > 0
+"#;
+        let rep = expr_coverage_from_str(cfg).expect("expr coverage");
+        let var = rep
+            .items
+            .iter()
+            .find(|x| x.block_kind.as_deref() == Some("Region") && x.role == "variable")
+            .expect("variable item");
+        assert_eq!(var.expr, "lep_Pt_0/1e3");
+        assert!(var.ok, "normalized variable should compile, err={:?}", var.error);
+    }
+
+    #[test]
+    fn trex_region_parses_uniform_binning_from_variable_spec() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: "x",4,0,2
+Selection: x > 0
+
+Sample: s
+File: tests/fixtures/simple_tree.root
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.regions.len(), 1);
+        assert_eq!(parsed.regions[0].name, "SR");
+        assert_eq!(parsed.regions[0].variable, "x");
+        assert_eq!(parsed.regions[0].binning.len(), 5);
+        assert!((parsed.regions[0].binning[0] - 0.0).abs() < 1e-12);
+        assert!((parsed.regions[0].binning[4] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn trex_sample_accepts_ntuplefile_and_mcweight_aliases() {
+        let cfg = r#"
+ReadFrom: NTUP
+NtupleName: reco
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+Type: SIGNAL
+NtupleFile: prediction.root
+MCweight: w_mc
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.tree_name.as_deref(), Some("reco"));
+        assert_eq!(parsed.samples.len(), 1);
+        assert_eq!(parsed.samples[0].name, "sig");
+        assert_eq!(parsed.samples[0].file, std::path::PathBuf::from("prediction.root"));
+        assert_eq!(parsed.samples[0].weight.as_deref(), Some("w_mc"));
+    }
+
+    #[test]
+    fn trex_skips_unsupported_systematic_types_in_best_effort_parse() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+
+Systematic: lumi
+Type: OVERALL
+OverallUp: 0.02
+OverallDown: -0.02
+Samples: all
+
+Systematic: jes
+Type: HISTO
+Samples: sig
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.systematics.len(), 1, "expected unsupported HISTO sys to be skipped");
+        let sys = &parsed.systematics[0];
+        assert_eq!(sys.name, "lumi");
+        assert_eq!(sys.kind, SystKind::Norm);
+        assert_eq!(sys.samples, vec!["all".to_string()]);
+        assert!((sys.hi.unwrap_or(0.0) - 1.02).abs() < 1e-12);
+        assert!((sys.lo.unwrap_or(0.0) - 0.98).abs() < 1e-12);
+    }
+
+    #[test]
+    fn trex_normfactor_sample_attr_backcompat_is_supported() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+NormFactor: mu
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.samples.len(), 1);
+        assert!(
+            parsed.samples[0]
+                .modifiers
+                .iter()
+                .any(|m| matches!(m, NtupleModifier::NormFactor { name } if name == "mu")),
+            "expected sample-level NormFactor modifier"
+        );
+    }
+
+    #[test]
+    fn trex_normfactor_block_applies_modifier_to_target_samples() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+Selection: x > 0
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+
+NormFactor: SigXsecOverSM
+Samples: sig
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.samples.len(), 1);
+        assert!(
+            parsed.samples[0]
+                .modifiers
+                .iter()
+                .any(|m| matches!(m, NtupleModifier::NormFactor { name } if name == "SigXsecOverSM")),
+            "expected NormFactor block to attach modifier"
+        );
     }
 }

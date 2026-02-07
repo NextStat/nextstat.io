@@ -213,6 +213,14 @@ fn read_tobjarray_branches(r: &mut RBuffer) -> Result<Vec<BranchInfo>> {
                     r.set_pos(obj_end);
                 }
             },
+            Some((ref class_name, obj_end)) if class_name == "TBranchElement" => {
+                match read_tbranch_element(r, obj_end) {
+                    Ok(subs) => branches.extend(subs),
+                    Err(_) => {
+                        r.set_pos(obj_end);
+                    }
+                }
+            }
             Some((class_name, obj_end)) => {
                 // Unknown branch type — try to read as TBranch
                 log::debug!("skipping unknown branch class: {}", class_name);
@@ -241,8 +249,43 @@ fn skip_tobjarray(r: &mut RBuffer) -> Result<()> {
 
 // ── TBranch parsing ────────────────────────────────────────────
 
-/// Read a single TBranch from the buffer.
-fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
+/// Intermediate representation of TBranch base-class fields.
+/// Used by both `read_tbranch()` and `read_tbranch_element()`.
+struct TBranchFields {
+    name: String,
+    leaf_type: Option<LeafType>,
+    entry_offset_len: i32,
+    entries: u64,
+    basket_bytes: Vec<u32>,
+    basket_entry: Vec<u64>,
+    basket_seek: Vec<u64>,
+    n_baskets: usize,
+    sub_branches: Vec<BranchInfo>,
+    /// Absolute end position of this TBranch object in the buffer.
+    branch_end: usize,
+}
+
+impl TBranchFields {
+    fn into_branch_info(self) -> BranchInfo {
+        BranchInfo {
+            name: self.name,
+            leaf_type: self.leaf_type.unwrap_or(LeafType::F64),
+            entry_offset_len: self.entry_offset_len.max(0) as usize,
+            entries: self.entries,
+            basket_bytes: self.basket_bytes,
+            basket_entry: self.basket_entry,
+            basket_seek: self.basket_seek,
+            n_baskets: self.n_baskets,
+        }
+    }
+}
+
+/// Read TBranch base-class fields from the buffer.
+///
+/// If `recurse_sub` is true, sub-branches (fBranches TObjArray) are recursively
+/// parsed; otherwise they are skipped. This controls whether we collect
+/// sub-branches for TBranchElement (split vector\<T\>) or skip them for plain TBranch.
+fn read_tbranch_base(r: &mut RBuffer, recurse_sub: bool) -> Result<TBranchFields> {
     let (branch_ver, branch_end) = r.read_version()?;
     let branch_end = branch_end
         .ok_or_else(|| RootError::Deserialization("TBranch missing byte count".into()))?;
@@ -278,7 +321,12 @@ fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
     let _zip_bytes = r.read_i64()?; // fZipBytes
 
     // fBranches: TObjArray of sub-branches
-    skip_tobjarray(r)?;
+    let sub_branches = if recurse_sub {
+        read_tobjarray_branches(r)?
+    } else {
+        skip_tobjarray(r)?;
+        Vec::new()
+    };
 
     // fLeaves: TObjArray of TLeaf
     let leaf_type = read_tobjarray_leaves(r)?;
@@ -320,24 +368,56 @@ fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
         }
     }
 
-    // Skip to end of branch
-    if branch_end > r.pos() {
-        r.set_pos(branch_end);
-    }
-
-    // Determine leaf type (default to F64 if no leaves found)
-    let leaf = leaf_type.unwrap_or(LeafType::F64);
-
-    Ok(BranchInfo {
+    Ok(TBranchFields {
         name,
-        leaf_type: leaf,
-        entry_offset_len: entry_offset_len.max(0) as usize,
+        leaf_type,
+        entry_offset_len,
         entries,
         basket_bytes,
         basket_entry,
         basket_seek,
         n_baskets,
+        sub_branches,
+        branch_end,
     })
+}
+
+/// Read a single TBranch from the buffer.
+fn read_tbranch(r: &mut RBuffer) -> Result<BranchInfo> {
+    let fields = read_tbranch_base(r, false)?;
+    // Skip any trailing bytes we didn't parse (e.g. fFileName in some versions)
+    if fields.branch_end > r.pos() {
+        r.set_pos(fields.branch_end);
+    }
+    Ok(fields.into_branch_info())
+}
+
+/// Read a TBranchElement from the buffer.
+///
+/// TBranchElement extends TBranch with additional fields (fClassName, fParentName,
+/// fClonesName, fCheckSum, fClassVersion, fID, fType, fStreamerType, fMaximum,
+/// fBranchCount, fBranchCount2). For vector\<T\> branches, the data is stored in
+/// sub-branches when the split level > 0.
+///
+/// Returns a Vec\<BranchInfo\> — either the sub-branches (split case) or a single
+/// branch info (unsplit / leaf case).
+fn read_tbranch_element(r: &mut RBuffer, element_end: usize) -> Result<Vec<BranchInfo>> {
+    // TBranchElement version header
+    let (_elem_ver, _elem_end) = r.read_version()?;
+
+    // TBranch base fields with sub-branch recursion
+    let fields = read_tbranch_base(r, true)?;
+
+    // Skip TBranchElement-specific fields to element_end
+    r.set_pos(element_end);
+
+    // If has sub-branches → return them (split vector<T>)
+    // Otherwise → return self as leaf
+    if !fields.sub_branches.is_empty() {
+        Ok(fields.sub_branches)
+    } else {
+        Ok(vec![fields.into_branch_info()])
+    }
 }
 
 // ── TLeaf parsing ──────────────────────────────────────────────

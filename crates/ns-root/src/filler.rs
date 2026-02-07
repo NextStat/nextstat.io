@@ -246,11 +246,16 @@ fn find_bin(edges: &[f64], val: f64) -> Option<usize> {
 }
 
 /// Evaluate a compiled expression using column data.
+///
+/// Automatically switches to chunked evaluation for large datasets
+/// to limit peak memory usage from intermediate vectors.
 fn eval_expr_columns(
     expr: &CompiledExpr,
     columns: &HashMap<String, Vec<f64>>,
     n_entries: usize,
 ) -> Result<Vec<f64>> {
+    use crate::expr::DEFAULT_CHUNK_SIZE;
+
     let cols: Vec<&[f64]> = expr
         .required_branches
         .iter()
@@ -268,7 +273,11 @@ fn eval_expr_columns(
         return Ok(vec![val; n_entries]);
     }
 
-    Ok(expr.eval_bulk(&cols))
+    if n_entries > DEFAULT_CHUNK_SIZE * 2 {
+        Ok(expr.eval_bulk_chunked(&cols, DEFAULT_CHUNK_SIZE))
+    } else {
+        Ok(expr.eval_bulk(&cols))
+    }
 }
 
 #[cfg(test)]

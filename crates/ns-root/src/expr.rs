@@ -115,9 +115,15 @@ enum Instr {
     Atan2,
     Min,
     Max,
+    /// Mask-select: pops else, then, mask. result[i] = mask[i] > 0 ? then[i] : else[i].
+    Select,
     /// Jump to absolute instruction index if condition (popped) is <= 0.
+    /// Reserved for future short-circuit &&/|| — not currently emitted.
+    #[allow(dead_code)]
     Jz(usize),
     /// Unconditional jump to absolute instruction index.
+    /// Reserved for future short-circuit &&/|| — not currently emitted.
+    #[allow(dead_code)]
     Jmp(usize),
 }
 
@@ -182,7 +188,35 @@ impl CompiledExpr {
         }
         eval_bytecode_bulk(&self.bytecode, columns)
     }
+
+    /// Evaluate the expression in chunks to limit peak memory usage.
+    ///
+    /// For large datasets (>100M entries), vectorized evaluation allocates
+    /// full-length intermediate vectors. This method processes `chunk_size`
+    /// rows at a time, keeping peak memory bounded to ~`chunk_size * n_intermediates`.
+    ///
+    /// Results are bitwise-identical to `eval_bulk`.
+    pub fn eval_bulk_chunked(&self, columns: &[&[f64]], chunk_size: usize) -> Vec<f64> {
+        let n = columns.first().map(|c| c.len()).unwrap_or(0);
+        if n <= chunk_size {
+            return self.eval_bulk(columns);
+        }
+
+        let mut out = Vec::with_capacity(n);
+        let mut offset = 0;
+        while offset < n {
+            let end = (offset + chunk_size).min(n);
+            let chunk_cols: Vec<&[f64]> = columns.iter().map(|c| &c[offset..end]).collect();
+            let chunk_result = eval_bytecode_bulk(&self.bytecode, &chunk_cols);
+            out.extend_from_slice(&chunk_result);
+            offset = end;
+        }
+        out
+    }
 }
+
+/// Default chunk size for automatic chunked evaluation (64K rows).
+pub const DEFAULT_CHUNK_SIZE: usize = 65536;
 
 // ── Evaluation ─────────────────────────────────────────────────
 
@@ -327,17 +361,10 @@ fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
             });
         }
         Expr::Ternary(c, t, f) => {
-            compile_bytecode(input, c, out)?;
-            let jz_pos = out.len();
-            out.push(Instr::Jz(usize::MAX));
-            compile_bytecode(input, t, out)?;
-            let jmp_pos = out.len();
-            out.push(Instr::Jmp(usize::MAX));
-            let else_ip = out.len();
-            out[jz_pos] = Instr::Jz(else_ip);
-            compile_bytecode(input, f, out)?;
-            let end_ip = out.len();
-            out[jmp_pos] = Instr::Jmp(end_ip);
+            compile_bytecode(input, c, out)?;  // mask
+            compile_bytecode(input, t, out)?;  // then_val
+            compile_bytecode(input, f, out)?;  // else_val
+            out.push(Instr::Select);
         }
         Expr::Call(func, args) => {
             for a in args {
@@ -430,6 +457,12 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             Instr::Atan2 => bin2(&mut stack, |a, b| a.atan2(b)),
             Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
             Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
+            Instr::Select => {
+                let else_val = stack.pop().unwrap();
+                let then_val = stack.pop().unwrap();
+                let mask = stack.pop().unwrap();
+                stack.push(if mask > 0.0 { then_val } else { else_val });
+            }
             Instr::Jz(target) => {
                 let c = stack.pop().unwrap();
                 if c <= 0.0 {
@@ -532,6 +565,12 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 Instr::Atan2 => bin2(&mut stack, |a, b| a.atan2(b)),
                 Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
                 Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
+                Instr::Select => {
+                    let else_val = stack.pop().unwrap();
+                    let then_val = stack.pop().unwrap();
+                    let mask = stack.pop().unwrap();
+                    stack.push(if mask > 0.0 { then_val } else { else_val });
+                }
                 Instr::Jz(target) => {
                     let c = stack.pop().unwrap();
                     if c <= 0.0 {
@@ -682,6 +721,33 @@ impl<'a> BulkEvalState<'a> {
                     }
                     Slot::Owned(i)
                 }
+            }
+        }
+    }
+
+    fn read_at(&self, slot: &Slot<'a>, i: usize) -> f64 {
+        match *slot {
+            Slot::Scalar(v) => v,
+            Slot::Col(c) => c[i],
+            Slot::Owned(idx) => self.arena[idx][i],
+        }
+    }
+
+    fn select(&mut self, mask: Slot<'a>, then_val: Slot<'a>, else_val: Slot<'a>) -> Slot<'a> {
+        match (mask, then_val, else_val) {
+            (Slot::Scalar(m), Slot::Scalar(t), Slot::Scalar(e)) => {
+                Slot::Scalar(if m > 0.0 { t } else { e })
+            }
+            _ => {
+                let mut out = Vec::with_capacity(self.n);
+                for i in 0..self.n {
+                    let m = self.read_at(&mask, i);
+                    let t = self.read_at(&then_val, i);
+                    let e = self.read_at(&else_val, i);
+                    out.push(if m > 0.0 { t } else { e });
+                }
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
             }
         }
     }
@@ -852,6 +918,13 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
                 let b = st.pop();
                 let a = st.pop();
                 let r = st.binary(a, b, |x, y| x.max(y));
+                st.push(r);
+            }
+            Instr::Select => {
+                let e = st.pop();
+                let t = st.pop();
+                let m = st.pop();
+                let r = st.select(m, t, e);
                 st.push(r);
             }
             Instr::Jz(_) | Instr::Jmp(_) => unreachable!("control flow handled by row-wise path"),
@@ -1684,6 +1757,97 @@ mod tests {
     fn indexing_is_rewritten_into_a_scalar_branch_name() {
         let e = CompiledExpr::compile("jet_pt[0] > 0").unwrap();
         assert_eq!(e.required_branches, vec!["jet_pt[0]".to_string()]);
+    }
+
+    #[test]
+    fn ternary_uses_vectorized_path() {
+        let e = CompiledExpr::compile("a > 0 ? a : -a").unwrap();
+        // Ternary now compiles to Select, not Jz/Jmp → no control flow
+        assert!(!bytecode_has_control_flow(&e.bytecode));
+
+        // Verify vectorized eval produces correct results
+        let a = [-3.0, -1.0, 0.0, 1.0, 5.0];
+        let got = e.eval_bulk(&[&a]);
+        assert_eq!(got, vec![3.0, 1.0, 0.0, 1.0, 5.0]);
+    }
+
+    #[test]
+    fn select_all_scalar_combination() {
+        // All three operands constant → Scalar×3 path
+        let e = CompiledExpr::compile("1 > 0 ? 42 : 99").unwrap();
+        assert!(!bytecode_has_control_flow(&e.bytecode));
+        assert_eq!(e.eval_row(&[]), 42.0);
+
+        let e = CompiledExpr::compile("0 > 1 ? 42 : 99").unwrap();
+        assert_eq!(e.eval_row(&[]), 99.0);
+    }
+
+    #[test]
+    fn select_mixed_col_scalar() {
+        // mask=Col, then=Scalar, else=Scalar
+        let e = CompiledExpr::compile("a > 0 ? 10 : 20").unwrap();
+        assert!(!bytecode_has_control_flow(&e.bytecode));
+        let a = [1.0, -1.0, 2.0, -2.0];
+        let got = e.eval_bulk(&[&a]);
+        assert_eq!(got, vec![10.0, 20.0, 10.0, 20.0]);
+    }
+
+    #[test]
+    fn select_col_col_col() {
+        // mask=Col, then=Col, else=Col
+        let e = CompiledExpr::compile("a > b ? a : b").unwrap();
+        assert!(!bytecode_has_control_flow(&e.bytecode));
+        let a = [1.0, 5.0, 3.0];
+        let b = [4.0, 2.0, 3.0];
+        let got = e.eval_bulk(&[&a, &b]);
+        // a>b: [false, true, false] → [4.0, 5.0, 3.0]
+        assert_eq!(got, vec![4.0, 5.0, 3.0]);
+    }
+
+    #[test]
+    fn chunked_matches_bulk() {
+        let exprs = [
+            "a + b * 2",
+            "sqrt(abs(a)) + max(a, b)",
+            "a > 0 ? a : -a",
+            "(a > 0 && b > 0) ? pow(a, 2) : min(a, b)",
+        ];
+
+        let n = 200_000usize;
+        let mut state = 987654321u64;
+        let mut a = vec![0.0f64; n];
+        let mut b = vec![0.0f64; n];
+        for i in 0..n {
+            a[i] = rand_f64(&mut state);
+            b[i] = rand_f64(&mut state);
+        }
+
+        for src in exprs {
+            let e = CompiledExpr::compile(src).unwrap();
+            let mut cols: Vec<&[f64]> = Vec::new();
+            for name in &e.required_branches {
+                match name.as_str() {
+                    "a" => cols.push(&a),
+                    "b" => cols.push(&b),
+                    other => panic!("unexpected branch: {other}"),
+                }
+            }
+
+            let full = e.eval_bulk(&cols);
+            // Use a small chunk size (1000) to exercise boundary conditions
+            let chunked = e.eval_bulk_chunked(&cols, 1000);
+
+            assert_eq!(full.len(), chunked.len(), "length mismatch for {src}");
+            for i in 0..full.len() {
+                assert!(
+                    full[i] == chunked[i]
+                        || (full[i].is_nan() && chunked[i].is_nan()),
+                    "value mismatch at i={i} for {src}: full={} chunked={}",
+                    full[i],
+                    chunked[i]
+                );
+            }
+        }
     }
 
     #[test]

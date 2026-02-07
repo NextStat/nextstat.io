@@ -14,25 +14,42 @@ struct Corpus {
 }
 
 #[test]
-fn fccfitter_corpus_compiles() {
-    let path = repo_root().join("tests/fixtures/trex_expr_corpus/fccfitter_exprs.json");
-    let text = std::fs::read_to_string(&path).expect("read fccfitter_exprs.json");
-    let corpus: Corpus = serde_json::from_str(&text).expect("parse fccfitter_exprs.json");
-    assert_eq!(corpus.schema_version, "trex_expr_corpus_v0");
+fn trex_expr_corpora_compile() {
+    let dir = repo_root().join("tests/fixtures/trex_expr_corpus");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .expect("read trex_expr_corpus dir")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.file_name().and_then(|s| s.to_str()).unwrap_or("").ends_with("_exprs.json"))
+        .collect();
+    files.sort();
+    assert!(!files.is_empty(), "expected at least one *_exprs.json under {}", dir.display());
 
-    let mut failures: Vec<(String, String)> = Vec::new();
-    for expr in corpus.expressions {
-        match CompiledExpr::compile(&expr) {
-            Ok(_) => {}
-            Err(e) => failures.push((expr, e.to_string())),
+    let mut failures: Vec<(String, String, String)> = Vec::new();
+    for path in files {
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("read {}", path.display()));
+        let corpus: Corpus =
+            serde_json::from_str(&text).unwrap_or_else(|_| panic!("parse {}", path.display()));
+        assert_eq!(
+            corpus.schema_version,
+            "trex_expr_corpus_v0",
+            "unexpected schema_version in {}",
+            path.display()
+        );
+
+        for expr in corpus.expressions {
+            match CompiledExpr::compile(&expr) {
+                Ok(_) => {}
+                Err(e) => failures.push((path.display().to_string(), expr, e.to_string())),
+            }
         }
     }
 
     if !failures.is_empty() {
         let mut msg = String::new();
         msg.push_str(&format!("{} expression(s) failed to compile:\n", failures.len()));
-        for (expr, err) in failures {
-            msg.push_str(&format!("- {expr}\n  {err}\n"));
+        for (path, expr, err) in failures {
+            msg.push_str(&format!("- [{path}] {expr}\n  {err}\n"));
         }
         panic!("{msg}");
     }

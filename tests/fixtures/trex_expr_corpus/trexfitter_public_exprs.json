@@ -1,0 +1,86 @@
+{
+  "schema_version": "trex_expr_corpus_v0",
+  "sources": [
+    {
+      "name": "drkevinbarends/TRexFitter",
+      "repo": "drkevinbarends/TRexFitter",
+      "ref": "main",
+      "raw_base": "https://raw.githubusercontent.com/drkevinbarends/TRexFitter/main/",
+      "files": [
+        "configs/kinematicDistributionsConfig.trf",
+        "configs/tWZ3LConfig.trf",
+        "configs/tWZ4LConfig.trf"
+      ]
+    },
+    {
+      "name": "kyungeonchoi/ServiceXforTRExFitter",
+      "repo": "kyungeonchoi/ServiceXforTRExFitter",
+      "ref": "master",
+      "raw_base": "https://raw.githubusercontent.com/kyungeonchoi/ServiceXforTRExFitter/master/",
+      "files": [
+        "config/example.config"
+      ]
+    },
+    {
+      "name": "alexander-held/TRExFitter-config-translation",
+      "repo": "alexander-held/TRExFitter-config-translation",
+      "ref": "master",
+      "raw_base": "https://raw.githubusercontent.com/alexander-held/TRExFitter-config-translation/master/",
+      "files": [
+        "input/minimal_example.config"
+      ]
+    }
+  ],
+  "expressions": [
+    "((lumi * xSection)/sumWeights_NOSYS) * weight_mc_NOSYS * weight_beamspot * weight_pileup_NOSYS * weight_jvt_effSF_NOSYS * weight_ftag_effSF_GN2v01_Continuous_NOSYS * globalTriggerEffSF_NOSYS * weight_leptonSF_tight_NOSYS",
+    "(jet_pt>200 && jet_pt<800)",
+    "1",
+    "HT_NOSYS",
+    "XXX_3l_SELECTION",
+    "XXX_MCWEIGHT",
+    "XXX_TRIGGER_SELECTION && XXX_lep_tightStrng && nJets_OR==1",
+    "ZCandidateFlag_NOSYS",
+    "ZCandidates_NOSYS",
+    "differenceMassOSSFFlag_NOSYS",
+    "el_el_deltaR_NOSYS",
+    "el_eta",
+    "el_mu_deltaR_NOSYS",
+    "el_pt_GeV_NOSYS",
+    "eventTruthFlavour_NOSYS==0",
+    "eventTruthFlavour_NOSYS==4",
+    "eventTruthFlavour_NOSYS==5",
+    "extractMassOSSF_NOSYS",
+    "jet0_eta_NOSYS",
+    "jet0_pt_NOSYS",
+    "jet_el_deltaR_NOSYS",
+    "jet_eta",
+    "jet_flavor==2 && XXX_3l_SELECTION",
+    "jet_jet_deltaR_NOSYS",
+    "jet_mu_deltaR_NOSYS",
+    "jet_pt",
+    "jet_pt_GeV_NOSYS",
+    "lep0_eta_NOSYS",
+    "lep0_pt_NOSYS",
+    "lep1_eta_NOSYS",
+    "lep1_pt_NOSYS",
+    "lep2_eta_NOSYS",
+    "lep2_pt_NOSYS",
+    "lep3_eta_NOSYS",
+    "lep3_pt_NOSYS",
+    "lep_Pt_0/1e3",
+    "lep_sum_charge_NOSYS",
+    "mu_eta",
+    "mu_mu_deltaR_NOSYS",
+    "mu_pt_GeV_NOSYS",
+    "nBjets_NOSYS",
+    "nJets_NOSYS",
+    "nJets_OR==1 && nJets_OR_DL1r_60==1 && tZ_score_test < XXX_tZcut",
+    "nJets_OR==1 && nJets_OR_DL1r_60==1 && tZ_score_test > XXX_tZcut",
+    "nZCandidates_NOSYS",
+    "scale_varRdown/totalEventsWeighted",
+    "scale_varRup/totalEventsWeighted",
+    "signalRegionType_NOSYS",
+    "tZ_score_test",
+    "weight"
+  ]
+}

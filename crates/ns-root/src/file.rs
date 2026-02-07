@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::branch_reader::BranchReader;
+use crate::branch_reader::{BranchReader, JaggedCol};
 use crate::datasource::DataSource;
 use crate::decompress::decompress;
 use crate::directory::Directory;
@@ -326,6 +326,12 @@ impl RootFile {
             .find_branch(branch)
             .ok_or_else(|| RootError::BranchNotFound(branch.to_string()))?;
         Ok(BranchReader::new(&self.data, info, self.header.is_large))
+    }
+
+    /// Read a branch as a jagged (variable-length) column.
+    pub fn branch_data_jagged(&self, tree: &Tree, branch: &str) -> Result<JaggedCol> {
+        let reader = self.branch_reader(tree, branch)?;
+        reader.as_jagged_f64()
     }
 
     /// Convenience: read all entries from a branch as `f64`.

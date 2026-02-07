@@ -45,3 +45,24 @@ fn read_indexed_fixed_array_branch_materializes_scalar_columns() {
     assert_eq!(eig1, expected.eig_1);
     assert_eq!(eig3, expected.eig_3);
 }
+
+#[test]
+fn fixed_array_oor_returns_default() {
+    let path = fixture_path("fixed_array_tree.root");
+    if !path.exists() {
+        eprintln!(
+            "Fixture not found: run tests/fixtures/generate_root_fixtures.py (fixed_array_tree)"
+        );
+        return;
+    }
+
+    let expected = load_expected();
+
+    let f = RootFile::open(&path).expect("failed to open ROOT file");
+    let tree = f.get_tree("events").expect("failed to get tree 'events'");
+
+    // eig is a 4-element fixed array; eig[10] is OOR and should return 0.0 for all entries
+    let eig10 = f.branch_data(&tree, "eig[10]").expect("eig[10] OOR should return Ok, not Err");
+    assert_eq!(eig10.len(), expected.n_entries);
+    assert!(eig10.iter().all(|&v| v == 0.0), "OOR fixed-array access should yield 0.0");
+}
