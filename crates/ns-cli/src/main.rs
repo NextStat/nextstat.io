@@ -342,6 +342,12 @@ enum Commands {
         /// Make JSON output deterministic (stable ordering; normalize timestamps/timings).
         #[arg(long, default_value_t = false)]
         deterministic: bool,
+
+        /// Regions/channels for which observed data should be suppressed in report artifacts (comma-separated).
+        ///
+        /// Intended for SR blinding workflows: the report will omit data points/tables for these regions.
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        blind_regions: Vec<String>,
     },
 
     /// Visualization artifacts (plot-friendly JSON)
@@ -985,6 +991,7 @@ fn main() -> Result<()> {
             uncertainty_grouping,
             threads,
             deterministic,
+            blind_regions,
         } => cmd_report(
             &input,
             &histfactory_xml,
@@ -1000,6 +1007,7 @@ fn main() -> Result<()> {
             uncertainty_grouping.as_str(),
             threads,
             deterministic,
+            &blind_regions,
         ),
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
@@ -1404,6 +1412,7 @@ fn cmd_run_legacy(
         cfg.uncertainty_grouping.as_str(),
         cfg.threads,
         cfg.deterministic,
+        &[],
     )?;
 
     if let Some(dir) = bundle {
@@ -1544,6 +1553,7 @@ fn cmd_run_spec_v0(
             report.uncertainty_grouping.as_str(),
             plan.threads,
             deterministic,
+            &spec.execution.report.blind_regions,
         )?;
     }
 
@@ -2095,7 +2105,7 @@ fn write_yields_tables(
             ch.channel_name,
             "data",
             "DATA",
-            ch.data.to_string()
+            if ch.data_is_blinded == Some(true) { String::new() } else { ch.data.to_string() }
         ));
     }
     std::fs::write(out_dir.join("yields.csv"), csv)?;
@@ -2124,7 +2134,10 @@ fn write_yields_tables(
             ch.total_prefit.to_string(),
             ch.total_postfit.to_string()
         ));
-        tex.push_str(&format!("Data & {} & \\\\\n", ch.data.to_string()));
+        tex.push_str(&format!(
+            "Data & {} & \\\\\n",
+            if ch.data_is_blinded == Some(true) { "\\textit{blinded}".to_string() } else { ch.data.to_string() }
+        ));
         tex.push_str("\\bottomrule\n");
         tex.push_str("\\end{tabular}\n\n");
     }
@@ -3583,6 +3596,7 @@ fn cmd_report(
     uncertainty_grouping: &str,
     threads: usize,
     deterministic: bool,
+    blind_regions: &[String],
 ) -> Result<()> {
     ensure_out_dir(out_dir, overwrite)?;
 
@@ -3683,6 +3697,19 @@ fn cmd_report(
     let bin_edges_by_channel =
         ns_translate::histfactory::bin_edges_by_channel_from_xml(histfactory_xml)?;
 
+    let blinded_set: Option<std::collections::HashSet<String>> = if blind_regions.is_empty() {
+        None
+    } else {
+        Some(
+            blind_regions
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        )
+    };
+    let blinded_ref = blinded_set.as_ref();
+
     let dist_artifact = ns_viz::distributions::distributions_artifact(
         &model,
         &data_by_channel,
@@ -3690,7 +3717,7 @@ fn cmd_report(
         &params_prefit,
         &params_postfit,
         threads,
-        None,
+        blinded_ref,
     )?;
     let mut dist_json = serde_json::to_value(&dist_artifact)?;
     if deterministic {
@@ -3700,7 +3727,7 @@ fn cmd_report(
 
     // Yields
     let yields_artifact =
-        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads, None)?;
+        ns_viz::yields::yields_artifact(&model, &params_prefit, &params_postfit, threads, blinded_ref)?;
     let mut yields_json = serde_json::to_value(&yields_artifact)?;
     if deterministic {
         yields_json = normalize_json_for_determinism(yields_json);

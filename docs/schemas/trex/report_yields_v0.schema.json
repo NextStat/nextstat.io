@@ -52,6 +52,10 @@
       "properties": {
         "channel_name": { "type": "string" },
         "data": { "type": "number" },
+        "data_is_blinded": {
+          "type": "boolean",
+          "description": "If true, `data` is intentionally suppressed (blinded) and may be set to 0.0."
+        },
         "samples": {
           "type": "array",
           "items": { "$ref": "#/$defs/sample_yield" }
@@ -62,4 +66,3 @@
     }
   }
 }
-

@@ -98,6 +98,10 @@
           "description": "Explicit data error model used to produce data_yerr_lo/hi.",
           "enum": ["garwood_poisson_68", "sqrt_y_fallback"]
         },
+        "data_is_blinded": {
+          "type": "boolean",
+          "description": "If true, data_* and ratio_* are intentionally suppressed (blinded)."
+        },
         "samples": {
           "type": "array",
           "items": { "$ref": "#/$defs/sample_series" }

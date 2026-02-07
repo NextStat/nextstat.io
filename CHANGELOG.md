@@ -203,7 +203,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Parametric survival models with right-censoring (`ns-inference::survival`):
   Exponential (`log_rate`), Weibull (`log_k`, `log_lambda`), LogNormal AFT (`mu`, `log_sigma`).
 - Cox Proportional Hazards model with Efron/Breslow ties handling (`CoxPhModel`).
-- Python surface: `nextstat.survival.exponential()`, `.weibull()`, `.lognormal_aft()`, `.cox_ph()`.
+- **High-level Python API** (`nextstat.survival`): callable builders with `.fit(...)` method.
+  - `nextstat.survival.exponential.fit(times, events, x)` → `ParametricSurvivalFit`
+  - `nextstat.survival.weibull.fit(times, events, x)` → `ParametricSurvivalFit`
+  - `nextstat.survival.lognormal_aft.fit(times, events, x)` → `ParametricSurvivalFit`
+  - `nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True)` → `CoxPhFit`
+- **Cox PH robust SE + CI**: sandwich covariance estimator (I⁻¹ B I⁻¹), tie-aware score residuals.
+  - `CoxPhFit.robust_se`, `.robust_cov`, `.confint(robust=True)`, `.hazard_ratio_confint(robust=True)`.
+  - Hessian via finite-diff of `grad_nll`; B via sum of outer-product score residuals (Breslow/Efron).
 - All survival models integrate with `nextstat.fit()` and `nextstat.sample()`.
 
 **Pack B: Longitudinal / Mixed-Effects**

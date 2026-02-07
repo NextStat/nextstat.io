@@ -161,8 +161,18 @@ def _validate_spec(spec: Any, schema: Any) -> None:
         raise SystemExit("\n".join(lines))
 
 
-def _materialize_spec(spec: dict[str, Any], *, work_dir: Path) -> dict[str, Any]:
+def _materialize_spec(spec: dict[str, Any], *, spec_dir: Path, work_dir: Path) -> dict[str, Any]:
     out = json.loads(json.dumps(spec))
+    spec_base = spec_dir.resolve()
+
+    def resolve(p: Any) -> Any:
+        if not isinstance(p, str) or not p:
+            return p
+        pp = Path(p)
+        if pp.is_absolute():
+            return str(pp)
+        return str((spec_base / pp).resolve())
+
     exec_cfg = out.setdefault("execution", {})
     exec_cfg.setdefault("import", {})
     exec_cfg.setdefault("fit", {})
@@ -182,6 +192,33 @@ def _materialize_spec(spec: dict[str, Any], *, work_dir: Path) -> dict[str, Any]
         render["pdf"] = str(work_dir / "report" / "report.pdf")
         render["svg_dir"] = str(work_dir / "report" / "svg")
         render.setdefault("python", None)
+
+    # Resolve input/report paths to absolute (relative to the baseline effective spec dir).
+    inputs = out.get("inputs") or {}
+    if isinstance(inputs, dict):
+        mode = inputs.get("mode")
+        if mode == "histfactory_xml":
+            hf = inputs.get("histfactory") or {}
+            if isinstance(hf, dict):
+                hf["export_dir"] = resolve(hf.get("export_dir"))
+                hf["combination_xml"] = resolve(hf.get("combination_xml"))
+        elif mode == "trex_config_txt":
+            tc = inputs.get("trex_config_txt") or {}
+            if isinstance(tc, dict):
+                tc["config_path"] = resolve(tc.get("config_path"))
+                tc["base_dir"] = resolve(tc.get("base_dir"))
+        elif mode == "trex_config_yaml":
+            ty = inputs.get("trex_config_yaml") or {}
+            if isinstance(ty, dict):
+                ty["base_dir"] = resolve(ty.get("base_dir"))
+        elif mode == "workspace_json":
+            wj = inputs.get("workspace_json") or {}
+            if isinstance(wj, dict):
+                wj["path"] = resolve(wj.get("path"))
+
+    rep = exec_cfg.get("report") or {}
+    if isinstance(rep, dict):
+        rep["histfactory_xml"] = resolve(rep.get("histfactory_xml"))
 
     return out
 
@@ -313,7 +350,7 @@ def main() -> int:
     work_dir = repo / "tmp" / "trex_analysis_spec_compare" / stamp
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    effective = _materialize_spec(spec0, work_dir=work_dir)
+    effective = _materialize_spec(spec0, spec_dir=spec_effective_path.parent, work_dir=work_dir)
     eff_path = work_dir / "analysis_spec_effective.yaml"
     eff_path.write_text(yaml.safe_dump(effective, sort_keys=False))
 

@@ -67,6 +67,9 @@ pub mod gpu_batch;
 /// GPU-accelerated single-model fit path (requires `cuda` feature + NVIDIA GPU).
 #[cfg(feature = "cuda")]
 pub mod gpu_single;
+/// Metal GPU-accelerated batch toy fitting (requires `metal` feature + Apple Silicon).
+#[cfg(feature = "metal")]
+pub mod metal_batch;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -102,6 +105,8 @@ pub use batch::{fit_toys_batch, is_accelerate_available};
 pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]
 pub use gpu_single::{GpuSession, is_cuda_single_available};
+#[cfg(feature = "metal")]
+pub use metal_batch::{fit_toys_batch_metal, is_metal_available};
 pub use transforms::ParameterTransform;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;

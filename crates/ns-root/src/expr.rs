@@ -387,10 +387,13 @@ fn bin2(stack: &mut Vec<f64>, f: impl FnOnce(f64, f64) -> f64) {
 }
 
 fn eval_bytecode_bulk(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
-    // NOTE: keep the legacy row-wise bytecode interpreter for:
-    // - correctness reference in tests
-    // - expressions with control flow (ternary compiles to Jz/Jmp)
-    eval_bytecode_bulk_rowwise(code, cols)
+    // Vectorized path operates on whole columns (Scalar/Col/Owned slots).
+    // Falls back to row-wise for expressions with control flow (ternary → Jz/Jmp).
+    if bytecode_has_control_flow(code) {
+        eval_bytecode_bulk_rowwise(code, cols)
+    } else {
+        eval_bytecode_bulk_vectorized(code, cols)
+    }
 }
 
 fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
@@ -468,261 +471,281 @@ fn bytecode_has_control_flow(code: &[Instr]) -> bool {
     code.iter().any(|i| matches!(i, Instr::Jz(_) | Instr::Jmp(_)))
 }
 
+/// Slot-based value for the vectorized bulk evaluator.
+/// `Scalar` = broadcast constant, `Col` = borrowed column, `Owned` = arena index.
 #[derive(Debug, Clone, Copy)]
-enum BulkValue<'a> {
+enum Slot<'a> {
     Scalar(f64),
     Col(&'a [f64]),
-    Owned(&'a mut Vec<f64>),
+    Owned(usize),
 }
 
-fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
-    let n = cols.first().map(|c| c.len()).unwrap_or(0);
-    if n == 0 {
-        // Either constant expression or empty input.
-        return Vec::new();
-    }
+/// Evaluation state for the vectorized bytecode interpreter.
+/// All mutable state lives in one struct so methods can borrow `&mut self` cleanly.
+struct BulkEvalState<'a> {
+    arena: Vec<Vec<f64>>,
+    slots: Vec<Slot<'a>>,
+    stack: Vec<usize>,
+    n: usize,
+}
 
-    // We store owned temporaries in a side arena so stack values can point to them mutably.
-    let mut arena: Vec<Vec<f64>> = Vec::new();
-    let mut stack: Vec<usize> = Vec::with_capacity(16);
-
-    #[derive(Debug)]
-    enum Slot<'a> {
-        Scalar(f64),
-        Col(&'a [f64]),
-        Owned(usize), // index into arena
-    }
-    let mut slots: Vec<Slot<'_>> = Vec::with_capacity(16);
-
-    let mut push_slot = |s: Slot<'_>| {
-        slots.push(s);
-        stack.push(slots.len() - 1);
-    };
-
-    let mut pop_slot = || -> Slot<'_> {
-        let idx = stack.pop().unwrap();
-        // We keep `slots` around; indices remain valid.
-        // Clone is cheap for Scalar/Col and for Owned we copy the index.
-        match &slots[idx] {
-            Slot::Scalar(v) => Slot::Scalar(*v),
-            Slot::Col(c) => Slot::Col(*c),
-            Slot::Owned(i) => Slot::Owned(*i),
+impl<'a> BulkEvalState<'a> {
+    fn new(n: usize) -> Self {
+        Self {
+            arena: Vec::new(),
+            slots: Vec::with_capacity(16),
+            stack: Vec::with_capacity(16),
+            n,
         }
-    };
+    }
 
-    let mut unary_in_place = |v: Slot<'_>, f: fn(f64) -> f64| -> Slot<'_> {
+    fn push(&mut self, s: Slot<'a>) {
+        self.slots.push(s);
+        self.stack.push(self.slots.len() - 1);
+    }
+
+    fn pop(&mut self) -> Slot<'a> {
+        let idx = self.stack.pop().unwrap();
+        self.slots[idx]
+    }
+
+    fn unary(&mut self, v: Slot<'a>, f: fn(f64) -> f64) -> Slot<'a> {
         match v {
             Slot::Scalar(a) => Slot::Scalar(f(a)),
             Slot::Col(c) => {
-                let mut out = Vec::with_capacity(n);
+                let mut out = Vec::with_capacity(self.n);
                 out.extend(c.iter().map(|&x| f(x)));
-                arena.push(out);
-                Slot::Owned(arena.len() - 1)
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
             }
             Slot::Owned(i) => {
-                let out = &mut arena[i];
-                for x in out.iter_mut() {
+                for x in self.arena[i].iter_mut() {
                     *x = f(*x);
                 }
                 Slot::Owned(i)
             }
         }
-    };
+    }
 
-    let mut bin_in_place =
-        |a: Slot<'_>, b: Slot<'_>, f: fn(f64, f64) -> f64| -> Slot<'_> {
-            match (a, b) {
-                (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(f(x, y)),
-                (Slot::Owned(i), Slot::Scalar(y)) => {
-                    let out = &mut arena[i];
-                    for x in out.iter_mut() {
-                        *x = f(*x, y);
-                    }
-                    Slot::Owned(i)
+    fn binary(&mut self, a: Slot<'a>, b: Slot<'a>, f: fn(f64, f64) -> f64) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(f(x, y)),
+            (Slot::Owned(i), Slot::Scalar(y)) => {
+                for x in self.arena[i].iter_mut() {
+                    *x = f(*x, y);
                 }
-                (Slot::Scalar(x), Slot::Owned(i)) => {
-                    let out = &mut arena[i];
-                    for y in out.iter_mut() {
-                        *y = f(x, *y);
-                    }
-                    Slot::Owned(i)
-                }
-                (Slot::Owned(i), Slot::Col(c)) => {
-                    let out = &mut arena[i];
-                    for (x, &y) in out.iter_mut().zip(c.iter()) {
-                        *x = f(*x, y);
-                    }
-                    Slot::Owned(i)
-                }
-                (Slot::Col(c), Slot::Owned(i)) => {
-                    let out = &mut arena[i];
-                    for (&x, y) in c.iter().zip(out.iter_mut()) {
-                        *y = f(x, *y);
-                    }
-                    Slot::Owned(i)
-                }
-                (Slot::Col(a), Slot::Scalar(y)) => {
-                    let mut out = Vec::with_capacity(n);
-                    out.extend(a.iter().map(|&x| f(x, y)));
-                    arena.push(out);
-                    Slot::Owned(arena.len() - 1)
-                }
-                (Slot::Scalar(x), Slot::Col(b)) => {
-                    let mut out = Vec::with_capacity(n);
-                    out.extend(b.iter().map(|&y| f(x, y)));
-                    arena.push(out);
-                    Slot::Owned(arena.len() - 1)
-                }
-                (Slot::Col(a), Slot::Col(b)) => {
-                    let mut out = Vec::with_capacity(n);
-                    out.extend(a.iter().zip(b.iter()).map(|(&x, &y)| f(x, y)));
-                    arena.push(out);
-                    Slot::Owned(arena.len() - 1)
-                }
-                (Slot::Owned(i), Slot::Owned(j)) => {
-                    // Reuse left operand storage.
-                    if i == j {
-                        // Degenerate: op(x, x)
-                        let out = &mut arena[i];
-                        for x in out.iter_mut() {
-                            *x = f(*x, *x);
-                        }
-                        return Slot::Owned(i);
-                    }
-                    let rhs = arena[j].clone();
-                    let out = &mut arena[i];
-                    for (x, y) in out.iter_mut().zip(rhs.iter()) {
-                        *x = f(*x, *y);
-                    }
-                    Slot::Owned(i)
-                }
+                Slot::Owned(i)
             }
-        };
+            (Slot::Scalar(x), Slot::Owned(i)) => {
+                for y in self.arena[i].iter_mut() {
+                    *y = f(x, *y);
+                }
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) => {
+                for (x, &y) in self.arena[i].iter_mut().zip(c.iter()) {
+                    *x = f(*x, y);
+                }
+                Slot::Owned(i)
+            }
+            (Slot::Col(c), Slot::Owned(i)) => {
+                for (&x, y) in c.iter().zip(self.arena[i].iter_mut()) {
+                    *y = f(x, *y);
+                }
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) => {
+                let mut out = Vec::with_capacity(self.n);
+                out.extend(ca.iter().map(|&x| f(x, y)));
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Scalar(x), Slot::Col(cb)) => {
+                let mut out = Vec::with_capacity(self.n);
+                out.extend(cb.iter().map(|&y| f(x, y)));
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = Vec::with_capacity(self.n);
+                out.extend(ca.iter().zip(cb.iter()).map(|(&x, &y)| f(x, y)));
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    for x in self.arena[i].iter_mut() {
+                        *x = f(*x, *x);
+                    }
+                    return Slot::Owned(i);
+                }
+                let rhs = self.arena[j].clone();
+                for (x, y) in self.arena[i].iter_mut().zip(rhs.iter()) {
+                    *x = f(*x, *y);
+                }
+                Slot::Owned(i)
+            }
+        }
+    }
+
+    fn finish(mut self) -> Vec<f64> {
+        let v = self.pop();
+        match v {
+            Slot::Scalar(x) => vec![x; self.n],
+            Slot::Col(c) => c.to_vec(),
+            Slot::Owned(i) => self.arena.swap_remove(i),
+        }
+    }
+}
+
+fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
+    let n = cols.first().map(|c| c.len()).unwrap_or(0);
+    if n == 0 {
+        return Vec::new();
+    }
 
     // Control-flow is not supported in the vectorized path.
     debug_assert!(!bytecode_has_control_flow(code));
 
+    let mut st = BulkEvalState::new(n);
+
     for instr in code {
         match *instr {
-            Instr::Const(v) => push_slot(Slot::Scalar(v)),
-            Instr::Load(i) => push_slot(Slot::Col(cols[i])),
+            Instr::Const(v) => st.push(Slot::Scalar(v)),
+            Instr::Load(i) => st.push(Slot::Col(cols[i])),
             Instr::Neg => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, |x| -x));
+                let a = st.pop();
+                let r = st.unary(a, |x| -x);
+                st.push(r);
             }
             Instr::Not => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, |x| if x > 0.0 { 0.0 } else { 1.0 }));
+                let a = st.pop();
+                let r = st.unary(a, |x| if x > 0.0 { 0.0 } else { 1.0 });
+                st.push(r);
             }
             Instr::Abs => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, f64::abs));
+                let a = st.pop();
+                let r = st.unary(a, f64::abs);
+                st.push(r);
             }
             Instr::Sqrt => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, f64::sqrt));
+                let a = st.pop();
+                let r = st.unary(a, f64::sqrt);
+                st.push(r);
             }
             Instr::Log => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, f64::ln));
+                let a = st.pop();
+                let r = st.unary(a, f64::ln);
+                st.push(r);
             }
             Instr::Exp => {
-                let a = pop_slot();
-                push_slot(unary_in_place(a, f64::exp));
+                let a = st.pop();
+                let r = st.unary(a, f64::exp);
+                st.push(r);
             }
             Instr::Add => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x + y));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x + y);
+                st.push(r);
             }
             Instr::Sub => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x - y));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x - y);
+                st.push(r);
             }
             Instr::Mul => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x * y));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x * y);
+                st.push(r);
             }
             Instr::Div => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x / y));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x / y);
+                st.push(r);
             }
             Instr::Eq => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| {
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| {
                     if (x - y).abs() < f64::EPSILON { 1.0 } else { 0.0 }
-                }));
+                });
+                st.push(r);
             }
             Instr::Ne => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| {
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| {
                     if (x - y).abs() >= f64::EPSILON { 1.0 } else { 0.0 }
-                }));
+                });
+                st.push(r);
             }
             Instr::Lt => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| if x < y { 1.0 } else { 0.0 }));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| if x < y { 1.0 } else { 0.0 });
+                st.push(r);
             }
             Instr::Le => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| if x <= y { 1.0 } else { 0.0 }));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| if x <= y { 1.0 } else { 0.0 });
+                st.push(r);
             }
             Instr::Gt => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| if x > y { 1.0 } else { 0.0 }));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| if x > y { 1.0 } else { 0.0 });
+                st.push(r);
             }
             Instr::Ge => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| if x >= y { 1.0 } else { 0.0 }));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| if x >= y { 1.0 } else { 0.0 });
+                st.push(r);
             }
             Instr::And => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| {
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| {
                     if x > 0.0 && y > 0.0 { 1.0 } else { 0.0 }
-                }));
+                });
+                st.push(r);
             }
             Instr::Or => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| {
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| {
                     if x > 0.0 || y > 0.0 { 1.0 } else { 0.0 }
-                }));
+                });
+                st.push(r);
             }
             Instr::Pow => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x.powf(y)));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x.powf(y));
+                st.push(r);
             }
             Instr::Min => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x.min(y)));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x.min(y));
+                st.push(r);
             }
             Instr::Max => {
-                let b = pop_slot();
-                let a = pop_slot();
-                push_slot(bin_in_place(a, b, |x, y| x.max(y)));
+                let b = st.pop();
+                let a = st.pop();
+                let r = st.binary(a, b, |x, y| x.max(y));
+                st.push(r);
             }
             Instr::Jz(_) | Instr::Jmp(_) => unreachable!("control flow handled by row-wise path"),
         }
     }
 
-    let v = pop_slot();
-    match v {
-        Slot::Scalar(x) => vec![x; n],
-        Slot::Col(c) => c.to_vec(),
-        Slot::Owned(i) => arena.swap_remove(i),
-    }
+    st.finish()
 }
 
 // ── Tokenizer ──────────────────────────────────────────────────

@@ -9,6 +9,7 @@ Baseline scope:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from bisect import bisect_right
 import math
 from statistics import NormalDist
 from typing import Any, Callable, List, Optional, Sequence
@@ -33,6 +34,12 @@ def _as_1d_bool_list(x: Any, *, name: str) -> List[bool]:
     if not isinstance(x, Sequence) or isinstance(x, (bytes, str)):
         raise TypeError(f"{name} must be a 1D sequence (or numpy array).")
     return [bool(v) for v in x]
+
+def _as_1d_int_list(x: Any, *, name: str) -> List[int]:
+    x = _tolist(x)
+    if not isinstance(x, Sequence) or isinstance(x, (bytes, str)):
+        raise TypeError(f"{name} must be a 1D sequence (or numpy array).")
+    return [int(v) for v in x]
 
 def _as_2d_float_list(x: Any, *, name: str) -> List[List[float]]:
     x = _tolist(x)
@@ -114,6 +121,7 @@ def _cox_score_residual_outer(
     x: list[list[float]],
     beta: list[float],
     ties: str,
+    groups: Optional[list[int]] = None,
 ) -> list[list[float]]:
     # Score residual outer products for the Cox partial likelihood at beta_hat.
     #
@@ -135,6 +143,7 @@ def _cox_score_residual_outer(
     times_s = [float(times[i]) for i in order]
     events_s = [bool(events[i]) for i in order]
     x_s = [[float(v) for v in x[i]] for i in order]
+    groups_s = None if groups is None else [int(groups[i]) for i in order]
 
     group_starts = [0]
     for i in range(1, n):
@@ -150,6 +159,7 @@ def _cox_score_residual_outer(
 
     b: list[list[float]] = [[0.0] * p for _ in range(p)]
     min_tail = 1e-300
+    cluster_sums: Optional[dict[int, list[float]]] = {} if groups_s is not None else None
 
     for g, start in enumerate(group_starts):
         end = group_starts[g + 1] if g + 1 < len(group_starts) else n
@@ -197,11 +207,106 @@ def _cox_score_residual_outer(
         # Each event gets residual r_i = x_i - xbar (xbar is per-time, tie-adjusted).
         for i in event_idx:
             r = [float(x_s[i][j]) - float(xbar[j]) for j in range(p)]
-            for a in range(p):
-                for c in range(p):
-                    b[a][c] += float(r[a]) * float(r[c])
+            if cluster_sums is not None and groups_s is not None:
+                gid = int(groups_s[i])
+                acc = cluster_sums.get(gid)
+                if acc is None:
+                    cluster_sums[gid] = r
+                else:
+                    for j in range(p):
+                        acc[j] += float(r[j])
+            else:
+                for a in range(p):
+                    for c in range(p):
+                        b[a][c] += float(r[a]) * float(r[c])
 
-    return b
+    if cluster_sums is None:
+        return b
+
+    # Cluster-robust B = sum_g (sum_{i in g} r_i)(sum_{i in g} r_i)^T
+    b2: list[list[float]] = [[0.0] * p for _ in range(p)]
+    for v in cluster_sums.values():
+        for a in range(p):
+            for c in range(p):
+                b2[a][c] += float(v[a]) * float(v[c])
+    return b2
+
+
+def _cox_baseline_cumhaz(
+    *,
+    times: list[float],
+    events: list[bool],
+    x: list[list[float]],
+    beta: list[float],
+    ties: str,
+) -> tuple[list[float], list[float]]:
+    # Baseline cumulative hazard H0(t) for the Cox model using Breslow/Efron increments.
+    # Returns (event_times_sorted_asc, cumhaz_sorted_asc). Only event times (with >=1 event) are included.
+    n = len(times)
+    if n == 0:
+        return [], []
+    p = len(x[0]) if x else 0
+    if p == 0:
+        return [], []
+
+    order = sorted(range(n), key=lambda i: float(times[i]), reverse=True)
+    times_s = [float(times[i]) for i in order]
+    events_s = [bool(events[i]) for i in order]
+    x_s = [[float(v) for v in x[i]] for i in order]
+
+    group_starts = [0]
+    for i in range(1, n):
+        if times_s[i] != times_s[i - 1]:
+            group_starts.append(i)
+
+    eta = [sum(float(xij) * float(bj) for xij, bj in zip(xi, beta)) for xi in x_s]
+    w = [_exp_clamped(e) for e in eta]
+
+    risk0 = 0.0
+    # risk1 not needed for baseline hazard, only risk0 and d0.
+    min_tail = 1e-300
+
+    deltas_by_time: dict[float, float] = {}
+
+    for g, start in enumerate(group_starts):
+        end = group_starts[g + 1] if g + 1 < len(group_starts) else n
+
+        for i in range(start, end):
+            risk0 += float(w[i])
+
+        m = 0
+        d0 = 0.0
+        for i in range(start, end):
+            if events_s[i]:
+                m += 1
+                d0 += float(w[i])
+        if m == 0:
+            continue
+
+        t0 = float(times_s[start])
+        if ties == "breslow":
+            deltas_by_time[t0] = deltas_by_time.get(t0, 0.0) + float(m) / max(float(risk0), min_tail)
+        elif ties == "efron":
+            mf = float(m)
+            inc = 0.0
+            for r in range(m):
+                frac = float(r) / mf
+                denom = max(float(risk0) - frac * float(d0), min_tail)
+                inc += 1.0 / denom
+            deltas_by_time[t0] = deltas_by_time.get(t0, 0.0) + float(inc)
+        else:
+            raise ValueError("ties must be 'breslow' or 'efron'")
+
+    if not deltas_by_time:
+        return [], []
+
+    ts = sorted(deltas_by_time.keys())
+    cum = 0.0
+    hs: list[float] = []
+    for t0 in ts:
+        cum += float(deltas_by_time[t0])
+        hs.append(float(cum))
+    return ts, hs
 
 
 @dataclass(frozen=True)
@@ -214,6 +319,9 @@ class CoxPhFit:
     se: Optional[List[float]]
     robust_cov: Optional[List[List[float]]]
     robust_se: Optional[List[float]]
+    robust_kind: Optional[str]
+    baseline_times: Optional[List[float]]
+    baseline_cumhaz: Optional[List[float]]
 
     def hazard_ratios(self) -> List[float]:
         return [math.exp(float(b)) for b in self.coef]
@@ -233,6 +341,48 @@ class CoxPhFit:
     def hazard_ratio_confint(self, *, level: float = 0.95, robust: bool = False) -> List[tuple[float, float]]:
         cis = self.confint(level=level, robust=robust)
         return [(math.exp(lo), math.exp(hi)) for lo, hi in cis]
+
+    def predict_cumhaz(
+        self,
+        x: Sequence[Sequence[float]],
+        *,
+        times: Optional[Sequence[float]] = None,
+    ) -> List[List[float]]:
+        if self.baseline_times is None or self.baseline_cumhaz is None:
+            raise ValueError("baseline cumulative hazard not available (fit was called with compute_baseline=False)")
+
+        x2 = _as_2d_float_list(x, name="x")
+        bt = [float(v) for v in self.baseline_times]
+        bh = [float(v) for v in self.baseline_cumhaz]
+        if len(bt) != len(bh):
+            raise ValueError("baseline arrays length mismatch")
+
+        # Evaluate H0(t) as a right-continuous step function.
+        if times is None:
+            grid = bt
+        else:
+            grid = [float(v) for v in times]
+
+        out: List[List[float]] = []
+        for xr in x2:
+            eta = sum(float(a) * float(b) for a, b in zip(xr, self.coef))
+            mult = math.exp(float(eta))
+            row: List[float] = []
+            for t0 in grid:
+                k = bisect_right(bt, float(t0)) - 1
+                h0 = 0.0 if k < 0 else float(bh[k])
+                row.append(float(h0) * float(mult))
+            out.append(row)
+        return out
+
+    def predict_survival(
+        self,
+        x: Sequence[Sequence[float]],
+        *,
+        times: Optional[Sequence[float]] = None,
+    ) -> List[List[float]]:
+        hs = self.predict_cumhaz(x, times=times)
+        return [[math.exp(-float(h)) for h in row] for row in hs]
 
 
 @dataclass(frozen=True)
@@ -324,12 +474,17 @@ def _fit_cox_ph(
     ties: str = "efron",
     robust: bool = True,
     compute_cov: bool = True,
+    groups: Optional[Any] = None,
+    compute_baseline: bool = True,
 ) -> CoxPhFit:
     import nextstat
 
     t = _as_1d_float_list(times, name="times")
     e = _as_1d_bool_list(events, name="events")
     xx = _as_2d_float_list(x, name="x")
+    g = None if groups is None else _as_1d_int_list(groups, name="groups")
+    if g is not None and len(g) != len(t):
+        raise ValueError("groups must have length n")
     m = nextstat.CoxPhModel(t, e, xx, ties=str(ties))
     r = nextstat.fit(m)
     beta = [float(v) for v in r.bestfit]
@@ -338,6 +493,9 @@ def _fit_cox_ph(
     se = None
     robust_cov = None
     robust_se = None
+    robust_kind = None
+    baseline_times = None
+    baseline_cumhaz = None
 
     if compute_cov:
         h = _hessian_from_grad(lambda b: [float(v) for v in m.grad_nll(b)], beta)
@@ -345,10 +503,18 @@ def _fit_cox_ph(
         se = [math.sqrt(max(float(cov[i][i]), 0.0)) for i in range(len(beta))]
 
         if robust:
-            bmat = _cox_score_residual_outer(times=t, events=e, x=xx, beta=beta, ties=str(ties))
+            bmat = _cox_score_residual_outer(
+                times=t, events=e, x=xx, beta=beta, ties=str(ties), groups=g
+            )
             # cov_robust = I^{-1} B I^{-1}
             robust_cov = _mat_mul(_mat_mul(cov, bmat), cov)
             robust_se = [math.sqrt(max(float(robust_cov[i][i]), 0.0)) for i in range(len(beta))]
+            robust_kind = "cluster" if g is not None else "hc0"
+
+    if compute_baseline:
+        baseline_times, baseline_cumhaz = _cox_baseline_cumhaz(
+            times=t, events=e, x=xx, beta=beta, ties=str(ties)
+        )
 
     return CoxPhFit(
         coef=beta,
@@ -359,6 +525,9 @@ def _fit_cox_ph(
         se=se,
         robust_cov=robust_cov,
         robust_se=robust_se,
+        robust_kind=robust_kind,
+        baseline_times=baseline_times,
+        baseline_cumhaz=baseline_cumhaz,
     )
 
 

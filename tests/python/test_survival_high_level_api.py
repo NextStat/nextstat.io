@@ -30,12 +30,20 @@ def test_survival_high_level_cox_fit_smoke_and_ci() -> None:
         [0.5, 0.5],
     ]
 
-    fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True)
+    fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, compute_baseline=True)
     assert isinstance(fit.coef, list) and len(fit.coef) == 2
     assert fit.se is not None and len(fit.se) == 2
     assert fit.robust_se is not None and len(fit.robust_se) == 2
     assert all(math.isfinite(float(v)) for v in fit.se)
     assert all(math.isfinite(float(v)) for v in fit.robust_se)
+    assert fit.robust_kind in (None, "hc0", "cluster")
+
+    # Baseline survival predictions are step functions in time; smoke-check shape and bounds.
+    s = fit.predict_survival([[0.0, 0.0]])
+    assert len(s) == 1
+    assert len(s[0]) == len(fit.baseline_times)
+    assert all(0.0 < float(v) <= 1.0 for v in s[0])
+    assert all(float(s[0][i + 1]) <= float(s[0][i]) for i in range(len(s[0]) - 1))
 
     cis = fit.confint(level=0.95, robust=False)
     rcis = fit.confint(level=0.95, robust=True)
@@ -62,3 +70,26 @@ def test_survival_high_level_cox_builder_is_callable() -> None:
     m = nextstat.survival.cox_ph(times, events, x, ties="breslow")
     assert m.n_params() == 2
 
+
+def test_survival_cox_cluster_robust_unique_clusters_matches_hc0() -> None:
+    times = [2.0, 1.0, 1.0, 0.5, 0.5, 0.2]
+    events = [True, True, False, True, False, False]
+    x = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, -1.0],
+        [0.0, -1.0],
+        [0.5, 0.5],
+    ]
+    groups = list(range(len(times)))  # each row is its own cluster
+
+    fit_hc0 = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=None)
+    fit_cl = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True, groups=groups)
+
+    assert fit_hc0.robust_kind == "hc0"
+    assert fit_cl.robust_kind == "cluster"
+    assert fit_hc0.robust_se is not None and fit_cl.robust_se is not None
+    assert [float(v) for v in fit_cl.robust_se] == pytest.approx(
+        [float(v) for v in fit_hc0.robust_se], rel=0.0, abs=1e-10
+    )

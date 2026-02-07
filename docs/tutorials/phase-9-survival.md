@@ -67,6 +67,10 @@ print("hazard ratios:", fit.hazard_ratios())
 # Wald confidence intervals.
 print("beta CI:", fit.confint(level=0.95, robust=True))
 print("HR CI:", fit.hazard_ratio_confint(level=0.95, robust=True))
+
+# Baseline survival curve (for a given covariate vector x0).
+grid = [0.0, 0.5, 1.0, 2.0]
+print("S(t | x0):", fit.predict_survival([[0.0, 0.0]], times=grid)[0])
 ```
 
 ### Choosing a ties policy
@@ -123,6 +127,18 @@ If you have `statsmodels` installed, NextStat includes an optional parity test a
 ```bash
 PYTHONPATH=bindings/ns-py/python ./.venv/bin/python -m pytest -q \
   tests/python/test_survival_cox_statsmodels_parity.py
+```
+
+### Cluster-robust SE (optional)
+
+If your data has correlated observations within groups (e.g. subjects, sites), you can request
+cluster-robust (sandwich) standard errors by passing `groups=...` to the fit helper. This does
+not change the MLE coefficients; it changes the uncertainty estimate.
+
+```python
+fit = nextstat.survival.cox_ph.fit(times, events, x, ties="efron", groups=subject_ids, robust=True)
+print("robust kind:", fit.robust_kind)  # "cluster"
+print("cluster-robust SE:", fit.robust_se)
 ```
 
 ## Notes and limitations (baseline)

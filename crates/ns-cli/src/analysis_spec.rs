@@ -134,10 +134,19 @@ pub struct TrexConfigYamlInputs {
     pub read_from: String,
     #[serde(default)]
     pub base_dir: Option<PathBuf>,
-    pub tree_name: String,
-    pub measurement: String,
-    pub poi: String,
+    #[serde(default)]
+    pub histo_path: Option<PathBuf>,
+    #[serde(default)]
+    pub combination_xml: Option<PathBuf>,
+    #[serde(default)]
+    pub tree_name: Option<String>,
+    #[serde(default)]
+    pub measurement: Option<String>,
+    #[serde(default)]
+    pub poi: Option<String>,
+    #[serde(default)]
     pub regions: Vec<TrexYamlRegion>,
+    #[serde(default)]
     pub samples: Vec<TrexYamlSample>,
     #[serde(default)]
     pub systematics: Vec<TrexYamlSystematic>,
@@ -291,6 +300,8 @@ pub struct ReportStep {
     pub render: RenderStep,
     pub skip_uncertainty: bool,
     pub uncertainty_grouping: String,
+    #[serde(default)]
+    pub blind_regions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -360,171 +371,209 @@ fn fmt_list(values: &[String]) -> String {
 
 fn render_trex_config_yaml_to_txt(cfg: &TrexConfigYamlInputs) -> Result<String> {
     let read_from = cfg.read_from.trim().to_ascii_uppercase();
-    if read_from != "NTUP" {
-        anyhow::bail!(
-            "inputs.trex_config_yaml.read_from must be NTUP in v0, got={}",
-            cfg.read_from
-        );
-    }
-    if cfg.regions.is_empty() {
-        anyhow::bail!("inputs.trex_config_yaml.regions must be non-empty");
-    }
-    if cfg.samples.is_empty() {
-        anyhow::bail!("inputs.trex_config_yaml.samples must be non-empty");
-    }
+    match read_from.as_str() {
+        "NTUP" => {
+            if cfg.regions.is_empty() {
+                anyhow::bail!("inputs.trex_config_yaml.regions must be non-empty");
+            }
+            if cfg.samples.is_empty() {
+                anyhow::bail!("inputs.trex_config_yaml.samples must be non-empty");
+            }
 
-    let region_names: Vec<String> = cfg.regions.iter().map(|r| r.name.clone()).collect();
-    if let Some(dup) = contains_duplicates(&region_names) {
-        anyhow::bail!("duplicate region name: {dup}");
-    }
-    let sample_names: Vec<String> = cfg.samples.iter().map(|s| s.name.clone()).collect();
-    if let Some(dup) = contains_duplicates(&sample_names) {
-        anyhow::bail!("duplicate sample name: {dup}");
-    }
+            let region_names: Vec<String> = cfg.regions.iter().map(|r| r.name.clone()).collect();
+            if let Some(dup) = contains_duplicates(&region_names) {
+                anyhow::bail!("duplicate region name: {dup}");
+            }
+            let sample_names: Vec<String> = cfg.samples.iter().map(|s| s.name.clone()).collect();
+            if let Some(dup) = contains_duplicates(&sample_names) {
+                anyhow::bail!("duplicate sample name: {dup}");
+            }
 
-    for r in &cfg.regions {
-        if r.binning_edges.len() < 2 {
-            anyhow::bail!("region '{}' binning_edges must have >= 2 edges", r.name);
-        }
-    }
-
-    let mut out = String::new();
-    out.push_str(&format!("ReadFrom: {read_from}\n"));
-    out.push_str(&format!("TreeName: {}\n", quote_if_needed(&cfg.tree_name)?));
-    out.push_str(&format!(
-        "Measurement: {}\n",
-        quote_if_needed(&cfg.measurement)?
-    ));
-    out.push_str(&format!("POI: {}\n\n", quote_if_needed(&cfg.poi)?));
-
-    for r in &cfg.regions {
-        out.push_str(&format!("Region: {}\n", quote_if_needed(&r.name)?));
-        out.push_str(&format!("Variable: {}\n", r.variable.trim()));
-        out.push_str(&format!("Binning: {}\n", fmt_edges(&r.binning_edges)));
-        if let Some(ref sel) = r.selection {
-            let sel = sel.trim();
-            if !sel.is_empty() {
-                out.push_str(&format!("Selection: {sel}\n"));
-            }
-        }
-        if let Some(ref df) = r.data_file {
-            out.push_str(&format!(
-                "DataFile: {}\n",
-                quote_if_needed(&df.display().to_string())?
-            ));
-            if let Some(ref tn) = r.data_tree_name {
-                out.push_str(&format!("DataTreeName: {}\n", quote_if_needed(tn)?));
-            }
-        }
-        out.push('\n');
-    }
-
-    for s in &cfg.samples {
-        out.push_str(&format!("Sample: {}\n", quote_if_needed(&s.name)?));
-        let kind = match s.kind {
-            TrexYamlSampleKind::Data => "data",
-            TrexYamlSampleKind::Mc => "mc",
-        };
-        out.push_str(&format!("Type: {kind}\n"));
-        out.push_str(&format!(
-            "File: {}\n",
-            quote_if_needed(&s.file.display().to_string())?
-        ));
-        if let Some(ref tn) = s.tree_name {
-            out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
-        }
-        if let Some(ref w) = s.weight {
-            let w = w.trim();
-            if !w.is_empty() {
-                out.push_str(&format!("Weight: {w}\n"));
-            }
-        }
-        if let Some(ref rs) = s.regions {
-            if !rs.is_empty() {
-                out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
-            }
-        }
-        for nf in &s.norm_factors {
-            let nf = nf.trim();
-            if !nf.is_empty() {
-                out.push_str(&format!("NormFactor: {nf}\n"));
-            }
-        }
-        for ns in &s.norm_sys {
-            out.push_str(&format!(
-                "NormSys: {} {} {}\n",
-                ns.name.trim(),
-                ns.lo,
-                ns.hi
-            ));
-        }
-        if s.stat_error {
-            out.push_str("StatError: true\n");
-        }
-        out.push('\n');
-    }
-
-    for sys in &cfg.systematics {
-        if sys.samples.is_empty() {
-            anyhow::bail!("systematic '{}' samples must be non-empty", sys.name);
-        }
-        out.push_str(&format!("Systematic: {}\n", quote_if_needed(&sys.name)?));
-        let t = match sys.kind {
-            TrexYamlSystematicType::Norm => "norm",
-            TrexYamlSystematicType::Weight => "weight",
-            TrexYamlSystematicType::Tree => "tree",
-        };
-        out.push_str(&format!("Type: {t}\n"));
-        out.push_str(&format!("Samples: {}\n", fmt_list(&sys.samples)));
-        if let Some(ref rs) = sys.regions {
-            if !rs.is_empty() {
-                out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
-            }
-        }
-
-        match sys.kind {
-            TrexYamlSystematicType::Norm => {
-                let (Some(lo), Some(hi)) = (sys.lo, sys.hi) else {
-                    anyhow::bail!("systematic '{}' type=norm requires lo and hi", sys.name);
-                };
-                out.push_str(&format!("Lo: {lo}\n"));
-                out.push_str(&format!("Hi: {hi}\n"));
-            }
-            TrexYamlSystematicType::Weight => {
-                let (Some(up), Some(down)) = (&sys.weight_up, &sys.weight_down) else {
-                    anyhow::bail!(
-                        "systematic '{}' type=weight requires weight_up and weight_down",
-                        sys.name
-                    );
-                };
-                out.push_str(&format!("WeightUp: {}\n", up.trim()));
-                out.push_str(&format!("WeightDown: {}\n", down.trim()));
-            }
-            TrexYamlSystematicType::Tree => {
-                let (Some(up), Some(down)) = (&sys.file_up, &sys.file_down) else {
-                    anyhow::bail!(
-                        "systematic '{}' type=tree requires file_up and file_down",
-                        sys.name
-                    );
-                };
-                out.push_str(&format!(
-                    "FileUp: {}\n",
-                    quote_if_needed(&up.display().to_string())?
-                ));
-                out.push_str(&format!(
-                    "FileDown: {}\n",
-                    quote_if_needed(&down.display().to_string())?
-                ));
-                if let Some(ref tn) = sys.tree_name {
-                    out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
+            for r in &cfg.regions {
+                if r.binning_edges.len() < 2 {
+                    anyhow::bail!("region '{}' binning_edges must have >= 2 edges", r.name);
                 }
             }
+
+            let tree_name = cfg.tree_name.as_deref().unwrap_or("events");
+            let measurement = cfg.measurement.as_deref().unwrap_or("meas");
+            let poi = cfg.poi.as_deref().unwrap_or("mu");
+
+            let mut out = String::new();
+            out.push_str(&format!("ReadFrom: {read_from}\n"));
+            out.push_str(&format!("TreeName: {}\n", quote_if_needed(tree_name)?));
+            out.push_str(&format!("Measurement: {}\n", quote_if_needed(measurement)?));
+            out.push_str(&format!("POI: {}\n\n", quote_if_needed(poi)?));
+
+            for r in &cfg.regions {
+                out.push_str(&format!("Region: {}\n", quote_if_needed(&r.name)?));
+                out.push_str(&format!("Variable: {}\n", r.variable.trim()));
+                out.push_str(&format!("Binning: {}\n", fmt_edges(&r.binning_edges)));
+                if let Some(ref sel) = r.selection {
+                    let sel = sel.trim();
+                    if !sel.is_empty() {
+                        out.push_str(&format!("Selection: {sel}\n"));
+                    }
+                }
+                if let Some(ref df) = r.data_file {
+                    out.push_str(&format!(
+                        "DataFile: {}\n",
+                        quote_if_needed(&df.display().to_string())?
+                    ));
+                    if let Some(ref tn) = r.data_tree_name {
+                        out.push_str(&format!("DataTreeName: {}\n", quote_if_needed(tn)?));
+                    }
+                }
+                out.push('\n');
+            }
+
+            for s in &cfg.samples {
+                out.push_str(&format!("Sample: {}\n", quote_if_needed(&s.name)?));
+                let kind = match s.kind {
+                    TrexYamlSampleKind::Data => "data",
+                    TrexYamlSampleKind::Mc => "mc",
+                };
+                out.push_str(&format!("Type: {kind}\n"));
+                out.push_str(&format!(
+                    "File: {}\n",
+                    quote_if_needed(&s.file.display().to_string())?
+                ));
+                if let Some(ref tn) = s.tree_name {
+                    out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
+                }
+                if let Some(ref w) = s.weight {
+                    let w = w.trim();
+                    if !w.is_empty() {
+                        out.push_str(&format!("Weight: {w}\n"));
+                    }
+                }
+                if let Some(ref rs) = s.regions {
+                    if !rs.is_empty() {
+                        out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+                    }
+                }
+                for nf in &s.norm_factors {
+                    let nf = nf.trim();
+                    if !nf.is_empty() {
+                        out.push_str(&format!("NormFactor: {nf}\n"));
+                    }
+                }
+                for ns in &s.norm_sys {
+                    out.push_str(&format!(
+                        "NormSys: {} {} {}\n",
+                        ns.name.trim(),
+                        ns.lo,
+                        ns.hi
+                    ));
+                }
+                if s.stat_error {
+                    out.push_str("StatError: true\n");
+                }
+                out.push('\n');
+            }
+
+            for sys in &cfg.systematics {
+                if sys.samples.is_empty() {
+                    anyhow::bail!("systematic '{}' samples must be non-empty", sys.name);
+                }
+                out.push_str(&format!("Systematic: {}\n", quote_if_needed(&sys.name)?));
+                let t = match sys.kind {
+                    TrexYamlSystematicType::Norm => "norm",
+                    TrexYamlSystematicType::Weight => "weight",
+                    TrexYamlSystematicType::Tree => "tree",
+                };
+                out.push_str(&format!("Type: {t}\n"));
+                out.push_str(&format!("Samples: {}\n", fmt_list(&sys.samples)));
+                if let Some(ref rs) = sys.regions {
+                    if !rs.is_empty() {
+                        out.push_str(&format!("Regions: {}\n", fmt_list(rs)));
+                    }
+                }
+
+                match sys.kind {
+                    TrexYamlSystematicType::Norm => {
+                        let (Some(lo), Some(hi)) = (sys.lo, sys.hi) else {
+                            anyhow::bail!("systematic '{}' type=norm requires lo and hi", sys.name);
+                        };
+                        out.push_str(&format!("Lo: {lo}\n"));
+                        out.push_str(&format!("Hi: {hi}\n"));
+                    }
+                    TrexYamlSystematicType::Weight => {
+                        let (Some(up), Some(down)) = (&sys.weight_up, &sys.weight_down) else {
+                            anyhow::bail!(
+                                "systematic '{}' type=weight requires weight_up and weight_down",
+                                sys.name
+                            );
+                        };
+                        out.push_str(&format!("WeightUp: {}\n", up.trim()));
+                        out.push_str(&format!("WeightDown: {}\n", down.trim()));
+                    }
+                    TrexYamlSystematicType::Tree => {
+                        let (Some(up), Some(down)) = (&sys.file_up, &sys.file_down) else {
+                            anyhow::bail!(
+                                "systematic '{}' type=tree requires file_up and file_down",
+                                sys.name
+                            );
+                        };
+                        out.push_str(&format!(
+                            "FileUp: {}\n",
+                            quote_if_needed(&up.display().to_string())?
+                        ));
+                        out.push_str(&format!(
+                            "FileDown: {}\n",
+                            quote_if_needed(&down.display().to_string())?
+                        ));
+                        if let Some(ref tn) = sys.tree_name {
+                            out.push_str(&format!("TreeName: {}\n", quote_if_needed(tn)?));
+                        }
+                    }
+                }
+
+                out.push('\n');
+            }
+
+            Ok(out)
         }
-
-        out.push('\n');
+        "HIST" => {
+            if cfg.histo_path.is_none() && cfg.combination_xml.is_none() {
+                anyhow::bail!(
+                    "inputs.trex_config_yaml.read_from=HIST requires histo_path or combination_xml"
+                );
+            }
+            let mut out = String::new();
+            out.push_str("ReadFrom: HIST\n");
+            if let Some(ref p) = cfg.histo_path {
+                out.push_str(&format!(
+                    "HistoPath: {}\n",
+                    quote_if_needed(&p.display().to_string())?
+                ));
+            }
+            if let Some(ref p) = cfg.combination_xml {
+                out.push_str(&format!(
+                    "CombinationXml: {}\n",
+                    quote_if_needed(&p.display().to_string())?
+                ));
+            }
+            if let Some(ref m) = cfg.measurement {
+                let m = m.trim();
+                if !m.is_empty() {
+                    out.push_str(&format!("Measurement: {}\n", quote_if_needed(m)?));
+                }
+            }
+            if let Some(ref poi) = cfg.poi {
+                let poi = poi.trim();
+                if !poi.is_empty() {
+                    out.push_str(&format!("POI: {}\n", quote_if_needed(poi)?));
+                }
+            }
+            out.push('\n');
+            Ok(out)
+        }
+        other => anyhow::bail!(
+            "inputs.trex_config_yaml.read_from must be NTUP or HIST in v0, got={}",
+            other
+        ),
     }
-
-    Ok(out)
 }
 
 fn find_combination_xml(export_dir: &Path) -> Result<PathBuf> {

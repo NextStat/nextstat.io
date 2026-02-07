@@ -85,6 +85,7 @@ def _plot_distributions_channel(channel: Mapping[str, Any]):
 
     edges = _as_float_list(channel.get("bin_edges") or [])
     x, w = _centers_and_widths(edges)
+    blinded = bool(channel.get("data_is_blinded") or False)
     data_y = _as_float_list(channel.get("data_y") or [])
     yerr_lo = _as_float_list(channel.get("data_yerr_lo") or [0.0] * len(data_y))
     yerr_hi = _as_float_list(channel.get("data_yerr_hi") or [0.0] * len(data_y))
@@ -110,7 +111,7 @@ def _plot_distributions_channel(channel: Mapping[str, Any]):
         ax.bar(x, y, width=w, bottom=bottom, label=name, align="center", linewidth=0.0, alpha=0.9)
         bottom = [b + yy for b, yy in zip(bottom, y)]
 
-    if len(data_y) == len(x):
+    if (not blinded) and len(data_y) == len(x):
         ax.errorbar(
             x,
             data_y,
@@ -123,6 +124,17 @@ def _plot_distributions_channel(channel: Mapping[str, Any]):
             label="Data",
             zorder=5,
         )
+    if blinded:
+        ax.text(
+            0.98,
+            0.92,
+            "BLINDED",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=10,
+            color="#B91C1C",
+        )
 
     ax.set_ylabel("Events / bin")
     ax.set_title(str(channel.get("channel_name", "channel")))
@@ -131,7 +143,7 @@ def _plot_distributions_channel(channel: Mapping[str, Any]):
     ratio_y = _as_float_list(channel.get("ratio_y") or [])
     ry_lo = _as_float_list(channel.get("ratio_yerr_lo") or [0.0] * len(ratio_y))
     ry_hi = _as_float_list(channel.get("ratio_yerr_hi") or [0.0] * len(ratio_y))
-    if len(ratio_y) == len(x):
+    if (not blinded) and len(ratio_y) == len(x):
         axr.axhline(1.0, color="#6B7280", lw=1.0, ls=":")
         axr.errorbar(
             x,
@@ -208,6 +220,7 @@ def _plot_yields_channel(channel: Mapping[str, Any]):
     import matplotlib.pyplot as plt
 
     ch_name = str(channel.get("channel_name", "channel"))
+    blinded = bool(channel.get("data_is_blinded") or False)
     data = float(channel.get("data", 0.0))
     total_prefit = float(channel.get("total_prefit", 0.0))
     total_postfit = float(channel.get("total_postfit", 0.0))
@@ -223,7 +236,7 @@ def _plot_yields_channel(channel: Mapping[str, Any]):
             ]
         )
     rows.append(["Total", f"{total_prefit:.3g}", f"{total_postfit:.3g}"])
-    rows.append(["Data", f"{data:.3g}", ""])
+    rows.append(["Data", ("blinded" if blinded else f"{data:.3g}"), ""])
 
     fig, ax = plt.subplots(figsize=(7.6, max(2.8, 0.22 * len(rows) + 1.2)))
     ax.axis("off")

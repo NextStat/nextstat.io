@@ -382,7 +382,13 @@
               }
             },
             "skip_uncertainty": { "type": "boolean", "default": false },
-            "uncertainty_grouping": { "type": "string", "enum": ["prefix_1"], "default": "prefix_1" }
+            "uncertainty_grouping": { "type": "string", "enum": ["prefix_1", "category_v1"], "default": "prefix_1" },
+            "blind_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels for which observed data should be suppressed in report artifacts (blinding)."
+            }
           }
         }
       }

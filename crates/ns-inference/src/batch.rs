@@ -110,6 +110,18 @@ pub fn is_cuda_batch_available() -> bool {
     false
 }
 
+/// Check if Metal GPU batch backend is available.
+#[cfg(feature = "metal")]
+pub fn is_metal_batch_available() -> bool {
+    crate::metal_batch::is_metal_available()
+}
+
+/// Check if Metal GPU batch backend is available (always false without feature).
+#[cfg(not(feature = "metal"))]
+pub fn is_metal_batch_available() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
