@@ -129,6 +129,13 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python -m pytest -q \
   tests/python/test_survival_cox_statsmodels_parity.py
 ```
 
+JSON runner (Apex2-style; records skipped if missing deps):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python \
+  tests/apex2_survival_statsmodels_report.py --out tmp/apex2_survival_statsmodels_report.json
+```
+
 ### Cluster-robust SE (optional)
 
 If your data has correlated observations within groups (e.g. subjects, sites), you can request

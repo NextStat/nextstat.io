@@ -1067,6 +1067,166 @@ impl HistFactoryModel {
         Ok(result)
     }
 
+    /// Zero-allocation expected-data evaluation, writing into pre-allocated scratch buffers.
+    ///
+    /// Equivalent to [`expected_data_f64_fast`] but avoids all heap allocation by reusing
+    /// the buffers in `scratch`. The result is written to `scratch.expected[..n_main_bins]`.
+    fn expected_data_f64_fast_into(&self, params: &[f64], scratch: &mut NllScratch) -> Result<()> {
+        use ns_compute::simd::{histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale};
+
+        let mut offset = 0usize;
+
+        for channel in &self.channels {
+            let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+
+            // Reset channel_expected (reuse buffer, no alloc)
+            scratch.channel_expected[..n_bins].fill(0.0);
+
+            for sample in &channel.samples {
+                let sample_nominal = sample.nominal.as_slice();
+                let sample_len = sample_nominal.len();
+
+                // Reset per-sample scratch (reuse buffers, no alloc)
+                scratch.sample_deltas[..sample_len].fill(0.0);
+                scratch.sample_factors[..sample_len].fill(1.0);
+
+                let sd = &mut scratch.sample_deltas[..sample_len];
+                let sf = &mut scratch.sample_factors[..sample_len];
+
+                for modifier in &sample.modifiers {
+                    match modifier {
+                        ModelModifier::NormFactor { param_idx } => {
+                            let norm = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormFactor param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            vec_scale(sf, norm);
+                        }
+                        ModelModifier::ShapeSys { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sf.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeSys gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sf[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            vec_scale(sf, factor);
+                        }
+                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, interp_code } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "HistoSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+
+                            if hi_template.len() == sample_len && lo_template.len() == sample_len {
+                                match interp_code {
+                                    HistoSysInterpCode::Code0 => histosys_code0_delta_accumulate(
+                                        sd, alpha, lo_template, sample_nominal, hi_template,
+                                    ),
+                                    HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
+                                        sd, alpha, lo_template, sample_nominal, hi_template,
+                                    ),
+                                }
+                            } else {
+                                for (bin_idx, delta_slot) in sd.iter_mut().enumerate() {
+                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let delta = match interp_code {
+                                        HistoSysInterpCode::Code0 => histosys_code0_delta(alpha, lo, nom_val, hi),
+                                        HistoSysInterpCode::Code4p => histosys_code4p_delta(alpha, lo, nom_val, hi),
+                                    };
+                                    *delta_slot += delta;
+                                }
+                            }
+                        }
+                        ModelModifier::StatError { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sf.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "StatError gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sf[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::ShapeFactor { param_indices } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sf.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeFactor gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sf[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::Lumi { param_idx } => {
+                            let lumi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "Lumi param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            vec_scale(sf, lumi);
+                        }
+                    }
+                }
+
+                // Combine sample contribution into channel_expected
+                if sample_len == n_bins {
+                    for bin_idx in 0..n_bins {
+                        scratch.channel_expected[bin_idx] +=
+                            (sample_nominal[bin_idx] + sd[bin_idx]) * sf[bin_idx];
+                    }
+                } else {
+                    for bin_idx in 0..n_bins {
+                        let nom = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                        let delta = sd.get(bin_idx).copied().unwrap_or(0.0);
+                        let fac = sf.get(bin_idx).copied().unwrap_or(1.0);
+                        scratch.channel_expected[bin_idx] += (nom + delta) * fac;
+                    }
+                }
+            }
+
+            // Copy channel result into the flat expected buffer (no alloc)
+            scratch.expected[offset..offset + n_bins]
+                .copy_from_slice(&scratch.channel_expected[..n_bins]);
+            offset += n_bins;
+        }
+
+        Ok(())
+    }
+
     /// Expected **main** yields per channel and per sample (workspace order), without auxdata.
     ///
     /// This is the “numbers-first” surface used for TREx-like stacked distributions:
@@ -2440,6 +2600,45 @@ impl HistFactoryModel {
     }
 }
 
+/// Pre-allocated scratch buffers for zero-allocation NLL evaluation.
+///
+/// Created once via [`NllScratch::for_model`] and reused across repeated
+/// [`PreparedModel::nll_reuse`] calls to avoid heap allocation in the hot path.
+pub struct NllScratch {
+    /// Buffer for the full expected-data vector (capacity >= n_main_bins).
+    pub(crate) expected: Vec<f64>,
+    /// Buffer for per-channel expected yields (capacity >= max channel bins).
+    pub(crate) channel_expected: Vec<f64>,
+    /// Buffer for per-sample additive deltas (capacity >= max sample bins).
+    pub(crate) sample_deltas: Vec<f64>,
+    /// Buffer for per-sample multiplicative factors (capacity >= max sample bins).
+    pub(crate) sample_factors: Vec<f64>,
+}
+
+impl NllScratch {
+    /// Allocate scratch buffers sized for `model`.
+    pub fn for_model(model: &HistFactoryModel) -> Self {
+        let n_main_bins: usize = model
+            .channels
+            .iter()
+            .map(|ch| ch.samples.first().map(|s| s.nominal.len()).unwrap_or(0))
+            .sum();
+        let max_bins: usize = model
+            .channels
+            .iter()
+            .map(|ch| ch.samples.first().map(|s| s.nominal.len()).unwrap_or(0))
+            .max()
+            .unwrap_or(0);
+
+        Self {
+            expected: vec![0.0; n_main_bins],
+            channel_expected: vec![0.0; max_bins],
+            sample_deltas: vec![0.0; max_bins],
+            sample_factors: vec![0.0; max_bins],
+        }
+    }
+}
+
 /// Pre-computed model data for fast f64 NLL evaluation.
 ///
 /// Caches observed data, `lgamma(obs+1)`, observation masks, and Gaussian
@@ -2625,6 +2824,118 @@ impl PreparedModel<'_> {
         }
 
         // 5. Gaussian constraints: 0.5 * pull^2 only (constant part pre-computed)
+        for (param_idx, param) in self.model.parameters.iter().enumerate() {
+            if !param.constrained {
+                continue;
+            }
+            if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
+                && width > 0.0
+            {
+                let value = params.get(param_idx).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!(
+                        "Constrained parameter index out of range: idx={} len={}",
+                        param_idx,
+                        params.len()
+                    ))
+                })?;
+                let pull = (value - center) / width;
+                nll += 0.5 * pull * pull;
+            }
+        }
+
+        // 6. Add pre-computed constraint normalization constant
+        nll += self.constraint_const;
+
+        Ok(nll)
+    }
+
+    /// Zero-allocation NLL: writes expected data into `scratch`, then computes Poisson NLL.
+    ///
+    /// Semantically identical to [`nll`] but avoids all heap allocation by reusing
+    /// pre-allocated `scratch` buffers. Use this in tight optimization loops.
+    pub fn nll_reuse(&self, params: &[f64], scratch: &mut NllScratch) -> Result<f64> {
+        // 1. Compute expected data into scratch (zero-alloc)
+        self.model.expected_data_f64_fast_into(params, scratch)?;
+        let expected = &mut scratch.expected[..self.n_main_bins];
+
+        // 1b. NaN/Inf guard
+        if expected.iter().any(|v| !v.is_finite()) {
+            return Ok(f64::INFINITY);
+        }
+
+        // 2. Clamp expected >= 1e-10
+        #[cfg(feature = "accelerate")]
+        if ns_compute::accelerate_enabled() {
+            ns_compute::accelerate::clamp_expected_inplace(expected, 1e-10);
+        } else {
+            for val in expected.iter_mut() {
+                if *val < 1e-10 {
+                    *val = 1e-10;
+                }
+            }
+        }
+        #[cfg(not(feature = "accelerate"))]
+        for val in expected.iter_mut() {
+            if *val < 1e-10 {
+                *val = 1e-10;
+            }
+        }
+
+        // 2b. Apply fit/validation mask
+        if let Some(mask) = self.fit_bin_mask.as_ref() {
+            debug_assert_eq!(mask.len(), expected.len());
+            for (e, &m) in expected.iter_mut().zip(mask.iter()) {
+                if m == 0.0 {
+                    *e = 0.0;
+                }
+            }
+        }
+
+        // 3. Poisson NLL for main bins
+        let mut nll = Self::dispatch_poisson_nll(
+            expected,
+            &self.observed_flat,
+            &self.ln_factorials,
+            &self.obs_mask,
+            self.has_zero_obs,
+            self.n_zero_obs,
+            self.n_main_bins,
+        );
+
+        // 4. Barlow-Beeston auxiliary constraints
+        for channel in &self.model.channels {
+            for constraint in &channel.auxiliary_data {
+                if let Some(sample) = channel.samples.get(constraint.sample_idx)
+                    && let Some(ModelModifier::ShapeSys { param_indices, .. }) =
+                        sample.modifiers.get(constraint.modifier_idx)
+                {
+                    for ((&tau, &obs_aux), &gamma_idx) in constraint
+                        .tau
+                        .iter()
+                        .zip(constraint.observed.iter())
+                        .zip(param_indices.iter())
+                    {
+                        let gamma = params.get(gamma_idx).copied().ok_or_else(|| {
+                            ns_core::Error::Validation(format!(
+                                "ShapeSys gamma index out of range in aux constraint: idx={} len={}",
+                                gamma_idx,
+                                params.len()
+                            ))
+                        })?;
+                        let exp_aux = (gamma * tau).max(1e-10);
+
+                        if obs_aux > 0.0 {
+                            let ln_factorial = Self::ln_factorial_static(obs_aux);
+                            nll += exp_aux - obs_aux * exp_aux.ln() + ln_factorial;
+                        } else {
+                            nll += exp_aux;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Gaussian constraints
         for (param_idx, param) in self.model.parameters.iter().enumerate() {
             if !param.constrained {
                 continue;

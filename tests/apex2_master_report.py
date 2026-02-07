@@ -4,11 +4,13 @@
 This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
   - HistFactory golden (no pyhf runtime): `tests/python/test_pyhf_model_zoo_goldens.py`
+  - survival (Phase 9): `tests/python/test_survival_contract.py` + `tests/python/test_survival_high_level_api.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
   - P6 benchmarks (GLM fit/predict): `tests/apex2_p6_glm_benchmark_report.py` (optional)
   - bias/pulls: `tests/apex2_bias_pulls_report.py` (optional; slow)
   - SBC (NUTS): `tests/apex2_sbc_report.py` (optional; slow)
   - ROOT: `tests/apex2_root_suite_report.py` (runs if prereqs exist, else records skipped)
+  - optional Cox PH parity vs statsmodels: `tests/apex2_survival_statsmodels_report.py` (skipped if missing deps)
 
 Run:
   PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
@@ -112,6 +114,29 @@ def _run_survival_smoke(*, cwd: Path, env: Dict[str, str], deterministic: bool) 
         env=env,
         deterministic=deterministic,
     )
+
+def _run_survival_statsmodels(
+    *, cwd: Path, env: Dict[str, str], out_path: Path, deterministic: bool
+) -> Dict[str, Any]:
+    repo = _repo_root()
+    runner = repo / "tests" / "apex2_survival_statsmodels_report.py"
+    cmd = [sys.executable, str(runner), "--out", str(out_path)]
+    if deterministic:
+        cmd.append("--deterministic")
+    rc, out = _run_json(cmd, cwd=cwd, env=env)
+    rep = _read_json(out_path) if out_path.exists() else None
+    declared = (rep or {}).get("status") if isinstance(rep, dict) else None
+    if declared in ("ok", "fail", "skipped", "error"):
+        status = str(declared)
+    else:
+        status = "ok" if rc == 0 else "fail"
+    return {
+        "status": status,
+        "returncode": int(rc),
+        "stdout_tail": "" if deterministic else out[-4000:],
+        "report_path": str(out_path),
+        "report": rep,
+    }
 
 
 def _max_abs_vec_diff(a: list[float], b: list[float]) -> float:
@@ -401,6 +426,12 @@ def main() -> int:
         action="store_true",
         help="Make JSON output deterministic (stable ordering; omit timestamps/timings).",
     )
+    ap.add_argument(
+        "--survival-statsmodels-out",
+        type=Path,
+        default=Path("tmp/apex2_survival_statsmodels_report.json"),
+        help="Optional Cox PH parity vs statsmodels report JSON output (from tests/apex2_survival_statsmodels_report.py).",
+    )
     ap.add_argument("--pyhf-out", type=Path, default=Path("tmp/apex2_pyhf_report.json"))
     ap.add_argument(
         "--p6-glm-bench-out",
@@ -565,6 +596,7 @@ def main() -> int:
         "pyhf": None,
         "histfactory_golden": None,
         "survival": None,
+        "survival_statsmodels": None,
         "regression_golden": None,
         "nuts_quality": None,
         "nuts_quality_report": None,
@@ -619,6 +651,13 @@ def main() -> int:
     # ------------------------------------------------------------------
     report["survival"] = _run_survival_smoke(
         cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
+
+    report["survival_statsmodels"] = _run_survival_statsmodels(
+        cwd=cwd,
+        env=env,
+        out_path=args.survival_statsmodels_out,
+        deterministic=bool(args.deterministic),
     )
 
     # ------------------------------------------------------------------
@@ -954,6 +993,7 @@ def main() -> int:
     # Exit code policy: fail (rc=2) on any non-skipped runner failure.
     pyhf_ok = (rc_pyhf == 0)
     survival_ok_or_skipped = report["survival"]["status"] in ("ok", "skipped")
+    survival_sm_ok_or_skipped = report["survival_statsmodels"]["status"] in ("ok", "skipped")
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
@@ -966,6 +1006,8 @@ def main() -> int:
     if not pyhf_ok:
         return 2
     if not survival_ok_or_skipped:
+        return 2
+    if not survival_sm_ok_or_skipped:
         return 2
     if not reg_ok_or_skipped:
         return 2
