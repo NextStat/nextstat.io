@@ -13,6 +13,7 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 
 HEP / HistFactory:
 - `nextstat validate --config analysis.yaml`
+- `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
 - `nextstat import trex-config --config trex.txt --output workspace.json`
 - `nextstat fit --input workspace.json`

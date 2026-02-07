@@ -10,3 +10,6 @@ mod combination;
 
 pub use builder::bin_edges_by_channel_from_xml;
 pub use builder::from_xml;
+
+#[cfg(test)]
+mod tests;

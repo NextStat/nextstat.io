@@ -12,6 +12,35 @@ mod analysis_spec;
 mod report;
 mod run;
 
+const SCHEMA_ANALYSIS_SPEC_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/analysis_spec_v0.schema.json"
+));
+const SCHEMA_BASELINE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/baseline_v0.schema.json"
+));
+const SCHEMA_REPORT_DISTRIBUTIONS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/report_distributions_v0.schema.json"
+));
+const SCHEMA_REPORT_PULLS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/report_pulls_v0.schema.json"
+));
+const SCHEMA_REPORT_CORR_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/report_corr_v0.schema.json"
+));
+const SCHEMA_REPORT_YIELDS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/report_yields_v0.schema.json"
+));
+const SCHEMA_REPORT_UNCERTAINTY_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/trex/report_uncertainty_v0.schema.json"
+));
+
 #[derive(Parser)]
 #[command(name = "nextstat")]
 #[command(about = "NextStat - High-performance statistical fitting")]
@@ -243,6 +272,12 @@ enum Commands {
         command: TimeseriesCommands,
     },
 
+    /// Configuration helpers (schemas, etc.)
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+
     /// Print version information
     Version,
 }
@@ -418,6 +453,17 @@ enum ImportCommands {
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Print a JSON schema to stdout (for IDE integration / validation)
+    Schema {
+        /// Schema name (default: analysis_spec_v0). Known: analysis_spec_v0, baseline_v0,
+        /// report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0.
+        #[arg(long)]
+        name: Option<String>,
     },
 }
 
@@ -851,6 +897,9 @@ fn main() -> Result<()> {
                 cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref(), cli.bundle.as_ref())
             }
         },
+        Commands::Config { command } => match command {
+            ConfigCommands::Schema { name } => cmd_config_schema(name.as_deref()),
+        },
         Commands::Version => {
             println!("nextstat {}", ns_core::VERSION);
             Ok(())
@@ -911,6 +960,25 @@ fn cmd_validate(config_path: &PathBuf) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn cmd_config_schema(name: Option<&str>) -> Result<()> {
+    let key = name.unwrap_or("analysis_spec_v0");
+    let schema = match key {
+        "analysis_spec_v0" => SCHEMA_ANALYSIS_SPEC_V0,
+        "baseline_v0" => SCHEMA_BASELINE_V0,
+        "report_distributions_v0" => SCHEMA_REPORT_DISTRIBUTIONS_V0,
+        "report_pulls_v0" => SCHEMA_REPORT_PULLS_V0,
+        "report_corr_v0" => SCHEMA_REPORT_CORR_V0,
+        "report_yields_v0" => SCHEMA_REPORT_YIELDS_V0,
+        "report_uncertainty_v0" => SCHEMA_REPORT_UNCERTAINTY_V0,
+        other => anyhow::bail!(
+            "unknown schema name: {other}. Known: analysis_spec_v0, baseline_v0, report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0"
+        ),
+    };
+
+    print!("{schema}");
+    Ok(())
 }
 
 fn cmd_run_legacy(
