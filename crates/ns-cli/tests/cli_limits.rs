@@ -89,3 +89,42 @@ fn hypotest_expected_set_contract() {
         .expect("expected_set.cls should be an array");
     assert_eq!(cls.len(), 5);
 }
+
+#[test]
+fn hypotest_toys_expected_set_contract() {
+    let input = fixture_path("simple_workspace.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&[
+        "hypotest-toys",
+        "--input",
+        input.to_string_lossy().as_ref(),
+        "--mu",
+        "1.0",
+        "--n-toys",
+        "3",
+        "--seed",
+        "123",
+        "--expected-set",
+        "--threads",
+        "1",
+    ]);
+
+    assert!(
+        out.status.success(),
+        "hypotest-toys should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    let expected = v
+        .get("expected_set")
+        .and_then(|x| x.as_object())
+        .expect("expected_set should be an object when enabled");
+    let cls = expected
+        .get("cls")
+        .and_then(|x| x.as_array())
+        .expect("expected_set.cls should be an array");
+    assert_eq!(cls.len(), 5);
+}

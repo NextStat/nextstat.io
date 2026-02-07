@@ -1,0 +1,26 @@
+[package]
+name = "ns-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "WASM bindings for NextStat (NextStat Playground)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ns-inference.workspace = true
+ns-translate.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+wasm-bindgen = "0.2"
+web-time = "1.1"

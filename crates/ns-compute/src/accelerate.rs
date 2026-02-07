@@ -16,6 +16,7 @@
 //!
 //! This module is available only with `--features accelerate` on macOS/aarch64.
 
+use std::cell::RefCell;
 use std::os::raw::c_int;
 
 // FFI bindings to Apple Accelerate framework (vForce + vDSP).
@@ -68,6 +69,41 @@ unsafe extern "C" {
     );
 }
 
+#[derive(Default)]
+struct PoissonScratch {
+    ln_exp: Vec<f64>,
+    obs_ln_exp: Vec<f64>,
+    bracket: Vec<f64>,
+    masked: Vec<f64>,
+    terms: Vec<f64>,
+}
+
+impl PoissonScratch {
+    fn ensure_len(&mut self, n: usize) {
+        if self.ln_exp.len() < n {
+            self.ln_exp.resize(n, 0.0);
+        }
+        if self.obs_ln_exp.len() < n {
+            self.obs_ln_exp.resize(n, 0.0);
+        }
+        if self.bracket.len() < n {
+            self.bracket.resize(n, 0.0);
+        }
+        if self.masked.len() < n {
+            self.masked.resize(n, 0.0);
+        }
+        if self.terms.len() < n {
+            self.terms.resize(n, 0.0);
+        }
+    }
+}
+
+thread_local! {
+    // Thread-local scratch buffers to avoid repeated allocations in the hot NLL path
+    // (e.g. inside L-BFGS iterations). Each Rayon worker thread gets its own buffers.
+    static POISSON_SCRATCH: RefCell<PoissonScratch> = RefCell::new(PoissonScratch::default());
+}
+
 /// Compute Poisson NLL using Apple Accelerate vectorized operations.
 ///
 /// Formula per bin: `nll_i = exp_i + mask_i * (ln_factorial_i - obs_i * ln(exp_i))`
@@ -103,58 +139,57 @@ pub fn poisson_nll_accelerate(
         return 0.0;
     }
 
-    let ni = n as c_int;
+    let ni: c_int = n
+        .try_into()
+        .expect("poisson_nll_accelerate: n does not fit in c_int");
 
-    // Scratch buffers (stack for small, heap for large)
-    let mut ln_exp = vec![0.0f64; n];
-    let mut obs_ln_exp = vec![0.0f64; n];
-    let mut bracket = vec![0.0f64; n];
-    let mut masked = vec![0.0f64; n];
-    let mut terms = vec![0.0f64; n];
+    POISSON_SCRATCH.with(|scratch| {
+        let mut scratch = scratch.borrow_mut();
+        scratch.ensure_len(n);
 
-    unsafe {
-        // 1. ln_exp[i] = ln(expected[i])
-        vvlog(ln_exp.as_mut_ptr(), expected.as_ptr(), &ni);
+        unsafe {
+            // 1. ln_exp[i] = ln(expected[i])
+            vvlog(scratch.ln_exp.as_mut_ptr(), expected.as_ptr(), &ni);
 
-        // 2. obs_ln_exp[i] = observed[i] * ln_exp[i]
-        vDSP_vmulD(
-            observed.as_ptr(), 1,
-            ln_exp.as_ptr(), 1,
-            obs_ln_exp.as_mut_ptr(), 1,
-            n,
-        );
+            // 2. obs_ln_exp[i] = observed[i] * ln_exp[i]
+            vDSP_vmulD(
+                observed.as_ptr(), 1,
+                scratch.ln_exp.as_ptr(), 1,
+                scratch.obs_ln_exp.as_mut_ptr(), 1,
+                n,
+            );
 
-        // 3. bracket[i] = ln_factorials[i] - obs_ln_exp[i]
-        // vDSP_vsubD(A, ..., B, ..., C, ...) => C = B - A
-        vDSP_vsubD(
-            obs_ln_exp.as_ptr(), 1,
-            ln_factorials.as_ptr(), 1,
-            bracket.as_mut_ptr(), 1,
-            n,
-        );
+            // 3. bracket[i] = ln_factorials[i] - obs_ln_exp[i]
+            // vDSP_vsubD(A, ..., B, ..., C, ...) => C = B - A
+            vDSP_vsubD(
+                scratch.obs_ln_exp.as_ptr(), 1,
+                ln_factorials.as_ptr(), 1,
+                scratch.bracket.as_mut_ptr(), 1,
+                n,
+            );
 
-        // 4. masked[i] = obs_mask[i] * bracket[i]
-        vDSP_vmulD(
-            obs_mask.as_ptr(), 1,
-            bracket.as_ptr(), 1,
-            masked.as_mut_ptr(), 1,
-            n,
-        );
+            // 4. masked[i] = obs_mask[i] * bracket[i]
+            vDSP_vmulD(
+                obs_mask.as_ptr(), 1,
+                scratch.bracket.as_ptr(), 1,
+                scratch.masked.as_mut_ptr(), 1,
+                n,
+            );
 
-        // 5. terms[i] = expected[i] + masked[i]
-        vDSP_vaddD(
-            expected.as_ptr(), 1,
-            masked.as_ptr(), 1,
-            terms.as_mut_ptr(), 1,
-            n,
-        );
+            // 5. terms[i] = expected[i] + masked[i]
+            vDSP_vaddD(
+                expected.as_ptr(), 1,
+                scratch.masked.as_ptr(), 1,
+                scratch.terms.as_mut_ptr(), 1,
+                n,
+            );
 
-        // 6. sum = Σ terms[i]
-        let mut total: f64 = 0.0;
-        vDSP_sveD(terms.as_ptr(), 1, &mut total, n);
-
-        total
-    }
+            // 6. sum = Σ terms[i]
+            let mut total: f64 = 0.0;
+            vDSP_sveD(scratch.terms.as_ptr(), 1, &mut total, n);
+            total
+        }
+    })
 }
 
 /// Compute Poisson NLL for a batch of toy experiments using Accelerate.
@@ -197,7 +232,9 @@ pub fn batch_poisson_nll_accelerate(
     // For large batches, we can process all at once with a single vvlog call
     // on the entire flat expected array, then slice results per toy.
     let total_bins = n_toys * n_bins;
-    let ni = total_bins as c_int;
+    let ni: c_int = total_bins
+        .try_into()
+        .expect("batch_poisson_nll_accelerate: total_bins does not fit in c_int");
 
     let mut ln_exp = vec![0.0f64; total_bins];
     let mut obs_ln_exp = vec![0.0f64; total_bins];

@@ -11,6 +11,7 @@ members = [
     "crates/ns-viz",
     "crates/ns-cli",
     "bindings/ns-py",
+    "bindings/ns-wasm",
 ]
 
 [workspace.package]
@@ -52,9 +53,9 @@ tokio = { version = "1.0", features = ["full"] }
 ndarray = { version = "0.17", features = ["serde"] }
 nalgebra = "0.34"
 num-traits = "0.2"
-statrs = "0.18"
-argmin = "0.11"
-argmin-math = { version = "0.5", features = ["ndarray_latest"] }
+statrs = { version = "0.18", default-features = false }
+argmin = { version = "0.11", default-features = false }
+argmin-math = { version = "0.5", default-features = false, features = ["vec"] }
 
 # SIMD (CPU - Priority P0)
 wide = "1.1"
@@ -70,6 +71,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 # MCMC / sampling (Phase 3, optional)
 rand = "0.9"
 rand_distr = "0.5"
+json-patch = "4.1.0"
 
 # Python bindings
 pyo3 = { version = "0.28", features = ["extension-module"] }

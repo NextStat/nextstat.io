@@ -83,6 +83,7 @@ impl Tape {
     }
 
     /// Clear the tape for reuse (avoids reallocation).
+    #[inline]
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.adjoints.clear();
@@ -91,6 +92,7 @@ impl Tape {
     // --- Leaf constructors ---
 
     /// Record an input variable.
+    #[inline]
     pub fn var(&mut self, val: f64) -> Var {
         let idx = self.nodes.len();
         self.nodes.push(Node { val, op: Op::Input });
@@ -98,6 +100,7 @@ impl Tape {
     }
 
     /// Record a constant (gradient never flows through it).
+    #[inline]
     pub fn constant(&mut self, val: f64) -> Var {
         let idx = self.nodes.len();
         self.nodes.push(Node { val, op: Op::Const });
@@ -115,6 +118,7 @@ impl Tape {
     // --- Binary operations ---
 
     /// `a + b`
+    #[inline]
     pub fn add(&mut self, a: Var, b: Var) -> Var {
         let val = self.nodes[a.0].val + self.nodes[b.0].val;
         let idx = self.nodes.len();
@@ -123,6 +127,7 @@ impl Tape {
     }
 
     /// `a - b`
+    #[inline]
     pub fn sub(&mut self, a: Var, b: Var) -> Var {
         let val = self.nodes[a.0].val - self.nodes[b.0].val;
         let idx = self.nodes.len();
@@ -131,6 +136,7 @@ impl Tape {
     }
 
     /// `a * b`
+    #[inline]
     pub fn mul(&mut self, a: Var, b: Var) -> Var {
         let val = self.nodes[a.0].val * self.nodes[b.0].val;
         let idx = self.nodes.len();
@@ -139,6 +145,7 @@ impl Tape {
     }
 
     /// `a / b`
+    #[inline]
     pub fn div(&mut self, a: Var, b: Var) -> Var {
         let val = self.nodes[a.0].val / self.nodes[b.0].val;
         let idx = self.nodes.len();
@@ -147,6 +154,7 @@ impl Tape {
     }
 
     /// `max(a, b)` — gradient flows to the winner.
+    #[inline]
     pub fn max(&mut self, a: Var, b: Var) -> Var {
         let va = self.nodes[a.0].val;
         let vb = self.nodes[b.0].val;
@@ -159,6 +167,7 @@ impl Tape {
     // --- Unary operations ---
 
     /// `-a`
+    #[inline]
     pub fn neg(&mut self, a: Var) -> Var {
         let val = -self.nodes[a.0].val;
         let idx = self.nodes.len();
@@ -167,6 +176,7 @@ impl Tape {
     }
 
     /// `ln(a)`
+    #[inline]
     pub fn ln(&mut self, a: Var) -> Var {
         let val = self.nodes[a.0].val.ln();
         let idx = self.nodes.len();
@@ -175,6 +185,7 @@ impl Tape {
     }
 
     /// `exp(a)`
+    #[inline]
     pub fn exp(&mut self, a: Var) -> Var {
         let val = self.nodes[a.0].val.exp();
         let idx = self.nodes.len();
@@ -201,30 +212,35 @@ impl Tape {
     // --- Convenience: scalar helpers ---
 
     /// `a + scalar`
+    #[inline]
     pub fn add_f64(&mut self, a: Var, s: f64) -> Var {
         let c = self.constant(s);
         self.add(a, c)
     }
 
     /// `scalar - a`
+    #[inline]
     pub fn f64_sub(&mut self, s: f64, a: Var) -> Var {
         let c = self.constant(s);
         self.sub(c, a)
     }
 
     /// `a * scalar`
+    #[inline]
     pub fn mul_f64(&mut self, a: Var, s: f64) -> Var {
         let c = self.constant(s);
         self.mul(a, c)
     }
 
     /// `a / scalar`
+    #[inline]
     pub fn div_f64(&mut self, a: Var, s: f64) -> Var {
         let c = self.constant(s);
         self.div(a, c)
     }
 
     /// `max(a, scalar)`
+    #[inline]
     pub fn max_f64(&mut self, a: Var, s: f64) -> Var {
         let c = self.constant(s);
         self.max(a, c)

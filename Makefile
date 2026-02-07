@@ -17,7 +17,9 @@
 	apex2-condor-render-root-array-sub \
 	apex2-root-aggregate \
 	apex2-root-suite-compare-perf \
-	apex2-root-suite-compare-latest
+	apex2-root-suite-compare-latest \
+	playground-build-wasm \
+	playground-serve
 
 PY ?= ./.venv/bin/python
 PYTHONPATH ?= bindings/ns-py/python
@@ -50,6 +52,7 @@ ROOT_PERF_ARGS ?=
 ROOT_ROOT_MANIFEST ?= tmp/baselines/latest_root_manifest.json
 PYHF_AUDIT_ARGS ?=
 PYHF_AUDIT_FIT_ARGS ?=
+PLAYGROUND_PORT ?= 8000
 
 apex2-baseline-record:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py $(RECORD_ARGS)
@@ -148,3 +151,9 @@ apex2-root-suite-compare-latest:
 		--current "$(ROOT_CURRENT_SUITE)" \
 		--out "$(ROOT_PERF_OUT)" \
 		$(ROOT_PERF_ARGS)
+
+playground-build-wasm:
+	bash scripts/playground_build_wasm.sh
+
+playground-serve:
+	bash scripts/playground_serve.sh "$(PLAYGROUND_PORT)"

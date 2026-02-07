@@ -11,6 +11,10 @@ on:
         description: "Scan points for coverage test"
         required: false
         default: "81"
+      rust_very_slow:
+        description: "Run very slow Rust test (release pull distribution)"
+        required: false
+        default: "false"
   schedule:
     # Weekly (Monday 02:00 UTC)
     - cron: "0 2 * * 1"
@@ -19,6 +23,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  rust_slow:
+    name: Rust ignored slow tests (ns-inference)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run ignored Rust slow tests
+        env:
+          RUST_BACKTRACE: 1
+        run: make rust-slow-tests
+
+  rust_very_slow:
+    name: Rust very slow test (release pull distribution)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.rust_very_slow == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run very slow test (release)
+        env:
+          RUST_BACKTRACE: 1
+        run: make rust-very-slow-tests
+
   slow:
     name: Slow regressions (ubuntu, py3.12)
     runs-on: ubuntu-latest

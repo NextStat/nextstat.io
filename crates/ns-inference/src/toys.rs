@@ -22,9 +22,13 @@ pub fn poisson_main_from_expected(expected_main: &[f64], seed: u64) -> Vec<f64> 
     expected_main
         .iter()
         .map(|&lam| {
-            let lam_safe = lam.max(1e-10);
-            let pois = Poisson::new(lam_safe).expect("Poisson::new(lambda>0)");
-            pois.sample(&mut rng)
+            if !lam.is_finite() || lam <= 0.0 {
+                // Correct limit: Poisson(0) is deterministically 0, and negative/NaN/inf
+                // expected yields are treated as 0 for toy generation.
+                return 0.0;
+            }
+            let pois = Poisson::new(lam).expect("Poisson::new(lambda>0)");
+            pois.sample(&mut rng) as f64
         })
         .collect()
 }

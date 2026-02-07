@@ -3,6 +3,9 @@
 **/*.rs.bk
 *.pdb
 
+# Playground (generated wasm-bindgen output)
+/playground/pkg/
+
 # Cargo.lock should be committed (workspace contains binaries/bindings)
 
 # Local toolchains / caches (keep in repo dir for sandboxed runs)

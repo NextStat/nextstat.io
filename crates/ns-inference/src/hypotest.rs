@@ -1,8 +1,10 @@
-//! Asymptotic CLs hypothesis tests (frequentist).
+//! CLs hypothesis tests (frequentist): asymptotic (qtilde).
 //!
 //! This follows the pyhf `infer.hypotest(..., calctype="asymptotics", test_stat="qtilde")`
 //! implementation, matching the test statistic transformation used in
 //! `pyhf.infer.calculators.AsymptoticCalculator` (pyhf 0.7.x).
+//!
+//! Toy-based CLs is implemented in [`crate::toybased`].
 
 use crate::MaximumLikelihoodEstimator;
 use ns_core::traits::LogDensityModel;
@@ -178,6 +180,28 @@ pub struct HypotestExpectedSet {
     pub expected: [f64; 5],
 }
 
+/// Result of an asymptotic upper-limit scan (`qtilde` CLs) evaluated on a fixed scan grid.
+///
+/// This is the data needed to render a "Brazil band" plot:
+/// - observed CLs curve
+/// - expected CLs curves (n_sigma = [2, 1, 0, -1, -2]) at each scan point
+/// plus the interpolated observed/expected upper limits for a given `alpha`.
+#[derive(Debug, Clone)]
+pub struct UpperLimitsLinearScanResult {
+    /// Scan grid points (POI values).
+    pub scan: Vec<f64>,
+    /// Observed CLs values at each scan point.
+    pub observed_cls: Vec<f64>,
+    /// Expected-set CLs values (Brazil band) at each scan point.
+    ///
+    /// Ordering matches [`NSIGMA_ORDER`].
+    pub expected_cls: Vec<[f64; 5]>,
+    /// Interpolated observed upper limit `mu_up` such that `CLs(mu_up) = alpha`.
+    pub observed_limit: f64,
+    /// Interpolated expected upper limits, in [`NSIGMA_ORDER`] ordering.
+    pub expected_limits: [f64; 5],
+}
+
 fn qmu_like_with_free(
     mle: &MaximumLikelihoodEstimator,
     model: &HistFactoryModel,
@@ -217,6 +241,21 @@ pub struct AsymptoticCLsContext {
 }
 
 impl AsymptoticCLsContext {
+    /// Index of the parameter of interest (POI) in the model parameter vector.
+    pub fn poi_index(&self) -> usize {
+        self.poi
+    }
+
+    /// Unconditional best-fit POI on observed data (`mu_hat` from the cached free fit).
+    pub fn mu_hat(&self) -> f64 {
+        self.free_data_mu_hat
+    }
+
+    /// Cached unconditional minimum NLL on observed data.
+    pub fn free_data_nll(&self) -> f64 {
+        self.free_data_nll
+    }
+
     /// Build an asymptotic calculator context for `test_stat="qtilde"`.
     ///
     /// - Free fit to observed data is cached.
@@ -346,6 +385,20 @@ impl AsymptoticCLsContext {
         alpha: f64,
         scan: &[f64],
     ) -> Result<(f64, [f64; 5])> {
+        let r = self.upper_limits_qtilde_linear_scan_result(mle, alpha, scan)?;
+        Ok((r.observed_limit, r.expected_limits))
+    }
+
+    /// Compute observed and expected upper limits **and** return the full scan curves.
+    ///
+    /// This is intended for plotting CLs "Brazil bands" while also extracting the
+    /// interpolated observed/expected upper limits.
+    pub fn upper_limits_qtilde_linear_scan_result(
+        &self,
+        mle: &MaximumLikelihoodEstimator,
+        alpha: f64,
+        scan: &[f64],
+    ) -> Result<UpperLimitsLinearScanResult> {
         if scan.len() < 2 {
             return Err(Error::Validation("scan must have at least 2 points".to_string()));
         }
@@ -443,7 +496,13 @@ impl AsymptoticCLsContext {
             exp_limits[j] = interp_limit(alpha, scan, &band)?;
         }
 
-        Ok((obs_limit, exp_limits))
+        Ok(UpperLimitsLinearScanResult {
+            scan: scan.to_vec(),
+            observed_cls,
+            expected_cls,
+            observed_limit: obs_limit,
+            expected_limits: exp_limits,
+        })
     }
 
     /// Find an observed upper limit `mu_up` such that `CLs(mu_up) = alpha` via bisection.

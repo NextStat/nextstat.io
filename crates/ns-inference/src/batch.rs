@@ -62,38 +62,35 @@ pub fn fit_toys_batch(
         Err(e) => return vec![Err(e)],
     };
 
-    // Parallel toy generation + fitting via Rayon
+    let tape_capacity = model.n_params() * 20;
+
+    // Parallel toy generation + fitting via Rayon.
+    // `map_init` creates one Tape per worker thread; it is reused across all
+    // toys scheduled on that thread, so total allocations = #threads (~12)
+    // instead of #toys (1000+).
     (0..n_toys)
         .into_par_iter()
-        .map(|toy_idx| {
-            let toy_seed = seed.wrapping_add(toy_idx as u64);
-            let toy_data = crate::toys::poisson_main_from_expected(&expected, toy_seed);
+        .map_init(
+            || ns_ad::tape::Tape::with_capacity(tape_capacity),
+            |tape, toy_idx| {
+                let toy_seed = seed.wrapping_add(toy_idx as u64);
+                let toy_data = crate::toys::poisson_main_from_expected(&expected, toy_seed);
 
-            // Create toy model with fluctuated data
-            let toy_model = model.with_observed_main(&toy_data)?;
+                let toy_model = model.with_observed_main(&toy_data)?;
+                let result = mle.fit_minimum_histfactory_with_tape(&toy_model, tape)?;
 
-            // Fit using standard MLE (PreparedModel uses SIMD or Accelerate internally)
-            fit_minimum_only(&mle, &toy_model)
-        })
+                Ok(FitResult::new(
+                    result.parameters,
+                    vec![0.0; toy_model.dim()],
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                ))
+            },
+        )
         .collect()
-}
-
-/// Fit model returning only parameters + NLL (skip Hessian/covariance for speed).
-fn fit_minimum_only(
-    mle: &MaximumLikelihoodEstimator,
-    model: &HistFactoryModel,
-) -> Result<FitResult> {
-    let result = mle.fit_minimum(model)?;
-
-    Ok(FitResult::new(
-        result.parameters,
-        vec![0.0; model.dim()],
-        result.fval,
-        result.converged,
-        result.n_iter as usize,
-        result.n_fev,
-        result.n_gev,
-    ))
 }
 
 /// Check if Accelerate batch backend is available.

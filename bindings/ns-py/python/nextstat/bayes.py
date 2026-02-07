@@ -7,6 +7,7 @@ This module provides convenience wrappers around `nextstat._core.sample`:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 
@@ -54,6 +55,42 @@ def to_inferencedata(raw: Mapping[str, Any]):
     return idata
 
 
+def save(idata, path: str | Path, *, format: str = "json") -> Path:
+    """Save an ArviZ `InferenceData` to disk.
+
+    This is a thin convenience wrapper so users can go:
+    - `nextstat.bayes.sample(..., out="trace.json")`
+    - `az.from_json("trace.json")`
+
+    Supported formats:
+    - `json`: uses `arviz.to_json` when available
+    - `netcdf`: uses `InferenceData.to_netcdf`
+    """
+
+    try:
+        import arviz as az
+    except Exception as e:  # pragma: no cover
+        raise ImportError("Missing dependency: arviz. Install via `pip install nextstat[bayes]`.") from e
+
+    path = Path(path)
+    fmt = format.lower().strip()
+    if fmt in ("json",):
+        if hasattr(az, "to_json"):
+            az.to_json(idata, path)  # type: ignore[attr-defined]
+        else:  # pragma: no cover
+            raise RuntimeError("Your ArviZ version does not provide `arviz.to_json(...)`.")
+        return path
+
+    if fmt in ("netcdf", "nc", "cdf"):
+        if hasattr(idata, "to_netcdf"):
+            idata.to_netcdf(path)  # type: ignore[attr-defined]
+        else:  # pragma: no cover
+            raise RuntimeError("InferenceData object does not provide `to_netcdf(...)`.")
+        return path
+
+    raise ValueError(f"Unknown format: {format!r}. Expected 'json' or 'netcdf'.")
+
+
 def sample(
     model,
     *,
@@ -68,6 +105,8 @@ def sample(
     init_overdispersed_rel: float | None = None,
     data: Optional[list[float]] = None,
     return_idata: bool = True,
+    out: str | Path | None = None,
+    out_format: str = "json",
 ):
     """Run NUTS sampling.
 
@@ -105,12 +144,20 @@ def sample(
     )
 
     if not return_idata:
+        if out is not None:
+            import json
+
+            Path(out).write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
         return raw
 
-    return to_inferencedata(raw)
+    idata = to_inferencedata(raw)
+    if out is not None:
+        save(idata, out, format=out_format)
+    return idata
 
 
 __all__ = [
     "sample",
+    "save",
     "to_inferencedata",
 ]

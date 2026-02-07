@@ -24,8 +24,10 @@ pub mod chain;
 pub mod diagnostics;
 /// HMC leapfrog integrator.
 pub mod hmc;
-/// Frequentist hypothesis testing (asymptotic CLs).
+/// Frequentist hypothesis testing (CLs): asymptotic + toy-based.
 pub mod hypotest;
+/// Toy-based frequentist inference (CLs).
+pub mod toybased;
 /// Laplace approximation utilities (generic).
 pub mod laplace;
 /// Linear mixed models (marginal likelihood baseline).
@@ -66,6 +68,7 @@ pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
+pub use toybased::{ToyHypotestExpectedSet, ToyHypotestResult, hypotest_qtilde_toys, hypotest_qtilde_toys_expected_set};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};

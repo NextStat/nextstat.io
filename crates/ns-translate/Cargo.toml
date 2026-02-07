@@ -23,6 +23,7 @@ serde_json.workspace = true
 log.workspace = true
 rayon.workspace = true
 statrs.workspace = true
+json-patch.workspace = true
 
 [features]
 default = []

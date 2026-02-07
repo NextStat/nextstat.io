@@ -142,24 +142,52 @@ def _materialize_bkgonly(extracted_dir: Path, out_dir: Path) -> Path:
 def _materialize_patch(
     extracted_dir: Path, out_dir: Path, patch_id: str, patch_name: str | None
 ) -> Path:
-    try:
-        import pyhf  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError(
-            "pyhf is required to materialize patched workspaces. "
-            "Install with: pip install 'nextstat[validation]'"
-        ) from e
-
     bkg = _load_json(_find_one(extracted_dir, "BkgOnly.json"))
     patchset = _load_json(_find_one(extracted_dir, "patchset.json"))
 
-    ps = pyhf.PatchSet(patchset)
-    if patch_name is None:
-        names = list(ps.patch_names)
-        if not names:
-            raise RuntimeError("patchset.json contains no patches")
-        patch_name = names[0]
-    patched = ps.apply(bkg, patch_name)
+    patched: dict[str, Any] | None = None
+
+    # Prefer NextStat's native PatchSet support (no pyhf dependency).
+    try:
+        import nextstat  # type: ignore
+    except Exception:
+        nextstat = None  # type: ignore
+
+    if nextstat is not None:
+        if patch_name is None:
+            patches = patchset.get("patches") or []
+            if not patches:
+                raise RuntimeError("patchset.json contains no patches")
+            meta = patches[0].get("metadata") or {}
+            patch_name = meta.get("name")
+            if not isinstance(patch_name, str) or not patch_name:
+                raise RuntimeError("Failed to infer patch name from patchset.json (missing metadata.name)")
+        patched_json = nextstat.apply_patchset(
+            json.dumps(bkg),
+            json.dumps(patchset),
+            patch_name=patch_name,
+        )
+        patched = json.loads(patched_json)
+
+    if patched is None:
+        # Fallback: use pyhf if available.
+        try:
+            import pyhf  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "Materializing patched workspaces requires either NextStat (with native PatchSet support) "
+                "or pyhf. Install one of:\n"
+                "- pip install nextstat\n"
+                "- pip install 'nextstat[validation]'  # includes pyhf\n"
+            ) from e
+
+        ps = pyhf.PatchSet(patchset)
+        if patch_name is None:
+            names = list(ps.patch_names)
+            if not names:
+                raise RuntimeError("patchset.json contains no patches")
+            patch_name = names[0]
+        patched = ps.apply(bkg, patch_name)
 
     out = out_dir / f"patched__{patch_id}.json"
     _write_json(out, patched)

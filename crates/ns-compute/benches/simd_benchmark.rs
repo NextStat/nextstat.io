@@ -1,6 +1,8 @@
 //! Benchmarks for SIMD vs scalar Poisson NLL computation.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
+use ns_compute::accelerate::poisson_nll_accelerate;
 use ns_compute::simd::{poisson_nll_scalar, poisson_nll_simd, vec_mul_pairwise, vec_scale};
 use statrs::function::gamma::ln_gamma;
 use std::hint::black_box;
@@ -30,12 +32,46 @@ fn bench_poisson_nll(c: &mut Criterion) {
         let (exp, obs, lnf, msk) = make_bench_data(n);
 
         group.bench_with_input(BenchmarkId::new("scalar", n), &n, |b, _| {
-            b.iter(|| poisson_nll_scalar(&exp, &obs, &lnf, &msk))
+            b.iter(|| {
+                let out = poisson_nll_scalar(
+                    black_box(&exp),
+                    black_box(&obs),
+                    black_box(&lnf),
+                    black_box(&msk),
+                );
+                black_box(out)
+            })
         });
 
         group.bench_with_input(BenchmarkId::new("simd", n), &n, |b, _| {
-            b.iter(|| poisson_nll_simd(&exp, &obs, &lnf, &msk))
+            b.iter(|| {
+                let out = poisson_nll_simd(
+                    black_box(&exp),
+                    black_box(&obs),
+                    black_box(&lnf),
+                    black_box(&msk),
+                );
+                black_box(out)
+            })
         });
+
+        #[cfg(all(feature = "accelerate", target_os = "macos"))]
+        {
+            // Pre-size thread-local scratch to avoid including first-call allocation in samples.
+            let _ = poisson_nll_accelerate(&exp, &obs, &lnf, &msk);
+
+            group.bench_with_input(BenchmarkId::new("accelerate", n), &n, |b, _| {
+                b.iter(|| {
+                    let out = poisson_nll_accelerate(
+                        black_box(&exp),
+                        black_box(&obs),
+                        black_box(&lnf),
+                        black_box(&msk),
+                    );
+                    black_box(out)
+                })
+            });
+        }
     }
 
     group.finish();

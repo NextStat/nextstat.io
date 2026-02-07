@@ -288,6 +288,143 @@ pub fn vec_mul_pairwise(dst: &mut [f64], src: &[f64]) {
     }
 }
 
+/// Accumulate pyhf `histosys` `code4p` interpolation deltas into `dst`.
+///
+/// Computes the per-bin delta term (to be added to nominal) for a single histosys modifier:
+/// `dst[i] += delta(alpha, lo[i], nom[i], hi[i])`.
+///
+/// This is a hot-path kernel in HistFactory expected-data evaluation. We hoist all
+/// `alpha`-only polynomial terms out of the bin loop and optionally use SIMD
+/// (`wide::f64x4`) for the per-bin arithmetic.
+///
+/// # Panics
+/// Panics if the input slice lengths are not equal.
+pub fn histosys_code4p_delta_accumulate(
+    dst: &mut [f64],
+    alpha: f64,
+    lo: &[f64],
+    nom: &[f64],
+    hi: &[f64],
+) {
+    let n = dst.len();
+    assert_eq!(n, lo.len());
+    assert_eq!(n, nom.len());
+    assert_eq!(n, hi.len());
+
+    // Match pyhf's clipping behavior:
+    // - for |alpha| > 1 use linear extrapolation in the up/down direction
+    // - for |alpha| <= 1 use the 6th-order polynomial (code4p)
+    if alpha > 1.0 {
+        if !use_simd() {
+            for i in 0..n {
+                dst[i] += (hi[i] - nom[i]) * alpha;
+            }
+            return;
+        }
+
+        let chunks = n / 4;
+        let remainder = n % 4;
+        let alpha4 = f64x4::splat(alpha);
+        for i in 0..chunks {
+            let offset = i * 4;
+            let mut d = f64x4::from(&dst[offset..offset + 4]);
+            let h = f64x4::from(&hi[offset..offset + 4]);
+            let m = f64x4::from(&nom[offset..offset + 4]);
+            d += (h - m) * alpha4;
+            let arr: [f64; 4] = d.into();
+            dst[offset..offset + 4].copy_from_slice(&arr);
+        }
+        let start = chunks * 4;
+        for i in start..start + remainder {
+            dst[i] += (hi[i] - nom[i]) * alpha;
+        }
+        return;
+    }
+
+    if alpha < -1.0 {
+        if !use_simd() {
+            for i in 0..n {
+                dst[i] += (nom[i] - lo[i]) * alpha;
+            }
+            return;
+        }
+
+        let chunks = n / 4;
+        let remainder = n % 4;
+        let alpha4 = f64x4::splat(alpha);
+        for i in 0..chunks {
+            let offset = i * 4;
+            let mut d = f64x4::from(&dst[offset..offset + 4]);
+            let m = f64x4::from(&nom[offset..offset + 4]);
+            let l = f64x4::from(&lo[offset..offset + 4]);
+            d += (m - l) * alpha4;
+            let arr: [f64; 4] = d.into();
+            dst[offset..offset + 4].copy_from_slice(&arr);
+        }
+        let start = chunks * 4;
+        for i in start..start + remainder {
+            dst[i] += (nom[i] - lo[i]) * alpha;
+        }
+        return;
+    }
+
+    let asq = alpha * alpha;
+    // tmp3 = a^2 * (a^2 * (a^2 * 3 - 10) + 15)
+    let tmp3 = asq * (asq * (asq * 3.0 - 10.0) + 15.0);
+
+    if !use_simd() {
+        for i in 0..n {
+            let delta_up = hi[i] - nom[i];
+            let delta_dn = nom[i] - lo[i];
+            // Match pyhf's `code4p` implementation:
+            // S = 0.5 * (delta_up + delta_dn)
+            // A = 0.0625 * (delta_up - delta_dn)
+            let s = 0.5 * (delta_up + delta_dn);
+            let a = 0.0625 * (delta_up - delta_dn);
+            // Match scalar operation order: (dst + alpha*s) + tmp3*a
+            dst[i] += alpha * s;
+            dst[i] += tmp3 * a;
+        }
+        return;
+    }
+
+    let chunks = n / 4;
+    let remainder = n % 4;
+    let alpha4 = f64x4::splat(alpha);
+    let tmp34 = f64x4::splat(tmp3);
+    let half4 = f64x4::splat(0.5);
+    let aconst4 = f64x4::splat(0.0625);
+
+    for i in 0..chunks {
+        let offset = i * 4;
+        let mut d = f64x4::from(&dst[offset..offset + 4]);
+        let h = f64x4::from(&hi[offset..offset + 4]);
+        let l = f64x4::from(&lo[offset..offset + 4]);
+        let m = f64x4::from(&nom[offset..offset + 4]);
+
+        let delta_up = h - m;
+        let delta_dn = m - l;
+        let s = (delta_up + delta_dn) * half4;
+        let a = (delta_up - delta_dn) * aconst4;
+        // Match scalar operation order: (d + alpha*s) + tmp3*a
+        d += alpha4 * s;
+        d += tmp34 * a;
+
+        let arr: [f64; 4] = d.into();
+        dst[offset..offset + 4].copy_from_slice(&arr);
+    }
+
+    let start = chunks * 4;
+    for i in start..start + remainder {
+        let delta_up = hi[i] - nom[i];
+        let delta_dn = nom[i] - lo[i];
+        let s = 0.5 * (delta_up + delta_dn);
+        let a = 0.0625 * (delta_up - delta_dn);
+        dst[i] += alpha * s;
+        dst[i] += tmp3 * a;
+    }
+}
+
 /// Check if SIMD should be used on the current platform.
 #[inline(always)]
 fn use_simd() -> bool {
@@ -421,6 +558,82 @@ mod tests {
         vec_mul_pairwise(&mut dst, &src);
         for (a, b) in dst.iter().zip(expected.iter()) {
             assert_relative_eq!(a, b, epsilon = 1e-15);
+        }
+    }
+
+    fn code4p_delta_accumulate_scalar(
+        dst: &mut [f64],
+        alpha: f64,
+        lo: &[f64],
+        nom: &[f64],
+        hi: &[f64],
+    ) {
+        let n = dst.len();
+        assert_eq!(n, lo.len());
+        assert_eq!(n, nom.len());
+        assert_eq!(n, hi.len());
+
+        if alpha > 1.0 {
+            for i in 0..n {
+                dst[i] += (hi[i] - nom[i]) * alpha;
+            }
+            return;
+        }
+        if alpha < -1.0 {
+            for i in 0..n {
+                dst[i] += (nom[i] - lo[i]) * alpha;
+            }
+            return;
+        }
+
+        let asq = alpha * alpha;
+        let tmp3 = asq * (asq * (asq * 3.0 - 10.0) + 15.0);
+        for i in 0..n {
+            let s = 0.5 * (hi[i] - lo[i]);
+            let a = 0.0625 * (hi[i] + lo[i] - 2.0 * nom[i]);
+            dst[i] += alpha * s;
+            dst[i] += tmp3 * a;
+        }
+    }
+
+    #[test]
+    fn test_histosys_code4p_delta_accumulate_matches_scalar() {
+        let n = 257;
+        let mut dst: Vec<f64> = (0..n).map(|i| i as f64 * 1e-3).collect();
+        let mut dst_ref = dst.clone();
+        let alpha = 0.3;
+        let lo: Vec<f64> = (0..n).map(|i| 10.0 + (i as f64) * 0.1).collect();
+        let nom: Vec<f64> = (0..n).map(|i| 11.0 + (i as f64) * 0.1).collect();
+        let hi: Vec<f64> = (0..n).map(|i| 12.0 + (i as f64) * 0.1).collect();
+
+        histosys_code4p_delta_accumulate(&mut dst, alpha, &lo, &nom, &hi);
+        code4p_delta_accumulate_scalar(&mut dst_ref, alpha, &lo, &nom, &hi);
+
+        for (a, b) in dst.iter().zip(dst_ref.iter()) {
+            assert_relative_eq!(a, b, epsilon = 1e-12);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn prop_histosys_code4p_delta_accumulate_matches_scalar_random(
+            n in 1usize..=128,
+            alpha in -3.0f64..3.0,
+            base in proptest::collection::vec(0.0f64..1e3, 128),
+        ) {
+            // Build lo/nom/hi templates with nominal in-between (not required, but typical).
+            let lo: Vec<f64> = base[..n].iter().map(|&x| (x * 0.9).max(0.0)).collect();
+            let nom: Vec<f64> = base[..n].iter().map(|&x| x.max(0.0)).collect();
+            let hi: Vec<f64> = base[..n].iter().map(|&x| (x * 1.1).max(0.0)).collect();
+
+            let mut dst: Vec<f64> = base[..n].to_vec();
+            let mut dst_ref = dst.clone();
+            histosys_code4p_delta_accumulate(&mut dst, alpha, &lo, &nom, &hi);
+            code4p_delta_accumulate_scalar(&mut dst_ref, alpha, &lo, &nom, &hi);
+
+            for i in 0..n {
+                prop_assert!((dst[i] - dst_ref[i]).abs() < 1e-9);
+            }
         }
     }
 

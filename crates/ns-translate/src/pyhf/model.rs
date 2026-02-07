@@ -818,32 +818,30 @@ impl HistFactoryModel {
     /// Compute expected data at given parameter values (f64 specialisation).
     pub fn expected_data(&self, params: &[f64]) -> Result<Vec<f64>> {
         self.validate_params_len(params.len())?;
-        self.expected_data_generic(params)
+        self.expected_data_f64_fast(params)
     }
 
-    /// Expected **main** yields per channel and per sample (workspace order), without auxdata.
+    /// Fast f64 expected-data evaluation.
     ///
-    /// This is the “numbers-first” surface used for TREx-like stacked distributions:
-    /// we need the decomposition into samples, not only the total.
-    pub fn expected_main_by_channel_sample(
-        &self,
-        params: &[f64],
-    ) -> Result<Vec<ExpectedChannelSampleYields>> {
-        self.validate_params_len(params.len())?;
+    /// This specializes the generic expected-data implementation to:
+    /// - avoid `T::from_f64` conversions
+    /// - hoist `alpha`-only `code4p` polynomial terms out of the bin loop
+    /// - use SIMD kernels for the `histosys` `code4p` hot-path and scalar factor scaling
+    fn expected_data_f64_fast(&self, params: &[f64]) -> Result<Vec<f64>> {
+        use ns_compute::simd::{histosys_code4p_delta_accumulate, vec_scale};
 
-        let mut out: Vec<ExpectedChannelSampleYields> = Vec::with_capacity(self.channels.len());
+        let mut result = Vec::new();
 
         for channel in &self.channels {
             let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
-            let mut total: Vec<f64> = vec![0.0; n_bins];
-            let mut samples_out: Vec<ExpectedSampleYields> =
-                Vec::with_capacity(channel.samples.len());
+            let mut channel_expected: Vec<f64> = vec![0.0; n_bins];
 
             for sample in &channel.samples {
-                // Same semantics as expected_data_generic, but we keep the per-sample vector.
-                let sample_nominal: Vec<f64> = sample.nominal.clone();
-                let mut sample_deltas: Vec<f64> = vec![0.0; sample_nominal.len()];
-                let mut sample_factors: Vec<f64> = vec![1.0; sample_nominal.len()];
+                let sample_nominal = sample.nominal.as_slice();
+                let sample_len = sample_nominal.len();
+
+                let mut sample_deltas: Vec<f64> = vec![0.0; sample_len];
+                let mut sample_factors: Vec<f64> = vec![1.0; sample_len];
 
                 for modifier in &sample.modifiers {
                     match modifier {
@@ -855,9 +853,7 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            for fac in &mut sample_factors {
-                                *fac *= norm;
-                            }
+                            vec_scale(&mut sample_factors, norm);
                         }
                         ModelModifier::ShapeSys { param_indices, .. } => {
                             for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
@@ -882,9 +878,7 @@ impl HistFactoryModel {
                                 ))
                             })?;
                             let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
-                            for fac in &mut sample_factors {
-                                *fac *= factor;
-                            }
+                            vec_scale(&mut sample_factors, factor);
                         }
                         ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
                             let alpha = *params.get(*param_idx).ok_or_else(|| {
@@ -894,12 +888,25 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
-                                let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
-                                let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
-                                let delta = histosys_code4p_delta(alpha, lo, nom_val, hi);
-                                *delta_slot += delta;
+
+                            // Fast path: fully-dense histosys templates (common case).
+                            if hi_template.len() == sample_len && lo_template.len() == sample_len {
+                                histosys_code4p_delta_accumulate(
+                                    &mut sample_deltas,
+                                    alpha,
+                                    lo_template,
+                                    sample_nominal,
+                                    hi_template,
+                                );
+                            } else {
+                                // Fallback: tolerate length mismatches.
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let delta = histosys_code4p_delta(alpha, lo, nom_val, hi);
+                                    *delta_slot += delta;
+                                }
                             }
                         }
                         ModelModifier::StatError { param_indices, .. } => {
@@ -938,9 +945,161 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            for fac in &mut sample_factors {
-                                *fac *= lumi;
+                            vec_scale(&mut sample_factors, lumi);
+                        }
+                    }
+                }
+
+                if sample_len == n_bins {
+                    for bin_idx in 0..n_bins {
+                        channel_expected[bin_idx] +=
+                            (sample_nominal[bin_idx] + sample_deltas[bin_idx])
+                                * sample_factors[bin_idx];
+                    }
+                } else {
+                    for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
+                        let nom = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                        let delta = sample_deltas.get(bin_idx).copied().unwrap_or(0.0);
+                        let fac = sample_factors.get(bin_idx).copied().unwrap_or(1.0);
+                        *ch_val += (nom + delta) * fac;
+                    }
+                }
+            }
+
+            result.extend(channel_expected);
+        }
+
+        Ok(result)
+    }
+
+    /// Expected **main** yields per channel and per sample (workspace order), without auxdata.
+    ///
+    /// This is the “numbers-first” surface used for TREx-like stacked distributions:
+    /// we need the decomposition into samples, not only the total.
+    pub fn expected_main_by_channel_sample(
+        &self,
+        params: &[f64],
+    ) -> Result<Vec<ExpectedChannelSampleYields>> {
+        use ns_compute::simd::{histosys_code4p_delta_accumulate, vec_scale};
+
+        self.validate_params_len(params.len())?;
+
+        let mut out: Vec<ExpectedChannelSampleYields> = Vec::with_capacity(self.channels.len());
+
+        for channel in &self.channels {
+            let n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            let mut total: Vec<f64> = vec![0.0; n_bins];
+            let mut samples_out: Vec<ExpectedSampleYields> =
+                Vec::with_capacity(channel.samples.len());
+
+            for sample in &channel.samples {
+                // Same semantics as expected_data_generic, but we keep the per-sample vector.
+                let sample_nominal: &[f64] = sample.nominal.as_slice();
+                let sample_len = sample_nominal.len();
+                let mut sample_deltas: Vec<f64> = vec![0.0; sample_len];
+                let mut sample_factors: Vec<f64> = vec![1.0; sample_len];
+
+                for modifier in &sample.modifiers {
+                    match modifier {
+                        ModelModifier::NormFactor { param_idx } => {
+                            let norm = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormFactor param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            vec_scale(&mut sample_factors, norm);
+                        }
+                        ModelModifier::ShapeSys { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeSys gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
                             }
+                        }
+                        ModelModifier::NormSys { param_idx, hi_factor, lo_factor } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "NormSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let factor = normsys_code4(alpha, *hi_factor, *lo_factor);
+                            vec_scale(&mut sample_factors, factor);
+                        }
+                        ModelModifier::HistoSys { param_idx, hi_template, lo_template } => {
+                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "HistoSys param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+
+                            if hi_template.len() == sample_len && lo_template.len() == sample_len {
+                                histosys_code4p_delta_accumulate(
+                                    &mut sample_deltas,
+                                    alpha,
+                                    lo_template,
+                                    sample_nominal,
+                                    hi_template,
+                                );
+                            } else {
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom_val = sample_nominal.get(bin_idx).copied().unwrap_or(0.0);
+                                    let hi = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let lo = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let delta = histosys_code4p_delta(alpha, lo, nom_val, hi);
+                                    *delta_slot += delta;
+                                }
+                            }
+                        }
+                        ModelModifier::StatError { param_indices, .. } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "StatError gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::ShapeFactor { param_indices } => {
+                            for (bin_idx, &gamma_idx) in param_indices.iter().enumerate() {
+                                if bin_idx < sample_factors.len() {
+                                    let gamma_val = *params.get(gamma_idx).ok_or_else(|| {
+                                        ns_core::Error::Validation(format!(
+                                            "ShapeFactor gamma index out of range: idx={} len={}",
+                                            gamma_idx,
+                                            params.len()
+                                        ))
+                                    })?;
+                                    sample_factors[bin_idx] *= gamma_val;
+                                }
+                            }
+                        }
+                        ModelModifier::Lumi { param_idx } => {
+                            let lumi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "Lumi param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            vec_scale(&mut sample_factors, lumi);
                         }
                     }
                 }
@@ -1357,20 +1516,63 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                let nom = sample_nominal
-                                    .get(bin_idx)
-                                    .copied()
-                                    .unwrap_or(T::from_f64(0.0));
-                                let nom_val = nom.value();
-                                let hi = T::from_f64(
-                                    hi_template.get(bin_idx).copied().unwrap_or(nom_val),
-                                );
-                                let lo = T::from_f64(
-                                    lo_template.get(bin_idx).copied().unwrap_or(nom_val),
-                                );
-                                let delta = histosys_code4p_delta(alpha, lo, nom, hi);
-                                *delta_slot = *delta_slot + delta;
+                            let alpha_val = alpha.value();
+                            if alpha_val > 1.0 {
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal
+                                        .get(bin_idx)
+                                        .copied()
+                                        .unwrap_or(T::from_f64(0.0));
+                                    let nom_val = nom.value();
+                                    let hi = T::from_f64(
+                                        hi_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                    );
+                                    *delta_slot = *delta_slot + (hi - nom) * alpha;
+                                }
+                            } else if alpha_val < -1.0 {
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal
+                                        .get(bin_idx)
+                                        .copied()
+                                        .unwrap_or(T::from_f64(0.0));
+                                    let nom_val = nom.value();
+                                    let lo = T::from_f64(
+                                        lo_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                    );
+                                    *delta_slot = *delta_slot + (nom - lo) * alpha;
+                                }
+                            } else {
+                                let asq = alpha * alpha;
+                                let tmp1 = asq * T::from_f64(3.0) - T::from_f64(10.0);
+                                let tmp2 = asq * tmp1 + T::from_f64(15.0);
+                                let tmp3 = asq * tmp2;
+
+                                let half = T::from_f64(0.5);
+                                let a_const = T::from_f64(0.0625);
+
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal
+                                        .get(bin_idx)
+                                        .copied()
+                                        .unwrap_or(T::from_f64(0.0));
+                                    let nom_val = nom.value();
+                                    let hi = T::from_f64(
+                                        hi_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                    );
+                                    let lo = T::from_f64(
+                                        lo_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                    );
+
+                                    let delta_up = hi - nom;
+                                    let delta_dn = nom - lo;
+                                    // Match pyhf's `code4p` implementation:
+                                    // S = 0.5 * (delta_up + delta_dn)
+                                    // A = 0.0625 * (delta_up - delta_dn)
+                                    let s = half * (delta_up + delta_dn);
+                                    let a = a_const * (delta_up - delta_dn);
+                                    *delta_slot = *delta_slot + alpha * s;
+                                    *delta_slot = *delta_slot + tmp3 * a;
+                                }
                             }
                         }
                         ModelModifier::StatError { param_indices, .. } => {
@@ -1508,6 +1710,26 @@ impl HistFactoryModel {
         tape.backward(nll_var);
 
         // Collect gradients
+        let grad: Vec<f64> = param_vars.iter().map(|&v| tape.adjoint(v)).collect();
+        Ok(grad)
+    }
+
+    /// Compute gradient reusing an existing tape (avoids re-allocation).
+    ///
+    /// The tape is cleared and reused on each call, keeping its heap capacity.
+    /// This saves ~30K allocations in a 1000-toy batch fit.
+    pub fn gradient_reverse_reuse(
+        &self,
+        params: &[f64],
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<Vec<f64>> {
+        self.validate_params_len(params.len())?;
+        tape.clear();
+
+        let param_vars: Vec<_> = params.iter().map(|&v| tape.var(v)).collect();
+        let nll_var = self.nll_on_tape(tape, &param_vars)?;
+        tape.backward(nll_var);
+
         let grad: Vec<f64> = param_vars.iter().map(|&v| tape.adjoint(v)).collect();
         Ok(grad)
     }
@@ -1702,19 +1924,75 @@ impl HistFactoryModel {
                                     params.len()
                                 ))
                             })?;
-                            for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
-                                let nom = sample_nominal
-                                    .get(bin_idx)
-                                    .copied()
-                                    .unwrap_or(tape.constant(0.0));
-                                let nom_val = tape.val(nom);
-                                let hi_val = hi_template.get(bin_idx).copied().unwrap_or(nom_val);
-                                let lo_val = lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                            let alpha_val = tape.val(alpha);
 
-                                let hi = tape.constant(hi_val);
-                                let lo = tape.constant(lo_val);
-                                let delta = histosys_code4p_delta_on_tape(tape, alpha, lo, nom, hi);
-                                *delta_slot = tape.add(*delta_slot, delta);
+                            if alpha_val > 1.0 {
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal[bin_idx];
+                                    let nom_val = tape.val(nom);
+                                    let hi_val =
+                                        hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let hi = tape.constant(hi_val);
+
+                                    let delta_up = tape.sub(hi, nom);
+                                    let delta = tape.mul(alpha, delta_up);
+                                    *delta_slot = tape.add(*delta_slot, delta);
+                                }
+                            } else if alpha_val < -1.0 {
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal[bin_idx];
+                                    let nom_val = tape.val(nom);
+                                    let lo_val =
+                                        lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let lo = tape.constant(lo_val);
+
+                                    let delta_dn = tape.sub(nom, lo);
+                                    let delta = tape.mul(alpha, delta_dn);
+                                    *delta_slot = tape.add(*delta_slot, delta);
+                                }
+                            } else {
+                                // Hoist alpha-only polynomial terms outside the bin loop.
+                                // tmp3 = a^2 * (a^2 * (a^2 * 3 - 10) + 15)
+                                let c_half = tape.constant(0.5);
+                                let c_a = tape.constant(0.0625);
+                                let c_three = tape.constant(3.0);
+                                let c_ten = tape.constant(10.0);
+                                let c_fifteen = tape.constant(15.0);
+
+                                let asq = tape.mul(alpha, alpha);
+                                let asq_x3 = tape.mul(asq, c_three);
+                                let tmp1 = tape.sub(asq_x3, c_ten);
+                                let asq_tmp1 = tape.mul(asq, tmp1);
+                                let tmp2 = tape.add(asq_tmp1, c_fifteen);
+                                let tmp3 = tape.mul(asq, tmp2);
+
+                                for (bin_idx, delta_slot) in sample_deltas.iter_mut().enumerate() {
+                                    let nom = sample_nominal[bin_idx];
+                                    let nom_val = tape.val(nom);
+                                    let hi_val =
+                                        hi_template.get(bin_idx).copied().unwrap_or(nom_val);
+                                    let lo_val =
+                                        lo_template.get(bin_idx).copied().unwrap_or(nom_val);
+
+                                    let hi = tape.constant(hi_val);
+                                    let lo = tape.constant(lo_val);
+
+                                    // Match pyhf's `code4p` implementation:
+                                    // S = 0.5 * (delta_up + delta_dn)
+                                    // A = 0.0625 * (delta_up - delta_dn)
+                                    let delta_up = tape.sub(hi, nom);
+                                    let delta_dn = tape.sub(nom, lo);
+                                    let sum = tape.add(delta_up, delta_dn);
+                                    let s = tape.mul(sum, c_half);
+                                    let diff = tape.sub(delta_up, delta_dn);
+                                    let a = tape.mul(diff, c_a);
+
+                                    // Accumulate in a stable, scalar-like operation order.
+                                    let alpha_s = tape.mul(alpha, s);
+                                    *delta_slot = tape.add(*delta_slot, alpha_s);
+                                    let tmp3_a = tape.mul(tmp3, a);
+                                    *delta_slot = tape.add(*delta_slot, tmp3_a);
+                                }
                             }
                         }
                         ModelModifier::StatError { param_indices, .. } => {
@@ -1763,13 +2041,33 @@ impl HistFactoryModel {
                     }
                 }
 
-                for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
-                    let nom = sample_nominal.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
-                    let delta = sample_deltas.get(bin_idx).copied().unwrap_or(tape.constant(0.0));
-                    let fac = sample_factors.get(bin_idx).copied().unwrap_or(tape.constant(1.0));
-                    let sum = tape.add(nom, delta);
-                    let val = tape.mul(sum, fac);
-                    *ch_val = tape.add(*ch_val, val);
+                if sample_nominal.len() == n_bins {
+                    for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
+                        let nom = sample_nominal[bin_idx];
+                        let delta = sample_deltas[bin_idx];
+                        let fac = sample_factors[bin_idx];
+                        let sum = tape.add(nom, delta);
+                        let val = tape.mul(sum, fac);
+                        *ch_val = tape.add(*ch_val, val);
+                    }
+                } else {
+                    for (bin_idx, ch_val) in channel_expected.iter_mut().enumerate() {
+                        let nom = sample_nominal
+                            .get(bin_idx)
+                            .copied()
+                            .unwrap_or_else(|| tape.constant(0.0));
+                        let delta = sample_deltas
+                            .get(bin_idx)
+                            .copied()
+                            .unwrap_or_else(|| tape.constant(0.0));
+                        let fac = sample_factors
+                            .get(bin_idx)
+                            .copied()
+                            .unwrap_or_else(|| tape.constant(1.0));
+                        let sum = tape.add(nom, delta);
+                        let val = tape.mul(sum, fac);
+                        *ch_val = tape.add(*ch_val, val);
+                    }
                 }
             }
 
@@ -2227,48 +2525,6 @@ fn normsys_code4_on_tape(
     out = tape.add(out, t6);
 
     out
-}
-
-fn histosys_code4p_delta_on_tape(
-    tape: &mut ns_ad::tape::Tape,
-    alpha: ns_ad::tape::Var,
-    down: ns_ad::tape::Var,
-    nom: ns_ad::tape::Var,
-    up: ns_ad::tape::Var,
-) -> ns_ad::tape::Var {
-    type Var = ns_ad::tape::Var;
-
-    let alpha_val = tape.val(alpha);
-    let delta_up: Var = tape.sub(up, nom);
-    let delta_dn: Var = tape.sub(nom, down);
-
-    if alpha_val > 1.0 {
-        return tape.mul(alpha, delta_up);
-    }
-    if alpha_val < -1.0 {
-        return tape.mul(alpha, delta_dn);
-    }
-
-    // S = 0.5 * (delta_up + delta_dn)
-    // A = 0.0625 * (delta_up - delta_dn)
-    let sum = tape.add(delta_up, delta_dn);
-    let s = tape.mul_f64(sum, 0.5);
-    let diff = tape.sub(delta_up, delta_dn);
-    let a = tape.mul_f64(diff, 0.0625);
-
-    let asq = tape.mul(alpha, alpha);
-    let asq3 = tape.mul_f64(asq, 3.0);
-    let ten = tape.constant(10.0);
-    let tmp1 = tape.sub(asq3, ten);
-    let asq_tmp1 = tape.mul(asq, tmp1);
-    let fifteen = tape.constant(15.0);
-    let tmp2 = tape.add(asq_tmp1, fifteen);
-    let tmp3 = tape.mul(asq, tmp2);
-
-    // delta = alpha*S + tmp3*A
-    let alpha_s = tape.mul(alpha, s);
-    let tmp3_a = tape.mul(tmp3, a);
-    tape.add(alpha_s, tmp3_a)
 }
 
 #[cfg(test)]

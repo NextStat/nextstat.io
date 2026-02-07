@@ -5,6 +5,7 @@ use nalgebra::DMatrix;
 use ns_core::traits::{LogDensityModel, PreparedNll};
 use ns_core::{FitResult, Result};
 use ns_translate::pyhf::HistFactoryModel;
+use std::cell::RefCell;
 
 /// Maximum Likelihood Estimator
 ///
@@ -218,6 +219,150 @@ impl MaximumLikelihoodEstimator {
         optimizer.minimize(&objective, initial_params, &bounds)
     }
 
+    /// Minimize NLL for a [`HistFactoryModel`], reusing the AD tape across gradient calls.
+    ///
+    /// Convenience wrapper that creates a fresh tape internally.
+    /// For batch fitting, prefer [`fit_minimum_histfactory_with_tape`] with a
+    /// per-thread tape via Rayon `map_init`.
+    pub fn fit_minimum_histfactory(
+        &self,
+        model: &HistFactoryModel,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+        self.fit_minimum_histfactory_with_tape(model, &mut tape)
+    }
+
+    /// Minimize NLL for a [`HistFactoryModel`], reusing a caller-provided AD tape.
+    ///
+    /// The tape is cleared and reused on every gradient evaluation, avoiding
+    /// heap allocation.  Pass a per-thread tape from Rayon `map_init` to get
+    /// one allocation per thread instead of per fit.
+    pub fn fit_minimum_histfactory_with_tape(
+        &self,
+        model: &HistFactoryModel,
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let initial_params: Vec<f64> = model.parameter_init();
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        let prepared = model.prepare();
+        let tape_cell = RefCell::new(std::mem::take(tape));
+
+        struct HFObjective<'a> {
+            prepared: ns_translate::pyhf::PreparedModel<'a>,
+            model: &'a HistFactoryModel,
+            tape: RefCell<ns_ad::tape::Tape>,
+        }
+
+        // SAFETY: L-BFGS-B optimizer is single-threaded within one minimize() call.
+        // The RefCell is never shared across threads.
+        unsafe impl Send for HFObjective<'_> {}
+        unsafe impl Sync for HFObjective<'_> {}
+
+        impl ObjectiveFunction for HFObjective<'_> {
+            fn eval(&self, params: &[f64]) -> Result<f64> {
+                self.prepared.nll(params)
+            }
+
+            fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+                let mut t = self.tape.borrow_mut();
+                self.model.gradient_reverse_reuse(params, &mut t)
+            }
+        }
+
+        let objective = HFObjective { prepared, model, tape: tape_cell };
+        let optimizer = LbfgsbOptimizer::new(self.config.clone());
+        let result = optimizer.minimize(&objective, &initial_params, &bounds);
+
+        // Return tape to caller so capacity is preserved across fits
+        *tape = objective.tape.into_inner();
+
+        result
+    }
+
+    /// Minimize NLL for a [`HistFactoryModel`] from an explicit starting point, reusing a caller-provided AD tape.
+    ///
+    /// This is the HistFactory equivalent of [`fit_minimum_from`] and is intended for warm-started
+    /// workflows (toys, profile scans, limits) where consecutive minimizations are correlated.
+    pub fn fit_minimum_histfactory_from_with_tape(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        if initial_params.len() != model.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "fit_minimum_histfactory_from_with_tape: initial_params length {} != model.dim() {}",
+                initial_params.len(),
+                model.dim()
+            )));
+        }
+
+        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
+        self.fit_minimum_histfactory_from_with_bounds_with_tape(model, initial_params, &bounds, tape)
+    }
+
+    /// Minimize NLL for a [`HistFactoryModel`] from an explicit starting point and explicit bounds,
+    /// reusing a caller-provided AD tape.
+    ///
+    /// This enables fast fixed-parameter fits without cloning the full model: clamp the bounds
+    /// of the fixed parameter to `(value, value)` and pass them here.
+    pub fn fit_minimum_histfactory_from_with_bounds_with_tape(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+        bounds: &[(f64, f64)],
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        if initial_params.len() != model.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "fit_minimum_histfactory_from_with_bounds_with_tape: initial_params length {} != model.dim() {}",
+                initial_params.len(),
+                model.dim()
+            )));
+        }
+        if bounds.len() != model.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "fit_minimum_histfactory_from_with_bounds_with_tape: bounds length {} != model.dim() {}",
+                bounds.len(),
+                model.dim()
+            )));
+        }
+
+        let prepared = model.prepare();
+        let tape_cell = RefCell::new(std::mem::take(tape));
+
+        struct HFObjective<'a> {
+            prepared: ns_translate::pyhf::PreparedModel<'a>,
+            model: &'a HistFactoryModel,
+            tape: RefCell<ns_ad::tape::Tape>,
+        }
+
+        // SAFETY: L-BFGS-B optimizer is single-threaded within one minimize() call.
+        // The RefCell is never shared across threads.
+        unsafe impl Send for HFObjective<'_> {}
+        unsafe impl Sync for HFObjective<'_> {}
+
+        impl ObjectiveFunction for HFObjective<'_> {
+            fn eval(&self, params: &[f64]) -> Result<f64> {
+                self.prepared.nll(params)
+            }
+
+            fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+                let mut t = self.tape.borrow_mut();
+                self.model.gradient_reverse_reuse(params, &mut t)
+            }
+        }
+
+        let objective = HFObjective { prepared, model, tape: tape_cell };
+        let optimizer = LbfgsbOptimizer::new(self.config.clone());
+        let result = optimizer.minimize(&objective, initial_params, bounds);
+
+        // Return tape to caller so capacity is preserved across fits
+        *tape = objective.tape.into_inner();
+
+        result
+    }
+
     /// Compute full Hessian matrix using forward differences of analytical gradient.
     ///
     /// H_{ij} = (∂g_i/∂x_j) ≈ (g_i(x + ε·e_j) − g_i(x)) / ε
@@ -317,7 +462,114 @@ impl MaximumLikelihoodEstimator {
         models.par_iter().map(|model| self.fit(model)).collect()
     }
 
+    /// Full fit for a [`HistFactoryModel`], reusing the AD tape across all gradient
+    /// calls (minimization + Hessian).
+    ///
+    /// For a model with N params this saves N+1+~30 tape allocations per fit.
+    pub fn fit_histfactory(&self, model: &HistFactoryModel) -> Result<FitResult> {
+        let mut tape = ns_ad::tape::Tape::with_capacity(model.n_params() * 20);
+        self.fit_histfactory_with_tape(model, &mut tape)
+    }
+
+    /// Full fit for a [`HistFactoryModel`] with a caller-provided tape.
+    pub fn fit_histfactory_with_tape(
+        &self,
+        model: &HistFactoryModel,
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<FitResult> {
+        let result = self.fit_minimum_histfactory_with_tape(model, tape)?;
+
+        let hessian = self.compute_hessian_histfactory(model, &result.parameters, tape)?;
+        let n = result.parameters.len();
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    Ok(FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                } else {
+                    log::warn!("Invalid covariance diagonal; omitting covariance matrix");
+                    Ok(FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    ))
+                }
+            }
+            None => {
+                log::warn!("Hessian inversion failed, using diagonal approximation");
+                Ok(FitResult::new(
+                    result.parameters,
+                    diag_uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                ))
+            }
+        }
+    }
+
+    /// Compute Hessian for a [`HistFactoryModel`], reusing a caller-provided tape.
+    fn compute_hessian_histfactory(
+        &self,
+        model: &HistFactoryModel,
+        best_params: &[f64],
+        tape: &mut ns_ad::tape::Tape,
+    ) -> Result<DMatrix<f64>> {
+        let n = best_params.len();
+        let grad_center = model.gradient_reverse_reuse(best_params, tape)?;
+
+        let mut hessian = DMatrix::zeros(n, n);
+
+        for j in 0..n {
+            let eps = 1e-4 * best_params[j].abs().max(1.0);
+
+            let mut params_plus = best_params.to_vec();
+            params_plus[j] += eps;
+            let grad_plus = model.gradient_reverse_reuse(&params_plus, tape)?;
+
+            for i in 0..n {
+                hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
+            }
+        }
+
+        // Symmetrise: H = (H + H^T) / 2
+        let ht = hessian.transpose();
+        hessian = (&hessian + &ht) * 0.5;
+
+        Ok(hessian)
+    }
+
     /// Generate toy pseudo-experiments and fit each one.
+    ///
+    /// Uses tape-reusing gradient path via Rayon `map_init`.
     ///
     /// # Arguments
     /// * `model` - Base model (used for expected data and parameter structure)
@@ -342,17 +594,22 @@ impl MaximumLikelihoodEstimator {
             Err(e) => return vec![Err(e)],
         };
 
-        // Generate toy datasets in parallel with deterministic seeds
+        let tape_capacity = model.n_params() * 20;
+
+        // Generate toy datasets in parallel with deterministic seeds.
+        // map_init creates one Tape per Rayon worker thread.
         (0..n_toys)
             .into_par_iter()
-            .map(|toy_idx| {
-                let toy_seed = seed.wrapping_add(toy_idx as u64);
-                let toy_data = crate::toys::poisson_main_from_expected(&expected, toy_seed);
+            .map_init(
+                || ns_ad::tape::Tape::with_capacity(tape_capacity),
+                |tape, toy_idx| {
+                    let toy_seed = seed.wrapping_add(toy_idx as u64);
+                    let toy_data = crate::toys::poisson_main_from_expected(&expected, toy_seed);
 
-                // Create toy model with fluctuated data
-                let toy_model = model.with_observed_main(&toy_data)?;
-                self.fit(&toy_model)
-            })
+                    let toy_model = model.with_observed_main(&toy_data)?;
+                    self.fit_histfactory_with_tape(&toy_model, tape)
+                },
+            )
             .collect()
     }
 

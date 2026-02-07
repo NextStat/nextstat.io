@@ -6,6 +6,27 @@
 
 NextStat is a high-performance statistical fitting toolkit for High Energy Physics (HEP), implemented in Rust with Python bindings.
 
+## The God Run (toy-based CLs)
+
+- **Model:** S+B HistFactory (synthetic), 50 channels × 4 bins, 201 parameters (mu + 200 nuisances)
+- **Task:** CLs via toy-based q~_mu
+- **Load:** 10,000 toys (b-only) + 10,000 toys (s+b)
+- **Machine:** Apple M5 (arm64), macOS-26.2-arm64-arm-64bit-Mach-O
+- **Versions:** nextstat 0.1.0, pyhf 0.7.6, Python 3.13.11
+- **Recorded:** 2026-02-07 (UTC)
+- **Commit:** 88d57856
+
+| Tool | Wall time | Speedup |
+|---|---:|---:|
+| NextStat (Rayon) | 3.47 s | 1.0× |
+| pyhf (multiprocessing, 10 procs) | 50m 11.7s | 868.0× |
+
+Reproduce:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py --n-toys 10000
+```
+
 ## What You Get
 
 - pyhf JSON compatibility (HistFactory-style workspaces)
@@ -197,6 +218,7 @@ let expr = ns_root::CompiledExpr::compile("pt > 25.0 && abs(eta) < 2.5")?;
 ```bash
 nextstat fit --input workspace.json
 nextstat hypotest --input workspace.json --mu 1.0 --expected-set
+nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --seed 42 --threads 0
 nextstat upper-limit --input workspace.json --expected --scan-start 0 --scan-stop 5 --scan-points 201
 nextstat version
 ```
@@ -270,8 +292,11 @@ cargo build --workspace
 # Tests (including feature-gated backends)
 cargo test --workspace --all-features
 
-# Opt-in slow Rust tests (toys, etc.)
-cargo test -p ns-inference -- --ignored
+# Opt-in slow Rust tests (toys, SBC, NUTS quality gates)
+make rust-slow-tests
+
+# Very slow (release) regression check
+make rust-very-slow-tests
 
 # Format and lint
 cargo fmt --check

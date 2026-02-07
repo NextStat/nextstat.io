@@ -66,6 +66,20 @@ Baselines are stored under `target/criterion`.
 
 The Apex2 validation system runs full Python-level benchmarks and produces machine-readable JSON reports.
 
+## The "God Run" (Toy-based CLs)
+
+This is the headline benchmark used in the README for toy-based CLs (q~_mu) performance.
+
+Run:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py --n-toys 10000
+```
+
+Outputs:
+- `tmp/god_run_report.json` (machine-readable report)
+- `tmp/god_run_snippet.md` (README-ready Markdown snippet)
+
 ### Apex2 Runners
 
 | Script | What it measures | Output |

@@ -141,6 +141,37 @@ enum Commands {
         threads: usize,
     },
 
+    /// Toy-based CLs hypotest (qtilde)
+    HypotestToys {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Tested POI value (mu)
+        #[arg(long)]
+        mu: f64,
+
+        /// Toys per hypothesis (b-only and s+b).
+        #[arg(long, default_value = "1000")]
+        n_toys: usize,
+
+        /// RNG seed
+        #[arg(long, default_value = "42")]
+        seed: u64,
+
+        /// Also return the expected CLs set (Brazil band).
+        #[arg(long)]
+        expected_set: bool,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "0")]
+        threads: usize,
+    },
+
     /// Observed CLs upper limit via bisection (asymptotics, qtilde)
     UpperLimit {
         /// Input workspace (pyhf JSON)
@@ -507,6 +538,25 @@ enum ImportCommands {
         #[arg(long)]
         coverage_json: Option<PathBuf>,
     },
+
+    /// Apply a pyhf PatchSet (HEPData) to a base workspace JSON (typically background-only).
+    Patchset {
+        /// Base workspace JSON (e.g., `BkgOnly.json`).
+        #[arg(long)]
+        workspace: PathBuf,
+
+        /// PatchSet JSON (RFC 6902 patch container).
+        #[arg(long)]
+        patchset: PathBuf,
+
+        /// Patch name to apply (defaults to the first patch in the PatchSet).
+        #[arg(long)]
+        patch_name: Option<String>,
+
+        /// Output file for the patched workspace (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -797,6 +847,18 @@ fn main() -> Result<()> {
         Commands::Hypotest { input, mu, expected_set, output, threads } => {
             cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
         }
+        Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads } => {
+            cmd_hypotest_toys(
+                &input,
+                mu,
+                n_toys,
+                seed,
+                expected_set,
+                output.as_ref(),
+                threads,
+                cli.bundle.as_ref(),
+            )
+        }
         Commands::UpperLimit {
             input,
             alpha,
@@ -936,6 +998,13 @@ fn main() -> Result<()> {
                 output.as_ref(),
                 analysis_yaml.as_ref(),
                 coverage_json.as_ref(),
+                cli.bundle.as_ref(),
+            ),
+            ImportCommands::Patchset { workspace, patchset, patch_name, output } => cmd_import_patchset(
+                &workspace,
+                &patchset,
+                patch_name.as_deref(),
+                output.as_ref(),
                 cli.bundle.as_ref(),
             ),
         },
@@ -1535,6 +1604,43 @@ fn cmd_import_trex_config(
         });
 
         std::fs::write(path, serde_yaml_ng::to_string(&spec)?)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_import_patchset(
+    workspace: &PathBuf,
+    patchset: &PathBuf,
+    patch_name: Option<&str>,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    tracing::info!(
+        workspace = %workspace.display(),
+        patchset = %patchset.display(),
+        patch_name = patch_name.unwrap_or("<first>"),
+        "applying pyhf PatchSet"
+    );
+
+    let base_json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(workspace)?)?;
+    let ps: ns_translate::pyhf::PatchSet =
+        serde_json::from_str(&std::fs::read_to_string(patchset)?)?;
+
+    let out_json = ps.apply_to_value(&base_json, patch_name)?;
+    write_json(output, &out_json)?;
+
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "import_patchset",
+            serde_json::json!({
+                "patchset": patchset,
+                "patch_name": patch_name,
+            }),
+            workspace,
+            &out_json,
+        )?;
     }
 
     Ok(())
@@ -2945,6 +3051,74 @@ fn cmd_hypotest(
             dir,
             "hypotest",
             serde_json::json!({ "mu": mu, "expected_set": expected_set, "threads": threads }),
+            input,
+            &output_json,
+        )?;
+    }
+    Ok(())
+}
+
+fn cmd_hypotest_toys(
+    input: &PathBuf,
+    mu: f64,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    output: Option<&PathBuf>,
+    threads: usize,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let model = load_model(input, threads)?;
+    let mle = ns_inference::MaximumLikelihoodEstimator::new();
+
+    let output_json = if expected_set {
+        let r = ns_inference::hypotest_qtilde_toys_expected_set(&mle, &model, mu, n_toys, seed)?;
+        let o = &r.observed;
+        serde_json::json!({
+            "mu_test": o.mu_test,
+            "cls": o.cls,
+            "clsb": o.clsb,
+            "clb": o.clb,
+            "q_obs": o.q_obs,
+            "mu_hat": o.mu_hat,
+            "n_toys": { "b": o.n_toys_b, "sb": o.n_toys_sb },
+            "n_error": { "b": o.n_error_b, "sb": o.n_error_sb },
+            "n_nonconverged": { "b": o.n_nonconverged_b, "sb": o.n_nonconverged_sb },
+            "seed": seed,
+            "expected_set": {
+                "nsigma_order": [2, 1, 0, -1, -2],
+                "cls": r.expected,
+            },
+        })
+    } else {
+        let r = ns_inference::hypotest_qtilde_toys(&mle, &model, mu, n_toys, seed)?;
+        serde_json::json!({
+            "mu_test": r.mu_test,
+            "cls": r.cls,
+            "clsb": r.clsb,
+            "clb": r.clb,
+            "q_obs": r.q_obs,
+            "mu_hat": r.mu_hat,
+            "n_toys": { "b": r.n_toys_b, "sb": r.n_toys_sb },
+            "n_error": { "b": r.n_error_b, "sb": r.n_error_sb },
+            "n_nonconverged": { "b": r.n_nonconverged_b, "sb": r.n_nonconverged_sb },
+            "seed": seed,
+            "expected_set": serde_json::Value::Null,
+        })
+    };
+
+    write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        report::write_bundle(
+            dir,
+            "hypotest_toys",
+            serde_json::json!({
+                "mu": mu,
+                "n_toys": n_toys,
+                "seed": seed,
+                "expected_set": expected_set,
+                "threads": threads,
+            }),
             input,
             &output_json,
         )?;

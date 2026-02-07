@@ -29,8 +29,86 @@ pub mod metal;
 #[cfg(feature = "cuda")]
 pub mod cuda;
 
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 pub mod accelerate;
+
+#[cfg(all(feature = "accelerate", not(target_os = "macos")))]
+/// Stub module for non-macOS targets.
+///
+/// The real Apple Accelerate backend (vDSP/vForce) is only available on macOS.
+/// On other platforms we keep the same API surface but fall back to the pure
+/// Rust SIMD/scalar implementations.
+pub mod accelerate {
+    /// Compute Poisson NLL using the pure Rust SIMD backend (fallback).
+    pub fn poisson_nll_accelerate(
+        expected: &[f64],
+        observed: &[f64],
+        ln_factorials: &[f64],
+        obs_mask: &[f64],
+    ) -> f64 {
+        crate::simd::poisson_nll_simd(expected, observed, ln_factorials, obs_mask)
+    }
+
+    /// Compute Poisson NLL for a batch of toy experiments (fallback).
+    pub fn batch_poisson_nll_accelerate(
+        expected_flat: &[f64],
+        observed_flat: &[f64],
+        ln_factorials_flat: &[f64],
+        obs_mask_flat: &[f64],
+        n_bins: usize,
+        n_toys: usize,
+    ) -> Vec<f64> {
+        assert_eq!(expected_flat.len(), n_toys * n_bins);
+
+        let per_toy_obs = observed_flat.len() == n_toys * n_bins;
+        if !per_toy_obs {
+            assert_eq!(observed_flat.len(), n_bins);
+            assert_eq!(ln_factorials_flat.len(), n_bins);
+            assert_eq!(obs_mask_flat.len(), n_bins);
+        } else {
+            assert_eq!(ln_factorials_flat.len(), n_toys * n_bins);
+            assert_eq!(obs_mask_flat.len(), n_toys * n_bins);
+        }
+
+        let mut results = Vec::with_capacity(n_toys);
+        for toy_idx in 0..n_toys {
+            let offset = toy_idx * n_bins;
+            let exp = &expected_flat[offset..offset + n_bins];
+
+            if per_toy_obs {
+                results.push(crate::simd::poisson_nll_simd(
+                    exp,
+                    &observed_flat[offset..offset + n_bins],
+                    &ln_factorials_flat[offset..offset + n_bins],
+                    &obs_mask_flat[offset..offset + n_bins],
+                ));
+            } else {
+                results.push(crate::simd::poisson_nll_simd(
+                    exp,
+                    observed_flat,
+                    ln_factorials_flat,
+                    obs_mask_flat,
+                ));
+            }
+        }
+
+        results
+    }
+
+    /// Clamp a vector of expected values to `[floor, +inf)` in-place (fallback).
+    pub fn clamp_expected_inplace(expected: &mut [f64], floor: f64) {
+        for v in expected {
+            if *v < floor {
+                *v = floor;
+            }
+        }
+    }
+
+    /// Returns false on non-macOS targets.
+    pub fn is_available() -> bool {
+        false
+    }
+}
 
 /// Returns true if the Apple Accelerate fast-path is compiled in *and* enabled at runtime.
 ///
@@ -48,6 +126,9 @@ pub fn accelerate_enabled() -> bool {
 #[cfg(test)]
 mod runtime_tests {
     use super::accelerate_enabled;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn accelerate_disabled_when_feature_off() {
@@ -60,11 +141,21 @@ mod runtime_tests {
     #[test]
     #[cfg(all(feature = "accelerate", target_os = "macos"))]
     fn accelerate_respects_env_var() {
-        std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
+        let _guard = ENV_LOCK.lock().expect("ENV_LOCK poisoned");
+
+        // NOTE: `std::env::{set_var, remove_var}` are `unsafe` on modern Rust
+        // because the process environment is a shared global.
+        unsafe {
+            std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
+        }
         assert!(accelerate_enabled());
 
-        std::env::set_var("NEXTSTAT_DISABLE_ACCELERATE", "1");
+        unsafe {
+            std::env::set_var("NEXTSTAT_DISABLE_ACCELERATE", "1");
+        }
         assert!(!accelerate_enabled());
-        std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
+        unsafe {
+            std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
+        }
     }
 }

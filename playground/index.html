@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NextStat Playground</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.plot.ly/plotly-2.30.1.min.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <div>
+          <h1>NextStat Playground</h1>
+          <p class="subtitle">
+            Drag &amp; drop a <code>workspace.json</code>, run asymptotic CLs in your browser, and
+            plot Brazil bands — no Python, no server.
+          </p>
+        </div>
+        <div class="header-links">
+          <a href="https://github.com/nextstat/nextstat" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Input</h2>
+
+          <div id="dropzone" class="dropzone" tabindex="0" aria-label="Drop workspace.json here">
+            <div class="dropzone-title">Drop <code>workspace.json</code> here</div>
+            <div class="dropzone-subtitle">or</div>
+            <div class="dropzone-actions">
+              <label class="button">
+                Choose file
+                <input id="fileInput" type="file" accept=".json,application/json" hidden />
+              </label>
+              <button id="loadExample" class="button secondary" type="button">Load example</button>
+            </div>
+          </div>
+
+          <h3>Settings</h3>
+          <div class="form">
+            <label class="field">
+              <span>α (CLs threshold)</span>
+              <input id="alpha" type="number" step="0.001" min="0.0001" max="0.9999" value="0.05" />
+            </label>
+
+            <div class="row">
+              <label class="field">
+                <span>Scan start</span>
+                <input id="scanStart" type="number" step="0.1" value="0" />
+              </label>
+              <label class="field">
+                <span>Scan stop</span>
+                <input id="scanStop" type="number" step="0.1" value="5" />
+              </label>
+              <label class="field">
+                <span>Points</span>
+                <input id="scanPoints" type="number" step="1" min="2" value="41" />
+              </label>
+            </div>
+
+            <button id="runBtn" class="button primary" type="button" disabled>Run</button>
+            <div id="status" class="status" role="status" aria-live="polite"></div>
+            <pre id="errorBox" class="error" hidden></pre>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Results</h2>
+          <div class="results">
+            <div class="kv"><div class="k">Measurement</div><div id="measurement" class="v">—</div></div>
+            <div class="kv"><div class="k">POI</div><div id="poi" class="v">—</div></div>
+            <div class="kv"><div class="k"># params</div><div id="nParams" class="v">—</div></div>
+            <div class="kv"><div class="k">μ̂</div><div id="muHat" class="v">—</div></div>
+            <div class="kv"><div class="k">NLL(μ̂)</div><div id="nll" class="v">—</div></div>
+            <div class="kv"><div class="k">Observed μ<sub>up</sub></div><div id="obsLimit" class="v">—</div></div>
+            <div class="kv"><div class="k">Expected μ<sub>up</sub> (median)</div><div id="expMedLimit" class="v">—</div></div>
+            <div class="kv"><div class="k">Runtime</div><div id="runtime" class="v">—</div></div>
+          </div>
+
+          <div class="plot-wrap">
+            <div id="plot" class="plot"></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <small>
+          Tip: if the page errors with “missing <code>pkg/ns_wasm.js</code>”, build the WASM bundle
+          first (see <code>playground/README.md</code>).
+        </small>
+      </footer>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
+

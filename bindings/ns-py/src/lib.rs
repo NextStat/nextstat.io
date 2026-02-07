@@ -3742,6 +3742,28 @@ fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_workspace(json_str)
 }
 
+/// Apply a pyhf PatchSet (HEPData) to a base workspace JSON string.
+///
+/// Returns the patched workspace as a pretty JSON string.
+#[pyfunction]
+#[pyo3(signature = (workspace_json, patchset_json, *, patch_name=None))]
+fn apply_patchset(
+    workspace_json: &str,
+    patchset_json: &str,
+    patch_name: Option<String>,
+) -> PyResult<String> {
+    let base: serde_json::Value =
+        serde_json::from_str(workspace_json).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let ps: ns_translate::pyhf::PatchSet =
+        serde_json::from_str(patchset_json).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    let patched = ps
+        .apply_to_value(&base, patch_name.as_deref())
+        .map_err(|e| PyValueError::new_err(format!("apply_patchset failed: {}", e)))?;
+
+    serde_json::to_string_pretty(&patched).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Convenience wrapper: create model from HistFactory XML (combination.xml + ROOT files).
 #[pyfunction]
 fn from_histfactory(xml_path: &str) -> PyResult<PyHistFactoryModel> {
@@ -4003,6 +4025,86 @@ fn hypotest(
         (r.cls, vec![r.clsb, r.clb]).into_py_any(py)
     } else {
         r.cls.into_py_any(py)
+    }
+}
+
+/// Frequentist hypotest (toy-based CLs, qtilde) returning CLs.
+#[pyfunction]
+#[pyo3(signature = (poi_test, model, *, n_toys=1000, seed=42, expected_set=false, data=None, return_tail_probs=false, return_meta=false))]
+fn hypotest_toys(
+    py: Python<'_>,
+    poi_test: f64,
+    model: &PyHistFactoryModel,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    data: Option<Vec<f64>>,
+    return_tail_probs: bool,
+    return_meta: bool,
+) -> PyResult<Py<PyAny>> {
+    let mle = RustMLE::new();
+    let fit_model = if let Some(obs_main) = data {
+        model
+            .inner
+            .with_observed_main(&obs_main)
+            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+    } else {
+        model.inner.clone()
+    };
+
+    if expected_set {
+        let r = ns_inference::hypotest_qtilde_toys_expected_set(&mle, &fit_model, poi_test, n_toys, seed)
+            .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
+
+        if return_meta {
+            let d = PyDict::new(py);
+            d.set_item("mu_test", r.observed.mu_test)?;
+            d.set_item("cls", r.observed.cls)?;
+            d.set_item("clsb", r.observed.clsb)?;
+            d.set_item("clb", r.observed.clb)?;
+            d.set_item("q_obs", r.observed.q_obs)?;
+            d.set_item("mu_hat", r.observed.mu_hat)?;
+            d.set_item("n_toys_b", r.observed.n_toys_b)?;
+            d.set_item("n_toys_sb", r.observed.n_toys_sb)?;
+            d.set_item("n_error_b", r.observed.n_error_b)?;
+            d.set_item("n_error_sb", r.observed.n_error_sb)?;
+            d.set_item("n_nonconverged_b", r.observed.n_nonconverged_b)?;
+            d.set_item("n_nonconverged_sb", r.observed.n_nonconverged_sb)?;
+            d.set_item("expected", r.expected.to_vec())?;
+            return Ok(d.into_any().unbind());
+        }
+
+        if return_tail_probs {
+            (r.observed.cls, r.expected.to_vec(), vec![r.observed.clsb, r.observed.clb]).into_py_any(py)
+        } else {
+            (r.observed.cls, r.expected.to_vec()).into_py_any(py)
+        }
+    } else {
+        let r = ns_inference::hypotest_qtilde_toys(&mle, &fit_model, poi_test, n_toys, seed)
+            .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
+
+        if return_meta {
+            let d = PyDict::new(py);
+            d.set_item("mu_test", r.mu_test)?;
+            d.set_item("cls", r.cls)?;
+            d.set_item("clsb", r.clsb)?;
+            d.set_item("clb", r.clb)?;
+            d.set_item("q_obs", r.q_obs)?;
+            d.set_item("mu_hat", r.mu_hat)?;
+            d.set_item("n_toys_b", r.n_toys_b)?;
+            d.set_item("n_toys_sb", r.n_toys_sb)?;
+            d.set_item("n_error_b", r.n_error_b)?;
+            d.set_item("n_error_sb", r.n_error_sb)?;
+            d.set_item("n_nonconverged_b", r.n_nonconverged_b)?;
+            d.set_item("n_nonconverged_sb", r.n_nonconverged_sb)?;
+            return Ok(d.into_any().unbind());
+        }
+
+        if return_tail_probs {
+            (r.cls, vec![r.clsb, r.clb]).into_py_any(py)
+        } else {
+            r.cls.into_py_any(py)
+        }
     }
 }
 
@@ -4323,6 +4425,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_patchset, m)?)?;
     m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
     m.add_function(wrap_pyfunction!(histfactory_bin_edges_by_channel, m)?)?;
     m.add_function(wrap_pyfunction!(read_root_histogram, m)?)?;
@@ -4338,6 +4441,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
+    m.add_function(wrap_pyfunction!(hypotest_toys, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;

@@ -13,6 +13,7 @@ description = "Statistical inference (MLE, NUTS, profile likelihood) for NextSta
 
 [dependencies]
 ns-core.workspace = true
+ns-ad.workspace = true
 ns-compute.workspace = true
 ns-prob.workspace = true
 ns-translate.workspace = true
@@ -20,7 +21,7 @@ thiserror.workspace = true
 log.workspace = true
 nalgebra.workspace = true
 argmin.workspace = true
-argmin-math = { workspace = true, features = ["ndarray_latest"] }
+argmin-math.workspace = true
 ndarray.workspace = true
 rayon.workspace = true
 rand.workspace = true
@@ -30,6 +31,9 @@ statrs.workspace = true
 [features]
 default = []
 accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
+
+[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 approx.workspace = true

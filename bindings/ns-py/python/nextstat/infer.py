@@ -9,10 +9,11 @@ This module intentionally mirrors the pyhf surface where practical:
 
 from __future__ import annotations
 
-from ._core import hypotest, profile_scan, upper_limit, upper_limits, upper_limits_root  # type: ignore
+from ._core import hypotest, hypotest_toys, profile_scan, upper_limit, upper_limits, upper_limits_root  # type: ignore
 
 __all__ = [
     "hypotest",
+    "hypotest_toys",
     "profile_scan",
     "upper_limit",
     "upper_limits",

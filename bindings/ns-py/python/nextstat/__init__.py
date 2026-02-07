@@ -25,8 +25,10 @@ fit = _get("fit")
 map_fit = _get("map_fit")
 fit_batch = _get("fit_batch")
 hypotest = _get("hypotest")
+hypotest_toys = _get("hypotest_toys")
 sample = _get("sample")
 from_pyhf = _get("from_pyhf")
+apply_patchset = _get("apply_patchset")
 profile_scan = _get("profile_scan")
 upper_limit = _get("upper_limit")
 upper_limits = _get("upper_limits")
@@ -112,6 +114,7 @@ __all__ = [
     "map_fit",
     "fit_batch",
     "hypotest",
+    "hypotest_toys",
     "sample",
     "sample_nuts",
     "bayes",
@@ -161,6 +164,7 @@ __all__ = [
     "ranking",
     "rk4_linear",
     "from_pyhf",
+    "apply_patchset",
     "from_histfactory_xml",
     "histfactory_bin_edges_by_channel",
     "profile_scan",

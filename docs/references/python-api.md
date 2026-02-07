@@ -14,11 +14,13 @@ Notes:
 ## Top-level functions
 
 - `nextstat.from_pyhf(json_str) -> HistFactoryModel`
+- `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str`
 - `nextstat.fit(model, *, data=None) -> FitResult`
 - `nextstat.map_fit(posterior) -> FitResult`
 - `nextstat.fit_batch(models_or_model, datasets=None) -> list[FitResult]`
 - `nextstat.sample(model_or_posterior, ...) -> dict` (NUTS)
-- `nextstat.hypotest(model, *, mu, expected_set=False, data=None) -> dict`
+- `nextstat.hypotest(poi_test, model, *, data=None, return_tail_probs=False) -> float | (float, list[float])`
+- `nextstat.hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, data=None, return_tail_probs=False, return_meta=False) -> float | tuple | dict`
 - `nextstat.profile_scan(model, *, start=0.0, stop=5.0, points=21, data=None) -> dict`
 - `nextstat.upper_limit(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, expected=False, data=None) -> float | (float, list[float])`
 - `nextstat.upper_limits(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> (float, list[float])`
@@ -136,4 +138,3 @@ These are imported from `nextstat/__init__.py` as convenience wrappers. Some req
 
 The CLI mirrors the core workflows for HEP (fit/hypotest/scan/limits) and time series.
 See `docs/references/cli.md`.
-

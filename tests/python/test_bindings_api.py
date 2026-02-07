@@ -159,6 +159,41 @@ def test_hypotest_contracts():
     assert len(tails) == 2
 
 
+def test_hypotest_toys_contracts_and_reproducibility():
+    ws = load_fixture("simple_workspace.json")
+    model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+
+    cls = nextstat.hypotest_toys(1.0, model, n_toys=3, seed=123)
+    assert isinstance(cls, float)
+    assert 0.0 <= cls <= 1.0
+
+    cls2, tails = nextstat.hypotest_toys(1.0, model, n_toys=3, seed=123, return_tail_probs=True)
+    assert isinstance(cls2, float)
+    assert isinstance(tails, list)
+    assert len(tails) == 2
+
+    cls3, expected = nextstat.hypotest_toys(1.0, model, n_toys=3, seed=123, expected_set=True)
+    assert isinstance(cls3, float)
+    assert isinstance(expected, list)
+    assert len(expected) == 5
+
+    meta = nextstat.hypotest_toys(
+        1.0,
+        model,
+        n_toys=3,
+        seed=123,
+        expected_set=True,
+        return_meta=True,
+    )
+    assert isinstance(meta, dict)
+    assert "cls" in meta
+    assert "expected" in meta
+
+    cls_a = nextstat.hypotest_toys(1.0, model, n_toys=3, seed=123)
+    cls_b = nextstat.hypotest_toys(1.0, model, n_toys=3, seed=123)
+    assert cls_a == cls_b
+
+
 def test_profile_scan_contracts():
     ws = load_fixture("simple_workspace.json")
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))

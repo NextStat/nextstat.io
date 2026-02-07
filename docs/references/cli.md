@@ -16,10 +16,12 @@ HEP / HistFactory:
 - `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
 - `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json]`
+- `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
 - `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json]`
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
 - `nextstat fit --input workspace.json`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
+- `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
 - `nextstat scan --input workspace.json --start 0 --stop 5 --points 21`
 - `nextstat viz profile --input workspace.json ...`
