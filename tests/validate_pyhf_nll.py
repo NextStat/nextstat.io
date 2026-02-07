@@ -42,6 +42,20 @@ class _Timing:
         total = sum(self.totals_s.values())
         print(f"{'total':<28} {total:>12.6f}")
 
+    def sum_prefix(self, prefix: str) -> float:
+        return sum(v for k, v in self.totals_s.items() if str(k).startswith(prefix))
+
+    def print_pyhf_vs_nextstat(self) -> None:
+        pyhf_total = self.sum_prefix("pyhf:")
+        ns_total = self.sum_prefix("nextstat:")
+        if pyhf_total <= 0.0 and ns_total <= 0.0:
+            return
+        speedup = pyhf_total / max(ns_total, 1e-12)
+        print("\nTiming summary (reference vs NextStat)")
+        print(f"  reference (pyhf): {pyhf_total:.6f} s")
+        print(f"  NextStat:         {ns_total:.6f} s")
+        print(f"  speedup:          {speedup:.2f}x")
+
 
 def load_fixture(name: str) -> dict:
     """Load a test fixture JSON file."""
@@ -159,6 +173,7 @@ def validate_simple_workspace():
     print(f"  - NLL values should be finite")
     print(f"  - NLL changes with POI: {nll_mu_0 != nll_nominal != nll_mu_2}")
     timing.print_summary()
+    timing.print_pyhf_vs_nextstat()
 
 
 def validate_complex_workspace():
@@ -210,6 +225,7 @@ def validate_complex_workspace():
     print(f"NextStat NLL at mu=0.0: {nll_ns_mu_0:.10f}")
     print(f"NextStat NLL at mu=2.0: {nll_ns_mu_2:.10f}")
     timing.print_summary()
+    timing.print_pyhf_vs_nextstat()
 
 
 def main():

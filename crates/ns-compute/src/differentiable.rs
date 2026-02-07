@@ -28,6 +28,8 @@ use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
 };
 use cudarc::nvrtc::Ptx;
+#[allow(unused_imports)]
+use cudarc::driver::LaunchArgs;
 use std::sync::Arc;
 
 /// PTX source compiled from `kernels/differentiable_nll_grad.cu` at build time.
@@ -164,7 +166,7 @@ fn launch_kernel(
 pub struct DifferentiableAccelerator {
     #[allow(dead_code)]
     ctx: Arc<CudaContext>,
-    stream: CudaStream,
+    stream: Arc<CudaStream>,
     kernel: CudaFunction,
 
     // Static model buffers (same as CudaBatchAccelerator)

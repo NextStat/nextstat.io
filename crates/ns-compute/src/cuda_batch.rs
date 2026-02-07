@@ -28,7 +28,7 @@ const PTX_SRC: &str = include_str!(env!("CUDA_PTX_PATH"));
 pub struct CudaBatchAccelerator {
     #[allow(dead_code)]
     ctx: Arc<CudaContext>,
-    stream: CudaStream,
+    stream: Arc<CudaStream>,
     kernel_nll_grad: CudaFunction,
     kernel_nll_only: CudaFunction,
 
@@ -198,10 +198,38 @@ impl CudaBatchAccelerator {
             shared_mem_bytes: shared_bytes,
         };
 
+        // Pre-compute scalar args as local variables (LaunchArgs borrows them)
+        let np = self.n_params as u32;
+        let nb = self.n_main_bins as u32;
+        let ns = self.n_samples as u32;
+        let nap = self.n_aux_poisson as u32;
+        let ngc = self.n_gauss_constr as u32;
+        let cc = self.constraint_const;
+
         let mut builder = self.stream.launch_builder(&self.kernel_nll_grad);
-        self.push_common_args(&mut builder);
+        // common args
+        builder.arg(&self.d_params);
+        builder.arg(&self.d_observed);
+        builder.arg(&self.d_ln_facts);
+        builder.arg(&self.d_obs_mask);
+        builder.arg(&self.d_nominal);
+        builder.arg(&self.d_samples);
+        builder.arg(&self.d_modifier_descs);
+        builder.arg(&self.d_modifier_desc_offsets);
+        builder.arg(&self.d_per_bin_param_indices);
+        builder.arg(&self.d_modifier_data);
+        builder.arg(&self.d_aux_poisson);
+        builder.arg(&self.d_gauss_constr);
+        builder.arg(&self.d_nll_out);
+        // grad output
         builder.arg(&mut self.d_grad_out);
-        self.push_scalar_args(&mut builder);
+        // scalar args
+        builder.arg(&np);
+        builder.arg(&nb);
+        builder.arg(&ns);
+        builder.arg(&nap);
+        builder.arg(&ngc);
+        builder.arg(&cc);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch batch_nll_grad: {e}")))?;
@@ -237,9 +265,33 @@ impl CudaBatchAccelerator {
             shared_mem_bytes: shared_bytes,
         };
 
+        let np = self.n_params as u32;
+        let nb = self.n_main_bins as u32;
+        let ns = self.n_samples as u32;
+        let nap = self.n_aux_poisson as u32;
+        let ngc = self.n_gauss_constr as u32;
+        let cc = self.constraint_const;
+
         let mut builder = self.stream.launch_builder(&self.kernel_nll_only);
-        self.push_common_args(&mut builder);
-        self.push_scalar_args(&mut builder);
+        builder.arg(&self.d_params);
+        builder.arg(&self.d_observed);
+        builder.arg(&self.d_ln_facts);
+        builder.arg(&self.d_obs_mask);
+        builder.arg(&self.d_nominal);
+        builder.arg(&self.d_samples);
+        builder.arg(&self.d_modifier_descs);
+        builder.arg(&self.d_modifier_desc_offsets);
+        builder.arg(&self.d_per_bin_param_indices);
+        builder.arg(&self.d_modifier_data);
+        builder.arg(&self.d_aux_poisson);
+        builder.arg(&self.d_gauss_constr);
+        builder.arg(&self.d_nll_out);
+        builder.arg(&np);
+        builder.arg(&nb);
+        builder.arg(&ns);
+        builder.arg(&nap);
+        builder.arg(&ngc);
+        builder.arg(&cc);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch batch_nll_only: {e}")))?;
@@ -296,30 +348,4 @@ impl CudaBatchAccelerator {
         self.upload_observed(observed, ln_facts, obs_mask, 1)
     }
 
-    // --- Private helpers for kernel argument setup ---
-
-    fn push_common_args(&self, builder: &mut cudarc::driver::LaunchBuilder<'_>) {
-        builder.arg(&self.d_params);
-        builder.arg(&self.d_observed);
-        builder.arg(&self.d_ln_facts);
-        builder.arg(&self.d_obs_mask);
-        builder.arg(&self.d_nominal);
-        builder.arg(&self.d_samples);
-        builder.arg(&self.d_modifier_descs);
-        builder.arg(&self.d_modifier_desc_offsets);
-        builder.arg(&self.d_per_bin_param_indices);
-        builder.arg(&self.d_modifier_data);
-        builder.arg(&self.d_aux_poisson);
-        builder.arg(&self.d_gauss_constr);
-        builder.arg(&self.d_nll_out);
-    }
-
-    fn push_scalar_args(&self, builder: &mut cudarc::driver::LaunchBuilder<'_>) {
-        builder.arg(&(self.n_params as u32));
-        builder.arg(&(self.n_main_bins as u32));
-        builder.arg(&(self.n_samples as u32));
-        builder.arg(&(self.n_aux_poisson as u32));
-        builder.arg(&(self.n_gauss_constr as u32));
-        builder.arg(&self.constraint_const);
-    }
 }

@@ -319,4 +319,19 @@ impl ProfiledDifferentiableSession {
     pub fn parameter_init(&self) -> &[f64] {
         &self.init_params
     }
+
+    /// Compute profiled qμ for multiple mu_test values (sequential, session reuse).
+    ///
+    /// Returns `Vec<(qmu, grad_signal)>` — one entry per mu_test value.
+    /// Model data stays on GPU; only the L-BFGS-B fits are repeated.
+    pub fn batch_profiled_qmu(
+        &mut self,
+        signal_ptr: u64,
+        mu_values: &[f64],
+    ) -> Result<Vec<(f64, Vec<f64>)>> {
+        mu_values
+            .iter()
+            .map(|&mu| self.profiled_qmu_and_grad(mu, signal_ptr))
+            .collect()
+    }
 }

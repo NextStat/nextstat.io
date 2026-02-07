@@ -85,6 +85,9 @@ pub mod gpu_single;
 /// Metal GPU-accelerated batch toy fitting (requires `metal` feature + Apple Silicon).
 #[cfg(feature = "metal")]
 pub mod metal_batch;
+/// Metal differentiable NLL session for profiled fitting (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_differentiable;
 /// Bijective transforms for unconstrained parameterisation.
 pub mod transforms;
 
@@ -128,6 +131,8 @@ pub use toybased::{
     ToyHypotestExpectedSet, ToyHypotestResult, hypotest_qtilde_toys,
     hypotest_qtilde_toys_expected_set,
 };
+#[cfg(feature = "metal")]
+pub use metal_differentiable::MetalProfiledDifferentiableSession;
 #[cfg(feature = "metal")]
 pub use toybased::{hypotest_qtilde_toys_expected_set_gpu, hypotest_qtilde_toys_gpu};
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};

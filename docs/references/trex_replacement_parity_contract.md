@@ -8,7 +8,7 @@ created: 2026-02-06
 
 This document formalizes what “**identical numbers**” means for a full TRExFitter replacement.
 
-**Source of truth for numeric tolerances:** `docs/plans/standards.md` and `tests/python/_tolerances.py`.
+**Source of truth for numeric tolerances:** `docs/internal/plans/standards.md` and `tests/python/_tolerances.py`.
 
 **pyhf parity contract (7-tier tolerance hierarchy):** `docs/pyhf-parity-contract.md`.
 
@@ -47,7 +47,7 @@ Contract:
 
 Contract (deterministic mode):
 - `twice_nll` parity vs pyhf within `TWICE_NLL_RTOL/TWICE_NLL_ATOL`.
-- `bestfit` and `uncertainties` parity within Phase-1 contract (see `docs/plans/standards.md`).
+- `bestfit` and `uncertainties` parity within Phase-1 contract (see `docs/internal/plans/standards.md`).
 - Parameters must be compared **by name**, never by index position.
 
 ### 1.3 Expected data (main + aux)

@@ -4750,6 +4750,115 @@ impl PyProfiledDiffSession {
     fn parameter_init(&self) -> Vec<f64> {
         self.inner.parameter_init().to_vec()
     }
+
+    /// Compute profiled qμ for multiple mu_test values (sequential, GPU session reuse).
+    ///
+    /// Args:
+    ///     signal_ptr: int — from torch.Tensor.data_ptr() (CUDA device pointer)
+    ///     mu_values: list[float] — signal strength hypotheses
+    ///
+    /// Returns:
+    ///     list[tuple[float, list[float]]] — [(qmu, grad_signal), ...]
+    fn batch_profiled_qmu(
+        &mut self,
+        signal_ptr: u64,
+        mu_values: Vec<f64>,
+    ) -> PyResult<Vec<(f64, Vec<f64>)>> {
+        self.inner
+            .batch_profiled_qmu(signal_ptr, &mu_values)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MetalProfiledDifferentiableSession — profiled q₀/qμ on Apple Silicon (Metal)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "metal")]
+#[pyclass(name = "MetalProfiledDifferentiableSession")]
+struct PyMetalProfiledDiffSession {
+    inner: ns_inference::MetalProfiledDifferentiableSession,
+}
+
+#[cfg(feature = "metal")]
+#[pymethods]
+impl PyMetalProfiledDiffSession {
+    /// Create a Metal profiled differentiable GPU session.
+    ///
+    /// Args:
+    ///     model: HistFactoryModel
+    ///     signal_sample_name: name of the signal sample in the workspace
+    #[new]
+    fn new(model: &PyHistFactoryModel, signal_sample_name: &str) -> PyResult<Self> {
+        let inner =
+            ns_inference::MetalProfiledDifferentiableSession::new(&model.inner, signal_sample_name)
+                .map_err(|e| PyValueError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Upload signal histogram from CPU (list or numpy array of f64).
+    fn upload_signal(&mut self, signal: Vec<f64>) -> PyResult<()> {
+        self.inner
+            .upload_signal(&signal)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Compute profiled q₀ and its gradient w.r.t. signal bins.
+    ///
+    /// Signal must be uploaded via `upload_signal()` before calling.
+    ///
+    /// Returns:
+    ///     tuple[float, list[float]] — (q0, grad_signal)
+    fn profiled_q0_and_grad(&mut self) -> PyResult<(f64, Vec<f64>)> {
+        self.inner
+            .profiled_q0_and_grad()
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Compute profiled qμ and its gradient w.r.t. signal bins.
+    ///
+    /// Signal must be uploaded via `upload_signal()` before calling.
+    ///
+    /// Args:
+    ///     mu_test: float — signal strength hypothesis to test
+    ///
+    /// Returns:
+    ///     tuple[float, list[float]] — (qmu, grad_signal)
+    fn profiled_qmu_and_grad(&mut self, mu_test: f64) -> PyResult<(f64, Vec<f64>)> {
+        self.inner
+            .profiled_qmu_and_grad(mu_test)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Number of signal bins.
+    fn signal_n_bins(&self) -> usize {
+        self.inner.signal_n_bins()
+    }
+
+    /// Number of model parameters.
+    fn n_params(&self) -> usize {
+        self.inner.n_params()
+    }
+
+    /// Default initial parameter values.
+    fn parameter_init(&self) -> Vec<f64> {
+        self.inner.parameter_init().to_vec()
+    }
+
+    /// Compute profiled qμ for multiple mu_test values.
+    ///
+    /// Signal must be uploaded via `upload_signal()` before calling.
+    ///
+    /// Args:
+    ///     mu_values: list[float] — signal strength hypotheses
+    ///
+    /// Returns:
+    ///     list[tuple[float, list[float]]] — [(qmu, grad_signal), ...]
+    fn batch_profiled_qmu(&mut self, mu_values: Vec<f64>) -> PyResult<Vec<(f64, Vec<f64>)>> {
+        self.inner
+            .batch_profiled_qmu(&mu_values)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
 }
 
 /// Python submodule: nextstat._core
@@ -4826,6 +4935,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDiffSession>()?;
     #[cfg(feature = "cuda")]
     m.add_class::<PyProfiledDiffSession>()?;
+    // MetalProfiledDifferentiableSession (Metal only)
+    #[cfg(feature = "metal")]
+    m.add_class::<PyMetalProfiledDiffSession>()?;
 
     // Back-compat aliases used in plans/docs.
     let model_cls = m.getattr("HistFactoryModel")?;

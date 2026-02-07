@@ -2335,6 +2335,50 @@ fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::V
                     }
                     norm(vv);
                 }
+
+                // Stable ordering for common "set-like" arrays in report artifacts.
+                // NOTE: this is only used behind `--deterministic`.
+                for (k, vv) in map.iter_mut() {
+                    let Some(arr) = vv.as_array_mut() else { continue };
+                    match k.as_str() {
+                        "channels" => {
+                            arr.sort_by(|a, b| {
+                                let ak = a
+                                    .get("channel_name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                let bk = b
+                                    .get("channel_name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                ak.cmp(bk)
+                            });
+                        }
+                        "samples" => {
+                            arr.sort_by(|a, b| {
+                                let ak = a
+                                    .get("name")
+                                    .or_else(|| a.get("sample_name"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                let bk = b
+                                    .get("name")
+                                    .or_else(|| b.get("sample_name"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                ak.cmp(bk)
+                            });
+                        }
+                        "entries" | "groups" | "observations" => {
+                            arr.sort_by(|a, b| {
+                                let ak = a.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                                let bk = b.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                                ak.cmp(bk)
+                            });
+                        }
+                        _ => {}
+                    }
+                }
             }
             serde_json::Value::Array(arr) => {
                 for vv in arr.iter_mut() {
@@ -2347,6 +2391,31 @@ fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::V
 
     norm(&mut value);
     value
+}
+
+#[cfg(test)]
+mod deterministic_json_tests {
+    use super::normalize_json_for_determinism;
+
+    #[test]
+    fn normalize_sorts_report_channels_and_samples() {
+        let v = serde_json::json!({
+            "meta": {"created_unix_ms": 123},
+            "channels": [
+                {"channel_name": "b", "samples": [{"name":"z"}, {"name":"a"}]},
+                {"channel_name": "a", "samples": [{"name":"b"}, {"name":"a"}]},
+            ],
+        });
+        let out = normalize_json_for_determinism(v);
+        let channels = out.get("channels").unwrap().as_array().unwrap();
+        assert_eq!(channels[0].get("channel_name").unwrap().as_str().unwrap(), "a");
+        assert_eq!(channels[1].get("channel_name").unwrap().as_str().unwrap(), "b");
+        let samples_a = channels[0].get("samples").unwrap().as_array().unwrap();
+        assert_eq!(samples_a[0].get("name").unwrap().as_str().unwrap(), "a");
+        assert_eq!(samples_a[1].get("name").unwrap().as_str().unwrap(), "b");
+        let meta_created = out.get("meta").unwrap().get("created_unix_ms").unwrap().as_u64().unwrap();
+        assert_eq!(meta_created, 0);
+    }
 }
 
 fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {

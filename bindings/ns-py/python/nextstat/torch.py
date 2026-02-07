@@ -291,6 +291,16 @@ def _get_profiled_session_class():
         return None
 
 
+def _get_metal_profiled_session_class():
+    """Import MetalProfiledDifferentiableSession from native extension (Metal only)."""
+    try:
+        from nextstat._core import MetalProfiledDifferentiableSession  # type: ignore
+
+        return MetalProfiledDifferentiableSession
+    except ImportError:
+        return None
+
+
 class ProfiledQ0Loss:
     """GPU-accelerated profiled q₀ with envelope theorem gradient.
 
@@ -376,41 +386,70 @@ class ProfiledQmuLoss:
         return _Fn.apply(signal_histogram)
 
 
-def create_profiled_session(model, signal_sample_name: str = "signal"):
+def create_profiled_session(model, signal_sample_name: str = "signal", device: str = "auto"):
     """Create a GPU session for profiled significance training.
 
     Args:
         model: nextstat.HistFactoryModel
         signal_sample_name: name of the signal sample in the workspace
+        device: "cuda", "metal", or "auto" (default — prefers CUDA, falls back to Metal)
 
     Returns:
-        ProfiledDifferentiableSession ready for use in training loop
+        ProfiledDifferentiableSession (CUDA) or MetalProfiledDifferentiableSession (Metal)
 
     Raises:
-        ImportError: if CUDA support is not compiled in
+        ImportError: if no GPU support is compiled in
         ValueError: if signal sample not found or no POI defined
     """
-    cls = _get_profiled_session_class()
-    if cls is None:
+    cuda_cls = _get_profiled_session_class()
+    metal_cls = _get_metal_profiled_session_class()
+
+    if device == "auto":
+        if cuda_cls is not None:
+            return cuda_cls(model, signal_sample_name)
+        if metal_cls is not None:
+            return metal_cls(model, signal_sample_name)
         raise ImportError(
-            "ProfiledDifferentiableSession requires CUDA support. "
-            "Build nextstat with --features cuda."
+            "ProfiledDifferentiableSession requires CUDA or Metal support. "
+            "Build nextstat with --features cuda or --features metal."
         )
-    return cls(model, signal_sample_name)
+    elif device == "cuda":
+        if cuda_cls is None:
+            raise ImportError(
+                "CUDA profiled session not available. Build nextstat with --features cuda."
+            )
+        return cuda_cls(model, signal_sample_name)
+    elif device == "metal":
+        if metal_cls is None:
+            raise ImportError(
+                "Metal profiled session not available. Build nextstat with --features metal."
+            )
+        return metal_cls(model, signal_sample_name)
+    else:
+        raise ValueError(f"Unknown device: {device!r}. Use 'cuda', 'metal', or 'auto'.")
+
+
+def _is_metal_session(session):
+    """Check if session is a MetalProfiledDifferentiableSession."""
+    return type(session).__name__ == "MetalProfiledDifferentiableSession"
 
 
 def profiled_q0_loss(signal_histogram, session):
     """Compute differentiable profiled q₀ loss.
 
     Main entry point for training NNs to maximize discovery significance.
+    Auto-detects CUDA or Metal session.
 
     Args:
-        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        signal_histogram: torch.Tensor [n_signal_bins], float64
+            (CUDA for CUDA session, any device for Metal session)
         session: ProfiledDifferentiableSession from create_profiled_session()
 
     Returns:
         q₀ scalar (torch.Tensor with grad_fn, differentiable w.r.t. signal)
     """
+    if _is_metal_session(session):
+        return MetalProfiledQ0Loss.apply(signal_histogram, session)
     return ProfiledQ0Loss.apply(signal_histogram, session)
 
 
@@ -432,22 +471,43 @@ def profiled_z0_loss(signal_histogram, session, eps=1e-12):
 def profiled_qmu_loss(signal_histogram, session, mu_test):
     """Compute differentiable profiled qμ loss.
 
+    Auto-detects CUDA or Metal session.
+
     Args:
-        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        signal_histogram: torch.Tensor [n_signal_bins], float64
         session: ProfiledDifferentiableSession from create_profiled_session()
         mu_test: float — signal strength hypothesis
 
     Returns:
         qμ scalar (torch.Tensor with grad_fn)
     """
+    if _is_metal_session(session):
+        return MetalProfiledQmuLoss.apply(signal_histogram, session, mu_test)
     return ProfiledQmuLoss.apply(signal_histogram, session, mu_test)
+
+
+def batch_profiled_qmu_loss(signal_histogram, session, mu_values):
+    """Compute profiled qμ for multiple mu_test values in one call.
+
+    Session GPU state is reused across all mu values (model uploaded once).
+    Each mu_test requires 2 L-BFGS-B fits.
+
+    Args:
+        signal_histogram: torch.Tensor [n_signal_bins], float64
+        session: CUDA or Metal profiled session from create_profiled_session()
+        mu_values: list[float] — signal strength hypotheses
+
+    Returns:
+        list[Tensor] — [qmu_tensor, ...] per mu value (each with grad_fn)
+    """
+    return [profiled_qmu_loss(signal_histogram, session, mu) for mu in mu_values]
 
 
 def profiled_zmu_loss(signal_histogram, session, mu_test, eps=1e-12):
     """Compute differentiable Zμ = sqrt(qμ) loss.
 
     Args:
-        signal_histogram: torch.Tensor [n_signal_bins] on CUDA, float64
+        signal_histogram: torch.Tensor [n_signal_bins], float64
         session: ProfiledDifferentiableSession from create_profiled_session()
         mu_test: float — signal strength hypothesis
         eps: small constant for numerical stability
@@ -457,3 +517,70 @@ def profiled_zmu_loss(signal_histogram, session, mu_test, eps=1e-12):
     """
     qmu = profiled_qmu_loss(signal_histogram, session, mu_test)
     return (qmu + eps).sqrt()
+
+
+# ---------------------------------------------------------------------------
+# Metal Profiled Significance (f32 GPU, CPU signal upload)
+# ---------------------------------------------------------------------------
+
+
+class MetalProfiledQ0Loss:
+    """Metal GPU profiled q₀ with envelope theorem gradient.
+
+    Unlike CUDA version, signal is uploaded via CPU (no zero-copy).
+    All GPU computation in f32; results returned as f64.
+    """
+
+    @staticmethod
+    def apply(signal_histogram, session):
+        torch = _require_torch()
+
+        class _Fn(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, signal):
+                assert signal.dtype == torch.float64, "signal must be float64"
+                signal_cpu = signal.detach().cpu().contiguous()
+                session.upload_signal(signal_cpu.numpy().tolist())
+                q0, grad_list = session.profiled_q0_and_grad()
+                grad_signal = torch.tensor(
+                    grad_list, dtype=torch.float64, device=signal.device
+                )
+                ctx.save_for_backward(grad_signal)
+                return signal.new_tensor(q0)
+
+            @staticmethod
+            def backward(ctx, grad_output):
+                (grad_signal,) = ctx.saved_tensors
+                return grad_output * grad_signal
+
+        return _Fn.apply(signal_histogram)
+
+
+class MetalProfiledQmuLoss:
+    """Metal GPU profiled qμ with envelope theorem gradient."""
+
+    @staticmethod
+    def apply(signal_histogram, session, mu_test):
+        torch = _require_torch()
+
+        class _Fn(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, signal):
+                assert signal.dtype == torch.float64, "signal must be float64"
+                signal_cpu = signal.detach().cpu().contiguous()
+                session.upload_signal(signal_cpu.numpy().tolist())
+                qmu, grad_list = session.profiled_qmu_and_grad(mu_test)
+                grad_signal = torch.tensor(
+                    grad_list, dtype=torch.float64, device=signal.device
+                )
+                ctx.save_for_backward(grad_signal)
+                return signal.new_tensor(qmu)
+
+            @staticmethod
+            def backward(ctx, grad_output):
+                (grad_signal,) = ctx.saved_tensors
+                return grad_output * grad_signal
+
+        return _Fn.apply(signal_histogram)
+
+

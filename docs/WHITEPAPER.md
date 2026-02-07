@@ -435,7 +435,7 @@ NextStat uses dual licensing:
 - Open Source: AGPL-3.0-or-later
 - Commercial: LicenseRef-Commercial
 
-The intended open-core boundary is documented in `docs/legal/open-core-boundaries.md` (draft, requires counsel review). The principle is:
+The intended open-core boundary is documented in `docs/internal/legal/open-core-boundaries.md` (draft, requires counsel review). The principle is:
 
 - OSS includes everything required for correct statistical inference, reproducibility, and baseline workflows
 - Commercial features add enterprise value around auditability, orchestration, compliance reporting, and collaboration

@@ -53,6 +53,10 @@ pub mod differentiable;
 #[cfg(feature = "metal")]
 pub mod metal_batch;
 
+/// Metal differentiable NLL accelerator for profiled fitting (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_differentiable;
+
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 pub mod accelerate;
 

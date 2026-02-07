@@ -311,8 +311,8 @@ Full analysis: `docs/references/root-histfactory-comparison.md`
 
 ## References
 
-- `docs/plans/standards.md` — Project-wide standards (source of truth for math definitions)
+- `docs/internal/plans/standards.md` — Project-wide standards (source of truth for math definitions)
 - `tests/python/_tolerances.py` — Python constants (canonical values)
 - `docs/references/optimizer-convergence.md` — L-BFGS-B vs SLSQP analysis
 - `docs/references/root-histfactory-comparison.md` — ROOT/HistFactory 3-way comparison
-- `docs/plans/2026-02-07_pyhf-spec-parity-plan.md` — Implementation plan for Parity/Fast modes
+- `docs/internal/plans/2026-02-07_pyhf-spec-parity-plan.md` — Implementation plan for Parity/Fast modes

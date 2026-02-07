@@ -112,6 +112,18 @@ pub struct GpuModifierDesc {
     pub n_bins: u32,
 }
 
+// --- cudarc DeviceRepr impls (required for clone_htod / memcpy) ---
+#[cfg(feature = "cuda")]
+mod cuda_impls {
+    use super::*;
+    // SAFETY: All types are #[repr(C)] POD structs — valid bit patterns for GPU transfer.
+    unsafe impl cudarc::driver::DeviceRepr for GpuSampleInfo {}
+    unsafe impl cudarc::driver::DeviceRepr for GpuModifierDesc {}
+    unsafe impl cudarc::driver::DeviceRepr for GpuAuxPoissonEntry {}
+    unsafe impl cudarc::driver::DeviceRepr for GpuGaussConstraintEntry {}
+    unsafe impl cudarc::driver::DeviceRepr for GpuModifierEntry {}
+}
+
 /// Serialized GPU model data — all flat buffers ready for device upload.
 ///
 /// Produced by `HistFactoryModel::serialize_for_gpu()` in ns-translate,

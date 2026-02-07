@@ -586,6 +586,13 @@ def main() -> int:
             "root_profile_scan_wall": t_root,
             "nextstat_profile_scan": t_ns,
         },
+        "timing_summary_s": {
+            "reference_root_profile_scan": t_root,
+            "reference_pyhf_profile_scan": (t_pyhf or 0.0),
+            "reference_total_profile_scan": t_root + (t_pyhf or 0.0),
+            "nextstat_profile_scan": t_ns,
+            "speedup_vs_root": (t_root / max(t_ns, 1e-12)),
+        },
         "artifacts": {
             "root_profile_scan_json": str(root_out),
             "pyhf_profile_scan_json": str(pyhf_out) if pyhf_out else None,
@@ -609,9 +616,9 @@ def main() -> int:
     }
 
     out_path = run_dir / "summary.json"
-    out_path.write_text(json.dumps(summary, indent=2))
+    out_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
 
-    print(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2, sort_keys=True))
 
     if not args.keep:
         # Keep only summary + root scan + allow inspecting intermediate artifacts when needed.
