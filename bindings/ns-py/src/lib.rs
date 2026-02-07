@@ -3770,20 +3770,7 @@ fn fit<'py>(
                 #[cfg(feature = "cuda")]
                 {
                     if let Some(ip) = ip {
-                        // GPU with warm-start: fit_minimum + hessian
-                        let session = ns_inference::gpu_single::GpuSession::new(&m)?;
-                        let config = mle.config().clone();
-                        let opt = session.fit_minimum_from(&m, &ip, &config)?;
-                        // Compute uncertainties via CPU fallback
-                        Ok(ns_core::FitResult::new(
-                            opt.parameters,
-                            vec![0.0; m.n_params()],
-                            opt.fval,
-                            opt.converged,
-                            opt.n_iter as usize,
-                            opt.n_fev,
-                            opt.n_gev,
-                        ))
+                        mle.fit_gpu_from(&m, &ip)
                     } else {
                         mle.fit_gpu(&m)
                     }

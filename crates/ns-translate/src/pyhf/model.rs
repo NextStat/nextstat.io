@@ -625,6 +625,12 @@ impl HistFactoryModel {
                         }
                         Modifier::NormSys { name, data } => {
                             if let Some(&idx) = param_map.get(name) {
+                                if data.hi <= 0.0 || data.lo <= 0.0 {
+                                    log::warn!(
+                                        "NormSys '{}': non-positive factor (hi={}, lo={}), will use linear fallback",
+                                        name, data.hi, data.lo
+                                    );
+                                }
                                 modifiers.push(ModelModifier::NormSys {
                                     param_idx: idx,
                                     hi_factor: data.hi,
@@ -2654,28 +2660,15 @@ impl HistFactoryModel {
                                 modifier_data.push(hi.ln());
                                 modifier_data.push(lo.ln());
                             } else {
-                                // Invalid factors — store linear fallback coefficients.
-                                // The polynomial path in the GPU kernel uses only coeffs[0..5],
-                                // so the 0.0 placeholders for ln_hi/ln_lo are safe (unused by code4).
-                                // The exponential path (|alpha| >= 1) would read them, but that
-                                // path is unreachable for this linear approximation.
-                                log::warn!(
-                                    "NormSys param_idx={} has non-positive factor (hi={}, lo={}), \
-                                     GPU serialization uses linear fallback",
-                                    param_idx,
-                                    hi,
-                                    lo
-                                );
-                                modifier_data.extend_from_slice(&[
-                                    hi - 1.0,
-                                    1.0 - lo,
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                ]);
-                                modifier_data.push(0.0); // ln_hi placeholder
-                                modifier_data.push(0.0); // ln_lo placeholder
+                                return Err(ns_core::Error::Validation(format!(
+                                    "NormSys param_idx={} has non-positive factor (hi={}, lo={}). \
+                                     GPU serialization requires positive factors. \
+                                     CPU path handles this via linear fallback, \
+                                     but the GPU polynomial kernel cannot represent \
+                                     piecewise-linear interpolation. \
+                                     pyhf would produce NaN for this workspace.",
+                                    param_idx, hi, lo
+                                )));
                             }
                             modifier_descs.push(GpuModifierDesc {
                                 param_idx: *param_idx as u32,
@@ -2868,6 +2861,19 @@ pub struct NllScratch {
 }
 
 impl NllScratch {
+    /// Create an empty sentinel (zero-capacity buffers).
+    ///
+    /// Useful as a `std::mem::replace` target when transferring ownership
+    /// into a `RefCell` and later swapping back.
+    pub fn empty() -> Self {
+        Self {
+            expected: vec![],
+            channel_expected: vec![],
+            sample_deltas: vec![],
+            sample_factors: vec![],
+        }
+    }
+
     /// Allocate scratch buffers sized for `model`.
     pub fn for_model(model: &HistFactoryModel) -> Self {
         let n_main_bins: usize = model

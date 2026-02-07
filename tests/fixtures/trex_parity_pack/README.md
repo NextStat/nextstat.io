@@ -12,6 +12,13 @@ They are meant to be **minimal but representative** and to work without any exte
   - `pyhf_multichannel` (`mode=histfactory-xml`) — pyhf validation fixture (signal+control; ShapeSys).
   - `pyhf_coupled_histosys` (`mode=histfactory-xml`) — pyhf validation fixture (coupled NP / shared HistoSys-like behavior).
 
+## Realistic packs (pyhf JSON fixtures)
+
+- `cases_realistic.json`
+  - Larger/realistic pyhf workspaces committed under `tests/fixtures/` (can be slow; some cases are known to fail strict ROOT-vs-NextStat thresholds).
+- `cases_realistic_fourtop.json`
+  - Single realistic case (`tttt-prod_workspace.json`) intended to be “always runnable” on dev machines.
+
 ## How to run (requires ROOT)
 
 From the repo root (in an environment with `root` + `hist2workspace` and Python deps):
@@ -22,6 +29,15 @@ PYTHONPATH=bindings/ns-py/python python3 tests/apex2_root_suite_report.py \
   --keep-going \
   --deterministic \
   --out tmp/apex2_root_suite_minimal.json
+```
+
+Realistic (fast):
+
+```sh
+PYTHONPATH=bindings/ns-py/python python3 tests/apex2_root_suite_report.py \
+  --cases tests/fixtures/trex_parity_pack/cases_realistic_fourtop.json \
+  --deterministic \
+  --out tmp/apex2_root_suite_realistic_fourtop.json
 ```
 
 To record a baseline manifest (cluster / ROOT env):

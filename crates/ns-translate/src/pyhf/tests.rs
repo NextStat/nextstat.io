@@ -687,3 +687,171 @@ fn test_f32_analytical_gradient_poc() {
     println!("Dual32 analytical gradient PoC complete.");
     println!("================================================================================\n");
 }
+
+#[test]
+fn test_serialize_for_gpu_rejects_non_positive_normsys() {
+    // Workspace with NormSys hi=-1.0 (non-positive) — GPU serialization must reject.
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "sig",
+          "data": [5.0],
+          "modifiers": [
+            {"name": "mu", "type": "normfactor", "data": null}
+          ]
+        },
+        {
+          "name": "bkg",
+          "data": [50.0],
+          "modifiers": [
+            {"name": "syst", "type": "normsys", "data": {"hi": -1.0, "lo": 0.5}}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [55.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": []
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let model = super::HistFactoryModel::from_workspace(&ws).expect("build model");
+
+    let err = model.serialize_for_gpu().unwrap_err();
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("non-positive factor") && msg.contains("gpu"),
+        "expected GPU non-positive factor error, got: {}",
+        msg
+    );
+}
+
+#[test]
+fn test_serialize_for_gpu_rejects_zero_lo_normsys() {
+    // lo=0.0 is also non-positive — must be rejected.
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "sig",
+          "data": [5.0],
+          "modifiers": [
+            {"name": "mu", "type": "normfactor", "data": null}
+          ]
+        },
+        {
+          "name": "bkg",
+          "data": [50.0],
+          "modifiers": [
+            {"name": "syst", "type": "normsys", "data": {"hi": 1.2, "lo": 0.0}}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [55.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": []
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let model = super::HistFactoryModel::from_workspace(&ws).expect("build model");
+
+    let err = model.serialize_for_gpu().unwrap_err();
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("non-positive factor"),
+        "expected non-positive factor error, got: {}",
+        msg
+    );
+}
+
+#[test]
+fn test_normsys_cpu_fallback_non_positive_factors() {
+    use ns_core::traits::LogDensityModel;
+
+    // Workspace with non-positive NormSys factor: hi=-1.0, lo=0.5.
+    // CPU path uses piecewise-linear fallback. Verify expected_data correctness.
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "bkg",
+          "data": [50.0],
+          "modifiers": [
+            {"name": "syst", "type": "normsys", "data": {"hi": -1.0, "lo": 0.5}}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [55.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": []
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let model = super::HistFactoryModel::from_workspace(&ws).expect("build model");
+
+    let names = model.parameter_names();
+    let syst_idx = names.iter().position(|n| n == "syst").expect("syst param");
+
+    // Piecewise-linear fallback for code4 with non-positive factors:
+    //   alpha >= 0: factor = 1 + alpha * (hi - 1) = 1 + alpha * (-2)
+    //   alpha < 0:  factor = 1 - alpha * (1 - lo) = 1 + |alpha| * 0.5
+    // nominal = 50.0, so expected = nominal * factor
+
+    // alpha = 0.0 → factor = 1.0 → expected = 50.0
+    let mut params = model.parameter_init();
+    params[syst_idx] = 0.0;
+    let exp = model.expected_data(&params).unwrap();
+    assert!((exp[0] - 50.0).abs() < 1e-10, "alpha=0: expected 50.0, got {}", exp[0]);
+
+    // alpha = 0.5 → factor = 1 + 0.5*(-2) = 0.0 → expected = 0.0
+    params[syst_idx] = 0.5;
+    let exp = model.expected_data(&params).unwrap();
+    assert!((exp[0] - 0.0).abs() < 1e-10, "alpha=0.5: expected 0.0, got {}", exp[0]);
+
+    // alpha = -0.5 → factor = 1 - (-0.5)*(1 - 0.5) = 1 + 0.25 = 1.25 → expected = 62.5
+    params[syst_idx] = -0.5;
+    let exp = model.expected_data(&params).unwrap();
+    assert!((exp[0] - 62.5).abs() < 1e-10, "alpha=-0.5: expected 62.5, got {}", exp[0]);
+}

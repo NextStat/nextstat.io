@@ -3,7 +3,7 @@
 //! Native ROOT file reader for NextStat.
 //!
 //! Reads TH1D/TH1F histograms and TTrees from `.root` files without requiring
-//! Python or external ROOT libraries. Supports zlib and LZ4 compression.
+//! Python or external ROOT libraries. Supports zlib, LZ4, ZSTD, and XZ compression.
 //!
 //! ## Example
 //!

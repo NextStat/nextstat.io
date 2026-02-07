@@ -364,16 +364,38 @@ impl MaximumLikelihoodEstimator {
         bounds: &[(f64, f64)],
         tape: &mut ns_ad::tape::Tape,
     ) -> Result<crate::optimizer::OptimizationResult> {
+        let mut scratch = NllScratch::for_model(model);
+        self.fit_minimum_histfactory_from_with_bounds_reuse(
+            model,
+            initial_params,
+            bounds,
+            tape,
+            &mut scratch,
+        )
+    }
+
+    /// Minimize NLL for a [`HistFactoryModel`] reusing both tape and NllScratch.
+    ///
+    /// Zero-alloc variant for hot loops (ranking, profile scan). Pass per-thread
+    /// tape and scratch from Rayon `map_init` to avoid any heap allocation.
+    pub fn fit_minimum_histfactory_from_with_bounds_reuse(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+        bounds: &[(f64, f64)],
+        tape: &mut ns_ad::tape::Tape,
+        scratch: &mut NllScratch,
+    ) -> Result<crate::optimizer::OptimizationResult> {
         if initial_params.len() != model.dim() {
             return Err(ns_core::Error::Validation(format!(
-                "fit_minimum_histfactory_from_with_bounds_with_tape: initial_params length {} != model.dim() {}",
+                "fit_minimum_histfactory_from_with_bounds_reuse: initial_params length {} != model.dim() {}",
                 initial_params.len(),
                 model.dim()
             )));
         }
         if bounds.len() != model.dim() {
             return Err(ns_core::Error::Validation(format!(
-                "fit_minimum_histfactory_from_with_bounds_with_tape: bounds length {} != model.dim() {}",
+                "fit_minimum_histfactory_from_with_bounds_reuse: bounds length {} != model.dim() {}",
                 bounds.len(),
                 model.dim()
             )));
@@ -381,7 +403,7 @@ impl MaximumLikelihoodEstimator {
 
         let prepared = model.prepare();
         let tape_cell = RefCell::new(std::mem::take(tape));
-        let scratch_cell = RefCell::new(NllScratch::for_model(model));
+        let scratch_cell = RefCell::new(std::mem::replace(scratch, NllScratch::empty()));
 
         struct HFObjective<'a> {
             prepared: ns_translate::pyhf::PreparedModel<'a>,
@@ -411,8 +433,9 @@ impl MaximumLikelihoodEstimator {
         let optimizer = LbfgsbOptimizer::new(self.config.clone());
         let result = optimizer.minimize(&objective, initial_params, bounds);
 
-        // Return tape to caller so capacity is preserved across fits
+        // Return tape + scratch to caller so capacity is preserved across fits
         *tape = objective.tape.into_inner();
+        *scratch = objective.scratch.into_inner();
 
         result
     }
@@ -715,7 +738,7 @@ impl MaximumLikelihoodEstimator {
                         NllScratch::for_model(model),
                     )
                 },
-                |(tape, _scratch), &np_idx| {
+                |(tape, scratch), &np_idx| {
                     let param = &model.parameters()[np_idx];
                     let center = param.constraint_center.unwrap_or(param.init);
                     let sigma = param.constraint_width.unwrap(); // guaranteed by filter
@@ -727,8 +750,8 @@ impl MaximumLikelihoodEstimator {
                     let mut warm = nominal_result.parameters.clone();
                     warm[np_idx] = val_up;
 
-                    let result_up = self.fit_minimum_histfactory_from_with_bounds_with_tape(
-                        model, &warm, &bounds_up, tape,
+                    let result_up = self.fit_minimum_histfactory_from_with_bounds_reuse(
+                        model, &warm, &bounds_up, tape, scratch,
                     )?;
                     let mu_up = result_up.parameters[poi_idx];
 
@@ -739,8 +762,8 @@ impl MaximumLikelihoodEstimator {
                     warm = nominal_result.parameters.clone();
                     warm[np_idx] = val_down;
 
-                    let result_down = self.fit_minimum_histfactory_from_with_bounds_with_tape(
-                        model, &warm, &bounds_down, tape,
+                    let result_down = self.fit_minimum_histfactory_from_with_bounds_reuse(
+                        model, &warm, &bounds_down, tape, scratch,
                     )?;
                     let mu_down = result_down.parameters[poi_idx];
 
@@ -872,6 +895,78 @@ impl MaximumLikelihoodEstimator {
             }
             None => {
                 log::warn!("GPU fit: Hessian inversion failed, using diagonal approximation");
+                FitResult::new(
+                    result.parameters,
+                    diag_uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                )
+            }
+        };
+        Ok(apply_diagnostics(fr, diag))
+    }
+
+    /// GPU-accelerated full fit from an explicit starting point (warm-start),
+    /// with Hessian-based uncertainties.
+    ///
+    /// Uses GPU for NLL minimization, then falls back to CPU for Hessian
+    /// computation (finite differences of GPU NLL+gradient).
+    #[cfg(feature = "cuda")]
+    pub fn fit_gpu_from(&self, model: &HistFactoryModel, initial_params: &[f64]) -> Result<FitResult> {
+        let session = crate::gpu_single::GpuSession::new(model)?;
+        let result = session.fit_minimum_from(model, initial_params, &self.config)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
+
+        let n = result.parameters.len();
+        let hessian = self.compute_hessian_gpu(&session, &result.parameters)?;
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        let fr = match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                } else {
+                    log::warn!(
+                        "GPU fit (warm-start): invalid covariance diagonal; omitting covariance matrix"
+                    );
+                    FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                }
+            }
+            None => {
+                log::warn!("GPU fit (warm-start): Hessian inversion failed, using diagonal approximation");
                 FitResult::new(
                     result.parameters,
                     diag_uncertainties,

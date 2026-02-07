@@ -245,6 +245,11 @@ Both CPU and GPU batch paths use the same compiled model:
 Batch fitting skips Hessian computation for speed. Seed-based reproducibility:
 `toy_seed = base_seed + toy_index`.
 
+**GPU edge case:** `serialize_for_gpu()` returns `Err(Validation)` for workspaces with
+non-positive NormSys factors (hi ≤ 0 or lo ≤ 0). The GPU polynomial kernel cannot represent
+the CPU piecewise-linear fallback for these pathological cases. No real workspace is affected
+(0 of 8+ tested fixtures). pyhf itself produces NaN for such inputs.
+
 ### Performance Characteristics
 
 | Operation | vs Baseline |

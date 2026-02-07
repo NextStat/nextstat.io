@@ -135,6 +135,12 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
@@ -194,6 +200,12 @@ enum Commands {
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
 
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
@@ -284,6 +296,12 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
@@ -310,6 +328,12 @@ enum Commands {
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
 
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
@@ -968,7 +992,7 @@ fn main() -> Result<()> {
                 expr_coverage_json.as_ref(),
             )
         }
-        Commands::Fit { input, output, threads, gpu, parity, fit_regions, validation_regions } => {
+        Commands::Fit { input, output, json_metrics, threads, gpu, parity, fit_regions, validation_regions } => {
             if let Some(ref dev) = gpu {
                 match dev.as_str() {
                     "cuda" => {
@@ -1000,6 +1024,7 @@ fn main() -> Result<()> {
             cmd_fit(
                 &input,
                 output.as_ref(),
+                json_metrics.as_ref(),
                 threads,
                 gpu.as_deref(),
                 cli.bundle.as_ref(),
@@ -1011,8 +1036,8 @@ fn main() -> Result<()> {
         Commands::Audit { input, format, output } => {
             cmd_audit(&input, &format, output.as_ref())
         }
-        Commands::Hypotest { input, mu, expected_set, output, threads } => {
-            cmd_hypotest(&input, mu, expected_set, output.as_ref(), threads, cli.bundle.as_ref())
+        Commands::Hypotest { input, mu, expected_set, output, json_metrics, threads } => {
+            cmd_hypotest(&input, mu, expected_set, output.as_ref(), json_metrics.as_ref(), threads, cli.bundle.as_ref())
         }
         Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads, gpu } => {
             if let Some(ref dev) = gpu {
@@ -1064,6 +1089,7 @@ fn main() -> Result<()> {
             rtol,
             max_iter,
             output,
+            json_metrics,
             threads,
         } => cmd_upper_limit(
             &input,
@@ -1077,10 +1103,11 @@ fn main() -> Result<()> {
             rtol,
             max_iter,
             output.as_ref(),
+            json_metrics.as_ref(),
             threads,
             cli.bundle.as_ref(),
         ),
-        Commands::Scan { input, start, stop, points, output, threads, gpu } => {
+        Commands::Scan { input, start, stop, points, output, json_metrics, threads, gpu } => {
             if let Some(ref dev) = gpu {
                 match dev.as_str() {
                     "cuda" => {
@@ -1112,6 +1139,7 @@ fn main() -> Result<()> {
                 stop,
                 points,
                 output.as_ref(),
+                json_metrics.as_ref(),
                 threads,
                 gpu.as_deref(),
                 cli.bundle.as_ref(),
@@ -1676,6 +1704,7 @@ fn cmd_run_spec_v0(
         cmd_fit(
             &plan.workspace_json,
             Some(fit_out),
+            /*json_metrics*/ None,
             plan.threads,
             None,
             /*bundle*/ None,
@@ -1695,6 +1724,7 @@ fn cmd_run_spec_v0(
             scan.stop,
             scan.points,
             Some(&scan.output_json),
+            /*json_metrics*/ None,
             plan.threads,
             None,
             /*bundle*/ None,
@@ -2034,6 +2064,7 @@ Path("combination.xml").write_bytes(combo)
 fn cmd_fit(
     input: &PathBuf,
     output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
     threads: usize,
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
@@ -2054,6 +2085,7 @@ fn cmd_fit(
         )?
     };
 
+    let start = std::time::Instant::now();
     let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
     let result = match gpu {
         Some("cuda") => {
@@ -2076,12 +2108,18 @@ fn cmd_fit(
         None => mle.fit(&model)?,
     };
     tracing::info!(nll = result.nll, converged = result.converged, "fit complete");
+    let wall_time_s = start.elapsed().as_secs_f64();
 
     let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
+    let poi_idx = model.poi_index();
+    let (poi_hat, poi_sigma) = poi_idx
+        .and_then(|i| result.parameters.get(i).copied().zip(result.uncertainties.get(i).copied()))
+        .map(|(a, b)| (Some(a), Some(b)))
+        .unwrap_or((None, None));
 
     let output_json = serde_json::json!({
         "parameter_names": parameter_names,
-        "poi_index": model.poi_index(),
+        "poi_index": poi_idx,
         "bestfit": result.parameters,
         "uncertainties": result.uncertainties,
         "nll": result.nll,
@@ -2102,6 +2140,24 @@ fn cmd_fit(
     });
 
     write_json(output, &output_json)?;
+    if let Some(path) = json_metrics {
+        let metrics_json = metrics_v0(
+            "fit",
+            gpu.unwrap_or("cpu"),
+            threads,
+            parity,
+            wall_time_s,
+            serde_json::json!({
+                "poi_index": poi_idx,
+                "poi_hat": poi_hat,
+                "poi_sigma": poi_sigma,
+                "nll": result.nll,
+                "twice_nll": 2.0 * result.nll,
+                "converged": result.converged,
+            }),
+        )?;
+        write_json(dash_means_stdout(path), &metrics_json)?;
+    }
     if let Some(dir) = bundle {
         report::write_bundle(
             dir,
@@ -2184,6 +2240,51 @@ fn setup_runtime(threads: usize, parity: bool) {
         ns_compute::set_accelerate_enabled(false);
         tracing::debug!("deterministic mode: Accelerate disabled");
     }
+}
+
+fn dash_means_stdout<'a>(path: &'a PathBuf) -> Option<&'a PathBuf> {
+    if path.as_os_str() == "-" {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+fn now_unix_ms() -> Result<u128> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| anyhow::anyhow!("system time error: {e}"))?
+        .as_millis())
+}
+
+fn metrics_v0(
+    command: &str,
+    device: &str,
+    threads: usize,
+    parity: bool,
+    wall_time_s: f64,
+    metrics: serde_json::Value,
+) -> Result<serde_json::Value> {
+    Ok(serde_json::json!({
+        "schema_version": "nextstat_metrics_v0",
+        "tool": "nextstat",
+        "tool_version": ns_core::VERSION,
+        "created_unix_ms": now_unix_ms()?,
+        "command": command,
+        "device": device,
+        "threads": threads,
+        "parity": parity,
+        "timing": {
+            "wall_time_s": wall_time_s,
+        },
+        "status": {
+            "ok": true,
+        },
+        "warnings": [],
+        "degraded_flags": [],
+        "metrics": metrics,
+    }))
 }
 
 fn load_model(
@@ -3388,14 +3489,17 @@ fn cmd_hypotest(
     mu: f64,
     expected_set: bool,
     output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
+    let start = std::time::Instant::now();
     let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
     let r = ctx.hypotest_qtilde(&mle, mu)?;
     tracing::debug!(mu_test = r.mu_test, cls = r.cls, mu_hat = r.mu_hat, "hypotest result");
+    let wall_time_s = start.elapsed().as_secs_f64();
 
     let output_json = serde_json::json!({
         "mu_test": r.mu_test,
@@ -3418,6 +3522,25 @@ fn cmd_hypotest(
     });
 
     write_json(output, &output_json)?;
+    if let Some(path) = json_metrics {
+        let metrics_json = metrics_v0(
+            "hypotest",
+            "cpu",
+            threads,
+            false,
+            wall_time_s,
+            serde_json::json!({
+                "mu_test": r.mu_test,
+                "mu_hat": r.mu_hat,
+                "cls": r.cls,
+                "clsb": r.clsb,
+                "clb": r.clb,
+                "q_mu": r.q_mu,
+                "q_mu_a": r.q_mu_a,
+            }),
+        )?;
+        write_json(dash_means_stdout(path), &metrics_json)?;
+    }
     if let Some(dir) = bundle {
         report::write_bundle(
             dir,
@@ -3565,9 +3688,11 @@ fn cmd_upper_limit(
     rtol: f64,
     max_iter: usize,
     output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
     threads: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
+    let start = std::time::Instant::now();
     let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
@@ -3618,8 +3743,25 @@ fn cmd_upper_limit(
             "max_iter": max_iter,
         })
     };
+    let wall_time_s = start.elapsed().as_secs_f64();
 
     write_json(output, &output_json)?;
+    if let Some(path) = json_metrics {
+        let metrics_json = metrics_v0(
+            "upper_limit",
+            "cpu",
+            threads,
+            false,
+            wall_time_s,
+            serde_json::json!({
+                "alpha": alpha,
+                "mode": output_json.get("mode").cloned().unwrap_or(serde_json::Value::Null),
+                "obs_limit": output_json.get("obs_limit").cloned().unwrap_or(serde_json::Value::Null),
+                "exp_limits": output_json.get("exp_limits").cloned().unwrap_or(serde_json::Value::Null),
+            }),
+        )?;
+        write_json(dash_means_stdout(path), &metrics_json)?;
+    }
     if let Some(dir) = bundle {
         report::write_bundle(
             dir,
@@ -3649,6 +3791,7 @@ fn cmd_scan(
     stop: f64,
     points: usize,
     output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
     threads: usize,
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
@@ -3659,6 +3802,7 @@ fn cmd_scan(
     let model = load_model(input, threads, false)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
+    let t0 = std::time::Instant::now();
     let step = (stop - start) / (points as f64 - 1.0);
     let mu_values: Vec<f64> = (0..points).map(|i| start + step * i as f64).collect();
     let scan = match gpu {
@@ -3680,6 +3824,7 @@ fn cmd_scan(
         Some(_) => unreachable!("unknown device should have bailed earlier"),
         None => ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?,
     };
+    let wall_time_s = t0.elapsed().as_secs_f64();
 
     let output_json = serde_json::json!({
         "poi_index": scan.poi_index,
@@ -3695,6 +3840,32 @@ fn cmd_scan(
     });
 
     write_json(output, &output_json)?;
+    if let Some(path) = json_metrics {
+        let q_min = scan
+            .points
+            .iter()
+            .fold(f64::INFINITY, |a, p| a.min(p.q_mu));
+        let q_max = scan
+            .points
+            .iter()
+            .fold(f64::NEG_INFINITY, |a, p| a.max(p.q_mu));
+        let metrics_json = metrics_v0(
+            "scan",
+            gpu.unwrap_or("cpu"),
+            threads,
+            false,
+            wall_time_s,
+            serde_json::json!({
+                "poi_index": scan.poi_index,
+                "mu_hat": scan.mu_hat,
+                "nll_hat": scan.nll_hat,
+                "n_points": scan.points.len(),
+                "q_mu_min": if q_min.is_finite() { serde_json::json!(q_min) } else { serde_json::Value::Null },
+                "q_mu_max": if q_max.is_finite() { serde_json::json!(q_max) } else { serde_json::Value::Null },
+            }),
+        )?;
+        write_json(dash_means_stdout(path), &metrics_json)?;
+    }
     if let Some(dir) = bundle {
         report::write_bundle(
             dir,

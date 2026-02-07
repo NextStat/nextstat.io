@@ -244,7 +244,7 @@ Key Metal exports (feature-gated):
 - `ns_inference::lbfgs::LbfgsState` — Shared standalone L-BFGS-B state machine (used by both CUDA and Metal batch fitters).
 
 Model serialization:
-- `HistFactoryModel::serialize_for_gpu() -> GpuModelData` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints).
+- `HistFactoryModel::serialize_for_gpu() -> Result<GpuModelData>` — Converts HistFactory model to flat GPU-friendly buffers (nominal counts, CSR modifiers, constraints). Returns `Err(Validation)` if any NormSys modifier has non-positive hi/lo factors (the GPU polynomial kernel cannot represent the CPU piecewise-linear fallback).
 - `MetalModelData::from_gpu_data(&GpuModelData)` — Converts f64 GPU data to f32 Metal data with pre-computed `lgamma` for auxiliary Poisson constraints.
 
 ## CLI
