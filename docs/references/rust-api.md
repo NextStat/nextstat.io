@@ -127,7 +127,12 @@ let ws = NtupleWorkspaceBuilder::new()
 
 In addition to the SIMD Poisson NLL path, `ns-compute` provides optional GPU backends:
 
-- **`accelerate` feature** (macOS): Apple Accelerate (vDSP/vForce) for vectorized `ln()` and subtraction. Enabled automatically on Apple Silicon.
+- **`accelerate` feature** (macOS): Apple Accelerate (vDSP/vForce) for vectorized `ln()` and subtraction.
+  - Compile-time: build `ns-cli` (or your crate) with `--features accelerate`.
+  - Runtime: enabled by default, but can be disabled for strict parity/determinism via:
+    - programmatic API: `ns_compute::set_accelerate_enabled(false)`
+    - env var: `NEXTSTAT_DISABLE_ACCELERATE=1`
+    - CLI: `--threads 1` (auto-disables Accelerate)
 - **`cuda` feature** (Linux/NVIDIA): CUDA batch NLL + analytical gradient via cudarc 0.19 (dynamic loading — binary works without CUDA installed).
 
 Key CUDA exports (feature-gated):

@@ -295,6 +295,35 @@ impl CudaBatchAccelerator {
         self.max_batch
     }
 
+    /// Single-model NLL + gradient evaluation (convenience wrapper for n_active=1).
+    ///
+    /// Calls `batch_nll_grad` with a single set of parameters.
+    /// Returns `(nll, gradient)`.
+    pub fn single_nll_grad(&mut self, params: &[f64]) -> ns_core::Result<(f64, Vec<f64>)> {
+        assert_eq!(params.len(), self.n_params);
+        let (nlls, grads) = self.batch_nll_grad(params, 1)?;
+        Ok((nlls[0], grads[..self.n_params].to_vec()))
+    }
+
+    /// Single-model NLL-only evaluation (convenience wrapper for n_active=1).
+    pub fn single_nll(&mut self, params: &[f64]) -> ns_core::Result<f64> {
+        assert_eq!(params.len(), self.n_params);
+        let nlls = self.batch_nll(params, 1)?;
+        Ok(nlls[0])
+    }
+
+    /// Upload observed data for a single model (n_toys=1).
+    ///
+    /// `observed`, `ln_facts`, `obs_mask` are each `[n_main_bins]`.
+    pub fn upload_observed_single(
+        &mut self,
+        observed: &[f64],
+        ln_facts: &[f64],
+        obs_mask: &[f64],
+    ) -> ns_core::Result<()> {
+        self.upload_observed(observed, ln_facts, obs_mask, 1)
+    }
+
     // --- Private helpers for kernel argument setup ---
 
     fn push_common_args(&self, builder: &mut cudarc::driver::LaunchBuilder<'_>) {

@@ -613,7 +613,8 @@ impl HistFactoryModel {
                                     param_idx: idx,
                                     hi_template: data.hi_data.clone(),
                                     lo_template: data.lo_data.clone(),
-                                    interp_code: HistoSysInterpCode::Code0,
+                                    // Match the parity harness (pyhf modifier_settings histosys=code4p).
+                                    interp_code: HistoSysInterpCode::Code4p,
                                 });
                             }
                         }
