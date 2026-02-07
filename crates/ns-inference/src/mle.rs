@@ -1330,9 +1330,20 @@ mod tests {
     }
 
     #[test]
-    fn test_ranking() {
-        let workspace = load_simple_workspace();
+    fn test_ranking_contract() {
+        let json = include_str!("../../../tests/fixtures/complex_workspace.json");
+        let workspace: Workspace = serde_json::from_str(json).unwrap();
         let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let poi_idx = model.poi_index().unwrap();
+
+        // Count expected: only constrained NPs (constraint_width.is_some()), skip POI
+        let expected_np_names: Vec<&str> = model
+            .parameters()
+            .iter()
+            .enumerate()
+            .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
+            .map(|(_, p)| p.name.as_str())
+            .collect();
 
         let mle = MaximumLikelihoodEstimator::new();
         let ranking = mle.ranking(&model).unwrap();
@@ -1345,16 +1356,42 @@ mod tests {
             );
         }
 
-        // Should have entries for constrained NPs (not POI)
-        assert!(!ranking.is_empty(), "Should have ranking entries");
+        // Contract 1: exactly one entry per constrained NP
+        assert_eq!(
+            ranking.len(),
+            expected_np_names.len(),
+            "ranking should have exactly one entry per constrained NP (expected {:?})",
+            expected_np_names
+        );
 
-        // All entries should have finite values
+        // Contract 2: every entry name must be a constrained NP
+        for entry in &ranking {
+            assert!(
+                expected_np_names.contains(&entry.name.as_str()),
+                "ranking entry '{}' is not a constrained NP",
+                entry.name
+            );
+        }
+
+        // Contract 3: all values are finite and constraints positive
         for entry in &ranking {
             assert!(entry.delta_mu_up.is_finite(), "delta_mu_up should be finite");
             assert!(entry.delta_mu_down.is_finite(), "delta_mu_down should be finite");
             assert!(entry.pull.is_finite(), "pull should be finite");
             assert!(entry.constraint.is_finite(), "constraint should be finite");
             assert!(entry.constraint > 0.0, "constraint should be positive");
+        }
+
+        // Contract 4: sorted by descending |impact|
+        for w in ranking.windows(2) {
+            let impact_a = w[0].delta_mu_up.abs().max(w[0].delta_mu_down.abs());
+            let impact_b = w[1].delta_mu_up.abs().max(w[1].delta_mu_down.abs());
+            assert!(
+                impact_a >= impact_b - 1e-15,
+                "ranking should be sorted by |impact|: {} < {}",
+                impact_a,
+                impact_b
+            );
         }
     }
 
