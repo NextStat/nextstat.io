@@ -412,7 +412,7 @@ impl HistFactoryModel {
                 | ModelModifier::ShapeFactor { .. } => {}
                 _ => {
                     return Err(ns_core::Error::Validation(format!(
-                        "Nominal override is not supported for samples with per-bin/shape modifiers (channel_idx={}, sample_idx={})",
+                        "Nominal override is not supported for samples with shape/aux modifiers (channel_idx={}, sample_idx={})",
                         channel_idx, sample_idx
                     )));
                 }
@@ -4061,6 +4061,52 @@ mod tests {
         // SR expected depends on modifiers applied; check reasonable values.
         assert!(expected[2] > 100.0 && expected[2] < 150.0, "SR bin 0: {}", expected[2]);
         assert!(expected[3] > 100.0 && expected[3] < 150.0, "SR bin 1: {}", expected[3]);
+    }
+
+    #[test]
+    fn test_nominal_override_allows_shapefactor_and_factors_match() {
+        let json = include_str!("../../../../tests/fixtures/complex_workspace.json");
+        let ws: Workspace = serde_json::from_str(json).unwrap();
+        let model = HistFactoryModel::from_workspace(&ws).unwrap();
+
+        let ch = model.channel_index("CR").expect("CR channel should exist");
+        let s = model
+            .sample_index(ch, "background")
+            .expect("CR/background sample should exist");
+
+        model.validate_sample_nominal_override_linear_safe(ch, s)
+            .expect("shapefactor + lumi should be allowed for nominal override");
+
+        let mut params = model.parameters().iter().map(|p| p.init).collect::<Vec<_>>();
+
+        let mut idx_lumi = None;
+        let mut idx_sf0 = None;
+        let mut idx_sf1 = None;
+        for (i, p) in model.parameters().iter().enumerate() {
+            match p.name.as_str() {
+                "lumi" => idx_lumi = Some(i),
+                "shapefactor_CR[0]" => idx_sf0 = Some(i),
+                "shapefactor_CR[1]" => idx_sf1 = Some(i),
+                _ => {}
+            }
+        }
+        let idx_lumi = idx_lumi.expect("lumi param should exist");
+        let idx_sf0 = idx_sf0.expect("shapefactor_CR[0] param should exist");
+        let idx_sf1 = idx_sf1.expect("shapefactor_CR[1] param should exist");
+
+        params[idx_lumi] = 1.1;
+        params[idx_sf0] = 1.2;
+        params[idx_sf1] = 0.8;
+
+        let n_bins = model.channel_bin_count(ch).unwrap();
+        assert_eq!(n_bins, 2);
+
+        let mut out = vec![0.0; n_bins];
+        model.fill_sample_multiplicative_factors_main(&params, ch, s, &mut out)
+            .unwrap();
+
+        assert_relative_eq!(out[0], 1.1 * 1.2, epsilon = 1e-12);
+        assert_relative_eq!(out[1], 1.1 * 0.8, epsilon = 1e-12);
     }
 
     #[test]
