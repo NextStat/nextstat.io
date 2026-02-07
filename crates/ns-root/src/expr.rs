@@ -4,6 +4,12 @@
 //! Supports arithmetic (+, -, *, /), comparisons (==, !=, <, <=, >, >=),
 //! boolean operators (&&, ||, !), and built-in functions (abs, sqrt, log,
 //! exp, pow, min, max).
+//!
+//! v1 additions:
+//! - Ternary operator: `cond ? a : b` (right-associative).
+//! - Span-aware errors with line/col.
+//! - Parsed bracket indexing `x[0]` (currently rejected with a clear error;
+//!   vector branches are not supported by the ROOT reader yet).
 
 use crate::error::{Result, RootError};
 
@@ -16,7 +22,9 @@ enum Expr {
     UnaryNeg(Box<Expr>),
     UnaryNot(Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
+    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Call(Func, Vec<Expr>),
+    Index { base: Box<Expr>, index: usize, span: Span },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,6 +54,39 @@ enum Func {
     Max,
 }
 
+// ── Bytecode (vectorized evaluator) ────────────────────────────
+
+#[derive(Debug, Clone)]
+enum Instr {
+    Const(f64),
+    Load(usize),
+    Neg,
+    Not,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    Abs,
+    Sqrt,
+    Log,
+    Exp,
+    Pow,
+    Min,
+    Max,
+    /// Jump to absolute instruction index if condition (popped) is <= 0.
+    Jz(usize),
+    /// Unconditional jump to absolute instruction index.
+    Jmp(usize),
+}
+
 // ── Compiled expression ────────────────────────────────────────
 
 /// A compiled expression ready for evaluation.
@@ -53,7 +94,9 @@ enum Func {
 /// Variable identifiers in the expression are mapped to branch names.
 #[derive(Debug, Clone)]
 pub struct CompiledExpr {
+    #[allow(dead_code)]
     ast: Expr,
+    bytecode: Vec<Instr>,
     /// Branch names referenced by this expression (ordered by first occurrence).
     pub required_branches: Vec<String>,
 }
@@ -64,23 +107,24 @@ impl CompiledExpr {
     /// Variable names in the expression correspond to TTree branch names.
     pub fn compile(input: &str) -> Result<Self> {
         let tokens = tokenize(input)?;
-        let mut parser = Parser::new(&tokens);
-        let ast = parser.parse_or()?;
+        let mut parser = Parser::new(input, &tokens);
+        let ast = parser.parse_ternary()?;
         if parser.pos < parser.tokens.len() {
-            return Err(RootError::Expression(format!(
-                "unexpected token after expression: {:?}",
-                parser.tokens[parser.pos]
-            )));
+            let t = &parser.tokens[parser.pos];
+            return Err(expr_err(input, t.span, format!("unexpected token after expression: {:?}", t.kind)));
         }
+        reject_indexing(input, &ast)?;
+        let mut bytecode = Vec::new();
+        compile_bytecode(input, &ast, &mut bytecode)?;
         let branches = std::mem::take(&mut parser.branches);
-        Ok(CompiledExpr { ast, required_branches: branches })
+        Ok(CompiledExpr { ast, bytecode, required_branches: branches })
     }
 
     /// Evaluate the expression for a single row.
     ///
     /// `values` must have the same length and order as `required_branches`.
     pub fn eval_row(&self, values: &[f64]) -> f64 {
-        eval_expr(&self.ast, values)
+        eval_bytecode_row(&self.bytecode, values)
     }
 
     /// Evaluate the expression for all rows (column-wise).
@@ -90,23 +134,15 @@ impl CompiledExpr {
     pub fn eval_bulk(&self, columns: &[&[f64]]) -> Vec<f64> {
         if columns.is_empty() {
             // Constant expression — evaluate once
-            return vec![eval_expr(&self.ast, &[])];
+            return vec![eval_bytecode_row(&self.bytecode, &[])];
         }
-        let n = columns[0].len();
-        let mut row = vec![0.0f64; columns.len()];
-        let mut out = Vec::with_capacity(n);
-        for i in 0..n {
-            for (j, col) in columns.iter().enumerate() {
-                row[j] = col[i];
-            }
-            out.push(eval_expr(&self.ast, &row));
-        }
-        out
+        eval_bytecode_bulk(&self.bytecode, columns)
     }
 }
 
 // ── Evaluation ─────────────────────────────────────────────────
 
+#[cfg(test)]
 fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
     match e {
         Expr::Number(n) => *n,
@@ -185,6 +221,9 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                 }
             }
         }
+        Expr::Ternary(c, t, f) => {
+            if eval_expr(c, vals) > 0.0 { eval_expr(t, vals) } else { eval_expr(f, vals) }
+        }
         Expr::Call(f, args) => {
             let a0 = || eval_expr(&args[0], vals);
             let a1 = || eval_expr(&args[1], vals);
@@ -198,13 +237,224 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                 Func::Max => a0().max(a1()),
             }
         }
+        Expr::Index { .. } => {
+            // Rejected in compile(), but keep evaluation total.
+            f64::NAN
+        }
     }
+}
+
+fn compile_bytecode(input: &str, e: &Expr, out: &mut Vec<Instr>) -> Result<()> {
+    match e {
+        Expr::Number(n) => out.push(Instr::Const(*n)),
+        Expr::Var(i) => out.push(Instr::Load(*i)),
+        Expr::UnaryNeg(a) => {
+            compile_bytecode(input, a, out)?;
+            out.push(Instr::Neg);
+        }
+        Expr::UnaryNot(a) => {
+            compile_bytecode(input, a, out)?;
+            out.push(Instr::Not);
+        }
+        Expr::BinOp(op, a, b) => {
+            compile_bytecode(input, a, out)?;
+            compile_bytecode(input, b, out)?;
+            out.push(match op {
+                BinOp::Add => Instr::Add,
+                BinOp::Sub => Instr::Sub,
+                BinOp::Mul => Instr::Mul,
+                BinOp::Div => Instr::Div,
+                BinOp::Eq => Instr::Eq,
+                BinOp::Ne => Instr::Ne,
+                BinOp::Lt => Instr::Lt,
+                BinOp::Le => Instr::Le,
+                BinOp::Gt => Instr::Gt,
+                BinOp::Ge => Instr::Ge,
+                BinOp::And => Instr::And,
+                BinOp::Or => Instr::Or,
+            });
+        }
+        Expr::Ternary(c, t, f) => {
+            compile_bytecode(input, c, out)?;
+            let jz_pos = out.len();
+            out.push(Instr::Jz(usize::MAX));
+            compile_bytecode(input, t, out)?;
+            let jmp_pos = out.len();
+            out.push(Instr::Jmp(usize::MAX));
+            let else_ip = out.len();
+            out[jz_pos] = Instr::Jz(else_ip);
+            compile_bytecode(input, f, out)?;
+            let end_ip = out.len();
+            out[jmp_pos] = Instr::Jmp(end_ip);
+        }
+        Expr::Call(func, args) => {
+            for a in args {
+                compile_bytecode(input, a, out)?;
+            }
+            out.push(match func {
+                Func::Abs => Instr::Abs,
+                Func::Sqrt => Instr::Sqrt,
+                Func::Log => Instr::Log,
+                Func::Exp => Instr::Exp,
+                Func::Pow => Instr::Pow,
+                Func::Min => Instr::Min,
+                Func::Max => Instr::Max,
+            });
+        }
+        Expr::Index { span, .. } => {
+            // Should be rejected by `reject_indexing`, but keep a clear error if it ever gets here.
+            return Err(expr_err(input, *span, "vector branches are not supported".to_string()));
+        }
+    }
+    Ok(())
+}
+
+fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
+    let mut stack: Vec<f64> = Vec::with_capacity(16);
+    let mut ip = 0usize;
+    while ip < code.len() {
+        match code[ip] {
+            Instr::Const(v) => stack.push(v),
+            Instr::Load(i) => {
+                stack.push(vars[i]);
+            }
+            Instr::Neg => {
+                let a = stack.pop().unwrap();
+                stack.push(-a);
+            }
+            Instr::Not => {
+                let a = stack.pop().unwrap();
+                stack.push(if a > 0.0 { 0.0 } else { 1.0 });
+            }
+            Instr::Add => bin2(&mut stack, |a, b| a + b),
+            Instr::Sub => bin2(&mut stack, |a, b| a - b),
+            Instr::Mul => bin2(&mut stack, |a, b| a * b),
+            Instr::Div => bin2(&mut stack, |a, b| a / b),
+            Instr::Eq => bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 }),
+            Instr::Ne => bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 }),
+            Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
+            Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
+            Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
+            Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
+            Instr::And => bin2(&mut stack, |a, b| if a > 0.0 && b > 0.0 { 1.0 } else { 0.0 }),
+            Instr::Or => bin2(&mut stack, |a, b| if a > 0.0 || b > 0.0 { 1.0 } else { 0.0 }),
+            Instr::Abs => {
+                let a = stack.pop().unwrap();
+                stack.push(a.abs());
+            }
+            Instr::Sqrt => {
+                let a = stack.pop().unwrap();
+                stack.push(a.sqrt());
+            }
+            Instr::Log => {
+                let a = stack.pop().unwrap();
+                stack.push(a.ln());
+            }
+            Instr::Exp => {
+                let a = stack.pop().unwrap();
+                stack.push(a.exp());
+            }
+            Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
+            Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
+            Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
+            Instr::Jz(target) => {
+                let c = stack.pop().unwrap();
+                if c <= 0.0 {
+                    ip = target;
+                    continue;
+                }
+            }
+            Instr::Jmp(target) => {
+                ip = target;
+                continue;
+            }
+        }
+        ip += 1;
+    }
+    stack.pop().unwrap_or(f64::NAN)
+}
+
+fn bin2(stack: &mut Vec<f64>, f: impl FnOnce(f64, f64) -> f64) {
+    let b = stack.pop().unwrap();
+    let a = stack.pop().unwrap();
+    stack.push(f(a, b));
+}
+
+fn eval_bytecode_bulk(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
+    let n = cols[0].len();
+    let mut out = Vec::with_capacity(n);
+    let mut stack: Vec<f64> = Vec::with_capacity(16);
+
+    for row in 0..n {
+        stack.clear();
+        let mut ip = 0usize;
+        while ip < code.len() {
+            match code[ip] {
+                Instr::Const(v) => stack.push(v),
+                Instr::Load(i) => stack.push(cols[i][row]),
+                Instr::Neg => {
+                    let a = stack.pop().unwrap();
+                    stack.push(-a);
+                }
+                Instr::Not => {
+                    let a = stack.pop().unwrap();
+                    stack.push(if a > 0.0 { 0.0 } else { 1.0 });
+                }
+                Instr::Add => bin2(&mut stack, |a, b| a + b),
+                Instr::Sub => bin2(&mut stack, |a, b| a - b),
+                Instr::Mul => bin2(&mut stack, |a, b| a * b),
+                Instr::Div => bin2(&mut stack, |a, b| a / b),
+                Instr::Eq => bin2(&mut stack, |a, b| if (a - b).abs() < f64::EPSILON { 1.0 } else { 0.0 }),
+                Instr::Ne => bin2(&mut stack, |a, b| if (a - b).abs() >= f64::EPSILON { 1.0 } else { 0.0 }),
+                Instr::Lt => bin2(&mut stack, |a, b| if a < b { 1.0 } else { 0.0 }),
+                Instr::Le => bin2(&mut stack, |a, b| if a <= b { 1.0 } else { 0.0 }),
+                Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
+                Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
+                Instr::And => bin2(&mut stack, |a, b| if a > 0.0 && b > 0.0 { 1.0 } else { 0.0 }),
+                Instr::Or => bin2(&mut stack, |a, b| if a > 0.0 || b > 0.0 { 1.0 } else { 0.0 }),
+                Instr::Abs => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.abs());
+                }
+                Instr::Sqrt => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.sqrt());
+                }
+                Instr::Log => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.ln());
+                }
+                Instr::Exp => {
+                    let a = stack.pop().unwrap();
+                    stack.push(a.exp());
+                }
+                Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
+                Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
+                Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
+                Instr::Jz(target) => {
+                    let c = stack.pop().unwrap();
+                    if c <= 0.0 {
+                        ip = target;
+                        continue;
+                    }
+                }
+                Instr::Jmp(target) => {
+                    ip = target;
+                    continue;
+                }
+            }
+            ip += 1;
+        }
+        out.push(stack.pop().unwrap_or(f64::NAN));
+    }
+
+    out
 }
 
 // ── Tokenizer ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-enum Token {
+enum TokenKind {
     Num(f64),
     Ident(String),
     Plus,
@@ -214,6 +464,10 @@ enum Token {
     LParen,
     RParen,
     Comma,
+    Question,
+    Colon,
+    LBracket,
+    RBracket,
     Eq,
     Ne,
     Lt,
@@ -225,109 +479,227 @@ enum Token {
     Not,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Span {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Token {
+    kind: TokenKind,
+    span: Span,
+}
+
+fn line_col_1based(input: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(input.len());
+    let bytes = input.as_bytes();
+    let mut line: usize = 1;
+    let mut col: usize = 1;
+    for &b in &bytes[..offset] {
+        if b == b'\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+fn expr_err(input: &str, span: Span, msg: String) -> RootError {
+    let (line, col) = line_col_1based(input, span.start);
+    RootError::Expression(format!("line {line}, col {col}: {msg}"))
+}
+
+fn reject_indexing(input: &str, ast: &Expr) -> Result<()> {
+    fn walk<'a>(e: &'a Expr, out: &mut Option<Span>) {
+        if out.is_some() {
+            return;
+        }
+        match e {
+            Expr::Index { span, .. } => {
+                *out = Some(*span);
+            }
+            Expr::Number(_) | Expr::Var(_) => {}
+            Expr::UnaryNeg(a) | Expr::UnaryNot(a) => walk(a, out),
+            Expr::BinOp(_, a, b) => {
+                walk(a, out);
+                walk(b, out);
+            }
+            Expr::Ternary(c, t, f) => {
+                walk(c, out);
+                walk(t, out);
+                walk(f, out);
+            }
+            Expr::Call(_, args) => {
+                for a in args {
+                    walk(a, out);
+                }
+            }
+        }
+    }
+
+    let mut hit: Option<Span> = None;
+    walk(ast, &mut hit);
+    if let Some(span) = hit {
+        return Err(expr_err(
+            input,
+            span,
+            "indexing (e.g. x[0]) is parsed but not supported yet; vector branches are not implemented".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn tokenize(input: &str) -> Result<Vec<Token>> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = input.chars().collect();
-    let mut i = 0;
+    if !input.is_ascii() {
+        if let Some((start, ch)) = input.char_indices().find(|(_, ch)| !ch.is_ascii()) {
+            return Err(expr_err(
+                input,
+                Span { start, end: start + ch.len_utf8() },
+                "expression must be ASCII (non-ASCII input is not supported yet)".to_string(),
+            ));
+        }
+        return Err(RootError::Expression(
+            "expression must be ASCII (non-ASCII input is not supported yet)".to_string(),
+        ));
+    }
 
-    while i < chars.len() {
-        let c = chars[i];
+    let bytes = input.as_bytes();
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut i: usize = 0;
 
-        if c.is_whitespace() {
+    while i < bytes.len() {
+        let b = bytes[i];
+
+        if b.is_ascii_whitespace() {
             i += 1;
             continue;
         }
 
         // Two-character operators
-        if i + 1 < chars.len() {
+        if i + 1 < bytes.len() {
             let two = &input[i..i + 2];
-            let tok = match two {
-                "&&" => Some(Token::And),
-                "||" => Some(Token::Or),
-                "==" => Some(Token::Eq),
-                "!=" => Some(Token::Ne),
-                "<=" => Some(Token::Le),
-                ">=" => Some(Token::Ge),
+            let kind = match two {
+                "&&" => Some(TokenKind::And),
+                "||" => Some(TokenKind::Or),
+                "==" => Some(TokenKind::Eq),
+                "!=" => Some(TokenKind::Ne),
+                "<=" => Some(TokenKind::Le),
+                ">=" => Some(TokenKind::Ge),
                 _ => None,
             };
-            if let Some(t) = tok {
-                tokens.push(t);
+            if let Some(kind) = kind {
+                tokens.push(Token { kind, span: Span { start: i, end: i + 2 } });
                 i += 2;
                 continue;
             }
         }
 
-        match c {
-            '+' => {
-                tokens.push(Token::Plus);
+        let start = i;
+        let kind = match b {
+            b'+' => {
                 i += 1;
+                TokenKind::Plus
             }
-            '-' => {
-                tokens.push(Token::Minus);
+            b'-' => {
                 i += 1;
+                TokenKind::Minus
             }
-            '*' => {
-                tokens.push(Token::Star);
+            b'*' => {
                 i += 1;
+                TokenKind::Star
             }
-            '/' => {
-                tokens.push(Token::Slash);
+            b'/' => {
                 i += 1;
+                TokenKind::Slash
             }
-            '(' => {
-                tokens.push(Token::LParen);
+            b'(' => {
                 i += 1;
+                TokenKind::LParen
             }
-            ')' => {
-                tokens.push(Token::RParen);
+            b')' => {
                 i += 1;
+                TokenKind::RParen
             }
-            ',' => {
-                tokens.push(Token::Comma);
+            b',' => {
                 i += 1;
+                TokenKind::Comma
             }
-            '<' => {
-                tokens.push(Token::Lt);
+            b'?' => {
                 i += 1;
+                TokenKind::Question
             }
-            '>' => {
-                tokens.push(Token::Gt);
+            b':' => {
                 i += 1;
+                TokenKind::Colon
             }
-            '!' => {
-                tokens.push(Token::Not);
+            b'[' => {
                 i += 1;
+                TokenKind::LBracket
             }
-            _ if c.is_ascii_digit() || c == '.' => {
-                let start = i;
-                while i < chars.len()
-                    && (chars[i].is_ascii_digit()
-                        || chars[i] == '.'
-                        || chars[i] == 'e'
-                        || chars[i] == 'E'
-                        || ((chars[i] == '+' || chars[i] == '-')
-                            && i > start
-                            && (chars[i - 1] == 'e' || chars[i - 1] == 'E')))
-                {
-                    i += 1;
+            b']' => {
+                i += 1;
+                TokenKind::RBracket
+            }
+            b'<' => {
+                i += 1;
+                TokenKind::Lt
+            }
+            b'>' => {
+                i += 1;
+                TokenKind::Gt
+            }
+            b'!' => {
+                i += 1;
+                TokenKind::Not
+            }
+            _ if (b as char).is_ascii_digit() || b == b'.' => {
+                i += 1;
+                while i < bytes.len() {
+                    let c = bytes[i] as char;
+                    if c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' {
+                        i += 1;
+                        continue;
+                    }
+                    if (c == '+' || c == '-')
+                        && i > start
+                        && (bytes[i - 1] == b'e' || bytes[i - 1] == b'E')
+                    {
+                        i += 1;
+                        continue;
+                    }
+                    break;
                 }
                 let s = &input[start..i];
                 let n: f64 = s
                     .parse()
-                    .map_err(|_| RootError::Expression(format!("invalid number: '{}'", s)))?;
-                tokens.push(Token::Num(n));
+                    .map_err(|_| expr_err(input, Span { start, end: i }, format!("invalid number: '{s}'")))?;
+                TokenKind::Num(n)
             }
-            _ if c.is_ascii_alphabetic() || c == '_' => {
-                let start = i;
-                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                    i += 1;
+            _ if (b as char).is_ascii_alphabetic() || b == b'_' => {
+                i += 1;
+                while i < bytes.len() {
+                    let c = bytes[i] as char;
+                    if c.is_ascii_alphanumeric() || bytes[i] == b'_' {
+                        i += 1;
+                        continue;
+                    }
+                    break;
                 }
-                tokens.push(Token::Ident(input[start..i].to_string()));
+                TokenKind::Ident(input[start..i].to_string())
             }
             _ => {
-                return Err(RootError::Expression(format!("unexpected character: '{}'", c)));
+                return Err(expr_err(
+                    input,
+                    Span { start: i, end: i + 1 },
+                    format!("unexpected character: '{}'", bytes[i] as char),
+                ));
             }
-        }
+        };
+
+        tokens.push(Token { kind, span: Span { start, end: i } });
     }
 
     Ok(tokens)
@@ -336,34 +708,42 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
 // ── Parser (recursive descent) ─────────────────────────────────
 
 struct Parser<'a> {
+    input: &'a str,
     tokens: &'a [Token],
     pos: usize,
     branches: Vec<String>,
 }
 
 impl<'a> Parser<'a> {
-    fn new(tokens: &'a [Token]) -> Self {
-        Self { tokens, pos: 0, branches: Vec::new() }
+    fn new(input: &'a str, tokens: &'a [Token]) -> Self {
+        Self { input, tokens, pos: 0, branches: Vec::new() }
     }
 
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
 
-    fn advance(&mut self) -> Option<&Token> {
-        let t = self.tokens.get(self.pos);
+    fn advance(&mut self) -> Option<Token> {
+        let t = self.tokens.get(self.pos).cloned();
         if t.is_some() {
             self.pos += 1;
         }
         t
     }
 
-    fn expect(&mut self, expected: &Token) -> Result<()> {
+    fn expect(&mut self, expected: TokenKind) -> Result<()> {
         match self.advance() {
-            Some(t) if t == expected => Ok(()),
-            other => {
-                Err(RootError::Expression(format!("expected {:?}, got {:?}", expected, other)))
-            }
+            Some(t) if t.kind == expected => Ok(()),
+            Some(t) => Err(expr_err(
+                self.input,
+                t.span,
+                format!("expected {:?}, got {:?}", expected, t.kind),
+            )),
+            None => Err(expr_err(
+                self.input,
+                Span { start: self.input.len(), end: self.input.len() },
+                format!("expected {:?}, got end of input", expected),
+            )),
         }
     }
 
@@ -378,9 +758,22 @@ impl<'a> Parser<'a> {
 
     // ── Grammar rules ──────────────────────────────────────────
 
+    fn parse_ternary(&mut self) -> Result<Expr> {
+        let cond = self.parse_or()?;
+        if matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Question)) {
+            self.advance(); // '?'
+            let then_expr = self.parse_ternary()?;
+            self.expect(TokenKind::Colon)?;
+            let else_expr = self.parse_ternary()?;
+            Ok(Expr::Ternary(Box::new(cond), Box::new(then_expr), Box::new(else_expr)))
+        } else {
+            Ok(cond)
+        }
+    }
+
     fn parse_or(&mut self) -> Result<Expr> {
         let mut lhs = self.parse_and()?;
-        while matches!(self.peek(), Some(Token::Or)) {
+        while matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Or)) {
             self.advance();
             let rhs = self.parse_and()?;
             lhs = Expr::BinOp(BinOp::Or, Box::new(lhs), Box::new(rhs));
@@ -390,7 +783,7 @@ impl<'a> Parser<'a> {
 
     fn parse_and(&mut self) -> Result<Expr> {
         let mut lhs = self.parse_cmp()?;
-        while matches!(self.peek(), Some(Token::And)) {
+        while matches!(self.peek().map(|t| &t.kind), Some(TokenKind::And)) {
             self.advance();
             let rhs = self.parse_cmp()?;
             lhs = Expr::BinOp(BinOp::And, Box::new(lhs), Box::new(rhs));
@@ -400,13 +793,13 @@ impl<'a> Parser<'a> {
 
     fn parse_cmp(&mut self) -> Result<Expr> {
         let lhs = self.parse_add()?;
-        let op = match self.peek() {
-            Some(Token::Eq) => BinOp::Eq,
-            Some(Token::Ne) => BinOp::Ne,
-            Some(Token::Lt) => BinOp::Lt,
-            Some(Token::Le) => BinOp::Le,
-            Some(Token::Gt) => BinOp::Gt,
-            Some(Token::Ge) => BinOp::Ge,
+        let op = match self.peek().map(|t| &t.kind) {
+            Some(TokenKind::Eq) => BinOp::Eq,
+            Some(TokenKind::Ne) => BinOp::Ne,
+            Some(TokenKind::Lt) => BinOp::Lt,
+            Some(TokenKind::Le) => BinOp::Le,
+            Some(TokenKind::Gt) => BinOp::Gt,
+            Some(TokenKind::Ge) => BinOp::Ge,
             _ => return Ok(lhs),
         };
         self.advance();
@@ -417,13 +810,13 @@ impl<'a> Parser<'a> {
     fn parse_add(&mut self) -> Result<Expr> {
         let mut lhs = self.parse_mul()?;
         loop {
-            match self.peek() {
-                Some(Token::Plus) => {
+            match self.peek().map(|t| &t.kind) {
+                Some(TokenKind::Plus) => {
                     self.advance();
                     let rhs = self.parse_mul()?;
                     lhs = Expr::BinOp(BinOp::Add, Box::new(lhs), Box::new(rhs));
                 }
-                Some(Token::Minus) => {
+                Some(TokenKind::Minus) => {
                     self.advance();
                     let rhs = self.parse_mul()?;
                     lhs = Expr::BinOp(BinOp::Sub, Box::new(lhs), Box::new(rhs));
@@ -437,13 +830,13 @@ impl<'a> Parser<'a> {
     fn parse_mul(&mut self) -> Result<Expr> {
         let mut lhs = self.parse_unary()?;
         loop {
-            match self.peek() {
-                Some(Token::Star) => {
+            match self.peek().map(|t| &t.kind) {
+                Some(TokenKind::Star) => {
                     self.advance();
                     let rhs = self.parse_unary()?;
                     lhs = Expr::BinOp(BinOp::Mul, Box::new(lhs), Box::new(rhs));
                 }
-                Some(Token::Slash) => {
+                Some(TokenKind::Slash) => {
                     self.advance();
                     let rhs = self.parse_unary()?;
                     lhs = Expr::BinOp(BinOp::Div, Box::new(lhs), Box::new(rhs));
@@ -455,32 +848,80 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_unary(&mut self) -> Result<Expr> {
-        match self.peek() {
-            Some(Token::Minus) => {
+        match self.peek().map(|t| &t.kind) {
+            Some(TokenKind::Minus) => {
                 self.advance();
                 let e = self.parse_unary()?;
                 Ok(Expr::UnaryNeg(Box::new(e)))
             }
-            Some(Token::Not) => {
+            Some(TokenKind::Not) => {
                 self.advance();
                 let e = self.parse_unary()?;
                 Ok(Expr::UnaryNot(Box::new(e)))
             }
-            _ => self.parse_atom(),
+            _ => self.parse_postfix(),
         }
     }
 
-    fn parse_atom(&mut self) -> Result<Expr> {
-        match self.advance().cloned() {
-            Some(Token::Num(n)) => Ok(Expr::Number(n)),
-            Some(Token::LParen) => {
-                let e = self.parse_or()?;
-                self.expect(&Token::RParen)?;
-                Ok(e)
+    fn parse_postfix(&mut self) -> Result<Expr> {
+        let mut e = self.parse_atom()?;
+
+        loop {
+            match self.peek().map(|t| &t.kind) {
+                Some(TokenKind::LBracket) => {
+                    let lb = self.advance().unwrap();
+                    let idx_tok = self.advance().ok_or_else(|| {
+                        expr_err(self.input, lb.span, "expected index after '['".to_string())
+                    })?;
+                    let index = match idx_tok.kind {
+                        TokenKind::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
+                        _ => {
+                            return Err(expr_err(
+                                self.input,
+                                idx_tok.span,
+                                "index must be a non-negative integer literal".to_string(),
+                            ));
+                        }
+                    };
+                    let rb = self.advance().ok_or_else(|| {
+                        expr_err(self.input, lb.span, "expected ']'".to_string())
+                    })?;
+                    if rb.kind != TokenKind::RBracket {
+                        return Err(expr_err(self.input, rb.span, format!("expected ']', got {:?}", rb.kind)));
+                    }
+                    let span = Span { start: lb.span.start, end: rb.span.end };
+                    e = Expr::Index { base: Box::new(e), index, span };
+                }
+                _ => break,
             }
-            Some(Token::Ident(name)) => {
+        }
+
+        Ok(e)
+    }
+
+    fn parse_atom(&mut self) -> Result<Expr> {
+        match self.advance() {
+            Some(Token { kind: TokenKind::Num(n), .. }) => Ok(Expr::Number(n)),
+            Some(Token { kind: TokenKind::LParen, span, .. }) => {
+                let e = self.parse_ternary()?;
+                if let Some(t) = self.peek() {
+                    if t.kind == TokenKind::RParen {
+                        self.advance();
+                        Ok(e)
+                    } else {
+                        Err(expr_err(
+                            self.input,
+                            t.span,
+                            format!("expected ')', got {:?}", t.kind),
+                        ))
+                    }
+                } else {
+                    Err(expr_err(self.input, span, "expected ')'".to_string()))
+                }
+            }
+            Some(Token { kind: TokenKind::Ident(name), span, .. }) => {
                 // Check for function call
-                if matches!(self.peek(), Some(Token::LParen)) {
+                if matches!(self.peek().map(|t| &t.kind), Some(TokenKind::LParen)) {
                     self.advance(); // consume '('
                     let func = match name.as_str() {
                         "abs" => Func::Abs,
@@ -491,18 +932,23 @@ impl<'a> Parser<'a> {
                         "min" => Func::Min,
                         "max" => Func::Max,
                         _ => {
-                            return Err(RootError::Expression(format!(
-                                "unknown function: '{}'",
-                                name
-                            )));
+                            return Err(expr_err(
+                                self.input,
+                                span,
+                                format!("unknown function: '{name}'"),
+                            ));
                         }
                     };
-                    let mut args = vec![self.parse_or()?];
-                    while matches!(self.peek(), Some(Token::Comma)) {
-                        self.advance();
-                        args.push(self.parse_or()?);
+
+                    let mut args = Vec::new();
+                    if !matches!(self.peek().map(|t| &t.kind), Some(TokenKind::RParen)) {
+                        args.push(self.parse_ternary()?);
+                        while matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Comma)) {
+                            self.advance();
+                            args.push(self.parse_ternary()?);
+                        }
                     }
-                    self.expect(&Token::RParen)?;
+                    self.expect(TokenKind::RParen)?;
                     Ok(Expr::Call(func, args))
                 } else {
                     // Variable reference
@@ -510,10 +956,16 @@ impl<'a> Parser<'a> {
                     Ok(Expr::Var(idx))
                 }
             }
-            other => Err(RootError::Expression(format!(
-                "expected number, identifier, or '(', got {:?}",
-                other
-            ))),
+            Some(Token { span, kind, .. }) => Err(expr_err(
+                self.input,
+                span,
+                format!("expected number, identifier, or '(', got {:?}", kind),
+            )),
+            None => Err(expr_err(
+                self.input,
+                Span { start: self.input.len(), end: self.input.len() },
+                "expected expression, got end of input".to_string(),
+            )),
         }
     }
 }
@@ -524,11 +976,50 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    fn lcg_next(state: &mut u64) -> u64 {
+        // Numerical Recipes LCG (deterministic, good enough for tests)
+        *state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *state
+    }
+
+    fn rand_f64(state: &mut u64) -> f64 {
+        let x = lcg_next(state) >> 11; // 53-ish bits
+        let u = (x as f64) / ((1u64 << 53) as f64);
+        // Map to [-5, 5]
+        (u * 10.0) - 5.0
+    }
+
     #[test]
     fn simple_arithmetic() {
         let e = CompiledExpr::compile("2 + 3 * 4").unwrap();
         assert!(e.required_branches.is_empty());
         assert!((e.eval_row(&[]) - 14.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn ternary_operator_basic() {
+        let e = CompiledExpr::compile("x > 0 ? 10 : 20").unwrap();
+        assert_eq!(e.required_branches, vec!["x"]);
+        assert_eq!(e.eval_row(&[1.0]), 10.0);
+        assert_eq!(e.eval_row(&[-1.0]), 20.0);
+    }
+
+    #[test]
+    fn ternary_is_right_associative() {
+        // x>0 ? 1 : (y>0 ? 2 : 3)
+        let e = CompiledExpr::compile("x > 0 ? 1 : y > 0 ? 2 : 3").unwrap();
+        assert_eq!(e.required_branches, vec!["x", "y"]);
+        assert_eq!(e.eval_row(&[1.0, -1.0]), 1.0);
+        assert_eq!(e.eval_row(&[-1.0, 1.0]), 2.0);
+        assert_eq!(e.eval_row(&[-1.0, -1.0]), 3.0);
+    }
+
+    #[test]
+    fn ternary_precedence_is_lower_than_or() {
+        // Must parse as: (0 || 1) ? 3 : 4  => 3
+        // If parsed as: 0 || (1 ? 3 : 4)  => 1
+        let e = CompiledExpr::compile("0 || 1 ? 3 : 4").unwrap();
+        assert_eq!(e.eval_row(&[]), 3.0);
     }
 
     #[test]
@@ -582,6 +1073,60 @@ mod tests {
     }
 
     #[test]
+    fn bulk_eval_matches_recursive_eval_for_random_inputs() {
+        let exprs = [
+            "a + b * 2",
+            "sqrt(abs(a)) + max(a, b)",
+            "a > 0 ? a : -a",
+            "a > b ? (a - b) : (b - a)",
+            "!(a > 0) || b < 0",
+            "(a > 0 && b > 0) ? pow(a, 2) : min(a, b)",
+        ];
+
+        let n = 257usize;
+        let mut state = 123456789u64;
+        let mut a = vec![0.0f64; n];
+        let mut b = vec![0.0f64; n];
+        for i in 0..n {
+            a[i] = rand_f64(&mut state);
+            b[i] = rand_f64(&mut state);
+        }
+
+        for src in exprs {
+            let e = CompiledExpr::compile(src).unwrap();
+            let mut eval_cols: Vec<&[f64]> = Vec::new();
+            for name in &e.required_branches {
+                match name.as_str() {
+                    "a" => eval_cols.push(&a),
+                    "b" => eval_cols.push(&b),
+                    other => panic!("unexpected branch in test expr={src}: {other}"),
+                }
+            }
+            let got = e.eval_bulk(&eval_cols);
+            assert_eq!(got.len(), n, "len mismatch for expr={src}");
+
+            for i in 0..n {
+                let mut vars: Vec<f64> = Vec::with_capacity(e.required_branches.len());
+                for name in &e.required_branches {
+                    vars.push(match name.as_str() {
+                        "a" => a[i],
+                        "b" => b[i],
+                        other => panic!("unexpected branch in test expr={src}: {other}"),
+                    });
+                }
+                let want = eval_expr(&e.ast, &vars);
+                let diff = (got[i] - want).abs();
+                assert!(
+                    diff < 1e-12 || (got[i].is_nan() && want.is_nan()),
+                    "mismatch expr={src} i={i} got={} want={} diff={diff}",
+                    got[i],
+                    want
+                );
+            }
+        }
+    }
+
+    #[test]
     fn or_expression() {
         let e = CompiledExpr::compile("x > 5 || y < 2").unwrap();
         assert!((e.eval_row(&[6.0, 3.0]) - 1.0).abs() < 1e-10);
@@ -599,5 +1144,22 @@ mod tests {
     fn scientific_notation() {
         let e = CompiledExpr::compile("1.5e2 + 3.0E-1").unwrap();
         assert!((e.eval_row(&[]) - 150.3).abs() < 1e-10);
+    }
+
+    #[test]
+    fn indexing_is_rejected_with_span() {
+        let err = CompiledExpr::compile("jet_pt[0] > 0").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("indexing") && msg.contains("line 1, col 7"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn errors_report_line_col() {
+        let err = CompiledExpr::compile("x +\n  * 2").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("line 2, col 3"), "unexpected error message: {msg}");
     }
 }

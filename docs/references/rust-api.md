@@ -59,7 +59,7 @@ Key exports:
 - `ns_root::RootFile` — open ROOT files (mmap or owned bytes), read TH1 histograms and TTrees.
 - `ns_root::{Tree, BranchInfo, LeafType}` — TTree metadata and branch descriptors.
 - `ns_root::BranchReader` — columnar data extraction with parallel basket decompression (rayon).
-- `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` → `eval_row()` / `eval_bulk()`).
+- `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` → `eval_row()` / `eval_bulk()`). Supports ternary `cond ? a : b`; parse errors include `line/col`.
 - `ns_root::{HistogramSpec, FilledHistogram, fill_histograms}` — single-pass histogram filling.
 
 TTree example:
@@ -84,6 +84,8 @@ let spec = ns_root::HistogramSpec {
     weight: Some(ns_root::CompiledExpr::compile("weight_mc")?),
     selection: Some(sel),
     bin_edges: vec![0., 50., 100., 150., 200., 300.],
+    flow_policy: ns_root::FlowPolicy::Drop,
+    negative_weight_policy: ns_root::NegativeWeightPolicy::Allow,
 };
 let histos = ns_root::fill_histograms(&[spec], &columns)?;
 ```
@@ -124,4 +126,3 @@ let ws = NtupleWorkspaceBuilder::new()
 
 The CLI is implemented in `crates/ns-cli` and wraps `ns-inference` surfaces.
 See `docs/references/cli.md`.
-

@@ -53,7 +53,7 @@ def test_cli_import_config_writes_files(tmp_path: Path):
         str(rep),
         "--overwrite",
     ]
-    env = dict(**os.environ)
+    env = dict(os.environ)
     # Ensure repo python sources are importable in dev runs.
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "bindings" / "ns-py" / "python")
     p = subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)

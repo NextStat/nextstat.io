@@ -75,6 +75,34 @@ enum Commands {
         config: PathBuf,
     },
 
+    /// Build histograms from ntuples (TRExFitter config, ReadFrom=NTUP) and emit `workspace.json`.
+    ///
+    /// This is the "NTUP pipeline" entrypoint: it reads TTrees, applies selection/weights,
+    /// fills histograms, and writes a pyhf JSON workspace.
+    BuildHists {
+        /// Path to TRExFitter config file (text).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Base directory for resolving relative ROOT file paths.
+        ///
+        /// Defaults to the directory containing `--config`.
+        #[arg(long)]
+        base_dir: Option<PathBuf>,
+
+        /// Output directory (will contain `workspace.json`).
+        #[arg(long)]
+        out_dir: PathBuf,
+
+        /// Allow writing into a non-empty `--out-dir` (overwrites known filenames).
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
+
+        /// Also emit a JSON coverage report (unknown keys/attrs) to this path.
+        #[arg(long)]
+        coverage_json: Option<PathBuf>,
+    },
+
     /// Perform MLE fit
     Fit {
         /// Input workspace (pyhf JSON)
@@ -760,6 +788,9 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Run { config } => cmd_run(&config, cli.bundle.as_ref()),
         Commands::Validate { config } => cmd_validate(&config),
+        Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json } => {
+            cmd_build_hists(&config, base_dir.as_ref(), &out_dir, overwrite, coverage_json.as_ref())
+        }
         Commands::Fit { input, output, threads } => {
             cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref())
         }
@@ -906,6 +937,25 @@ fn main() -> Result<()> {
                 analysis_yaml.as_ref(),
                 coverage_json.as_ref(),
                 cli.bundle.as_ref(),
+            ),
+        },
+        Commands::Trex { command } => match command {
+            TrexCommands::ImportConfig {
+                config,
+                out,
+                report,
+                threads,
+                workspace_out,
+                python,
+                overwrite,
+            } => cmd_trex_import_config(
+                &config,
+                &out,
+                report.as_ref(),
+                threads,
+                &workspace_out,
+                python.as_ref(),
+                overwrite,
             ),
         },
         Commands::Export { command } => match command {
@@ -1088,6 +1138,84 @@ fn cmd_config_schema(name: Option<&str>) -> Result<()> {
     };
 
     print!("{schema}");
+    Ok(())
+}
+
+fn cmd_trex_import_config(
+    config: &PathBuf,
+    out: &PathBuf,
+    report: Option<&PathBuf>,
+    threads: usize,
+    workspace_out: &PathBuf,
+    python: Option<&PathBuf>,
+    overwrite: bool,
+) -> Result<()> {
+    let default_python = {
+        let venv = PathBuf::from(".venv/bin/python");
+        if venv.exists() { venv } else { PathBuf::from("python3") }
+    };
+    let python = python.cloned().unwrap_or(default_python);
+
+    let mut pythonpath = std::ffi::OsString::new();
+    // When running from a repo checkout, make `python -m nextstat...` work without installing the wheel.
+    // We can't assume `cwd` is the repo root (tests run from `crates/ns-cli`), so discover by walking up.
+    let mut dir = std::env::current_dir().ok();
+    for _ in 0..8 {
+        let Some(d) = dir.as_ref() else { break };
+        let cand = d.join("bindings/ns-py/python");
+        if cand.join("nextstat").join("__init__.py").is_file() {
+            pythonpath.push(cand.as_os_str());
+            break;
+        }
+        let mut parent = d.clone();
+        if !parent.pop() {
+            break;
+        }
+        dir = Some(parent);
+    }
+    if let Some(existing) = std::env::var_os("PYTHONPATH") {
+        if !existing.is_empty() {
+            pythonpath.push(":");
+            pythonpath.push(existing);
+        }
+    }
+
+    let mut cmd = Command::new(&python);
+    cmd.env("PYTHONPATH", pythonpath)
+        .arg("-m")
+        .arg("nextstat.trex_config.cli")
+        .arg("import-config")
+        .arg("--config")
+        .arg(config)
+        .arg("--out")
+        .arg(out)
+        .arg("--threads")
+        .arg(threads.to_string())
+        .arg("--workspace-out")
+        .arg(workspace_out);
+
+    if let Some(r) = report {
+        cmd.arg("--report").arg(r);
+    }
+    if overwrite {
+        cmd.arg("--overwrite");
+    }
+
+    let outp = cmd
+        .output()
+        .map_err(|e| anyhow::anyhow!("failed to run trex import-config helper (python={}): {}", python.display(), e))?;
+    if !outp.status.success() {
+        anyhow::bail!(
+            "trex import-config helper failed (python={}, status={}):\nstdout:\n{}\nstderr:\n{}",
+            python.display(),
+            outp.status,
+            String::from_utf8_lossy(&outp.stdout),
+            String::from_utf8_lossy(&outp.stderr)
+        );
+    }
+
+    // Pass through the helper's machine-readable JSON summary.
+    print!("{}", String::from_utf8_lossy(&outp.stdout));
     Ok(())
 }
 
@@ -1393,6 +1521,38 @@ fn cmd_import_trex_config(
         });
 
         std::fs::write(path, serde_yaml_ng::to_string(&spec)?)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_build_hists(
+    config: &PathBuf,
+    base_dir: Option<&PathBuf>,
+    out_dir: &PathBuf,
+    overwrite: bool,
+    coverage_json: Option<&PathBuf>,
+) -> Result<()> {
+    // Reuse the report/run convention: require empty dir unless --overwrite.
+    ensure_out_dir(out_dir, overwrite)?;
+
+    tracing::info!(path = %config.display(), "building hists from TRExFitter config (NTUP)");
+    let text = std::fs::read_to_string(config)?;
+
+    let base_dir_override = base_dir.map(|p| p.as_path());
+    let resolved_base_dir = base_dir_override
+        .or_else(|| config.parent())
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    let (cfg, coverage) = ns_translate::trex::TrexConfig::parse_str_with_coverage(&text)?;
+    let ws = ns_translate::trex::workspace_from_config(&cfg, resolved_base_dir)?;
+
+    let ws_json = serde_json::to_value(&ws)?;
+    write_json_file(&out_dir.join("workspace.json"), &ws_json)?;
+
+    if let Some(path) = coverage_json {
+        let cov_json = serde_json::to_value(&coverage)?;
+        write_json_file(path, &cov_json)?;
     }
 
     Ok(())

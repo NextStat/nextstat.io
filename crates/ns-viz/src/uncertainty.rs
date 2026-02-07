@@ -99,7 +99,12 @@ pub fn uncertainty_breakdown_from_ranking(
         })
         .collect();
 
-    groups.sort_by(|a, b| b.impact.partial_cmp(&a.impact).unwrap_or(std::cmp::Ordering::Equal));
+    groups.sort_by(|a, b| {
+        b.impact
+            .partial_cmp(&a.impact)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
 
     Ok(UncertaintyBreakdownArtifact {
         schema_version: "trex_report_uncertainty_v0".to_string(),

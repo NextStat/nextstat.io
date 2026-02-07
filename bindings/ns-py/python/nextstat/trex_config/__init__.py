@@ -14,3 +14,10 @@ from .parser import (  # noqa: F401
     parse_trex_config_file,
 )
 
+from .importer import (  # noqa: F401
+    TrexConfigImportError,
+    TrexConfigImportError as TrexImportError,
+    dump_yaml,
+    trex_config_file_to_analysis_spec_v0,
+    trex_doc_to_analysis_spec_v0,
+)

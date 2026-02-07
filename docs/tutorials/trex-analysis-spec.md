@@ -123,10 +123,15 @@ Optional: pick an explicit `nextstat` binary:
 - Wraps the existing line-based config consumed by `nextstat import trex-config` (subset; `ReadFrom=NTUP`).
 - Useful as a bridge while migrating away from the text format.
 - Note: report generation requires HistFactory XML; for ntuple mode use fit/scan first.
+  - Tip: `nextstat import trex-config --analysis-yaml analysis.yaml --coverage-json coverage.json ...` can generate:
+    - an analysis spec wrapper (`inputs.mode=trex_config_txt`) for `nextstat run`, and
+    - a coverage report highlighting unknown keys/attrs in legacy configs.
 
 4) `trex_config_yaml`
 - IDE-friendly YAML representation of the same subset as `trex_config_txt`.
 - Supported natively by `nextstat run --config ...` (it generates an equivalent internal text config and reuses the same importer).
+- Migration tip: generate a starter spec from a TRExFitter `.config` via:
+  - `nextstat trex import-config --config analysis.config --out analysis.yaml --report analysis.mapping.json`
 
 ## Examples
 

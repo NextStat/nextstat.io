@@ -15,7 +15,9 @@ HEP / HistFactory:
 - `nextstat validate --config analysis.yaml`
 - `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
-- `nextstat import trex-config --config trex.txt --output workspace.json`
+- `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json]`
+- `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json]`
+- `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
 - `nextstat fit --input workspace.json`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...]`
@@ -78,5 +80,13 @@ For the frequentist (CLs) workflow, see:
 - `Region:` blocks with `Variable`, `Binning`, optional `Selection`.
 - `Sample:` blocks with `File`, optional `Weight`, and optional simple modifiers (`NormFactor`, `NormSys`, `StatError`).
 - `Systematic:` blocks for `Type: norm|weight|tree` applied by `Samples:` and optional `Regions:`.
+
+Optional outputs:
+- `--analysis-yaml` writes an analysis spec v0 wrapper (`inputs.mode=trex_config_txt`) to drive `nextstat run`.
+- `--coverage-json` writes a best-effort report of unknown keys/attrs to help parity work against legacy configs.
+
+`nextstat trex import-config` is a best-effort migration helper for TRExFitter `.config` files:
+- it emits an analysis spec v0 YAML using `inputs.mode=trex_config_yaml`
+- it also writes a mapping report listing mapped and unmapped keys
 
 Example config: `docs/examples/trex_config_ntup_minimal.txt`.

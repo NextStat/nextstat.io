@@ -448,20 +448,34 @@ def main() -> int:
                     n_chains=int(args.n_chains),
                     n_warmup=hf_warmup,
                     n_samples=hf_samples,
-                    # Empirically improves short-run chain agreement on bounded HistFactory params (esp. POI mu),
-                    # without requiring longer warmup/sampling.
+                    # HistFactory fixtures can be more sensitive to short warmup; in strict mode
+                    # a slightly higher target_accept is more robust for this case/seed.
                     target_accept=(0.90 if args.strict else 0.85),
                 )
             )
         else:
             cases.append({"name": c, "ok": False, "reason": f"unknown_case:{c}"})
 
-    # HistFactory posteriors can require substantially longer runs to meet tight R-hat/ESS gates.
-    # For this runner, defaults are strict for non-HEP models, and looser for HistFactory unless
-    # the user explicitly overrides via --histfactory-* thresholds.
-    hf_rhat_max = float(args.histfactory_rhat_max) if args.histfactory_rhat_max is not None else 3.0
-    hf_ess_bulk_min = float(args.histfactory_ess_bulk_min) if args.histfactory_ess_bulk_min is not None else 2.0
-    hf_ess_tail_min = float(args.histfactory_ess_tail_min) if args.histfactory_ess_tail_min is not None else 2.0
+    # HistFactory posteriors can require substantially longer runs to meet tight standards-like gates
+    # (R-hat <= 1.01, ESS >= 10) on short runs.
+    #
+    # In strict mode we still keep a slightly looser default for HistFactory, but it should be
+    # meaningfully stricter than the smoke defaults.
+    hf_rhat_max = (
+        float(args.histfactory_rhat_max)
+        if args.histfactory_rhat_max is not None
+        else (1.50 if args.strict else 3.0)
+    )
+    hf_ess_bulk_min = (
+        float(args.histfactory_ess_bulk_min)
+        if args.histfactory_ess_bulk_min is not None
+        else (10.0 if args.strict else 2.0)
+    )
+    hf_ess_tail_min = (
+        float(args.histfactory_ess_tail_min)
+        if args.histfactory_ess_tail_min is not None
+        else (10.0 if args.strict else 2.0)
+    )
 
     def _extra_gates(row: Mapping[str, Any]) -> List[str]:
         # These checks cover failure modes that diagnostics alone won't catch.

@@ -75,8 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Phase 4.1 — TRExFitter Interop (Config Import + Analysis Spec)
 
-**ns-cli: TRExFitter config importer (NTUP subset)**
+**ns-cli: TRExFitter config importers (NTUP subset)**
 - `nextstat import trex-config` imports a TRExFitter-style config subset (`ReadFrom: NTUP`) into a pyhf JSON `Workspace`.
+- `nextstat build-hists` runs the NTUP pipeline and writes `workspace.json` into `--out-dir` (deterministic for the same inputs).
+- `nextstat trex import-config` converts a TRExFitter `.config` file into an analysis spec v0 YAML (`inputs.mode=trex_config_yaml`) and a mapping report (`*.mapping.json`).
 - `--base-dir` controls relative-path resolution for `File:` entries (default: config file directory).
 - Runnable minimal example: `docs/examples/trex_config_ntup_minimal.txt`.
 

@@ -223,7 +223,7 @@ fn parse_list(value: &str) -> Vec<String> {
     let mut in_double = false;
     let mut escape = false;
 
-    let mut push_cur = |out: &mut Vec<String>, cur: &mut String| {
+    let push_cur = |out: &mut Vec<String>, cur: &mut String| {
         let s = cur.trim();
         if !s.is_empty() {
             let s = if (s.starts_with('"') && s.ends_with('"'))
@@ -294,9 +294,10 @@ fn parse_f64(s: &str) -> Result<f64> {
 }
 
 fn parse_binning(value: &str) -> Result<Vec<f64>> {
-    // Accept "0, 50, 100, ..." and "[0,50,100]".
+    // Accept "0, 50, 100, ...", "0; 50; 100; ...", and "[0,50,100]".
     let v = value.trim().trim_start_matches('[').trim_end_matches(']');
-    let parts: Vec<&str> = v.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> =
+        v.split(|c| c == ',' || c == ';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     if parts.len() >= 2 {
         let mut edges = Vec::with_capacity(parts.len());
         for p in parts {
@@ -545,22 +546,38 @@ pub struct TrexSystematic {
     tree_name: Option<String>,
 }
 
+/// A single unrecognized `key: value` attribute encountered while parsing a TREx config.
 #[derive(Debug, Clone, Serialize)]
 pub struct TrexUnknownAttr {
+    /// Where it was found: `"global"` or `"block"`.
     pub scope: String,
+    /// Block kind when `scope="block"` (e.g. `Region`, `Sample`, `Systematic`).
     pub block_kind: Option<String>,
+    /// Block name when `scope="block"` (e.g. region/sample/systematic name).
     pub block_name: Option<String>,
+    /// 1-based line number in the original config text.
     pub line: usize,
+    /// Attribute key as it appeared in the config.
     pub key: String,
+    /// Raw attribute value (unquoted/unescaped).
     pub value: String,
 }
 
+/// A best-effort "what did we understand?" report for TREx config parsing.
+///
+/// This is intended to help parity work against legacy configs: it flags keys/attrs that
+/// NextStat currently ignores so we can iterate coverage intentionally.
 #[derive(Debug, Clone, Serialize)]
 pub struct TrexCoverageReport {
+    /// Schema identifier for this JSON report.
     pub schema_version: String,
+    /// Count of parsed global attributes.
     pub n_globals: usize,
+    /// Count of parsed blocks (Region/Sample/Systematic/Job/...).
     pub n_blocks: usize,
+    /// Count of parsed attributes inside blocks.
     pub n_block_attrs: usize,
+    /// List of unknown attributes (not currently recognized by the importer).
     pub unknown: Vec<TrexUnknownAttr>,
 }
 
@@ -571,6 +588,7 @@ impl TrexConfig {
         Self::parse_from_raw(globals, blocks)
     }
 
+    /// Parse a TRExFitter-style config from text and also return a coverage report.
     pub fn parse_str_with_coverage(text: &str) -> Result<(Self, TrexCoverageReport)> {
         let (globals, blocks) = parse_raw(text)?;
         let cfg = Self::parse_from_raw(globals.clone(), blocks.clone())?;
@@ -845,7 +863,7 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         Error::Validation(format!("Systematic '{name}' unknown Type: {type_str:?}"))
     })?;
 
-    let mut samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
+    let samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
         parse_list(&samples_val)
     } else {
         // Nested systematic under a Sample block: infer the sample scope.
