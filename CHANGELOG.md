@@ -23,6 +23,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `DifferentiableSession`: NLL + signal gradient at fixed nuisance parameters.
 - `ProfiledDifferentiableSession`: profiled test statistics with envelope-theorem gradients — enables NN → signal histogram → profiled CLs → loss.
 - `nextstat.torch` Python module: `NextStatNLLFunction`, `NextStatProfiledQ0Function` (autograd), `NextStatLayer(nn.Module)`.
+- `profiled_zmu_loss()` — Zμ loss wrapper (sqrt(qμ) with numerical stability) for signal-strength optimization.
+- Fit convergence check: returns error if GPU profile fit fails to converge (envelope theorem requires ∂NLL/∂θ = 0).
+
+#### Gymnasium RL Environment
+
+- `nextstat.gym` — optional Gymnasium/Gym wrapper treating a HistFactory workspace as an RL/DOE environment.
+- Propose updates to a sample's nominal yields, receive a NextStat metric as reward (NLL, q₀, Z₀, qμ, Zμ).
+- `make_histfactory_env()` factory with configurable `reward_metric`, `action_mode` (additive/logmul), `action_scale`.
+- Compatible with `gymnasium` (preferred) and legacy `gym`.
 
 #### Deterministic Validation
 
@@ -35,12 +44,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **TTree reader** — mmap file access, native binary deserialization, basket decompression (zlib/LZ4/ZSTD) with rayon-parallel extraction. 9 leaf types + jagged branches.
 - **Expression engine** — bytecode-compiled, vectorized. Full grammar: arithmetic, comparisons, boolean logic, ternary, builtins. Python wrapper: `nextstat.analysis.expr_eval`.
 - **Histogram filler** — single-pass with selection cuts, weights, variable binning.
+- **Unsplit vector branch decoding** — best-effort decoding for `std::vector<T>` branches without offset tables.
 - **~8.5x faster** than uproot+numpy on the full pipeline (benchmarked on 1k entries, 7 branches).
 
 #### Ntuple-to-Workspace Pipeline
 
 - `NtupleWorkspaceBuilder`: ROOT ntuples → HistFactory `Workspace` via fluent Rust API.
-- Per-sample modifiers: NormFactor, NormSys, WeightSys, TreeSys, StatError.
+- Per-sample modifiers: NormFactor, NormSys, WeightSys, TreeSys, HistoSys, StatError.
 - Produces the same `Workspace` struct as the pyhf JSON path — no ROOT C++ dependency.
 
 #### TRExFitter Interop
