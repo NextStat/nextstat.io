@@ -169,3 +169,56 @@ fn trex_report_uncertainty_breakdown_grouping_prefix_1() {
     let total = (0.2_f64 * 0.2 + 0.1 * 0.1 + 0.05 * 0.05).sqrt();
     assert_abs_diff_eq!(unc.total, total, epsilon = 1e-12);
 }
+
+#[test]
+fn trex_report_uncertainty_breakdown_grouping_category_v1() {
+    let ranking = ns_viz::RankingArtifact {
+        names: vec![
+            "lumi_2022".to_string(),
+            "PDF_setA".to_string(),
+            "alphaS".to_string(),
+            "muR".to_string(),
+            "scale_ttbar".to_string(),
+            "gamma_stat_SR".to_string(),
+            "JES_barrel".to_string(),
+        ],
+        delta_mu_up: vec![0.2, 0.12, 0.06, 0.08, 0.04, 0.10, 0.05],
+        delta_mu_down: vec![-0.15, -0.10, -0.03, -0.02, -0.01, 0.08, -0.02],
+        pull: vec![0.0; 7],
+        constraint: vec![1.0; 7],
+    };
+
+    let unc = ns_viz::uncertainty::uncertainty_breakdown_from_ranking(&ranking, "category_v1", 1)
+        .expect("uncertainty breakdown");
+
+    let mut by_name = std::collections::HashMap::new();
+    for g in &unc.groups {
+        by_name.insert(g.name.as_str(), (g.impact, g.n_parameters));
+    }
+
+    // category buckets exist
+    assert!(by_name.contains_key("lumi"));
+    assert!(by_name.contains_key("pdf"));
+    assert!(by_name.contains_key("scale"));
+    assert!(by_name.contains_key("stat"));
+
+    // simple sanity: lumi impact is just |0.2|
+    assert_abs_diff_eq!(by_name.get("lumi").unwrap().0, 0.2, epsilon = 1e-12);
+
+    // pdf has two entries (PDF_setA + alphaS)
+    assert_eq!(by_name.get("pdf").unwrap().1, 2);
+    let pdf_expected = (0.12_f64 * 0.12 + 0.06 * 0.06).sqrt();
+    assert_abs_diff_eq!(by_name.get("pdf").unwrap().0, pdf_expected, epsilon = 1e-12);
+
+    // scale has two entries (muR + scale_ttbar)
+    assert_eq!(by_name.get("scale").unwrap().1, 2);
+    let scale_expected = (0.08_f64 * 0.08 + 0.04 * 0.04).sqrt();
+    assert_abs_diff_eq!(by_name.get("scale").unwrap().0, scale_expected, epsilon = 1e-12);
+
+    // stat
+    assert_abs_diff_eq!(by_name.get("stat").unwrap().0, 0.10, epsilon = 1e-12);
+
+    // JES falls back to prefix_1 ("JES")
+    assert!(by_name.contains_key("JES"));
+    assert_abs_diff_eq!(by_name.get("JES").unwrap().0, 0.05, epsilon = 1e-12);
+}

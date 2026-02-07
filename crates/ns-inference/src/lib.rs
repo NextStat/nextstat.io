@@ -58,6 +58,8 @@ pub mod timeseries;
 pub mod toys;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+/// Shared L-BFGS-B state machine for GPU lockstep optimization.
+pub(crate) mod lbfgs;
 
 /// GPU-accelerated batch toy fitting (requires `cuda` feature + NVIDIA GPU).
 #[cfg(feature = "cuda")]

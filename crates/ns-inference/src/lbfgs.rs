@@ -188,7 +188,7 @@ impl LbfgsState {
         }
 
         // Initial step size: 1.0 for quasi-Newton
-        let mut step = 1.0;
+        let mut step: f64 = 1.0;
 
         // Clamp step to stay within bounds
         for i in 0..n {

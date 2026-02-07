@@ -57,6 +57,46 @@ fn group_name_prefix_1(param_name: &str) -> String {
     name.split('_').next().unwrap_or(name).to_string()
 }
 
+fn group_name_category_v1(param_name: &str) -> String {
+    // Goal: map per-NP names into a small number of physics-motivated categories
+    // (e.g. lumi/scale/pdf), rather than "per-name" prefix buckets.
+    //
+    // This is intentionally heuristic: TREx / HistFactory naming conventions vary
+    // widely across analyses. Keep it conservative and fall back to `prefix_1`.
+    let name = param_name;
+
+    // Statistical / gamma-ish parameters.
+    if name.starts_with("gamma_") || name.starts_with("gammaStat") || name.starts_with("gammaStat_")
+    {
+        return "stat".to_string();
+    }
+
+    let lc = name.to_ascii_lowercase();
+
+    // Luminosity.
+    if lc.contains("lumi") {
+        return "lumi".to_string();
+    }
+
+    // PDFs.
+    if lc.contains("pdf") || lc.contains("alpha_s") || lc.contains("alphas") {
+        return "pdf".to_string();
+    }
+
+    // Renormalization/factorization scales, generic scale-like sources.
+    if lc.contains("scale")
+        || lc.contains("mur")
+        || lc.contains("muf")
+        || lc.contains("mu_r")
+        || lc.contains("mu_f")
+        || lc.contains("qcdscale")
+    {
+        return "scale".to_string();
+    }
+
+    group_name_prefix_1(name)
+}
+
 /// Build an uncertainty breakdown artifact from a ranking artifact.
 ///
 /// Definition:
@@ -83,6 +123,7 @@ pub fn uncertainty_breakdown_from_ranking(
 
         let g = match grouping_policy {
             "prefix_1" => group_name_prefix_1(&ranking.names[i]),
+            "category_v1" => group_name_category_v1(&ranking.names[i]),
             _ => group_name_prefix_1(&ranking.names[i]),
         };
         let e = sumsq_by_group.entry(g).or_insert((0.0, 0));
