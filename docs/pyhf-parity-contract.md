@@ -279,9 +279,31 @@ pytest tests/python/test_pyhf_validation.py tests/python/test_expected_data_pari
 
 ---
 
+## Appendix: ROOT/HistFactory Cross-Validation
+
+NextStat has been validated not only against pyhf but also against ROOT/RooFit using
+three canonical HistFactory fixtures (xmlimport, multichannel, coupled_histosys).
+
+**Key result:** NextStat agrees with pyhf at **< 1e-5** on q(mu) across all fixtures.
+Where ROOT disagrees (up to 22.5 on coupled HistoSys), ROOT's own fit diagnostic
+reports convergence failure (`status = -1`).
+
+| Fixture | NS vs pyhf max |dq(mu)| | NS vs ROOT max |dq(mu)| | ROOT status |
+|---------|----------------------------|-----------------------------|-------------|
+| xmlimport | 1e-7 | 0.051 | 0 (ok) |
+| multichannel | 4e-7 | 3.4e-8 | 0 (ok) |
+| coupled_histosys | 5e-6 | 22.5 | -1 (FAILED) |
+
+pyhf is the specification reference. ROOT deviations are informational, not gating.
+
+Full analysis: `docs/references/root-histfactory-comparison.md`
+
+---
+
 ## References
 
 - `docs/plans/standards.md` — Project-wide standards (source of truth for math definitions)
 - `tests/python/_tolerances.py` — Python constants (canonical values)
 - `docs/references/optimizer-convergence.md` — L-BFGS-B vs SLSQP analysis
+- `docs/references/root-histfactory-comparison.md` — ROOT/HistFactory 3-way comparison
 - `docs/plans/2026-02-07_pyhf-spec-parity-plan.md` — Implementation plan for Parity/Fast modes

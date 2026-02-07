@@ -150,8 +150,43 @@ curvature information for N>100 than SLSQP's rank-1 updates.
 
 ---
 
+---
+
+## 6. Profile scan evidence: ROOT vs NextStat vs pyhf
+
+Beyond MLE fits, profile likelihood scans provide independent validation. Three
+canonical HistFactory fixtures were tested through ROOT/RooFit, pyhf, and NextStat
+(`tests/validate_root_profile_scan.py --include-pyhf`).
+
+### Results
+
+| Fixture | NS vs pyhf max |dq(mu)| | NS vs ROOT max |dq(mu)| | ROOT free fit |
+|---------|----------------------------|-----------------------------|---------------|
+| xmlimport | 1e-7 | 0.051 | Converged |
+| multichannel | 4e-7 | 3.4e-8 | Converged |
+| coupled_histosys | 5e-6 | 22.5 | **FAILED (status=-1)** |
+
+### Key observations
+
+1. **NextStat and pyhf produce identical profile scans** (< 1e-5), confirming
+   that both implement the same likelihood function.
+
+2. **ROOT's conditional fits show optimizer effects** on xmlimport: constant NLL
+   offset (11.06) proves identical model; growing q(mu) delta (up to 0.051) at
+   tail is Minuit2 converging to slightly higher conditional NLL.
+
+3. **ROOT's coupled_histosys failure is a model-level divergence**: the NLL offset
+   between ROOT and NextStat grows from 420.74 (free fit) to 432.0 (mu=3.0),
+   ruling out pure optimizer differences and indicating that ROOT evaluates the
+   coupled HistoSys likelihood differently.
+
+Full analysis: `docs/references/root-histfactory-comparison.md`
+
+---
+
 ## References
 
+- ROOT/HistFactory comparison: `docs/references/root-histfactory-comparison.md`
 - Optimizer diagnostic report: `audit/2026-02-07_pyhf-optimizer-diagnostic.md`
 - Precision standards: `docs/plans/standards.md`
 - Parity modes: `docs/plans/2026-02-07_pyhf-spec-parity-plan.md`

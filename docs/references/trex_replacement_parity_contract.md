@@ -14,6 +14,8 @@ This document formalizes what “**identical numbers**” means for a full TRExF
 
 **Apex2 reference harness for ROOT/TREx workflows:** `docs/tutorials/root-trexfitter-parity.md`.
 
+**ROOT/HistFactory 3-way comparison (ROOT vs NextStat vs pyhf):** `docs/references/root-histfactory-comparison.md`.
+
 **Evaluation modes:** All parity comparisons must use `EvalMode::Parity` (Kahan summation,
 Accelerate disabled, threads=1). Activate via CLI `--parity`, Python `nextstat.set_eval_mode("parity")`,
 or Rust `ns_compute::set_eval_mode(EvalMode::Parity)`.
