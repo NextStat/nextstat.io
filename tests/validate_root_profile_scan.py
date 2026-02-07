@@ -376,6 +376,48 @@ def _mu_grid(start: float, stop: float, points: int) -> List[float]:
     step = (stop - start) / (points - 1)
     return [start + i * step for i in range(points)]
 
+def _pyhf_profile_scan(
+    ws_spec: Dict[str, Any],
+    *,
+    measurement_name: str,
+    mu_values: List[float],
+) -> Dict[str, Any]:
+    from pyhf.infer import mle, test_statistics
+
+    ws = pyhf.Workspace(ws_spec)
+    model = ws.model(measurement_name)
+    data = ws.data(model, measurement_name)
+
+    init = model.config.suggested_init()
+    bounds = model.config.suggested_bounds()
+    fixed = model.config.suggested_fixed()
+
+    fit_pars, twice_nll_hat = mle.fit(
+        data,
+        model,
+        init_pars=init,
+        par_bounds=bounds,
+        fixed_params=fixed,
+        return_fitted_val=True,
+    )
+    poi_idx = model.config.poi_index
+    mu_hat = float(fit_pars[poi_idx])
+
+    points = []
+    for mu in mu_values:
+        # If the POI is bounded at 0 (common in HistFactory/HEP), pyhf recommends qmu_tilde.
+        # For mu_hat >= 0 (the usual case here) this matches qmu but avoids noisy warnings.
+        qmu = float(test_statistics.qmu_tilde(mu, data, model, init, bounds, fixed))
+        points.append({"mu": float(mu), "q_mu": qmu})
+
+    return {
+        "tool": "pyhf",
+        "poi_name": str(model.config.poi_name),
+        "mu_hat": mu_hat,
+        "twice_nll_hat": float(twice_nll_hat),
+        "points": points,
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -398,6 +440,11 @@ def main() -> int:
     ap.add_argument("--points", type=int, default=51)
     ap.add_argument("--workdir", type=Path, default=Path("tmp/root_parity"))
     ap.add_argument("--keep", action="store_true", help="Keep intermediate HistFactory/ROOT artifacts.")
+    ap.add_argument(
+        "--include-pyhf",
+        action="store_true",
+        help="Also compute a pyhf q(mu) scan for diagnosis (slow but canonical for pyhf semantics).",
+    )
     args = ap.parse_args()
 
     mu_values = _mu_grid(args.start, args.stop, args.points)
@@ -425,6 +472,19 @@ def main() -> int:
         measurement_name = ws["measurements"][0]["name"]
 
     t_build_ws = time.perf_counter() - t0
+
+    # ---------------------------------------------------------------------
+    # Optional: pyhf reference scan (diagnostic)
+    # ---------------------------------------------------------------------
+    pyhf_scan = None
+    t_pyhf = None
+    pyhf_out = None
+    if args.include_pyhf:
+        t_py0 = time.perf_counter()
+        pyhf_scan = _pyhf_profile_scan(ws, measurement_name=measurement_name, mu_values=mu_values)
+        t_pyhf = time.perf_counter() - t_py0
+        pyhf_out = run_dir / "pyhf_profile_scan.json"
+        pyhf_out.write_text(json.dumps(pyhf_scan, indent=2))
 
     # ---------------------------------------------------------------------
     # ROOT reference: combination.xml -> RooWorkspace -> profile scan
@@ -521,18 +581,21 @@ def main() -> int:
         },
         "timing_s": {
             "build_workspace": t_build_ws,
+            "pyhf_profile_scan": t_pyhf,
             "hist2workspace": t_hist2ws,
             "root_profile_scan_wall": t_root,
             "nextstat_profile_scan": t_ns,
         },
         "artifacts": {
             "root_profile_scan_json": str(root_out),
+            "pyhf_profile_scan_json": str(pyhf_out) if pyhf_out else None,
             "nextstat_profile_scan_json": str(ns_out),
         },
         "root": {
             "mu_hat": mu_hat_root,
             "nll_hat": float(root_result["nll_hat"]),
         },
+        "pyhf": pyhf_scan,
         "nextstat": {
             "mu_hat": mu_hat_ns,
             "nll_hat": float(ns_scan["nll_hat"]),

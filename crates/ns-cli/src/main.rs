@@ -1867,6 +1867,11 @@ fn cmd_fit(
     fit_regions: &[String],
     validation_regions: &[String],
 ) -> Result<()> {
+    if gpu && (!fit_regions.is_empty() || !validation_regions.is_empty()) {
+        anyhow::bail!(
+            "fit/validation region selection is not supported in --gpu mode yet (run on CPU or omit region filters)"
+        );
+    }
     let model = {
         let base = load_model(input, threads, parity)?;
         base.with_fit_channel_selection(

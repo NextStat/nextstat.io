@@ -2536,6 +2536,12 @@ impl PreparedModel<'_> {
         // 1. Compute expected data (scalar — modifier application is branchy)
         let mut expected = self.model.expected_data(params)?;
 
+        // 1b. NaN/Inf guard — if modifiers produced non-finite values, bail early
+        //     rather than letting NaN silently propagate through Poisson NLL.
+        if expected.iter().any(|v| !v.is_finite()) {
+            return Ok(f64::INFINITY);
+        }
+
         // 2. Clamp expected >= 1e-10
         #[cfg(feature = "accelerate")]
         if ns_compute::accelerate_enabled() {

@@ -1,6 +1,7 @@
 //! TREx-like stacked distributions artifacts (numbers-first).
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::Result;
@@ -56,6 +57,8 @@ pub struct DistributionsChannelArtifact {
     pub data_yerr_hi: Vec<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_error_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_is_blinded: Option<bool>,
     pub samples: Vec<DistributionsSampleSeries>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stack_order: Option<Vec<String>>,
@@ -165,6 +168,7 @@ pub fn distributions_artifact(
     params_prefit: &[f64],
     params_postfit: &[f64],
     threads: usize,
+    blinded_channels: Option<&HashSet<String>>,
 ) -> Result<DistributionsArtifact> {
     let pre = model.expected_main_by_channel_sample(params_prefit)?;
     let post = model.expected_main_by_channel_sample(params_postfit)?;
@@ -189,9 +193,37 @@ pub fn distributions_artifact(
             ))
         })?;
 
-        let (data_err_lo, data_err_hi, data_error_model) = data_errors(data);
-        let (ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
-            ratio_from_data_over_mc(data, &data_err_lo, &data_err_hi, &ch_post.total);
+        let blinded = blinded_channels
+            .as_ref()
+            .map(|xs| xs.contains(&ch_pre.channel_name))
+            .unwrap_or(false);
+
+        let n_bins = edges.len().saturating_sub(1);
+        let (data_y, data_err_lo, data_err_hi, data_error_model, ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
+            if blinded {
+                (
+                    vec![0.0; n_bins],
+                    vec![0.0; n_bins],
+                    vec![0.0; n_bins],
+                    None,
+                    vec![0.0; n_bins],
+                    vec![0.0; n_bins],
+                    vec![0.0; n_bins],
+                )
+            } else {
+                let (data_err_lo, data_err_hi, data_error_model) = data_errors(data);
+                let (ratio_y, ratio_yerr_lo, ratio_yerr_hi) =
+                    ratio_from_data_over_mc(data, &data_err_lo, &data_err_hi, &ch_post.total);
+                (
+                    data.clone(),
+                    data_err_lo,
+                    data_err_hi,
+                    data_error_model,
+                    ratio_y,
+                    ratio_yerr_lo,
+                    ratio_yerr_hi,
+                )
+            };
 
         let mut samples = Vec::with_capacity(ch_pre.samples.len());
         for s_pre in &ch_pre.samples {
@@ -214,10 +246,11 @@ pub fn distributions_artifact(
         channels_out.push(DistributionsChannelArtifact {
             channel_name: ch_pre.channel_name.clone(),
             bin_edges: edges.clone(),
-            data_y: data.clone(),
+            data_y,
             data_yerr_lo: data_err_lo,
             data_yerr_hi: data_err_hi,
             data_error_model,
+            data_is_blinded: if blinded { Some(true) } else { None },
             samples,
             stack_order: None,
             total_prefit_y: ch_pre.total.clone(),

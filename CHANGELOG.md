@@ -21,8 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `poisson_nll_scalar_kahan()`, `poisson_nll_accelerate_kahan()` — all use f64x4 compensated accumulation.
 - **CLI**: `--parity` flag on `fit`, `scan`, `hypotest`, `hypotest-toys` commands.
 - **Python**: `nextstat.set_eval_mode("parity")` / `nextstat.get_eval_mode()`.
-- **Measured overhead**: <5% (Kahan vs naive at same thread count, confirmed across simple/complex/tHu/tttt).
-- 7-tier tolerance contract vs pyhf NumPy: per-bin 1e-12 → toy ensemble 0.05 (`docs/pyhf-parity-contract.md`).
+- **Kahan summation overhead**: <5% vs naive summation *at the same thread count and backend*
+  (confirmed across simple/complex/tHu/tttt). Note: full Parity mode also disables Accelerate,
+  so Parity-vs-Fast wall time on macOS may differ more than 5%.
+- 7-tier tolerance contract vs pyhf NumPy: per-bin ~1e-14 worst-case (well below 1e-12 threshold)
+  → toy ensemble 0.05 (`docs/pyhf-parity-contract.md`).
 - 45+ new parity tests: gradient parity, per-bin golden, batch toys, eval mode, fast-vs-parity tolerance.
 
 **Apple Accelerate backend (macOS)**
@@ -172,6 +175,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Numbers-first baselines for spec runs: `tests/record_trex_analysis_spec_baseline.py` and `tests/compare_trex_analysis_spec_with_latest_baseline.py`.
 - Tutorial: `docs/tutorials/trex-analysis-spec.md`.
 
+#### Report System (Numbers-First Artifacts + Publication-Ready Rendering)
+
+- `nextstat report` master command: generates all numeric artifacts from a workspace + optional fit.
+- **Artifact outputs** (versioned JSON schemas under `docs/schemas/trex/`):
+  - `distributions.json` — prefit/postfit expected yields per sample per region, bin edges, data, Garwood errors, ratio.
+  - `pulls.json` — nuisance parameter pulls and constraints (postfit sigma / prefit sigma).
+  - `corr.json` — correlation matrix derived from inverse Hessian (optional raw covariance via `--include-covariance`).
+  - `yields.json` — per-region per-sample prefit/postfit yield tables; also `yields.csv` and `yields.tex`.
+  - `uncertainty.json` — ranking-based uncertainty breakdown (skippable via `--skip-uncertainty`).
+- `nextstat viz distributions`, `viz pulls`, `viz corr`, `viz ranking` subcommands for individual artifacts.
+- **Python rendering**: `python -m nextstat.report render` → multi-page PDF + per-plot SVGs (requires `matplotlib`).
+- `--render` flag on `nextstat report` to invoke rendering automatically.
+- `--uncertainty-grouping` policy (`prefix_1`, etc.) for systematic grouping in ranking.
+- `--deterministic` flag for stable JSON key ordering.
+- If `--fit` is omitted, `nextstat report` runs an MLE fit and writes `fit.json` into `--out-dir`.
+
+#### Patchset Support (HEPData Interop)
+
+- `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`:
+  applies pyhf PatchSet (HEPData signal patch format) to a base workspace.
+- Python: `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str`.
+
 #### Phase 9 — Pharma & Social Sciences Domain Packs
 
 **Pack A: Survival Analysis**
@@ -249,6 +274,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bias/pulls report hardened: per-parameter output, `--params poi|all`, `--min-used-abs/frac`,
   try/except around toy-loop fits, `skipped` status on insufficient valid toys.
 - Slow test ergonomics: `sbc` pytest marker, `NS_RUN_SBC=1` gate, reduced default toy counts.
+- **CI parity gate** (`.github/workflows/pyhf-parity.yml`): runs full parity test suite on push/PR
+  to main/develop; uploads golden reports as artifacts.
+- **TREx baseline refresh** (`.github/workflows/trex-baseline-refresh.yml`): self-hosted runner
+  workflow for recording TREx parity baselines (manual dispatch + nightly schedule).
+- **HEPData workspace tests** (`tests/python/test_hepdata_workspaces.py`): opt-in NLL parity checks
+  on real HEPData pyhf workspaces (requires manual download via `tests/hepdata/fetch_workspaces.py`).
+- **TREx baseline recorder** (`tests/record_trex_baseline.py`): captures fit + expected_data baseline
+  from a real TRExFitter/HistFactory export directory; compare via `tests/compare_trex_baseline_files.py`.
+- `fit()` now supports `init_pars=` for warm-start MLE (Rust `fit_from()` + Python binding).
+
+#### Documentation
+- `docs/pyhf-parity-contract.md`: 7-tier tolerance hierarchy with rationale, architecture diagram,
+  batch toys section, performance characteristics, CI integration guide.
+- `docs/references/trex_replacement_parity_contract.md`: TREx replacement parity contract (v0)
+  with EvalMode, reporting schemas, determinism policy, and baseline management.
+- `docs/references/optimizer-convergence.md`: L-BFGS-B vs SLSQP analysis on large models (184–249 params).
+- `docs/plans/metal-batch-gpu.md`: Metal f32 GPU feasibility study with PoC results.
 
 #### Visualization
 - `plot_cls_curve()` now respects `nsigma_order` + `cls_exp` dynamically.

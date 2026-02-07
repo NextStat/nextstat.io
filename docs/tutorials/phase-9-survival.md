@@ -81,7 +81,7 @@ Both are deterministic; the choice is part of the model contract.
 
 ## Quick start: parametric right-censoring models
 
-Parametric models are intercept-only baselines (no covariates yet). Use `nextstat.fit(...)`.
+Parametric models are intercept-only baselines (no covariates yet). Use the high-level helpers:
 
 ```python
 import nextstat
@@ -92,9 +92,11 @@ events = [True, False, True, False, True]
 fit_exp = nextstat.survival.exponential.fit(times, events)
 print("exp nll:", fit_exp.nll, "params:", fit_exp.params)
 
-m_w = nextstat.WeibullSurvivalModel(times, events)
-fit_w = nextstat.fit(m_w)
-print("weibull nll:", fit_w.nll, "params:", fit_w.bestfit)
+fit_w = nextstat.survival.weibull.fit(times, events)
+print("weibull nll:", fit_w.nll, "params:", fit_w.params)
+
+fit_ln = nextstat.survival.lognormal_aft.fit(times, events)
+print("lognormal_aft nll:", fit_ln.nll, "params:", fit_ln.params)
 ```
 
 ## Validation and regression tests

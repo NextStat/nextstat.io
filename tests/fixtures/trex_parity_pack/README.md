@@ -7,7 +7,10 @@ They are meant to be **minimal but representative** and to work without any exte
 
 - `cases_minimal.json`
   - `simple_fixture` (`mode=pyhf-json`) — quick smoke case.
-  - `histfactory_fixture` (`mode=histfactory-xml`) — uses `tests/fixtures/histfactory/combination.xml` + `data.root`.
+  - `histfactory_fixture` (`mode=histfactory-xml`) — repo HistFactory fixture.
+  - `pyhf_xmlimport` (`mode=histfactory-xml`) — pyhf validation fixture (1-channel; OverallSys + StatError + NormFactor).
+  - `pyhf_multichannel` (`mode=histfactory-xml`) — pyhf validation fixture (signal+control; ShapeSys).
+  - `pyhf_coupled_histosys` (`mode=histfactory-xml`) — pyhf validation fixture (coupled NP / shared HistoSys-like behavior).
 
 ## How to run (requires ROOT)
 
@@ -30,4 +33,3 @@ PYTHONPATH=bindings/ns-py/python python3 tests/record_baseline.py \
   --root-cases-existing tests/fixtures/trex_parity_pack/cases_minimal.json \
   --out-dir tmp/baselines
 ```
-

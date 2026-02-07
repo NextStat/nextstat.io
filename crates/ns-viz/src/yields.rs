@@ -1,6 +1,7 @@
 //! TREx-like yields tables artifact (numbers-first).
 
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashSet;
 
 use ns_core::Result;
 use serde::Serialize;
@@ -32,6 +33,8 @@ pub struct YieldsParityMode {
 pub struct YieldsChannel {
     pub channel_name: String,
     pub data: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_is_blinded: Option<bool>,
     pub samples: Vec<YieldsSample>,
     pub total_prefit: f64,
     pub total_postfit: f64,
@@ -56,6 +59,7 @@ pub fn yields_artifact(
     params_prefit: &[f64],
     params_postfit: &[f64],
     threads: usize,
+    blinded_channels: Option<&HashSet<String>>,
 ) -> Result<YieldsArtifact> {
     let pre = model.expected_main_by_channel_sample(params_prefit)?;
     let post = model.expected_main_by_channel_sample(params_postfit)?;
@@ -77,7 +81,11 @@ pub fn yields_artifact(
             ));
         }
 
-        let data_sum: f64 = ch_obs.y.iter().copied().sum();
+        let blinded = blinded_channels
+            .as_ref()
+            .map(|xs| xs.contains(&ch_pre.channel_name))
+            .unwrap_or(false);
+        let data_sum: f64 = if blinded { 0.0 } else { ch_obs.y.iter().copied().sum() };
         let total_prefit: f64 = ch_pre.total.iter().copied().sum();
         let total_postfit: f64 = ch_post.total.iter().copied().sum();
 
@@ -104,6 +112,7 @@ pub fn yields_artifact(
         out_channels.push(YieldsChannel {
             channel_name: ch_pre.channel_name.clone(),
             data: data_sum,
+            data_is_blinded: if blinded { Some(true) } else { None },
             samples,
             total_prefit,
             total_postfit,

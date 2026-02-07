@@ -45,6 +45,10 @@ pub mod metal_types;
 #[cfg(feature = "cuda")]
 pub mod cuda_batch;
 
+/// Metal batch NLL+gradient accelerator (requires `metal` feature + Apple Silicon at runtime).
+#[cfg(feature = "metal")]
+pub mod metal_batch;
+
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 pub mod accelerate;
 

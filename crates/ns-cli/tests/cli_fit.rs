@@ -155,3 +155,55 @@ fn fit_errors_on_length_mismatch_fixture() {
         stderr
     );
 }
+
+#[test]
+fn fit_validation_regions_exclude_channels_from_likelihood() {
+    let input = fixture_path("two_channel_workspace.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out_all = run(&["fit", "--input", input.to_string_lossy().as_ref(), "--threads", "1"]);
+    assert!(out_all.status.success(), "fit(all) should succeed");
+    let v_all: serde_json::Value = serde_json::from_slice(&out_all.stdout).expect("json");
+
+    let out_vr_excluded = run(&[
+        "fit",
+        "--input",
+        input.to_string_lossy().as_ref(),
+        "--threads",
+        "1",
+        "--validation-regions",
+        "VR",
+    ]);
+    assert!(
+        out_vr_excluded.status.success(),
+        "fit(excluding VR) should succeed, stderr={}",
+        String::from_utf8_lossy(&out_vr_excluded.stderr)
+    );
+    let v_ex: serde_json::Value = serde_json::from_slice(&out_vr_excluded.stdout).expect("json");
+
+    fn bestfit_mu(v: &serde_json::Value) -> f64 {
+        let names = v
+            .get("parameter_names")
+            .and_then(|x| x.as_array())
+            .expect("parameter_names array");
+        let bestfit = v.get("bestfit").and_then(|x| x.as_array()).expect("bestfit array");
+        let mut mu_idx = None;
+        for (i, n) in names.iter().enumerate() {
+            if n.as_str() == Some("mu") {
+                mu_idx = Some(i);
+                break;
+            }
+        }
+        let i = mu_idx.expect("mu should exist");
+        bestfit[i].as_f64().expect("mu bestfit should be number")
+    }
+
+    let mu_all = bestfit_mu(&v_all);
+    let mu_ex = bestfit_mu(&v_ex);
+
+    // The fixture is constructed so that including both channels pushes mu high:
+    // SR obs=10, VR obs=100, nominal=10 per channel => MLE ~ 110/20 = 5.5.
+    assert!((mu_all - 5.5).abs() < 1e-2, "unexpected mu_all={}", mu_all);
+    // Excluding VR leaves only SR => MLE ~ 10/10 = 1.
+    assert!((mu_ex - 1.0).abs() < 1e-2, "unexpected mu_ex={}", mu_ex);
+}

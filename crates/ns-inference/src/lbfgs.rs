@@ -64,9 +64,17 @@ impl LbfgsState {
     /// the projected gradient norm is below tolerance.
     pub fn step(&mut self, nll: f64, grad: &[f64]) -> &[f64] {
         let n = self.x.len();
-        self.fval = nll;
         self.n_fev += 1;
         self.n_gev += 1;
+
+        // Bail out early if NLL or gradient contains NaN/Inf — continuing
+        // would silently corrupt the inverse Hessian approximation.
+        if !nll.is_finite() || grad.iter().any(|g| !g.is_finite()) {
+            self.converged = true;
+            self.fval = nll;
+            return &self.x;
+        }
+        self.fval = nll;
 
         // Check convergence: projected gradient norm
         let pg_norm = self.projected_gradient_norm(grad);

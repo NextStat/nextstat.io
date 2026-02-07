@@ -132,6 +132,7 @@ These are imported from `nextstat/__init__.py` as convenience wrappers. Some req
 - `nextstat.viz`: plot-friendly artifacts for CLs curves and profile scans.
 - `nextstat.bayes`: Bayesian helpers (ArviZ integration).
 - `nextstat.timeseries`: higher-level time series helpers and plotting.
+- `nextstat.survival`: high-level survival helpers (parametric right-censoring + Cox PH fit helpers).
 - `nextstat.econometrics`: robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting helpers.
 - `nextstat.causal`: propensity + AIPW baselines and sensitivity hooks.
 
