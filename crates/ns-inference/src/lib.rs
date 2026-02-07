@@ -96,7 +96,7 @@ pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use diagnostics::DiagnosticsResult;
 #[cfg(feature = "cuda")]
-pub use differentiable::DifferentiableSession;
+pub use differentiable::{DifferentiableSession, ProfiledDifferentiableSession};
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]

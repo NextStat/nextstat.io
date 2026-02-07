@@ -71,6 +71,10 @@ pub struct DifferentiableAccelerator {
     d_nll_out: CudaSlice<f64>,
     d_grad_params_out: CudaSlice<f64>,
 
+    // Pre-allocated buffer for signal gradient (used by nll_and_grad_params
+    // when we only need NLL + grad_params and no external PyTorch pointer).
+    d_grad_signal_buf: CudaSlice<f64>,
+
     // Metadata
     n_params: usize,
     n_main_bins: usize,
@@ -117,6 +121,8 @@ impl DifferentiableAccelerator {
         let d_obs_mask = stream.alloc_zeros::<f64>(data.n_main_bins).map_err(|e| cuda_err(e))?;
         let d_nll_out = stream.alloc_zeros::<f64>(1).map_err(|e| cuda_err(e))?;
         let d_grad_params_out = stream.alloc_zeros::<f64>(data.n_params).map_err(|e| cuda_err(e))?;
+        let d_grad_signal_buf =
+            stream.alloc_zeros::<f64>(signal_info.n_bins as usize).map_err(|e| cuda_err(e))?;
 
         Ok(Self {
             ctx,
@@ -136,6 +142,7 @@ impl DifferentiableAccelerator {
             d_obs_mask,
             d_nll_out,
             d_grad_params_out,
+            d_grad_signal_buf,
             n_params: data.n_params,
             n_main_bins: data.n_main_bins,
             n_samples: data.samples.len(),
@@ -257,6 +264,172 @@ impl DifferentiableAccelerator {
         self.stream.synchronize().map_err(|e| cuda_err(e))?;
 
         Ok((nll_out[0], grad_params))
+    }
+
+    /// Compute NLL + gradient w.r.t. nuisance parameters only.
+    ///
+    /// Signal gradient is written into the internal `d_grad_signal_buf` buffer
+    /// (discarded). For use during L-BFGS-B fit iterations where only NLL and
+    /// grad_params are needed.
+    pub fn nll_and_grad_params(
+        &mut self,
+        params: &[f64],
+        signal_device_ptr: u64,
+    ) -> ns_core::Result<(f64, Vec<f64>)> {
+        assert_eq!(params.len(), self.n_params);
+
+        // Upload params
+        self.stream.memcpy_htod(params, &mut self.d_params).map_err(|e| cuda_err(e))?;
+
+        // Zero gradient outputs
+        let zeros_p = vec![0.0f64; self.n_params];
+        self.stream.memcpy_htod(&zeros_p, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
+        let zeros_s = vec![0.0f64; self.signal_info.n_bins as usize];
+        self.stream.memcpy_htod(&zeros_s, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
+
+        let block_size = (self.n_main_bins.min(256) as u32).next_power_of_two();
+        let shared_bytes =
+            ((self.n_params + block_size as usize) * std::mem::size_of::<f64>()) as u32;
+
+        let config = LaunchConfig {
+            grid_dim: (1, 1, 1),
+            block_dim: (block_size, 1, 1),
+            shared_mem_bytes: shared_bytes,
+        };
+
+        let mut builder = self.stream.launch_builder(&self.kernel);
+
+        builder.arg(&self.d_params);
+        builder.arg(&self.d_observed);
+        builder.arg(&self.d_ln_facts);
+        builder.arg(&self.d_obs_mask);
+
+        builder.arg(&self.d_nominal);
+        builder.arg(&self.d_samples);
+        builder.arg(&self.d_modifier_descs);
+        builder.arg(&self.d_modifier_desc_offsets);
+        builder.arg(&self.d_per_bin_param_indices);
+        builder.arg(&self.d_modifier_data);
+        builder.arg(&self.d_aux_poisson);
+        builder.arg(&self.d_gauss_constr);
+
+        builder.arg(&self.d_nll_out);
+        builder.arg(&self.d_grad_params_out);
+
+        // Signal input (external) + grad output (internal dummy buffer)
+        builder.arg(&signal_device_ptr);
+        builder.arg(&self.d_grad_signal_buf);
+
+        builder.arg(&self.signal_info.sample_idx);
+        builder.arg(&self.signal_info.first_bin);
+        builder.arg(&self.signal_info.n_bins);
+
+        builder.arg(&(self.n_params as u32));
+        builder.arg(&(self.n_main_bins as u32));
+        builder.arg(&(self.n_samples as u32));
+        builder.arg(&(self.n_aux_poisson as u32));
+        builder.arg(&(self.n_gauss_constr as u32));
+        builder.arg(&self.constraint_const);
+
+        unsafe {
+            builder
+                .launch(config)
+                .map_err(|e| cuda_err(format!("launch differentiable_nll_grad: {e}")))?;
+        }
+
+        let mut nll_out = [0.0f64; 1];
+        let mut grad_params = vec![0.0f64; self.n_params];
+        self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
+        self.stream
+            .memcpy_dtoh(&self.d_grad_params_out, &mut grad_params)
+            .map_err(|e| cuda_err(e))?;
+        self.stream.synchronize().map_err(|e| cuda_err(e))?;
+
+        Ok((nll_out[0], grad_params))
+    }
+
+    /// Compute NLL + gradient w.r.t. both nuisance parameters and signal bins.
+    ///
+    /// Like `nll_and_grad_params`, but also downloads the signal gradient
+    /// from the internal buffer. Returns `(nll, grad_params, grad_signal)`.
+    pub fn nll_grad_all(
+        &mut self,
+        params: &[f64],
+        signal_device_ptr: u64,
+    ) -> ns_core::Result<(f64, Vec<f64>, Vec<f64>)> {
+        assert_eq!(params.len(), self.n_params);
+
+        // Upload params
+        self.stream.memcpy_htod(params, &mut self.d_params).map_err(|e| cuda_err(e))?;
+
+        // Zero gradient outputs
+        let zeros_p = vec![0.0f64; self.n_params];
+        self.stream.memcpy_htod(&zeros_p, &mut self.d_grad_params_out).map_err(|e| cuda_err(e))?;
+        let zeros_s = vec![0.0f64; self.signal_info.n_bins as usize];
+        self.stream.memcpy_htod(&zeros_s, &mut self.d_grad_signal_buf).map_err(|e| cuda_err(e))?;
+
+        let block_size = (self.n_main_bins.min(256) as u32).next_power_of_two();
+        let shared_bytes =
+            ((self.n_params + block_size as usize) * std::mem::size_of::<f64>()) as u32;
+
+        let config = LaunchConfig {
+            grid_dim: (1, 1, 1),
+            block_dim: (block_size, 1, 1),
+            shared_mem_bytes: shared_bytes,
+        };
+
+        let mut builder = self.stream.launch_builder(&self.kernel);
+
+        builder.arg(&self.d_params);
+        builder.arg(&self.d_observed);
+        builder.arg(&self.d_ln_facts);
+        builder.arg(&self.d_obs_mask);
+
+        builder.arg(&self.d_nominal);
+        builder.arg(&self.d_samples);
+        builder.arg(&self.d_modifier_descs);
+        builder.arg(&self.d_modifier_desc_offsets);
+        builder.arg(&self.d_per_bin_param_indices);
+        builder.arg(&self.d_modifier_data);
+        builder.arg(&self.d_aux_poisson);
+        builder.arg(&self.d_gauss_constr);
+
+        builder.arg(&self.d_nll_out);
+        builder.arg(&self.d_grad_params_out);
+
+        builder.arg(&signal_device_ptr);
+        builder.arg(&self.d_grad_signal_buf);
+
+        builder.arg(&self.signal_info.sample_idx);
+        builder.arg(&self.signal_info.first_bin);
+        builder.arg(&self.signal_info.n_bins);
+
+        builder.arg(&(self.n_params as u32));
+        builder.arg(&(self.n_main_bins as u32));
+        builder.arg(&(self.n_samples as u32));
+        builder.arg(&(self.n_aux_poisson as u32));
+        builder.arg(&(self.n_gauss_constr as u32));
+        builder.arg(&self.constraint_const);
+
+        unsafe {
+            builder
+                .launch(config)
+                .map_err(|e| cuda_err(format!("launch differentiable_nll_grad: {e}")))?;
+        }
+
+        let mut nll_out = [0.0f64; 1];
+        let mut grad_params = vec![0.0f64; self.n_params];
+        let mut grad_signal = vec![0.0f64; self.signal_info.n_bins as usize];
+        self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(|e| cuda_err(e))?;
+        self.stream
+            .memcpy_dtoh(&self.d_grad_params_out, &mut grad_params)
+            .map_err(|e| cuda_err(e))?;
+        self.stream
+            .memcpy_dtoh(&self.d_grad_signal_buf, &mut grad_signal)
+            .map_err(|e| cuda_err(e))?;
+        self.stream.synchronize().map_err(|e| cuda_err(e))?;
+
+        Ok((nll_out[0], grad_params, grad_signal))
     }
 
     /// Number of signal bins.

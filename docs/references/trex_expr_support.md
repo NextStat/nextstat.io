@@ -27,7 +27,8 @@ Source of truth:
 - `branch[idx]` is accepted syntactically and rewritten into a required scalar “virtual” branch name `branch[idx]`.
 - Reading `branch[idx]` from ROOT TTrees is supported via `RootFile::branch_data("name[idx]")`:
   - **Jagged/variable-length leaflist** branches (per-basket entry-offset table): out-of-range → `0.0`.
-  - **Fixed-length array** branches (flat storage with `N = entries * len`): out-of-range index is an error (compile is fine; read fails).
+  - **Fixed-length array** branches (flat storage with `N = entries * len`): out-of-range → `0.0`.
+  - **Scalar** branches: `name[0]` is allowed and behaves like `name`; `name[k>0]` is a read-time error.
 
 ### Functions (case-insensitive, namespace-insensitive)
 The engine matches functions by:

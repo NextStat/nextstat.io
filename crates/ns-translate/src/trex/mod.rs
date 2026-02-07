@@ -618,6 +618,8 @@ pub struct TrexSystematic {
     weight_base: Option<String>,
     weight_up_suffix: Option<String>,
     weight_down_suffix: Option<String>,
+    weight_suf_up: Option<String>,
+    weight_suf_down: Option<String>,
     weight_up: Option<String>,
     weight_down: Option<String>,
     file_up: Option<PathBuf>,
@@ -1395,11 +1397,46 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
 fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
     let name = b.name.clone();
 
-    let type_str = last_attr_value(&b.attrs, "Type")
-        .ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Type")))?;
-    let kind = parse_syst_kind(&type_str).ok_or_else(|| {
-        Error::NotImplemented(format!("Systematic '{name}' unsupported Type: {type_str:?}"))
-    })?;
+    let kind = if let Some(type_str) = last_attr_value(&b.attrs, "Type") {
+        parse_syst_kind(&type_str).ok_or_else(|| {
+            Error::NotImplemented(format!("Systematic '{name}' unsupported Type: {type_str:?}"))
+        })?
+    } else {
+        // Best-effort inference for legacy configs that omit `Type:`.
+        let has_weight = [
+            "WeightUp",
+            "WeightDown",
+            "WeightBase",
+            "WeightSufUp",
+            "WeightSufDown",
+            "WeightUpSuffix",
+            "WeightDownSuffix",
+            "UpSuffix",
+            "DownSuffix",
+            "SuffixUp",
+            "SuffixDown",
+        ]
+        .iter()
+        .any(|k| has_attr(&b.attrs, k));
+        let has_norm = ["OverallUp", "OverallDown", "Lo", "Hi", "Up", "Down"]
+            .iter()
+            .any(|k| has_attr(&b.attrs, k));
+        let has_tree = ["FileUp", "UpFile", "FileDown", "DownFile"]
+            .iter()
+            .any(|k| has_attr(&b.attrs, k));
+
+        if has_weight {
+            SystKind::Weight
+        } else if has_norm {
+            SystKind::Norm
+        } else if has_tree {
+            SystKind::Tree
+        } else {
+            return Err(Error::NotImplemented(format!(
+                "Systematic '{name}' missing Type and cannot be inferred"
+            )));
+        }
+    };
 
     let samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
         parse_list(&samples_val)
@@ -1429,6 +1466,8 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         weight_base: None,
         weight_up_suffix: None,
         weight_down_suffix: None,
+        weight_suf_up: None,
+        weight_suf_down: None,
         weight_up: None,
         weight_down: None,
         file_up: None,
@@ -1469,6 +1508,9 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
             let down = last_attr_value(&b.attrs, "WeightDown")
                 .or_else(|| last_attr_value(&b.attrs, "Down"));
 
+            let suf_up = last_attr_value(&b.attrs, "WeightSufUp");
+            let suf_down = last_attr_value(&b.attrs, "WeightSufDown");
+
             // Weight-suffix expansion (TREx-like convenience):
             // allow specifying a base + up/down suffixes instead of full expressions.
             // Example:
@@ -1493,6 +1535,15 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
                 };
                 out.weight_up = Some(up);
                 out.weight_down = Some(down);
+            } else if suf_up.is_some() || suf_down.is_some() {
+                let (Some(su), Some(sd)) = (suf_up, suf_down) else {
+                    return Err(Error::Validation(format!(
+                        "Systematic '{}' (weight) requires both WeightSufUp and WeightSufDown",
+                        out.name
+                    )));
+                };
+                out.weight_suf_up = Some(su);
+                out.weight_suf_down = Some(sd);
             } else if base.is_some() || up_suf.is_some() || down_suf.is_some() {
                 let (Some(base), Some(up_suf), Some(down_suf)) = (base, up_suf, down_suf) else {
                     return Err(Error::Validation(format!(
@@ -1507,7 +1558,7 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
                 out.weight_down = Some(format!("{base}{down_suf}"));
             } else {
                 return Err(Error::Validation(format!(
-                    "Systematic '{}' (weight) requires WeightUp/WeightDown (or suffix expansion fields)",
+                    "Systematic '{}' (weight) requires WeightUp/WeightDown, WeightSufUp/WeightSufDown, or suffix expansion fields",
                     out.name
                 )));
             }
@@ -1695,7 +1746,7 @@ fn enforce_variable_rules(
     Ok(())
 }
 
-fn sys_to_modifier(sys: &TrexSystematic) -> Result<NtupleModifier> {
+fn sys_to_modifier(sys: &TrexSystematic, base_weight: Option<&str>) -> Result<NtupleModifier> {
     match sys.kind {
         SystKind::Norm => Ok(NtupleModifier::NormSys {
             name: sys.name.clone(),
@@ -1706,15 +1757,43 @@ fn sys_to_modifier(sys: &TrexSystematic) -> Result<NtupleModifier> {
                 Error::Validation(format!("Systematic '{}' missing hi", sys.name))
             })?,
         }),
-        SystKind::Weight => Ok(NtupleModifier::WeightSys {
-            name: sys.name.clone(),
-            weight_up: sys.weight_up.clone().ok_or_else(|| {
-                Error::Validation(format!("Systematic '{}' missing weight_up", sys.name))
-            })?,
-            weight_down: sys.weight_down.clone().ok_or_else(|| {
-                Error::Validation(format!("Systematic '{}' missing weight_down", sys.name))
-            })?,
-        }),
+        SystKind::Weight => {
+            if let (Some(su), Some(sd)) =
+                (sys.weight_suf_up.as_deref(), sys.weight_suf_down.as_deref())
+            {
+                let up = expr_mul(
+                    [base_weight.map(|s| s.to_string()), Some(su.to_string())]
+                        .into_iter()
+                        .flatten(),
+                )
+                .ok_or_else(|| {
+                    Error::Validation(format!("Systematic '{}' empty WeightSufUp", sys.name))
+                })?;
+                let down = expr_mul(
+                    [base_weight.map(|s| s.to_string()), Some(sd.to_string())]
+                        .into_iter()
+                        .flatten(),
+                )
+                .ok_or_else(|| {
+                    Error::Validation(format!("Systematic '{}' empty WeightSufDown", sys.name))
+                })?;
+                Ok(NtupleModifier::WeightSys {
+                    name: sys.name.clone(),
+                    weight_up: up,
+                    weight_down: down,
+                })
+            } else {
+                Ok(NtupleModifier::WeightSys {
+                    name: sys.name.clone(),
+                    weight_up: sys.weight_up.clone().ok_or_else(|| {
+                        Error::Validation(format!("Systematic '{}' missing weight_up", sys.name))
+                    })?,
+                    weight_down: sys.weight_down.clone().ok_or_else(|| {
+                        Error::Validation(format!("Systematic '{}' missing weight_down", sys.name))
+                    })?,
+                })
+            }
+        }
         SystKind::Tree => Ok(NtupleModifier::TreeSys {
             name: sys.name.clone(),
             file_up: sys.file_up.clone().ok_or_else(|| {

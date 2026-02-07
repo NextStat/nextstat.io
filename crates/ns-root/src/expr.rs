@@ -534,7 +534,7 @@ fn bin2(stack: &mut Vec<f64>, f: impl FnOnce(f64, f64) -> f64) {
 
 fn eval_bytecode_bulk(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
     // Vectorized path operates on whole columns (Scalar/Col/Owned slots).
-    // Falls back to row-wise for expressions with control flow (ternary → Jz/Jmp/DynLoad).
+    // Falls back to row-wise for expressions with control flow (Jz/Jmp/DynLoad).
     if bytecode_has_control_flow(code) {
         eval_bytecode_bulk_rowwise(code, cols, &[])
     } else {
