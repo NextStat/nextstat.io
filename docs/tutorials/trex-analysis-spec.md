@@ -15,8 +15,9 @@ Files:
 - Schema: `docs/schemas/trex/analysis_spec_v0.schema.json`
 - Main example: `docs/specs/trex/analysis_spec_v0.yaml`
 - Additional examples: `docs/specs/trex/examples/*.yaml`
-- Validator: `scripts/trex/validate_analysis_spec.py`
-- Runner: `scripts/trex/run_analysis_spec.py`
+- CLI validator/runner: `nextstat validate --config ...` / `nextstat run --config ...`
+- Schema validator (optional): `scripts/trex/validate_analysis_spec.py`
+- Schema-validated runner wrapper (optional): `scripts/trex/run_analysis_spec.py`
 - Baseline recorder: `tests/record_trex_analysis_spec_baseline.py`
 - Baseline compare: `tests/compare_trex_analysis_spec_with_latest_baseline.py`
 
@@ -48,7 +49,20 @@ For VS Code (YAML extension), add a workspace setting similar to:
 }
 ```
 
+## Path resolution
+
+In v0, all relative paths in the spec are resolved relative to the spec file directory (not the current working directory).
+This is why the repo examples under `docs/specs/trex/examples/` use `../../../../` prefixes to point back to the repo root.
+
 ## Validate a spec
+
+Native (semantic) validation:
+
+```sh
+target/release/nextstat validate --config docs/specs/trex/analysis_spec_v0.yaml
+```
+
+Schema validation (JSON Schema; best for IDE + CI):
 
 ```sh
 ./.venv/bin/python scripts/trex/validate_analysis_spec.py \
@@ -65,15 +79,13 @@ make trex-spec-validate TREX_SPEC=docs/specs/trex/analysis_spec_v0.yaml
 
 ## Run a spec (one command)
 
-Dry-run (prints commands):
+Native:
 
 ```sh
-./.venv/bin/python scripts/trex/run_analysis_spec.py \
-  --spec docs/specs/trex/analysis_spec_v0.yaml \
-  --dry-run
+target/release/nextstat run --config docs/specs/trex/analysis_spec_v0.yaml
 ```
 
-Execute:
+Wrapper (validates schema, then runs `nextstat run`; supports `--dry-run`):
 
 ```sh
 ./.venv/bin/python scripts/trex/run_analysis_spec.py \
@@ -114,7 +126,7 @@ Optional: pick an explicit `nextstat` binary:
 
 4) `trex_config_yaml`
 - IDE-friendly YAML representation of the same subset as `trex_config_txt`.
-- The runner generates a temporary text config and calls `nextstat import trex-config`.
+- Supported natively by `nextstat run --config ...` (it generates an equivalent internal text config and reuses the same importer).
 
 ## Examples
 

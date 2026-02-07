@@ -284,6 +284,37 @@
             "output_json": { "$ref": "#/$defs/path", "description": "Workspace output path for import step." }
           }
         },
+        "preprocessing": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional systematics preprocessing (smooth, prune, symmetrize, hygiene). Runs after import, before fit.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "steps": {
+              "type": "array",
+              "description": "Ordered list of preprocessing steps. If omitted, the default TREx-standard pipeline is used.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["negative_bins_hygiene", "symmetrize_histosys", "smooth_histosys", "prune_systematics"]
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "Step-specific parameters (method, threshold, etc.)."
+                  }
+                }
+              }
+            },
+            "provenance_json": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Optional path to save preprocessing provenance JSON (SHA256 hashes, step records)."
+            }
+          }
+        },
         "fit": {
           "type": "object",
           "additionalProperties": false,

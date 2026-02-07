@@ -11,6 +11,10 @@ TWICE_NLL_ATOL = 1e-8
 # Expected data parity (main + auxdata ordering).
 EXPECTED_DATA_ATOL = 1e-8
 
+# Fit parameter surfaces (Phase 1 contract; compare by parameter name).
+PARAM_VALUE_ATOL = 2e-4
+PARAM_UNCERTAINTY_ATOL = 5e-4
+
 # Bias/pulls regression (NextStat vs pyhf deltas)
 PULL_MEAN_DELTA_MAX = 0.05
 PULL_STD_DELTA_MAX = 0.05

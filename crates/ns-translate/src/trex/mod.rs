@@ -18,6 +18,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
+use serde::Serialize;
 
 use crate::ntuple::{ChannelConfig, NtupleModifier, NtupleWorkspaceBuilder, SampleConfig};
 use crate::pyhf::Workspace;
@@ -41,38 +42,162 @@ enum BlockKind {
 struct RawBlock {
     kind: BlockKind,
     name: String,
+    ctx_region: Option<String>,
+    ctx_sample: Option<String>,
+    closed_explicitly: bool,
     attrs: Vec<Attr>,
 }
 
 fn strip_comment(line: &str) -> &str {
-    // TRExFitter configs commonly use '#' for comments. Keep it conservative:
-    // do not attempt quote-aware parsing.
-    match line.find('#') {
-        Some(i) => &line[..i],
-        None => line,
+    // TRExFitter configs commonly use '#' for comments; sometimes also '//' is used.
+    // Be quote-aware so values like "w#1" keep the '#'.
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if escape {
+            escape = false;
+            i += 1;
+            continue;
+        }
+        if in_single || in_double {
+            if c == '\\' {
+                escape = true;
+                i += 1;
+                continue;
+            }
+            if in_single && c == '\'' {
+                in_single = false;
+            } else if in_double && c == '"' {
+                in_double = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '\'' {
+            in_single = true;
+            i += 1;
+            continue;
+        }
+        if c == '"' {
+            in_double = true;
+            i += 1;
+            continue;
+        }
+
+        if c == '#' {
+            return &line[..i];
+        }
+        if c == '/' && i + 1 < bytes.len() && (bytes[i + 1] as char) == '/' {
+            return &line[..i];
+        }
+
+        i += 1;
     }
+    line
 }
 
-fn unquote(s: &str) -> &str {
+fn unquote(s: &str) -> String {
     let s = s.trim();
-    if s.len() >= 2 {
-        let bytes = s.as_bytes();
-        let first = bytes[0] as char;
-        let last = bytes[bytes.len() - 1] as char;
-        if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
-            return &s[1..s.len() - 1];
-        }
+    if s.len() < 2 {
+        return s.to_string();
     }
-    s
+    let bytes = s.as_bytes();
+    let first = bytes[0] as char;
+    let last = bytes[bytes.len() - 1] as char;
+    let is_quoted = (first == '"' && last == '"') || (first == '\'' && last == '\'');
+    if !is_quoted {
+        return s.to_string();
+    }
+    let inner = &s[1..s.len() - 1];
+    // Minimal unescape: keep it conservative (TREx configs often use simple escaping).
+    let mut out = String::with_capacity(inner.len());
+    let mut escape = false;
+    for ch in inner.chars() {
+        if escape {
+            let mapped = match ch {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '\\' => '\\',
+                '"' => '"',
+                '\'' => '\'',
+                other => other,
+            };
+            out.push(mapped);
+            escape = false;
+            continue;
+        }
+        if ch == '\\' {
+            escape = true;
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn split_kv(line: &str) -> Option<(String, String)> {
-    let idx = line.find(':')?;
-    let key = line[..idx].trim();
+    // Split on ':' or '=' outside quotes. Also accept bare keys as flags.
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    let bytes = line.as_bytes();
+    let mut sep_idx: Option<usize> = None;
+    for i in 0..bytes.len() {
+        let c = bytes[i] as char;
+        if escape {
+            escape = false;
+            continue;
+        }
+        if in_single || in_double {
+            if c == '\\' {
+                escape = true;
+                continue;
+            }
+            if in_single && c == '\'' {
+                in_single = false;
+            } else if in_double && c == '"' {
+                in_double = false;
+            }
+            continue;
+        }
+
+        if c == '\'' {
+            in_single = true;
+            continue;
+        }
+        if c == '"' {
+            in_double = true;
+            continue;
+        }
+        if c == ':' || c == '=' {
+            sep_idx = Some(i);
+            break;
+        }
+    }
+
+    let (key, value) = match sep_idx {
+        Some(idx) => (line[..idx].trim(), line[idx + 1..].trim()),
+        None => (line.trim(), ""),
+    };
     if key.is_empty() {
         return None;
     }
-    let value = unquote(line[idx + 1..].trim()).to_string();
+
+    let value = value.trim();
+    // Only unquote a pure quoted scalar; leave lists like ["a", "b"] intact.
+    let value = if (value.starts_with('"') && value.ends_with('"'))
+        || (value.starts_with('\'') && value.ends_with('\''))
+    {
+        unquote(value)
+    } else {
+        value.to_string()
+    };
     Some((key.to_string(), value))
 }
 
@@ -81,11 +206,78 @@ fn key_eq(a: &str, b: &str) -> bool {
 }
 
 fn parse_list(value: &str) -> Vec<String> {
-    value
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string())
-        .collect()
+    // Accept:
+    // - "a,b,c"
+    // - "a b c"
+    // - "[a, b, \"c d\"]"
+    // - "\"a b\" c"
+    let v = value.trim();
+    let inner = v
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(v);
+
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+
+    let mut push_cur = |out: &mut Vec<String>, cur: &mut String| {
+        let s = cur.trim();
+        if !s.is_empty() {
+            let s = if (s.starts_with('"') && s.ends_with('"'))
+                || (s.starts_with('\'') && s.ends_with('\''))
+            {
+                unquote(s)
+            } else {
+                s.to_string()
+            };
+            if !s.trim().is_empty() {
+                out.push(s);
+            }
+        }
+        cur.clear();
+    };
+
+    for ch in inner.chars() {
+        if escape {
+            cur.push(ch);
+            escape = false;
+            continue;
+        }
+        if in_single || in_double {
+            if ch == '\\' {
+                cur.push(ch);
+                escape = true;
+                continue;
+            }
+            if in_single && ch == '\'' {
+                in_single = false;
+            } else if in_double && ch == '"' {
+                in_double = false;
+            }
+            cur.push(ch);
+            continue;
+        }
+
+        match ch {
+            '\'' => {
+                in_single = true;
+                cur.push(ch);
+            }
+            '"' => {
+                in_double = true;
+                cur.push(ch);
+            }
+            ',' => push_cur(&mut out, &mut cur),
+            c if c.is_whitespace() => push_cur(&mut out, &mut cur),
+            _ => cur.push(ch),
+        }
+    }
+    push_cur(&mut out, &mut cur);
+
+    out
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -129,7 +321,23 @@ fn parse_binning(value: &str) -> Result<Vec<f64>> {
 fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
     let mut globals: Vec<Attr> = Vec::new();
     let mut blocks: Vec<RawBlock> = Vec::new();
-    let mut current: Option<RawBlock> = None;
+    let mut stack: Vec<RawBlock> = Vec::new();
+
+    fn can_nest(parent: BlockKind, child: BlockKind) -> bool {
+        match parent {
+            BlockKind::Job => true,
+            BlockKind::Region => matches!(child, BlockKind::Sample | BlockKind::Systematic),
+            BlockKind::Sample => matches!(child, BlockKind::Systematic),
+            BlockKind::Systematic => false,
+        }
+    }
+
+    fn close_top(stack: &mut Vec<RawBlock>, blocks: &mut Vec<RawBlock>, explicit: bool) {
+        if let Some(mut b) = stack.pop() {
+            b.closed_explicitly = explicit;
+            blocks.push(b);
+        }
+    }
 
     for (i, raw_line) in text.lines().enumerate() {
         let line_no = i + 1;
@@ -149,34 +357,87 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             Some(BlockKind::Sample)
         } else if key_eq(&key, "Systematic") {
             Some(BlockKind::Systematic)
+        } else if key_eq(&key, "EndJob") {
+            Some(BlockKind::Job)
+        } else if key_eq(&key, "EndRegion") || key_eq(&key, "EndChannel") {
+            Some(BlockKind::Region)
+        } else if key_eq(&key, "EndSample") {
+            Some(BlockKind::Sample)
+        } else if key_eq(&key, "EndSystematic") {
+            Some(BlockKind::Systematic)
         } else {
             None
         };
 
         if let Some(k) = kind {
-            if let Some(b) = current.take() {
-                blocks.push(b);
+            // End markers: pop matching kind.
+            if key.to_ascii_lowercase().starts_with("end") {
+                // Close inner blocks implicitly until we find the matching one.
+                let mut found = None;
+                while let Some(top) = stack.pop() {
+                    if top.kind == k {
+                        found = Some(top);
+                        break;
+                    }
+                    blocks.push(RawBlock { closed_explicitly: false, ..top });
+                }
+                let Some(top) = found else {
+                    return Err(Error::Validation(format!(
+                        "{key} without an open block (line {line_no})"
+                    )));
+                };
+                blocks.push(RawBlock { closed_explicitly: true, ..top });
+                continue;
             }
+
+            // Start marker: push a new block, preserving context.
             let name = value.trim().to_string();
             if name.is_empty() {
                 return Err(Error::Validation(format!(
                     "{key} block missing name (line {line_no})"
                 )));
             }
-            current = Some(RawBlock { kind: k, name, attrs: Vec::new() });
+
+            // Implicitly close blocks that cannot contain this new kind (legacy flat configs).
+            while let Some(top) = stack.last() {
+                if can_nest(top.kind, k) {
+                    break;
+                }
+                close_top(&mut stack, &mut blocks, false);
+            }
+
+            let ctx_region = stack
+                .iter()
+                .rev()
+                .find(|b| b.kind == BlockKind::Region)
+                .map(|b| b.name.clone());
+            let ctx_sample = stack
+                .iter()
+                .rev()
+                .find(|b| b.kind == BlockKind::Sample)
+                .map(|b| b.name.clone());
+            stack.push(RawBlock {
+                kind: k,
+                name,
+                ctx_region,
+                ctx_sample,
+                closed_explicitly: false,
+                attrs: Vec::new(),
+            });
             continue;
         }
 
         let attr = Attr { key, value, line: line_no };
-        if let Some(ref mut b) = current {
-            b.attrs.push(attr);
+        if let Some(top) = stack.last_mut() {
+            top.attrs.push(attr);
         } else {
             globals.push(attr);
         }
     }
 
-    if let Some(b) = current.take() {
-        blocks.push(b);
+    // Flush any still-open blocks (common in the minimal subset format).
+    while !stack.is_empty() {
+        close_top(&mut stack, &mut blocks, false);
     }
 
     Ok((globals, blocks))
@@ -270,6 +531,9 @@ pub struct TrexSystematic {
     // Payload:
     lo: Option<f64>,
     hi: Option<f64>,
+    weight_base: Option<String>,
+    weight_up_suffix: Option<String>,
+    weight_down_suffix: Option<String>,
     weight_up: Option<String>,
     weight_down: Option<String>,
     file_up: Option<PathBuf>,
@@ -277,11 +541,40 @@ pub struct TrexSystematic {
     tree_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TrexUnknownAttr {
+    pub scope: String,
+    pub block_kind: Option<String>,
+    pub block_name: Option<String>,
+    pub line: usize,
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TrexCoverageReport {
+    pub schema_version: String,
+    pub n_globals: usize,
+    pub n_blocks: usize,
+    pub n_block_attrs: usize,
+    pub unknown: Vec<TrexUnknownAttr>,
+}
+
 impl TrexConfig {
     /// Parse a TRExFitter-style config file from a string.
     pub fn parse_str(text: &str) -> Result<Self> {
         let (globals, blocks) = parse_raw(text)?;
+        Self::parse_from_raw(globals, blocks)
+    }
 
+    pub fn parse_str_with_coverage(text: &str) -> Result<(Self, TrexCoverageReport)> {
+        let (globals, blocks) = parse_raw(text)?;
+        let cfg = Self::parse_from_raw(globals.clone(), blocks.clone())?;
+        let report = trex_coverage_from_raw(&globals, &blocks);
+        Ok((cfg, report))
+    }
+
+    fn parse_from_raw(globals: Vec<Attr>, blocks: Vec<RawBlock>) -> Result<Self> {
         // Globals (can also be present inside a Job block).
         let mut read_from = last_attr_value(&globals, "ReadFrom");
         let mut tree_name =
@@ -357,6 +650,105 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
     Ok(TrexRegion { name, variable, binning, selection, data_file, data_tree_name })
 }
 
+fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverageReport {
+    fn known_global(key: &str) -> bool {
+        ["ReadFrom", "TreeName", "Tree", "Measurement", "POI", "Poi"]
+            .iter()
+            .any(|k| key_eq(key, k))
+    }
+
+    fn known_in_block(kind: BlockKind, key: &str) -> bool {
+        match kind {
+            BlockKind::Job => known_global(key),
+            BlockKind::Region => [
+                "Variable",
+                "Var",
+                "Binning",
+                "BinEdges",
+                "Selection",
+                "Cut",
+                "DataFile",
+                "DataTreeName",
+                "DataTree",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+            BlockKind::Sample => [
+                "Type",
+                "File",
+                "Path",
+                "TreeName",
+                "Tree",
+                "Weight",
+                "Regions",
+                "NormFactor",
+                "NormSys",
+                "StatError",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+            BlockKind::Systematic => [
+                "Type",
+                "Samples",
+                "Regions",
+                "Lo",
+                "Down",
+                "Hi",
+                "Up",
+                "WeightUp",
+                "WeightDown",
+                "FileUp",
+                "UpFile",
+                "FileDown",
+                "DownFile",
+                "TreeName",
+                "Tree",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+        }
+    }
+
+    let mut unknown: Vec<TrexUnknownAttr> = Vec::new();
+    for a in globals {
+        if !known_global(&a.key) {
+            unknown.push(TrexUnknownAttr {
+                scope: "global".to_string(),
+                block_kind: None,
+                block_name: None,
+                line: a.line,
+                key: a.key.clone(),
+                value: a.value.clone(),
+            });
+        }
+    }
+
+    let mut n_block_attrs = 0usize;
+    for b in blocks {
+        for a in &b.attrs {
+            n_block_attrs += 1;
+            if !known_in_block(b.kind, &a.key) {
+                unknown.push(TrexUnknownAttr {
+                    scope: "block".to_string(),
+                    block_kind: Some(format!("{:?}", b.kind)),
+                    block_name: Some(b.name.clone()),
+                    line: a.line,
+                    key: a.key.clone(),
+                    value: a.value.clone(),
+                });
+            }
+        }
+    }
+
+    TrexCoverageReport {
+        schema_version: "trex_config_coverage_v0".to_string(),
+        n_globals: globals.len(),
+        n_blocks: blocks.len(),
+        n_block_attrs,
+        unknown,
+    }
+}
+
 fn parse_sample_kind(value: Option<String>) -> SampleKind {
     let Some(v) = value else { return SampleKind::Mc };
     let v = v.trim().to_ascii_lowercase();
@@ -377,10 +769,16 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"));
     let weight = last_attr_value(&b.attrs, "Weight");
 
-    let regions = last_attr_value(&b.attrs, "Regions")
+    let mut regions = last_attr_value(&b.attrs, "Regions")
         .map(|v| parse_list(&v))
         .map(|xs| xs.into_iter().collect::<Vec<_>>())
         .filter(|xs| !xs.is_empty());
+    // Legacy nested configs often scope samples inside a Region block instead of using `Regions:`.
+    if regions.is_none() && b.closed_explicitly {
+        if let Some(ref r) = b.ctx_region {
+            regions = Some(vec![r.clone()]);
+        }
+    }
 
     let mut modifiers: Vec<NtupleModifier> = Vec::new();
 
@@ -435,15 +833,25 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         Error::Validation(format!("Systematic '{name}' unknown Type: {type_str:?}"))
     })?;
 
-    let samples_val = last_attr_value(&b.attrs, "Samples")
-        .ok_or_else(|| Error::Validation(format!("Systematic '{name}' missing Samples")))?;
-    let samples = parse_list(&samples_val);
+    let mut samples = if let Some(samples_val) = last_attr_value(&b.attrs, "Samples") {
+        parse_list(&samples_val)
+    } else if b.closed_explicitly {
+        // Nested systematic under a Sample block: infer the sample scope.
+        b.ctx_sample.clone().map(|s| vec![s]).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     if samples.is_empty() {
         return Err(Error::Validation(format!("Systematic '{name}' Samples list is empty")));
     }
 
-    let regions =
+    let mut regions =
         last_attr_value(&b.attrs, "Regions").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
+    if regions.is_none() && b.closed_explicitly {
+        if let Some(ref r) = b.ctx_region {
+            regions = Some(vec![r.clone()]);
+        }
+    }
 
     let mut out = TrexSystematic {
         name,
@@ -452,6 +860,9 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         regions,
         lo: None,
         hi: None,
+        weight_base: None,
+        weight_up_suffix: None,
+        weight_down_suffix: None,
         weight_up: None,
         weight_down: None,
         file_up: None,
@@ -477,14 +888,48 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
                 last_attr_value(&b.attrs, "WeightUp").or_else(|| last_attr_value(&b.attrs, "Up"));
             let down = last_attr_value(&b.attrs, "WeightDown")
                 .or_else(|| last_attr_value(&b.attrs, "Down"));
-            let (Some(up), Some(down)) = (up, down) else {
+
+            // Weight-suffix expansion (TREx-like convenience):
+            // allow specifying a base + up/down suffixes instead of full expressions.
+            // Example:
+            //   WeightBase: weight_jes
+            //   WeightUpSuffix: _up
+            //   WeightDownSuffix: _down
+            let base = last_attr_value(&b.attrs, "WeightBase").or_else(|| last_attr_value(&b.attrs, "Weight"));
+            let up_suf = last_attr_value(&b.attrs, "WeightUpSuffix")
+                .or_else(|| last_attr_value(&b.attrs, "UpSuffix"))
+                .or_else(|| last_attr_value(&b.attrs, "SuffixUp"));
+            let down_suf = last_attr_value(&b.attrs, "WeightDownSuffix")
+                .or_else(|| last_attr_value(&b.attrs, "DownSuffix"))
+                .or_else(|| last_attr_value(&b.attrs, "SuffixDown"));
+
+            if up.is_some() || down.is_some() {
+                let (Some(up), Some(down)) = (up, down) else {
+                    return Err(Error::Validation(format!(
+                        "Systematic '{}' (weight) requires both WeightUp and WeightDown",
+                        out.name
+                    )));
+                };
+                out.weight_up = Some(up);
+                out.weight_down = Some(down);
+            } else if base.is_some() || up_suf.is_some() || down_suf.is_some() {
+                let (Some(base), Some(up_suf), Some(down_suf)) = (base, up_suf, down_suf) else {
+                    return Err(Error::Validation(format!(
+                        "Systematic '{}' (weight) requires WeightBase/WeightUpSuffix/WeightDownSuffix (or WeightUp/WeightDown)",
+                        out.name
+                    )));
+                };
+                out.weight_base = Some(base.clone());
+                out.weight_up_suffix = Some(up_suf.clone());
+                out.weight_down_suffix = Some(down_suf.clone());
+                out.weight_up = Some(format!("{base}{up_suf}"));
+                out.weight_down = Some(format!("{base}{down_suf}"));
+            } else {
                 return Err(Error::Validation(format!(
-                    "Systematic '{}' (weight) requires WeightUp/WeightDown",
+                    "Systematic '{}' (weight) requires WeightUp/WeightDown (or suffix expansion fields)",
                     out.name
                 )));
-            };
-            out.weight_up = Some(up);
-            out.weight_down = Some(down);
+            }
         }
         SystKind::Tree => {
             let up = last_attr_value(&b.attrs, "FileUp")
@@ -737,6 +1182,89 @@ WeightDown: weight_jes_down
     }
 
     #[test]
+    fn trex_import_weight_suffix_expansion_matches_explicit_weights() {
+        let cfg_explicit = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+Selection: njet >= 4
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Regions: SR
+NormFactor: mu
+StatError: true
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightUp: weight_jes_up
+WeightDown: weight_jes_down
+"#;
+
+        let cfg_suffix = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+Selection: njet >= 4
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Regions: SR
+NormFactor: mu
+StatError: true
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightBase: weight_jes
+WeightUpSuffix: _up
+WeightDownSuffix: _down
+"#;
+
+        let ws_a = workspace_from_str(cfg_explicit, &repo_root()).expect("explicit ws build");
+        let ws_b = workspace_from_str(cfg_suffix, &repo_root()).expect("suffix ws build");
+
+        let a = &ws_a.channels[0].samples[0];
+        let b = &ws_b.channels[0].samples[0];
+        assert_eq!(a.data, b.data, "nominal histogram must match");
+
+        fn find_histosys(s: &crate::pyhf::schema::Sample) -> &crate::pyhf::schema::Modifier {
+            s.modifiers
+                .iter()
+                .find(|m| matches!(m, crate::pyhf::schema::Modifier::HistoSys { name, .. } if name == "jes"))
+                .expect("missing histosys jes")
+        }
+
+        match (find_histosys(a), find_histosys(b)) {
+            (
+                crate::pyhf::schema::Modifier::HistoSys { data: da, .. },
+                crate::pyhf::schema::Modifier::HistoSys { data: db, .. },
+            ) => {
+                assert_eq!(da.hi_data, db.hi_data);
+                assert_eq!(da.lo_data, db.lo_data);
+            }
+            _ => unreachable!("histosys matcher"),
+        }
+    }
+
+    #[test]
     fn trex_import_rejects_hist_mode() {
         let cfg = r#"
 ReadFrom: HIST
@@ -750,5 +1278,77 @@ File: tests/fixtures/simple_tree.root
         let msg = err.to_string();
         assert!(msg.contains("Not implemented"));
         assert!(msg.contains("HIST"));
+    }
+
+    #[test]
+    fn trex_config_parses_quoted_values_and_lists() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: mbb
+Binning: [0, 1]
+
+Sample: signal
+File: "tests/fixtures/simple_tree.root"
+Weight: "w#mc"  # comment after quoted value
+Regions: ["SR", "CR 1"]
+
+Systematic: jes
+Type: weight
+Samples: ["signal"]
+Regions: ["SR"]
+WeightUp: "w_jes_up"
+WeightDown: "w_jes_down"
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.regions.len(), 1);
+        assert_eq!(parsed.samples.len(), 1);
+        assert_eq!(parsed.systematics.len(), 1);
+        assert_eq!(parsed.samples[0].weight.as_deref(), Some("w#mc"));
+        assert_eq!(parsed.samples[0].regions.as_ref().unwrap(), &vec!["SR".to_string(), "CR 1".to_string()]);
+        assert_eq!(parsed.systematics[0].samples, vec!["signal".to_string()]);
+        assert_eq!(parsed.systematics[0].regions.as_ref().unwrap(), &vec!["SR".to_string()]);
+    }
+
+    #[test]
+    fn trex_config_supports_explicit_end_markers_and_nested_blocks() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: mbb
+Binning: 0, 1
+
+Sample: signal
+File: tests/fixtures/simple_tree.root
+
+Systematic: jes
+Type: weight
+WeightUp: w_jes_up
+WeightDown: w_jes_down
+EndSystematic: jes
+
+EndSample: signal
+
+Selection: njet >= 4
+EndRegion: SR
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.regions.len(), 1);
+        assert_eq!(parsed.regions[0].selection.as_deref(), Some("njet >= 4"));
+
+        // Sample is nested under Region and has no explicit `Regions:`; we infer it when EndSample is present.
+        assert_eq!(parsed.samples.len(), 1);
+        assert_eq!(parsed.samples[0].regions.as_ref().unwrap(), &vec!["SR".to_string()]);
+
+        // Systematic is nested under Sample and has no explicit `Samples:`/`Regions:`; infer scopes.
+        assert_eq!(parsed.systematics.len(), 1);
+        assert_eq!(parsed.systematics[0].samples, vec!["signal".to_string()]);
+        assert_eq!(parsed.systematics[0].regions.as_ref().unwrap(), &vec!["SR".to_string()]);
     }
 }

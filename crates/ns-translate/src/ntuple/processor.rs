@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
-use ns_root::{CompiledExpr, FilledHistogram, HistogramSpec, RootFile, fill_histograms};
+use ns_root::{
+    CompiledExpr, FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, RootFile,
+    fill_histograms,
+};
 
 use crate::pyhf::schema::{
     Channel, HistoSysData, Measurement, MeasurementConfig, Modifier, NormSysData, Observation,
@@ -338,6 +341,8 @@ impl NtupleWorkspaceBuilder {
             weight: weight_expr,
             selection: sel_expr,
             bin_edges: bin_edges.to_vec(),
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::Allow,
         };
 
         let mut results = fill_histograms(&[spec], &columns)

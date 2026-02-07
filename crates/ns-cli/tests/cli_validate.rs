@@ -80,6 +80,67 @@ gates:
 }
 
 #[test]
+fn validate_accepts_analysis_spec_v0_trex_config_yaml() {
+    let root = repo_root();
+    let spec_dir = tmp_dir("validate_spec_trex_yaml");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+
+    let spec_path = spec_dir.join("analysis.yaml");
+    let yaml = format!(
+        r#"schema_version: trex_analysis_spec_v0
+analysis: {{ name: "fixture", description: "fixture", tags: ["test"] }}
+inputs:
+  mode: trex_config_yaml
+  trex_config_yaml:
+    base_dir: "{base_dir}"
+    read_from: NTUP
+    tree_name: events
+    measurement: meas
+    poi: mu
+    regions:
+      - name: SR
+        variable: mbb
+        binning_edges: [0, 1]
+    samples:
+      - name: signal
+        kind: mc
+        file: tests/fixtures/simple_tree.root
+execution:
+  determinism: {{ threads: 1 }}
+  import: {{ enabled: true, output_json: "{ws_out}" }}
+  fit: {{ enabled: false, output_json: "{fit_out}" }}
+  profile_scan: {{ enabled: false, start: 0.0, stop: 5.0, points: 21, output_json: "{scan_out}" }}
+  report:
+    enabled: false
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render: {{ enabled: false, pdf: null, svg_dir: null, python: null }}
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+gates:
+  baseline_compare: {{ enabled: false, baseline_dir: tmp/baselines, require_same_host: true, max_slowdown: 1.3 }}
+"#,
+        base_dir = root.display(),
+        ws_out = spec_dir.join("workspace.json").display(),
+        fit_out = spec_dir.join("fit.json").display(),
+        scan_out = spec_dir.join("scan.json").display(),
+        report_dir = spec_dir.join("report").display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run(&["validate", "--config", spec_path.to_string_lossy().as_ref()]);
+    assert!(
+        out.status.success(),
+        "validate should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+}
+
+#[test]
 fn validate_accepts_legacy_run_config() {
     let root = repo_root();
     let xml = root.join("tests/fixtures/histfactory/combination.xml");

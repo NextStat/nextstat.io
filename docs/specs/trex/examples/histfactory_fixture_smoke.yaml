@@ -9,8 +9,8 @@ analysis:
 inputs:
   mode: histfactory_xml
   histfactory:
-    export_dir: tests/fixtures/histfactory
-    combination_xml: tests/fixtures/histfactory/combination.xml
+    export_dir: ../../../../tests/fixtures/histfactory
+    combination_xml: ../../../../tests/fixtures/histfactory/combination.xml
     measurement: measurement
 
 execution:
@@ -19,25 +19,25 @@ execution:
 
   import:
     enabled: true
-    output_json: tmp/trex_fixture/workspace.json
+    output_json: ../../../../tmp/trex_fixture/workspace.json
 
   fit:
     enabled: true
-    output_json: tmp/trex_fixture/fit.json
+    output_json: ../../../../tmp/trex_fixture/fit.json
 
   profile_scan:
     enabled: true
     start: 0.0
     stop: 5.0
     points: 21
-    output_json: tmp/trex_fixture/scan.json
+    output_json: ../../../../tmp/trex_fixture/scan.json
 
   report:
     enabled: true
-    out_dir: tmp/trex_fixture/report
+    out_dir: ../../../../tmp/trex_fixture/report
     overwrite: true
     include_covariance: false
-    histfactory_xml: tests/fixtures/histfactory/combination.xml
+    histfactory_xml: ../../../../tests/fixtures/histfactory/combination.xml
     render:
       enabled: false
       pdf: null
@@ -49,7 +49,6 @@ execution:
 gates:
   baseline_compare:
     enabled: true
-    baseline_dir: tmp/baselines
+    baseline_dir: ../../../../tmp/baselines
     require_same_host: true
     max_slowdown: 1.5
-

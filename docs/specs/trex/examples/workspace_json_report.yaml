@@ -9,7 +9,7 @@ analysis:
 inputs:
   mode: workspace_json
   workspace_json:
-    path: tests/fixtures/histfactory/workspace.json
+    path: ../../../../tests/fixtures/histfactory/workspace.json
 
 execution:
   determinism:
@@ -17,25 +17,25 @@ execution:
 
   import:
     enabled: false
-    output_json: tmp/unused_workspace_out.json
+    output_json: ../../../../tmp/unused_workspace_out.json
 
   fit:
     enabled: false
-    output_json: tmp/ws_fit.json
+    output_json: ../../../../tmp/ws_fit.json
 
   profile_scan:
     enabled: false
     start: 0.0
     stop: 5.0
     points: 21
-    output_json: tmp/ws_scan.json
+    output_json: ../../../../tmp/ws_scan.json
 
   report:
     enabled: true
-    out_dir: tmp/ws_report
+    out_dir: ../../../../tmp/ws_report
     overwrite: true
     include_covariance: false
-    histfactory_xml: tests/fixtures/histfactory/combination.xml
+    histfactory_xml: ../../../../tests/fixtures/histfactory/combination.xml
     render:
       enabled: false
       pdf: null
@@ -47,6 +47,6 @@ execution:
 gates:
   baseline_compare:
     enabled: false
-    baseline_dir: tmp/baselines
+    baseline_dir: ../../../../tmp/baselines
     require_same_host: true
     max_slowdown: 1.3

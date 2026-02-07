@@ -9,7 +9,7 @@ analysis:
 inputs:
   mode: trex_config_txt
   trex_config_txt:
-    config_path: docs/examples/trex_config_ntup_minimal.txt
+    config_path: ../../../../docs/examples/trex_config_ntup_minimal.txt
     base_dir: null
 
 execution:
@@ -18,22 +18,22 @@ execution:
 
   import:
     enabled: true
-    output_json: tmp/trex_txt_workspace.json
+    output_json: ../../../../tmp/trex_txt_workspace.json
 
   fit:
     enabled: true
-    output_json: tmp/trex_txt_fit.json
+    output_json: ../../../../tmp/trex_txt_fit.json
 
   profile_scan:
     enabled: false
     start: 0.0
     stop: 5.0
     points: 21
-    output_json: tmp/trex_txt_scan.json
+    output_json: ../../../../tmp/trex_txt_scan.json
 
   report:
     enabled: false
-    out_dir: tmp/trex_txt_report
+    out_dir: ../../../../tmp/trex_txt_report
     overwrite: false
     include_covariance: false
     histfactory_xml: null
@@ -48,7 +48,6 @@ execution:
 gates:
   baseline_compare:
     enabled: false
-    baseline_dir: tmp/baselines
+    baseline_dir: ../../../../tmp/baselines
     require_same_host: true
     max_slowdown: 1.3
-

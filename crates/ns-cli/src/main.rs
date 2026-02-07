@@ -464,6 +464,14 @@ enum ImportCommands {
         /// Output file for the workspace (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Also emit an analysis spec YAML (mode=trex_config_yaml) to this path.
+        #[arg(long)]
+        analysis_yaml: Option<PathBuf>,
+
+        /// Also emit a JSON coverage report (unknown keys/attrs) to this path.
+        #[arg(long)]
+        coverage_json: Option<PathBuf>,
     },
 }
 
@@ -845,10 +853,18 @@ fn main() -> Result<()> {
                 };
                 cmd_import_histfactory(&xml_path, output.as_ref(), cli.bundle.as_ref())
             }
-            ImportCommands::TrexConfig { config, base_dir, output } => cmd_import_trex_config(
+            ImportCommands::TrexConfig {
+                config,
+                base_dir,
+                output,
+                analysis_yaml,
+                coverage_json,
+            } => cmd_import_trex_config(
                 &config,
                 base_dir.as_ref(),
                 output.as_ref(),
+                analysis_yaml.as_ref(),
+                coverage_json.as_ref(),
                 cli.bundle.as_ref(),
             ),
         },
@@ -1113,6 +1129,46 @@ fn cmd_run_spec_v0(
                 let ws = ns_translate::trex::workspace_from_str(config_text, base_dir)?;
                 write_json_file(&plan.workspace_json, &serde_json::to_value(&ws)?)?;
             }
+        }
+    }
+
+    // Preprocessing (Python subprocess)
+    if let Some(preprocess) = plan.preprocess.as_ref() {
+        // Write preprocessing config JSON from the spec's steps array.
+        let pp_cfg = &spec.execution.preprocessing;
+        if let Some(pp) = pp_cfg {
+            let config_val = serde_json::json!({
+                "enabled": pp.enabled,
+                "steps": pp.steps,
+            });
+            if let Some(parent) = preprocess.config_json.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(
+                &preprocess.config_json,
+                serde_json::to_string_pretty(&config_val)?,
+            )?;
+        }
+
+        tracing::info!("running preprocessing pipeline");
+        let mut cmd = std::process::Command::new("python3");
+        cmd.arg("-m")
+            .arg("nextstat.analysis.preprocess.cli")
+            .arg("--input")
+            .arg(&plan.workspace_json)
+            .arg("--output")
+            .arg(&plan.workspace_json)
+            .arg("--config")
+            .arg(&preprocess.config_json);
+        if let Some(ref prov) = preprocess.provenance_json {
+            if let Some(parent) = prov.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            cmd.arg("--provenance").arg(prov);
+        }
+        let status = cmd.status()?;
+        if !status.success() {
+            anyhow::bail!("preprocessing failed with exit code: {:?}", status.code());
         }
     }
 

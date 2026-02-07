@@ -151,6 +151,8 @@ fn histogram_from_tree() {
         weight: None,
         selection: None,
         bin_edges: expected.mbb_histogram.bin_edges.clone(),
+        flow_policy: ns_root::FlowPolicy::Drop,
+        negative_weight_policy: ns_root::NegativeWeightPolicy::Allow,
     };
 
     let results = ns_root::fill_histograms(&[spec_unweighted], &columns).unwrap();
@@ -169,6 +171,8 @@ fn histogram_from_tree() {
         weight: Some(ns_root::CompiledExpr::compile("weight_mc").unwrap()),
         selection: None,
         bin_edges: expected.mbb_histogram.bin_edges.clone(),
+        flow_policy: ns_root::FlowPolicy::Drop,
+        negative_weight_policy: ns_root::NegativeWeightPolicy::Allow,
     };
 
     let results = ns_root::fill_histograms(&[spec_weighted], &columns).unwrap();
@@ -187,6 +191,8 @@ fn histogram_from_tree() {
         weight: Some(ns_root::CompiledExpr::compile("weight_mc").unwrap()),
         selection: Some(ns_root::CompiledExpr::compile("njet >= 4").unwrap()),
         bin_edges: expected.mbb_histogram_selected.bin_edges.clone(),
+        flow_policy: ns_root::FlowPolicy::Drop,
+        negative_weight_policy: ns_root::NegativeWeightPolicy::Allow,
     };
 
     let results = ns_root::fill_histograms(&[spec_sel], &columns).unwrap();

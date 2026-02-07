@@ -34,3 +34,8 @@ Samples: signal
 Regions: SR
 WeightUp: weight_jes_up
 WeightDown: weight_jes_down
+
+# Alternative (weight-suffix expansion):
+# WeightBase: weight_jes
+# WeightUpSuffix: _up
+# WeightDownSuffix: _down

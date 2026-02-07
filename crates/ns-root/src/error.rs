@@ -59,6 +59,10 @@ pub enum RootError {
     /// Type mismatch (e.g. requesting f32 from an i64 branch).
     #[error("type mismatch: {0}")]
     TypeMismatch(String),
+
+    /// Histogram filling error (policy violation, invalid binning, etc).
+    #[error("histogram fill error: {0}")]
+    HistogramFill(String),
 }
 
 /// Result alias for ROOT operations.

@@ -61,8 +61,10 @@ Schemas (v0):
 - `docs/schemas/trex/report_yields_v0.schema.json`
 
 Tools:
-- Validate a spec: `scripts/trex/validate_analysis_spec.py`
-- Run a spec (one command): `scripts/trex/run_analysis_spec.py`
+- Native validation: `nextstat validate --config docs/specs/trex/analysis_spec_v0.yaml`
+- Native runner: `nextstat run --config docs/specs/trex/analysis_spec_v0.yaml`
+- Schema validation (optional): `scripts/trex/validate_analysis_spec.py`
+- Schema-validated runner wrapper (optional): `scripts/trex/run_analysis_spec.py`
 
 ### 2.0 Plotting correctness contract (why this exists)
 

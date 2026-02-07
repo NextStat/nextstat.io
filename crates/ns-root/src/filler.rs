@@ -6,6 +6,26 @@ use crate::error::{Result, RootError};
 use crate::expr::CompiledExpr;
 use crate::histogram::Histogram;
 
+/// Under/overflow handling policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlowPolicy {
+    /// Drop entries outside the histogram range (record them in `underflow/overflow`).
+    Drop,
+    /// Fold underflow into the first bin and overflow into the last bin.
+    Fold,
+}
+
+/// Negative weight handling policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NegativeWeightPolicy {
+    /// Keep negative weights as-is.
+    Allow,
+    /// Clamp negative weights to 0.
+    ClampToZero,
+    /// Error on the first negative weight encountered.
+    Error,
+}
+
 /// Specification for filling one histogram.
 pub struct HistogramSpec {
     /// Histogram name.
@@ -18,6 +38,10 @@ pub struct HistogramSpec {
     pub selection: Option<CompiledExpr>,
     /// Bin edges (must be sorted, length = n_bins + 1).
     pub bin_edges: Vec<f64>,
+    /// Under/overflow policy.
+    pub flow_policy: FlowPolicy,
+    /// Policy for negative event weights.
+    pub negative_weight_policy: NegativeWeightPolicy,
 }
 
 /// Result of filling a histogram.
@@ -31,6 +55,16 @@ pub struct FilledHistogram {
     pub bin_content: Vec<f64>,
     /// Sum of weights squared per bin.
     pub sumw2: Vec<f64>,
+    /// Underflow sum of weights (before optional folding).
+    pub underflow: f64,
+    /// Overflow sum of weights (before optional folding).
+    pub overflow: f64,
+    /// Underflow sum of weights squared (before optional folding).
+    pub underflow_sumw2: f64,
+    /// Overflow sum of weights squared (before optional folding).
+    pub overflow_sumw2: f64,
+    /// Count of selected entries with negative weights (after applying policy).
+    pub negative_weight_entries: u64,
     /// Total entries passing selection.
     pub entries: u64,
 }
@@ -96,6 +130,11 @@ pub fn fill_histograms(
                 bin_edges: spec.bin_edges.clone(),
                 bin_content: vec![0.0; n_bins],
                 sumw2: vec![0.0; n_bins],
+                underflow: 0.0,
+                overflow: 0.0,
+                underflow_sumw2: 0.0,
+                overflow_sumw2: 0.0,
+                negative_weight_entries: 0,
                 entries: 0,
             }
         })
@@ -111,16 +150,68 @@ pub fn fill_histograms(
             }
 
             let val = var_vals[i][entry];
-            let weight = match &weight_vals[i] {
+            let mut weight = match &weight_vals[i] {
                 Some(w) => w[entry],
                 None => 1.0,
             };
 
-            // Find bin (binary search)
-            let bin = find_bin(&results[i].bin_edges, val);
+            if weight < 0.0 {
+                match specs[i].negative_weight_policy {
+                    NegativeWeightPolicy::Allow => {
+                        results[i].negative_weight_entries += 1;
+                    }
+                    NegativeWeightPolicy::ClampToZero => {
+                        results[i].negative_weight_entries += 1;
+                        weight = 0.0;
+                    }
+                    NegativeWeightPolicy::Error => {
+                        return Err(RootError::HistogramFill(format!(
+                            "negative weight (spec='{}', entry={entry}, weight={weight})",
+                            specs[i].name
+                        )));
+                    }
+                }
+            }
+
+            let w2 = weight * weight;
+            let edges = &results[i].bin_edges;
+            let n_bins = results[i].bin_content.len();
+            if n_bins == 0 || edges.len() != n_bins + 1 {
+                return Err(RootError::HistogramFill(format!(
+                    "invalid bin_edges for spec='{}' (len(edges)={}, n_bins={})",
+                    specs[i].name,
+                    edges.len(),
+                    n_bins
+                )));
+            }
+
+            if val < edges[0] {
+                results[i].underflow += weight;
+                results[i].underflow_sumw2 += w2;
+                if specs[i].flow_policy == FlowPolicy::Fold {
+                    results[i].bin_content[0] += weight;
+                    results[i].sumw2[0] += w2;
+                    results[i].entries += 1;
+                }
+                continue;
+            }
+            if val >= edges[edges.len() - 1] {
+                results[i].overflow += weight;
+                results[i].overflow_sumw2 += w2;
+                if specs[i].flow_policy == FlowPolicy::Fold {
+                    let last = n_bins - 1;
+                    results[i].bin_content[last] += weight;
+                    results[i].sumw2[last] += w2;
+                    results[i].entries += 1;
+                }
+                continue;
+            }
+
+            // In-range bin (binary search)
+            let bin = find_bin(edges, val);
             if let Some(b) = bin {
                 results[i].bin_content[b] += weight;
-                results[i].sumw2[b] += weight * weight;
+                results[i].sumw2[b] += w2;
                 results[i].entries += 1;
             }
         }
@@ -192,6 +283,8 @@ mod tests {
             weight: None,
             selection: None,
             bin_edges: vec![0.0, 1.0, 2.0, 3.0],
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::Allow,
         };
 
         let mut cols = HashMap::new();
@@ -200,6 +293,8 @@ mod tests {
         let result = fill_histograms(&[spec], &cols).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].bin_content, vec![2.0, 1.0, 1.0]);
+        assert_eq!(result[0].underflow, 1.0);
+        assert_eq!(result[0].overflow, 1.0);
         assert_eq!(result[0].entries, 4);
     }
 
@@ -211,6 +306,8 @@ mod tests {
             weight: Some(CompiledExpr::compile("w").unwrap()),
             selection: None,
             bin_edges: vec![0.0, 1.0, 2.0],
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::Allow,
         };
 
         let mut cols = HashMap::new();
@@ -230,6 +327,8 @@ mod tests {
             weight: None,
             selection: Some(CompiledExpr::compile("x > 1.0").unwrap()),
             bin_edges: vec![0.0, 1.0, 2.0, 3.0],
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::Allow,
         };
 
         let mut cols = HashMap::new();
@@ -238,6 +337,69 @@ mod tests {
         let result = fill_histograms(&[spec], &cols).unwrap();
         assert_eq!(result[0].bin_content, vec![0.0, 1.0, 1.0]);
         assert_eq!(result[0].entries, 2);
+    }
+
+    #[test]
+    fn fill_flow_fold() {
+        let spec = HistogramSpec {
+            name: "h".into(),
+            variable: CompiledExpr::compile("x").unwrap(),
+            weight: None,
+            selection: None,
+            bin_edges: vec![0.0, 1.0, 2.0],
+            flow_policy: FlowPolicy::Fold,
+            negative_weight_policy: NegativeWeightPolicy::Allow,
+        };
+
+        let mut cols = HashMap::new();
+        cols.insert("x".into(), vec![-1.0, 0.2, 1.2, 3.0]);
+
+        let result = fill_histograms(&[spec], &cols).unwrap();
+        assert_eq!(result[0].bin_content, vec![2.0, 2.0]);
+        assert_eq!(result[0].underflow, 1.0);
+        assert_eq!(result[0].overflow, 1.0);
+        assert_eq!(result[0].entries, 4);
+    }
+
+    #[test]
+    fn fill_negative_weight_error() {
+        let spec = HistogramSpec {
+            name: "h".into(),
+            variable: CompiledExpr::compile("x").unwrap(),
+            weight: Some(CompiledExpr::compile("w").unwrap()),
+            selection: None,
+            bin_edges: vec![0.0, 1.0, 2.0],
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::Error,
+        };
+
+        let mut cols = HashMap::new();
+        cols.insert("x".into(), vec![0.5]);
+        cols.insert("w".into(), vec![-1.0]);
+
+        let err = fill_histograms(&[spec], &cols).unwrap_err();
+        assert!(err.to_string().contains("negative weight"));
+    }
+
+    #[test]
+    fn fill_negative_weight_clamp() {
+        let spec = HistogramSpec {
+            name: "h".into(),
+            variable: CompiledExpr::compile("x").unwrap(),
+            weight: Some(CompiledExpr::compile("w").unwrap()),
+            selection: None,
+            bin_edges: vec![0.0, 1.0, 2.0],
+            flow_policy: FlowPolicy::Drop,
+            negative_weight_policy: NegativeWeightPolicy::ClampToZero,
+        };
+
+        let mut cols = HashMap::new();
+        cols.insert("x".into(), vec![0.5, 1.5]);
+        cols.insert("w".into(), vec![-1.0, 2.0]);
+
+        let r = fill_histograms(&[spec], &cols).unwrap();
+        assert_eq!(r[0].bin_content, vec![0.0, 2.0]);
+        assert_eq!(r[0].negative_weight_entries, 1);
     }
 
     #[test]
@@ -257,6 +419,11 @@ mod tests {
             bin_edges: vec![0.0, 1.0, 2.0],
             bin_content: vec![5.0, 3.0],
             sumw2: vec![25.0, 9.0],
+            underflow: 0.0,
+            overflow: 0.0,
+            underflow_sumw2: 0.0,
+            overflow_sumw2: 0.0,
+            negative_weight_entries: 0,
             entries: 8,
         };
         let h: Histogram = fh.into();

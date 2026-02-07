@@ -3,6 +3,8 @@
 //! Implements the Stan warmup schedule: windowed adaptation with step size
 //! tuning and diagonal mass matrix estimation.
 
+use nalgebra::DMatrix;
+
 /// Dual averaging for step size adaptation (Nesterov 2009, Stan variant).
 ///
 /// Adapts `epsilon` to achieve a target average acceptance probability.
@@ -116,6 +118,73 @@ impl WelfordVariance {
     }
 }
 
+/// Online Welford covariance estimator (dense).
+///
+/// Maintains a running mean and `M2` matrix such that `cov = M2 / (n-1)`.
+pub struct WelfordCovariance {
+    mean: Vec<f64>,
+    m2: Vec<f64>, // row-major dim x dim
+    dim: usize,
+    count: usize,
+}
+
+impl WelfordCovariance {
+    pub fn new(dim: usize) -> Self {
+        Self { mean: vec![0.0; dim], m2: vec![0.0; dim * dim], dim, count: 0 }
+    }
+
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    #[inline]
+    fn idx(&self, i: usize, j: usize) -> usize {
+        i * self.dim + j
+    }
+
+    pub fn update(&mut self, x: &[f64]) {
+        self.count += 1;
+        let n = self.count as f64;
+
+        let mut delta = vec![0.0; self.dim];
+        for i in 0..self.dim {
+            delta[i] = x[i] - self.mean[i];
+            self.mean[i] += delta[i] / n;
+        }
+
+        let mut delta2 = vec![0.0; self.dim];
+        for i in 0..self.dim {
+            delta2[i] = x[i] - self.mean[i];
+        }
+
+        for i in 0..self.dim {
+            for j in 0..self.dim {
+                self.m2[self.idx(i, j)] += delta[i] * delta2[j];
+            }
+        }
+    }
+
+    pub fn covariance(&self) -> Option<DMatrix<f64>> {
+        if self.count < 2 {
+            return None;
+        }
+        let denom = (self.count as f64) - 1.0;
+        let mut cov = DMatrix::<f64>::zeros(self.dim, self.dim);
+        for i in 0..self.dim {
+            for j in 0..self.dim {
+                cov[(i, j)] = self.m2[self.idx(i, j)] / denom;
+            }
+        }
+        Some(cov)
+    }
+
+    pub fn reset(&mut self) {
+        self.mean.fill(0.0);
+        self.m2.fill(0.0);
+        self.count = 0;
+    }
+}
+
 /// Windowed adaptation combining step size + mass matrix tuning.
 ///
 /// Follows a simplified Stan schedule:
@@ -130,21 +199,24 @@ impl WelfordVariance {
 pub struct WindowedAdaptation {
     dual_avg: DualAveraging,
     welford: WelfordVariance,
+    welford_cov: Option<WelfordCovariance>,
     windows: Vec<(usize, usize)>,
     current_window: usize,
-    inv_mass_diag: Vec<f64>,
+    metric: crate::hmc::Metric,
 }
 
 impl WindowedAdaptation {
     /// Create windowed adaptation for given dimension and warmup length.
     pub fn new(dim: usize, n_warmup: usize, target_accept: f64, init_eps: f64) -> Self {
         let windows = compute_windows(n_warmup);
+        let welford_cov = if dim <= 32 { Some(WelfordCovariance::new(dim)) } else { None };
         Self {
             dual_avg: DualAveraging::new(target_accept, init_eps),
             welford: WelfordVariance::new(dim),
+            welford_cov,
             windows,
             current_window: 0,
-            inv_mass_diag: vec![1.0; dim],
+            metric: crate::hmc::Metric::identity(dim),
         }
     }
 
@@ -165,14 +237,50 @@ impl WindowedAdaptation {
                 self.current_window > 0 && self.current_window < self.windows.len() - 1;
             if is_slow_window {
                 self.welford.update(q);
+                if let Some(wc) = self.welford_cov.as_mut() {
+                    wc.update(q);
+                }
             }
 
             // At window boundary, update mass and restart dual averaging
             if iter + 1 >= end {
                 if is_slow_window {
                     let var = self.welford.variance();
-                    self.inv_mass_diag = var.iter().map(|&v| 1.0 / v).collect();
+                    let inv_mass_diag: Vec<f64> = var.iter().map(|&v| 1.0 / v).collect();
+                    self.metric = crate::hmc::Metric::Diag(inv_mass_diag);
+
+                    // Try dense metric when available.
+                    if let Some(wc) = self.welford_cov.as_ref() {
+                        if let Some(mut cov) = wc.covariance() {
+                            let n = cov.nrows();
+                            let count = wc.count().max(1) as f64;
+                            // Stan-like shrinkage towards scaled identity for stability.
+                            let alpha = count / (count + 5.0);
+                            let trace = cov.trace();
+                            let scale = (trace / (n as f64)).abs().max(1e-6);
+
+                            cov *= alpha;
+                            for i in 0..n {
+                                cov[(i, i)] += (1.0 - alpha) * scale + 1e-6 * scale;
+                            }
+
+                            if let Some(ch) = cov.clone().cholesky() {
+                                let prec = ch.inverse();
+                                if let Some(prec_ch) = prec.cholesky() {
+                                    let l = prec_ch.l();
+                                    self.metric = crate::hmc::Metric::DenseCholesky {
+                                        dim: n,
+                                        l: l.as_slice().to_vec(),
+                                    };
+                                }
+                            }
+                        }
+                    }
+
                     self.welford.reset();
+                    if let Some(wc) = self.welford_cov.as_mut() {
+                        wc.reset();
+                    }
                     mass_updated = true;
                 }
 
@@ -196,9 +304,9 @@ impl WindowedAdaptation {
         self.dual_avg.adapted_step_size()
     }
 
-    /// Current inverse mass diagonal.
-    pub fn inv_mass_diag(&self) -> &[f64] {
-        &self.inv_mass_diag
+    /// Current metric (inverse mass matrix).
+    pub fn metric(&self) -> &crate::hmc::Metric {
+        &self.metric
     }
 }
 
@@ -252,9 +360,9 @@ fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
 pub fn find_reasonable_step_size(
     posterior: &crate::posterior::Posterior<'_, impl ns_core::traits::LogDensityModel + ?Sized>,
     q: &[f64],
-    inv_mass_diag: &[f64],
+    metric: &crate::hmc::Metric,
 ) -> f64 {
-    let integrator = crate::hmc::LeapfrogIntegrator::new(posterior, 1.0, inv_mass_diag.to_vec());
+    let integrator = crate::hmc::LeapfrogIntegrator::new(posterior, 1.0, metric.clone());
 
     let mut state = match integrator.init_state(q.to_vec()) {
         Ok(s) => s,
@@ -265,15 +373,14 @@ pub fn find_reasonable_step_size(
     for p in &mut state.p {
         *p = 1.0;
     }
-    let h0 = state.hamiltonian(inv_mass_diag);
+    let h0 = state.hamiltonian(&metric);
 
     // Test a single leapfrog step at given eps
     let test_accept = |eps_test: f64| -> Option<f64> {
-        let int_test =
-            crate::hmc::LeapfrogIntegrator::new(posterior, eps_test, inv_mass_diag.to_vec());
+        let int_test = crate::hmc::LeapfrogIntegrator::new(posterior, eps_test, metric.clone());
         let mut s = state.clone();
         int_test.step(&mut s).ok()?;
-        let h1 = s.hamiltonian(inv_mass_diag);
+        let h1 = s.hamiltonian(&metric);
         let a = (h0 - h1).exp();
         if a.is_finite() { Some(a.min(1.0)) } else { None }
     };

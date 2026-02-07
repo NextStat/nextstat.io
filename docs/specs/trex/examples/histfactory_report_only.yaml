@@ -9,7 +9,7 @@ analysis:
 inputs:
   mode: histfactory_xml
   histfactory:
-    export_dir: tests/fixtures/histfactory
+    export_dir: ../../../../tests/fixtures/histfactory
     combination_xml: null
     measurement: NominalMeasurement
 
@@ -19,22 +19,22 @@ execution:
 
   import:
     enabled: true
-    output_json: tmp/hf_workspace.json
+    output_json: ../../../../tmp/hf_workspace.json
 
   fit:
     enabled: false
-    output_json: tmp/hf_fit.json
+    output_json: ../../../../tmp/hf_fit.json
 
   profile_scan:
     enabled: false
     start: 0.0
     stop: 5.0
     points: 21
-    output_json: tmp/hf_scan.json
+    output_json: ../../../../tmp/hf_scan.json
 
   report:
     enabled: true
-    out_dir: tmp/hf_report
+    out_dir: ../../../../tmp/hf_report
     overwrite: true
     include_covariance: false
     histfactory_xml: null
@@ -49,6 +49,6 @@ execution:
 gates:
   baseline_compare:
     enabled: false
-    baseline_dir: tmp/baselines
+    baseline_dir: ../../../../tmp/baselines
     require_same_host: true
     max_slowdown: 1.3

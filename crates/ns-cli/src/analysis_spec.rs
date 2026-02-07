@@ -39,9 +39,16 @@ pub struct RunPlan {
     pub threads: usize,
     pub workspace_json: PathBuf,
     pub import: Option<ImportPlan>,
+    pub preprocess: Option<PreprocessPlan>,
     pub fit: Option<PathBuf>,
     pub profile_scan: Option<ProfileScanPlan>,
     pub report: Option<ReportPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreprocessPlan {
+    pub config_json: PathBuf,
+    pub provenance_json: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -223,9 +230,25 @@ pub struct WorkspaceJsonInputs {
 pub struct Execution {
     pub determinism: Determinism,
     pub import: ImportStep,
+    #[serde(default)]
+    pub preprocessing: Option<PreprocessingStep>,
     pub fit: FitStep,
     pub profile_scan: ProfileScanStep,
     pub report: ReportStep,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PreprocessingStep {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub steps: Vec<serde_yaml_ng::Value>,
+    #[serde(default)]
+    pub provenance_json: Option<PathBuf>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -723,6 +746,26 @@ impl AnalysisSpecV0 {
             None
         };
 
-        Ok(RunPlan { threads, workspace_json, import: import_plan, fit, profile_scan, report })
+        // Preprocessing (optional)
+        let preprocess = if let Some(ref pp) = self.execution.preprocessing {
+            if pp.enabled {
+                // Write the preprocessing config (steps array) to a temp JSON next to workspace.
+                let config_json = workspace_json
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join("_preprocess_config.json");
+                let provenance_json = pp
+                    .provenance_json
+                    .as_ref()
+                    .map(|p| resolve_path(cfg_dir, p));
+                Some(PreprocessPlan { config_json, provenance_json })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(RunPlan { threads, workspace_json, import: import_plan, preprocess, fit, profile_scan, report })
     }
 }

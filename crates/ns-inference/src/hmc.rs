@@ -8,6 +8,165 @@ use crate::posterior::Posterior;
 use ns_core::Result;
 use ns_core::traits::LogDensityModel;
 
+/// Euclidean metric for HMC/NUTS.
+///
+/// We store the *inverse* mass matrix (a.k.a. precision) because that's what
+/// leapfrog needs for the velocity `dq/dt = M^{-1} p` and for the kinetic
+/// energy `K = 0.5 * p^T M^{-1} p`.
+///
+/// For the dense case we store the Cholesky factor `L` of the inverse mass
+/// matrix: `M^{-1} = L L^T`, which lets us:
+/// - multiply `M^{-1} p` efficiently via two triangular multiplies
+/// - sample `p ~ N(0, M)` via solving `L^T p = z`, `z ~ N(0, I)`
+#[derive(Debug, Clone)]
+pub enum Metric {
+    /// Diagonal inverse mass matrix.
+    Diag(Vec<f64>),
+    /// Dense inverse mass matrix stored as Cholesky factor `L` (lower-triangular),
+    /// such that `inv_mass = L L^T`.
+    DenseCholesky { dim: usize, l: Vec<f64> },
+}
+
+impl Metric {
+    pub fn identity(dim: usize) -> Self {
+        Self::Diag(vec![1.0; dim])
+    }
+
+    pub fn dim(&self) -> usize {
+        match self {
+            Metric::Diag(v) => v.len(),
+            Metric::DenseCholesky { dim, .. } => *dim,
+        }
+    }
+
+    #[inline]
+    fn l_at(l: &[f64], dim: usize, i: usize, j: usize) -> f64 {
+        l[i * dim + j]
+    }
+
+    /// Multiply by inverse mass: `v = M^{-1} p`.
+    pub fn mul_inv_mass(&self, p: &[f64]) -> Vec<f64> {
+        match self {
+            Metric::Diag(inv_mass_diag) => inv_mass_diag.iter().zip(p.iter()).map(|(&m, &pi)| m * pi).collect(),
+            Metric::DenseCholesky { dim, l } => {
+                let n = *dim;
+                debug_assert_eq!(p.len(), n);
+
+                // t = L^T p  (upper triangular)
+                let mut t = vec![0.0; n];
+                for i in 0..n {
+                    // t[i] = sum_{k=i..n-1} L[k,i] * p[k]
+                    let mut acc = 0.0;
+                    for k in i..n {
+                        acc += Self::l_at(l, n, k, i) * p[k];
+                    }
+                    t[i] = acc;
+                }
+
+                // v = L t (lower triangular)
+                let mut v = vec![0.0; n];
+                for i in 0..n {
+                    let mut acc = 0.0;
+                    for k in 0..=i {
+                        acc += Self::l_at(l, n, i, k) * t[k];
+                    }
+                    v[i] = acc;
+                }
+                v
+            }
+        }
+    }
+
+    pub fn kinetic_energy(&self, p: &[f64]) -> f64 {
+        let v = self.mul_inv_mass(p);
+        0.5 * p.iter().zip(v.iter()).map(|(&pi, &vi)| pi * vi).sum::<f64>()
+    }
+
+    pub fn sample_momentum(&self, rng: &mut impl rand::Rng) -> Vec<f64> {
+        use rand_distr::{Distribution, Normal};
+        let normal = Normal::new(0.0, 1.0).unwrap();
+
+        match self {
+            Metric::Diag(inv_mass_diag) => {
+                let mut p = vec![0.0; inv_mass_diag.len()];
+                for i in 0..p.len() {
+                    let inv_m = inv_mass_diag[i];
+                    let sigma = if inv_m > 0.0 { (1.0 / inv_m).sqrt() } else { 1.0 };
+                    p[i] = sigma * normal.sample(rng);
+                }
+                p
+            }
+            Metric::DenseCholesky { dim, l } => {
+                let n = *dim;
+                let mut z = vec![0.0; n];
+                for i in 0..n {
+                    z[i] = normal.sample(rng);
+                }
+
+                // Solve L^T p = z for p (back-substitution).
+                let mut p = vec![0.0; n];
+                for i_rev in 0..n {
+                    let i = n - 1 - i_rev;
+                    let mut rhs = z[i];
+                    for k in (i + 1)..n {
+                        rhs -= Self::l_at(l, n, k, i) * p[k];
+                    }
+                    let diag = Self::l_at(l, n, i, i);
+                    // Defensive: if diag is non-finite or ~0, fall back to standard normal.
+                    if !diag.is_finite() || diag.abs() < 1e-14 {
+                        p[i] = z[i];
+                    } else {
+                        p[i] = rhs / diag;
+                    }
+                }
+                p
+            }
+        }
+    }
+
+    /// Mass matrix diagonal (for reporting): `diag(M)`.
+    pub fn mass_diag(&self) -> Vec<f64> {
+        match self {
+            Metric::Diag(inv_mass_diag) => inv_mass_diag.iter().map(|&q| if q > 0.0 { 1.0 / q } else { 1.0 }).collect(),
+            Metric::DenseCholesky { dim, l } => {
+                // We have Q = M^{-1} = L L^T. We need diag(M) = diag(Q^{-1}).
+                // Compute diag(Q^{-1}) by solving Q x = e_i and taking x_i.
+                let n = *dim;
+                let mut out = vec![0.0; n];
+
+                for i in 0..n {
+                    // Forward solve: L y = e_i
+                    let mut y = vec![0.0; n];
+                    for r in 0..n {
+                        let mut rhs = if r == i { 1.0 } else { 0.0 };
+                        for c in 0..r {
+                            rhs -= Self::l_at(l, n, r, c) * y[c];
+                        }
+                        let diag = Self::l_at(l, n, r, r);
+                        y[r] = if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
+                    }
+
+                    // Backward solve: L^T x = y
+                    let mut x = vec![0.0; n];
+                    for r_rev in 0..n {
+                        let r = n - 1 - r_rev;
+                        let mut rhs = y[r];
+                        for c in (r + 1)..n {
+                            rhs -= Self::l_at(l, n, c, r) * x[c];
+                        }
+                        let diag = Self::l_at(l, n, r, r);
+                        x[r] = if !diag.is_finite() || diag.abs() < 1e-14 { 0.0 } else { rhs / diag };
+                    }
+
+                    out[i] = x[i].max(1e-12);
+                }
+
+                out
+            }
+        }
+    }
+}
+
 #[inline]
 fn metropolis_accept(log_accept: f64, u: f64) -> bool {
     // Standard Metropolis criterion:
@@ -34,13 +193,13 @@ pub struct HmcState {
 
 impl HmcState {
     /// Kinetic energy: `0.5 * p^T * M^{-1} * p`.
-    pub fn kinetic_energy(&self, inv_mass_diag: &[f64]) -> f64 {
-        self.p.iter().zip(inv_mass_diag.iter()).map(|(&pi, &mi)| pi * pi * mi).sum::<f64>() * 0.5
+    pub fn kinetic_energy(&self, metric: &Metric) -> f64 {
+        metric.kinetic_energy(&self.p)
     }
 
     /// Total Hamiltonian: `H = U(q) + K(p)`.
-    pub fn hamiltonian(&self, inv_mass_diag: &[f64]) -> f64 {
-        self.potential + self.kinetic_energy(inv_mass_diag)
+    pub fn hamiltonian(&self, metric: &Metric) -> f64 {
+        self.potential + self.kinetic_energy(metric)
     }
 }
 
@@ -48,13 +207,13 @@ impl HmcState {
 pub struct LeapfrogIntegrator<'a, 'b, M: LogDensityModel + ?Sized> {
     posterior: &'a Posterior<'b, M>,
     step_size: f64,
-    inv_mass_diag: Vec<f64>,
+    metric: Metric,
 }
 
 impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
     /// Create a new leapfrog integrator.
-    pub fn new(posterior: &'a Posterior<'b, M>, step_size: f64, inv_mass_diag: Vec<f64>) -> Self {
-        Self { posterior, step_size, inv_mass_diag }
+    pub fn new(posterior: &'a Posterior<'b, M>, step_size: f64, metric: Metric) -> Self {
+        Self { posterior, step_size, metric }
     }
 
     /// Update step size (used during adaptation).
@@ -63,8 +222,8 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
     }
 
     /// Update inverse mass matrix diagonal (used during adaptation).
-    pub fn set_inv_mass_diag(&mut self, inv_mass: Vec<f64>) {
-        self.inv_mass_diag = inv_mass;
+    pub fn set_metric(&mut self, metric: Metric) {
+        self.metric = metric;
     }
 
     /// Current step size.
@@ -73,8 +232,8 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
     }
 
     /// Current inverse mass diagonal.
-    pub fn inv_mass_diag(&self) -> &[f64] {
-        &self.inv_mass_diag
+    pub fn metric(&self) -> &Metric {
+        &self.metric
     }
 
     /// Initialize an HMC state at position `q`.
@@ -103,8 +262,9 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
         }
 
         // Full-step position
+        let v = self.metric.mul_inv_mass(&state.p);
         for i in 0..n {
-            state.q[i] += eps * self.inv_mass_diag[i] * state.p[i];
+            state.q[i] += eps * v[i];
         }
 
         // Recompute potential and gradient at new position
@@ -150,9 +310,9 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> StaticHmcSampler<'a, 'b, M> {
         posterior: &'a Posterior<'b, M>,
         step_size: f64,
         n_steps: usize,
-        inv_mass_diag: Vec<f64>,
+        metric: Metric,
     ) -> Self {
-        let integrator = LeapfrogIntegrator::new(posterior, step_size, inv_mass_diag);
+        let integrator = LeapfrogIntegrator::new(posterior, step_size, metric);
         Self { integrator, n_steps }
     }
 
@@ -160,24 +320,17 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> StaticHmcSampler<'a, 'b, M> {
     ///
     /// Returns `(new_state, accepted)`.
     pub fn step(&self, current: &HmcState, rng: &mut impl rand::Rng) -> Result<(HmcState, bool)> {
-        use rand_distr::{Distribution, Normal};
-
-        let n = current.q.len();
-        let inv_mass = self.integrator.inv_mass_diag();
+        let metric = self.integrator.metric();
 
         // Sample momentum ~ N(0, M)
         let mut proposal = current.clone();
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        for i in 0..n {
-            let sigma = (1.0 / inv_mass[i]).sqrt();
-            proposal.p[i] = sigma * normal.sample(rng);
-        }
+        proposal.p = metric.sample_momentum(rng);
 
-        let h_current = proposal.hamiltonian(inv_mass);
+        let h_current = proposal.hamiltonian(metric);
 
         // Integrate
         let proposal = self.integrator.integrate(proposal, self.n_steps)?;
-        let h_proposal = proposal.hamiltonian(inv_mass);
+        let h_proposal = proposal.hamiltonian(metric);
 
         // Metropolis accept/reject
         let log_accept = h_current - h_proposal;

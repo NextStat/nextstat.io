@@ -51,6 +51,7 @@ def _ensure_import_paths() -> None:
 _ensure_import_paths()
 
 from _tolerances import EXPECTED_DATA_ATOL, TWICE_NLL_ATOL, TWICE_NLL_RTOL  # type: ignore  # noqa: E402
+from _tolerances import PARAM_UNCERTAINTY_ATOL, PARAM_VALUE_ATOL  # type: ignore  # noqa: E402
 from _trex_baseline_compare import Tol, compare_baseline_v0, format_report  # type: ignore  # noqa: E402
 
 
@@ -346,8 +347,8 @@ def main() -> int:
         cand=cand,
         tol_twice_nll=Tol(atol=TWICE_NLL_ATOL, rtol=TWICE_NLL_RTOL),
         tol_expected_data=Tol(atol=EXPECTED_DATA_ATOL, rtol=0.0),
-        tol_param_value=Tol(atol=1e-8, rtol=1e-6),
-        tol_param_unc=Tol(atol=1e-8, rtol=1e-6),
+        tol_param_value=Tol(atol=PARAM_VALUE_ATOL, rtol=0.0),
+        tol_param_unc=Tol(atol=PARAM_UNCERTAINTY_ATOL, rtol=0.0),
     )
 
     artifacts_ok = True
@@ -419,4 +420,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

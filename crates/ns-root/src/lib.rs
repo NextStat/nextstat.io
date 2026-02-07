@@ -44,7 +44,9 @@ pub use branch_reader::BranchReader;
 pub use error::{Result, RootError};
 pub use expr::CompiledExpr;
 pub use file::RootFile;
-pub use filler::{FilledHistogram, HistogramSpec, fill_histograms};
+pub use filler::{
+    FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, fill_histograms,
+};
 pub use histogram::{Histogram, HistogramWithFlows};
 pub use key::KeyInfo;
 pub use tree::{BranchInfo, LeafType, Tree};

@@ -95,7 +95,7 @@ def main() -> int:
             {"path": d.path, "abs_diff": d.abs_diff, "rel_diff": d.rel_diff, "note": d.note}
             for d in res.worst(int(args.max_diffs))
         ],
-        "report_text": format_report(res, max_lines=int(args.max_diffs)),
+        "report_text": format_report(res, top_n=int(args.max_diffs)),
     }
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -107,4 +107,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

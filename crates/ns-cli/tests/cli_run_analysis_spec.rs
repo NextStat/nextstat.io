@@ -26,6 +26,115 @@ fn run(args: &[&str]) -> Output {
 }
 
 #[test]
+fn run_accepts_analysis_spec_v0_trex_config_yaml_fit() {
+    let root = repo_root();
+    let spec_dir = tmp_dir("run_spec_trex_yaml");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+
+    let workspace_json = spec_dir.join("workspace.json");
+    let fit_json = spec_dir.join("fit.json");
+    let spec_path = spec_dir.join("analysis.yaml");
+
+    let yaml = format!(
+        r#"$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: "fixture"
+  description: "fixture"
+  tags: ["test"]
+
+inputs:
+  mode: trex_config_yaml
+  trex_config_yaml:
+    base_dir: "{base_dir}"
+    read_from: NTUP
+    tree_name: events
+    measurement: meas
+    poi: mu
+    regions:
+      - name: SR
+        variable: mbb
+        binning_edges: [0, 50, 100, 150, 200, 300]
+        selection: "njet >= 4"
+    samples:
+      - name: signal
+        kind: mc
+        file: tests/fixtures/simple_tree.root
+        weight: weight_mc
+        regions: ["SR"]
+        norm_factors: ["mu"]
+        stat_error: true
+    systematics:
+      - name: jes
+        type: weight
+        samples: ["signal"]
+        regions: ["SR"]
+        weight_up: weight_jes_up
+        weight_down: weight_jes_down
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: "{workspace_json}"
+
+  fit:
+    enabled: true
+    output_json: "{fit_json}"
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: "{scan_json}"
+
+  report:
+    enabled: false
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+"#,
+        base_dir = root.display(),
+        workspace_json = workspace_json.display(),
+        fit_json = fit_json.display(),
+        scan_json = spec_dir.join("scan.json").display(),
+        report_dir = spec_dir.join("report").display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run(&["run", "--config", spec_path.to_string_lossy().as_ref()]);
+    assert!(
+        out.status.success(),
+        "run should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(workspace_json.exists(), "missing workspace.json: {}", workspace_json.display());
+    assert!(fit_json.exists(), "missing fit.json: {}", fit_json.display());
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+}
+
+#[test]
 fn run_accepts_analysis_spec_v0_histfactory_import_only_with_bundle() {
     let root = repo_root();
     let export_dir = root.join("tests/fixtures/histfactory");

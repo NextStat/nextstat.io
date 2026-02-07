@@ -89,11 +89,16 @@ struct NutsTree {
 const DIVERGENCE_THRESHOLD: f64 = 1000.0;
 
 /// Check the no-U-turn criterion.
-fn is_turning(dq: &[f64], p_left: &[f64], p_right: &[f64], inv_mass: &[f64]) -> bool {
-    let dot_left: f64 =
-        dq.iter().zip(p_left.iter()).zip(inv_mass.iter()).map(|((&d, &p), &m)| d * p * m).sum();
-    let dot_right: f64 =
-        dq.iter().zip(p_right.iter()).zip(inv_mass.iter()).map(|((&d, &p), &m)| d * p * m).sum();
+fn is_turning(
+    dq: &[f64],
+    p_left: &[f64],
+    p_right: &[f64],
+    metric: &crate::hmc::Metric,
+) -> bool {
+    let v_left = metric.mul_inv_mass(p_left);
+    let v_right = metric.mul_inv_mass(p_right);
+    let dot_left: f64 = dq.iter().zip(v_left.iter()).map(|(&d, &v)| d * v).sum();
+    let dot_right: f64 = dq.iter().zip(v_right.iter()).map(|(&d, &v)| d * v).sum();
     if !dot_left.is_finite() || !dot_right.is_finite() {
         // Defensive: if momenta or positions blow up numerically, stop building the tree.
         return true;
