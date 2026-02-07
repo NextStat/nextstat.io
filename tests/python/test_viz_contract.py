@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -57,13 +58,39 @@ def test_viz_artifacts_contracts():
 
 
 def test_plot_helpers_require_matplotlib():
-    with pytest.raises(ImportError):
-        nextstat.viz.plot_cls_curve({"alpha": 0.05, "points": []})
-    with pytest.raises(ImportError):
-        nextstat.viz.plot_brazil_limits({"alpha": 0.05, "points": []})
-    with pytest.raises(ImportError):
-        nextstat.viz.plot_profile_curve({"points": []})
-    with pytest.raises(ImportError):
-        nextstat.viz.plot_ranking({"entries": []})
-    with pytest.raises(ImportError):
-        nextstat.viz.plot_corr_matrix({"parameter_names": [], "corr": []})
+    has_mpl = importlib.util.find_spec("matplotlib") is not None
+    if not has_mpl:
+        with pytest.raises(ImportError):
+            nextstat.viz.plot_cls_curve({"alpha": 0.05, "points": []})
+        with pytest.raises(ImportError):
+            nextstat.viz.plot_brazil_limits({"alpha": 0.05, "points": []})
+        with pytest.raises(ImportError):
+            nextstat.viz.plot_profile_curve({"points": []})
+        with pytest.raises(ImportError):
+            nextstat.viz.plot_ranking({"entries": []})
+        with pytest.raises(ImportError):
+            nextstat.viz.plot_corr_matrix({"parameter_names": [], "corr": []})
+        return
+
+    ax = nextstat.viz.plot_cls_curve({"alpha": 0.05, "mu_values": [0.0, 1.0], "cls_obs": [0.9, 0.1]})
+    assert ax is not None
+
+    ax = nextstat.viz.plot_brazil_limits(
+        {"alpha": 0.05, "obs_limit": 1.0, "exp_limits": [1.4, 1.2, 1.0, 0.8, 0.6], "nsigma_order": [2, 1, 0, -1, -2]}
+    )
+    assert ax is not None
+
+    ax = nextstat.viz.plot_profile_curve({"mu_values": [0.0, 1.0], "q_mu_values": [0.0, 1.0], "mu_hat": 0.3})
+    assert ax is not None
+
+    ax_pull, ax_impact = nextstat.viz.plot_ranking(
+        {
+            "entries": [
+                {"name": "np1", "delta_mu_up": 0.1, "delta_mu_down": -0.1, "pull": 0.0, "constraint": 1.0}
+            ]
+        }
+    )
+    assert ax_pull is not None and ax_impact is not None
+
+    ax = nextstat.viz.plot_corr_matrix({"parameter_names": ["a", "b"], "corr": [[1.0, 0.0], [0.0, 1.0]]})
+    assert ax is not None

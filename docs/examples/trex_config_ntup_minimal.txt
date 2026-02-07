@@ -4,7 +4,7 @@
 # `nextstat import trex-config` importer understands today.
 #
 # Run:
-#   nextstat import trex-config --config docs/examples/trex_config_ntup_minimal.txt --output workspace.json
+#   nextstat import trex-config --config docs/examples/trex_config_ntup_minimal.txt --base-dir . --output workspace.json
 #
 # Then:
 #   nextstat fit --input workspace.json
@@ -34,4 +34,3 @@ Samples: signal
 Regions: SR
 WeightUp: weight_jes_up
 WeightDown: weight_jes_down
-

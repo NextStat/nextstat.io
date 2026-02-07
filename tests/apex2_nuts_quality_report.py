@@ -341,6 +341,12 @@ def main() -> int:
             args.funnel_samples = 600
         if int(args.n_chains) == 2:
             args.n_chains = 4
+        # HistFactory tends to require longer runs than small toy problems, even for simple fixtures.
+        # Only bump when the user did not explicitly set histfactory-specific lengths.
+        if args.histfactory_warmup is None and int(args.warmup) <= 800:
+            args.histfactory_warmup = 1200
+        if args.histfactory_samples is None and int(args.samples) <= 800:
+            args.histfactory_samples = 1200
 
     t0 = time.time()
     report: Dict[str, Any] = {

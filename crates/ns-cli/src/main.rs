@@ -38,6 +38,13 @@ enum Commands {
         config: PathBuf,
     },
 
+    /// Validate a run config / analysis spec (no execution)
+    Validate {
+        /// Run config (legacy) or analysis spec v0 (YAML by default; JSON if extension is .json)
+        #[arg(long)]
+        config: PathBuf,
+    },
+
     /// Perform MLE fit
     Fit {
         /// Input workspace (pyhf JSON)
@@ -621,6 +628,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Run { config } => cmd_run(&config, cli.bundle.as_ref()),
+        Commands::Validate { config } => cmd_validate(&config),
         Commands::Fit { input, output, threads } => {
             cmd_fit(&input, output.as_ref(), threads, cli.bundle.as_ref())
         }
@@ -854,6 +862,54 @@ fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
     match analysis_spec::read_any_run_config(config_path.as_path())? {
         analysis_spec::AnyRunConfig::Legacy(cfg) => cmd_run_legacy(config_path, bundle, &cfg),
         analysis_spec::AnyRunConfig::SpecV0(spec) => cmd_run_spec_v0(config_path, bundle, &spec),
+    }
+}
+
+fn cmd_validate(config_path: &PathBuf) -> Result<()> {
+    match analysis_spec::read_any_run_config(config_path.as_path())? {
+        analysis_spec::AnyRunConfig::Legacy(cfg) => {
+            if !cfg.histfactory_xml.is_file() {
+                anyhow::bail!("histfactory_xml not found: {}", cfg.histfactory_xml.display());
+            }
+            let summary = serde_json::json!({
+                "config_type": "run_config_legacy",
+                "histfactory_xml": cfg.histfactory_xml,
+                "out_dir": cfg.out_dir,
+                "threads": cfg.threads,
+                "deterministic": cfg.deterministic,
+                "include_covariance": cfg.include_covariance,
+                "skip_uncertainty": cfg.skip_uncertainty,
+                "uncertainty_grouping": cfg.uncertainty_grouping,
+                "render": {
+                    "enabled": cfg.render,
+                    "pdf": cfg.pdf,
+                    "svg_dir": cfg.svg_dir,
+                    "python": cfg.python,
+                },
+            });
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+            Ok(())
+        }
+        analysis_spec::AnyRunConfig::SpecV0(spec) => {
+            let plan = spec.to_run_plan(config_path.as_path())?;
+            let summary = serde_json::json!({
+                "config_type": "analysis_spec_v0",
+                "schema_version": spec.schema_version,
+                "inputs": {
+                    "mode": spec.inputs.mode,
+                },
+                "plan": {
+                    "threads": plan.threads,
+                    "workspace_json": plan.workspace_json,
+                    "import": plan.import.as_ref().map(|_| true).unwrap_or(false),
+                    "fit": plan.fit.is_some(),
+                    "profile_scan": plan.profile_scan.is_some(),
+                    "report": plan.report.is_some(),
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+            Ok(())
+        }
     }
 }
 

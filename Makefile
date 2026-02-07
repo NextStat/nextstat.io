@@ -2,6 +2,10 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	trex-spec-validate \
+	trex-spec-run \
+	trex-spec-baseline-record \
+	trex-spec-baseline-compare \
 	hepdata-fetch \
 	hepdata-pytest \
 	pyhf-audit \
@@ -17,6 +21,14 @@ PY ?= ./.venv/bin/python
 PYTHONPATH ?= bindings/ns-py/python
 RECORD_ARGS ?=
 COMPARE_ARGS ?=
+TREX_SPEC ?= docs/specs/trex/analysis_spec_v0.yaml
+TREX_SCHEMA ?= docs/schemas/trex/analysis_spec_v0.schema.json
+TREX_RECORD_OUT_DIR ?= tmp/baselines
+TREX_RECORD_ARGS ?=
+TREX_COMPARE_MANIFEST ?= tmp/baselines/latest_trex_analysis_spec_manifest.json
+TREX_COMPARE_OUT ?= tmp/trex_analysis_spec_compare_report.json
+TREX_COMPARE_ARGS ?=
+TREX_RUN_ARGS ?=
 ROOT_SEARCH_DIR ?=
 ROOT_CASES_OUT ?= tmp/apex2_root_cases.json
 ROOT_CASES_ARGS ?=
@@ -45,6 +57,26 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+trex-spec-validate:
+	"$(PY)" scripts/trex/validate_analysis_spec.py --spec "$(TREX_SPEC)" --schema "$(TREX_SCHEMA)"
+
+trex-spec-run:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/trex/run_analysis_spec.py --spec "$(TREX_SPEC)" $(TREX_RUN_ARGS)
+
+trex-spec-baseline-record:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_trex_analysis_spec_baseline.py \
+		--spec "$(TREX_SPEC)" \
+		--schema "$(TREX_SCHEMA)" \
+		--out-dir "$(TREX_RECORD_OUT_DIR)" \
+		$(TREX_RECORD_ARGS)
+
+trex-spec-baseline-compare:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/compare_trex_analysis_spec_with_latest_baseline.py \
+		--manifest "$(TREX_COMPARE_MANIFEST)" \
+		--schema "$(TREX_SCHEMA)" \
+		--out "$(TREX_COMPARE_OUT)" \
+		$(TREX_COMPARE_ARGS)
 
 hepdata-fetch:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/hepdata/fetch_workspaces.py

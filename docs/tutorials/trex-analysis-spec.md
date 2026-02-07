@@ -17,6 +17,8 @@ Files:
 - Additional examples: `docs/specs/trex/examples/*.yaml`
 - Validator: `scripts/trex/validate_analysis_spec.py`
 - Runner: `scripts/trex/run_analysis_spec.py`
+- Baseline recorder: `tests/record_trex_analysis_spec_baseline.py`
+- Baseline compare: `tests/compare_trex_analysis_spec_with_latest_baseline.py`
 
 ## IDE autocomplete
 
@@ -33,6 +35,19 @@ Many YAML-capable IDEs (e.g. VS Code with a YAML extension) will then show:
 - inline docs
 - red squiggles on invalid configs
 
+If your IDE cannot fetch schemas from the network, map the schema URL to the local file.
+For VS Code (YAML extension), add a workspace setting similar to:
+
+```json
+{
+  "yaml.schemas": {
+    "docs/schemas/trex/analysis_spec_v0.schema.json": [
+      "docs/specs/trex/**/*.yaml"
+    ]
+  }
+}
+```
+
 ## Validate a spec
 
 ```sh
@@ -41,6 +56,12 @@ Many YAML-capable IDEs (e.g. VS Code with a YAML extension) will then show:
 ```
 
 Validation errors are printed as `$`-paths (e.g. `$.execution.report.out_dir`).
+
+Make target:
+
+```sh
+make trex-spec-validate TREX_SPEC=docs/specs/trex/analysis_spec_v0.yaml
+```
 
 ## Run a spec (one command)
 
@@ -57,6 +78,12 @@ Execute:
 ```sh
 ./.venv/bin/python scripts/trex/run_analysis_spec.py \
   --spec docs/specs/trex/analysis_spec_v0.yaml
+```
+
+Make target:
+
+```sh
+make trex-spec-run TREX_SPEC=docs/specs/trex/analysis_spec_v0.yaml
 ```
 
 Optional: pick an explicit `nextstat` binary:
@@ -93,6 +120,27 @@ Optional: pick an explicit `nextstat` binary:
 
 - HistFactory report-only: `docs/specs/trex/examples/histfactory_report_only.yaml`
 - HistFactory fit + scan + report: `docs/specs/trex/examples/histfactory_fit_scan_report.yaml`
+- Repo fixture smoke (local, no cluster): `docs/specs/trex/examples/histfactory_fixture_smoke.yaml`
 - Existing workspace + report: `docs/specs/trex/examples/workspace_json_report.yaml`
 - TREx text config + fit: `docs/specs/trex/examples/trex_config_txt_fit.yaml`
 - TREx YAML config + fit: `docs/specs/trex/examples/trex_config_yaml_fit.yaml`
+
+## Baselines (pre-release gate)
+
+Baseline workflow mirrors Apex2: record once on a reference machine, then compare repeatedly.
+
+Record:
+
+```sh
+make trex-spec-baseline-record TREX_SPEC=docs/specs/trex/analysis_spec_v0.yaml
+```
+
+Compare vs latest recorded baseline:
+
+```sh
+make trex-spec-baseline-compare TREX_COMPARE_ARGS="--require-same-host"
+```
+
+Outputs:
+- Latest manifest pointer: `tmp/baselines/latest_trex_analysis_spec_manifest.json`
+- Compare report: `tmp/trex_analysis_spec_compare_report.json`

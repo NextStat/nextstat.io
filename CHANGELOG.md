@@ -55,6 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Bug fixes:**
 - HistFactory XML parser: strip `<!DOCTYPE>` declarations before parsing (roxmltree rejects DTD by default).
 
+#### Phase 4.1 — TRExFitter Interop (Config Import + Analysis Spec)
+
+**ns-cli: TRExFitter config importer (NTUP subset)**
+- `nextstat import trex-config` imports a TRExFitter-style config subset (`ReadFrom: NTUP`) into a pyhf JSON `Workspace`.
+- `--base-dir` controls relative-path resolution for `File:` entries (default: config file directory).
+- Runnable minimal example: `docs/examples/trex_config_ntup_minimal.txt`.
+
+**TREx Analysis Spec v0 (YAML + JSON Schema)**
+- Spec + examples: `docs/specs/trex/analysis_spec_v0.yaml`, `docs/specs/trex/examples/*.yaml`.
+- JSON Schema (IDE autocomplete): `docs/schemas/trex/analysis_spec_v0.schema.json`.
+- Validator + runner: `scripts/trex/validate_analysis_spec.py`, `scripts/trex/run_analysis_spec.py` (supports `--dry-run`).
+- `nextstat run <spec.yaml>` supports analysis spec v0 orchestration (import/fit/scan/report).
+- Numbers-first baselines for spec runs: `tests/record_trex_analysis_spec_baseline.py` and `tests/compare_trex_analysis_spec_with_latest_baseline.py`.
+- Tutorial: `docs/tutorials/trex-analysis-spec.md`.
+
 #### Phase 9 — Pharma & Social Sciences Domain Packs
 
 **Pack A: Survival Analysis**

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -75,6 +76,20 @@ def test_bayes_sample_multichain_uses_distinct_seeds_by_default():
 
 
 def test_to_inferencedata_requires_arviz():
-    # The CI environment doesn't install `arviz`; this should fail loudly and clearly.
-    with pytest.raises(ImportError):
-        nextstat.bayes.to_inferencedata({"posterior": {}, "sample_stats": {}, "diagnostics": {}})
+    has_arviz = importlib.util.find_spec("arviz") is not None
+    has_numpy = importlib.util.find_spec("numpy") is not None
+    if not (has_arviz and has_numpy):
+        with pytest.raises(ImportError):
+            nextstat.bayes.to_inferencedata({"posterior": {}, "sample_stats": {}, "diagnostics": {}})
+        return
+
+    idata = nextstat.bayes.to_inferencedata(
+        {
+            "n_chains": 1,
+            "n_samples": 2,
+            "posterior": {"beta": [[0.0, 1.0]]},
+            "sample_stats": {"lp": [[-1.0, -2.0]]},
+            "diagnostics": {},
+        }
+    )
+    assert hasattr(idata, "posterior")

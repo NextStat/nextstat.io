@@ -3675,6 +3675,22 @@ fn from_histfactory(xml_path: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_xml(xml_path)
 }
 
+/// Extract per-channel bin edges from a HistFactory export (`combination.xml` + ROOT files).
+///
+/// Uses each channel's `data` histogram as the canonical binning source.
+#[pyfunction]
+fn histfactory_bin_edges_by_channel<'py>(py: Python<'py>, xml_path: &str) -> PyResult<Py<PyAny>> {
+    let path = std::path::Path::new(xml_path);
+    let map = ns_translate::histfactory::bin_edges_by_channel_from_xml(path)
+        .map_err(|e| PyValueError::new_err(format!("Failed to extract bin edges: {}", e)))?;
+
+    let d = PyDict::new(py);
+    for (k, v) in map {
+        d.set_item(k, v)?;
+    }
+    Ok(d.into_any().unbind())
+}
+
 /// Read a TH1 histogram from a ROOT file, including sumw2 and under/overflow bins.
 ///
 /// Returns a dict with keys:
@@ -4193,6 +4209,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions (pyhf-style API).
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
+    m.add_function(wrap_pyfunction!(histfactory_bin_edges_by_channel, m)?)?;
     m.add_function(wrap_pyfunction!(read_root_histogram, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;

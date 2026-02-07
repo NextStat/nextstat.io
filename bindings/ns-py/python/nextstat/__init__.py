@@ -95,6 +95,15 @@ def from_histfactory_xml(xml_path: str | Path) -> HistFactoryModel:
     xml_path = Path(xml_path).resolve()
     return _core.from_histfactory(str(xml_path))
 
+
+def histfactory_bin_edges_by_channel(xml_path: str | Path) -> dict[str, list[float]]:
+    """Return `{channel_name: bin_edges}` from a HistFactory export (`combination.xml`)."""
+    if _core is None:  # pragma: no cover
+        raise ImportError("nextstat._core is not available (native extension not built/installed).")
+
+    xml_path = Path(xml_path).resolve()
+    return _core.histfactory_bin_edges_by_channel(str(xml_path))
+
 __all__ = [
     "__version__",
     "fit",
@@ -149,6 +158,7 @@ __all__ = [
     "rk4_linear",
     "from_pyhf",
     "from_histfactory_xml",
+    "histfactory_bin_edges_by_channel",
     "profile_scan",
     "upper_limit",
     "upper_limits",

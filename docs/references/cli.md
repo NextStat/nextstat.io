@@ -12,6 +12,7 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 ## Commands (high level)
 
 HEP / HistFactory:
+- `nextstat validate --config analysis.yaml`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
 - `nextstat import trex-config --config trex.txt --output workspace.json`
 - `nextstat fit --input workspace.json`
@@ -52,6 +53,12 @@ Scan mode is useful for:
 ## JSON contracts
 
 The CLI outputs pretty JSON to stdout by default, or to `--output`.
+
+`nextstat validate --config ...` validates either:
+- legacy `nextstat run` config (`run.yaml`/`run.json`), or
+- analysis spec v0 (`schema_version: trex_analysis_spec_v0`)
+
+It prints a small JSON summary (`config_type: run_config_legacy|analysis_spec_v0`) and exits non-zero on validation errors.
 
 `nextstat report` writes multiple artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`, `uncertainty.json`, plus `yields.csv` and `yields.tex`). `uncertainty.json` is ranking-based and can be skipped via `--skip-uncertainty`. When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs (requires `matplotlib`, see `nextstat[viz]` extra).
 
