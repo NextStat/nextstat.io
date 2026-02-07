@@ -57,6 +57,7 @@ fn cli_run_histfactory_smoke_writes_bundle_and_artifacts() {
 
     // Bundle presence (best-effort contract).
     assert!(bundle_dir.join("meta.json").exists());
+    assert!(bundle_dir.join("provenance.json").exists());
     assert!(bundle_dir.join("manifest.json").exists());
     assert!(bundle_dir.join("inputs/run_config.yaml").exists());
     assert!(

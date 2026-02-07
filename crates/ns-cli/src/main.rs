@@ -1046,10 +1046,6 @@ fn cmd_run_spec_v0(
     bundle: Option<&PathBuf>,
     spec: &analysis_spec::AnalysisSpecV0,
 ) -> Result<()> {
-    if bundle.is_some() {
-        anyhow::bail!("--bundle is not supported for analysis spec v0 yet");
-    }
-
     let plan = spec.to_run_plan(config_path.as_path())?;
     let deterministic = plan.threads == 1;
 
@@ -1111,6 +1107,10 @@ fn cmd_run_spec_v0(
             plan.threads,
             deterministic,
         )?;
+    }
+
+    if let Some(dir) = bundle {
+        run::write_run_bundle_spec_v0(dir, config_path.as_path(), spec, &plan)?;
     }
 
     let summary = serde_json::json!({
