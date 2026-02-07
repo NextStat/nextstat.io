@@ -53,7 +53,10 @@ use ns_inference::{
 };
 use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
-use ns_translate::pyhf::{HistFactoryModel as RustModel, Workspace as RustWorkspace};
+use ns_translate::pyhf::{
+    ExpectedChannelSampleYields, ExpectedSampleYields, HistFactoryModel as RustModel, ObservedChannelData,
+    Workspace as RustWorkspace,
+};
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
 fn extract_f64_vec(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
@@ -1244,6 +1247,61 @@ impl PyHistFactoryModel {
     /// Get POI index in NextStat order.
     fn poi_index(&self) -> Option<usize> {
         self.inner.poi_index()
+    }
+
+    /// Observed main-bin counts per channel.
+    ///
+    /// Returns a list of dicts:
+    /// - channel_name: str
+    /// - y: list[float]  (main bins only)
+    fn observed_main_by_channel<'py>(&self, py: Python<'py>) -> PyResult<Vec<Py<PyAny>>> {
+        let rows: Vec<ObservedChannelData> = self.inner.observed_main_by_channel();
+        rows.into_iter()
+            .map(|row| {
+                let d = PyDict::new(py);
+                d.set_item("channel_name", row.channel_name)?;
+                d.set_item("y", row.y)?;
+                Ok(d.into_any().unbind())
+            })
+            .collect()
+    }
+
+    /// Expected main-bin yields per channel and per sample, without auxdata.
+    ///
+    /// Returns a list of dicts:
+    /// - channel_name: str
+    /// - samples: list[dict{sample_name: str, y: list[float]}]
+    /// - total: list[float]
+    fn expected_main_by_channel_sample<'py>(
+        &self,
+        py: Python<'py>,
+        params: &Bound<'py, PyAny>,
+    ) -> PyResult<Vec<Py<PyAny>>> {
+        let params = extract_f64_vec(params)?;
+        let rows: Vec<ExpectedChannelSampleYields> = self
+            .inner
+            .expected_main_by_channel_sample(&params)
+            .map_err(|e| PyValueError::new_err(format!("expected_main_by_channel_sample failed: {}", e)))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let d = PyDict::new(py);
+                d.set_item("channel_name", row.channel_name)?;
+                let samples: Vec<Py<PyAny>> = row
+                    .samples
+                    .into_iter()
+                    .map(|s: ExpectedSampleYields| {
+                        let sd = PyDict::new(py);
+                        sd.set_item("sample_name", s.sample_name)?;
+                        sd.set_item("y", s.y)?;
+                        Ok(sd.into_any().unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+                d.set_item("samples", samples)?;
+                d.set_item("total", row.total)?;
+                Ok(d.into_any().unbind())
+            })
+            .collect()
     }
 }
 

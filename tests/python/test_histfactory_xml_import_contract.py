@@ -20,3 +20,4 @@ def test_from_histfactory_xml_builds_model_and_matches_workspace_n_params():
     init = m_xml.suggested_init()
     nll = float(m_xml.nll(init))
     assert nll == nll  # NaN guard
+
