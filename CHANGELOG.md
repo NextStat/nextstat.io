@@ -1,506 +1,201 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
-#### Phase 2C — Compute Backends & Determinism
+#### GPU Acceleration
 
-**EvalMode: Parity vs Fast (deterministic validation system)**
-- `EvalMode` enum (`ns-compute`): process-wide atomic flag controlling summation strategy and backend dispatch.
-- **Parity mode**: Kahan compensated summation, Apple Accelerate disabled, threads forced to 1.
-  Produces bit-exact reproducible NLL/gradient across runs.
-- **Fast mode** (default): naive summation, SIMD/Accelerate/CUDA enabled, Rayon multi-threaded.
-- `set_eval_mode()` / `eval_mode()` Rust API; `dispatch_poisson_nll()` routes to Kahan or naive at runtime.
-- Kahan summation variants: `poisson_nll_simd_kahan()`, `poisson_nll_simd_sparse_kahan()`,
-  `poisson_nll_scalar_kahan()`, `poisson_nll_accelerate_kahan()` — all use f64x4 compensated accumulation.
-- **CLI**: `--parity` flag on `fit`, `scan`, `hypotest`, `hypotest-toys` commands.
-- **Python**: `nextstat.set_eval_mode("parity")` / `nextstat.get_eval_mode()`.
-- **Kahan summation overhead**: <5% vs naive summation *at the same thread count and backend*
-  (confirmed across simple/complex/tHu/tttt). Note: full Parity mode also disables Accelerate,
-  so Parity-vs-Fast wall time on macOS may differ more than 5%.
-- 7-tier tolerance contract vs pyhf NumPy: per-bin ~1e-14 worst-case (well below 1e-12 threshold)
-  → toy ensemble 0.05 (`docs/pyhf-parity-contract.md`).
-- 45+ new parity tests: gradient parity, per-bin golden, batch toys, eval mode, fast-vs-parity tolerance.
+- **CUDA (NVIDIA, f64)** — fused NLL+gradient kernel covering all 7 HistFactory modifier types in a single launch. Lockstep batch optimizer fits thousands of toys in parallel. Dynamic loading via cudarc — binary works without CUDA installed.
+  - `nextstat.fit(model, device="cuda")`, `--gpu cuda` CLI flag
+- **Metal (Apple Silicon, f32)** — same fused kernel in MSL. Zero-copy unified memory. NLL parity vs CPU f64: 1.27e-6 relative diff.
+  - `nextstat.fit_toys_batch_gpu(model, ..., device="metal")`, `--gpu metal` CLI flag
+- **Apple Accelerate** — vDSP/vForce vectorized NLL on macOS. <5% overhead vs naive summation.
+- **CPU batch toys** — Rayon-parallel toy fitting with per-thread tape reuse, seed-based reproducibility.
+- Reverse-mode tape optimization: zero-realloc gradient reuse, inlined tape ops.
 
-**Apple Accelerate backend (macOS)**
-- Feature `accelerate` enables Apple vDSP/vForce for Poisson NLL computation.
-- `vvlog()` vectorized ln() for entire arrays; `vDSP_vsubD`, `vDSP_vmulD`, `vDSP_sveD` for arithmetic.
-- FFI via `unsafe extern "C"`, linked via `build.rs` (`cargo:rustc-link-lib=framework=Accelerate`).
-- Three-layer disable gate: compile-time feature, `EvalMode::Parity`, env var `NEXTSTAT_DISABLE_ACCELERATE=1`.
-- `nextstat.has_accelerate() -> bool` Python binding.
-- Feature chain: `ns-compute/accelerate` → `ns-translate` → `ns-inference` → `ns-cli`, `ns-py`.
+#### Differentiable Analysis (PyTorch)
 
-**CUDA GPU batch backend**
-- **CUDA fused NLL+Gradient kernel** (`crates/ns-compute/kernels/batch_nll_grad.cu`):
-  All 7 modifier types (NormFactor, ShapeSys, ShapeFactor, NormSys/Code4, HistoSys/Code4p, StatError, Lumi)
-  with analytical gradient in a single kernel launch. 1 block = 1 toy, threads = bins, shared memory for params.
-- **cudarc 0.19 integration** (dynamic loading — binary works without CUDA installed):
-  `CudaBatchAccelerator` in `ns-compute::cuda_batch` manages GPU buffers, kernel launches, and H↔D transfers.
-- **GPU model serialization**: `HistFactoryModel::serialize_for_gpu() -> GpuModelData` converts HistFactory model
-  to flat GPU-friendly buffers (nominal counts, modifier descriptors, per-bin param indices, constraints).
-- **Lockstep batch optimizer** (`ns-inference::gpu_batch`): standalone `LbfgsState` L-BFGS-B stepper,
-  all toys at same iteration with convergence masking. `fit_toys_batch_gpu()` entry point.
-- **Feature chain**: `ns-compute/cuda` → `ns-translate/cuda` → `ns-inference/cuda` → `ns-cli/cuda`, `ns-py/cuda`.
-- **PTX build system**: `build.rs` compiles `.cu` kernel via `nvcc --ptx -arch=sm_70`, embedded via `include_str!`.
+- Zero-copy CUDA kernel reads signal histogram from a PyTorch tensor and writes dNLL/dsignal directly into the grad buffer — no device-host roundtrip.
+- `DifferentiableSession`: NLL + signal gradient at fixed nuisance parameters.
+- `ProfiledDifferentiableSession`: profiled test statistics with envelope-theorem gradients — enables NN → signal histogram → profiled CLs → loss.
+- `nextstat.torch` Python module: `NextStatNLLFunction`, `NextStatProfiledQ0Function` (autograd), `NextStatLayer(nn.Module)`.
 
-**CUDA single-model fit path**
-- `GpuSession` (`ns-inference::gpu_single`): shared GPU state — serializes model once, reuses for
-  multiple fits (profile scans, ranking). `upload_observed_single()` for observed data.
-- `GpuObjective`: `ObjectiveFunction` with fused NLL+gradient caching via `RefCell<GpuCache>`.
-  argmin calls `cost(x)` then `gradient(x)` with same x → 1 GPU launch per L-BFGS iteration, not 2.
-- `fit_gpu()`, `fit_minimum_gpu()`, `fit_minimum_gpu_from()`, `fit_minimum_gpu_from_with_bounds()` MLE methods.
-- `compute_hessian_gpu()`: finite differences of GPU gradient (N+1 kernel launches).
-- `scan_gpu()`: shared GpuSession across all scan points, warm-start between mu values.
-- **CLI**: `--gpu` flag on `fit` and `scan` commands.
-- **Python**: `nextstat.fit(model, device="cuda")`, `nextstat.profile_scan(model, ..., device="cuda")`.
-- **Python**: `nextstat.has_cuda()`, `nextstat.fit_toys_batch_gpu(model, params, device="cuda")`.
+#### Deterministic Validation
 
-**Metal GPU batch backend (Apple Silicon, f32)**
-- **Metal fused NLL+Gradient kernel** (`crates/ns-compute/kernels/batch_nll_grad.metal`):
-  All 7 modifier types ported from CUDA `.cu` to MSL with f32 precision.
-  `atomic_fetch_add_explicit` for gradient accumulation (requires Apple GPU family 7+, M1+).
-- **`MetalBatchAccelerator`** (`ns-compute::metal_batch`): GPU orchestrator for Apple Silicon.
-  Runtime MSL compilation via `device.new_library_with_source()`, `StorageModeShared` for zero-copy unified memory.
-  API mirrors `CudaBatchAccelerator`: `from_metal_data()`, `upload_observed()`, `batch_nll_grad()`, `batch_nll()`.
-- **`MetalModelData`** (`ns-compute::metal_types`): f32-precision flat buffers for Metal GPU.
-  `MetalAuxPoissonEntry` with pre-computed `lgamma` (Metal has no `lgamma()` built-in).
-  Conversion: `MetalModelData::from_gpu_data(&GpuModelData)` handles f64→f32.
-- **Shared `LbfgsState`** (`ns-inference::lbfgs`): standalone L-BFGS-B state machine extracted
-  from `gpu_batch.rs`, now shared between CUDA and Metal batch fitters.
-- **Lockstep batch optimizer** (`ns-inference::metal_batch`): `fit_toys_batch_metal()` entry point.
-  Tolerance clamped to `max(tol, 1e-3)` for f32 gradient noise.
-- **Feature chain**: `ns-compute/metal` → `ns-translate/metal` → `ns-inference/metal` → `ns-cli/metal`, `ns-py/metal`.
-- **CLI**: `--gpu` flag now accepts `cuda` or `metal` (changed from bool to `Option<String>`).
-  `--gpu metal` supported for `hypotest-toys` (batch). Single-model `fit` and `scan` remain CUDA-only.
-- **Python**: `nextstat.has_metal() -> bool`, `nextstat.fit_toys_batch_gpu(model, params, device="metal")`.
-- **NLL parity at init**: 1.27e-6 relative diff (Metal f32 vs CPU f64 on simple_workspace).
-- **Dependencies**: `metal` 0.30, `objc` 0.2, `block` 0.1 (macOS-only, optional).
+- **EvalMode** — process-wide flag: **Parity** (Kahan summation, single-threaded, bit-exact) vs **Fast** (default, SIMD/GPU, multi-threaded).
+- CLI: `--parity` · Python: `nextstat.set_eval_mode("parity")`.
+- 7-tier tolerance contract vs pyhf (per-bin ~1e-14 worst case). 45+ parity tests.
 
-**f32 / Dual32 precision PoC (Metal feasibility study)**
-- `impl Scalar for f32` in `ns-ad` — enables `nll_generic::<f32>()` for precision analysis.
-- `Dual32` (f32-based dual numbers) in `ns-ad` — enables analytical gradient in f32.
-- Validated on tHu (184 params): NLL rel error 3.4e-7, analytical gradient max error 3.16e-4, zero sign flips.
-- **Verdict**: f32 analytical gradients are viable for L-BFGS-B on large models (Metal path confirmed feasible).
+#### Native ROOT I/O
 
-**Batch toy fitting (CPU)**
-- `fit_toys_batch()` in `ns-inference::batch`: Rayon parallel toy fitting with per-thread AD Tape reuse.
-- `par_iter().map_init()` pattern: one Tape per Rayon worker thread (~12), not per toy (1000+).
-- Skips Hessian/covariance for speed; seed-based reproducibility (`toy_seed = base_seed + toy_index`).
-- **Python**: `nextstat.fit_toys_batch(model, params, n_toys=1000, seed=42)`.
+- **TTree reader** — mmap file access, native binary deserialization, basket decompression (zlib/LZ4/ZSTD) with rayon-parallel extraction. 9 leaf types + jagged branches.
+- **Expression engine** — bytecode-compiled, vectorized. Full grammar: arithmetic, comparisons, boolean logic, ternary, builtins. Python wrapper: `nextstat.analysis.expr_eval`.
+- **Histogram filler** — single-pass with selection cuts, weights, variable binning.
+- **~8.5x faster** than uproot+numpy on the full pipeline (benchmarked on 1k entries, 7 branches).
 
-**Reverse-mode tape memory optimization**
-- `gradient_reverse_reuse(&self, params, &mut tape)`: clears + reuses tape capacity (zero realloc).
-- `fit_minimum_histfactory_with_tape()`: takes external `&mut Tape` for caller-controlled lifetime.
-- All tape ops (`var`, `constant`, `add`, `mul`, `ln`, etc.) marked `#[inline]`.
+#### Ntuple-to-Workspace Pipeline
 
-#### Differentiable NextStat Layer (PyTorch Integration)
+- `NtupleWorkspaceBuilder`: ROOT ntuples → HistFactory `Workspace` via fluent Rust API.
+- Per-sample modifiers: NormFactor, NormSys, WeightSys, TreeSys, StatError.
+- Produces the same `Workspace` struct as the pyhf JSON path — no ROOT C++ dependency.
 
-**DifferentiableSession — Phase 1: NLL at fixed nuisance parameters**
-- `DifferentiableAccelerator` (`ns-compute::differentiable`): GPU accelerator that reads/writes
-  directly from/to PyTorch CUDA tensors via raw device pointers (zero-copy).
-- `differentiable_nll_grad.cu` CUDA kernel: reads signal sample nominal from an external PyTorch
-  tensor, writes ∂NLL/∂signal_bins into PyTorch's grad buffer — no D→H→D roundtrip.
-- `DifferentiableSession` (`ns-inference::differentiable`): model-level wrapper that serializes
-  the HistFactory model once, uploads observed data, and provides `nll_grad_wrt_signal()`.
-- `SignalSampleInfo`: identifies which sample in the model is the signal (by name or index)
-  and its bin range within the flattened GPU buffer.
+#### TRExFitter Interop
 
-**ProfiledDifferentiableSession — Phase 2: Profiled q₀/qμ**
-- `ProfiledDifferentiableSession` (`ns-inference::differentiable`): computes profiled test
-  statistics (q₀, qμ) with envelope theorem gradients and GPU-accelerated L-BFGS-B fits.
-- Returns NLL scalar + gradient w.r.t. signal bins, enabling end-to-end differentiable
-  analysis pipelines (NN → signal histogram → profiled CLs → loss).
+- `nextstat import trex-config` — import TRExFitter `.config` into pyhf JSON workspace.
+- `nextstat build-hists` — run NTUP pipeline, write `workspace.json`.
+- **HIST mode** — read pre-built ROOT histograms (`ReadFrom: HIST`) alongside NTUP.
+- **Analysis Spec v0** (YAML + JSON Schema) — `nextstat run <spec.yaml>` orchestrates import/fit/scan/report.
+- Jagged column support and TRExFitter-style expression compatibility.
 
-**Python: `nextstat.torch` module**
-- `NextStatNLLFunction` (torch.autograd.Function): custom autograd op wrapping DifferentiableSession.
-- `NextStatProfiledQ0Function`: autograd op for profiled q₀ with envelope theorem gradients.
-- `NextStatLayer(nn.Module)`: drop-in PyTorch module — forward pass returns NLL, backward
-  pass provides ∂NLL/∂signal via the CUDA kernel (zero-copy).
-- Requires PyTorch (optional dependency, imported lazily).
-- Test: `tests/python/test_torch_layer.py` (219 lines).
+#### Systematics Preprocessing
 
-#### TREx HIST Mode (Histogram-Based TRExFitter Pipeline)
+- **Smoothing**: 353QH,twice algorithm (ROOT `TH1::Smooth` equivalent) + Gaussian kernel.
+- **Pruning**: shape, norm, and overall pruning with audit trail (`PruneDecision`).
+- **`nextstat preprocess`** CLI with declarative YAML config and content-hash caching.
+- Recommended order: hygiene → symmetrize → smooth → prune.
 
-- **HIST mode** in TREx config parser: reads pre-built ROOT histograms instead of ntuples,
-  supporting `ReadFrom: HIST` workflows alongside existing `ReadFrom: NTUP`.
-- `nextstat build-hists` extended to support HIST mode inputs.
-- **Jagged column support** in TTree reader: `Vec<f32>` / `Vec<f64>` branches for
-  variable-length per-event data (jet collections, etc.).
-- **NTUP expression compatibility**: expression engine extended to handle TRExFitter-style
-  weight and selection strings with implicit variable resolution.
-- TREx config parser refactored for multi-mode dispatch (NTUP/HIST/NTUP+HIST).
+#### HistFactory Enhancements
 
-#### WASM Playground Crate
+- HistoSys interpolation Code 0 (piecewise linear) — now default, matching pyhf.
+- HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
 
-- `bindings/ns-wasm/` crate: `wasm-bindgen` wrapper exposing `fit_json()`,
-  `hypotest_json()`, `upper_limit_json()` for browser-based inference.
-- Compiled via `wasm32-unknown-unknown` target, served as static WASM module.
-- Drag-and-drop `workspace.json` → asymptotic CLs Brazil bands in the browser.
+#### Report System
 
-#### Systematics Preprocessing Pipeline (CLI + Cache)
+- `nextstat report` — generates distributions, pulls, correlations, yields (.json/.csv/.tex), and uncertainty ranking from a workspace.
+- Python rendering: multi-page PDF + per-plot SVGs via matplotlib.
+- `--blind` flag masks observed data for unblinded regions.
+- `--deterministic` for stable JSON key ordering.
 
-- `nextstat.analysis.preprocess.cli`: `nextstat preprocess` CLI command for batch
-  smoothing/pruning of workspaces with YAML config.
-- `nextstat.analysis.preprocess.config`: declarative YAML config for pipeline steps
-  (hygiene, symmetrize, smooth, prune) with per-step thresholds.
-- `nextstat.analysis.preprocess.cache`: deterministic content-hash caching of
-  intermediate preprocessing results (avoids recomputation on unchanged inputs).
+#### Survival Analysis
 
-#### Expression Evaluator Python Wrapper
+- Parametric models: Exponential, Weibull, LogNormal AFT (with right-censoring).
+- Cox Proportional Hazards: Efron/Breslow ties, robust sandwich SE, Schoenfeld residuals.
+- Python: `nextstat.survival.{exponential,weibull,lognormal_aft,cox_ph}.fit(...)`.
+- CLI: `nextstat survival fit`, `nextstat survival predict`.
 
-- `nextstat.analysis.expr_eval`: Python-side expression evaluation for TRExFitter-style
-  selection and weight strings. Wraps the Rust `CompiledExpr` engine with column-dict input.
-- Supports vectorized evaluation over pandas/numpy columns.
+#### Linear Mixed Models
 
-#### Survival Enhancements
+- Analytic marginal likelihood (random intercept, random intercept + slope).
+- Laplace approximation for approximate posteriors.
+- Python: `nextstat.LmmMarginalModel(...)`.
 
-- **Survival CLI commands** (`ns-cli::survival`): `nextstat survival fit`, `nextstat survival predict`
-  for parametric models and Cox PH from the command line.
-- **Schoenfeld correlation helpers**: `nextstat.survival.schoenfeld_residuals()` and
-  correlation test for proportional hazards assumption checking.
+#### Ordinal Models
 
-#### Report Enhancements
+- Ordered logit/probit with stable cutpoint parameterization.
+- Python: `nextstat.ordinal.ordered_logit.fit(...)`, `nextstat.ordinal.ordered_probit.fit(...)`.
 
-- **Blinding parameter**: `--blind` flag on `nextstat report` to mask observed data in
-  distributions and yields artifacts (prefit-only mode for unblinded regions).
-- **Best-NLL parity rationale**: documented and enforced best-NLL selection policy
-  (use model-global best NLL for all profile points, not per-point best).
+#### Econometrics & Causal Inference
 
-#### HistoSys Interpolation Code 0 (Piecewise Linear)
-- `HistoSysInterpCode` enum: `Code0` (piecewise linear) and `Code4p` (polynomial+linear extrapolation).
-- Default for HistoSys changed to Code 0, matching pyhf default.
-- SIMD kernel `histosys_code0_delta_accumulate()` in ns-compute.
-- Generic `histosys_code0_delta<T: Scalar>()` for forward-mode AD.
-- Tape AD path supports both codes via `interp_code` dispatch.
-- 5 new unit tests: scalar parity, zero-delta, Code0/Code4p agreement at α=0 and α=±1.
+- **Panel FE** with 1-way cluster SE.
+- **DiD TWFE** + event-study helpers.
+- **IV / 2SLS** with weak-IV diagnostics (first-stage F, partial R²).
+- **AIPW** for ATE/ATT + E-value helper. Propensity scores, IPW weights, overlap diagnostics.
 
-#### Phase 4 — Native TTree Reader & Ntuple-to-Workspace Pipeline
+#### Pharmacometrics
 
-**ns-root: TTree/TBranch binary reader**
-- Memory-mapped file access via `DataSource::Mmap` (memmap2) — no full-file RAM copy for GB+ ntuples.
-- Native TTree/TBranch binary deserialization with ROOT class reference system
-  (kNewClassTag, kClassMask, kByteCountMask), TObjArray dispatch, TLeaf type detection.
-- Basket decompression (zlib/LZ4/ZSTD) with rayon-parallel columnar extraction (`BranchReader`).
-- 9 leaf types: `f32`, `f64`, `i32`, `i64`, `u32`, `u64`, `i16`, `i8`, `bool`.
-- `RootFile::get_tree()`, `branch_reader()`, `branch_data()` public API.
+- RK4 integrator for linear ODE systems.
+- One-compartment oral PK model with LLOQ censoring.
+- NLME extension with per-subject random effects.
 
-**ns-root: Expression engine (bytecode-compiled, vectorized)**
-- Recursive descent parser for string-based selections, weights, and variable expressions.
-- Full grammar: arithmetic (`+`, `-`, `*`, `/`), comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`),
-  boolean logic (`&&`, `||`, `!`), ternary (`cond ? a : b`),
-  built-in functions (`abs`, `sqrt`, `log`, `exp`, `pow`, `min`, `max`).
-- Bytecode compilation: `CompiledExpr::compile()` → stack-based VM for efficient evaluation.
-- `eval_row()` for single-row evaluation; `eval_bulk()` for vectorized column-wise evaluation (all rows at once).
-- Span-aware error reporting with line/column positions.
-- Variables resolved by branch name; bulk evaluation over columnar data.
+#### Applied Statistics API
 
-**ns-root: Histogram filler**
-- Single-pass histogram filling with selection cuts, weights, and variable binning.
-- `HistogramSpec` (variable, weight, selection as `CompiledExpr`) + `FilledHistogram` output with `sumw2`.
-- `fill_histograms()` fills multiple histograms in one pass over the data.
-- `From<FilledHistogram> for Histogram` conversion.
+- Formula parsing + deterministic design matrices (`nextstat.formula`).
+- `from_formula` wrappers for all GLM and hierarchical builders.
+- Wald summaries + robust covariance (HC0-HC3, 1-way cluster).
+- scikit-learn adapters: `NextStatLinearRegression`, `NextStatLogisticRegression`, `NextStatPoissonRegressor`.
+- Missing-data policies: `drop_rows`, `impute_mean`.
 
-**ns-translate: NtupleWorkspaceBuilder**
-- High-level fluent builder API: ntuple ROOT files → HistFactory `Workspace`.
-- `NtupleWorkspaceBuilder::new().ntuple_path(...).tree_name(...).measurement(...).add_channel(...)`.
-- Per-sample modifier support: `NormFactor`, `NormSys`, `WeightSys` (up/down weight expressions),
-  `TreeSys` (up/down ROOT files), `StatError` (auto `sqrt(sumw2)`).
-- ROOT file caching across samples; Asimov data when no data file specified.
-- Produces the same `Workspace` struct as the pyhf JSON and HistFactory XML paths.
+#### WASM Playground
 
-**Performance (1000 entries, 7 branches, release build):**
-
-| Operation | NextStat (Rust) | uproot + numpy | Speedup |
-|---|---:|---:|---:|
-| File open (mmap) | 75 µs | 215 µs | ~3x |
-| TTree metadata parse | 50 µs | 1,400 µs | ~28x |
-| Read 1 branch | 65 µs | 675 µs | ~10x |
-| Read all 7 branches | 200 µs | 1,300 µs | ~6.5x |
-| Selection eval | 15 µs | 26 µs | ~1.7x |
-| Histogram fill | 28 µs | 96 µs | ~3.4x |
-| **Total pipeline** | **~430 µs** | **~3,700 µs** | **~8.5x** |
-
-**Bug fixes:**
-- HistFactory XML parser: strip `<!DOCTYPE>` declarations before parsing (roxmltree rejects DTD by default).
-
-#### Systematics Preprocessing: Smoothing + Pruning
-
-**Smoothing (`nextstat.analysis.preprocess.smooth`)**
-- 353QH,twice algorithm (ROOT `TH1::Smooth` equivalent): running median(3→5→3) + Hanning + residual smooth, applied twice.
-- Gaussian kernel smoothing with configurable bandwidth (`sigma` in bin units).
-- MAXVARIATION cap: `|smoothed_delta[i]| <= max(|original_delta|)`.
-- Top-level `smooth_variation(nominal, up, down)` API working on deltas.
-- `SmoothHistoSysStep` pipeline step for workspace-wide smoothing.
-
-**Pruning (`nextstat.analysis.preprocess.prune`)**
-- Shape pruning: prune if `max |delta/nominal| < threshold` for both up/down.
-- Norm pruning: prune if `|hi - 1| < threshold` and `|lo - 1| < threshold`.
-- Overall pruning: decompose histosys into norm (integral ratio) + shape (residual), prune if both negligible.
-- `PruneSystematicsStep` pipeline step with two-pass approach (collect decisions, then remove modifiers).
-- `PruneDecision` dataclass with human-readable `reason` string for audit.
-
-**Recommended pipeline order:** `hygiene → symmetrize → smooth → prune`.
-
-#### Phase 4.1 — TRExFitter Interop (Config Import + Analysis Spec)
-
-**ns-cli: TRExFitter config importers (NTUP subset)**
-- `nextstat import trex-config` imports a TRExFitter-style config subset (`ReadFrom: NTUP`) into a pyhf JSON `Workspace`.
-- `nextstat build-hists` runs the NTUP pipeline and writes `workspace.json` into `--out-dir` (deterministic for the same inputs).
-- `nextstat trex import-config` converts a TRExFitter `.config` file into an analysis spec v0 YAML (`inputs.mode=trex_config_yaml`) and a mapping report (`*.mapping.json`).
-- `--base-dir` controls relative-path resolution for `File:` entries (default: config file directory).
-- Runnable minimal example: `docs/examples/trex_config_ntup_minimal.txt`.
-
-**TREx Analysis Spec v0 (YAML + JSON Schema)**
-- Spec + examples: `docs/specs/trex/analysis_spec_v0.yaml`, `docs/specs/trex/examples/*.yaml`.
-- JSON Schema (IDE autocomplete): `docs/schemas/trex/analysis_spec_v0.schema.json`.
-- Validator + runner: `scripts/trex/validate_analysis_spec.py`, `scripts/trex/run_analysis_spec.py` (supports `--dry-run`).
-- `nextstat run <spec.yaml>` supports analysis spec v0 orchestration (import/fit/scan/report).
-- Numbers-first baselines for spec runs: `tests/record_trex_analysis_spec_baseline.py` and `tests/compare_trex_analysis_spec_with_latest_baseline.py`.
-- Tutorial: `docs/tutorials/trex-analysis-spec.md`.
-
-#### Report System (Numbers-First Artifacts + Publication-Ready Rendering)
-
-- `nextstat report` master command: generates all numeric artifacts from a workspace + optional fit.
-- **Artifact outputs** (versioned JSON schemas under `docs/schemas/trex/`):
-  - `distributions.json` — prefit/postfit expected yields per sample per region, bin edges, data, Garwood errors, ratio.
-  - `pulls.json` — nuisance parameter pulls and constraints (postfit sigma / prefit sigma).
-  - `corr.json` — correlation matrix derived from inverse Hessian (optional raw covariance via `--include-covariance`).
-  - `yields.json` — per-region per-sample prefit/postfit yield tables; also `yields.csv` and `yields.tex`.
-  - `uncertainty.json` — ranking-based uncertainty breakdown (skippable via `--skip-uncertainty`).
-- `nextstat viz distributions`, `viz pulls`, `viz corr`, `viz ranking` subcommands for individual artifacts.
-- **Python rendering**: `python -m nextstat.report render` → multi-page PDF + per-plot SVGs (requires `matplotlib`).
-- `--render` flag on `nextstat report` to invoke rendering automatically.
-- `--uncertainty-grouping` policy (`prefix_1`, etc.) for systematic grouping in ranking.
-- `--deterministic` flag for stable JSON key ordering.
-- If `--fit` is omitted, `nextstat report` runs an MLE fit and writes `fit.json` into `--out-dir`.
-
-#### Patchset Support (HEPData Interop)
-
-- `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`:
-  applies pyhf PatchSet (HEPData signal patch format) to a base workspace.
-- Python: `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str`.
-
-#### Phase 9 — Pharma & Social Sciences Domain Packs
-
-**Pack A: Survival Analysis**
-- Parametric survival models with right-censoring (`ns-inference::survival`):
-  Exponential (`log_rate`), Weibull (`log_k`, `log_lambda`), LogNormal AFT (`mu`, `log_sigma`).
-- Cox Proportional Hazards model with Efron/Breslow ties handling (`CoxPhModel`).
-- **High-level Python API** (`nextstat.survival`): callable builders with `.fit(...)` method.
-  - `nextstat.survival.exponential.fit(times, events, x)` → `ParametricSurvivalFit`
-  - `nextstat.survival.weibull.fit(times, events, x)` → `ParametricSurvivalFit`
-  - `nextstat.survival.lognormal_aft.fit(times, events, x)` → `ParametricSurvivalFit`
-  - `nextstat.survival.cox_ph.fit(times, events, x, ties="efron", robust=True)` → `CoxPhFit`
-- **Cox PH robust SE + CI**: sandwich covariance estimator (I⁻¹ B I⁻¹), tie-aware score residuals.
-  - `CoxPhFit.robust_se`, `.robust_cov`, `.confint(robust=True)`, `.hazard_ratio_confint(robust=True)`.
-  - Hessian via finite-diff of `grad_nll`; B via sum of outer-product score residuals (Breslow/Efron).
-- All survival models integrate with `nextstat.fit()` and `nextstat.sample()`.
-
-**Pack B: Longitudinal / Mixed-Effects**
-- Linear Mixed Model with analytic marginal likelihood (`LmmMarginalModel`):
-  random intercept, or random intercept + one random slope (diagonal RE covariance).
-- Laplace approximation utilities for approximate posteriors (`ns-inference::laplace`).
-- Python surface: `nextstat.LmmMarginalModel(...)` with `fit()` / `sample()` integration.
-- LMM parameter recovery smoke tests and tutorial (`docs/tutorials/phase-9-lmm.md`).
-
-**Pack C: Ordinal Models**
-- Ordered logit/probit models (`OrderedLogitModel`, `OrderedProbitModel`), with a stable cutpoint parameterization.
-- Python surface: `nextstat.ordinal.ordered_logit.fit(...)`, `nextstat.ordinal.ordered_probit.fit(...)`.
-
-**Pack D: Missing Data**
-- Explicit missing-data policies for `(X, y)` (`drop_rows`, `impute_mean`) via `nextstat.missing.apply_policy(...)`.
-
-**Pack E: Causal Convenience Helpers**
-- Propensity score estimation, IPW weights, and overlap/balance diagnostics via `nextstat.causal.propensity`.
-
-#### Phase 11 — Applied Statistics API (Formula, Summary, Robust SE, sklearn)
-
-**Formula + design matrices**
-- Minimal formula parsing + deterministic design matrices: `nextstat.formula.parse_formula()` and `design_matrices()`.
-- Tabular adapter: `nextstat.formula.to_columnar()` supports dict-of-columns, list-of-dicts, and pandas DataFrame (if installed).
-- Categoricals: explicit `categorical=[...]` one-hot encoding with deterministic column naming/order.
-
-**Regression surfaces**
-- `from_formula` wrappers for GLM fits: `nextstat.glm.linear.from_formula`, `.logistic.from_formula`, `.poisson.from_formula`, `.negbin.from_formula`.
-- Formula helpers for hierarchical random-intercept builders: `nextstat.hier.linear_random_intercept_from_formula`, `.logistic_random_intercept_from_formula`, `.poisson_random_intercept_from_formula`.
-
-**Summaries + robust covariance**
-- Dependency-light Wald summaries (coef/SE/CI/p-values): `nextstat.summary.fit_summary(...)` + `summary_to_str(...)`.
-- Robust covariance estimators for OLS (HC0–HC3, 1-way cluster) + baseline GLM sandwich: `nextstat.robust`.
-
-**Interoperability**
-- Optional scikit-learn adapters: `nextstat.sklearn.NextStatLinearRegression`, `NextStatLogisticRegression`, `NextStatPoissonRegressor`.
-
-#### Phase 12 — Econometrics & Causal Inference Pack
-
-**Panel + DiD + IV**
-- Panel FE (within estimator) baseline + 1-way cluster SE: `nextstat.econometrics.panel_fe_fit(...)` and `panel_fe_from_formula(...)`.
-- DiD TWFE + event-study helpers: `nextstat.econometrics.did_twfe_fit/from_formula`, `event_study_twfe_fit/from_formula`.
-- IV / 2SLS baseline with weak-IV diagnostics (first-stage F, partial R²): `nextstat.econometrics.iv_2sls_fit/from_formula`
-  with covariance options `homoskedastic|hc1|cluster`.
-
-**Doubly robust**
-- AIPW baseline for ATE/ATT + E-value helper: `nextstat.causal.aipw`.
-
-#### Phase 13 — Pharmacometrics Pack (ODE + PK/NLME)
-
-**ODE baseline**
-- Deterministic RK4 integrator for linear systems `dy/dt = A y`: `nextstat.rk4_linear(...)` and `nextstat.ode.rk4_linear(...)`.
-
-**PK / NLME**
-- One-compartment oral PK model (`OneCompartmentOralPkModel`) with LLOQ handling (censoring).
-- NLME extension with per-subject random effects (`OneCompartmentOralPkNlmeModel`).
-
-#### Infrastructure
-- Release pipeline hardening: test gate, version validation, multi-arch wheels, sdist,
-  CHANGELOG-based release notes, optional PyPI publish.
-- Structured logging with `tracing` and `--log-level` CLI flag.
-- `ns-cli`: reproducible run bundle (`--bundle` flag).
-- Apex2 baseline recorder (`tests/record_baseline.py`) with full environment fingerprint
-  (hostname, Python/pyhf/nextstat/numpy versions, git commit, CPU, platform).
-- Apex2 baseline comparison (`tests/compare_with_latest_baseline.py`) with per-type manifests
-  and `--require-same-host` strict mode.
-- NUTS quality report (`tests/apex2_nuts_quality_report.py`) integrated into master report.
-- Bias/pulls report hardened: per-parameter output, `--params poi|all`, `--min-used-abs/frac`,
-  try/except around toy-loop fits, `skipped` status on insufficient valid toys.
-- Slow test ergonomics: `sbc` pytest marker, `NS_RUN_SBC=1` gate, reduced default toy counts.
-- **CI parity gate** (`.github/workflows/pyhf-parity.yml`): runs full parity test suite on push/PR
-  to main/develop; uploads golden reports as artifacts.
-- **TREx baseline refresh** (`.github/workflows/trex-baseline-refresh.yml`): self-hosted runner
-  workflow for recording TREx parity baselines (manual dispatch + nightly schedule).
-- **HEPData workspace tests** (`tests/python/test_hepdata_workspaces.py`): opt-in NLL parity checks
-  on real HEPData pyhf workspaces (requires manual download via `tests/hepdata/fetch_workspaces.py`).
-- **TREx baseline recorder** (`tests/record_trex_baseline.py`): captures fit + expected_data baseline
-  from a real TRExFitter/HistFactory export directory; compare via `tests/compare_trex_baseline_files.py`.
-- `fit()` now supports `init_pars=` for warm-start MLE (Rust `fit_from()` + Python binding).
-
-#### Documentation
-- `docs/pyhf-parity-contract.md`: 7-tier tolerance hierarchy with rationale, architecture diagram,
-  batch toys section, performance characteristics, CI integration guide.
-- `docs/references/trex_replacement_parity_contract.md`: TREx replacement parity contract (v0)
-  with EvalMode, reporting schemas, determinism policy, and baseline management.
-- `docs/references/optimizer-convergence.md`: L-BFGS-B vs SLSQP analysis on large models (184–249 params).
-- `docs/plans/metal-batch-gpu.md`: Metal f32 GPU feasibility study with PoC results.
+- Browser-based inference via `wasm-bindgen`: `fit_json()`, `hypotest_json()`, `upper_limit_json()`.
+- Drag-and-drop `workspace.json` → asymptotic CLs Brazil bands. No Python, no server.
 
 #### Visualization
-- `plot_cls_curve()` now respects `nsigma_order` + `cls_exp` dynamically.
-- `plot_brazil_limits()` for observed/expected upper-limit Brazil band.
-- `plot_profile_curve()` supports `y="q_mu"` (default) and `y="twice_delta_nll"`.
+
+- `plot_cls_curve()`, `plot_brazil_limits()`, `plot_profile_curve()`.
+- `nextstat viz distributions`, `viz pulls`, `viz corr`, `viz ranking` subcommands.
+- Kalman: `plot_kalman_states()`, `plot_forecast_bands()`.
+
+#### CLI & Infrastructure
+
+- Structured logging (`--log-level`), reproducible run bundles (`--bundle`).
+- `fit()` supports `init_pars=` for warm-start MLE.
+- CI: pyhf parity gate on push/PR, TREx baseline refresh (nightly), HEPData workspace tests.
+- Apex2 validation: NLL parity, bias/pulls regression, SBC calibration, NUTS quality gates.
 
 ### Fixed
-- Optimizer early-stop bug: removed `target_cost(0.0)` that broke models with NLL < 0.
-- `kalman_simulate()` now supports `init="sample|mean"` and `x0=...` for custom start.
-- StatError histogram handling: fixed incorrect `sqrt(sumw2)` propagation when stat error
-  bins had zero nominal counts.
-- Metal GPU batch: scratch buffer reuse optimization — reduced GPU memory allocation overhead
-  by ~40% on repeated batch calls.
 
-## [0.1.0] - 2026-02-05
+- Optimizer early-stop with negative NLL (`target_cost(0.0)` removed).
+- `kalman_simulate()`: `init="sample|mean"` and `x0=...` support.
+- StatError: incorrect `sqrt(sumw2)` propagation with zero nominal counts.
+- Metal GPU: scratch buffer reuse (~40% less allocation overhead).
+- HistFactory XML: strip `<!DOCTYPE>` declarations before parsing.
 
-### Added
+---
 
-#### Phase 1 — Core Engine
-- `ns-core`: workspace data model (Channel, Sample, Parameter, Modifier, Measurement).
-- `ns-core`: Poisson + modifier evaluation (histosys, normsys, shapesys, staterror, lumi).
-- `ns-core`: negative log-likelihood (NLL) computation with constraint terms.
-- `ns-translate`: pyhf JSON workspace parser with full HistFactory support.
-- `ns-compute`: SIMD-accelerated Poisson NLL via `wide::f64x4`.
-- `ns-py`: Python bindings (`nextstat` package) with `Model`, `FitResult` classes.
-- `ns-cli`: `nextstat` CLI with `fit`, `hypotest`, `upper-limit`, `scan`, `version` commands.
-- CI workflows for Rust (test + clippy) and Python (maturin build + pytest).
-- GitHub release workflow with wheel and CLI binary artifacts.
+## [0.1.0] — 2026-02-05
 
-#### Phase 2A — SIMD & PreparedModel
-- `PreparedModel` with cached observed data, ln-factorials, and observation masks.
-- SIMD Poisson NLL path (f64x4) with lane-by-lane scalar `ln()` for accuracy.
-- `fit_minimum()` extracted for fast repeated minimizations (profile, toys).
+Initial public release.
 
-#### Phase 2B — Automatic Differentiation
-- `ns-ad`: dual-number forward-mode AD (`Dual<f64>`).
-- `ns-ad`: reverse-mode tape AD (`Tape`, `TapeVar`).
-- Generic `nll_generic<T: Scalar>` path supporting both AD backends.
+### Core Engine
 
-#### Phase 3.1 — Frequentist Inference
-- `ns-inference`: MLE fitting via `argmin` (L-BFGS-B with Hessian uncertainties).
-- `ns-inference`: asymptotic CLs hypothesis testing (q-tilde test statistic).
-- `ns-inference`: profile likelihood scan over POI values.
-- `ns-inference`: CLs upper limits via bisection and linear scan.
-- `ns-inference`: expected CLs band (Brazil band) computation.
-- `ns-inference`: batch MLE fitting (`fit_batch`), toy studies (`fit_toys`), NP ranking.
-- `ns-py`: `mle.fit_batch()`, `mle.fit_toys()`, `mle.ranking()` Python bindings.
+- HistFactory workspace data model with full pyhf JSON compatibility.
+- Poisson NLL with all modifier types (histosys, normsys, shapesys, staterror, lumi) + Barlow-Beeston.
+- SIMD-accelerated NLL via `wide::f64x4`.
+- Automatic differentiation: forward-mode (dual numbers) and reverse-mode (tape AD).
 
-#### Phase 3.2 — Bayesian Sampling
-- `ns-inference`: No-U-Turn Sampler (NUTS) with dual averaging.
-- `ns-inference`: HMC diagnostics (divergences, tree depth, step size).
+### Frequentist Inference
+
+- MLE via L-BFGS-B with Hessian-based uncertainties.
+- Asymptotic CLs hypothesis testing (q-tilde test statistic).
+- Profile likelihood scans, CLs upper limits (bisection + linear scan), Brazil bands.
+- Batch MLE, toy studies, nuisance parameter ranking.
+
+### Bayesian Sampling
+
+- No-U-Turn Sampler (NUTS) with dual averaging.
+- HMC diagnostics: divergences, tree depth, step size, E-BFMI.
 - Rank-normalized folded R-hat + improved ESS (Geyer IMS + variogram).
-- E-BFMI energy diagnostic.
-- Overdispersed chain initialization option.
-- Non-slow sampling quality summary.
-- `ns-py`: `sample()` Python binding returning ArviZ-compatible dict.
+- Python: `sample()` returning ArviZ-compatible dict.
 
-#### Phase 3.4 — Visualization Artifacts
-- `ns-viz`: `ProfileCurveArtifact` (q_mu vs mu, with sigma lines and best-fit).
-- `ns-viz`: `ClsCurveArtifact` (observed + expected CLs with Brazil band).
-- `ns-cli`: `viz profile` and `viz cls` subcommands.
-- `ns-py`: `viz_profile_curve()` and `viz_cls_curve()` Python helpers.
+### Regression & GLM
 
-#### Phase 5 — Universal Model API
-- `ns-core`: `LogDensityModel` trait for generic inference across all model types.
-- `ns-prob` crate: probability distribution library (Normal, StudentT, Bernoulli, Binomial,
-  Poisson, NegativeBinomial, Gamma, Exponential, Weibull, Beta).
-- `ns-prob`: bijector/transform layer (Identity, Exp, Softplus, Sigmoid, Affine).
-- `ns-inference`: `ComposedGlmModel` builder for composing GLM-style models.
-- `ns-inference`: generic posterior, HMC, and NUTS over any `LogDensityModel`.
-- `ns-inference`: parameter transforms with log-Jacobian for constrained parameters.
-- `ns-py`: `GaussianMeanModel` for non-HEP Bayesian estimation.
-- `ns-py`: `GlmSpec` data adapter (`nextstat.data`) for design matrices and responses.
+- Linear, logistic, Poisson, negative binomial regression.
+- Ridge regression (MAP/L2), separation detection, exposure/offset support.
+- Cross-validation (`kfold_indices`, `cross_val_score`) and metrics (RMSE, log-loss, Poisson deviance).
 
-#### Phase 6 — Regression & GLM Pack
-- Linear, logistic, Poisson, and negative binomial regression models (`ns-inference::regression`).
-- Ridge regression via Normal prior on coefficients (MAP/L2).
-- Separation detection and stabilization warnings for logistic regression.
-- Exposure/offset support for Poisson regression.
-- Python GLM surface: `nextstat.glm.linear`, `.logistic`, `.poisson`, `.negbin`.
-- Cross-validation utilities: `kfold_indices()`, `cross_val_score()` (`nextstat.glm.cv`).
-- Metrics: RMSE, log-loss, Poisson deviance (`nextstat.glm.metrics`).
-- Golden regression test fixtures with statsmodels parity (`tests/fixtures/regression/`).
-- Criterion benchmarks: `regression_benchmark.rs`, `glm_fit_predict_benchmark.rs`.
+### Hierarchical Models
 
-#### Phase 7 — Hierarchical / Multilevel Models
-- Random intercept support in `ComposedGlmModel` (Normal prior, partial pooling).
-- Random slopes / varying coefficients.
-- Non-centered parameterization for improved NUTS mixing.
-- Correlated random effects via LKJ prior + Cholesky decomposition.
-- Python surface: `nextstat.hier` with `linear_random_intercept()`, `linear_random_slope()`,
-  `logistic_random_intercept()`, `logistic_correlated_intercept_slope()`, etc.
-- Posterior Predictive Checks: `nextstat.ppc.ppc_glm_from_sample()` with replicate generation.
-- Criterion benchmark: `hier_benchmark.rs`.
+- Random intercepts/slopes, correlated effects (LKJ + Cholesky), non-centered parameterization.
+- Posterior Predictive Checks.
 
-#### Phase 8 — Time Series & State Space Models
-- Linear-Gaussian Kalman filter and RTS smoother (`ns-inference::timeseries`).
-- EM parameter estimation for state-space models (Q, R, optionally F, H).
-- Multi-step-ahead Kalman forecasting with prediction intervals.
-- Standard model builders: local-level, local-trend.
-- AR(1) parameter transform (softplus + bounds).
-- Missing observation handling (skip update, correct likelihood).
-- State simulation from model with controllable seed.
-- Python surface: `nextstat.timeseries` with `kalman_filter()`, `kalman_smooth()`,
-  `kalman_em()`, `kalman_fit()`, `kalman_forecast()`, `kalman_simulate()`.
-- Visualization: `plot_kalman_states()`, `plot_forecast_bands()`.
-- Criterion benchmarks: `kalman_benchmark.rs`, `em_benchmark.rs`.
+### Time Series
 
-#### Apex2 Validation System
-- Master report aggregator (`tests/apex2_master_report.py`) with exit code policy.
-- pyhf NLL/expected_data parity runner.
-- P6 GLM benchmark runner with baseline comparison and slowdown detection.
-- Bias/pulls regression runner (NextStat vs pyhf).
-- SBC posterior calibration runner (NUTS).
-- NUTS quality runner (divergence/R-hat/ESS/E-BFMI gates).
-- ROOT/TRExFitter parity runner (optional).
-- Nightly slow CI workflow (`.github/workflows/apex2-nightly-slow.yml`).
+- Linear-Gaussian Kalman filter + RTS smoother.
+- EM parameter estimation, multi-step-ahead forecasting with prediction intervals.
+- Local-level, local-trend, AR(1) builders. Missing observation handling.
+
+### Probability Distributions
+
+- Normal, StudentT, Bernoulli, Binomial, Poisson, NegativeBinomial, Gamma, Exponential, Weibull, Beta.
+- Bijector/transform layer: Identity, Exp, Softplus, Sigmoid, Affine.
+
+### Visualization
+
+- Profile likelihood curves and CLs Brazil band plots.
+- CLI: `viz profile`, `viz cls`. Python: `viz_profile_curve()`, `viz_cls_curve()`.
+
+### Python Bindings & CLI
+
+- `nextstat` Python package (PyO3/maturin) with `Model`, `FitResult` classes.
+- `nextstat` CLI: `fit`, `hypotest`, `upper-limit`, `scan`, `version`.
+- CI workflows + GitHub release pipeline (multi-arch wheels + CLI binary).
+
+### Validation (Apex2)
+
+- Master report aggregator with NLL parity, GLM benchmarks, bias/pulls regression, SBC calibration, NUTS quality gates.
+- Nightly slow CI workflow.
