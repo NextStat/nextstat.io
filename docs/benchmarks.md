@@ -312,26 +312,73 @@ Signal gradient accuracy vs finite differences: **2.07e-9** max error.
 | Signal gradient (8 bins) | CUDA zero-copy |
 | NLL convergence | Monotonically decreasing |
 
+### Batch Toy Fitting — CPU vs GPU
+
+Lockstep L-BFGS-B: all toys share a single kernel launch per optimizer iteration.
+
+#### tHu (184 params) — GPU wins
+
+**CUDA** (RTX 4000 SFF Ada, AMD EPYC 8 cores):
+
+| n_toys | GPU (CUDA) | CPU (Rayon, 8 cores) | GPU Speedup |
+|--------|-----------|---------------------|-------------|
+| 100 | 20.2 s | 37.9 s | **1.8x** |
+| 500 | 63.4 s | 383.7 s | **6.0x** |
+| 1000 | 119.9 s | 771.4 s | **6.4x** |
+
+**Metal** (Apple M5, 10 cores, f32):
+
+| n_toys | GPU (Metal) | CPU (Rayon, 10 cores) | GPU Speedup |
+|--------|-----------|----------------------|-------------|
+| 100 | 10.7 s | 29.8 s | **2.8x** |
+| 500 | 29.1 s | 175.5 s | **6.0x** |
+| 1000 | 56.8 s | 359.1 s | **6.3x** |
+
+GPU/CPU speedup ratio converges to ~6.3x on both platforms at 1000 toys.
+
+#### complex (8 params) — CPU wins
+
+**CUDA** (RTX 4000 SFF Ada):
+
+| n_toys | GPU (CUDA) | CPU (Rayon, 8 cores) | CPU Speedup |
+|--------|-----------|---------------------|-------------|
+| 100 | 726 ms | 18 ms | CPU 40x |
+| 500 | 1,169 ms | 23 ms | CPU 51x |
+| 1000 | 1,838 ms | 40 ms | CPU 46x |
+| 5000 | 7,412 ms | 146 ms | CPU 51x |
+
+**Metal** (Apple M5):
+
+| n_toys | GPU (Metal) | CPU (Rayon, 10 cores) | CPU Speedup |
+|--------|-----------|----------------------|-------------|
+| 100 | 1,710 ms | 31 ms | CPU 55x |
+| 1000 | 2,378 ms | 132 ms | CPU 18x |
+| 5000 | 8,380 ms | 226 ms | CPU 37x |
+
+**Key insight**: GPU batch scaling is sub-linear (lockstep amortizes overhead),
+while CPU scaling is super-linear for large models (memory/cache pressure at 184 params × 1000 toys).
+Crossover: GPU wins for models with ~100+ parameters. Both CUDA (f64) and Metal (f32) show the same ~6.3x speedup at scale.
+
 ### Bottleneck Analysis
 
 | Bottleneck | Impact | Recommendation |
 |------------|--------|---------------|
-| **Kernel launch overhead** | ~130 ms per launch on RTX 4000 | Use CPU for single-model fits |
+| **Kernel launch overhead** | ~130 ms per launch on RTX 4000 | Use CPU for single-model fits and small models |
 | **H↔D transfer** | Negligible for params (~2 KB), significant for repeat calls | Session reuse, warm-start |
-| **Batch amortization** | GPU wins with 100+ concurrent evaluations | Use GPU for toys, NN training |
+| **Batch lockstep** | GPU 6.4x faster at 184p × 1000 toys | Use GPU for large-model toy-based CLs |
 | **Profiled q₀ fits** | 2 L-BFGS-B fits per forward pass (~3 ms total) | Acceptable for NN training |
 | **Single-model scan crossover** | ~150 params | Auto-dispatch: CPU below, GPU above |
 
 ### GPU Strengths
 
-1. **Batch toy fitting**: One-time model upload, shared across all toys. GPU should be 10-50x faster.
+1. **Batch toy fitting**: ~6.3x faster than CPU on large models (184 params, 1000 toys). Consistent across CUDA and Metal. Scales sub-linearly with toy count.
 2. **Differentiable training**: CUDA zero-copy avoids all H↔D transfers for signal data.
 3. **Large-model scans**: GPU amortizes overhead when per-point fit time is large.
 
 ### GPU Weaknesses
 
-1. **Small models**: Kernel launch overhead dominates. Use CPU.
-2. **Single-model evaluation**: Even for large models, CPU is 2.4x faster.
+1. **Small models**: Kernel launch overhead dominates. CPU 40-50x faster for 8-param models.
+2. **Single-model evaluation**: Even for large models, CPU is 2.4x faster for one-off fits.
 3. **Sequential scans**: Serial H↔D transfers per scan point.
 
 ### Reproducing
@@ -342,10 +389,14 @@ cargo build --release -p ns-cli --features cuda
 
 # Single-model fit
 time nextstat fit --input tests/fixtures/complex_workspace.json --gpu cuda
-time nextstat fit --input tests/fixtures/tHu_workspace.json --gpu cuda
+time nextstat fit --input tests/fixtures/workspace_tHu.json --gpu cuda
 
 # Profile scan
-time nextstat scan --input tests/fixtures/tHu_workspace.json --start 0 --stop 5 --n-points 21 --gpu cuda
+time nextstat scan --input tests/fixtures/workspace_tHu.json --start 0 --stop 5 --n-points 21 --gpu cuda
+
+# Batch toys (the headline GPU benchmark)
+time nextstat hypotest-toys --input tests/fixtures/workspace_tHu.json --mu 1.0 --n-toys 1000 --gpu cuda
+time nextstat hypotest-toys --input tests/fixtures/workspace_tHu.json --mu 1.0 --n-toys 1000
 ```
 
 ## CI

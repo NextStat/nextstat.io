@@ -61,13 +61,22 @@ CLI: `nextstat hypotest-toys --gpu cuda` or `nextstat hypotest-toys --gpu metal`
 | MLE fit (8 params) | 2.3 ms | 136.3 ms | CPU 59x |
 | MLE fit (184 params) | 520.8 ms | 1,272.0 ms | CPU 2.4x |
 | Profile scan (184p, 21pt) | 8.4 s | 7.9 s | **GPU 1.07x** |
+| Batch toys (184p, 1000 toys) | 771.4 s | 119.9 s | **GPU 6.4x** |
+| Batch toys (8p, 1000 toys) | 40 ms | 1,838 ms | CPU 46x |
+
+### Metal (Apple M5, f32)
+
+| Operation | CPU | Metal | Winner |
+|-----------|-----|-------|--------|
+| Batch toys (184p, 1000 toys) | 359.1 s | 56.8 s | **GPU 6.3x** |
+| Batch toys (8p, 1000 toys) | 132 ms | 2,378 ms | CPU 18x |
 | Diff NLL + grad (8 params) | — | 0.12 ms | GPU-only |
 | Diff NLL + grad (184 params) | — | 3.66 ms | GPU-only |
 | Profiled q₀ (8 params) | — | 3.0 ms | GPU-only |
 | NN training loop | — | 2.4 ms/step | GPU-only |
 
-**Recommendation**: Use GPU for batch workloads (toys, NN training, large-model scans).
-Use CPU for single-model fits.
+**Recommendation**: Use GPU for batch toy fitting on large models (6.4x at 184 params),
+differentiable training, and large-model scans. Use CPU for single-model fits and small models.
 
 ## Known Issues (Fixed)
 

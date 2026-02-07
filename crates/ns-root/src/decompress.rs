@@ -180,7 +180,7 @@ mod tests {
         let original = b"Hello ROOT ZSTD compression! Repeated data: BBBBBBBBBB";
         let compressed = ruzstd::encoding::compress_to_vec(
             &original[..],
-            ruzstd::encoding::CompressionLevel::Uncompressed,
+            ruzstd::encoding::CompressionLevel::Fastest,
         );
         let block = make_root_block(b"ZS", 0x04, &compressed, original.len());
 

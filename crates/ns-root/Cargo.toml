@@ -16,7 +16,7 @@ thiserror.workspace = true
 log.workspace = true
 flate2 = "1.1"
 lz4_flex = "0.11"
-ruzstd = "0.8"
+ruzstd = { path = "../ruzstd" }
 lzma-rs = "0.3"
 memmap2 = "0.9"
 rayon.workspace = true
