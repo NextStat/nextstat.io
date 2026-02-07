@@ -62,6 +62,8 @@ If no CUDA GPU is available at runtime, the command exits with an error. Without
 
 Use `--threads 1` for deterministic parity comparisons (pyhf or baselines).
 
+When `--threads 1` is active, the Apple Accelerate fast-path is automatically disabled to ensure bit-exact reproducibility with the SIMD/scalar path. The env var `NEXTSTAT_DISABLE_ACCELERATE=1` can also be set manually for the same effect in multi-threaded mode.
+
 ## Upper limit: bisection vs scan mode
 
 `upper-limit` supports two modes:

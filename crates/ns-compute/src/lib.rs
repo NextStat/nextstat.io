@@ -120,14 +120,34 @@ pub mod accelerate {
     }
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Programmatic Accelerate disable flag.
+///
+/// When set to `true`, `accelerate_enabled()` returns `false` regardless of
+/// compile-time feature or env var. Used by deterministic mode (`--threads 1`)
+/// to ensure bit-exact parity with the SIMD/scalar path.
+static ACCELERATE_DISABLED: AtomicBool = AtomicBool::new(false);
+
+/// Programmatically disable the Apple Accelerate fast-path.
+///
+/// This is called automatically when deterministic mode is active (`--threads 1`).
+/// The effect is process-wide and persists until `set_accelerate_enabled(true)` is called.
+pub fn set_accelerate_enabled(enabled: bool) {
+    ACCELERATE_DISABLED.store(!enabled, Ordering::Relaxed);
+}
+
 /// Returns true if the Apple Accelerate fast-path is compiled in *and* enabled at runtime.
 ///
-/// Notes:
-/// - Compile-time gate: requires `--features accelerate` on macOS.
-/// - Runtime gate: set `NEXTSTAT_DISABLE_ACCELERATE=1` to force the pure Rust SIMD/scalar path
-///   (useful for strict parity/determinism baselines).
+/// Three-layer gate (all must pass):
+/// 1. **Compile-time**: requires `--features accelerate` on macOS.
+/// 2. **Programmatic**: `set_accelerate_enabled(false)` disables (used by deterministic mode).
+/// 3. **Env var**: `NEXTSTAT_DISABLE_ACCELERATE=1` disables (user override).
 pub fn accelerate_enabled() -> bool {
     if !cfg!(all(feature = "accelerate", target_os = "macos")) {
+        return false;
+    }
+    if ACCELERATE_DISABLED.load(Ordering::Relaxed) {
         return false;
     }
     std::env::var_os("NEXTSTAT_DISABLE_ACCELERATE").is_none()
@@ -135,8 +155,9 @@ pub fn accelerate_enabled() -> bool {
 
 #[cfg(test)]
 mod runtime_tests {
-    use super::accelerate_enabled;
+    use super::{accelerate_enabled, set_accelerate_enabled, ACCELERATE_DISABLED};
     use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -149,9 +170,31 @@ mod runtime_tests {
     }
 
     #[test]
+    fn programmatic_disable_overrides_feature() {
+        let _guard = ENV_LOCK.lock().expect("ENV_LOCK poisoned");
+
+        // Reset to default state
+        ACCELERATE_DISABLED.store(false, Ordering::Relaxed);
+
+        // Programmatic disable should work regardless of feature flag
+        set_accelerate_enabled(false);
+        assert!(!accelerate_enabled());
+
+        // Re-enable
+        set_accelerate_enabled(true);
+
+        // On non-accelerate builds, still disabled (feature gate)
+        #[cfg(not(feature = "accelerate"))]
+        assert!(!accelerate_enabled());
+    }
+
+    #[test]
     #[cfg(all(feature = "accelerate", target_os = "macos"))]
     fn accelerate_respects_env_var() {
         let _guard = ENV_LOCK.lock().expect("ENV_LOCK poisoned");
+
+        // Reset programmatic flag
+        ACCELERATE_DISABLED.store(false, Ordering::Relaxed);
 
         // NOTE: `std::env::{set_var, remove_var}` are `unsafe` on modern Rust
         // because the process environment is a shared global.
@@ -167,5 +210,26 @@ mod runtime_tests {
         unsafe {
             std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
         }
+    }
+
+    #[test]
+    #[cfg(all(feature = "accelerate", target_os = "macos"))]
+    fn programmatic_disable_overrides_even_with_feature() {
+        let _guard = ENV_LOCK.lock().expect("ENV_LOCK poisoned");
+
+        // Ensure env var is not set
+        unsafe {
+            std::env::remove_var("NEXTSTAT_DISABLE_ACCELERATE");
+        }
+        ACCELERATE_DISABLED.store(false, Ordering::Relaxed);
+        assert!(accelerate_enabled());
+
+        // Programmatic disable
+        set_accelerate_enabled(false);
+        assert!(!accelerate_enabled());
+
+        // Restore
+        set_accelerate_enabled(true);
+        assert!(accelerate_enabled());
     }
 }

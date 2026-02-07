@@ -1308,6 +1308,7 @@ fn cmd_run_legacy(
     bundle: Option<&PathBuf>,
     cfg: &run::RunConfig,
 ) -> Result<()> {
+    setup_runtime(cfg.threads);
     let paths = run::derive_paths(&cfg.out_dir);
 
     ensure_out_dir(&paths.out_dir, cfg.overwrite)?;
@@ -1359,6 +1360,7 @@ fn cmd_run_spec_v0(
 ) -> Result<()> {
     let plan = spec.to_run_plan(config_path.as_path())?;
     let deterministic = plan.threads == 1;
+    setup_runtime(plan.threads);
 
     if let Some(import) = plan.import.as_ref() {
         if let Some(parent) = plan.workspace_json.parent() {
@@ -1817,11 +1819,23 @@ fn cmd_fit(
     Ok(())
 }
 
-fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::HistFactoryModel> {
+/// Configure Rayon thread pool and deterministic mode.
+///
+/// When `threads == 1`, Accelerate is automatically disabled to ensure
+/// bit-exact parity with the SIMD/scalar path.
+fn setup_runtime(threads: usize) {
     if threads > 0 {
         // Best-effort; if a global pool already exists, keep going.
         let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
     }
+    if threads == 1 {
+        ns_compute::set_accelerate_enabled(false);
+        tracing::debug!("deterministic mode: Accelerate disabled");
+    }
+}
+
+fn load_model(input: &PathBuf, threads: usize) -> Result<ns_translate::pyhf::HistFactoryModel> {
+    setup_runtime(threads);
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
@@ -1835,10 +1849,7 @@ fn load_workspace_and_model(
     input: &PathBuf,
     threads: usize,
 ) -> Result<(ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel)> {
-    if threads > 0 {
-        // Best-effort; if a global pool already exists, keep going.
-        let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).build_global();
-    }
+    setup_runtime(threads);
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;

@@ -266,7 +266,7 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
                           │ implemented by
 ┌─────────────────────────┴───────────────────────────────────────┐
 │                    LOW-LEVEL IMPLEMENTATIONS                     │
-│  ns-translate (pyhf + ntuple → Workspace)  ns-compute (SIMD)     │
+│  ns-translate (pyhf + ntuple → Workspace)  ns-compute (SIMD/GPU) │
 │  ns-ad (dual/tape AD)  ns-root (ROOT I/O, TTree, expressions)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -277,7 +277,7 @@ NextStat follows a "clean architecture" style: inference depends on stable abstr
 nextstat/
 ├── crates/
 │   ├── ns-core/         # Core types, traits, error handling
-│   ├── ns-compute/      # SIMD kernels (f64x4 Poisson NLL)
+│   ├── ns-compute/      # SIMD kernels, Apple Accelerate, CUDA batch NLL+grad
 │   ├── ns-ad/           # Automatic differentiation (dual/tape)
 │   ├── ns-root/         # Native ROOT file reader (TH1, TTree, expressions, filler)
 │   ├── ns-translate/    # Format translators (pyhf, HistFactory XML, ntuple builder)
@@ -306,6 +306,9 @@ nextstat/
 ```bash
 # Build
 cargo build --workspace
+
+# Build with CUDA support (requires nvcc)
+cargo build --workspace --features cuda
 
 # Tests (including feature-gated backends)
 cargo test --workspace --all-features
