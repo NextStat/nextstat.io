@@ -5,6 +5,8 @@ The compiled extension is exposed as `nextstat._core` (built via PyO3/maturin).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 try:
     import nextstat._core as _core  # type: ignore  # noqa: E402
 except ImportError:  # pragma: no cover
@@ -85,6 +87,14 @@ sample_nuts = sample
 PyModel = HistFactoryModel
 PyFitResult = FitResult
 
+def from_histfactory_xml(xml_path: str | Path) -> HistFactoryModel:
+    """Create a `HistFactoryModel` from a HistFactory export (`combination.xml` + referenced ROOT hists)."""
+    if _core is None:  # pragma: no cover
+        raise ImportError("nextstat._core is not available (native extension not built/installed).")
+
+    xml_path = Path(xml_path).resolve()
+    return _core.from_histfactory(str(xml_path))
+
 __all__ = [
     "__version__",
     "fit",
@@ -138,6 +148,7 @@ __all__ = [
     "ranking",
     "rk4_linear",
     "from_pyhf",
+    "from_histfactory_xml",
     "profile_scan",
     "upper_limit",
     "upper_limits",

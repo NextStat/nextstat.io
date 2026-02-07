@@ -23,10 +23,8 @@ pub fn read_any_run_config(path: &Path) -> Result<AnyRunConfig> {
 
     // YAML parser can also read JSON (YAML is a superset), so we can use it for detection.
     let probe: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&bytes)?;
-    let schema_version = probe
-        .get("schema_version")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let schema_version =
+        probe.get("schema_version").and_then(|v| v.as_str()).map(|s| s.to_string());
 
     if schema_version.as_deref() == Some(SPEC_V0) {
         let spec: AnalysisSpecV0 = serde_yaml_ng::from_slice(&bytes)?;
@@ -207,11 +205,7 @@ pub struct BaselineCompareGate {
 }
 
 fn resolve_path(base_dir: &Path, p: &Path) -> PathBuf {
-    if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        base_dir.join(p)
-    }
+    if p.is_absolute() { p.to_path_buf() } else { base_dir.join(p) }
 }
 
 fn find_combination_xml(export_dir: &Path) -> Result<PathBuf> {
@@ -259,11 +253,7 @@ fn find_combination_xml(export_dir: &Path) -> Result<PathBuf> {
         _ => anyhow::bail!(
             "multiple combination.xml files found under export_dir={}; set inputs.histfactory.combination_xml explicitly (first few: {})",
             export_dir.display(),
-            hits.iter()
-                .take(5)
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            hits.iter().take(5).map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
         ),
     }
 }
@@ -284,79 +274,73 @@ impl AnalysisSpecV0 {
         let mode = self.inputs.mode.as_str();
 
         // Workspace selection/build
-        let (workspace_json, import_plan, histfactory_xml_hint): (PathBuf, Option<ImportPlan>, Option<PathBuf>) =
-            match mode {
-                "histfactory_xml" => {
-                    let hf = self
-                        .inputs
-                        .histfactory
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("inputs.histfactory is required for mode=histfactory_xml"))?;
+        let (workspace_json, import_plan, histfactory_xml_hint): (
+            PathBuf,
+            Option<ImportPlan>,
+            Option<PathBuf>,
+        ) = match mode {
+            "histfactory_xml" => {
+                let hf = self.inputs.histfactory.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("inputs.histfactory is required for mode=histfactory_xml")
+                })?;
 
-                    if !self.execution.import.enabled {
-                        anyhow::bail!(
-                            "execution.import.enabled must be true for mode=histfactory_xml (needs a workspace.json path)"
-                        );
-                    }
-
-                    let export_dir = resolve_path(cfg_dir, &hf.export_dir);
-                    let xml = if let Some(ref p) = hf.combination_xml {
-                        resolve_path(cfg_dir, p)
-                    } else {
-                        find_combination_xml(&export_dir)?
-                    };
-                    if !xml.is_file() {
-                        anyhow::bail!("histfactory combination.xml not found: {}", xml.display());
-                    }
-
-                    let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
-                    (
-                        ws_out,
-                        Some(ImportPlan::HistfactoryXml { histfactory_xml: xml.clone() }),
-                        Some(xml),
-                    )
+                if !self.execution.import.enabled {
+                    anyhow::bail!(
+                        "execution.import.enabled must be true for mode=histfactory_xml (needs a workspace.json path)"
+                    );
                 }
-                "trex_config_txt" => {
-                    let tc = self.inputs.trex_config_txt.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("inputs.trex_config_txt is required for mode=trex_config_txt")
-                    })?;
-                    if !self.execution.import.enabled {
-                        anyhow::bail!(
-                            "execution.import.enabled must be true for mode=trex_config_txt (needs a workspace.json path)"
-                        );
-                    }
 
-                    let config_path = resolve_path(cfg_dir, &tc.config_path);
-                    let base_dir = tc
-                        .base_dir
-                        .as_ref()
-                        .map(|p| resolve_path(cfg_dir, p))
-                        .unwrap_or_else(|| {
-                            config_path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf()
-                        });
+                let export_dir = resolve_path(cfg_dir, &hf.export_dir);
+                let xml = if let Some(ref p) = hf.combination_xml {
+                    resolve_path(cfg_dir, p)
+                } else {
+                    find_combination_xml(&export_dir)?
+                };
+                if !xml.is_file() {
+                    anyhow::bail!("histfactory combination.xml not found: {}", xml.display());
+                }
 
-                    let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
-                    (
-                        ws_out,
-                        Some(ImportPlan::TrexConfigTxt { config_path, base_dir }),
-                        None,
-                    )
+                let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
+                (
+                    ws_out,
+                    Some(ImportPlan::HistfactoryXml { histfactory_xml: xml.clone() }),
+                    Some(xml),
+                )
+            }
+            "trex_config_txt" => {
+                let tc = self.inputs.trex_config_txt.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("inputs.trex_config_txt is required for mode=trex_config_txt")
+                })?;
+                if !self.execution.import.enabled {
+                    anyhow::bail!(
+                        "execution.import.enabled must be true for mode=trex_config_txt (needs a workspace.json path)"
+                    );
                 }
-                "workspace_json" => {
-                    let ws = self.inputs.workspace_json.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("inputs.workspace_json is required for mode=workspace_json")
-                    })?;
-                    let p = resolve_path(cfg_dir, &ws.path);
-                    if !p.is_file() {
-                        anyhow::bail!("workspace JSON not found: {}", p.display());
-                    }
-                    (p, None, None)
+
+                let config_path = resolve_path(cfg_dir, &tc.config_path);
+                let base_dir =
+                    tc.base_dir.as_ref().map(|p| resolve_path(cfg_dir, p)).unwrap_or_else(|| {
+                        config_path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf()
+                    });
+
+                let ws_out = resolve_path(cfg_dir, &self.execution.import.output_json);
+                (ws_out, Some(ImportPlan::TrexConfigTxt { config_path, base_dir }), None)
+            }
+            "workspace_json" => {
+                let ws = self.inputs.workspace_json.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("inputs.workspace_json is required for mode=workspace_json")
+                })?;
+                let p = resolve_path(cfg_dir, &ws.path);
+                if !p.is_file() {
+                    anyhow::bail!("workspace JSON not found: {}", p.display());
                 }
-                "trex_config_yaml" => {
-                    anyhow::bail!("mode=trex_config_yaml is not supported by `nextstat run` yet")
-                }
-                other => anyhow::bail!("unknown inputs.mode: {other}"),
-            };
+                (p, None, None)
+            }
+            "trex_config_yaml" => {
+                anyhow::bail!("mode=trex_config_yaml is not supported by `nextstat run` yet")
+            }
+            other => anyhow::bail!("unknown inputs.mode: {other}"),
+        };
 
         // Fit (optional)
         let fit = if self.execution.fit.enabled {
@@ -395,10 +379,7 @@ impl AnalysisSpecV0 {
                 );
             };
             if !report_xml.is_file() {
-                anyhow::bail!(
-                    "report histfactory_xml not found: {}",
-                    report_xml.display()
-                );
+                anyhow::bail!("report histfactory_xml not found: {}", report_xml.display());
             }
 
             Some(ReportPlan {
@@ -429,14 +410,6 @@ impl AnalysisSpecV0 {
             None
         };
 
-        Ok(RunPlan {
-            threads,
-            workspace_json,
-            import: import_plan,
-            fit,
-            profile_scan,
-            report,
-        })
+        Ok(RunPlan { threads, workspace_json, import: import_plan, fit, profile_scan, report })
     }
 }
-

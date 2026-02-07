@@ -8,9 +8,9 @@ use statrs::distribution::ContinuousCDF;
 use std::path::PathBuf;
 use std::process::Command;
 
+mod analysis_spec;
 mod report;
 mod run;
-mod analysis_spec;
 
 #[derive(Parser)]
 #[command(name = "nextstat")]
@@ -857,7 +857,11 @@ fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
     }
 }
 
-fn cmd_run_legacy(config_path: &PathBuf, bundle: Option<&PathBuf>, cfg: &run::RunConfig) -> Result<()> {
+fn cmd_run_legacy(
+    config_path: &PathBuf,
+    bundle: Option<&PathBuf>,
+    cfg: &run::RunConfig,
+) -> Result<()> {
     let paths = run::derive_paths(&cfg.out_dir);
 
     ensure_out_dir(&paths.out_dir, cfg.overwrite)?;

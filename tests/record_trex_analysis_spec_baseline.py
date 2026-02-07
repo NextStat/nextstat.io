@@ -120,6 +120,23 @@ def _sha256_bytes(b: bytes) -> str:
     h.update(b)
     return h.hexdigest()
 
+def _sha256_file(path: Path) -> str:
+    return _sha256_bytes(path.read_bytes())
+
+def _normalize_artifact_json(obj: Any) -> Any:
+    # Strip volatile `meta` (timestamps/tool versions) to focus on numeric content.
+    if isinstance(obj, dict):
+        out = dict(obj)
+        out.pop("meta", None)
+        return out
+    return obj
+
+def _sha256_normalized_json_file(path: Path) -> str:
+    obj = json.loads(path.read_text())
+    norm = _normalize_artifact_json(obj)
+    b = json.dumps(norm, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return _sha256_bytes(b)
+
 
 def _stamp(hostname: str) -> str:
     return f"{hostname}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -315,6 +332,25 @@ def main() -> int:
             "report_dir": str(Path(effective["execution"]["report"]["out_dir"])),
         },
     }
+
+    # Optional: persist stable hashes for scan/report outputs so the compare step can be strict.
+    artifacts = meta["artifacts"]
+    scan_cfg = effective.get("execution", {}).get("profile_scan", {})
+    if isinstance(scan_cfg, dict) and bool(scan_cfg.get("enabled")):
+        scan_path = Path(str(artifacts["scan_json"]))
+        if scan_path.exists():
+            artifacts["scan_sha256"] = _sha256_file(scan_path)
+
+    report_cfg = effective.get("execution", {}).get("report", {})
+    if isinstance(report_cfg, dict) and bool(report_cfg.get("enabled")):
+        report_dir = Path(str(artifacts["report_dir"]))
+        report_hashes: Dict[str, str] = {}
+        for name in ["distributions.json", "pulls.json", "corr.json", "yields.json", "uncertainty.json"]:
+            p = report_dir / name
+            if p.exists():
+                report_hashes[name] = _sha256_normalized_json_file(p)
+        if report_hashes:
+            artifacts["report_files_sha256_normalized"] = report_hashes
 
     baseline = _build_baseline(workspace_json=ws_path, fit_json=fit_path, meta=meta)
 

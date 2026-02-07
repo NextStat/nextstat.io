@@ -96,4 +96,3 @@ Optional: pick an explicit `nextstat` binary:
 - Existing workspace + report: `docs/specs/trex/examples/workspace_json_report.yaml`
 - TREx text config + fit: `docs/specs/trex/examples/trex_config_txt_fit.yaml`
 - TREx YAML config + fit: `docs/specs/trex/examples/trex_config_yaml_fit.yaml`
-

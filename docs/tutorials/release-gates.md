@@ -39,6 +39,12 @@ This runs:
 - `pytest -m "not slow" tests/python`
 - `tests/compare_with_latest_baseline.py --require-same-host --p6-attempts 2` (P6 retried up to N times; whole compare retried once if it fails with `rc=2`)
 
+Optional (TREx analysis spec):
+- Record once: `make trex-spec-baseline-record TREX_SPEC=...`
+- Compare before release: `make trex-spec-baseline-compare TREX_COMPARE_ARGS="--require-same-host"`
+- If `tmp/baselines/latest_trex_analysis_spec_manifest.json` exists, `make apex2-pre-release-gate` also runs this compare.
+- Set `APEX2_SKIP_TREX_SPEC=1` to skip, or override args with `APEX2_TREX_COMPARE_ARGS="..."`.
+
 Notes:
 
 - `maturin develop` installs the compiled extension into the active venv. The built binary is **not** committed to git.

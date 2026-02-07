@@ -22,6 +22,8 @@ set -euo pipefail
 #   - APEX2_PYTEST_EXTRA_ARGS: extra pytest args (default: empty)
 #   - APEX2_CARGO_BUILD_ARGS: override cargo build args (default: "--workspace --release")
 #   - APEX2_CARGO_TEST_ARGS: override cargo test args (default: "--workspace --all-features")
+#   - APEX2_SKIP_TREX_SPEC: set to 1 to skip TREx analysis-spec baseline compare
+#   - APEX2_TREX_COMPARE_ARGS: extra args for trex compare (default: "--require-same-host")
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
@@ -38,9 +40,13 @@ pytest_paths="${APEX2_PYTEST_PATHS:-tests/python}"
 pytest_extra_args="${APEX2_PYTEST_EXTRA_ARGS:-}"
 cargo_build_args="${APEX2_CARGO_BUILD_ARGS:---workspace --release}"
 cargo_test_args="${APEX2_CARGO_TEST_ARGS:---workspace --all-features}"
+skip_trex="${APEX2_SKIP_TREX_SPEC:-0}"
+trex_compare_args="${APEX2_TREX_COMPARE_ARGS:---require-same-host}"
 
 manifest="tmp/baselines/latest_manifest.json"
 report="tmp/baseline_compare_report.json"
+trex_manifest="tmp/baselines/latest_trex_analysis_spec_manifest.json"
+trex_report="tmp/trex_analysis_spec_compare_report.json"
 
 if [[ "${allow_dirty}" != "1" ]]; then
   if command -v git >/dev/null 2>&1; then
@@ -125,3 +131,17 @@ fi
 
 echo
 echo "OK. Report: ${report}"
+
+if [[ "${skip_trex}" != "1" && -f "${trex_manifest}" ]]; then
+  echo
+  echo "Running TREx analysis-spec baseline compare..."
+  echo "  manifest: ${trex_manifest}"
+  echo "  report:   ${trex_report}"
+  echo
+  PYTHONPATH="${py_path}" "${py}" tests/compare_trex_analysis_spec_with_latest_baseline.py \
+    --manifest "${trex_manifest}" \
+    --out "${trex_report}" \
+    ${trex_compare_args}
+  echo
+  echo "OK. TREx report: ${trex_report}"
+fi
