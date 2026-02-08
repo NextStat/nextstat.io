@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/benchmark_result_v1.schema.json",
+  "title": "NextStat Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite", "case", "deterministic", "meta", "dataset", "parity", "timing"],
+  "properties": {
+    "schema_version": { "const": "nextstat.benchmark_result.v1" },
+    "suite": { "type": "string", "minLength": 1 },
+    "case": { "type": "string", "minLength": 1 },
+    "deterministic": { "type": "boolean" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "platform", "pyhf_version", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "pyhf_version": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "n_main_bins": { "type": "integer", "minimum": 0 },
+        "n_params": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "nll_pyhf", "nll_nextstat", "abs_diff", "rel_diff", "atol", "rtol"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "nll_pyhf": { "type": "number" },
+        "nll_nextstat": { "type": "number" },
+        "abs_diff": { "type": "number", "minimum": 0 },
+        "rel_diff": { "type": "number", "minimum": 0 },
+        "atol": { "type": "number", "minimum": 0 },
+        "rtol": { "type": "number", "minimum": 0 }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nll_time_s_per_call", "speedup_pyhf_over_nextstat"],
+      "properties": {
+        "nll_time_s_per_call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pyhf", "nextstat"],
+          "properties": {
+            "pyhf": { "type": "number", "minimum": 0 },
+            "nextstat": { "type": "number", "minimum": 0 }
+          }
+        },
+        "speedup_pyhf_over_nextstat": { "type": "number" }
+      }
+    }
+  }
+}
+

@@ -197,6 +197,8 @@ The strongest trust signal is an independent rerun. The replication process shou
 - The baseline manifest of the rerun environment
 - A signed report comparing the rerun vs the published snapshot
 
+Runbook: [Third-Party Replication Runbook](/docs/benchmarks/replication).
+
 ## Blog posts (narrative)
 
 - [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why this exists and how to interpret it.
