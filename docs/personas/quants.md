@@ -2,6 +2,7 @@
 
 If you're coming from econometrics / risk analysis:
 
+- Quickstart: `docs/quickstarts/quant.md`
 - Hub: `docs/tutorials/phase-12-econometrics.md`
 - Robust standard errors: `docs/tutorials/phase-12-robust-se.md`
 - Panel fixed effects baseline: `docs/tutorials/phase-12-panel-fe.md`
@@ -14,4 +15,3 @@ Reference surfaces:
 
 - Python API: `docs/references/python-api.md`
 - Rust API: `docs/references/rust-api.md`
-

@@ -72,14 +72,16 @@ def main() -> int:
     template_path = (template_in if template_in.is_absolute() else (repo_root / template_in)).resolve()
     meta = load_json(template_path) if template_path.exists() else {}
     desc = meta.get("description", "")
-    desc2 = (
-        f"{desc}\n\n"
-        f"Snapshot id: {snapshot_id}\n"
-        f"Harness commit: {harness_sha}\n"
-        f"NextStat version: {nextstat_version}\n"
-        + (f"NextStat wheel sha256: {nextstat_wheel_sha256}\n" if nextstat_wheel_sha256 else "")
-        f"Archive sha256: {digest}\n"
-    )
+    parts = [
+        f"{desc}\n\n",
+        f"Snapshot id: {snapshot_id}\n",
+        f"Harness commit: {harness_sha}\n",
+        f"NextStat version: {nextstat_version}\n",
+    ]
+    if nextstat_wheel_sha256:
+        parts.append(f"NextStat wheel sha256: {nextstat_wheel_sha256}\n")
+    parts.append(f"Archive sha256: {digest}\n")
+    desc2 = "".join(parts)
     meta["title"] = f"NextStat Public Benchmarks: {snapshot_id}"
     meta["description"] = desc2
     (out_dir / "zenodo_deposition.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")

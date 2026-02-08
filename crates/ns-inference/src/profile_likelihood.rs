@@ -257,7 +257,7 @@ mod tests {
         let mu_values: Vec<f64> = (0..11).map(|i| i as f64 * 0.2).collect();
 
         let generic = scan(&mle, &model, &mu_values).unwrap();
-        let optimized = scan_histfactory_impl(&mle, &model, &mu_values, false).unwrap();
+        let optimized = scan_histfactory_impl(&mle, &model, &mu_values, false, false).unwrap();
 
         assert_eq!(generic.poi_index, optimized.poi_index);
         assert!(
@@ -294,8 +294,8 @@ mod tests {
         let mle = MaximumLikelihoodEstimator::new();
         let mu_values: Vec<f64> = (0..11).map(|i| i as f64 * 0.2).collect();
 
-        let a = scan_histfactory_impl(&mle, &model, &mu_values, false).unwrap();
-        let b = scan_histfactory_impl(&mle, &model, &mu_values, true).unwrap();
+        let a = scan_histfactory_impl(&mle, &model, &mu_values, false, false).unwrap();
+        let b = scan_histfactory_impl(&mle, &model, &mu_values, true, false).unwrap();
 
         assert!((a.mu_hat - b.mu_hat).abs() < 1e-10, "mu_hat: a={}, b={}", a.mu_hat, b.mu_hat);
         assert!(

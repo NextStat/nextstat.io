@@ -27,6 +27,10 @@ If you want the narrative version (why we're doing this and what it changes), se
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
 - [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness)
 - [Numerical Accuracy](/blog/numerical-accuracy)
+- [Differentiable HistFactory in PyTorch](/blog/differentiable-layer-nextstat-pytorch)
+- [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec)
+- [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme)
+- [JAX Compile vs Execution](/blog/jax-compile-vs-execution)
 
 ## Scope
 

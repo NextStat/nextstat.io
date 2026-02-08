@@ -110,6 +110,9 @@ _build/
 # Internal planning docs (not published in the public repository)
 docs/plans/
 
+# Quickstart generated outputs
+docs/quickstarts/out/
+
 # Logs
 *.log
 

@@ -2,6 +2,7 @@
 
 If you're doing PK/PD or population modeling:
 
+- Quickstart: `docs/quickstarts/biologist.md`
 - PK baseline: `docs/tutorials/phase-13-pk.md`
 - NLME baseline: `docs/tutorials/phase-13-nlme.md`
 
@@ -13,4 +14,3 @@ Benchmarks (reproducible harness):
 Reference surfaces:
 
 - Python API: `docs/references/python-api.md`
-

@@ -18,19 +18,31 @@ Implementation:
 Local mode (all tools in-process via Python bindings):
 
 ```bash
-cd /Users/andresvlc/WebDev/nextstat.io
-PYTHONPATH=bindings/ns-py/python .venv/bin/python demos/physics_assistant/run_demo.py \
+cd /path/to/nextstat.io
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python demos/physics_assistant/run_demo.py \
   --transport local \
   --out-dir demos/physics_assistant/out/local \
   --render
 ```
 
+Docker mode (no local NextStat wheel required for the agent):
+
+The agent container uses `uproot` for `.root` ingest and calls `nextstat-server` over HTTP
+for all statistical tools. This avoids compiling the NextStat Python extension inside Docker.
+
+```bash
+cd /path/to/nextstat.io
+docker compose -f demos/physics_assistant/env/docker/docker-compose.yml up --build
+```
+
+Outputs will be written under `demos/physics_assistant/env/docker/out/` on the host.
+
 Server mode (statistical tools over HTTP; ROOT ingest stays local):
 
 ```bash
-cd /Users/andresvlc/WebDev/nextstat.io
+cd /path/to/nextstat.io
 export NEXTSTAT_SERVER_URL=http://127.0.0.1:3742
-PYTHONPATH=bindings/ns-py/python .venv/bin/python demos/physics_assistant/run_demo.py \
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python demos/physics_assistant/run_demo.py \
   --transport server \
   --out-dir demos/physics_assistant/out/server
 ```
@@ -50,4 +62,3 @@ The runner writes:
 - `best_anomaly_workspace.json`: best window from the anomaly scan
 - `anomaly_scan_plot_data.json`: plot-ready arrays (JSON)
 - `plots/*.png`: optional PNGs when `--render` is enabled
-

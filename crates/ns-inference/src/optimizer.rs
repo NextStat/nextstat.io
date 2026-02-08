@@ -547,7 +547,9 @@ impl LbfgsbOptimizer {
             let mut tol_cost =
                 if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
             if ns_compute::eval_mode() == ns_compute::EvalMode::Parity {
-                tol_cost = 0.0;
+                // Tighten cost tolerance in parity mode (avoid early stopping),
+                // but keep it non-zero to ensure termination on flat surfaces.
+                tol_cost = tol_cost.min(1e-12);
             }
             let solver = LBFGS::new(linesearch, self.config.m)
                 .with_tolerance_grad(self.config.tol)
@@ -614,7 +616,7 @@ impl LbfgsbOptimizer {
         let mut tol_cost =
             if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
         if ns_compute::eval_mode() == ns_compute::EvalMode::Parity {
-            tol_cost = 0.0;
+            tol_cost = tol_cost.min(1e-12);
         }
         let solver = LBFGS::new(linesearch, self.config.m)
             .with_tolerance_grad(self.config.tol)

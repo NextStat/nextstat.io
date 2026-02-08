@@ -750,6 +750,12 @@ def main() -> int:
                     - diagnostic["delta_nll_mu_ns_minus_root_min"]
                 )
 
+            def _grad_stats(params: List[float]) -> Dict[str, float]:
+                g = list(map(float, ns_model.grad_nll(params)))
+                maxabs = max(abs(x) for x in g) if g else 0.0
+                l2 = float(sum(x * x for x in g) ** 0.5)
+                return {"grad_l2": l2, "grad_max_abs": float(maxabs)}
+
             # Optional: compare fitted parameters (NextStat vs ROOT) at fixed-mu points, expressed
             # in NextStat parameter order. This helps diagnose q(mu) differences caused by
             # optimizer basin selection.
@@ -804,6 +810,19 @@ def main() -> int:
                         }
                         for j, d in top
                     ]
+
+                    # Gradient sanity at the q(mu)-worst point: compare gradient norms at
+                    # NextStat's fitted params vs ROOT-mapped params.
+                    #
+                    # If ROOT-mapped params have much smaller gradient, it's a strong signal that
+                    # our optimizer is terminating early (or is stuck) rather than a likelihood bug.
+                    worst_mu = float(per_point[worst_i][0])
+                    diagnostic["worst_mu_for_param_diff"] = worst_mu
+                    try:
+                        diagnostic["grad_nextstat_at_worst_mu"] = _grad_stats(ns_params)
+                        diagnostic["grad_root_mapped_at_worst_mu"] = _grad_stats(root_ns)
+                    except Exception as e:
+                        diagnostic["grad_error"] = f"{e}"
         except Exception as e:
             diagnostic["error"] = f"{e}"
 

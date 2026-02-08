@@ -5,6 +5,7 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 ## Start Here
 
 - Tutorials index (end-to-end workflows): `docs/tutorials/README.md`
+- Quickstarts (10 minutes to result): `docs/quickstarts/README.md`
 - Python reference: `docs/references/python-api.md`
 - CLI reference: `docs/references/cli.md`
 - Rust reference: `docs/references/rust-api.md`
@@ -35,4 +36,3 @@ These are navigation pages that map NextStat concepts and docs to non-HEP workfl
 - Data Scientists: `docs/personas/data-scientists.md`
 - Quants: `docs/personas/quants.md`
 - Biologists / Pharmacometricians: `docs/personas/biologists.md`
-

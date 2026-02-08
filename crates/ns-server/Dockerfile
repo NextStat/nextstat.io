@@ -20,21 +20,21 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/ns-core/Cargo.toml        crates/ns-core/Cargo.toml
 COPY crates/ns-ad/Cargo.toml          crates/ns-ad/Cargo.toml
 COPY crates/ns-compute/Cargo.toml     crates/ns-compute/Cargo.toml
+COPY crates/ns-prob/Cargo.toml        crates/ns-prob/Cargo.toml
+COPY crates/ns-root/Cargo.toml        crates/ns-root/Cargo.toml
 COPY crates/ns-translate/Cargo.toml   crates/ns-translate/Cargo.toml
 COPY crates/ns-inference/Cargo.toml   crates/ns-inference/Cargo.toml
+COPY crates/ns-viz/Cargo.toml         crates/ns-viz/Cargo.toml
 COPY crates/ns-server/Cargo.toml      crates/ns-server/Cargo.toml
 COPY crates/ns-cli/Cargo.toml         crates/ns-cli/Cargo.toml
-COPY crates/ns-report/Cargo.toml      crates/ns-report/Cargo.toml
-COPY crates/ns-ntuple/Cargo.toml      crates/ns-ntuple/Cargo.toml
-COPY crates/ns-rootio/Cargo.toml      crates/ns-rootio/Cargo.toml
-COPY crates/ns-plot/Cargo.toml        crates/ns-plot/Cargo.toml
+COPY crates/ruzstd/Cargo.toml         crates/ruzstd/Cargo.toml
 COPY bindings/ns-py/Cargo.toml        bindings/ns-py/Cargo.toml
 COPY bindings/ns-wasm/Cargo.toml      bindings/ns-wasm/Cargo.toml
 
 # Create stub lib.rs / main.rs for dependency caching
-RUN for d in crates/ns-core crates/ns-ad crates/ns-compute crates/ns-translate \
-            crates/ns-inference crates/ns-report crates/ns-ntuple crates/ns-rootio \
-            crates/ns-plot bindings/ns-py bindings/ns-wasm; do \
+RUN for d in crates/ns-core crates/ns-ad crates/ns-compute crates/ns-prob crates/ns-root \
+            crates/ns-translate crates/ns-inference crates/ns-viz crates/ruzstd \
+            bindings/ns-py bindings/ns-wasm; do \
         mkdir -p "$d/src" && echo "" > "$d/src/lib.rs"; \
     done && \
     mkdir -p crates/ns-cli/src && echo "fn main() {}" > crates/ns-cli/src/main.rs && \
