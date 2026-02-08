@@ -3170,7 +3170,7 @@ impl PyMaximumLikelihoodEstimator {
         if m == 0 {
             return Err(PyValueError::new_err("m must be >= 1"));
         }
-        let cfg = OptimizerConfig { max_iter, tol, m };
+        let cfg = OptimizerConfig { max_iter, tol, m, smooth_bounds: false };
         Ok(PyMaximumLikelihoodEstimator { inner: RustMLE::with_config(cfg) })
     }
 
@@ -4463,7 +4463,12 @@ fn profile_scan(
     // Profile scans are used as a parity surface against ROOT/HistFactory.
     // Use stricter optimizer tolerances than the general-purpose defaults to reduce
     // POI mu_hat drift on large real-world exports.
-    let mle = RustMLE::with_config(OptimizerConfig { max_iter: 20000, tol: 1e-12, m: 20 });
+    let mle = RustMLE::with_config(OptimizerConfig {
+        max_iter: 20000,
+        tol: 1e-12,
+        m: 20,
+        smooth_bounds: true,
+    });
     let fit_model = if let Some(obs_main) = data {
         model
             .inner

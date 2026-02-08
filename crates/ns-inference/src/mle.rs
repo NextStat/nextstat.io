@@ -2279,6 +2279,7 @@ mod tests {
             max_iter: 400,
             tol: 1e-6,
             m: 10,
+            smooth_bounds: false,
         });
 
         let (q0, grad) = mle.q0_like_loss_and_grad_sample_nominal(&model, ch, s).unwrap();
@@ -2338,6 +2339,7 @@ mod tests {
             max_iter: 400,
             tol: 1e-6,
             m: 10,
+            smooth_bounds: false,
         });
 
         // Pick mu_test above typical mu_hat so we don't hit the one-sided clip.

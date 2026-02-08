@@ -53,12 +53,14 @@ def collect_datasets_from_result(result_path: Path) -> list[dict[str, str]]:
     Supports:
     - benchmark_result_v1 (single-case): uses `dataset`
     - benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
+    - pharma_benchmark_result_v1 (single-case): uses `dataset`
+    - pharma_benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
     """
     obj = load_json(result_path)
     sv = str(obj.get("schema_version", ""))
 
     out: list[dict[str, str]] = []
-    if sv == "nextstat.benchmark_result.v1":
+    if sv in ("nextstat.benchmark_result.v1", "nextstat.pharma_benchmark_result.v1"):
         ds = obj.get("dataset") or {}
         ds_id = ds.get("id")
         ds_sha = ds.get("sha256")
@@ -66,7 +68,7 @@ def collect_datasets_from_result(result_path: Path) -> list[dict[str, str]]:
             out.append({"id": ds_id, "sha256": ds_sha})
         return out
 
-    if sv == "nextstat.benchmark_suite_result.v1":
+    if sv in ("nextstat.benchmark_suite_result.v1", "nextstat.pharma_benchmark_suite_result.v1"):
         base = result_path.parent
         for e in obj.get("cases", []):
             try:

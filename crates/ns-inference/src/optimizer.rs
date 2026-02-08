@@ -848,7 +848,6 @@ mod tests {
             }
         }
 
-        let config = OptimizerConfig { max_iter: 200, tol: 1e-6, m: 10 };
         let config = OptimizerConfig { max_iter: 200, tol: 1e-6, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = ShiftedQuadratic;
@@ -892,7 +891,6 @@ mod tests {
             }
         }
 
-        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
 
@@ -931,7 +929,6 @@ mod tests {
                 Ok(vec![2.0 * (p[0] - 3.0)])
             }
         }
-        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let result =
@@ -953,7 +950,6 @@ mod tests {
                 Ok(vec![2.0 * (p[0] - 3.0)])
             }
         }
-        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let result = optimizer.minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)]).unwrap();
