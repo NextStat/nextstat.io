@@ -16,8 +16,20 @@ std::thread_local! {
         std::cell::RefCell::new(ruzstd::decoding::FrameDecoder::new());
 }
 
+// Hard safety limit for untrusted ROOT inputs.
+//
+// ROOT baskets/blocks are typically O(MiB). If a file claims a gigantic
+// uncompressed size, pre-allocations here can become a DoS/OOM vector.
+const MAX_DECOMPRESSED_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
+
 /// Decompress ROOT-compressed data into `expected_len` bytes.
 pub fn decompress(src: &[u8], expected_len: usize) -> Result<Vec<u8>> {
+    if expected_len > MAX_DECOMPRESSED_BYTES {
+        return Err(RootError::Decompression(format!(
+            "refusing to decompress {expected_len} bytes (max {MAX_DECOMPRESSED_BYTES})"
+        )));
+    }
+
     let mut out = Vec::with_capacity(expected_len);
     let mut offset = 0;
 
@@ -241,6 +253,17 @@ mod tests {
         let compressed = [0xFFu8; 16];
         let block = make_root_block(b"ZS", 0x04, &compressed, 64);
         assert!(decompress(&block, 64).is_err());
+    }
+
+    #[test]
+    fn refuses_huge_expected_len() {
+        let err = decompress(&[], MAX_DECOMPRESSED_BYTES + 1).unwrap_err();
+        match err {
+            RootError::Decompression(msg) => {
+                assert!(msg.contains("refusing to decompress"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]
