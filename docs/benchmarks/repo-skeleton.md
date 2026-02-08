@@ -84,6 +84,9 @@ Each CI run that publishes numbers creates:
 - a baseline manifest JSON (schema-validated)
 - raw results per suite
 
+In `nextstat.io` CI, we also publish a small `snapshot_index.json` containing file hashes for the
+artifact set (schema: `docs/schemas/benchmarks/snapshot_index_v1.schema.json`).
+
 The snapshot manifest should include:
 
 - NextStat commit SHA and repo URL
@@ -123,4 +126,3 @@ Keeping the harness in a separate repo is a practical trust decision:
 
 - the harness should be auditable and runnable without building the entire product repo
 - published artifacts should remain stable even as product development continues
-
