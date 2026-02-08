@@ -20,6 +20,8 @@ Options:
   --sign-gpg               Produce a detached ASCII-armored signature for validation_pack_manifest.json (requires gpg)
   --gpg-key KEYID          Optional: key id/email/fingerprint to use with --sign-gpg (default: gpg default)
   --gpg-home DIR           Optional: GNUPGHOME to use with --sign-gpg (default: --out-dir/.gnupg)
+  --sign-openssl-key PATH  Produce a detached binary signature for validation_pack_manifest.json (requires openssl)
+  --sign-openssl-pub PATH  Optional: copy the corresponding public key to --out-dir (as validation_pack_manifest.pub.pem)
   --deterministic          Deterministic JSON/PDF output (default)
   --non-deterministic      Allow timestamps/timings in outputs
   --nuts-quality           Also run NUTS quality report (can be slower)
@@ -54,6 +56,8 @@ render_pdf=1
 sign_gpg=0
 gpg_key=""
 gpg_home=""
+openssl_key=""
+openssl_pub=""
 run_nuts_quality=0
 root_search_dir=""
 
@@ -93,6 +97,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gpg-home)
       gpg_home="$2"
+      shift 2
+      ;;
+    --sign-openssl-key)
+      openssl_key="$2"
+      shift 2
+      ;;
+    --sign-openssl-pub)
+      openssl_pub="$2"
       shift 2
       ;;
     --deterministic)
@@ -316,6 +328,32 @@ if [[ "$sign_gpg" == "1" ]]; then
   GNUPGHOME="$gpg_home" gpg "${gpg_args[@]}" "$manifest_json"
 fi
 
+manifest_sig_openssl="$manifest_json.sig"
+manifest_sha256_hex="$out_dir/validation_pack_manifest.sha256"
+manifest_sha256_bin="$out_dir/validation_pack_manifest.sha256.bin"
+manifest_pub_openssl="$out_dir/validation_pack_manifest.pub.pem"
+if [[ -n "$openssl_key" ]]; then
+  if [[ ! -f "$openssl_key" ]]; then
+    echo "OpenSSL key not found: $openssl_key" >&2
+    exit 2
+  fi
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "Missing dependency: openssl (required for --sign-openssl-key)." >&2
+    exit 2
+  fi
+  # Sign SHA-256 digest bytes (raw) to support both RSA/ECDSA and Ed25519 keys.
+  openssl dgst -sha256 -hex "$manifest_json" | awk '{print $2}' >"$manifest_sha256_hex"
+  openssl dgst -sha256 -binary "$manifest_json" >"$manifest_sha256_bin"
+  openssl pkeyutl -sign -inkey "$openssl_key" -rawin -in "$manifest_sha256_bin" -out "$manifest_sig_openssl"
+  if [[ -n "$openssl_pub" ]]; then
+    if [[ ! -f "$openssl_pub" ]]; then
+      echo "OpenSSL public key not found: $openssl_pub" >&2
+      exit 2
+    fi
+    cp "$openssl_pub" "$manifest_pub_openssl"
+  fi
+fi
+
 echo "Wrote:" >&2
 echo "  $apex2_master" >&2
 echo "  $validation_json" >&2
@@ -325,6 +363,13 @@ fi
 echo "  $manifest_json" >&2
 if [[ "$sign_gpg" == "1" ]]; then
   echo "  $manifest_sig" >&2
+fi
+if [[ -n "$openssl_key" ]]; then
+  echo "  $manifest_sig_openssl" >&2
+  echo "  $manifest_sha256_hex" >&2
+  if [[ -n "$openssl_pub" ]]; then
+    echo "  $manifest_pub_openssl" >&2
+  fi
 fi
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   echo "  $out_dir/validation_report_v1.schema.json" >&2

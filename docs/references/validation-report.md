@@ -155,7 +155,7 @@ cargo test -p ns-cli --test cli_validation_report
 
 CI runs these invariants explicitly in the `Rust Tests` workflow (`.github/workflows/rust-tests.yml`) on `ubuntu-latest` + `stable`.
 
-CI also exercises the end-to-end `validation-pack/render_validation_pack.sh` flow in the `Python Tests` workflow (`.github/workflows/python-tests.yml`) on `ubuntu-latest` + Python 3.13, including:
+CI also exercises the end-to-end `validation-pack/render_validation_pack.sh` flow in the `Python Tests` workflow (`.github/workflows/python-tests.yml`) in the `validation-pack` job (on `ubuntu-latest` + Python 3.13), including:
 
 - Schema validation for `validation_report.json`
 - A deterministic re-render check (JSON+PDF hashes match across two runs)
@@ -204,6 +204,8 @@ bash validation-pack/render_validation_pack.sh \
 - `validation_report.json`
 - `validation_report.pdf` (unless `--json-only`)
 - `validation_pack_manifest.json` (SHA-256 + sizes for the core pack files; convenient for signing/replication)
+- `validation_pack_manifest.sha256` + `validation_pack_manifest.sha256.bin` + `validation_pack_manifest.json.sig` (only when `--sign-openssl-key` is used)
+- `validation_pack_manifest.pub.pem` (only when `--sign-openssl-pub` is used)
 - `validation_report_v1.schema.json`
 
 Notes:
@@ -211,6 +213,34 @@ Notes:
 - PDF rendering requires `matplotlib` (install via `pip install 'nextstat[viz]'`).
 - To override the Python interpreter used by the validation pack script, pass `--python /path/to/python3` to `validation-pack/render_validation_pack.sh`.
 - `--nuts-quality` enables the (potentially slower) NUTS quality report for richer diagnostics.
+
+### Signing (Optional)
+
+If you want a signed, publishable artifact, sign the `validation_pack_manifest.json` digest and distribute:
+
+- `validation_pack_manifest.json`
+- `validation_pack_manifest.sha256`
+- `validation_pack_manifest.json.sig`
+- (optionally) `validation_pack_manifest.pub.pem`
+
+Example (OpenSSL, Ed25519):
+
+```bash
+openssl genpkey -algorithm ed25519 -out tmp/manifest_priv.pem
+openssl pkey -in tmp/manifest_priv.pem -pubout -out tmp/manifest_pub.pem
+
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack \
+  --workspace tests/fixtures/complex_workspace.json \
+  --deterministic \
+  --sign-openssl-key tmp/manifest_priv.pem \
+  --sign-openssl-pub tmp/manifest_pub.pem
+
+# Verify signature against SHA-256 digest bytes
+openssl pkeyutl -verify -pubin -inkey tmp/manifest_pub.pem -rawin \
+  -in tmp/validation_pack/validation_pack_manifest.sha256.bin \
+  -sigfile tmp/validation_pack/validation_pack_manifest.json.sig
+```
 
 ### Troubleshooting
 
