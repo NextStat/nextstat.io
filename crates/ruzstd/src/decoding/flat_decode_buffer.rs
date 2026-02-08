@@ -215,7 +215,7 @@ impl Read for FlatDecodeBuffer {
 /// - `dst` must have at least `length` bytes of writable space.
 /// - `src` must point to `offset` bytes before `dst` (i.e., `dst - src == offset`).
 #[inline(always)]
-unsafe fn fast_copy_match(src: *const u8, dst: *mut u8, offset: usize, length: usize) {
+pub(crate) unsafe fn fast_copy_match(src: *const u8, dst: *mut u8, offset: usize, length: usize) {
     debug_assert!(offset > 0);
 
     if length <= offset {

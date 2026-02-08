@@ -43,6 +43,7 @@ HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat viz corr --input workspace.json --fit fit.json`
 - `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json]`
 - `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render]`
+- `nextstat validation-report --apex2 master_report.json --workspace workspace.json --out validation_report.json [--pdf validation_report.pdf] [--deterministic]` *(planned)*
 - `nextstat version`
 
 Time series (Phase 8):
@@ -282,9 +283,12 @@ It follows HistFactory conventions used by pyhf's `readxml` validation fixtures:
 
 Partial TREx semantics in `ReadFrom: HIST`:
 - If the config includes `Region:` blocks, they act as an **include-list** for channels (in config order).
-- If the config includes `Sample:` blocks, they act as an **include-list** for samples; per-sample `Regions:` filters
-  are respected to mask samples per-channel. Empty channels are dropped unless channels were explicitly selected via
-  `Region:` blocks (then it is an error).
+- If the config includes `Sample:` blocks, they act as an **include-list** for samples. Masking rules:
+  - `Sample: X` with `Regions: ...` masks `X` only in those channels.
+  - `Sample: X` nested under a `Region: Y` block and **without** `File`/`Path` is treated as a region-scoped filter entry:
+    it selects sample `X` only in channel `Y`. Repeating the same `Sample: X` under multiple regions is allowed.
+  - If a channel has any region-scoped filter entries, they take precedence over any global sample include-list for that channel.
+  Empty channels are dropped unless channels were explicitly selected via `Region:` blocks (then it is an error).
 - In HIST mode, `Region:` blocks do **not** require `Variable`/`Binning`, and `Sample:` blocks do **not** require `File`
   (they can be used as pure filters).
 - When `HistoPath` is provided, it is used as the **base directory** for resolving relative paths inside the HistFactory XML

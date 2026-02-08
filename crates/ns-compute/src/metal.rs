@@ -1,42 +1,23 @@
-//! Metal compute backend (macOS).
+//! Metal compute backend (Apple Silicon).
 //!
-//! Phase 2C (optional). This module is feature-gated behind `metal`.
+//! This module is feature-gated behind `metal`.
 //!
-//! Current status: stub implementation that compiles but returns
-//! `Error::NotImplemented`.
+//! # Production GPU paths
+//!
+//! The real Metal acceleration lives in dedicated accelerator modules:
+//!
+//! - [`MetalBatchAccelerator`] — lockstep batch NLL+gradient for toy fitting
+//!   (used by `ns_inference::metal_batch::fit_toys_batch_metal`).
+//! - [`MetalDifferentiableAccelerator`] — profiled fitting for differentiable
+//!   analysis (`ns_inference::metal_differentiable`).
+//!
+//! These types do **not** implement the generic [`ComputeBackend`] trait;
+//! they expose fused kernel APIs tailored to their respective workloads.
+//!
+//! [`ComputeBackend`]: ns_core::ComputeBackend
+//! [`MetalBatchAccelerator`]: crate::metal_batch::MetalBatchAccelerator
+//! [`MetalDifferentiableAccelerator`]: crate::metal_differentiable::MetalDifferentiableAccelerator
 
-use ns_core::{ComputeBackend, Error, Result};
-
-/// Metal backend (stub).
-pub struct MetalBackend;
-
-impl MetalBackend {
-    /// Create a new Metal backend (stub).
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for MetalBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ComputeBackend for MetalBackend {
-    fn nll(&self, _params: &[f64]) -> Result<f64> {
-        Err(Error::NotImplemented("Metal backend".to_string()))
-    }
-
-    fn gradient(&self, _params: &[f64]) -> Result<Vec<f64>> {
-        Err(Error::NotImplemented("Metal backend gradient".to_string()))
-    }
-
-    fn hessian(&self, _params: &[f64]) -> Result<Vec<Vec<f64>>> {
-        Err(Error::NotImplemented("Metal backend hessian".to_string()))
-    }
-
-    fn name(&self) -> &str {
-        "Metal"
-    }
-}
+// Re-export for discoverability
+pub use crate::metal_batch::MetalBatchAccelerator;
+pub use crate::metal_differentiable::MetalDifferentiableAccelerator;

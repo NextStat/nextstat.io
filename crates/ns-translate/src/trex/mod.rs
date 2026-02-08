@@ -2349,18 +2349,29 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
     // Sample selection: if the config defines Sample blocks, treat them as an include-list
     // per channel, respecting per-sample `Regions:` filters.
     if !cfg.samples.is_empty() {
-        // Preserve config sample order.
-        let mut want: Vec<&TrexSample> = Vec::new();
-        let mut seen: HashSet<&str> = HashSet::new();
-        for s in &cfg.samples {
-            if s.kind == SampleKind::Data {
-                continue;
-            }
-            if !seen.insert(s.name.as_str()) {
-                return Err(Error::Validation(format!("duplicate Sample name: {}", s.name)));
-            }
-            want.push(s);
+        let non_data: Vec<&TrexSample> = cfg
+            .samples
+            .iter()
+            .filter(|s| s.kind != SampleKind::Data)
+            .collect();
+        if non_data.is_empty() {
+            return Ok(ws);
         }
+
+        // Distinguish between:
+        // - Global include-lists (samples with no Regions / Regions=all / or with File/Path metadata).
+        // - Pure per-region masking (many HIST-mode configs repeat `Sample:` blocks inside `Region:`).
+        //
+        // In the latter case, if a given channel has no matching Sample blocks, we avoid filtering it.
+        let global_like = non_data.iter().any(|s| {
+            if s.file.is_some() {
+                return true;
+            }
+            match s.regions.as_deref() {
+                None => true,
+                Some(rs) => rs.iter().any(|r| r.eq_ignore_ascii_case("all")),
+            }
+        });
 
         let mut kept_channels: Vec<Channel> = Vec::with_capacity(ws.channels.len());
         let mut kept_observations: Vec<Observation> = Vec::with_capacity(ws.observations.len());
@@ -2368,17 +2379,43 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
             ws.observations.drain(..).map(|o| (o.name.clone(), o)).collect();
 
         for mut ch in ws.channels.drain(..) {
+            // Select the include-list for this channel:
+            // - Prefer filter-only samples (no File/Path) that apply to the channel (TREx HIST masking style).
+            // - Else fall back to all samples that apply to the channel.
+            // - If nothing applies and the config is purely per-region (no global-like entries), do not filter.
+            let mut candidates: Vec<&TrexSample> = non_data
+                .iter()
+                .copied()
+                .filter(|s| s.file.is_none() && sample_applies(s, &ch.name))
+                .collect();
+            if candidates.is_empty() {
+                candidates = non_data
+                    .iter()
+                    .copied()
+                    .filter(|s| sample_applies(s, &ch.name))
+                    .collect();
+            }
+            if candidates.is_empty() && !global_like {
+                let obs = obs_by_name.remove(&ch.name).ok_or_else(|| {
+                    Error::Validation(format!(
+                        "missing Observation for channel '{}' in imported workspace",
+                        ch.name
+                    ))
+                })?;
+                kept_channels.push(ch);
+                kept_observations.push(obs);
+                continue;
+            }
+
+            // Preserve config order but de-duplicate by name within the channel.
+            let mut seen: HashSet<&str> = HashSet::new();
+            candidates.retain(|s| seen.insert(s.name.as_str()));
+
             let mut by_name: HashMap<String, Sample> =
                 ch.samples.drain(..).map(|s| (s.name.clone(), s)).collect();
 
             let mut new_samples: Vec<Sample> = Vec::new();
-            for s in &want {
-                // Respect per-sample region filter: if the sample doesn't apply to this region,
-                // skip it even if it's in the global include-list.
-                if !sample_applies(s, &ch.name) {
-                    continue;
-                }
-
+            for s in candidates {
                 match by_name.remove(&s.name) {
                     Some(sample) => new_samples.push(sample),
                     None => {
@@ -2903,6 +2940,71 @@ Regions: channel1, channel2
 "#;
         let ws =
             workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (sample filtered)");
+        assert_eq!(ws.channels.len(), 2);
+        assert_eq!(ws.channels[0].name, "channel1");
+        assert_eq!(ws.channels[0].samples.len(), 1);
+        assert_eq!(ws.channels[0].samples[0].name, "bkg");
+        assert_eq!(ws.channels[1].name, "channel2");
+        assert_eq!(ws.channels[1].samples.len(), 1);
+        assert_eq!(ws.channels[1].samples[0].name, "bkg");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_filters_samples_by_region_scoped_sample_blocks() {
+        // TREx configs in HIST mode often express per-region sample masking via nested Sample blocks
+        // without File/Path. These can repeat sample names across regions and should be treated as
+        // per-channel include-lists (filters) over the imported HistFactory workspace.
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+
+Region: channel1
+Sample: signal
+Type: SIGNAL
+EndSample: signal
+EndRegion: channel1
+
+Region: channel2
+Sample: bkg
+Type: BACKGROUND
+EndSample: bkg
+EndRegion: channel2
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (region filters)");
+        assert_eq!(ws.channels.len(), 2);
+        assert_eq!(ws.channels[0].name, "channel1");
+        assert_eq!(ws.channels[0].samples.len(), 1);
+        assert_eq!(ws.channels[0].samples[0].name, "signal");
+        assert_eq!(ws.channels[1].name, "channel2");
+        assert_eq!(ws.channels[1].samples.len(), 1);
+        assert_eq!(ws.channels[1].samples[0].name, "bkg");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_allows_duplicate_sample_names_across_regions() {
+        // Same sample name repeated under multiple Region blocks should not be rejected as a
+        // "duplicate sample name" error in HIST mode.
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/fixtures/pyhf_multichannel
+CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
+
+Region: channel1
+Sample: bkg
+Type: BACKGROUND
+EndSample: bkg
+EndRegion: channel1
+
+Region: channel2
+Sample: bkg
+Type: BACKGROUND
+EndSample: bkg
+EndRegion: channel2
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (dup samples)");
         assert_eq!(ws.channels.len(), 2);
         assert_eq!(ws.channels[0].name, "channel1");
         assert_eq!(ws.channels[0].samples.len(), 1);

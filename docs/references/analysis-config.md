@@ -367,6 +367,11 @@ Sample: ttbar
 In HIST mode:
 - `HistoPath` or `CombinationXml` points to the HistFactory export
 - Region and Sample blocks act as **filters** — only listed channels/samples are kept
+- Sample masking options:
+  - Global include-list: top-level `Sample:` blocks (optionally with `Regions:`) select which samples to keep per channel.
+  - Region-scoped include-list: `Sample:` blocks nested under a `Region:` (with no `File`/`Path`) act as per-channel
+    filters. The same sample name can appear under multiple regions. If a channel has any region-scoped sample filters,
+    they take precedence over the global sample include-list for that channel.
 - No Variable, Binning, File, or Weight keys are needed
 - Systematics are imported from the XML, not re-defined
 

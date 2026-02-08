@@ -410,15 +410,37 @@ fit = ordinal.ordered_logit.fit(x, y_ord, n_levels=5)
 proba = fit.predict_proba(x_new)
 ```
 
-### 9.4 Reproducible Reporting Artifacts (Phase 9.R, Planned)
+### 9.4 Reproducible Reporting Artifacts (Phase 9.R, Partial)
 
-Beyond numeric parity, regulated and cross-team workflows need **auditable artifacts**. The intent is to provide a minimal, open-core-compatible baseline:
+Beyond numeric parity, regulated and cross-team workflows need **auditable artifacts**. The system has two layers: a validation harness (shipped) and a human-readable report generator (planned).
 
-- Model spec artifact: parameter names/bounds, objective contract, algorithm settings
-- Data fingerprint: hashes and shape summaries (no raw data required)
-- Environment fingerprint: versions, git commit, platform, CPU, determinism settings, seeds
+#### Shipped: Apex2 Validation Harness
 
-This package is designed to pair naturally with Apex2 baselines and validation reports, and to support a future audit trail layer (open-core boundary aware).
+The `tests/apex2_master_report.py` runner produces a single deterministic JSON artifact (`--deterministic` flag) aggregating results from all validation suites:
+
+- **pyhf parity**: NLL and expected_data comparison at init + random + POI-varied parameter points, per-case pass/fail with configurable atol/rtol thresholds.
+- **HistFactory golden fixtures**: deterministic regression vs pre-recorded reference values (no pyhf runtime required).
+- **Regression golden fixtures**: OLS, logistic, Poisson, negative binomial coefficient/SE/NLL parity vs R/statsmodels baselines.
+- **Survival parity**: contract tests + optional Cox PH parity vs statsmodels (Efron/Breslow ties).
+- **NUTS quality smoke**: divergence rate, R-hat, ESS, E-BFMI floors.
+- **SBC calibration**: simulation-based calibration with rank uniformity checks.
+- **ROOT suite**: 3-way profile likelihood scan comparison (ROOT/RooFit vs pyhf vs NextStat) on real TRExFitter exports.
+- **Bias/pulls regression**: toy-based μ̂ bias and pull width checks.
+
+Each report section includes an **environment fingerprint** (Python version, platform, package versions, working directory, seeds) and a **model fingerprint** (parameter count, channel/bin structure, measurement name). The `--deterministic` flag strips timestamps and timings for bit-exact JSON reproducibility across runs.
+
+The `nextstat report` CLI command separately generates per-workspace analysis artifacts: `distributions.json`, `pulls.json`, `corr.json`, `yields.json` (+ `.csv`, `.tex`), `uncertainty.json` (NP ranking). When `--render` is enabled, it produces a multi-page PDF and per-plot SVGs via matplotlib.
+
+#### Planned: Validation Report Pack
+
+The remaining gap is a **unified validation report generator** that combines Apex2 JSON with workspace-level dataset fingerprints into a single human-readable document suitable for regulated review:
+
+- **Dataset fingerprint**: SHA-256 content hash of input workspace JSON, channel/bin/sample counts, observation summary statistics.
+- **Model spec artifact**: parameter names, bounds, constraint types, interpolation codes, objective function contract, algorithm settings.
+- **Validation summary**: Apex2 pass/fail matrix, worst-case deltas, tolerance tiers, reference tool versions.
+- **Output format**: `validation_report.json` (machine-readable, deterministic) + `validation_report.pdf` (human-readable, audit-ready).
+
+The intent is to keep the OSS baseline minimal (JSON + optional PDF via matplotlib) and deterministic, while supporting a future enterprise audit trail layer (open-core boundary aware). Target consumers: Pharma IQ/OQ/PQ validation packs, FinTech model risk management (SR 11-7), and HEP analysis preservation.
 
 ## 10. Reproducibility
 

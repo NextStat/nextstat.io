@@ -111,10 +111,16 @@ async fn fit_handler(
             Some("cuda") => {
                 return Err(AppError::internal("CUDA not compiled".into()));
             }
+            #[cfg(feature = "metal")]
             Some("metal") => {
-                return Err(AppError::bad_request(
-                    "Metal single-model fit not yet supported; use CPU or CUDA".into(),
-                ));
+                let r = mle
+                    .fit_metal(&*model)
+                    .map_err(|e| AppError::internal(format!("Metal fit failed: {e}")))?;
+                (r, "metal".to_string())
+            }
+            #[cfg(not(feature = "metal"))]
+            Some("metal") => {
+                return Err(AppError::internal("Metal not compiled".into()));
             }
             _ => {
                 let r = mle.fit(&*model)
@@ -371,6 +377,17 @@ fn fit_one_workspace(
         #[cfg(not(feature = "cuda"))]
         Some("cuda") => {
             return Err(AppError::internal("CUDA not compiled".into()));
+        }
+        #[cfg(feature = "metal")]
+        Some("metal") => {
+            let r = mle
+                .fit_metal(&model)
+                .map_err(|e| AppError::internal(format!("Metal fit failed: {e}")))?;
+            (r, "metal".to_string())
+        }
+        #[cfg(not(feature = "metal"))]
+        Some("metal") => {
+            return Err(AppError::internal("Metal not compiled".into()));
         }
         _ => {
             let r = mle

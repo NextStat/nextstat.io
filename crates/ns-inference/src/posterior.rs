@@ -113,6 +113,13 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
         Ok(())
     }
 
+    fn is_nonfinite_validation(err: &ns_core::Error) -> bool {
+        match err {
+            ns_core::Error::Validation(msg) => msg.contains("must contain only finite values"),
+            _ => false,
+        }
+    }
+
     /// Log-posterior in constrained space: `-model.nll(theta) + sum(prior_logpdf)`.
     pub fn logpdf(&self, theta: &[f64]) -> Result<f64> {
         self.validate_theta_len(theta)?;
@@ -168,9 +175,29 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
 
     /// Log-posterior in unconstrained space: `logpdf(transform(z)) + log|J(z)|`.
     pub fn logpdf_unconstrained(&self, z: &[f64]) -> Result<f64> {
-        self.validate_z_len(z)?;
-        let theta = self.to_constrained(z)?;
-        let lp = self.logpdf(&theta)?;
+        if z.len() != self.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "expected z length = model.dim() = {}, got {}",
+                self.dim(),
+                z.len()
+            )));
+        }
+        // HMC/NUTS can transiently propose non-finite values due to integrator instability.
+        // Treat these as invalid states (logpdf = -inf) instead of hard-erroring.
+        if z.iter().any(|v| !v.is_finite()) {
+            return Ok(f64::NEG_INFINITY);
+        }
+
+        let theta = match self.to_constrained(z) {
+            Ok(t) => t,
+            Err(e) if Self::is_nonfinite_validation(&e) => return Ok(f64::NEG_INFINITY),
+            Err(e) => return Err(e),
+        };
+        let lp = match self.logpdf(&theta) {
+            Ok(v) => v,
+            Err(e) if Self::is_nonfinite_validation(&e) => return Ok(f64::NEG_INFINITY),
+            Err(e) => return Err(e),
+        };
         let log_jac = self.transform.log_abs_det_jacobian(z);
         Ok(lp + log_jac)
     }
@@ -180,9 +207,28 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
     /// Chain rule (diagonal Jacobian):
     /// `grad_z[i] = (dtheta_i/dz_i) * grad_theta[i] + d/dz_i log|J_i|`
     pub fn grad_unconstrained(&self, z: &[f64]) -> Result<Vec<f64>> {
-        self.validate_z_len(z)?;
-        let theta = self.to_constrained(z)?;
-        let grad_theta = self.grad(&theta)?;
+        if z.len() != self.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "expected z length = model.dim() = {}, got {}",
+                self.dim(),
+                z.len()
+            )));
+        }
+        // See `logpdf_unconstrained`: reject non-finite proposals gracefully.
+        if z.iter().any(|v| !v.is_finite()) {
+            return Ok(vec![0.0; self.dim()]);
+        }
+
+        let theta = match self.to_constrained(z) {
+            Ok(t) => t,
+            Err(e) if Self::is_nonfinite_validation(&e) => return Ok(vec![0.0; self.dim()]),
+            Err(e) => return Err(e),
+        };
+        let grad_theta = match self.grad(&theta) {
+            Ok(g) => g,
+            Err(e) if Self::is_nonfinite_validation(&e) => return Ok(vec![0.0; self.dim()]),
+            Err(e) => return Err(e),
+        };
         let jac_diag = self.transform.jacobian_diag(z);
         let grad_log_jac = self.transform.grad_log_abs_det_jacobian(z);
 

@@ -14,6 +14,7 @@ pub(crate) mod frame;
 pub(crate) mod fused;
 pub(crate) mod literals_section_decoder;
 pub(crate) mod flat_decode_buffer;
+pub(crate) mod slice_output_buffer;
 mod ringbuffer;
 #[allow(dead_code)]
 pub(crate) mod scratch;

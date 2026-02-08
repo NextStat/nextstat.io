@@ -35,7 +35,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import pyhf
+try:
+    import pyhf  # type: ignore
+except ModuleNotFoundError:
+    pyhf = None  # type: ignore
 
 import nextstat
 import nextstat.infer as ns_infer
@@ -56,6 +59,10 @@ def _load_pyhf_json(path: Path) -> Dict[str, Any]:
 
 
 def _parse_histfactory_to_pyhf_workspace(combination_xml: Path, rootdir: Path) -> Dict[str, Any]:
+    if pyhf is None:
+        raise RuntimeError(
+            "pyhf is required for HistFactory XML import. Install `pyhf[xmlio]` (needs uproot)."
+        )
     try:
         import pyhf.readxml  # noqa: F401
     except ModuleNotFoundError as e:
@@ -70,6 +77,10 @@ def _parse_histfactory_to_pyhf_workspace(combination_xml: Path, rootdir: Path) -
 
 
 def _export_pyhf_to_histfactory(ws: Dict[str, Any], out_dir: Path, *, prefix: str) -> Path:
+    if pyhf is None:
+        raise RuntimeError(
+            "pyhf is required for pyhf->HistFactory export. Install `pyhf[xmlio]` (needs uproot)."
+        )
     try:
         import pyhf.writexml  # noqa: F401
     except ModuleNotFoundError as e:
@@ -217,15 +228,22 @@ static RooAbsData* find_data(RooWorkspace& w) {{
 static int minimize_nll(RooAbsReal& nll) {{
   RooMinimizer m(nll);
   m.setPrintLevel(-1);
-  // Strategy 0 is fast but can leave noticeable residuals in profile scans for
-  // some HistFactory models. Use a slightly more robust default to reduce
-  // ROOT-vs-pyhf/NextStat numeric deltas.
-  m.setStrategy(1);
   m.setEps(1e-12);
   m.setMaxFunctionCalls(200000);
   m.setMaxIterations(200000);
+  m.setOffsetting(true);
   m.optimizeConst(2);
+  // Strategy 0 is fast but can fail on some realistic exports; keep a retry ladder.
+  m.setStrategy(1);
   int status = m.minimize("Minuit2", "Migrad");
+  if (status != 0) {{
+    m.setStrategy(2);
+    status = m.minimize("Minuit2", "Migrad");
+  }}
+  if (status != 0) {{
+    (void)m.minimize("Minuit2", "Simplex");
+    status = m.minimize("Minuit2", "Migrad");
+  }}
   return status;
 }}
 
@@ -376,12 +394,28 @@ def _mu_grid(start: float, stop: float, points: int) -> List[float]:
     step = (stop - start) / (points - 1)
     return [start + i * step for i in range(points)]
 
+def _measurement_name_from_combination_xml(path: Path) -> str:
+    # Minimal XML parse: pick first <Measurement Name="...">.
+    try:
+        import xml.etree.ElementTree as ET
+
+        root = ET.fromstring(path.read_text())
+        for meas in root.findall(".//Measurement"):
+            name = meas.attrib.get("Name") or meas.attrib.get("name")
+            if name:
+                return str(name)
+    except Exception:
+        pass
+    return "measurement"
+
 def _pyhf_profile_scan(
     ws_spec: Dict[str, Any],
     *,
     measurement_name: str,
     mu_values: List[float],
 ) -> Dict[str, Any]:
+    if pyhf is None:
+        raise RuntimeError("pyhf is required for --include-pyhf")
     from pyhf.infer import mle, test_statistics
 
     ws = pyhf.Workspace(ws_spec)
@@ -455,7 +489,7 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------------
-    # Build pyhf workspace + HistFactory artifacts
+    # Build HistFactory artifacts (and optional pyhf workspace)
     # ---------------------------------------------------------------------
     if args.pyhf_json:
         if args.measurement is None:
@@ -467,24 +501,10 @@ def main() -> int:
     else:
         combo_xml = args.histfactory_xml.resolve()
         rootdir = (args.rootdir or combo_xml.parent).resolve()
-        ws = _parse_histfactory_to_pyhf_workspace(combo_xml, rootdir)
-        # Pick first measurement name (unless user provided pyhf measurement).
-        measurement_name = ws["measurements"][0]["name"]
+        ws = None
+        measurement_name = _measurement_name_from_combination_xml(combo_xml)
 
     t_build_ws = time.perf_counter() - t0
-
-    # ---------------------------------------------------------------------
-    # Optional: pyhf reference scan (diagnostic)
-    # ---------------------------------------------------------------------
-    pyhf_scan = None
-    t_pyhf = None
-    pyhf_out = None
-    if args.include_pyhf:
-        t_py0 = time.perf_counter()
-        pyhf_scan = _pyhf_profile_scan(ws, measurement_name=measurement_name, mu_values=mu_values)
-        t_pyhf = time.perf_counter() - t_py0
-        pyhf_out = run_dir / "pyhf_profile_scan.json"
-        pyhf_out.write_text(json.dumps(pyhf_scan, indent=2))
 
     # ---------------------------------------------------------------------
     # ROOT reference: combination.xml -> RooWorkspace -> profile scan
@@ -503,6 +523,22 @@ def main() -> int:
     root_ws_file = _hist2workspace(combo_xml)
     t_hist2ws = time.perf_counter() - t1
 
+    # ---------------------------------------------------------------------
+    # Optional: pyhf reference scan (diagnostic)
+    # ---------------------------------------------------------------------
+    pyhf_scan = None
+    t_pyhf = None
+    pyhf_out = None
+    if args.include_pyhf:
+        if ws is None:
+            # Parse from staged export dir so relative paths resolve correctly.
+            ws = _parse_histfactory_to_pyhf_workspace(combo_xml, run_dir)
+        t_py0 = time.perf_counter()
+        pyhf_scan = _pyhf_profile_scan(ws, measurement_name=measurement_name, mu_values=mu_values)
+        t_pyhf = time.perf_counter() - t_py0
+        pyhf_out = run_dir / "pyhf_profile_scan.json"
+        pyhf_out.write_text(json.dumps(pyhf_scan, indent=2))
+
     t2 = time.perf_counter()
     root_out = run_dir / "root_profile_scan.json"
     macro_path = run_dir / "profile_scan.C"
@@ -517,10 +553,10 @@ def main() -> int:
     t_root = time.perf_counter() - t2
 
     # ---------------------------------------------------------------------
-    # NextStat: profile scan
+    # NextStat: profile scan (direct HistFactory import, no pyhf dependency)
     # ---------------------------------------------------------------------
     t3 = time.perf_counter()
-    ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
+    ns_model = nextstat.from_histfactory_xml(str(combo_xml))
     ns_scan = ns_infer.profile_scan(ns_model, mu_values)
     t_ns = time.perf_counter() - t3
     ns_out = run_dir / "nextstat_profile_scan.json"

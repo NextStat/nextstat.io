@@ -159,7 +159,8 @@ def main() -> int:
     workdir = args.workdir.resolve()
     workdir.mkdir(parents=True, exist_ok=True)
 
-    need_uproot = any(c.get("mode") in ("pyhf-json", "histfactory-xml") for c in cases)
+    # Only pyhf-json mode needs `uproot` (via pyhf.writexml). HistFactory XML mode runs without it.
+    need_uproot = any(c.get("mode") == "pyhf-json" for c in cases)
     prereq = _check_prereqs(need_uproot=need_uproot)
 
     report: Dict[str, Any] = {
@@ -226,7 +227,7 @@ def main() -> int:
                 break
             continue
 
-        if prereq["uproot"] is False:
+        if mode == "pyhf-json" and prereq["uproot"] is False:
             any_failed = True
             report["cases"].append(
                 {"name": name, "status": "skipped", "reason": "missing_uproot"}

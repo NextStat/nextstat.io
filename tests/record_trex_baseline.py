@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import shutil
@@ -234,6 +235,7 @@ def _write_root_macro_fit(macro_path: Path, *, root_workspace_file: Path, out_js
         '#include <RooAbsPdf.h>',
         '#include <RooAbsData.h>',
         '#include <RooAbsReal.h>',
+        '#include <RooFit.h>',
         '#include <RooArgSet.h>',
         '#include <RooRealVar.h>',
         '#include <RooMinimizer.h>',
@@ -267,17 +269,23 @@ def _write_root_macro_fit(macro_path: Path, *, root_workspace_file: Path, out_js
         'static RooAbsData* find_data(RooWorkspace& w) {',
         '  if (auto* d = w.data("obsData")) return d;',
         '  if (auto* d = w.data("data")) return d;',
-        '  auto all = w.allData();',
-        '  if (all.empty()) return nullptr;',
-        '  return w.data(all.front()->GetName());',
+        '  return nullptr;',
         '}',
         '',
-        'static int minimize_nll(RooAbsReal& nll) {',
-        '  RooMinimizer m(nll);',
-        '  m.setPrintLevel(-1);',
-        '  m.setStrategy(0);',
-        '  m.optimizeConst(2);',
+        'static int minimize_nll(RooMinimizer& m) {',
         '  int status = m.minimize("Minuit2", "Migrad");',
+        '  if (status != 0) {',
+        '    m.setStrategy(2);',
+        '    status = m.minimize("Minuit2", "Migrad");',
+        '  }',
+        '  if (status != 0) {',
+        '    (void)m.minimize("Minuit2", "Simplex");',
+        '    status = m.minimize("Minuit2", "Migrad");',
+        '  }',
+        '  if (status == 0) {',
+        '    int h = m.hesse();',
+        '    if (h != 0) status = h;',
+        '  }',
         '  return status;',
         '}',
         '',
@@ -322,21 +330,32 @@ def _write_root_macro_fit(macro_path: Path, *, root_workspace_file: Path, out_js
         '    throw std::runtime_error("Data not found in workspace.");',
         '  }',
         '',
-        '  std::unique_ptr<RooAbsReal> nll(pdf->createNLL(*data));',
-        '  int status = minimize_nll(*nll);',
+        '  RooArgSet empty;',
+        '  const RooArgSet* nuis = mc->GetNuisanceParameters();',
+        '  const RooArgSet* globs = mc->GetGlobalObservables();',
+        '  if (!nuis) nuis = &empty;',
+        '  if (!globs) globs = &empty;',
+        '',
+        '  std::unique_ptr<RooAbsReal> nll(pdf->createNLL(',
+        '      *data,',
+        '      RooFit::Extended(true),',
+        '      RooFit::Constrain(*nuis),',
+        '      RooFit::GlobalObservables(*globs)',
+        '  ));',
+        '',
+        '  RooMinimizer m(*nll);',
+        '  m.setPrintLevel(-1);',
+        '  m.setStrategy(1);',
+        '  m.setEps(1e-12);',
+        '  m.setMaxFunctionCalls(200000);',
+        '  m.setMaxIterations(200000);',
+        '  m.setOffsetting(true);',
+        '  m.optimizeConst(2);',
+        '  int status = minimize_nll(m);',
         '  double nll_hat = nll->getVal();',
         '',
         '  RooFitResult* fr = nullptr;',
-        '  try {',
-        '    RooMinimizer m(*nll);',
-        '    m.setPrintLevel(-1);',
-        '    m.setStrategy(0);',
-        '    m.optimizeConst(2);',
-        '    m.minimize("Minuit2", "Migrad");',
-        '    fr = m.save();',
-        '  } catch (...) {',
-        '    fr = nullptr;',
-        '  }',
+        '  try { fr = m.save(); } catch (...) { fr = nullptr; }',
         '',
         '  struct P { std::string name; double val; double err; };',
         '  std::vector<P> ps;',
@@ -514,6 +533,7 @@ def record_one_case(
     trex_cmdline: Optional[List[str]],
     seed: Optional[int],
     keep_work: bool,
+    allow_failed_fit: bool,
 ) -> Path:
     repo = _repo_root()
 
@@ -584,6 +604,19 @@ def record_one_case(
     _write_root_macro_fit(macro_path, root_workspace_file=root_ws_file, out_json=fit_out)
     _run_root_macro(macro_path, cwd=out_dir)
     root_fit = _load_json(fit_out)
+    status = int(root_fit.get("status", -999))
+    nll_hat = root_fit.get("nll_hat")
+    if not allow_failed_fit:
+        if status != 0:
+            raise RuntimeError(
+                f"ROOT reference fit failed (status={status}). "
+                f"Inspect: {fit_out}"
+            )
+        if not isinstance(nll_hat, (int, float)) or not math.isfinite(float(nll_hat)):
+            raise RuntimeError(
+                f"ROOT reference fit produced non-finite nll_hat={nll_hat}. "
+                f"Inspect: {fit_out}"
+            )
 
     # Expected data: preferred path is direct HistFactory import via NextStat bindings (no pyhf).
     # If pyhf XML import is available, we still accept it as an alternative reference conversion.
@@ -670,6 +703,11 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--prereq-only", action="store_true")
+    ap.add_argument(
+        "--allow-failed-fit",
+        action="store_true",
+        help="Record a baseline even if the ROOT reference fit fails (status!=0).",
+    )
     args = ap.parse_args()
 
     if args.export_dir is None and args.trex_config is None:
@@ -703,6 +741,7 @@ def main() -> int:
             trex_cmdline=trex_cmdline,
             seed=args.seed,
             keep_work=bool(args.keep_work),
+            allow_failed_fit=bool(args.allow_failed_fit),
         )
     except Exception as e:
         print(f"ERROR: baseline recording failed: {e}", file=sys.stderr)
