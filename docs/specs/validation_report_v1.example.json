@@ -39,11 +39,59 @@
   "apex2_summary": {
     "master_report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "suites": {
-      "pyhf": { "status": "ok", "n_cases": 9, "worst_delta_nll": 1.2e-10 },
+      "pyhf": {
+        "status": "ok",
+        "n_cases": 9,
+        "worst_delta_nll": 1.2e-10,
+        "worst_delta_expected_full": 0.0,
+        "highlights": ["expected_data parity: OK (full + main)"],
+        "worst_cases": [
+          { "case": "synthetic_shapesys_256", "metric": "max_abs_delta_nll", "value": 1.2e-10 },
+          { "case": "synthetic_shapesys_256", "metric": "max_abs_delta_expected_full", "value": 0.0 }
+        ]
+      },
       "regression_golden": { "status": "ok", "n_cases": 8, "n_ok": 8 },
-      "root": { "status": "skipped" }
+      "nuts_quality": {
+        "status": "ok",
+        "highlights": [
+          "smoke diagnostics: divergence_rate=0.00, max_r_hat=1.01, min_ebfmi=0.80"
+        ]
+      },
+      "root": { "status": "skipped", "highlights": ["ROOT prereqs missing on this environment"] }
     },
     "overall": "pass"
+  },
+  "regulated_review": {
+    "contains_raw_data": false,
+    "intended_use": "Provide audit-friendly, reproducible validation evidence for NextStat outputs on a specific workspace and Apex2 master report.",
+    "scope": "This report summarizes deterministic fingerprints, environment metadata, and Apex2 suite outcomes. It is not a substitute for full IQ/OQ/PQ documentation; it is an evidence artifact to support risk-based review workflows (e.g., GxP/CSA/SR 11-7).",
+    "limitations": [
+      "This report does not include raw input data; only hashes, sizes, and summary statistics are included.",
+      "Validation results are only as complete as the Apex2 suites executed on the producing environment.",
+      "A 'pass' indicates suite-level parity/tolerance checks passed; it does not guarantee fitness for all intended uses."
+    ],
+    "data_handling": {
+      "notes": [
+        "No raw workspace JSON is embedded in this report; only SHA-256 and byte size are recorded.",
+        "Observed data are summarized (min/max/total) without per-bin disclosure."
+      ]
+    },
+    "risk_based_assurance": [
+      {
+        "risk": "Numerical mismatch versus reference implementation (pyhf) for NLL and expected_data.",
+        "mitigation": "Apex2 pyhf parity suite with worst-case numeric deltas recorded.",
+        "evidence": ["apex2:suite:pyhf"]
+      },
+      {
+        "risk": "Regression in golden-workspace behavior across versions.",
+        "mitigation": "Apex2 regression_golden suite summarizes case counts and pass/fail.",
+        "evidence": ["apex2:suite:regression_golden"]
+      },
+      {
+        "risk": "Loss of traceability and reproducibility across runs.",
+        "mitigation": "Deterministic mode omits timestamps/timings and uses stable ordering; inputs are fingerprinted by SHA-256.",
+        "evidence": ["deterministic", "dataset_fingerprint:workspace_sha256", "apex2_summary:master_report_sha256"]
+      }
+    ]
   }
 }
-

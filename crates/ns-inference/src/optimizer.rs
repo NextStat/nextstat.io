@@ -104,6 +104,57 @@ fn clamp_params(params: &[f64], bounds: &[(f64, f64)]) -> Vec<f64> {
     params.iter().zip(bounds.iter()).map(|(&v, &(lo, hi))| v.clamp(lo, hi)).collect()
 }
 
+/// Objective wrapper that removes fixed parameters (bounds where lo == hi) from the optimizer
+/// parameter vector, while still evaluating the full objective in the original space.
+///
+/// This avoids L-BFGS coupling artifacts where a "fixed" dimension is repeatedly clamped,
+/// subtly degrading convergence in the free subspace (important for profile scans where POI
+/// is fixed via bounds).
+struct ReducedObjective<'a> {
+    objective: &'a dyn ObjectiveFunction,
+    n_full: usize,
+    free_idx: Vec<usize>,
+    fixed: Vec<(usize, f64)>,
+}
+
+impl<'a> ReducedObjective<'a> {
+    fn expand(&self, free_params: &[f64]) -> Vec<f64> {
+        let mut full = vec![0.0; self.n_full];
+        for &(i, v) in &self.fixed {
+            full[i] = v;
+        }
+        for (k, &i) in self.free_idx.iter().enumerate() {
+            full[i] = free_params[k];
+        }
+        full
+    }
+
+    fn expand_grad(&self, free_grad: &[f64]) -> Vec<f64> {
+        let mut full = vec![0.0; self.n_full];
+        for (k, &i) in self.free_idx.iter().enumerate() {
+            full[i] = free_grad[k];
+        }
+        full
+    }
+}
+
+impl<'a> ObjectiveFunction for ReducedObjective<'a> {
+    fn eval(&self, params: &[f64]) -> Result<f64> {
+        let full = self.expand(params);
+        self.objective.eval(&full)
+    }
+
+    fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+        let full = self.expand(params);
+        let g_full = self.objective.gradient(&full)?;
+        let mut g = Vec::with_capacity(self.free_idx.len());
+        for &i in &self.free_idx {
+            g.push(g_full[i]);
+        }
+        Ok(g)
+    }
+}
+
 #[derive(Default)]
 struct FuncCounts {
     cost: AtomicUsize,
@@ -188,6 +239,63 @@ impl LbfgsbOptimizer {
         }
 
         let init_clamped = clamp_params(init_params, bounds);
+
+        // Reduce any fixed dimensions (lo == hi) out of the optimizer space.
+        //
+        // This is especially important for profile scans which fix the POI by setting
+        // bounds[poi] = (mu, mu). Keeping the fixed dimension in L-BFGS can introduce
+        // coupling via the inverse-Hessian approximation and degrade convergence in
+        // nuisance parameters, leading to small but systematic q(mu) mismatches.
+        if bounds.len() > 1 {
+            let mut free_idx = Vec::new();
+            let mut fixed = Vec::new();
+            for (i, &(lo, hi)) in bounds.iter().enumerate() {
+                if (hi - lo).abs() <= 0.0 {
+                    fixed.push((i, lo));
+                } else {
+                    free_idx.push(i);
+                }
+            }
+
+            if !fixed.is_empty() {
+                if free_idx.is_empty() {
+                    let mut x = vec![0.0; bounds.len()];
+                    for &(i, v) in &fixed {
+                        x[i] = v;
+                    }
+                    let fval = objective.eval(&x)?;
+                    return Ok(OptimizationResult {
+                        parameters: x,
+                        fval,
+                        n_iter: 0,
+                        n_fev: 1,
+                        n_gev: 0,
+                        converged: true,
+                        message: "all bounds degenerate".to_string(),
+                        final_gradient: None,
+                        initial_cost: fval,
+                    });
+                }
+
+                let init_free: Vec<f64> = free_idx.iter().map(|&i| init_clamped[i]).collect();
+                let bounds_free: Vec<(f64, f64)> = free_idx.iter().map(|&i| bounds[i]).collect();
+                let reduced = ReducedObjective {
+                    objective,
+                    n_full: bounds.len(),
+                    free_idx,
+                    fixed,
+                };
+
+                let mut result = self.minimize(&reduced, &init_free, &bounds_free)?;
+                result.parameters = reduced.expand(&result.parameters);
+                result.final_gradient = result
+                    .final_gradient
+                    .as_ref()
+                    .map(|g| reduced.expand_grad(g));
+                result.message = format!("fixed-dim reduction: {}", result.message);
+                return Ok(result);
+            }
+        }
 
         // Special-case 1D problems: argmin's L-BFGS + clamping can behave poorly with
         // box constraints, even when the optimum is in the interior. For 1D likelihoods
@@ -424,6 +532,24 @@ mod tests {
             "Optimizer should converge at constrained optimum, not MaxIter. Status: {}",
             result.message
         );
+    }
+
+    #[test]
+    fn test_optimizer_handles_fixed_dimensions() {
+        // Fix y=3 exactly via degenerate bounds and optimize x only. This should behave like
+        // optimizing the reduced 1D objective (x - 2)^2, and must not degrade convergence.
+        let config = OptimizerConfig { max_iter: 200, tol: 1e-8, m: 10 };
+        let optimizer = LbfgsbOptimizer::new(config);
+        let objective = QuadraticFunction;
+
+        let init = vec![0.0, 0.0];
+        let bounds = vec![(-10.0, 10.0), (3.0, 3.0)];
+
+        let result = optimizer.minimize(&objective, &init, &bounds).unwrap();
+        assert!(result.converged, "fixed-dim problem should converge: {}", result.message);
+        assert_relative_eq!(result.parameters[0], 2.0, epsilon = 1e-6);
+        assert_relative_eq!(result.parameters[1], 3.0, epsilon = 1e-12);
+        assert_relative_eq!(result.fval, 0.0, epsilon = 1e-8);
     }
 
     // Quadratic with negative offset: minimum is negative.

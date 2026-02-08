@@ -14,7 +14,7 @@ import datetime
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 def _require_matplotlib():
@@ -73,18 +73,159 @@ def _new_page(figsize: tuple[float, float] = (8.27, 11.69)):
     return fig, ax
 
 
+_COL = {
+    "ink": "#111827",
+    "muted": "#6B7280",
+    "muted2": "#374151",
+    "border": "#E5E7EB",
+    "ok": "#16A34A",
+    "fail": "#DC2626",
+    "skipped": "#6B7280",
+    "warn": "#D97706",
+    "bg": "#FFFFFF",
+}
+
+
+def _status_color(status: str) -> str:
+    s = (status or "").lower()
+    if s == "ok":
+        return _COL["ok"]
+    if s in ("fail", "error"):
+        return _COL["fail"]
+    if s == "skipped":
+        return _COL["skipped"]
+    return _COL["muted"]
+
+
 def _add_title(ax, title: str, subtitle: str | None = None):
-    ax.text(0.0, 0.97, title, ha="left", va="top", fontsize=18, weight="bold", transform=ax.transAxes)
+    ax.text(
+        0.0,
+        0.97,
+        title,
+        ha="left",
+        va="top",
+        fontsize=18,
+        weight="bold",
+        color=_COL["ink"],
+        transform=ax.transAxes,
+    )
     if subtitle:
-        ax.text(0.0, 0.93, subtitle, ha="left", va="top", fontsize=11, color="#374151", transform=ax.transAxes)
+        ax.text(
+            0.0,
+            0.93,
+            subtitle,
+            ha="left",
+            va="top",
+            fontsize=11,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
 
 
 def _add_kv_block(ax, y0: float, kv: list[tuple[str, str]]):
     y = y0
     for k, v in kv:
-        ax.text(0.0, y, f"{k}:", ha="left", va="top", family="monospace", transform=ax.transAxes)
-        ax.text(0.28, y, v, ha="left", va="top", family="monospace", transform=ax.transAxes)
+        ax.text(
+            0.0,
+            y,
+            f"{k}:",
+            ha="left",
+            va="top",
+            family="monospace",
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
+        ax.text(
+            0.28,
+            y,
+            v,
+            ha="left",
+            va="top",
+            family="monospace",
+            color=_COL["ink"],
+            transform=ax.transAxes,
+        )
         y -= 0.032
+
+
+def _add_footer(ax, page: int, total: int, *, ws_sha: str, apex_sha: str):
+    ax.text(
+        0.0,
+        0.02,
+        f"ws={ws_sha}  apex2={apex_sha}",
+        ha="left",
+        va="bottom",
+        fontsize=8,
+        family="monospace",
+        color=_COL["muted"],
+        transform=ax.transAxes,
+    )
+    ax.text(
+        1.0,
+        0.02,
+        f"Page {page}/{total}",
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        color=_COL["muted"],
+        transform=ax.transAxes,
+    )
+
+
+def _pill(ax, x: float, y: float, text: str, color: str):
+    # Draw a status "pill" using a rounded bbox around text.
+    ax.text(
+        x,
+        y,
+        text,
+        ha="left",
+        va="center",
+        fontsize=11,
+        weight="bold",
+        color="#FFFFFF",
+        transform=ax.transAxes,
+        bbox={
+            "boxstyle": "round,pad=0.35,rounding_size=0.15",
+            "facecolor": color,
+            "edgecolor": color,
+        },
+    )
+
+
+def _get_suites(report: Mapping[str, Any]) -> dict[str, Any]:
+    apex = report.get("apex2_summary") or {}
+    suites = apex.get("suites") or {}
+    return suites if isinstance(suites, dict) else {}
+
+
+def _get_suite(report: Mapping[str, Any], name: str) -> dict[str, Any]:
+    s = _get_suites(report).get(name) or {}
+    return s if isinstance(s, dict) else {}
+
+
+def _get_worst_cases(suite: Mapping[str, Any], metric: str) -> list[dict[str, Any]]:
+    xs = suite.get("worst_cases") or []
+    if not isinstance(xs, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for it in xs:
+        if not isinstance(it, dict):
+            continue
+        if str(it.get("metric") or "") != metric:
+            continue
+        out.append(it)
+    out.sort(key=lambda d: float(d.get("value") or 0.0), reverse=True)
+    return out
+
+
+def _fmt_sci(x: Any) -> str:
+    try:
+        v = float(x)
+    except Exception:
+        return "-"
+    if not (v == v):  # NaN
+        return "NaN"
+    return f"{v:.3e}"
 
 
 def _render_pdf(report: Mapping[str, Any], targets: _Targets):
@@ -100,7 +241,7 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
     ds = report.get("dataset_fingerprint") or {}
     env = report.get("environment") or {}
     apex = report.get("apex2_summary") or {}
-    suites = apex.get("suites") or {}
+    suites = _get_suites(report)
 
     ws_sha = _sha_short(ds.get("workspace_sha256"))
     apex_sha = _sha_short(apex.get("master_report_sha256"))
@@ -119,40 +260,214 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
             "ModDate": fixed_dt,
         }
 
+    # Fixed report structure. If you add/remove pages, update this number.
+    total_pages = 6
+    page = 1
+
     with PdfPages(targets.pdf, metadata=metadata) as pages:
-        # Cover
+        # Page 1: cover
         fig, ax = _new_page()
         _add_title(
             ax,
             "NextStat Validation Report",
-            subtitle=f"schema={schema_version}  overall={overall}  deterministic={det}",
+            subtitle=f"Apex2 + workspace fingerprint  (schema={schema_version})",
+        )
+        status_color = _status_color(overall)
+        _pill(ax, 0.0, 0.86, overall.upper(), status_color)
+        ax.text(
+            0.0,
+            0.80,
+            f"Deterministic: {det}",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
         )
         _add_kv_block(
             ax,
-            0.86,
+            0.74,
             [
                 ("workspace_sha256", ws_sha),
                 ("apex2_master_sha256", apex_sha),
                 ("nextstat_version", str(env.get("nextstat_version") or "unknown")),
-                ("python_version", str(env.get("python_version") or "unknown")),
-                ("platform", str(env.get("platform") or "unknown")),
+                ("git_commit", _sha_short(env.get("nextstat_git_commit"))),
             ],
         )
         ax.text(
             0.0,
             0.08,
-            "Generated by `nextstat validation-report` (OSS baseline).",
+            "This PDF is generated from validation_report.json (no raw workspace data embedded).",
             ha="left",
             va="bottom",
             fontsize=9,
-            color="#6B7280",
+            color=_COL["muted"],
             transform=ax.transAxes,
         )
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
         pages.savefig(fig)
+        page += 1
 
-        # Dataset fingerprint
+        # Page 2: suite matrix
         fig, ax = _new_page()
-        _add_title(ax, "Dataset Fingerprint")
+        _add_title(ax, "Validation Matrix", subtitle="Suite-level pass/fail status (Apex2)")
+
+        suite_names = sorted(map(str, suites.keys()))
+        cell_text: list[list[str]] = []
+        cell_colors: list[list[str]] = []
+        for n in suite_names:
+            s = suites.get(n) or {}
+            st = str(s.get("status") or "unknown")
+            cell_text.append([n, st])
+            cell_colors.append([_COL["bg"], _status_color(st)])
+
+        if suite_names:
+            tbl = ax.table(
+                cellText=cell_text,
+                cellColours=cell_colors,
+                colLabels=["Suite", "Status"],
+                colColours=[_COL["border"], _COL["border"]],
+                loc="upper left",
+                bbox=[0.0, 0.18, 1.0, 0.70],
+            )
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(10)
+            # Improve readability: left-align suite names, white text on colored status.
+            for (r, c), cell in tbl.get_celld().items():
+                cell.set_edgecolor(_COL["border"])
+                if r == 0:
+                    cell.get_text().set_weight("bold")
+                    cell.get_text().set_color(_COL["ink"])
+                else:
+                    if c == 0:
+                        cell.get_text().set_ha("left")
+                        cell.get_text().set_color(_COL["ink"])
+                    if c == 1:
+                        cell.get_text().set_color("#FFFFFF")
+                        cell.get_text().set_weight("bold")
+        else:
+            ax.text(0.0, 0.85, "No suite data available.", transform=ax.transAxes)
+
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
+        pages.savefig(fig)
+        page += 1
+
+        # Page 3: pyhf worst-case tables
+        fig, ax = _new_page()
+        _add_title(ax, "Key Suite: pyhf Parity", subtitle="Worst-case deltas (Apex2 pyhf suite)")
+        pyhf = _get_suite(report, "pyhf")
+        ax.text(
+            0.0,
+            0.88,
+            f"Status: {pyhf.get('status','unknown')}    Cases: {pyhf.get('n_cases','-')}",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
+
+        nll_rows = _get_worst_cases(pyhf, "max_abs_delta_nll")[:5]
+        exp_rows = _get_worst_cases(pyhf, "max_abs_delta_expected_full")[:5]
+
+        def _rows_to_table(rows: Sequence[Mapping[str, Any]], *, title: str, y_top: float):
+            ax.text(0.0, y_top, title, ha="left", va="top", fontsize=11, weight="bold", transform=ax.transAxes)
+            data = []
+            for r in rows:
+                data.append(
+                    [
+                        str(r.get("case") or "unknown"),
+                        _fmt_sci(r.get("value")),
+                        str(r.get("notes") or ""),
+                    ]
+                )
+            if not data:
+                data = [["-", "-", ""]]
+            tbl = ax.table(
+                cellText=data,
+                colLabels=["Case", "Value", "Notes"],
+                colColours=[_COL["border"], _COL["border"], _COL["border"]],
+                loc="upper left",
+                bbox=[0.0, y_top - 0.34, 1.0, 0.28],
+            )
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(9)
+            for (r, c), cell in tbl.get_celld().items():
+                cell.set_edgecolor(_COL["border"])
+                if r == 0:
+                    cell.get_text().set_weight("bold")
+                if r > 0 and c == 0:
+                    cell.get_text().set_ha("left")
+
+        _rows_to_table(nll_rows, title="Top worst |dNLL|", y_top=0.80)
+        _rows_to_table(exp_rows, title="Top worst |d expected(full)|", y_top=0.44)
+
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
+        pages.savefig(fig)
+        page += 1
+
+        # Page 4: NUTS + ROOT (trust signals)
+        fig, ax = _new_page()
+        _add_title(ax, "Key Suites: NUTS + ROOT", subtitle="Sampler smoke diagnostics and ROOT parity status")
+
+        nuts = _get_suite(report, "nuts_quality")
+        root = _get_suite(report, "root")
+
+        ax.text(0.0, 0.88, "NUTS smoke (nuts_quality)", ha="left", va="top", weight="bold", transform=ax.transAxes)
+        ax.text(
+            0.0,
+            0.84,
+            f"Status: {nuts.get('status','unknown')}",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
+        highlights = nuts.get("highlights") or []
+        if isinstance(highlights, list) and highlights:
+            ax.text(
+                0.0,
+                0.79,
+                "\n".join(f"- {str(x)}" for x in highlights[:3]),
+                ha="left",
+                va="top",
+                fontsize=9,
+                color=_COL["ink"],
+                transform=ax.transAxes,
+            )
+
+        ax.text(0.0, 0.58, "ROOT parity (root)", ha="left", va="top", weight="bold", transform=ax.transAxes)
+        ax.text(
+            0.0,
+            0.54,
+            f"Status: {root.get('status','unknown')}    Cases: {root.get('n_cases','-')}    OK: {root.get('n_ok','-')}",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
+        rh = root.get("highlights") or []
+        if isinstance(rh, list) and rh:
+            ax.text(
+                0.0,
+                0.49,
+                "\n".join(f"- {str(x)}" for x in rh[:4]),
+                ha="left",
+                va="top",
+                fontsize=9,
+                color=_COL["ink"],
+                transform=ax.transAxes,
+            )
+
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
+        pages.savefig(fig)
+        page += 1
+
+        # Page 5: dataset fingerprint (full hashes and counts)
+        fig, ax = _new_page()
+        _add_title(ax, "Dataset Fingerprint", subtitle="Workspace hash and structure summary")
         channels = ds.get("channels") or []
         n_bins = ds.get("n_bins_per_channel") or []
         obs = ds.get("observation_summary") or {}
@@ -172,46 +487,13 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
                 ("obs_max_bin", str(obs.get("max_bin") or "unknown")),
             ],
         )
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
         pages.savefig(fig)
+        page += 1
 
-        # Apex2 summary
+        # Page 6: environment
         fig, ax = _new_page()
-        _add_title(ax, "Apex2 Summary")
-        ax.text(
-            0.0,
-            0.88,
-            f"master_report_sha256: {str(apex.get('master_report_sha256') or 'unknown')}",
-            ha="left",
-            va="top",
-            family="monospace",
-            transform=ax.transAxes,
-        )
-
-        # Render a small fixed-width table.
-        rows: list[str] = []
-        rows.append(f"{'suite':<22} {'status':<8} {'cases':>6} {'ok':>6} {'worst|dNLL|':>12}")
-        rows.append("-" * 60)
-        for name in sorted(map(str, suites.keys())):
-            s = suites.get(name) or {}
-            status = str(s.get("status") or "unknown")
-            n_cases = s.get("n_cases")
-            n_ok = s.get("n_ok")
-            worst = s.get("worst_delta_nll")
-            worst_str = (
-                f"{float(worst):.3e}" if isinstance(worst, (int, float)) else "-"
-            )
-            rows.append(
-                f"{name:<22} {status:<8} {str(n_cases) if n_cases is not None else '-':>6} "
-                f"{str(n_ok) if n_ok is not None else '-':>6} "
-                f"{worst_str:>12}"
-            )
-        table = "\n".join(rows)
-        ax.text(0.0, 0.82, table, ha="left", va="top", family="monospace", transform=ax.transAxes)
-        pages.savefig(fig)
-
-        # Environment
-        fig, ax = _new_page()
-        _add_title(ax, "Environment")
+        _add_title(ax, "Environment", subtitle="Reproducibility metadata")
         det_settings = env.get("determinism_settings") or {}
         _add_kv_block(
             ax,
@@ -226,6 +508,7 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
                 ("determinism_settings", json.dumps(det_settings, sort_keys=True)),
             ],
         )
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
         pages.savefig(fig)
 
 

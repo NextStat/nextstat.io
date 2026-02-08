@@ -1862,7 +1862,11 @@ fn enforce_variable_rules(
     Ok(())
 }
 
-fn sys_to_modifier(sys: &TrexSystematic, base_weight: Option<&str>) -> Result<NtupleModifier> {
+fn sys_to_modifier(
+    sys: &TrexSystematic,
+    external_weight: Option<&str>,
+    nominal_sample_weight: Option<&str>,
+) -> Result<NtupleModifier> {
     match sys.kind {
         SystKind::Norm => Ok(NtupleModifier::NormSys {
             name: sys.name.clone(),
@@ -1874,41 +1878,71 @@ fn sys_to_modifier(sys: &TrexSystematic, base_weight: Option<&str>) -> Result<Nt
             })?,
         }),
         SystKind::Weight => {
-            if let (Some(su), Some(sd)) =
-                (sys.weight_suf_up.as_deref(), sys.weight_suf_down.as_deref())
-            {
+            let su = sys.weight_suf_up.as_deref();
+            let sd = sys.weight_suf_down.as_deref();
+            if let (Some(su), Some(sd)) = (su, sd) {
+                // WeightSufUp/Down are multiplicative factors applied on top of the nominal weight.
                 let up = expr_mul(
-                    [base_weight.map(|s| s.to_string()), Some(su.to_string())]
-                        .into_iter()
-                        .flatten(),
+                    [
+                        external_weight.map(|s| s.to_string()),
+                        nominal_sample_weight.map(|s| s.to_string()),
+                        Some(su.to_string()),
+                    ]
+                    .into_iter()
+                    .flatten(),
                 )
                 .ok_or_else(|| {
                     Error::Validation(format!("Systematic '{}' empty WeightSufUp", sys.name))
                 })?;
                 let down = expr_mul(
-                    [base_weight.map(|s| s.to_string()), Some(sd.to_string())]
-                        .into_iter()
-                        .flatten(),
+                    [
+                        external_weight.map(|s| s.to_string()),
+                        nominal_sample_weight.map(|s| s.to_string()),
+                        Some(sd.to_string()),
+                    ]
+                    .into_iter()
+                    .flatten(),
                 )
                 .ok_or_else(|| {
                     Error::Validation(format!("Systematic '{}' empty WeightSufDown", sys.name))
                 })?;
-                Ok(NtupleModifier::WeightSys {
+                return Ok(NtupleModifier::WeightSys {
                     name: sys.name.clone(),
                     weight_up: up,
                     weight_down: down,
-                })
-            } else {
-                Ok(NtupleModifier::WeightSys {
-                    name: sys.name.clone(),
-                    weight_up: sys.weight_up.clone().ok_or_else(|| {
-                        Error::Validation(format!("Systematic '{}' missing weight_up", sys.name))
-                    })?,
-                    weight_down: sys.weight_down.clone().ok_or_else(|| {
-                        Error::Validation(format!("Systematic '{}' missing weight_down", sys.name))
-                    })?,
-                })
+                });
             }
+
+            // WeightUp/WeightDown are treated as full alternative weight expressions for the sample.
+            // Region/sample "external" multipliers (region Weight, per-region overrides, and sample-scoped
+            // selection gating) must apply equally to nominal and varied weights.
+            let up_raw = sys.weight_up.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing weight_up", sys.name))
+            })?;
+            let down_raw = sys.weight_down.clone().ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' missing weight_down", sys.name))
+            })?;
+            let up = expr_mul(
+                [external_weight.map(|s| s.to_string()), Some(up_raw)]
+                    .into_iter()
+                    .flatten(),
+            )
+            .ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' empty WeightUp", sys.name))
+            })?;
+            let down = expr_mul(
+                [external_weight.map(|s| s.to_string()), Some(down_raw)]
+                    .into_iter()
+                    .flatten(),
+            )
+            .ok_or_else(|| {
+                Error::Validation(format!("Systematic '{}' empty WeightDown", sys.name))
+            })?;
+            Ok(NtupleModifier::WeightSys {
+                name: sys.name.clone(),
+                weight_up: up,
+                weight_down: down,
+            })
         }
         SystKind::Tree => Ok(NtupleModifier::TreeSys {
             name: sys.name.clone(),
@@ -2037,7 +2071,7 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
 
             for sys in &cfg.systematics {
                 if sys_applies(sys, &region.name, &s.name) {
-                    sc.modifiers.push(sys_to_modifier(sys, sc.weight.as_deref())?);
+                    sc.modifiers.push(sys_to_modifier(sys, None, sc.weight.as_deref())?);
                 }
             }
 
@@ -2158,23 +2192,32 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
 
             // Composition rules:
             // - channel selection = region.Selection (shared)
-            // - per-sample Selection/Cut is applied multiplicatively via the sample weight (selection evaluates to 0/1)
-            // - Weight = region.Weight * sample.Weight * override.Weight
-            let sel = expr_and(
+            // - per-sample Selection/Cut gates events by multiplying a booleanized mask into the weight.
+            //   (Selection in TREx/TTreeFormula is truthy; we enforce 0/1 via `!!(...)`.)
+            // - External weight multipliers apply to nominal and all systematic variations:
+            //   - Region.Weight (region-scoped)
+            //   - nested override Weight (per region+sample)
+            //   - sample-scoped selection gating
+            // - Nominal weight = external_weight * sample.Weight
+            let sel_raw = expr_and(
                 [sample_selection.get(&s.name).cloned(), ov.and_then(|x| x.selection.clone())]
                     .into_iter()
                     .flatten(),
             );
+            let sel_gate = sel_raw.map(|s| format!("!!({s})"));
 
-            let w = expr_mul(
+            let external_weight = expr_mul(
                 [
                     region_weight.get(&region.name).cloned(),
-                    s.weight.clone(),
                     ov.and_then(|x| x.weight.clone()),
-                    sel,
+                    sel_gate,
                 ]
                 .into_iter()
                 .flatten(),
+            );
+
+            let nominal_weight = expr_mul(
+                [external_weight.clone(), s.weight.clone()].into_iter().flatten(),
             );
 
             let file = s.file.clone().ok_or_else(|| {
@@ -2182,12 +2225,12 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
             })?;
             let mut sc = SampleConfig::new(&s.name, file);
             sc.tree_name = s.tree_name.clone();
-            sc.weight = w;
+            sc.weight = nominal_weight;
             sc.modifiers = s.modifiers.clone();
 
             for sys in &cfg.systematics {
                 if sys_applies(sys, &region.name, &s.name) {
-                    sc.modifiers.push(sys_to_modifier(sys, sc.weight.as_deref())?);
+                    sc.modifiers.push(sys_to_modifier(sys, external_weight.as_deref(), s.weight.as_deref())?);
                 }
             }
 
@@ -2649,6 +2692,45 @@ Regions: SR
     }
 
     #[test]
+    fn trex_import_booleanizes_numeric_selection_in_weight_gate() {
+        // In TREx/TTreeFormula, Selection/Cut is truthy (non-zero) and must act as an event gate,
+        // not as a multiplicative scaling factor. A raw numeric branch like `njet` must therefore
+        // be booleanized to 0/1 before being multiplied into the weight.
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: a
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Selection: njet
+Regions: SR
+
+Sample: b
+Type: BACKGROUND
+File: tests/fixtures/simple_tree.root
+Weight: 1
+Regions: SR
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace build");
+        let ch = &ws.channels[0];
+        let sum_a: f64 = ch.samples.iter().find(|s| s.name == "a").unwrap().data.iter().sum();
+        let sum_b: f64 = ch.samples.iter().find(|s| s.name == "b").unwrap().data.iter().sum();
+        assert!(
+            sum_a <= sum_b + 1e-9,
+            "numeric Selection must gate (0/1), not scale weights: sum_a={sum_a} sum_b={sum_b}"
+        );
+    }
+
+    #[test]
     fn trex_import_applies_region_weight_to_all_samples() {
         let cfg = r#"
 ReadFrom: NTUP
@@ -2720,6 +2802,127 @@ EndRegion: SR
             (sum_a - 3.0 * sum_b).abs() < 1e-8,
             "nested override Weight should multiply only sample a"
         );
+    }
+
+    #[test]
+    fn trex_import_applies_region_weight_to_weight_systematics() {
+        fn sum_hi(ws: &Workspace) -> f64 {
+            let s = &ws.channels[0].samples[0];
+            let m = s
+                .modifiers
+                .iter()
+                .find(|m| matches!(m, crate::pyhf::schema::Modifier::HistoSys { name, .. } if name == "jes"))
+                .expect("missing histosys jes");
+            match m {
+                crate::pyhf::schema::Modifier::HistoSys { data, .. } => data.hi_data.iter().sum(),
+                _ => unreachable!("histosys matcher"),
+            }
+        }
+
+        let cfg_base = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Regions: SR
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightUp: weight_jes_up
+WeightDown: weight_jes_down
+"#;
+
+        let cfg_w2 = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+Weight: 2
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Regions: SR
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightUp: weight_jes_up
+WeightDown: weight_jes_down
+"#;
+
+        let ws_a = workspace_from_str(cfg_base, &repo_root()).expect("base ws build");
+        let ws_b = workspace_from_str(cfg_w2, &repo_root()).expect("w2 ws build");
+        let a = sum_hi(&ws_a);
+        let b = sum_hi(&ws_b);
+        assert!((b - 2.0 * a).abs() < 1e-8, "expected region Weight to scale weight sys: a={a} b={b}");
+    }
+
+    #[test]
+    fn trex_import_applies_sample_selection_to_weight_systematics() {
+        // Sample-scoped Selection must gate the nominal and all systematic variations. We pick an
+        // always-false cut so the expected varied histograms are exactly zero.
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Selection: njet >= 1000
+Regions: SR
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightUp: weight_jes_up
+WeightDown: weight_jes_down
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace build");
+        let s = &ws.channels[0].samples[0];
+        let nominal_sum: f64 = s.data.iter().sum();
+        assert!(nominal_sum.abs() < 1e-12, "nominal must be gated to zero: {nominal_sum}");
+
+        let m = s
+            .modifiers
+            .iter()
+            .find(|m| matches!(m, crate::pyhf::schema::Modifier::HistoSys { name, .. } if name == "jes"))
+            .expect("missing histosys jes");
+        match m {
+            crate::pyhf::schema::Modifier::HistoSys { data, .. } => {
+                let hi: f64 = data.hi_data.iter().sum();
+                let lo: f64 = data.lo_data.iter().sum();
+                assert!(hi.abs() < 1e-12, "hi variation must be gated to zero: {hi}");
+                assert!(lo.abs() < 1e-12, "lo variation must be gated to zero: {lo}");
+            }
+            _ => unreachable!("histosys matcher"),
+        }
     }
 
     #[test]

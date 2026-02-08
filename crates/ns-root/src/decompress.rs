@@ -102,14 +102,30 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
         out.set_len(expected);
     }
 
-    let bytes_written = match ZSTD_DECODER.with(|cell| {
-        let mut dec = cell.borrow_mut();
-        dec.decode_all(data, &mut out)
-    }) {
-        Ok(n) => n,
-        Err(e) => {
+    let bytes_written = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ZSTD_DECODER.with(|cell| {
+            let mut dec = cell.borrow_mut();
+            dec.decode_all(data, &mut out)
+        })
+    })) {
+        Ok(Ok(n)) => n,
+        Ok(Err(e)) => {
             out.truncate(0);
             return Err(RootError::Decompression(format!("zstd: {}", e)));
+        }
+        Err(payload) => {
+            out.truncate(0);
+            let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+                *s
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.as_str()
+            } else {
+                "unknown panic payload"
+            };
+            return Err(RootError::Decompression(format!(
+                "zstd: decoder panicked: {}",
+                msg
+            )));
         }
     };
 

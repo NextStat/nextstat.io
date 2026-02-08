@@ -6,6 +6,7 @@ Parameters are aligned by NAME (not index) since pyhf and NextStat
 may order them differently.
 """
 
+import argparse
 import json
 import sys
 import time
@@ -20,14 +21,14 @@ except ModuleNotFoundError as e:
 import nextstat
 
 
-def load_workspace():
+def load_workspace(path: str):
     """Load tchannel workspace."""
-    with open("tests/fixtures/tchannel_workspace.json") as f:
+    with open(path) as f:
         return json.load(f)
 
 
-def pyhf_fit(workspace):
-    """Fit with pyhf and compute Hessian uncertainties."""
+def pyhf_fit(workspace, *, compute_uncertainties: bool):
+    """Fit with pyhf and (optionally) compute Hessian uncertainties."""
     t_build0 = time.perf_counter()
     ws = pyhf.Workspace(workspace)
     model = ws.model()
@@ -42,46 +43,49 @@ def pyhf_fit(workspace):
     nll = float(pyhf.infer.mle.twice_nll(bestfit, data, model)[0]) / 2.0
     t_nll = time.perf_counter() - t_nll0
 
-    # Numerical Hessian for uncertainties.
-    def nll_func(x: np.ndarray) -> float:
-        return float(pyhf.infer.mle.twice_nll(x, data, model).item()) / 2.0
+    uncertainties = []
+    t_unc = 0.0
+    if compute_uncertainties:
+        # Numerical Hessian for uncertainties.
+        def nll_func(x: np.ndarray) -> float:
+            return float(pyhf.infer.mle.twice_nll(x, data, model).item()) / 2.0
 
-    x0 = np.asarray(bestfit, dtype=float)
-    n = len(x0)
-    hessian = np.zeros((n, n), dtype=float)
-    t_unc0 = time.perf_counter()
-    f0 = nll_func(x0)
+        x0 = np.asarray(bestfit, dtype=float)
+        n = len(x0)
+        hessian = np.zeros((n, n), dtype=float)
+        t_unc0 = time.perf_counter()
+        f0 = nll_func(x0)
 
-    h_step = 1e-4
-    damping = 1e-9
+        h_step = 1e-4
+        damping = 1e-9
 
-    for i in range(n):
-        hi = h_step * max(abs(x0[i]), 1.0)
-        xp = x0.copy(); xp[i] += hi
-        xm = x0.copy(); xm[i] -= hi
-        fp = nll_func(xp)
-        fm = nll_func(xm)
-        hessian[i, i] = (fp - 2.0 * f0 + fm) / (hi * hi)
+        for i in range(n):
+            hi = h_step * max(abs(x0[i]), 1.0)
+            xp = x0.copy(); xp[i] += hi
+            xm = x0.copy(); xm[i] -= hi
+            fp = nll_func(xp)
+            fm = nll_func(xm)
+            hessian[i, i] = (fp - 2.0 * f0 + fm) / (hi * hi)
 
-        for j in range(i + 1, n):
-            hj = h_step * max(abs(x0[j]), 1.0)
-            xpp = x0.copy(); xpp[i] += hi; xpp[j] += hj
-            xpm = x0.copy(); xpm[i] += hi; xpm[j] -= hj
-            xmp = x0.copy(); xmp[i] -= hi; xmp[j] += hj
-            xmm = x0.copy(); xmm[i] -= hi; xmm[j] -= hj
-            fij = (nll_func(xpp) - nll_func(xpm) - nll_func(xmp) + nll_func(xmm)) / (4.0 * hi * hj)
-            hessian[i, j] = fij
-            hessian[j, i] = fij
+            for j in range(i + 1, n):
+                hj = h_step * max(abs(x0[j]), 1.0)
+                xpp = x0.copy(); xpp[i] += hi; xpp[j] += hj
+                xpm = x0.copy(); xpm[i] += hi; xpm[j] -= hj
+                xmp = x0.copy(); xmp[i] -= hi; xmp[j] += hj
+                xmm = x0.copy(); xmm[i] -= hi; xmm[j] -= hj
+                fij = (nll_func(xpp) - nll_func(xpm) - nll_func(xmp) + nll_func(xmm)) / (4.0 * hi * hj)
+                hessian[i, j] = fij
+                hessian[j, i] = fij
 
-    hessian = hessian + np.eye(n) * damping
+        hessian = hessian + np.eye(n) * damping
 
-    try:
-        cov = np.linalg.inv(hessian)
-    except np.linalg.LinAlgError:
-        cov = np.linalg.pinv(hessian)
+        try:
+            cov = np.linalg.inv(hessian)
+        except np.linalg.LinAlgError:
+            cov = np.linalg.pinv(hessian)
 
-    uncertainties = np.sqrt(np.maximum(np.diag(cov), 0.0))
-    t_unc = time.perf_counter() - t_unc0
+        uncertainties = np.sqrt(np.maximum(np.diag(cov), 0.0))
+        t_unc = time.perf_counter() - t_unc0
 
     return {
         'names': list(model.config.par_names),
@@ -153,8 +157,8 @@ def compare_results(pyhf_res, nextstat_res):
 
     pyhf_params = np.asarray(pyhf_res['parameters'], dtype=float)
     ns_params = np.asarray(nextstat_res['parameters'], dtype=float)
-    pyhf_unc = np.asarray(pyhf_res['uncertainties'], dtype=float)
-    ns_unc = np.asarray(nextstat_res['uncertainties'], dtype=float)
+    pyhf_unc = np.asarray(pyhf_res.get('uncertainties') or [], dtype=float)
+    ns_unc = np.asarray(nextstat_res.get('uncertainties') or [], dtype=float)
 
     n = len(pyhf_names)
     n_mapped = len(pyhf_to_ns)
@@ -189,8 +193,7 @@ def compare_results(pyhf_res, nextstat_res):
     UNC_RTOL = 0.5
 
     param_diffs = []
-    unc_diffs = []
-    rows = []
+    rows_params = []
 
     for pi in range(n):
         ni = pyhf_to_ns.get(pi)
@@ -199,22 +202,15 @@ def compare_results(pyhf_res, nextstat_res):
         name = pyhf_names[pi]
         p_val = float(pyhf_params[pi])
         n_val = float(ns_params[ni])
-        p_unc = float(pyhf_unc[pi])
-        n_unc = float(ns_unc[ni])
         d_param = abs(p_val - n_val)
-        d_unc = abs(p_unc - n_unc)
         param_diffs.append(d_param)
-        unc_diffs.append(d_unc)
-        rows.append((name, p_val, n_val, d_param, p_unc, n_unc, d_unc))
+        rows_params.append((name, p_val, n_val, d_param))
 
     param_diffs = np.array(param_diffs)
-    unc_diffs = np.array(unc_diffs)
 
     n_param_ok = int((param_diffs < PARAM_TOL).sum())
-    n_unc_ok = int(np.array([
-        abs(r[4] - r[5]) < max(UNC_RTOL * max(abs(r[4]), abs(r[5])), 1e-3)
-        for r in rows
-    ]).sum())
+    # Uncertainty diffs are computed only when pyhf uncertainties are available.
+    has_pyhf_unc = pyhf_unc.size == n
 
     print(f"\n  PARAMETERS (tol={PARAM_TOL}):")
     print(f"    Match: {n_param_ok}/{n_mapped}")
@@ -222,22 +218,41 @@ def compare_results(pyhf_res, nextstat_res):
     print(f"    Mean diff: {param_diffs.mean():.4e}")
 
     # Show worst 15
-    sorted_rows = sorted(rows, key=lambda r: -r[3])
+    sorted_rows = sorted(rows_params, key=lambda r: -r[3])
     print(f"\n  {'Name':<45} {'pyhf':>10} {'NextStat':>10} {'Diff':>10}")
     print("  " + "-" * 77)
-    for name, p_val, n_val, d_param, _, _, _ in sorted_rows[:15]:
+    for name, p_val, n_val, d_param in sorted_rows[:15]:
         tag = " *" if d_param >= PARAM_TOL else ""
         print(f"  {name:<45} {p_val:>+10.5f} {n_val:>+10.5f} {d_param:>10.4e}{tag}")
 
     # --- Uncertainty comparison ---
-    print(f"\n  UNCERTAINTIES (rtol={UNC_RTOL}):")
-    print(f"    Match: {n_unc_ok}/{n_mapped}")
+    if not has_pyhf_unc:
+        print(f"\n  UNCERTAINTIES: skipped (pyhf uncertainties not computed)")
+    else:
+        # Build uncertainty diff rows (name-aligned) now that we know arrays exist.
+        rows_unc = []
+        for pi in range(n):
+            ni = pyhf_to_ns.get(pi)
+            if ni is None:
+                continue
+            name = pyhf_names[pi]
+            p_unc = float(pyhf_unc[pi])
+            n_unc = float(ns_unc[ni]) if ns_unc.size == len(ns_names) else float("nan")
+            d_unc = abs(p_unc - n_unc) if np.isfinite(n_unc) else float("nan")
+            rows_unc.append((name, p_unc, n_unc, d_unc))
 
-    sorted_unc = sorted(rows, key=lambda r: -r[6])
-    print(f"\n  {'Name':<45} {'pyhf':>10} {'NextStat':>10} {'Diff':>10}")
-    print("  " + "-" * 77)
-    for name, _, _, _, p_unc, n_unc, d_unc in sorted_unc[:15]:
-        print(f"  {name:<45} {p_unc:>10.5f} {n_unc:>10.5f} {d_unc:>10.4e}")
+        n_unc_ok = int(np.array([
+            abs(r[1] - r[2]) < max(UNC_RTOL * max(abs(r[1]), abs(r[2])), 1e-3)
+            for r in rows_unc
+        ]).sum())
+        print(f"\n  UNCERTAINTIES (rtol={UNC_RTOL}):")
+        print(f"    Match: {n_unc_ok}/{n_mapped}")
+
+        sorted_unc = sorted(rows_unc, key=lambda r: -float(r[3] if np.isfinite(r[3]) else -1.0))
+        print(f"\n  {'Name':<45} {'pyhf':>10} {'NextStat':>10} {'Diff':>10}")
+        print("  " + "-" * 77)
+        for name, p_unc, n_unc, d_unc in sorted_unc[:15]:
+            print(f"  {name:<45} {p_unc:>10.5f} {n_unc:>10.5f} {d_unc:>10.4e}")
 
     # --- NLL ---
     diff_nll = abs(pyhf_res['nll'] - nextstat_res['nll'])
@@ -294,12 +309,25 @@ def compare_results(pyhf_res, nextstat_res):
 
 def main():
     """Main validation."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--workspace",
+        default="tests/fixtures/tchannel_workspace.json",
+        help="Path to pyhf workspace.json fixture",
+    )
+    ap.add_argument(
+        "--skip-uncertainties",
+        action="store_true",
+        help="Skip expensive numerical Hessian uncertainties for pyhf (timing/fit parity only).",
+    )
+    args = ap.parse_args()
+
     t_all0 = time.perf_counter()
     print("Loading workspace...")
-    workspace = load_workspace()
+    workspace = load_workspace(str(args.workspace))
 
     print("Fitting with pyhf...")
-    pyhf_res = pyhf_fit(workspace)
+    pyhf_res = pyhf_fit(workspace, compute_uncertainties=not bool(args.skip_uncertainties))
 
     print("Fitting with NextStat...")
     nextstat_res = nextstat_fit(workspace)

@@ -207,15 +207,15 @@ Three ways to specify weights (in priority order):
 
 | Key | Aliases | Description |
 |-----|---------|-------------|
-| `WeightUp` | `Up` | Full up-weight expression |
-| `WeightDown` | `Down` | Full down-weight expression |
+| `WeightUp` | `Up` | Alternative full weight expression for the up variation |
+| `WeightDown` | `Down` | Alternative full weight expression for the down variation |
 
-**2. Pre-computed expressions:**
+**2. Multiplicative factors** (applied on top of the nominal weight):
 
 | Key | Description |
 |-----|-------------|
-| `WeightSufUp` | Up-weight expression |
-| `WeightSufDown` | Down-weight expression |
+| `WeightSufUp` | Up-weight factor expression |
+| `WeightSufDown` | Down-weight factor expression |
 
 **3. Suffix expansion** (base + suffix → concatenated expression):
 
@@ -234,6 +234,11 @@ WeightBase: weight_btag
 WeightUpSuffix: _up
 WeightDownSuffix: _down
 ```
+
+Notes:
+- Region/sample "external" multipliers (region `Weight`, nested override `Weight`, and sample-scoped selection gating)
+  apply equally to nominal and varied weights.
+- `WeightSufUp/Down` are treated as multiplicative factors: `w_var = w_nominal * w_suf`.
 
 ### Type: tree
 
@@ -345,6 +350,13 @@ Sample: signal                      # top-level definition
 - Systematic inside Sample → `Samples` defaults to parent sample name
 - Sample inside Region → creates region-specific override; merges with top-level Sample
 - Systematic inside Region → `Regions` defaults to parent region name
+
+**NTUP composition rules (Selection/Weight):**
+- Region `Selection` (or `Cut`) becomes the channel selection (shared across samples in the region).
+- Sample `Selection` (or `Cut`) is applied as an event gate by multiplying a booleanized mask into the sample weight:
+  `mask = !!(SelectionExpr)` (TREx/TTreeFormula truthiness). This avoids accidental scaling when `Selection` is numeric.
+- Nested Sample overrides under a Region (no `File`/`Path`) can provide additional per-(region,sample) `Selection` and `Weight`:
+  they are combined with the top-level Sample and applied only in that region.
 
 ---
 

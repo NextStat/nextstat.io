@@ -145,9 +145,58 @@
           "enum": ["pass", "fail"]
         }
       }
+    },
+    "regulated_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contains_raw_data",
+        "intended_use",
+        "scope",
+        "limitations",
+        "data_handling",
+        "risk_based_assurance"
+      ],
+      "properties": {
+        "contains_raw_data": { "type": "boolean" },
+        "intended_use": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "data_handling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["notes"],
+          "properties": {
+            "notes": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "risk_based_assurance": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/risk_item" }
+        }
+      }
     }
   },
   "$defs": {
+    "risk_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["risk", "mitigation", "evidence"],
+      "properties": {
+        "risk": { "type": "string", "minLength": 1 },
+        "mitigation": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "parameter_spec": {
       "type": "object",
       "additionalProperties": false,
@@ -176,9 +225,27 @@
         "n_cases": { "type": "integer", "minimum": 0 },
         "n_ok": { "type": "integer", "minimum": 0 },
         "worst_delta_nll": { "type": "number" },
-        "worst_delta_expected_full": { "type": "number" }
+        "worst_delta_expected_full": { "type": "number" },
+        "highlights": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "worst_cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/worst_case_item" }
+        }
+      }
+    },
+    "worst_case_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "metric", "value"],
+      "properties": {
+        "case": { "type": "string", "minLength": 1 },
+        "metric": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" },
+        "notes": { "type": "string" }
       }
     }
   }
 }
-

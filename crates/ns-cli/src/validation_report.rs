@@ -76,6 +76,37 @@ fn suite_status(master: &Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+fn map_push_highlight(out: &mut serde_json::Map<String, Value>, msg: String) {
+    let v = out
+        .entry("highlights".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if let Value::Array(arr) = v {
+        arr.push(Value::String(msg));
+    }
+}
+
+fn map_push_worst_case(
+    out: &mut serde_json::Map<String, Value>,
+    case_name: String,
+    metric: &'static str,
+    value: f64,
+    notes: Option<String>,
+) {
+    let v = out
+        .entry("worst_cases".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if let Value::Array(arr) = v {
+        let mut obj = serde_json::Map::new();
+        obj.insert("case".to_string(), Value::String(case_name));
+        obj.insert("metric".to_string(), Value::String(metric.to_string()));
+        obj.insert("value".to_string(), serde_json::json!(value));
+        if let Some(n) = notes {
+            obj.insert("notes".to_string(), Value::String(n));
+        }
+        arr.push(Value::Object(obj));
+    }
+}
+
 fn suite_summary(master: &Value, key: &str) -> Option<Value> {
     let status = suite_status(master, key)?;
     let mut out = serde_json::Map::new();
@@ -90,16 +121,57 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
                 .and_then(|v| v.as_array())
             {
                 out.insert("n_cases".to_string(), Value::Number((cases.len() as u64).into()));
-                let mut worst = 0.0f64;
+                let mut worst_nll = 0.0f64;
+                let mut worst_exp_full = 0.0f64;
+                let mut by_nll: Vec<(f64, String, Option<String>)> = Vec::new();
+                let mut by_exp: Vec<(f64, String, Option<String>)> = Vec::new();
                 for c in cases {
+                    let name = c
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
                     let d = c
                         .get("parity")
                         .and_then(|v| v.get("max_abs_delta_nll"))
                         .and_then(|v| v.as_f64())
                         .unwrap_or(0.0);
-                    worst = worst.max(d);
+                    worst_nll = worst_nll.max(d);
+                    let allowed = c
+                        .get("parity")
+                        .and_then(|v| v.get("nll_allowed"))
+                        .and_then(|v| v.as_f64());
+                    let notes = allowed.map(|a| format!("allowed={:.3e}", a));
+                    by_nll.push((d, name.clone(), notes));
+
+                    let de = c
+                        .get("parity")
+                        .and_then(|v| v.get("max_abs_delta_expected_full"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    worst_exp_full = worst_exp_full.max(de);
+                    by_exp.push((de, name, None));
                 }
-                out.insert("worst_delta_nll".to_string(), serde_json::json!(worst));
+                out.insert("worst_delta_nll".to_string(), serde_json::json!(worst_nll));
+                out.insert(
+                    "worst_delta_expected_full".to_string(),
+                    serde_json::json!(worst_exp_full),
+                );
+
+                map_push_highlight(&mut out, format!("worst |dNLL| = {:.3e}", worst_nll));
+                map_push_highlight(
+                    &mut out,
+                    format!("worst |d expected(full)| = {:.3e}", worst_exp_full),
+                );
+
+                by_nll.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                for (v, name, notes) in by_nll.into_iter().take(5) {
+                    map_push_worst_case(&mut out, name, "max_abs_delta_nll", v, notes);
+                }
+                by_exp.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                for (v, name, _) in by_exp.into_iter().take(5) {
+                    map_push_worst_case(&mut out, name, "max_abs_delta_expected_full", v, None);
+                }
             }
         }
         "regression_golden" => {
@@ -114,9 +186,157 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
                     .filter(|c| c.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
                     .count();
                 out.insert("n_ok".to_string(), Value::Number((n_ok as u64).into()));
+                map_push_highlight(
+                    &mut out,
+                    format!("cases ok: {}/{}", n_ok, cases.len()),
+                );
+            }
+        }
+        "nuts_quality" => {
+            if let Some(s) = master.get("nuts_quality") {
+                let qs = s
+                    .get("quality_status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let d = s.get("diagnostics").unwrap_or(&Value::Null);
+                let div = d.get("divergence_rate").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let rhat = d.get("max_r_hat").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let td = d.get("max_treedepth_rate").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let essb = d.get("min_ess_bulk").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let esst = d.get("min_ess_tail").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let ebfmi = d.get("min_ebfmi").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+
+                map_push_highlight(&mut out, format!("quality status: {}", qs));
+                map_push_highlight(
+                    &mut out,
+                    format!(
+                        "smoke diagnostics: div={:.3}, treedepth={:.3}, r_hat={:.3}, ess_bulk={:.1}, ess_tail={:.1}, ebfmi={:.3}",
+                        div, td, rhat, essb, esst, ebfmi
+                    ),
+                );
+
+                let case = "nuts_quality_smoke".to_string();
+                map_push_worst_case(&mut out, case.clone(), "divergence_rate", div, None);
+                map_push_worst_case(&mut out, case.clone(), "max_treedepth_rate", td, None);
+                map_push_worst_case(&mut out, case.clone(), "max_r_hat", rhat, None);
+                map_push_worst_case(&mut out, case.clone(), "min_ess_bulk", essb, None);
+                map_push_worst_case(&mut out, case.clone(), "min_ess_tail", esst, None);
+                map_push_worst_case(&mut out, case, "min_ebfmi", ebfmi, None);
+            }
+        }
+        "nuts_quality_report" => {
+            if let Some(rep) = master
+                .get("nuts_quality_report")
+                .and_then(|v| v.get("report"))
+                .and_then(|v| v.as_object())
+            {
+                let cases = rep.get("cases").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                if !cases.is_empty() {
+                    out.insert("n_cases".to_string(), Value::Number((cases.len() as u64).into()));
+                    let n_ok = cases
+                        .iter()
+                        .filter(|c| c.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+                        .count();
+                    out.insert("n_ok".to_string(), Value::Number((n_ok as u64).into()));
+
+                    // Worst-case extraction across cases.
+                    let mut max_rhat = (0.0f64, "unknown".to_string());
+                    let mut max_div = (0.0f64, "unknown".to_string());
+                    let mut max_td = (0.0f64, "unknown".to_string());
+                    let mut min_ebfmi = (f64::INFINITY, "unknown".to_string());
+                    let mut min_essb = (f64::INFINITY, "unknown".to_string());
+                    let mut min_esst = (f64::INFINITY, "unknown".to_string());
+                    for c in &cases {
+                        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                        let s = c.get("summary").unwrap_or(&Value::Null);
+                        let rhat = s.get("max_r_hat").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        let div = s.get("divergence_rate").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        let td = s.get("max_treedepth_rate").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        let ebfmi = s.get("min_ebfmi").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        let essb = s.get("min_ess_bulk").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        let esst = s.get("min_ess_tail").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                        if rhat.is_finite() && rhat > max_rhat.0 {
+                            max_rhat = (rhat, name.clone());
+                        }
+                        if div.is_finite() && div > max_div.0 {
+                            max_div = (div, name.clone());
+                        }
+                        if td.is_finite() && td > max_td.0 {
+                            max_td = (td, name.clone());
+                        }
+                        if ebfmi.is_finite() && ebfmi < min_ebfmi.0 {
+                            min_ebfmi = (ebfmi, name.clone());
+                        }
+                        if essb.is_finite() && essb < min_essb.0 {
+                            min_essb = (essb, name.clone());
+                        }
+                        if esst.is_finite() && esst < min_esst.0 {
+                            min_esst = (esst, name);
+                        }
+                    }
+                    map_push_highlight(&mut out, format!("cases ok: {}/{}", n_ok, cases.len()));
+                    map_push_worst_case(&mut out, max_rhat.1, "max_r_hat", max_rhat.0, None);
+                    map_push_worst_case(&mut out, max_div.1, "divergence_rate", max_div.0, None);
+                    map_push_worst_case(&mut out, max_td.1, "max_treedepth_rate", max_td.0, None);
+                    map_push_worst_case(&mut out, min_ebfmi.1, "min_ebfmi", min_ebfmi.0, None);
+                    map_push_worst_case(&mut out, min_essb.1, "min_ess_bulk", min_essb.0, None);
+                    map_push_worst_case(&mut out, min_esst.1, "min_ess_tail", min_esst.0, None);
+                }
+            }
+        }
+        "root" => {
+            let suite = master.get("root");
+            let reason = suite.and_then(|v| v.get("reason")).and_then(|v| v.as_str());
+            if let Some(r) = reason {
+                map_push_highlight(&mut out, format!("reason: {}", r));
+            }
+            if let Some(rep) = suite
+                .and_then(|v| v.get("report"))
+                .and_then(|v| v.as_object())
+            {
+                if let Some(sum) = rep.get("summary").and_then(|v| v.as_object()) {
+                    if let Some(n_cases) = sum.get("n_cases").and_then(|v| v.as_u64()) {
+                        out.insert("n_cases".to_string(), Value::Number(n_cases.into()));
+                    }
+                    if let Some(n_ok) = sum.get("n_ok").and_then(|v| v.as_u64()) {
+                        out.insert("n_ok".to_string(), Value::Number(n_ok.into()));
+                    }
+                    if let (Some(n_ok), Some(n_cases)) = (
+                        out.get("n_ok").and_then(|v| v.as_u64()),
+                        out.get("n_cases").and_then(|v| v.as_u64()),
+                    ) {
+                        map_push_highlight(&mut out, format!("cases ok: {}/{}", n_ok, n_cases));
+                    }
+                }
+                if let Some(pr) = rep
+                    .get("meta")
+                    .and_then(|v| v.get("prereqs"))
+                    .and_then(|v| v.as_object())
+                {
+                    let mut missing: Vec<String> = Vec::new();
+                    for k in ["root", "hist2workspace", "uproot"] {
+                        if let Some(ok) = pr.get(k).and_then(|v| v.as_bool())
+                            && !ok
+                        {
+                            missing.push(k.to_string());
+                        }
+                    }
+                    if !missing.is_empty() {
+                        map_push_highlight(&mut out, format!("missing prereqs: {}", missing.join(", ")));
+                    }
+                }
             }
         }
         _ => {}
+    }
+
+    // Generic hint: preserve human-readable reasons for skipped suites.
+    if let Some(r) = master
+        .get(key)
+        .and_then(|v| v.get("reason"))
+        .and_then(|v| v.as_str())
+    {
+        map_push_highlight(&mut out, format!("reason: {}", r));
     }
 
     Some(Value::Object(out))
@@ -264,6 +484,69 @@ pub fn cmd_validation_report(
         Value::String(chrono::Utc::now().to_rfc3339())
     };
 
+    // Minimal risk-based notes for regulated review workflows (GxP/CSA/SR 11-7 style).
+    // Keep this stable and dependency-light: no external references, just pointers to included evidence.
+    let mut risk_items: Vec<Value> = Vec::new();
+    {
+        let mut evidence = vec!["apex2:suite:pyhf".to_string()];
+        if let Some(status) = suite_status(&apex2_master, "pyhf") {
+            evidence.push(format!("apex2:suite:pyhf:status={status}"));
+        }
+        risk_items.push(serde_json::json!({
+            "risk": "Numerical mismatch versus reference implementation (pyhf) for NLL and expected_data.",
+            "mitigation": "Apex2 pyhf parity suite with worst-case numeric deltas recorded.",
+            "evidence": evidence,
+        }));
+    }
+    {
+        let mut evidence = vec!["apex2:suite:regression_golden".to_string()];
+        if let Some(status) = suite_status(&apex2_master, "regression_golden") {
+            evidence.push(format!("apex2:suite:regression_golden:status={status}"));
+        }
+        risk_items.push(serde_json::json!({
+            "risk": "Regression in golden-workspace behavior across versions.",
+            "mitigation": "Apex2 regression_golden suite summarizes case counts and pass/fail.",
+            "evidence": evidence,
+        }));
+    }
+    {
+        let mut evidence = vec!["apex2:suite:timeseries".to_string()];
+        if let Some(status) = suite_status(&apex2_master, "timeseries") {
+            evidence.push(format!("apex2:suite:timeseries:status={status}"));
+        }
+        risk_items.push(serde_json::json!({
+            "risk": "Incorrect state space / Kalman filtering and forecasting behavior in time series tools.",
+            "mitigation": "Apex2 timeseries suite runs Kalman filter/smoother/forecast smoke tests; parity vs statsmodels is checked when dependencies are available.",
+            "evidence": evidence,
+        }));
+    }
+    {
+        let mut evidence = vec!["apex2:suite:pharma".to_string()];
+        if let Some(status) = suite_status(&apex2_master, "pharma") {
+            evidence.push(format!("apex2:suite:pharma:status={status}"));
+        }
+        risk_items.push(serde_json::json!({
+            "risk": "Incorrect PK/NLME surface behavior (finite NLL/grad, fit smoke) in pharma-oriented tools.",
+            "mitigation": "Apex2 pharma suite runs PK/NLME smoke tests plus a reference check against the analytic 1-compartment oral dosing formula.",
+            "evidence": evidence,
+        }));
+    }
+    {
+        let mut evidence = vec![
+            "deterministic".to_string(),
+            "dataset_fingerprint:workspace_sha256".to_string(),
+            "apex2_summary:master_report_sha256".to_string(),
+        ];
+        if deterministic {
+            evidence.push("pdf:metadata:pinned_creation_date".to_string());
+        }
+        risk_items.push(serde_json::json!({
+            "risk": "Loss of traceability and reproducibility across runs.",
+            "mitigation": "Deterministic mode omits timestamps/timings and uses stable ordering; inputs are fingerprinted by SHA-256.",
+            "evidence": evidence,
+        }));
+    }
+
     let git_commit = Command::new("git")
         .args(["rev-parse", "HEAD"])
         .output()
@@ -328,6 +611,23 @@ pub fn cmd_validation_report(
             "master_report_sha256": apex2_sha256,
             "suites": suites,
             "overall": overall,
+        },
+        "regulated_review": {
+            "contains_raw_data": false,
+            "intended_use": "Provide audit-friendly, reproducible validation evidence for NextStat outputs on a specific workspace and Apex2 master report.",
+            "scope": "This report summarizes deterministic fingerprints, environment metadata, and Apex2 suite outcomes. It is an evidence artifact to support risk-based review workflows (e.g., GxP/CSA/SR 11-7).",
+            "limitations": [
+                "This report does not include raw input data; only hashes, sizes, and summary statistics are included.",
+                "Validation results are only as complete as the Apex2 suites executed on the producing environment.",
+                "A 'pass' indicates suite-level parity/tolerance checks passed; it does not guarantee fitness for all intended uses."
+            ],
+            "data_handling": {
+                "notes": [
+                    "No raw workspace JSON is embedded in this report; only SHA-256 and byte size are recorded.",
+                    "Observed data are summarized (min/max/total) without per-bin disclosure."
+                ]
+            },
+            "risk_based_assurance": risk_items,
         }
     });
 

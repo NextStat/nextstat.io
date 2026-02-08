@@ -4,6 +4,8 @@
 This script combines existing Apex2 runners into a single JSON artifact:
   - pyhf: `tests/apex2_pyhf_validation_report.py`
   - HistFactory golden (no pyhf runtime): `tests/python/test_pyhf_model_zoo_goldens.py`
+  - time series (Phase 8): Kalman + forecasting smoke (always) + optional parity vs statsmodels
+  - pharma (Phase 9B): PK/NLME surface smoke (always; dependency-light)
   - survival (Phase 9): `tests/python/test_survival_contract.py` + `tests/python/test_survival_high_level_api.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
   - P6 benchmarks (GLM fit/predict): `tests/apex2_p6_glm_benchmark_report.py` (optional)
@@ -123,6 +125,32 @@ def _run_survival_smoke(*, cwd: Path, env: Dict[str, str], deterministic: bool) 
             "tests/python/test_survival_contract.py",
             "tests/python/test_survival_high_level_api.py",
         ],
+        cwd=cwd,
+        env=env,
+        deterministic=deterministic,
+    )
+
+def _run_timeseries_pack(*, cwd: Path, env: Dict[str, str], deterministic: bool) -> Dict[str, Any]:
+    # Dependency-light pack; statsmodels parity tests may skip if deps absent.
+    repo = _repo_root()
+    candidates = [
+        "tests/python/test_timeseries_kalman.py",
+        "tests/python/test_timeseries_viz_contract.py",
+        "tests/python/test_timeseries_statsmodels_ar1_parity.py",
+        "tests/python/test_timeseries_statsmodels_arma11_parity.py",
+        "tests/python/test_timeseries_ar1_statsmodels_parity.py",
+    ]
+    paths = [p for p in candidates if (repo / p).exists()]
+    if not paths:
+        return {"status": "error", "reason": "no_timeseries_tests_found"}
+    out = _run_pytest(paths, cwd=cwd, env=env, deterministic=deterministic)
+    out["statsmodels_available"] = bool(_module_available("statsmodels"))
+    return out
+
+def _run_pharma_pack(*, cwd: Path, env: Dict[str, str], deterministic: bool) -> Dict[str, Any]:
+    # Keep this minimal: surface-level PK/NLME smoke tests in NextStat bindings.
+    return _run_pytest(
+        ["tests/python/test_pk_models.py", "tests/python/test_pk_reference.py"],
         cwd=cwd,
         env=env,
         deterministic=deterministic,
@@ -608,6 +636,8 @@ def main() -> int:
         },
         "pyhf": None,
         "histfactory_golden": None,
+        "timeseries": None,
+        "pharma": None,
         "survival": None,
         "survival_statsmodels": None,
         "regression_golden": None,
@@ -656,6 +686,20 @@ def main() -> int:
     # HistFactory golden (no pyhf runtime required)
     # ------------------------------------------------------------------
     report["histfactory_golden"] = _run_histfactory_goldens(
+        cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
+
+    # ------------------------------------------------------------------
+    # Time series pack (Phase 8): Kalman + forecasting (+ optional statsmodels parity)
+    # ------------------------------------------------------------------
+    report["timeseries"] = _run_timeseries_pack(
+        cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
+
+    # ------------------------------------------------------------------
+    # Pharma pack (Phase 9B): PK/NLME surface smoke
+    # ------------------------------------------------------------------
+    report["pharma"] = _run_pharma_pack(
         cwd=cwd, env=env, deterministic=bool(args.deterministic)
     )
 
@@ -1008,6 +1052,8 @@ def main() -> int:
     survival_ok_or_skipped = report["survival"]["status"] in ("ok", "skipped")
     survival_sm_ok_or_skipped = report["survival_statsmodels"]["status"] in ("ok", "skipped")
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
+    timeseries_ok_or_skipped = report["timeseries"]["status"] in ("ok", "skipped")
+    pharma_ok_or_skipped = report["pharma"]["status"] in ("ok", "skipped")
     p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
     sbc_ok_or_skipped = report["sbc"]["status"] in ("ok", "skipped")
@@ -1023,6 +1069,10 @@ def main() -> int:
     if not survival_sm_ok_or_skipped:
         return 2
     if not reg_ok_or_skipped:
+        return 2
+    if not timeseries_ok_or_skipped:
+        return 2
+    if not pharma_ok_or_skipped:
         return 2
     if not p6_ok_or_skipped:
         return 2
