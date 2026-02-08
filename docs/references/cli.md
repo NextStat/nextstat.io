@@ -19,8 +19,10 @@ HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
 - `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
 - `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
+- `nextstat export histfactory --input workspace.json --out-dir export/ [--prefix meas] [--overwrite] [--python]`
 - `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
 - `nextstat trex import-config --config trex.config --out analysis.yaml [--report analysis.mapping.json]`
+- `nextstat audit --input workspace.json [--format text|json] [--output audit.json]`
 - `nextstat fit --input workspace.json [--gpu cuda]`
 - `nextstat hypotest --input workspace.json --mu 1.0 [--expected-set]`
 - `nextstat hypotest-toys --input workspace.json --mu 1.0 [--n-toys 1000 --seed 42] [--expected-set] [--threads 0] [--gpu cuda|metal]`
@@ -33,12 +35,14 @@ HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat viz corr --input workspace.json --fit fit.json`
 - `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json]`
 - `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render]`
+- `nextstat version`
 
 Time series (Phase 8):
 - `nextstat timeseries kalman-filter --input kalman_1d.json`
 - `nextstat timeseries kalman-smooth --input kalman_1d.json`
 - `nextstat timeseries kalman-em --input kalman_1d.json ...`
 - `nextstat timeseries kalman-fit --input kalman_1d.json ...`
+- `nextstat timeseries kalman-viz --input kalman_1d.json [--max-iter 50] [--level 0.95] [--forecast-steps ...]`
 - `nextstat timeseries kalman-forecast --input kalman_1d.json ...`
 - `nextstat timeseries kalman-simulate --input kalman_1d.json ...`
 
