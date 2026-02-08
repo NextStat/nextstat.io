@@ -25,6 +25,22 @@ pub struct MeasurementXml {
     pub lumi_rel_err: f64,
     /// Parameter settings.
     pub param_settings: Vec<ParamSetting>,
+    /// Optional constraint-term overrides for nuisance parameters.
+    ///
+    /// HistFactory allows specifying a constraint distribution and relative width
+    /// for a named nuisance parameter at the measurement level.
+    pub constraint_terms: Vec<ConstraintTermXml>,
+}
+
+/// A <ConstraintTerm> element.
+#[derive(Debug)]
+pub struct ConstraintTermXml {
+    /// Constraint distribution type (e.g. Gaussian, Gamma, LogNormal).
+    pub constraint_type: String,
+    /// Relative uncertainty parameter (HistFactory attribute `RelativeUncertainty`).
+    pub rel_uncertainty: Option<f64>,
+    /// Names of parameters this constraint applies to (space-separated text in XML).
+    pub names: Vec<String>,
 }
 
 /// A <ParamSetting> element.
@@ -115,5 +131,18 @@ fn parse_measurement(node: roxmltree::Node) -> Result<MeasurementXml> {
         })
         .collect();
 
-    Ok(MeasurementXml { name, poi, lumi, lumi_rel_err, param_settings })
+    // <ConstraintTerm> elements (optional)
+    let constraint_terms: Vec<ConstraintTermXml> = node
+        .children()
+        .filter(|n| n.has_tag_name("ConstraintTerm"))
+        .map(|n| {
+            let constraint_type = n.attribute("Type").unwrap_or("Gaussian").to_string();
+            let rel_uncertainty = n.attribute("RelativeUncertainty").and_then(|v| v.parse().ok());
+            let names: Vec<String> =
+                n.text().unwrap_or("").split_whitespace().map(String::from).collect();
+            Ok(ConstraintTermXml { constraint_type, rel_uncertainty, names })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(MeasurementXml { name, poi, lumi, lumi_rel_err, param_settings, constraint_terms })
 }

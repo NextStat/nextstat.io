@@ -12,6 +12,7 @@
 //! ```
 
 use crate::cuda_types::*;
+use crate::gpu_accel::GpuAccelerator;
 use cudarc::driver::{
     CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
 };
@@ -355,4 +356,27 @@ impl CudaBatchAccelerator {
         self.upload_observed(observed, ln_facts, obs_mask, 1)
     }
 
+}
+
+impl GpuAccelerator for CudaBatchAccelerator {
+    fn single_nll_grad(&mut self, params: &[f64]) -> ns_core::Result<(f64, Vec<f64>)> {
+        CudaBatchAccelerator::single_nll_grad(self, params)
+    }
+
+    fn upload_observed_single(
+        &mut self,
+        observed: &[f64],
+        ln_facts: &[f64],
+        obs_mask: &[f64],
+    ) -> ns_core::Result<()> {
+        CudaBatchAccelerator::upload_observed_single(self, observed, ln_facts, obs_mask)
+    }
+
+    fn n_params(&self) -> usize {
+        CudaBatchAccelerator::n_params(self)
+    }
+
+    fn n_main_bins(&self) -> usize {
+        CudaBatchAccelerator::n_main_bins(self)
+    }
 }

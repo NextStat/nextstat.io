@@ -412,6 +412,52 @@ fn build_measurements(
                 }
             }
 
+            // Apply Measurement-level ConstraintTerm overrides (if present).
+            //
+            // Note: the pyhf JSON schema encodes constraint info in `auxdata` + `sigmas`
+            // without an explicit distribution tag. We preserve the declared type by
+            // mapping it into a (best-effort) Gaussian-equivalent width when possible.
+            for ct in &m.constraint_terms {
+                let sigma = match (ct.constraint_type.as_str(), ct.rel_uncertainty) {
+                    ("LogNormal" | "lognormal" | "LOGNORMAL", Some(rel)) if rel > 0.0 => {
+                        (1.0 + rel).ln()
+                    }
+                    (_, Some(rel)) if rel > 0.0 => rel,
+                    _ => 1.0,
+                };
+
+                for name in &ct.names {
+                    if name.is_empty() {
+                        continue;
+                    }
+
+                    // Center convention:
+                    // - Lumi-like multiplicative parameters are centered at 1
+                    // - Most HistFactory nuisance parameters (overall/histo sys) are centered at 0
+                    let center = if name.eq_ignore_ascii_case("Lumi") { 1.0 } else { 0.0 };
+
+                    let idx = parameters.iter().position(|p| p.name == *name);
+                    if let Some(i) = idx {
+                        // Only fill auxdata/sigmas if not already set (avoid clobbering user config).
+                        if parameters[i].auxdata.is_empty() {
+                            parameters[i].auxdata = vec![center];
+                        }
+                        if parameters[i].sigmas.is_empty() {
+                            parameters[i].sigmas = vec![sigma];
+                        }
+                    } else {
+                        parameters.push(ParameterConfig {
+                            name: name.clone(),
+                            inits: Vec::new(),
+                            bounds: Vec::new(),
+                            fixed: false,
+                            auxdata: vec![center],
+                            sigmas: vec![sigma],
+                        });
+                    }
+                }
+            }
+
             Ok(Measurement {
                 name: m.name.clone(),
                 config: MeasurementConfig { poi: m.poi.clone(), parameters },

@@ -560,9 +560,9 @@ pub struct TrexRegion {
     /// Region name.
     pub name: String,
     /// Variable expression to histogram.
-    pub variable: String,
+    pub variable: Option<String>,
     /// Bin edges.
-    pub binning: Vec<f64>,
+    pub binning: Option<Vec<f64>>,
     /// Optional selection/cut expression.
     pub selection: Option<String>,
     /// Optional explicit data file (ntuple).
@@ -584,7 +584,7 @@ pub struct TrexSample {
     pub name: String,
     kind: SampleKind,
     /// ROOT file path.
-    pub file: PathBuf,
+    pub file: Option<PathBuf>,
     /// Optional tree name override for this sample.
     pub tree_name: Option<String>,
     /// Optional weight expression.
@@ -751,6 +751,50 @@ impl TrexConfig {
         let mut measurement = last_attr_value(&globals, "Measurement");
         let mut poi = last_attr_value(&globals, "POI").or_else(|| last_attr_value(&globals, "Poi"));
 
+        // First pass: treat Job attrs as global overrides so we can decide mode up-front.
+        for b in blocks.iter() {
+            if b.kind != BlockKind::Job {
+                continue;
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "ReadFrom") {
+                read_from = Some(v);
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "HistoPath")
+                .or_else(|| last_attr_value(&b.attrs, "HistPath"))
+                .or_else(|| last_attr_value(&b.attrs, "ExportDir"))
+            {
+                histo_path = Some(v);
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "CombinationXml")
+                .or_else(|| last_attr_value(&b.attrs, "HistFactoryXml"))
+                .or_else(|| last_attr_value(&b.attrs, "CombinationXML"))
+            {
+                combination_xml = Some(v);
+            }
+            if let Some(v) =
+                last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"))
+            {
+                tree_name = Some(v);
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "NtupleName") {
+                tree_name = Some(v);
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "Measurement") {
+                measurement = Some(v);
+            }
+            if let Some(v) = last_attr_value(&b.attrs, "POI").or_else(|| last_attr_value(&b.attrs, "Poi"))
+            {
+                poi = Some(v);
+            }
+        }
+
+        let read_from_mode = read_from
+            .as_deref()
+            .unwrap_or("NTUP")
+            .trim()
+            .to_ascii_uppercase();
+        let hist_filter_only = read_from_mode == "HIST";
+
         let mut regions = Vec::new();
         let mut samples = Vec::new();
         let mut systematics = Vec::new();
@@ -759,41 +803,10 @@ impl TrexConfig {
         for b in blocks {
             match b.kind {
                 BlockKind::Job => {
-                    // Treat Job attrs as global overrides.
-                    if let Some(v) = last_attr_value(&b.attrs, "ReadFrom") {
-                        read_from = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "HistoPath")
-                        .or_else(|| last_attr_value(&b.attrs, "HistPath"))
-                        .or_else(|| last_attr_value(&b.attrs, "ExportDir"))
-                    {
-                        histo_path = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "CombinationXml")
-                        .or_else(|| last_attr_value(&b.attrs, "HistFactoryXml"))
-                        .or_else(|| last_attr_value(&b.attrs, "CombinationXML"))
-                    {
-                        combination_xml = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "TreeName")
-                        .or_else(|| last_attr_value(&b.attrs, "Tree"))
-                    {
-                        tree_name = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "NtupleName") {
-                        tree_name = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "Measurement") {
-                        measurement = Some(v);
-                    }
-                    if let Some(v) = last_attr_value(&b.attrs, "POI")
-                        .or_else(|| last_attr_value(&b.attrs, "Poi"))
-                    {
-                        poi = Some(v);
-                    }
+                    // Already applied in the first pass.
                 }
                 BlockKind::Region => {
-                    let base_region = parse_region_block(&b)?;
+                    let base_region = parse_region_block(&b, hist_filter_only)?;
                     let names = if base_region.name.contains(';') {
                         parse_semicolon_list(&base_region.name)
                     } else {
@@ -810,9 +823,12 @@ impl TrexConfig {
                     }
                 }
                 BlockKind::Sample => {
-                    // Skip override-only nested samples (Region → Sample without File/Path).
+                    // In NTUP mode: skip override-only nested samples (Region → Sample without File/Path).
                     // These are handled by `workspace_from_str` composition rules.
-                    if b.ctx_region.is_some()
+                    //
+                    // In HIST mode: Region-scoped Sample blocks without File are filters and must be kept.
+                    if !hist_filter_only
+                        && b.ctx_region.is_some()
                         && !has_attr(&b.attrs, "File")
                         && !has_attr(&b.attrs, "Path")
                         && !has_attr(&b.attrs, "NtupleFile")
@@ -820,7 +836,7 @@ impl TrexConfig {
                     {
                         continue;
                     }
-                    samples.push(parse_sample_block(&b)?);
+                    samples.push(parse_sample_block(&b, hist_filter_only)?);
                 }
                 BlockKind::Systematic => {
                     match parse_systematic_block(&b) {
@@ -843,7 +859,7 @@ impl TrexConfig {
             }
         }
 
-        if !norm_factors.is_empty() {
+        if !hist_filter_only && !norm_factors.is_empty() {
             for (nf, targets) in norm_factors {
                 for s in &mut samples {
                     if s.kind == SampleKind::Data {
@@ -880,8 +896,26 @@ pub fn expr_coverage_from_str(text: &str) -> Result<TrexExprCoverageReport> {
     Ok(trex_expr_coverage_from_raw(&globals, &blocks))
 }
 
-fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
+fn parse_region_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexRegion> {
     let name = b.name.clone();
+
+    // HIST mode wrapper: Region blocks can be used as a pure channel include-list. TREx configs
+    // in this mode often omit Variable/Binning entirely.
+    if hist_filter_only {
+        let selection =
+            last_attr_value(&b.attrs, "Selection").or_else(|| last_attr_value(&b.attrs, "Cut"));
+        let data_file = last_attr_value(&b.attrs, "DataFile").map(PathBuf::from);
+        let data_tree_name = last_attr_value(&b.attrs, "DataTreeName")
+            .or_else(|| last_attr_value(&b.attrs, "DataTree"));
+        return Ok(TrexRegion {
+            name,
+            variable: None,
+            binning: None,
+            selection,
+            data_file,
+            data_tree_name,
+        });
+    }
 
     fn parse_variable_spec(value: &str) -> Option<(String, Vec<f64>)> {
         // TREx configs often encode variable + binning on a single line:
@@ -954,7 +988,14 @@ fn parse_region_block(b: &RawBlock) -> Result<TrexRegion> {
     let data_tree_name =
         last_attr_value(&b.attrs, "DataTreeName").or_else(|| last_attr_value(&b.attrs, "DataTree"));
 
-    Ok(TrexRegion { name, variable, binning, selection, data_file, data_tree_name })
+    Ok(TrexRegion {
+        name,
+        variable: Some(variable),
+        binning: Some(binning),
+        selection,
+        data_file,
+        data_tree_name,
+    })
 }
 
 fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverageReport {
@@ -1342,7 +1383,7 @@ fn parse_sample_kind(value: Option<String>) -> SampleKind {
     if v == "data" { SampleKind::Data } else { SampleKind::Mc }
 }
 
-fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
+fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample> {
     let name = b.name.clone();
 
     let kind = parse_sample_kind(last_attr_value(&b.attrs, "Type"));
@@ -1352,13 +1393,20 @@ fn parse_sample_block(b: &RawBlock) -> Result<TrexSample> {
         .or_else(|| last_attr_value(&b.attrs, "NtupleFile"))
         .or_else(|| {
             last_attr_value(&b.attrs, "NtupleFiles").and_then(|v| parse_list(&v).into_iter().next())
-        })
-        .ok_or_else(|| {
-            Error::Validation(format!(
-                "Sample '{name}' missing File (expected File/Path or NtupleFile/NtupleFiles)"
-            ))
-        })?;
-    let file = PathBuf::from(file);
+        });
+
+    let file = match file {
+        Some(v) => Some(PathBuf::from(v)),
+        None => {
+            if hist_filter_only {
+                None
+            } else {
+                return Err(Error::Validation(format!(
+                    "Sample '{name}' missing File (expected File/Path or NtupleFile/NtupleFiles)"
+                )));
+            }
+        }
+    };
 
     let tree_name = last_attr_value(&b.attrs, "TreeName")
         .or_else(|| last_attr_value(&b.attrs, "Tree"))
@@ -1930,8 +1978,14 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
         cfg.samples.iter().filter(|s| s.kind == SampleKind::Data).collect();
 
     for region in &cfg.regions {
-        let mut ch =
-            ChannelConfig::new(&region.name).variable(&region.variable).binning(&region.binning);
+        let variable = region.variable.as_deref().ok_or_else(|| {
+            Error::Validation(format!("Region '{}' missing Variable (required in NTUP mode)", region.name))
+        })?;
+        let binning = region.binning.as_ref().ok_or_else(|| {
+            Error::Validation(format!("Region '{}' missing Binning (required in NTUP mode)", region.name))
+        })?;
+
+        let mut ch = ChannelConfig::new(&region.name).variable(variable).binning(binning);
 
         if let Some(ref sel) = region.selection {
             ch = ch.selection(sel);
@@ -1953,7 +2007,13 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
                 )));
             }
             if let Some(ds) = data_hits.pop() {
-                ch.data_file = Some(ds.file.clone());
+                let file = ds.file.clone().ok_or_else(|| {
+                    Error::Validation(format!(
+                        "DATA sample '{}' missing File (required in NTUP mode)",
+                        ds.name
+                    ))
+                })?;
+                ch.data_file = Some(file);
                 ch.data_tree_name = ds.tree_name.clone();
             }
         }
@@ -1967,7 +2027,10 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
                 continue;
             }
 
-            let mut sc = SampleConfig::new(&s.name, s.file.clone());
+            let file = s.file.clone().ok_or_else(|| {
+                Error::Validation(format!("Sample '{}' missing File (required in NTUP mode)", s.name))
+            })?;
+            let mut sc = SampleConfig::new(&s.name, file);
             sc.tree_name = s.tree_name.clone();
             sc.weight = s.weight.clone();
             sc.modifiers = s.modifiers.clone();
@@ -2035,8 +2098,14 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
         cfg.samples.iter().filter(|s| s.kind == SampleKind::Data).collect();
 
     for region in &cfg.regions {
-        let mut ch =
-            ChannelConfig::new(&region.name).variable(&region.variable).binning(&region.binning);
+        let region_variable = region.variable.as_deref().ok_or_else(|| {
+            Error::Validation(format!("Region '{}' missing Variable (required in NTUP mode)", region.name))
+        })?;
+        let region_binning = region.binning.as_ref().ok_or_else(|| {
+            Error::Validation(format!("Region '{}' missing Binning (required in NTUP mode)", region.name))
+        })?;
+
+        let mut ch = ChannelConfig::new(&region.name).variable(region_variable).binning(region_binning);
 
         if let Some(ref sel) = region.selection {
             ch = ch.selection(sel);
@@ -2058,7 +2127,13 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
                 )));
             }
             if let Some(ds) = data_hits.pop() {
-                ch.data_file = Some(ds.file.clone());
+                let file = ds.file.clone().ok_or_else(|| {
+                    Error::Validation(format!(
+                        "DATA sample '{}' missing File (required in NTUP mode)",
+                        ds.name
+                    ))
+                })?;
+                ch.data_file = Some(file);
                 ch.data_tree_name = ds.tree_name.clone();
             }
         }
@@ -2075,7 +2150,7 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
             let ov = overrides.get(&(region.name.clone(), s.name.clone()));
             enforce_variable_rules(
                 &region.name,
-                &region.variable,
+                region_variable,
                 &s.name,
                 sample_variable.get(&s.name),
                 ov.and_then(|x| x.variable.as_ref()),
@@ -2102,7 +2177,10 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
                 .flatten(),
             );
 
-            let mut sc = SampleConfig::new(&s.name, s.file.clone());
+            let file = s.file.clone().ok_or_else(|| {
+                Error::Validation(format!("Sample '{}' missing File (required in NTUP mode)", s.name))
+            })?;
+            let mut sc = SampleConfig::new(&s.name, file);
             sc.tree_name = s.tree_name.clone();
             sc.weight = w;
             sc.modifiers = s.modifiers.clone();
@@ -2757,8 +2835,6 @@ HistoPath: tests/fixtures/pyhf_multichannel
 CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
 
 Region: channel2
-Variable: x
-Binning: 0, 1
 "#;
         let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (filtered)");
         assert_eq!(ws.channels.len(), 1);
@@ -2776,7 +2852,6 @@ CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
 
 Sample: bkg
 Type: BACKGROUND
-File: ignored.root
 Regions: channel1, channel2
 "#;
         let ws =
@@ -2801,7 +2876,6 @@ CombinationXml: tests/fixtures/pyhf_multichannel/config/example.xml
 
 Sample: signal
 Type: SIGNAL
-File: ignored.root
 Regions: channel2
 "#;
         let err = workspace_from_str(cfg, &repo_root()).unwrap_err();
@@ -2980,10 +3054,11 @@ File: tests/fixtures/simple_tree.root
         let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
         assert_eq!(parsed.regions.len(), 1);
         assert_eq!(parsed.regions[0].name, "SR");
-        assert_eq!(parsed.regions[0].variable, "x");
-        assert_eq!(parsed.regions[0].binning.len(), 5);
-        assert!((parsed.regions[0].binning[0] - 0.0).abs() < 1e-12);
-        assert!((parsed.regions[0].binning[4] - 2.0).abs() < 1e-12);
+        assert_eq!(parsed.regions[0].variable.as_deref(), Some("x"));
+        let edges = parsed.regions[0].binning.as_ref().expect("binning");
+        assert_eq!(edges.len(), 5);
+        assert!((edges[0] - 0.0).abs() < 1e-12);
+        assert!((edges[4] - 2.0).abs() < 1e-12);
     }
 
     #[test]
@@ -3006,7 +3081,10 @@ MCweight: w_mc
         assert_eq!(parsed.tree_name.as_deref(), Some("reco"));
         assert_eq!(parsed.samples.len(), 1);
         assert_eq!(parsed.samples[0].name, "sig");
-        assert_eq!(parsed.samples[0].file, std::path::PathBuf::from("prediction.root"));
+        assert_eq!(
+            parsed.samples[0].file.as_ref().map(|p| p.as_path()),
+            Some(std::path::Path::new("prediction.root"))
+        );
         assert_eq!(parsed.samples[0].weight.as_deref(), Some("w_mc"));
     }
 

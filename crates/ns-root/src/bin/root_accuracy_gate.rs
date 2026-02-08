@@ -32,6 +32,9 @@ fn main() -> Result<(), io::Error> {
             return Ok(());
         }
 
+        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
+    }
+
 #[derive(Copy, Clone, Debug, Default)]
 struct BenchCompareStats {
     branches_checked: usize,
@@ -329,8 +332,6 @@ fn bench_compare_tree_baskets(
 
     Ok(stats)
 }
-        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
-    }
 
     if cfg.bench_compare {
         let tree_name = match cfg.tree_name {

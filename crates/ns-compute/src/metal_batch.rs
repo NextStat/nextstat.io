@@ -6,6 +6,7 @@
 //! All computation in f32. Conversion f64↔f32 happens at the API boundary.
 
 use crate::metal_types::*;
+use crate::gpu_accel::GpuAccelerator;
 use metal::*;
 use std::mem;
 
@@ -384,5 +385,28 @@ impl MetalBatchAccelerator {
         let ptr = buffer.contents() as *const f32;
         let slice = unsafe { std::slice::from_raw_parts(ptr, count) };
         slice.iter().map(|&v| v as f64).collect()
+    }
+}
+
+impl GpuAccelerator for MetalBatchAccelerator {
+    fn single_nll_grad(&mut self, params: &[f64]) -> ns_core::Result<(f64, Vec<f64>)> {
+        MetalBatchAccelerator::single_nll_grad(self, params)
+    }
+
+    fn upload_observed_single(
+        &mut self,
+        observed: &[f64],
+        ln_facts: &[f64],
+        obs_mask: &[f64],
+    ) -> ns_core::Result<()> {
+        MetalBatchAccelerator::upload_observed_single(self, observed, ln_facts, obs_mask)
+    }
+
+    fn n_params(&self) -> usize {
+        MetalBatchAccelerator::n_params(self)
+    }
+
+    fn n_main_bins(&self) -> usize {
+        MetalBatchAccelerator::n_main_bins(self)
     }
 }

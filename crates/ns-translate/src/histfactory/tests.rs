@@ -181,3 +181,47 @@ fn histfactory_pyhf_xmlimport_staterrorconfig_poisson_maps_to_shapesys_and_lumi(
     assert_eq!(lumi_cfg.auxdata, vec![1.0]);
     assert_eq!(lumi_cfg.sigmas, vec![0.1]);
 }
+
+#[test]
+fn histfactory_pyhf_xmlimport_constraintterm_imported_into_measurement_params() {
+    let (xml, basedir) = fixture_pyhf_xmlimport();
+    let ws = from_xml_with_basedir(&xml, Some(&basedir)).expect("from_xml_with_basedir");
+
+    let gauss = ws
+        .measurements
+        .iter()
+        .find(|m| m.name == "GaussExample")
+        .expect("GaussExample measurement");
+    assert!(
+        gauss.config.parameters.iter().all(|p| p.name != "syst2"),
+        "GaussExample should not declare ConstraintTerm param config for syst2"
+    );
+
+    let gamma = ws
+        .measurements
+        .iter()
+        .find(|m| m.name == "GammaExample")
+        .expect("GammaExample measurement");
+    let syst2_gamma = gamma
+        .config
+        .parameters
+        .iter()
+        .find(|p| p.name == "syst2")
+        .expect("GammaExample should include parameter config for syst2");
+    assert_eq!(syst2_gamma.auxdata, vec![0.0]);
+    assert_eq!(syst2_gamma.sigmas, vec![0.3]);
+
+    let lognorm = ws
+        .measurements
+        .iter()
+        .find(|m| m.name == "LogNormExample")
+        .expect("LogNormExample measurement");
+    let syst2_logn = lognorm
+        .config
+        .parameters
+        .iter()
+        .find(|p| p.name == "syst2")
+        .expect("LogNormExample should include parameter config for syst2");
+    assert_eq!(syst2_logn.auxdata, vec![0.0]);
+    assert_eq!(syst2_logn.sigmas, vec![(1.0_f64 + 0.3).ln()]);
+}

@@ -19,6 +19,8 @@
 #![warn(clippy::all)]
 
 pub mod cpu;
+/// Device-agnostic GPU accelerator abstraction (always available).
+pub mod gpu_accel;
 pub mod simd;
 
 pub use cpu::CpuBackend;
