@@ -71,7 +71,7 @@ proptest = "1.10"
 criterion = { version = "0.8", features = ["html_reports"] }
 
 # MCMC / sampling (Phase 3, optional)
-rand = "0.9"
+rand = "0.10"
 rand_distr = "0.5"
 json-patch = "4.1.0"
 
@@ -95,7 +95,7 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # GPU backends (Phase 2C - Optional)
 cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "std", "dynamic-loading", "cuda-version-from-build-system"] }
-metal = "0.30"
+metal = "0.33"
 objc = "0.2"
 block = "0.1"
 
