@@ -1,0 +1,7 @@
+None is not of type 'number'
+
+Failed validating 'type' in schema['allOf'][10]['then']['properties']['result']['properties']['underflow_sumw2']:
+    {'type': 'number'}
+
+On instance['result']['underflow_sumw2']:
+    None
