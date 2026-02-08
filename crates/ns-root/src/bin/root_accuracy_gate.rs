@@ -1,0 +1,460 @@
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+
+use ns_root::{KeyInfo, RootFile};
+
+const BUF_SIZE: usize = 64 * 1024;
+
+fn main() -> Result<(), io::Error> {
+    let cfg = Config::parse()?;
+
+    let file = RootFile::open(&cfg.root_path)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to open root file: {e}")))?;
+
+    let tree_name = match cfg.tree_name {
+        Some(t) => t,
+        None => select_first_tree_name(&file)?,
+    };
+
+    let tree = file
+        .get_tree(&tree_name)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to read tree '{tree_name}': {e}")))?;
+
+    let bytes = file.file_data();
+    let _is_large = file.is_large();
+
+    let max_baskets_per_branch = cfg.max_baskets_per_branch.unwrap_or(usize::MAX);
+
+    let mut branches_checked = 0usize;
+    let mut baskets_checked = 0usize;
+    let mut baskets_skipped_uncompressed = 0usize;
+    let mut blocks_checked = 0usize;
+    let mut blocks_skipped_non_zs = 0usize;
+    let mut failures = 0usize;
+
+    for branch in &tree.branches {
+        branches_checked += 1;
+        let n = branch.n_baskets.min(max_baskets_per_branch);
+        for i in 0..n {
+            let seek = branch.basket_seek[i];
+
+            let (obj_len, key_len, n_bytes) = read_tkey_header_fast(bytes, seek as usize)?;
+
+            let key_end = seek as usize + n_bytes;
+            let obj_start = seek as usize + key_len;
+            if key_end > bytes.len() || obj_start > key_end {
+                failures += 1;
+                eprintln!(
+                    "FAIL branch='{}' basket={} seek={} : key slice out of bounds",
+                    branch.name, i, seek
+                );
+                if cfg.fail_fast {
+                    return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate failed"));
+                }
+                continue;
+            }
+
+            let compressed_data = &bytes[obj_start..key_end];
+            let compressed_len = n_bytes - key_len;
+
+            if obj_len == compressed_len {
+                baskets_skipped_uncompressed += 1;
+                continue;
+            }
+
+            let ctx = Ctx {
+                root_path: &cfg.root_path,
+                tree_name: &tree.name,
+                branch_name: &branch.name,
+                basket_index: i,
+                basket_seek: seek,
+            };
+
+            match verify_root_blocks_zs_only(compressed_data, obj_len, &ctx, cfg.verbose) {
+                Ok(stats) => {
+                    baskets_checked += 1;
+                    blocks_checked += stats.blocks_checked;
+                    blocks_skipped_non_zs += stats.blocks_skipped_non_zs;
+                }
+                Err(e) => {
+                    failures += 1;
+                    eprintln!(
+                        "FAIL branch='{}' basket={} seek={} : {}",
+                        branch.name, i, seek, e
+                    );
+                    if cfg.fail_fast {
+                        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate failed"));
+                    }
+                }
+            }
+        }
+    }
+
+    println!(
+        "Summary: branches_checked={}, baskets_checked={}, baskets_uncompressed_skipped={}, zstd_blocks_checked={}, non_zs_blocks_skipped={}, failures={}",
+        branches_checked,
+        baskets_checked,
+        baskets_skipped_uncompressed,
+        blocks_checked,
+        blocks_skipped_non_zs,
+        failures
+    );
+
+    if failures == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate failed"))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Config {
+    root_path: PathBuf,
+    tree_name: Option<String>,
+    max_baskets_per_branch: Option<usize>,
+    fail_fast: bool,
+    verbose: bool,
+}
+
+impl Config {
+    fn parse() -> Result<Self, io::Error> {
+        let mut args = std::env::args_os();
+        let _exe = args.next();
+
+        let mut root_path: Option<PathBuf> = None;
+        let mut tree_name: Option<String> = None;
+        let mut max_baskets_per_branch: Option<usize> = Some(32);
+        let mut fail_fast = false;
+        let mut verbose = false;
+
+        while let Some(arg) = args.next() {
+            match arg.to_string_lossy().as_ref() {
+                "--root" => {
+                    let Some(v) = args.next() else {
+                        return Err(io::Error::new(io::ErrorKind::InvalidInput, "--root requires a path"));
+                    };
+                    root_path = Some(PathBuf::from(v));
+                }
+                "--tree" => {
+                    let Some(v) = args.next() else {
+                        return Err(io::Error::new(io::ErrorKind::InvalidInput, "--tree requires a value"));
+                    };
+                    tree_name = Some(v.to_string_lossy().to_string());
+                }
+                "--max-baskets-per-branch" => {
+                    let Some(v) = args.next() else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "--max-baskets-per-branch requires a value",
+                        ));
+                    };
+                    let s = v.to_string_lossy();
+                    let n: usize = s.parse().map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("invalid --max-baskets-per-branch: {s}"),
+                        )
+                    })?;
+                    max_baskets_per_branch = if n == 0 { None } else { Some(n) };
+                }
+                "--fail-fast" => fail_fast = true,
+                "--verbose" | "-v" => verbose = true,
+                "--help" | "-h" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                s if s.starts_with('-') => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("unknown flag: {s}")));
+                }
+                _ => {
+                    if root_path.is_none() {
+                        root_path = Some(PathBuf::from(arg));
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "unexpected positional argument (did you mean --tree <name>?)",
+                        ));
+                    }
+                }
+            }
+        }
+
+        let root_path = match root_path {
+            Some(p) => p,
+            None => {
+                print_help();
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing --root <file.root>"));
+            }
+        };
+
+        Ok(Self {
+            root_path,
+            tree_name,
+            max_baskets_per_branch,
+            fail_fast,
+            verbose,
+        })
+    }
+}
+
+fn print_help() {
+    eprintln!(
+        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--fail-fast] [--verbose]\n\nBehavior:\n  - Iterates all branches in the tree (default: first TTree in top-level keys)\n  - Iterates up to N baskets per branch (default: 32; N=0 means all)\n  - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n  - Compare output byte-for-byte\n\nExit status:\n  - 0 if all checked blocks match\n  - non-zero on any mismatch\n"
+    );
+}
+
+fn select_first_tree_name(file: &RootFile) -> Result<String, io::Error> {
+    let keys: Vec<KeyInfo> = file
+        .list_keys()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to list keys: {e}")))?;
+
+    for k in keys {
+        if k.class_name == "TTree" {
+            return Ok(k.name);
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "no TTree found in top-level keys; pass --tree <name>",
+    ))
+}
+
+#[derive(Copy, Clone)]
+struct Ctx<'a> {
+    root_path: &'a Path,
+    tree_name: &'a str,
+    branch_name: &'a str,
+    basket_index: usize,
+    basket_seek: u64,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct VerifyStats {
+    blocks_checked: usize,
+    blocks_skipped_non_zs: usize,
+}
+
+fn read_tkey_header_fast(file_data: &[u8], pos: usize) -> Result<(usize, usize, usize), io::Error> {
+    use ns_root::rbuffer::RBuffer;
+
+    let mut r = RBuffer::new(file_data);
+    r.set_pos(pos);
+
+    let n_bytes = r
+        .read_u32()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("read TKey n_bytes: {e}")))?
+        as usize;
+    let _version = r
+        .read_u16()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("read TKey version: {e}")))?;
+    let obj_len = r
+        .read_u32()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("read TKey obj_len: {e}")))?
+        as usize;
+    let _datime = r
+        .read_u32()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("read TKey datime: {e}")))?;
+    let key_len = r
+        .read_u16()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("read TKey key_len: {e}")))?
+        as usize;
+
+    Ok((obj_len, key_len, n_bytes))
+}
+
+fn verify_root_blocks_zs_only(
+    src: &[u8],
+    expected_len: usize,
+    ctx: &Ctx<'_>,
+    verbose: bool,
+) -> Result<VerifyStats, String> {
+    let mut stats = VerifyStats::default();
+
+    let mut offset = 0usize;
+    let mut total_uncompressed = 0usize;
+
+    while total_uncompressed < expected_len {
+        if offset + 9 > src.len() {
+            return Err(format!(
+                "truncated ROOT compression block header at payload offset {} (need 9 bytes)",
+                offset
+            ));
+        }
+
+        let tag = &src[offset..offset + 2];
+        let c_size = read_le24(&src[offset + 3..offset + 6]);
+        let u_size = read_le24(&src[offset + 6..offset + 9]);
+        offset += 9;
+
+        let end = offset + c_size;
+        if end > src.len() {
+            return Err(format!(
+                "compressed sub-block claims {} bytes but only {} remain",
+                c_size,
+                src.len() - offset
+            ));
+        }
+
+        let compressed = &src[offset..end];
+
+        if tag == b"ZS" {
+            stats.blocks_checked += 1;
+            compare_zstd_block(compressed, u_size, ctx, total_uncompressed, verbose)?;
+        } else {
+            stats.blocks_skipped_non_zs += 1;
+        }
+
+        total_uncompressed += u_size;
+        offset = end;
+    }
+
+    if total_uncompressed != expected_len {
+        return Err(format!(
+            "total uncompressed bytes {} != expected {}",
+            total_uncompressed, expected_len
+        ));
+    }
+
+    Ok(stats)
+}
+
+fn compare_zstd_block(
+    compressed: &[u8],
+    expected_u_size: usize,
+    ctx: &Ctx<'_>,
+    basket_uncompressed_offset: usize,
+    verbose: bool,
+) -> Result<(), String> {
+    use std::io::Cursor;
+
+    let mut ref_dec = zstd::stream::Decoder::new(Cursor::new(compressed))
+        .map_err(|e| format!("libzstd (zstd crate) init failed: {e}"))?;
+
+    let mut ruz_source = compressed;
+    let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
+        .map_err(|e| format!("ruzstd init failed: {e}"))?;
+
+    let bytes = stream_compare(&mut ruz_dec, &mut ref_dec).map_err(|e| {
+        format!(
+            "{} (tree='{}' branch='{}' basket={} seek={} basket_off={})",
+            e,
+            ctx.tree_name,
+            ctx.branch_name,
+            ctx.basket_index,
+            ctx.basket_seek,
+            basket_uncompressed_offset,
+        )
+    })?;
+
+    if bytes != expected_u_size as u64 {
+        return Err(format!(
+            "decoded size mismatch: got {} expected {} (tree='{}' branch='{}' basket={} seek={} basket_off={})",
+            bytes,
+            expected_u_size,
+            ctx.tree_name,
+            ctx.branch_name,
+            ctx.basket_index,
+            ctx.basket_seek,
+            basket_uncompressed_offset,
+        ));
+    }
+
+    if verbose {
+        println!(
+            "OK root={} tree={} branch={} basket={} seek={} block_out={} bytes",
+            ctx.root_path.display(),
+            ctx.tree_name,
+            ctx.branch_name,
+            ctx.basket_index,
+            ctx.basket_seek,
+            bytes
+        );
+    }
+
+    Ok(())
+}
+
+fn stream_compare(a: &mut dyn Read, b: &mut dyn Read) -> Result<u64, String> {
+    let mut a_buf = vec![0u8; BUF_SIZE];
+    let mut b_buf = vec![0u8; BUF_SIZE];
+
+    let mut a_pos = 0usize;
+    let mut a_len = 0usize;
+    let mut b_pos = 0usize;
+    let mut b_len = 0usize;
+
+    let mut total: u64 = 0;
+
+    loop {
+        if a_pos == a_len {
+            a_len = a.read(&mut a_buf).map_err(|e| format!("read ruzstd: {e}"))?;
+            a_pos = 0;
+        }
+        if b_pos == b_len {
+            b_len = b.read(&mut b_buf).map_err(|e| format!("read libzstd: {e}"))?;
+            b_pos = 0;
+        }
+
+        if a_len == 0 && b_len == 0 {
+            return Ok(total);
+        }
+        if a_len == 0 && b_len != 0 {
+            return Err(format!(
+                "output length mismatch at offset {total}: ruzstd ended early, reference has more data"
+            ));
+        }
+        if b_len == 0 && a_len != 0 {
+            return Err(format!(
+                "output length mismatch at offset {total}: reference ended early, ruzstd has more data"
+            ));
+        }
+
+        let a_avail = a_len - a_pos;
+        let b_avail = b_len - b_pos;
+        let n = a_avail.min(b_avail);
+
+        let a_slice = &a_buf[a_pos..a_pos + n];
+        let b_slice = &b_buf[b_pos..b_pos + n];
+
+        if a_slice != b_slice {
+            let mut i = 0usize;
+            while i < n {
+                if a_slice[i] != b_slice[i] {
+                    break;
+                }
+                i += 1;
+            }
+            let off = total + i as u64;
+
+            let a_tail = hex_preview(&a_slice[i..], 32);
+            let b_tail = hex_preview(&b_slice[i..], 32);
+
+            return Err(format!(
+                "byte mismatch at offset {off}: ruzstd=0x{:02X} ref=0x{:02X}; ruzstd_tail={a_tail} ref_tail={b_tail}",
+                a_slice[i],
+                b_slice[i]
+            ));
+        }
+
+        a_pos += n;
+        b_pos += n;
+        total += n as u64;
+    }
+}
+
+fn hex_preview(bytes: &[u8], max: usize) -> String {
+    let mut out = String::new();
+    let n = bytes.len().min(max);
+    for (i, &b) in bytes[..n].iter().enumerate() {
+        if i != 0 {
+            out.push(' ');
+        }
+        out.push_str(&format!("{:02X}", b));
+    }
+    out
+}
+
+fn read_le24(b: &[u8]) -> usize {
+    b[0] as usize | ((b[1] as usize) << 8) | ((b[2] as usize) << 16)
+}

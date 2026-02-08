@@ -2296,8 +2296,21 @@ fn load_model(
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
-    let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
-    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
+
+    let format = ns_translate::hs3::detect::detect_format(&json);
+    let model = match format {
+        ns_translate::hs3::detect::WorkspaceFormat::Hs3 => {
+            tracing::info!("detected HS3 format");
+            ns_translate::hs3::convert::from_hs3_default(&json)
+                .map_err(|e| anyhow::anyhow!("HS3 loading failed: {e}"))?
+        }
+        ns_translate::hs3::detect::WorkspaceFormat::Pyhf
+        | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
+            let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
+            ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?
+        }
+    };
+
     tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok(model)
 }

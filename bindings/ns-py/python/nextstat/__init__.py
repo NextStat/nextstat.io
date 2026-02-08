@@ -65,12 +65,22 @@ set_eval_mode = _get("set_eval_mode")
 get_eval_mode = _get("get_eval_mode")
 has_accelerate = _get("has_accelerate")
 has_cuda = _get("has_cuda")
+has_metal = _get("has_metal")
 DifferentiableSession = _get("DifferentiableSession")
 ProfiledDifferentiableSession = _get("ProfiledDifferentiableSession")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
 rk4_linear = _get("rk4_linear")
+read_root_histogram = _get("read_root_histogram")
+workspace_audit = _get("workspace_audit")
+cls_curve = _get("cls_curve")
+profile_curve = _get("profile_curve")
+kalman_filter = _get("kalman_filter")
+kalman_smooth = _get("kalman_smooth")
+kalman_em = _get("kalman_em")
+kalman_forecast = _get("kalman_forecast")
+kalman_simulate = _get("kalman_simulate")
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
@@ -93,6 +103,8 @@ from . import panel as panel  # noqa: E402
 from . import econometrics as econometrics
 from . import mlops as mlops  # noqa: E402
 from . import interpret as interpret  # noqa: E402
+from . import tools as tools  # noqa: E402
+from . import distill as distill  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -181,6 +193,16 @@ __all__ = [
     "poisson_toys",
     "ranking",
     "rk4_linear",
+    "has_metal",
+    "read_root_histogram",
+    "workspace_audit",
+    "cls_curve",
+    "profile_curve",
+    "kalman_filter",
+    "kalman_smooth",
+    "kalman_em",
+    "kalman_forecast",
+    "kalman_simulate",
     "from_pyhf",
     "apply_patchset",
     "from_histfactory_xml",
@@ -191,12 +213,8 @@ __all__ = [
     "upper_limits_root",
     "mlops",
     "interpret",
+    "tools",
+    "distill",
     "PyModel",
     "PyFitResult",
-    "ExponentialSurvivalModel",
-    "WeibullSurvivalModel",
-    "LogNormalAftModel",
-    "CoxPhModel",
-    "OneCompartmentOralPkModel",
-    "OneCompartmentOralPkNlmeModel",
 ]

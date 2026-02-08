@@ -18,6 +18,7 @@
 pub mod histfactory;
 #[cfg(feature = "root-io")]
 pub mod ntuple;
+pub mod hs3;
 pub mod pyhf;
 #[cfg(feature = "root-io")]
 pub mod trex;

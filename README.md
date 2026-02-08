@@ -30,6 +30,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py
 ## What You Get
 
 - pyhf JSON compatibility (HistFactory-style workspaces)
+- Native HS3 (HEP Statistics Serialization Standard) v0.2 support — load ROOT 6.37+ HS3 JSON directly, auto-detected alongside pyhf
 - Native ROOT TTree reader with mmap I/O, rayon-parallel basket decompression, and columnar extraction — no ROOT C++ dependency
 - Ntuple-to-workspace pipeline: ROOT ntuples → histograms → HistFactory workspace (TRExFitter replacement)
 - Expression engine for string-based selections and weights (`"njet >= 4 && pt > 25.0"`)
@@ -281,7 +282,7 @@ nextstat/
 │   ├── ns-compute/      # SIMD kernels, Apple Accelerate, CUDA/Metal batch NLL+grad
 │   ├── ns-ad/           # Automatic differentiation (dual/tape)
 │   ├── ns-root/         # Native ROOT file reader (TH1, TTree, expressions, filler)
-│   ├── ns-translate/    # Format translators (pyhf, HistFactory XML, ntuple builder)
+│   ├── ns-translate/    # Format translators (pyhf, HS3, HistFactory XML, ntuple builder)
 │   ├── ns-inference/    # MLE, NUTS, CLs, GLM, time series, PK/NLME
 │   ├── ns-viz/          # Visualization artifacts
 │   └── ns-cli/          # CLI binary

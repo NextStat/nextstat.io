@@ -1163,15 +1163,45 @@ struct PyHistFactoryModel {
 
 #[pymethods]
 impl PyHistFactoryModel {
-    /// Create model from workspace JSON string
+    /// Create model from workspace JSON string (auto-detects pyhf vs HS3 format).
     #[staticmethod]
     fn from_workspace(json_str: &str) -> PyResult<Self> {
-        let workspace: RustWorkspace = serde_json::from_str(json_str)
-            .map_err(|e| PyValueError::new_err(format!("Failed to parse workspace: {}", e)))?;
+        let format = ns_translate::hs3::detect::detect_format(json_str);
+        match format {
+            ns_translate::hs3::detect::WorkspaceFormat::Hs3 => {
+                Self::from_hs3(json_str, None, None)
+            }
+            _ => {
+                let workspace: RustWorkspace = serde_json::from_str(json_str)
+                    .map_err(|e| PyValueError::new_err(format!("Failed to parse workspace: {}", e)))?;
+                let model = RustModel::from_workspace(&workspace)
+                    .map_err(|e| PyValueError::new_err(format!("Failed to create model: {}", e)))?;
+                Ok(PyHistFactoryModel { inner: model })
+            }
+        }
+    }
 
-        let model = RustModel::from_workspace(&workspace)
-            .map_err(|e| PyValueError::new_err(format!("Failed to create model: {}", e)))?;
-
+    /// Load model from HS3 JSON string.
+    ///
+    /// Args:
+    ///     json_str: HS3 JSON string.
+    ///     analysis: Optional analysis name (default: first analysis).
+    ///     param_points: Optional parameter points set name (default: "default_values").
+    #[staticmethod]
+    #[pyo3(signature = (json_str, analysis=None, param_points=None))]
+    fn from_hs3(
+        json_str: &str,
+        analysis: Option<&str>,
+        param_points: Option<&str>,
+    ) -> PyResult<Self> {
+        let model = ns_translate::hs3::convert::from_hs3(
+            json_str,
+            analysis,
+            param_points,
+            ns_translate::pyhf::NormSysInterpCode::Code1,
+            ns_translate::pyhf::HistoSysInterpCode::Code0,
+        )
+        .map_err(|e| PyValueError::new_err(format!("Failed to load HS3: {}", e)))?;
         Ok(PyHistFactoryModel { inner: model })
     }
 

@@ -667,7 +667,7 @@ class SignificanceLoss:
         return profiled_q0_loss(signal_histogram, self._session)
 
     def z0(self, signal_histogram):
-        """Raw :math:`Z_0 = \sqrt{q_0 + \epsilon}`."""
+        r"""Raw :math:`Z_0 = \sqrt{q_0 + \epsilon}`."""
         return profiled_z0_loss(signal_histogram, self._session, eps=self._eps)
 
     @property
@@ -931,13 +931,9 @@ def as_tensor(x):
     if hasattr(x, "__dlpack__"):
         return torch.from_dlpack(x)
 
-    # CUDA Array Interface (CuPy, Numba CUDA)
+    # CUDA Array Interface (CuPy, Numba CUDA) — fallback for objects
+    # without __dlpack__ (rare; most modern CuPy/Numba support DLPack)
     if hasattr(x, "__cuda_array_interface__"):
-        import numpy as np  # type: ignore
-
-        # CuPy → DLPack → torch is preferred, but fallback to numpy bridge
-        if hasattr(x, "__dlpack__"):
-            return torch.from_dlpack(x)
         return torch.as_tensor(x)
 
     # NumPy ndarray (zero-copy)

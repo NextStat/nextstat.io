@@ -13,7 +13,7 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 
 For the configuration file format, see `docs/references/analysis-config.md`.
 
-HEP / HistFactory:
+HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat validate --config analysis.yaml`
 - `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
@@ -176,6 +176,27 @@ For time series input formats, see:
 
 For the frequentist (CLs) workflow, see:
 - `docs/tutorials/phase-3.1-frequentist.md`
+
+## Input format auto-detection (pyhf vs HS3)
+
+All commands that accept `--input workspace.json` automatically detect the JSON format:
+
+- **pyhf JSON** — standard HistFactory workspace with `"channels"` + `"measurements"` at top level.
+- **HS3 JSON** — HEP Statistics Serialization Standard (v0.2) with `"distributions"` + `"metadata"` (containing `"hs3_version"`), as produced by ROOT 6.37+.
+
+Detection is instant (prefix scan of the first ~2 KB). No `--format` flag is needed.
+
+```bash
+# pyhf workspace (auto-detected)
+nextstat fit --input workspace.json
+
+# HS3 workspace from ROOT (auto-detected)
+nextstat fit --input workspace-postFit_PTV.json
+
+# Both produce the same HistFactoryModel internally
+```
+
+When HS3 is detected, the CLI uses ROOT HistFactory default interpolation codes (Code1 for NormSys, Code0 for HistoSys) and selects the first analysis and `"default_values"` parameter point set.
 
 ## Import notes
 

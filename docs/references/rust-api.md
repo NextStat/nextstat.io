@@ -187,6 +187,51 @@ Key exports:
 - `ns_translate::trex` — TRExFitter configuration files (`.txt` and `.yaml` formats). Parses Region/Sample/Systematic/NormFactor blocks and converts to `Workspace`.
 - `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples -> HistFactory `Workspace`.
 - `ns_translate::ntuple::{ChannelConfig, SampleConfig, NtupleModifier}` — configuration types.
+- `ns_translate::hs3` — HS3 (HEP Statistics Serialization Standard) v0.2 format. See below.
+
+### HS3 module (`ns_translate::hs3`)
+
+Native HS3 JSON support — direct conversion to `HistFactoryModel` without going through the pyhf intermediate format.
+
+Sub-modules:
+- `ns_translate::hs3::schema` — Serde types for HS3 JSON. Custom `Deserialize` for tagged-union distributions and modifiers. Unknown types preserved as raw `serde_json::Value` (forward-compatible).
+- `ns_translate::hs3::resolve` — Two-pass reference resolver. Pass 1: index all named objects. Pass 2: resolve analysis → likelihood → channels → samples → modifiers. Produces `ResolvedWorkspace`.
+- `ns_translate::hs3::convert` — Convert `ResolvedWorkspace` → `HistFactoryModel`. Handles parameter registration, staterror sigma_rel computation, constraint mapping.
+- `ns_translate::hs3::detect` — Fast format auto-detection (`WorkspaceFormat::Hs3 | Pyhf | Unknown`). Prefix scan + full-parse fallback.
+- `ns_translate::hs3::export` — Export `HistFactoryModel` → HS3 JSON for roundtrip workflows (load → fit → export with bestfit params).
+
+Key public functions:
+- `ns_translate::hs3::convert::from_hs3_default(json) -> Result<HistFactoryModel>` — parse HS3 with ROOT HistFactory defaults (Code1 NormSys, Code0 HistoSys).
+- `ns_translate::hs3::convert::from_hs3(json, analysis, param_points, normsys_interp, histosys_interp) -> Result<HistFactoryModel>` — full-control HS3 parsing.
+- `ns_translate::hs3::detect::detect_format(json) -> WorkspaceFormat` — instant format detection.
+- `ns_translate::hs3::export::export_hs3(model, name, bestfit, original) -> Hs3Workspace` — export to HS3.
+- `ns_translate::hs3::export::export_hs3_json(model, name, bestfit, original) -> Result<String>` — export to JSON string.
+
+Example:
+
+```rust
+use ns_translate::hs3::convert::from_hs3_default;
+use ns_translate::hs3::detect::{detect_format, WorkspaceFormat};
+use ns_translate::hs3::export::export_hs3_json;
+
+let json = std::fs::read_to_string("workspace-postFit_PTV.json")?;
+
+// Auto-detect format
+match detect_format(&json) {
+    WorkspaceFormat::Hs3 => {
+        let model = from_hs3_default(&json)?;
+        println!("HS3: {} params, {} channels", model.n_params(), model.n_channels());
+
+        // Roundtrip: export back to HS3 JSON
+        let exported = export_hs3_json(&model, "analysis", None, None)?;
+        std::fs::write("exported.json", exported)?;
+    }
+    WorkspaceFormat::Pyhf => { /* pyhf path */ }
+    WorkspaceFormat::Unknown => { /* error */ }
+}
+```
+
+Supported modifier types: `normfactor`, `normsys`, `histosys`, `staterror`, `shapesys`, `shapefactor`, `lumi`. Unknown types are silently skipped.
 
 Ntuple-to-workspace example:
 

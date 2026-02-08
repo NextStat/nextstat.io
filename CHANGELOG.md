@@ -24,6 +24,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `ProfiledDifferentiableSession`: profiled test statistics with envelope-theorem gradients — enables NN → signal histogram → profiled CLs → loss.
 - `nextstat.torch` Python module: `NextStatNLLFunction`, `NextStatProfiledQ0Function` (autograd), `NextStatLayer(nn.Module)`.
 - `profiled_zmu_loss()` — Zμ loss wrapper (sqrt(qμ) with numerical stability) for signal-strength optimization.
+- `SignificanceLoss(model)` — ML-friendly class wrapping profiled −Z₀. Init once, call per-batch: `loss_fn(signal_hist).backward()`.
+- `SoftHistogram` — differentiable binning (Gaussian KDE / sigmoid): NN classifier scores → soft histogram → `SignificanceLoss`.
+- `batch_profiled_q0_loss()` — profiled q₀ for a batch of signal histograms (ensemble training).
+- `signal_jacobian()`, `signal_jacobian_numpy()` — direct ∂q₀/∂signal without autograd for SciPy bridge and fast pruning.
+- `as_tensor()` — DLPack array-API bridge: JAX, CuPy, Arrow, NumPy → `torch.Tensor`.
+- `nextstat.mlops` — fit metrics extraction for W&B / MLflow / Neptune: `metrics_dict(result)`, `significance_metrics(z0)`, `StepTimer`.
+- `nextstat.interpret` — systematic-impact ranking as Feature Importance: `rank_impact(model)`, `rank_impact_df()`, `plot_rank_impact()`.
 - Fit convergence check: returns error if GPU profile fit fails to converge.
 
 #### Gymnasium RL Environment
@@ -70,6 +77,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 #### HistFactory Enhancements
 
+- **HS3 v0.2 ingestion** — load HS3 JSON workspaces (ROOT 6.37+) natively. Auto-detects format (pyhf vs HS3) at load time.
+- **HS3 roundtrip export** — export `HistFactoryModel` back to HS3 JSON with bestfit parameter points.
+- Python: `HistFactoryModel.from_workspace()` (auto-detect), `HistFactoryModel.from_hs3(json_str)`. CLI: auto-detection in `nextstat fit`, `nextstat scan`.
 - HistoSys interpolation Code 0 (piecewise linear) — now default, matching pyhf.
 - HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
 

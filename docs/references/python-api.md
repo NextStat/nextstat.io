@@ -23,6 +23,30 @@ Notes:
 - `nextstat.read_root_histogram(root_path, hist_path) -> dict` — read a TH1 histogram from a ROOT file. Returns `{name, title, bin_edges, bin_content, sumw2, underflow, overflow}`.
 - `nextstat.histfactory_bin_edges_by_channel(xml_path) -> dict[str, list[float]]` — extract bin edges per channel from HistFactory XML.
 
+#### HS3 (HEP Statistics Serialization Standard)
+
+- `HistFactoryModel.from_workspace(json_str) -> HistFactoryModel` — **auto-detects** pyhf vs HS3 format. If the JSON contains `"distributions"` + `"hs3_version"`, it is parsed as HS3; otherwise as pyhf.
+- `HistFactoryModel.from_hs3(json_str, *, analysis=None, param_points=None) -> HistFactoryModel` — explicit HS3 loading with optional analysis selection and parameter point set.
+
+```python
+import json, nextstat
+
+# Auto-detect: works with both pyhf and HS3
+json_str = open("workspace-postFit_PTV.json").read()
+model = nextstat.HistFactoryModel.from_workspace(json_str)
+
+# Explicit HS3 with analysis selection
+model = nextstat.HistFactoryModel.from_hs3(
+    json_str,
+    analysis="combPdf_obsData",        # default: first analysis
+    param_points="default_values",     # default: "default_values"
+)
+
+result = nextstat.fit(model)
+```
+
+HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`, `normsys`, `histosys`, `staterror`, `shapesys`, `shapefactor`, `lumi`. Unknown modifier/distribution types are silently skipped (forward-compatible).
+
 ### Fitting
 
 - `nextstat.fit(model, *, data=None, init_pars=None) -> FitResult` — maximum likelihood estimation.
@@ -230,6 +254,8 @@ These modules live under `nextstat.*` as convenience helpers. Some require optio
 - `nextstat.econometrics` — robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting.
 - `nextstat.causal` — propensity + AIPW baselines and sensitivity hooks.
 - `nextstat.gym` — Gymnasium/Gym environments for RL / design-of-experiments (requires `gymnasium` + `numpy`).
+- `nextstat.mlops` — fit metrics extraction for experiment loggers (W&B, MLflow, Neptune).
+- `nextstat.interpret` — systematic-impact ranking as ML-style Feature Importance.
 - `nextstat.glm` — regression/GLM convenience wrappers.
 - `nextstat.ordinal` — ordinal regression convenience wrappers.
 - `nextstat.formula` — Patsy-like formula interface.
@@ -265,10 +291,25 @@ The `nextstat.torch` module provides `torch.autograd.Function` wrappers for end-
 
 Convenience constructors:
 - `nextstat.torch.create_profiled_session(model, signal_sample_name) -> ProfiledDifferentiableSession`
-- `nextstat.torch.profiled_q0_loss(session, signal) -> torch.Tensor`
-- `nextstat.torch.profiled_z0_loss(session, signal) -> torch.Tensor`
-- `nextstat.torch.profiled_qmu_loss(session, signal, mu_test) -> torch.Tensor`
-- `nextstat.torch.profiled_zmu_loss(session, signal, mu_test) -> torch.Tensor`
+- `nextstat.torch.profiled_q0_loss(signal, session) -> torch.Tensor`
+- `nextstat.torch.profiled_z0_loss(signal, session) -> torch.Tensor`
+- `nextstat.torch.profiled_qmu_loss(signal, session, mu_test) -> torch.Tensor`
+- `nextstat.torch.profiled_zmu_loss(signal, session, mu_test) -> torch.Tensor`
+
+### ML-friendly API
+
+- `nextstat.torch.SignificanceLoss(model, signal_sample_name, *, device="auto", negate=True, eps=1e-12)` — class wrapping profiled −Z₀. Init once, call per-batch. Returns −Z₀ by default (for SGD minimization).
+  - `loss_fn(signal_hist) -> torch.Tensor` — differentiable loss
+  - `loss_fn.q0(signal_hist)` — raw q₀
+  - `loss_fn.z0(signal_hist)` — raw Z₀
+  - `loss_fn.n_bins`, `loss_fn.n_params` — model dimensions
+- `nextstat.torch.SoftHistogram(bin_edges, bandwidth="auto", mode="kde")` — differentiable binning (Gaussian KDE or sigmoid). Converts continuous NN scores into soft histogram.
+  - `soft_hist(scores, weights=None) -> torch.Tensor [n_bins]`
+- `nextstat.torch.batch_profiled_q0_loss(signal_histograms, session) -> list[torch.Tensor]` — profiled q₀ for a batch of signal histograms `[batch, n_bins]`.
+- `nextstat.torch.batch_profiled_qmu_loss(signal, session, mu_values) -> list[torch.Tensor]` — profiled qμ for multiple mu values.
+- `nextstat.torch.signal_jacobian(signal, session) -> torch.Tensor` — ∂q₀/∂signal without autograd.
+- `nextstat.torch.signal_jacobian_numpy(signal, session) -> np.ndarray` — same as above, NumPy output.
+- `nextstat.torch.as_tensor(x) -> torch.Tensor` — DLPack/array-API bridge: accepts JAX, CuPy, Arrow, NumPy arrays.
 
 Example (CUDA):
 
@@ -378,6 +419,42 @@ elif nextstat.has_metal():
     results = nextstat.fit_toys_batch_gpu(model, params, n_toys=10000, device="metal")
 else:
     results = nextstat.fit_toys_batch(model, params, n_toys=10000)
+```
+
+## MLOps Integration (`nextstat.mlops`)
+
+Lightweight helpers to extract NextStat metrics as plain dicts for experiment loggers.
+
+- `nextstat.mlops.metrics_dict(fit_result, *, prefix="", include_time=True, extra=None) -> dict[str, float]` — flat dict from `FitResult`. Keys: `mu`, `nll`, `edm`, `n_calls`, `converged`, `time_ms`, `param/<name>`, `error/<name>`.
+- `nextstat.mlops.significance_metrics(z0, q0=0.0, *, prefix="", step_time_ms=0.0) -> dict[str, float]` — per-step metrics for training loop logging.
+- `nextstat.mlops.StepTimer` — lightweight wall-clock timer: `.start()`, `.stop() -> float` (ms).
+
+```python
+import nextstat
+from nextstat.mlops import metrics_dict
+
+result = nextstat.fit(model)
+wandb.log(metrics_dict(result))           # W&B
+mlflow.log_metrics(metrics_dict(result))   # MLflow
+```
+
+## Interpretability (`nextstat.interpret`)
+
+Systematic-impact ranking translated into ML-style Feature Importance.
+
+- `nextstat.interpret.rank_impact(model, *, gpu=False, sort_by="total", top_n=None, ascending=False) -> list[dict]` — sorted impact table. Each dict: `name`, `delta_mu_up`, `delta_mu_down`, `total_impact`, `pull`, `constraint`, `rank`.
+- `nextstat.interpret.rank_impact_df(model, **kwargs) -> pd.DataFrame` — same as above, pandas output (requires `pandas`).
+- `nextstat.interpret.plot_rank_impact(model, *, top_n=20, gpu=False, figsize=(8,6), title=..., ax=None) -> matplotlib.Figure` — horizontal bar chart (requires `matplotlib`).
+
+```python
+from nextstat.interpret import rank_impact, plot_rank_impact
+
+table = rank_impact(model, top_n=10)
+for row in table:
+    print(f"{row['rank']:2d}. {row['name']:30s}  impact={row['total_impact']:.4f}")
+
+fig = plot_rank_impact(model, top_n=15)
+fig.savefig("ranking.png")
 ```
 
 ## CLI parity

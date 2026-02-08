@@ -68,46 +68,46 @@ pub struct ObservedChannelData {
 
 /// Model channel
 #[derive(Debug, Clone)]
-struct ModelChannel {
+pub(crate) struct ModelChannel {
     /// Channel name
     #[allow(dead_code)]
-    name: String,
+    pub(crate) name: String,
     /// Whether this channel contributes to the main-bin Poisson likelihood (fit regions vs validation regions).
     ///
     /// This does not affect expected-yield calculations used for reporting; it only affects NLL/grad evaluation.
-    include_in_fit: bool,
+    pub(crate) include_in_fit: bool,
     /// Samples in this channel
-    samples: Vec<ModelSample>,
+    pub(crate) samples: Vec<ModelSample>,
     /// Observed data (main bins only, auxiliary data added during NLL computation)
-    observed: Vec<f64>,
+    pub(crate) observed: Vec<f64>,
     /// Auxiliary data for Barlow-Beeston constraints (per shapesys modifier)
     /// Each constraint corresponds to one ShapeSys modifier and stores both
     /// the fixed `tau` values and the observed auxiliary counts.
     #[allow(dead_code)]
-    auxiliary_data: Vec<AuxiliaryPoissonConstraint>,
+    pub(crate) auxiliary_data: Vec<AuxiliaryPoissonConstraint>,
 }
 
 #[derive(Debug, Clone)]
-struct AuxiliaryPoissonConstraint {
-    sample_idx: usize,
-    modifier_idx: usize,
+pub(crate) struct AuxiliaryPoissonConstraint {
+    pub(crate) sample_idx: usize,
+    pub(crate) modifier_idx: usize,
     /// Barlow-Beeston scale (`tau_i = (nominal_i / sigma_i)^2`).
-    tau: Vec<f64>,
+    pub(crate) tau: Vec<f64>,
     /// Observed auxiliary counts. For the nominal (observed) dataset this equals `tau`.
     /// For Asimov datasets this is set to the expected aux counts `gamma_hat * tau`.
-    observed: Vec<f64>,
+    pub(crate) observed: Vec<f64>,
 }
 
 /// Model sample
 #[derive(Debug, Clone)]
-struct ModelSample {
+pub(crate) struct ModelSample {
     /// Sample name
     #[allow(dead_code)]
-    name: String,
+    pub(crate) name: String,
     /// Nominal expected counts
-    nominal: Vec<f64>,
+    pub(crate) nominal: Vec<f64>,
     /// Modifiers
-    modifiers: Vec<ModelModifier>,
+    pub(crate) modifiers: Vec<ModelModifier>,
 }
 
 /// Interpolation code for HistoSys shape systematics.
@@ -131,7 +131,7 @@ pub enum NormSysInterpCode {
 
 /// Model modifier (processed)
 #[derive(Debug, Clone)]
-enum ModelModifier {
+pub(crate) enum ModelModifier {
     /// Normalization factor (unconstrained)
     NormFactor { param_idx: usize },
     /// Shape systematic - per-bin multiplicative (Barlow-Beeston)
@@ -165,6 +165,23 @@ enum ModelModifier {
 }
 
 impl HistFactoryModel {
+    /// Construct a `HistFactoryModel` from pre-built parts.
+    ///
+    /// Used by `hs3::convert` to build models from resolved HS3 workspaces.
+    /// Callers are responsible for ensuring internal consistency (parameter
+    /// indices, channel bin counts, etc.).
+    pub(crate) fn from_parts(
+        parameters: Vec<Parameter>,
+        poi_index: Option<usize>,
+        channels: Vec<ModelChannel>,
+    ) -> Self {
+        Self {
+            parameters,
+            poi_index,
+            channels,
+        }
+    }
+
     /// Return per-parameter 1σ widths for parameters constrained by auxiliary Poisson terms
     /// (Barlow–Beeston `shapesys`).
     ///
@@ -272,6 +289,33 @@ impl HistFactoryModel {
     /// Compute `ln Γ(n+1)` (generalized factorial).
     fn ln_factorial(n: f64) -> f64 {
         ln_gamma(n + 1.0)
+    }
+
+    /// Number of channels in the model.
+    pub fn n_channels(&self) -> usize {
+        self.channels.len()
+    }
+
+    /// Channel names in workspace order.
+    pub fn channel_names(&self) -> Vec<String> {
+        self.channels.iter().map(|c| c.name.clone()).collect()
+    }
+
+    /// Sample names for a given channel.
+    pub fn sample_names(&self, channel_idx: usize) -> Vec<String> {
+        self.channels
+            .get(channel_idx)
+            .map(|c| c.samples.iter().map(|s| s.name.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Borrow the modifiers of a given sample (for export).
+    pub(crate) fn sample_modifiers(&self, channel_idx: usize, sample_idx: usize) -> &[ModelModifier] {
+        self.channels
+            .get(channel_idx)
+            .and_then(|c| c.samples.get(sample_idx))
+            .map(|s| s.modifiers.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Find a channel index by name.

@@ -292,13 +292,13 @@ impl RootFile {
 
     /// Access the raw file data.
     #[allow(dead_code)]
-    pub(crate) fn file_data(&self) -> &[u8] {
+    pub fn file_data(&self) -> &[u8] {
         &self.data
     }
 
     /// Whether file uses 64-bit seek pointers.
     #[allow(dead_code)]
-    pub(crate) fn is_large(&self) -> bool {
+    pub fn is_large(&self) -> bool {
         self.header.is_large
     }
 
