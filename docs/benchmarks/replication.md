@@ -133,3 +133,12 @@ Publish (as a GitHub release, Zenodo upload, or a public object store) at minimu
 
 - `docs/benchmarks/replication_template.md` (human-readable report template)
 - `docs/specs/replication_report_v1.example.json` (machine-readable example)
+
+## CI drift detection (NextStat nightly)
+
+For internal drift detection (CI), we recommend using "yesterday's nightly" as the baseline rather than a DOI-published snapshot:
+
+- nightly run uploads `snapshot_index.json` + validation pack artifacts
+- next nightly downloads the **previous successful run** artifact and generates a `replication_report.json`
+
+This catches regressions between consecutive commits without pinning to a "frozen" DOI artifact.
