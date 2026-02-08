@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/validation_report_v1.schema.json",
+  "title": "NextStat Validation Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "deterministic",
+    "dataset_fingerprint",
+    "model_spec",
+    "environment",
+    "apex2_summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "validation_report_v1"
+    },
+    "generated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "dataset_fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace_sha256",
+        "workspace_bytes",
+        "channels",
+        "n_channels",
+        "n_bins_per_channel",
+        "n_samples_total",
+        "n_parameters",
+        "observation_summary"
+      ],
+      "properties": {
+        "workspace_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "workspace_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "channels": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "n_channels": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_bins_per_channel": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "n_samples_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_parameters": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observation_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total_observed", "min_bin", "max_bin"],
+          "properties": {
+            "total_observed": { "type": "number" },
+            "min_bin": { "type": "number" },
+            "max_bin": { "type": "number" }
+          }
+        }
+      }
+    },
+    "model_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["poi", "parameters", "interpolation", "objective", "optimizer", "eval_mode"],
+      "properties": {
+        "poi": { "type": ["string", "null"] },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter_spec" }
+        },
+        "interpolation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["normsys", "histosys"],
+          "properties": {
+            "normsys": { "type": "string", "minLength": 1 },
+            "histosys": { "type": "string", "minLength": 1 }
+          }
+        },
+        "objective": { "type": "string", "minLength": 1 },
+        "optimizer": { "type": "string", "minLength": 1 },
+        "eval_mode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nextstat_version",
+        "nextstat_git_commit",
+        "python_version",
+        "platform",
+        "rust_toolchain",
+        "pyhf_version",
+        "determinism_settings"
+      ],
+      "properties": {
+        "nextstat_version": { "type": "string", "minLength": 1 },
+        "nextstat_git_commit": { "type": ["string", "null"] },
+        "python_version": { "type": ["string", "null"] },
+        "platform": { "type": ["string", "null"] },
+        "rust_toolchain": { "type": ["string", "null"] },
+        "pyhf_version": { "type": ["string", "null"] },
+        "determinism_settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "apex2_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["master_report_sha256", "suites", "overall"],
+      "properties": {
+        "master_report_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "suites": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/suite_summary" }
+        },
+        "overall": {
+          "type": "string",
+          "enum": ["pass", "fail"]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "parameter_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "init", "bounds", "constraint"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "init": { "type": "number" },
+        "bounds": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "constraint": {
+          "type": "string",
+          "enum": ["none", "normal", "uniform", "lognormal", "gamma", "fixed"]
+        }
+      }
+    },
+    "suite_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail", "skipped", "error"] },
+        "n_cases": { "type": "integer", "minimum": 0 },
+        "n_ok": { "type": "integer", "minimum": 0 },
+        "worst_delta_nll": { "type": "number" },
+        "worst_delta_expected_full": { "type": "number" }
+      }
+    }
+  }
+}
+

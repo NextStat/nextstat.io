@@ -39,3 +39,19 @@ fn config_schema_can_emit_report_schema() {
         serde_json::from_slice(&out.stdout).expect("schema output should be valid JSON");
     assert_eq!(v["$schema"], "https://json-schema.org/draft/2020-12/schema");
 }
+
+#[test]
+fn config_schema_can_emit_validation_report_schema() {
+    let out = run(&["config", "schema", "--name", "validation_report_v1"]);
+    assert!(
+        out.status.success(),
+        "config schema --name validation_report_v1 should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("schema output should be valid JSON");
+    assert_eq!(
+        v["$id"],
+        "https://nextstat.io/schemas/validation/validation_report_v1.schema.json"
+    );
+}

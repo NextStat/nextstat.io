@@ -431,14 +431,16 @@ Each report section includes an **environment fingerprint** (Python version, pla
 
 The `nextstat report` CLI command separately generates per-workspace analysis artifacts: `distributions.json`, `pulls.json`, `corr.json`, `yields.json` (+ `.csv`, `.tex`), `uncertainty.json` (NP ranking). When `--render` is enabled, it produces a multi-page PDF and per-plot SVGs via matplotlib.
 
-#### Planned: Validation Report Pack
+#### Shipped: Validation Report Pack (v1)
 
-The remaining gap is a **unified validation report generator** that combines Apex2 JSON with workspace-level dataset fingerprints into a single human-readable document suitable for regulated review:
+NextStat ships a **unified validation report generator** that combines Apex2 JSON with workspace-level dataset fingerprints into a single human-readable document suitable for regulated review:
 
 - **Dataset fingerprint**: SHA-256 content hash of input workspace JSON, channel/bin/sample counts, observation summary statistics.
 - **Model spec artifact**: parameter names, bounds, constraint types, interpolation codes, objective function contract, algorithm settings.
 - **Validation summary**: Apex2 pass/fail matrix, worst-case deltas, tolerance tiers, reference tool versions.
 - **Output format**: `validation_report.json` (machine-readable, deterministic) + `validation_report.pdf` (human-readable, audit-ready).
+
+CLI: `nextstat validation-report --apex2 ... --workspace ... --out ... [--pdf ...] [--deterministic]`.
 
 The intent is to keep the OSS baseline minimal (JSON + optional PDF via matplotlib) and deterministic, while supporting a future enterprise audit trail layer (open-core boundary aware). Target consumers: Pharma IQ/OQ/PQ validation packs, FinTech model risk management (SR 11-7), and HEP analysis preservation.
 

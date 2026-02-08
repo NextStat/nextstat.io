@@ -27,6 +27,7 @@ mod discover;
 mod report;
 mod run;
 mod survival;
+mod validation_report;
 
 const SCHEMA_ANALYSIS_SPEC_V0: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -55,6 +56,10 @@ const SCHEMA_REPORT_YIELDS_V0: &str = include_str!(concat!(
 const SCHEMA_REPORT_UNCERTAINTY_V0: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../docs/schemas/trex/report_uncertainty_v0.schema.json"
+));
+const SCHEMA_VALIDATION_REPORT_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/validation_report_v1.schema.json"
 ));
 
 /// Interpolation defaults for pyhf JSON inputs.
@@ -427,6 +432,33 @@ enum Commands {
         blind_regions: Vec<String>,
     },
 
+    /// Unified validation report pack (Apex2 + workspace fingerprint) (+ optional PDF)
+    ValidationReport {
+        /// Apex2 master report JSON (from `tests/apex2_master_report.py`).
+        #[arg(long)]
+        apex2: PathBuf,
+
+        /// Workspace JSON used for dataset/model fingerprinting.
+        #[arg(long)]
+        workspace: PathBuf,
+
+        /// Output JSON path (`validation_report_v1`).
+        #[arg(long)]
+        out: PathBuf,
+
+        /// Optional output PDF path (rendered via `python -m nextstat.validation_report ...`).
+        #[arg(long)]
+        pdf: Option<PathBuf>,
+
+        /// Python executable used for rendering (defaults to `.venv/bin/python` if it exists, else `python3`).
+        #[arg(long)]
+        python: Option<PathBuf>,
+
+        /// Make JSON/PDF output deterministic (stable ordering; omit timestamps/timings).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
+    },
+
     /// Visualization artifacts (plot-friendly JSON)
     Viz {
         #[command(subcommand)]
@@ -754,7 +786,8 @@ enum ConfigCommands {
     /// Print a JSON schema to stdout (for IDE integration / validation)
     Schema {
         /// Schema name (default: analysis_spec_v0). Known: analysis_spec_v0, baseline_v0,
-        /// report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0.
+        /// report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0,
+        /// validation_report_v1.
         #[arg(long)]
         name: Option<String>,
     },
@@ -1208,6 +1241,17 @@ fn main() -> Result<()> {
             deterministic,
             &blind_regions,
         ),
+        Commands::ValidationReport { apex2, workspace, out, pdf, python, deterministic } => {
+            validation_report::cmd_validation_report(
+                &apex2,
+                &workspace,
+                &out,
+                pdf.as_ref(),
+                python.as_ref(),
+                deterministic,
+                interp_defaults,
+            )
+        }
         Commands::Viz { command } => match command {
             VizCommands::Profile { input, start, stop, points, output, threads } => {
                 cmd_viz_profile(
@@ -1523,8 +1567,9 @@ fn cmd_config_schema(name: Option<&str>) -> Result<()> {
         "report_corr_v0" => SCHEMA_REPORT_CORR_V0,
         "report_yields_v0" => SCHEMA_REPORT_YIELDS_V0,
         "report_uncertainty_v0" => SCHEMA_REPORT_UNCERTAINTY_V0,
+        "validation_report_v1" => SCHEMA_VALIDATION_REPORT_V1,
         other => anyhow::bail!(
-            "unknown schema name: {other}. Known: analysis_spec_v0, baseline_v0, report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0"
+            "unknown schema name: {other}. Known: analysis_spec_v0, baseline_v0, report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0, validation_report_v1"
         ),
     };
 
@@ -4433,8 +4478,14 @@ fn cmd_report(
             pythonpath.push(existing);
         }
 
+        // Matplotlib may try to write cache/config under $HOME; in restricted environments this
+        // can fail or create noisy warnings. Force a writable, repo-local cache dir.
+        let mplconfigdir = PathBuf::from("tmp/mplconfig");
+        let _ = std::fs::create_dir_all(&mplconfigdir);
+
         let status = Command::new(&python)
             .env("PYTHONPATH", pythonpath)
+            .env("MPLCONFIGDIR", &mplconfigdir)
             .arg("-m")
             .arg("nextstat.report")
             .arg("render")

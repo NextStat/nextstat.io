@@ -213,9 +213,12 @@ impl BlockDecoder {
         workspace: &mut DecoderScratch, //reuse this as often as possible. Not only if the trees are reused but also reuse the allocations when building new trees
         mut source: impl Read,
     ) -> Result<(), DecompressBlockError> {
-        workspace
-            .block_content_buffer
-            .resize(header.content_size as usize, 0);
+        let size = header.content_size as usize;
+        workspace.block_content_buffer.clear();
+        workspace.block_content_buffer.reserve(size);
+        unsafe {
+            workspace.block_content_buffer.set_len(size);
+        }
 
         source.read_exact(workspace.block_content_buffer.as_mut_slice())?;
         let raw = workspace.block_content_buffer.as_slice();
@@ -317,9 +320,12 @@ impl BlockDecoder {
         out: &mut SliceOutputBuffer<'_>,
         mut source: impl Read,
     ) -> Result<(), DecompressBlockError> {
-        workspace
-            .block_content_buffer
-            .resize(header.content_size as usize, 0);
+        let size = header.content_size as usize;
+        workspace.block_content_buffer.clear();
+        workspace.block_content_buffer.reserve(size);
+        unsafe {
+            workspace.block_content_buffer.set_len(size);
+        }
 
         source.read_exact(workspace.block_content_buffer.as_mut_slice())?;
         let raw = workspace.block_content_buffer.as_slice();

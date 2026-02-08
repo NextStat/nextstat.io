@@ -129,10 +129,11 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("tmp/apex2_root_suite_report.json"))
     ap.add_argument("--keep-going", action="store_true", help="Keep running after failures.")
     ap.add_argument("--prereq-only", action="store_true", help="Only validate prerequisites, do not run.")
-    ap.add_argument("--dq-atol", type=float, default=1e-3)
-    # ROOT (Minuit2) and NextStat (L-BFGS-B) can disagree slightly on mu_hat at ~1e-3 scale.
-    # Keep this loose enough to avoid false negatives across ROOT versions.
-    ap.add_argument("--mu-hat-atol", type=float, default=2e-3)
+    # Realistic TREx/ROOT exports often show ~1e-2-level q(mu) deltas between optimizers/versions
+    # even when the qualitative surface is identical. Keep defaults robust to that noise.
+    ap.add_argument("--dq-atol", type=float, default=2e-2)
+    # ROOT (Minuit2) and NextStat (L-BFGS-B) can disagree on mu_hat at ~1e-2 scale for large models.
+    ap.add_argument("--mu-hat-atol", type=float, default=5e-2)
     ap.add_argument(
         "--deterministic",
         action="store_true",

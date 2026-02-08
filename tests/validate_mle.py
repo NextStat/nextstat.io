@@ -10,7 +10,12 @@ import json
 import sys
 import time
 import numpy as np
-import pyhf
+try:
+    import pyhf  # type: ignore
+except ModuleNotFoundError as e:
+    raise SystemExit(
+        "Missing dependency: pyhf. Install it (e.g. `pip install pyhf`) to run tests/validate_mle.py."
+    ) from e
 
 import nextstat
 

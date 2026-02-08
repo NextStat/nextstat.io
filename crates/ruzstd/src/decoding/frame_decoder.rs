@@ -537,8 +537,9 @@ impl FrameDecoder {
                     .as_mut()
                     .expect("state must exist after init");
 
-                let dict = state.decoder_scratch.buffer.dict_content.as_slice();
-                let mut out = SliceOutputBuffer::new(output, dict);
+                let dict_ptr = state.decoder_scratch.buffer.dict_content.as_ptr();
+                let dict_len = state.decoder_scratch.buffer.dict_content.len();
+                let mut out = SliceOutputBuffer::new(output, dict_ptr, dict_len);
                 let mut block_dec = decoding::block_decoder::new();
 
                 loop {

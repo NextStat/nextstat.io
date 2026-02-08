@@ -4441,7 +4441,10 @@ fn profile_scan(
     data: Option<Vec<f64>>,
     device: &str,
 ) -> PyResult<Py<PyAny>> {
-    let mle = RustMLE::new();
+    // Profile scans are used as a parity surface against ROOT/HistFactory.
+    // Use stricter optimizer tolerances than the general-purpose defaults to reduce
+    // POI mu_hat drift on large real-world exports.
+    let mle = RustMLE::with_config(OptimizerConfig { max_iter: 20000, tol: 1e-12, m: 20 });
     let fit_model = if let Some(obs_main) = data {
         model
             .inner

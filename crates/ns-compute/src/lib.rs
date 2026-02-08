@@ -2,10 +2,14 @@
 //!
 //! Compute backends for NextStat.
 //!
-//! This crate provides implementations of the `ComputeBackend` trait:
-//! - **CPU backend** (Rayon + SIMD) - Priority P0, always available
-//! - **Metal backend** (macOS) - Priority P1, feature-gated
-//! - **CUDA backend** (NVIDIA) - Priority P1, feature-gated
+//! This crate provides:
+//! - **CPU backend** (Rayon + SIMD) - implements `ns_core::ComputeBackend` (Priority P0)
+//! - **GPU accelerator modules** (Metal/CUDA) - feature-gated, used via `ns-inference` GPU sessions
+//!
+//! Note: the GPU modules do **not** currently expose a generic `ComputeBackend`
+//! implementation. GPU acceleration is provided by dedicated accelerator types
+//! (e.g. `cuda_batch`, `metal_batch`, differentiable sessions) with fused-kernel
+//! APIs tailored to their workloads.
 //!
 //! ## Architecture
 //!

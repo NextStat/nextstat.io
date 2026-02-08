@@ -464,15 +464,7 @@ def record_root_suite_baseline(
 
     Always records a prereq report. Only runs the full suite if prereqs are satisfied.
     """
-    prereq_out = out_dir / f"root_prereq_{stamp}.json"
     prereq_runner = repo / "tests" / "apex2_root_suite_report.py"
-    cmd_prereq = [sys.executable, str(prereq_runner), "--prereq-only", "--out", str(prereq_out)]
-    rc_prereq, out_prereq = _run(cmd_prereq, cwd=repo, env=env_dict)
-    if rc_prereq != 0:
-        print("[root] Prereqs not satisfied; recording prereq report and skipping suite.")
-        if out_prereq:
-            print(out_prereq[-2000:])
-        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": None, "suite": None}
 
     cases_out = out_dir / f"root_cases_{stamp}.json"
     gen = repo / "tests" / "generate_apex2_root_cases.py"
@@ -502,7 +494,30 @@ def record_root_suite_baseline(
     if rc_cases != 0 or not cases_out.exists():
         print(f"[root] FAILED to generate cases (exit {rc_cases})")
         print(out_cases[-2000:])
-        return {"prereq": prereq_out if prereq_out.exists() else None, "cases": None, "suite": None}
+        return {"prereq": None, "cases": None, "suite": None}
+
+    # Prereq-only check must use the *actual* cases JSON, otherwise the runner will fall back
+    # to its built-in `pyhf-json` fixture and incorrectly require `uproot` even for XML cases.
+    prereq_out = out_dir / f"root_prereq_{stamp}.json"
+    cmd_prereq = [
+        sys.executable,
+        str(prereq_runner),
+        "--prereq-only",
+        "--cases",
+        str(cases_out),
+        "--out",
+        str(prereq_out),
+    ]
+    rc_prereq, out_prereq = _run(cmd_prereq, cwd=repo, env=env_dict)
+    if rc_prereq != 0:
+        print("[root] Prereqs not satisfied; recording prereq report and skipping suite.")
+        if out_prereq:
+            print(out_prereq[-2000:])
+        return {
+            "prereq": prereq_out if prereq_out.exists() else None,
+            "cases": cases_out,
+            "suite": None,
+        }
 
     suite_out = out_dir / f"root_suite_baseline_{stamp}.json"
     workdir = out_dir / f"root_parity_suite_{stamp}"
@@ -605,7 +620,8 @@ def main() -> int:
         default=None,
         help="Optional override for number of toys for model-zoo cases (requires --bias-include-zoo).",
     )
-    # ROOT suite options (optional; requires ROOT + hist2workspace + uproot)
+    # ROOT suite options (optional; requires ROOT + hist2workspace. `uproot` is required only
+    # for `pyhf-json` cases; HistFactory XML cases run without it.)
     ap.add_argument("--root-search-dir", type=Path, default=None, help="Directory to scan for TRExFitter/HistFactory exports (combination.xml).")
     ap.add_argument("--root-glob", type=str, default="**/combination.xml", help="Glob for HistFactory XML under --root-search-dir.")
     ap.add_argument("--root-include-fixtures", action="store_true", help="Include the built-in smoke fixture case in the ROOT suite cases list.")

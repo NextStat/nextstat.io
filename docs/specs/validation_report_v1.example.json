@@ -1,0 +1,49 @@
+{
+  "schema_version": "validation_report_v1",
+  "generated_at": null,
+  "deterministic": true,
+  "dataset_fingerprint": {
+    "workspace_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "workspace_bytes": 12345,
+    "channels": ["SR", "CR1", "CR2"],
+    "n_channels": 3,
+    "n_bins_per_channel": [10, 5, 5],
+    "n_samples_total": 12,
+    "n_parameters": 47,
+    "observation_summary": {
+      "total_observed": 1234.0,
+      "min_bin": 0.0,
+      "max_bin": 312.0
+    }
+  },
+  "model_spec": {
+    "poi": "mu",
+    "parameters": [
+      { "name": "mu", "init": 1.0, "bounds": [0.0, 10.0], "constraint": "none" },
+      { "name": "alpha_JES", "init": 0.0, "bounds": [-5.0, 5.0], "constraint": "normal" }
+    ],
+    "interpolation": { "normsys": "code4", "histosys": "code4p" },
+    "objective": "poisson_nll_with_constraints",
+    "optimizer": "lbfgsb",
+    "eval_mode": "fast"
+  },
+  "environment": {
+    "nextstat_version": "0.1.0",
+    "nextstat_git_commit": null,
+    "python_version": "3.13.11",
+    "platform": "macOS-26.2-arm64-arm-64bit",
+    "rust_toolchain": null,
+    "pyhf_version": "0.7.6",
+    "determinism_settings": { "eval_mode": "fast", "threads": 1 }
+  },
+  "apex2_summary": {
+    "master_report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "suites": {
+      "pyhf": { "status": "ok", "n_cases": 9, "worst_delta_nll": 1.2e-10 },
+      "regression_golden": { "status": "ok", "n_cases": 8, "n_ok": 8 },
+      "root": { "status": "skipped" }
+    },
+    "overall": "pass"
+  }
+}
+

@@ -1,6 +1,6 @@
 ---
 title: "Validation Report Artifacts"
-status: partial
+status: shipped
 ---
 
 # Validation Report Artifacts
@@ -110,11 +110,11 @@ When `--render` is enabled, calls `python -m nextstat.report render` to produce:
 
 Requires `nextstat[viz]` extra (matplotlib).
 
-## Validation Report Pack (Planned)
+## Validation Report Pack (Shipped: v1)
 
-The planned `nextstat validation-report` command will produce a unified document combining Apex2 results with workspace-level metadata for regulated review workflows.
+The `nextstat validation-report` command produces a unified document combining Apex2 results with workspace-level metadata for regulated review workflows.
 
-### Planned CLI
+### CLI
 
 ```bash
 nextstat validation-report \
@@ -125,7 +125,15 @@ nextstat validation-report \
   [--deterministic]
 ```
 
-### Planned Schema (`validation_report.json`)
+Schema is available via:
+
+```bash
+nextstat config schema --name validation_report_v1
+```
+
+Example JSON is in `docs/specs/validation_report_v1.example.json`.
+
+### Schema (`validation_report.json`)
 
 ```json
 {
@@ -202,3 +210,12 @@ Enterprise extensions (commercial license) may add:
 - Digital signatures and timestamping
 - Integration with audit trail / document management systems
 - Automated scheduling and alerting
+
+## Trust-Building Use
+
+For vertical expansion, treat the validation pack as a first-class sales artifact:
+
+- Publish `validation_report.json` + `validation_report.pdf` for each tagged release (or weekly).
+- Link it from: homepage footer (Trust), pricing page (Compliance), and enterprise/security page.
+- Attach it to outbound emails for regulated prospects (IQ/OQ/PQ, SR 11-7 style review).
+- Use the JSON schema to make your claims auditable: “pass/fail + worst-case deltas + hashes”.

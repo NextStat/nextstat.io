@@ -7,12 +7,14 @@
 #include <RooAbsPdf.h>
 #include <RooAbsData.h>
 #include <RooAbsReal.h>
+#include <RooFit.h>
 #include <RooArgSet.h>
 #include <RooRealVar.h>
 #include <RooMinimizer.h>
 #include <RooFitResult.h>
 #include <RooStats/ModelConfig.h>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <list>
@@ -40,17 +42,23 @@ static RooStats::ModelConfig* find_model_config(RooWorkspace& w) {
 static RooAbsData* find_data(RooWorkspace& w) {
   if (auto* d = w.data("obsData")) return d;
   if (auto* d = w.data("data")) return d;
-  auto all = w.allData();
-  if (all.empty()) return nullptr;
-  return w.data(all.front()->GetName());
+  return nullptr;
 }
 
-static int minimize_nll(RooAbsReal& nll) {
-  RooMinimizer m(nll);
-  m.setPrintLevel(-1);
-  m.setStrategy(0);
-  m.optimizeConst(2);
+static int minimize_nll(RooMinimizer& m) {
   int status = m.minimize("Minuit2", "Migrad");
+  if (status != 0) {
+    m.setStrategy(2);
+    status = m.minimize("Minuit2", "Migrad");
+  }
+  if (status != 0) {
+    (void)m.minimize("Minuit2", "Simplex");
+    status = m.minimize("Minuit2", "Migrad");
+  }
+  if (status == 0) {
+    int h = m.hesse();
+    if (h != 0) status = h;
+  }
   return status;
 }
 
@@ -95,21 +103,51 @@ void root_fit() {
     throw std::runtime_error("Data not found in workspace.");
   }
 
-  std::unique_ptr<RooAbsReal> nll(pdf->createNLL(*data));
-  int status = minimize_nll(*nll);
+  // Some exports leave POI ranges effectively unbounded, which can cause Minuit2 to
+  // run away to absurd values and return status=-1. Tighten obviously-insane ranges.
+  if (auto* poi_set = mc->GetParametersOfInterest()) {
+    if (poi_set->getSize() > 0) {
+      auto* poi = dynamic_cast<RooRealVar*>(poi_set->first());
+      if (poi) {
+        double lo = poi->getMin();
+        double hi = poi->getMax();
+        bool insane = !std::isfinite(lo) || !std::isfinite(hi) || (hi - lo) > 1e6 || std::fabs(lo) > 1e6 || std::fabs(hi) > 1e6;
+        if (insane) {
+          poi->setRange(-100.0, 100.0);
+        }
+        if (poi->getVal() < poi->getMin() || poi->getVal() > poi->getMax()) {
+          poi->setVal(0.0);
+        }
+      }
+    }
+  }
+
+  RooArgSet empty;
+  const RooArgSet* nuis = mc->GetNuisanceParameters();
+  const RooArgSet* globs = mc->GetGlobalObservables();
+  if (!nuis) nuis = &empty;
+  if (!globs) globs = &empty;
+
+  std::unique_ptr<RooAbsReal> nll(pdf->createNLL(
+      *data,
+      RooFit::Extended(true),
+      RooFit::Constrain(*nuis),
+      RooFit::GlobalObservables(*globs)
+  ));
+
+  RooMinimizer m(*nll);
+  m.setPrintLevel(-1);
+  m.setStrategy(1);
+  m.setEps(1e-12);
+  m.setMaxFunctionCalls(200000);
+  m.setMaxIterations(200000);
+  m.setOffsetting(true);
+  m.optimizeConst(2);
+  int status = minimize_nll(m);
   double nll_hat = nll->getVal();
 
   RooFitResult* fr = nullptr;
-  try {
-    RooMinimizer m(*nll);
-    m.setPrintLevel(-1);
-    m.setStrategy(0);
-    m.optimizeConst(2);
-    m.minimize("Minuit2", "Migrad");
-    fr = m.save();
-  } catch (...) {
-    fr = nullptr;
-  }
+  try { fr = m.save(); } catch (...) { fr = nullptr; }
 
   struct P { std::string name; double val; double err; };
   std::vector<P> ps;

@@ -5,12 +5,18 @@ use crate::decoding::fused::FusedOutputBuffer;
 pub(crate) struct SliceOutputBuffer<'a> {
     out: &'a mut [u8],
     pos: usize,
-    dict: &'a [u8],
+    dict_ptr: *const u8,
+    dict_len: usize,
 }
 
 impl<'a> SliceOutputBuffer<'a> {
-    pub(crate) fn new(out: &'a mut [u8], dict: &'a [u8]) -> Self {
-        Self { out, pos: 0, dict }
+    pub(crate) fn new(out: &'a mut [u8], dict_ptr: *const u8, dict_len: usize) -> Self {
+        Self {
+            out,
+            pos: 0,
+            dict_ptr,
+            dict_len,
+        }
     }
 
     #[inline(always)]
@@ -46,7 +52,7 @@ impl<'a> SliceOutputBuffer<'a> {
         offset: usize,
         match_length: usize,
     ) -> Result<(), ExecuteSequencesError> {
-        let dict_len = self.dict.len();
+        let dict_len = self.dict_len;
         if dict_len == 0 {
             return Err(ExecuteSequencesError::DecodebufferError(
                 DecodeBufferError::NotEnoughBytesInDictionary {
@@ -73,7 +79,7 @@ impl<'a> SliceOutputBuffer<'a> {
                         },
                     ));
                 }
-                self.dict[di as usize]
+                unsafe { *self.dict_ptr.add(di as usize) }
             };
             self.out[d] = byte;
         }
