@@ -68,6 +68,8 @@ def run_case(
     dataset_id: str,
     dataset_sha256: str | None,
     workspace_obj: dict | None = None,
+    fit: bool = False,
+    fit_repeat: int = 3,
 ) -> int:
     run_py = Path(__file__).resolve().parent / "run.py"
 
@@ -98,6 +100,9 @@ def run_case(
         args.extend(["--dataset-sha256", dataset_sha256])
     if deterministic:
         args.append("--deterministic")
+    if fit:
+        args.append("--fit")
+        args.extend(["--fit-repeat", str(int(fit_repeat))])
 
     try:
         p = subprocess.run(args)
@@ -124,6 +129,8 @@ def main() -> int:
         default="simple,complex,synthetic",
         help="Comma-separated case groups: simple,complex,synthetic.",
     )
+    ap.add_argument("--fit", action="store_true", help="Also benchmark full MLE fits.")
+    ap.add_argument("--fit-repeat", type=int, default=3, help="Fit timing repeats (wall-clock).")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir).resolve()
@@ -131,6 +138,8 @@ def main() -> int:
     cases_dir.mkdir(parents=True, exist_ok=True)
 
     deterministic = bool(args.deterministic)
+    fit = bool(args.fit)
+    fit_repeat = int(args.fit_repeat)
 
     case_groups = [x.strip() for x in args.cases.split(",") if x.strip()]
     sizes = [int(x.strip()) for x in args.sizes.split(",") if x.strip()]
@@ -194,6 +203,8 @@ def main() -> int:
             out_path=out_path,
             dataset_id=c["dataset_id"],
             dataset_sha256=c["dataset_sha256"],
+            fit=fit,
+            fit_repeat=fit_repeat,
         )
         if rc != 0:
             # Still include it in the index if it exists, but fail overall.

@@ -222,29 +222,6 @@ pub(crate) unsafe fn fast_copy_match(src: *const u8, dst: *mut u8, offset: usize
         // Tier 0: No overlap at all — straight memcpy (compiler auto-vectorizes).
         // This covers every offset value; the key constraint is length ≤ offset.
         core::ptr::copy_nonoverlapping(src, dst, length);
-    } else if offset >= 16 {
-        let mut i = 0usize;
-        while i + 32 <= length {
-            let v0 = (src.add(i) as *const u128).read_unaligned();
-            (dst.add(i) as *mut u128).write_unaligned(v0);
-            let v1 = (src.add(i + 16) as *const u128).read_unaligned();
-            (dst.add(i + 16) as *mut u128).write_unaligned(v1);
-            i += 32;
-        }
-        while i + 16 <= length {
-            let v = (src.add(i) as *const u128).read_unaligned();
-            (dst.add(i) as *mut u128).write_unaligned(v);
-            i += 16;
-        }
-        while i + 8 <= length {
-            let v = (src.add(i) as *const u64).read_unaligned();
-            (dst.add(i) as *mut u64).write_unaligned(v);
-            i += 8;
-        }
-        while i < length {
-            *dst.add(i) = *src.add(i);
-            i += 1;
-        }
     } else if offset >= 8 {
         // Tier 2: Mild overlap (8-15 bytes apart).
         // 8-byte unaligned copies are safe: each write starts ≥8 bytes after

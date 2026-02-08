@@ -10,7 +10,6 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use ns_core::traits::LogDensityModel;
 use ns_inference::mle::MaximumLikelihoodEstimator;
 use ns_translate::pyhf::audit as pyhf_audit;
 use ns_translate::pyhf::HistFactoryModel;
@@ -430,14 +429,37 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
     let allow_gpu = !controls.deterministic && state.has_gpu();
     let gpu_device = if allow_gpu { state.gpu_device.as_deref() } else { None };
 
-    let tool_res: Result<(serde_json::Value, Option<String>), String> = match name.as_str() {
+    let gpu_supported = matches!(name.as_str(), "nextstat_fit" | "nextstat_ranking" | "nextstat_scan");
+    if gpu_device.is_some() && !gpu_supported {
+        meta.warnings.push("GPU is enabled on this server, but this tool runs on CPU in server mode.".to_string());
+    }
+
+    let tool_res = execute_tool_impl(state, &name, req.arguments, gpu_device, t0);
+
+    match tool_res {
+        Ok((value, device)) => {
+            meta.device = device;
+            ToolResultEnvelope::ok(&name, meta, value)
+        }
+        Err(msg) => ToolResultEnvelope::err(&name, meta, "ToolError", msg),
+    }
+}
+
+fn execute_tool_impl(
+    state: &AppState,
+    name: &str,
+    arguments: serde_json::Value,
+    gpu_device: Option<&str>,
+    t0: Instant,
+) -> Result<(serde_json::Value, Option<String>), String> {
+    match name {
         "nextstat_fit" => {
             #[derive(Debug, Deserialize)]
             struct Args {
                 #[serde(flatten)]
                 common: CommonWorkspaceArgs,
             }
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -453,7 +475,8 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
                 _ => (mle.fit(&*model).map_err(|e| e.to_string())?, "cpu".to_string()),
             };
 
-            let parameter_names: Vec<String> = model.parameters().iter().map(|p| p.name.clone()).collect();
+            let parameter_names: Vec<String> =
+                model.parameters().iter().map(|p| p.name.clone()).collect();
             let poi_index = model.poi_index();
 
             Ok((
@@ -481,7 +504,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
                 common: CommonWorkspaceArgs,
                 top_n: Option<usize>,
             }
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -491,22 +514,32 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
 
             let (ranking, device) = match gpu_device {
                 #[cfg(feature = "cuda")]
-                Some("cuda") => (ns_inference::mle::ranking_gpu(&mle, &*model).map_err(|e| e.to_string())?, "cuda".to_string()),
+                Some("cuda") => (
+                    ns_inference::mle::ranking_gpu(&mle, &*model).map_err(|e| e.to_string())?,
+                    "cuda".to_string(),
+                ),
                 #[cfg(feature = "metal")]
-                Some("metal") => (ns_inference::mle::ranking_metal(&mle, &*model).map_err(|e| e.to_string())?, "metal".to_string()),
-                _ => (mle.ranking(&*model).map_err(|e| e.to_string())?, "cpu".to_string()),
+                Some("metal") => (
+                    ns_inference::mle::ranking_metal(&mle, &*model).map_err(|e| e.to_string())?,
+                    "metal".to_string(),
+                ),
+                _ => (
+                    mle.ranking(&*model).map_err(|e| e.to_string())?,
+                    "cpu".to_string(),
+                ),
             };
 
-            // Mirror the Python tool result shape: {"ranking": [...]} with optional top_n.
             let mut rows: Vec<serde_json::Value> = ranking
                 .into_iter()
-                .map(|e| serde_json::json!({
-                    "name": e.name,
-                    "delta_mu_up": e.delta_mu_up,
-                    "delta_mu_down": e.delta_mu_down,
-                    "pull": e.pull,
-                    "constraint": e.constraint
-                }))
+                .map(|e| {
+                    serde_json::json!({
+                        "name": e.name,
+                        "delta_mu_up": e.delta_mu_up,
+                        "delta_mu_down": e.delta_mu_down,
+                        "pull": e.pull,
+                        "constraint": e.constraint
+                    })
+                })
                 .collect();
             if let Some(n) = args.top_n {
                 if rows.len() > n {
@@ -514,7 +547,13 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
                 }
             }
 
-            Ok((serde_json::json!({ "ranking": rows, "wall_time_s": t0.elapsed().as_secs_f64() }), Some(device)))
+            Ok((
+                serde_json::json!({
+                    "ranking": rows,
+                    "wall_time_s": t0.elapsed().as_secs_f64()
+                }),
+                Some(device),
+            ))
         }
         "nextstat_scan" => {
             #[derive(Debug, Deserialize)]
@@ -532,7 +571,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             fn default_scan_stop() -> f64 { 5.0 }
             fn default_scan_points() -> usize { 21 }
 
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -541,28 +580,44 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
 
             let points = args.points.max(2).min(2001);
             let step = (args.stop - args.start) / ((points - 1) as f64);
-            let mu_values: Vec<f64> = (0..points).map(|i| args.start + (i as f64) * step).collect();
+            let mu_values: Vec<f64> = (0..points)
+                .map(|i| args.start + (i as f64) * step)
+                .collect();
 
             let mle = MaximumLikelihoodEstimator::new();
 
             let (scan, device) = match gpu_device {
                 #[cfg(feature = "cuda")]
-                Some("cuda") => (ns_inference::profile_likelihood::scan_gpu(&mle, &*model, &mu_values).map_err(|e| e.to_string())?, "cuda".to_string()),
+                Some("cuda") => (
+                    ns_inference::profile_likelihood::scan_gpu(&mle, &*model, &mu_values)
+                        .map_err(|e| e.to_string())?,
+                    "cuda".to_string(),
+                ),
                 #[cfg(feature = "metal")]
-                Some("metal") => (ns_inference::profile_likelihood::scan_metal(&mle, &*model, &mu_values).map_err(|e| e.to_string())?, "metal".to_string()),
-                _ => (ns_inference::profile_likelihood::scan_histfactory(&mle, &*model, &mu_values).map_err(|e| e.to_string())?, "cpu".to_string()),
+                Some("metal") => (
+                    ns_inference::profile_likelihood::scan_metal(&mle, &*model, &mu_values)
+                        .map_err(|e| e.to_string())?,
+                    "metal".to_string(),
+                ),
+                _ => (
+                    ns_inference::profile_likelihood::scan_histfactory(&mle, &*model, &mu_values)
+                        .map_err(|e| e.to_string())?,
+                    "cpu".to_string(),
+                ),
             };
 
             let points_json: Vec<serde_json::Value> = scan
                 .points
                 .into_iter()
-                .map(|p| serde_json::json!({
-                    "mu": p.mu,
-                    "q_mu": p.q_mu,
-                    "nll_mu": p.nll_mu,
-                    "converged": p.converged,
-                    "n_iter": p.n_iter
-                }))
+                .map(|p| {
+                    serde_json::json!({
+                        "mu": p.mu,
+                        "q_mu": p.q_mu,
+                        "nll_mu": p.nll_mu,
+                        "converged": p.converged,
+                        "n_iter": p.n_iter
+                    })
+                })
                 .collect();
 
             Ok((
@@ -582,7 +637,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
                 #[serde(flatten)]
                 common: CommonWorkspaceArgs,
             }
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -590,25 +645,23 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             )?;
             let mle = MaximumLikelihoodEstimator::new();
             let free = mle.fit(&*model).map_err(|e| e.to_string())?;
-            let poi = model.poi_index().ok_or_else(|| "No POI defined".to_string())?;
+            let poi = model
+                .poi_index()
+                .ok_or_else(|| "No POI defined".to_string())?;
             let mu_hat = free.parameters.get(poi).copied();
             let nll_hat = free.nll;
 
-            // Conditional fit at mu=0 (via a profile scan at a single point).
             let scan = ns_inference::profile_likelihood::scan_histfactory(&mle, &*model, &[0.0])
                 .map_err(|e| e.to_string())?;
             if scan.points.is_empty() {
-                return ToolResultEnvelope::err(
-                    &name,
-                    meta,
-                    "RuntimeError",
-                    "profile_scan returned no points for mu=0".to_string(),
-                );
+                return Err("profile_scan returned no points for mu=0".to_string());
             }
             let nll0 = scan.points[0].nll_mu;
 
             let mut q0 = 2.0 * (nll0 - nll_hat);
-            if q0 < 0.0 { q0 = 0.0; }
+            if q0 < 0.0 {
+                q0 = 0.0;
+            }
             if let Some(mh) = mu_hat {
                 if mh <= 0.0 {
                     q0 = 0.0;
@@ -637,7 +690,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
                 common: CommonWorkspaceArgs,
                 mu: f64,
             }
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -646,7 +699,9 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             let mle = MaximumLikelihoodEstimator::new();
             let ctx = ns_inference::hypotest::AsymptoticCLsContext::new(&mle, &*model)
                 .map_err(|e| e.to_string())?;
-            let r = ctx.hypotest_qtilde(&mle, args.mu).map_err(|e| e.to_string())?;
+            let r = ctx
+                .hypotest_qtilde(&mle, args.mu)
+                .map_err(|e| e.to_string())?;
             Ok((
                 serde_json::json!({
                     "cls": r.cls,
@@ -678,7 +733,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             fn default_rtol() -> f64 { 1e-4 }
             fn default_max_iter() -> usize { 80 }
 
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -691,7 +746,14 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             let hi = args.hi.unwrap_or(10.0);
             if args.expected {
                 let (obs, exp) = ctx
-                    .upper_limits_qtilde_bisection(&mle, args.alpha, args.lo, hi, args.rtol, args.max_iter)
+                    .upper_limits_qtilde_bisection(
+                        &mle,
+                        args.alpha,
+                        args.lo,
+                        hi,
+                        args.rtol,
+                        args.max_iter,
+                    )
                     .map_err(|e| e.to_string())?;
                 Ok((
                     serde_json::json!({
@@ -738,7 +800,7 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             fn default_n_toys() -> usize { 1000 }
             fn default_seed() -> u64 { 42 }
 
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
             let model = resolve_model_from_args(
                 state,
                 args.common.workspace_json.as_deref(),
@@ -796,20 +858,16 @@ pub fn execute_tool(state: &AppState, req: ToolExecuteRequest) -> ToolResultEnve
             struct Args {
                 workspace_json: String,
             }
-            let args: Args = serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
-            let json: serde_json::Value = serde_json::from_str(&args.workspace_json).map_err(|e| e.to_string())?;
+            let args: Args = serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+            let json: serde_json::Value =
+                serde_json::from_str(&args.workspace_json).map_err(|e| e.to_string())?;
             let audit = pyhf_audit::workspace_audit(&json);
-            Ok((serde_json::to_value(audit).map_err(|e| e.to_string())?, Some("cpu".to_string())))
+            Ok((
+                serde_json::to_value(audit).map_err(|e| e.to_string())?,
+                Some("cpu".to_string()),
+            ))
         }
         other => Err(format!("Unknown tool: {other}")),
-    };
-
-    match tool_res {
-        Ok((value, device)) => {
-            meta.device = device;
-            ToolResultEnvelope::ok(&name, meta, value)
-        }
-        Err(msg) => ToolResultEnvelope::err(&name, meta, "ToolError", msg),
     }
 }
 
@@ -819,3 +877,26 @@ fn normal_sf(z: f64) -> f64 {
     0.5 * statrs::function::erf::erfc(z / std::f64::consts::SQRT_2)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_execute_fit_smoke_ok() {
+        let state = AppState::new(None);
+        let ws = include_str!("../../../tests/fixtures/simple_workspace.json");
+
+        let req = ToolExecuteRequest {
+            name: "nextstat_fit".to_string(),
+            arguments: serde_json::json!({
+                "workspace_json": ws,
+                "execution": { "deterministic": true }
+            }),
+        };
+
+        let out = execute_tool(&state, req);
+        assert_eq!(out.schema_version, "nextstat.tool_result.v1");
+        assert!(out.ok, "expected ok=true, got error={:?}", out.error);
+        assert_eq!(out.meta.tool_name, "nextstat_fit");
+    }
+}

@@ -35,6 +35,12 @@ pip install -r env/python/requirements.txt
 python suites/hep/run.py --deterministic --out out/hep_simple_nll.json
 ```
 
+Optional: also benchmark full MLE fits (more expensive):
+
+```bash
+python suites/hep/run.py --deterministic --fit --fit-repeat 3 --out out/hep_simple_nll_fit.json
+```
+
 ## What This Seed Provides
 
 - `env/` pinned environment scaffolding (Python + Rust + Docker templates)
@@ -46,4 +52,3 @@ python suites/hep/run.py --deterministic --out out/hep_simple_nll.json
 
 - The harness is intentionally separate from the product repo: it should be auditable and runnable without building all of NextStat.
 - Use `--json-only` in the validation-pack tooling when you want reproducibility artifacts without `matplotlib`/PDF.
-

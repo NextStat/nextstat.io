@@ -1,4 +1,4 @@
-.PHONY: venv install hep validate
+.PHONY: venv install hep hep-fit validate
 
 PY ?= python3
 VENV ?= .venv
@@ -14,6 +14,9 @@ install: venv
 
 hep: install
 	$(PYBIN) suites/hep/suite.py --deterministic --out-dir out/hep
+
+hep-fit: install
+	$(PYBIN) suites/hep/suite.py --deterministic --fit --fit-repeat 3 --out-dir out/hep_fit
 
 validate: install
 	$(PYBIN) - <<'PY'

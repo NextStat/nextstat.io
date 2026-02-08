@@ -11,6 +11,7 @@ import hashlib
 import json
 import platform
 import sys
+import time
 import timeit
 from array import array
 from pathlib import Path
@@ -82,6 +83,15 @@ def bench_time_per_call_raw(
     return number, times
 
 
+def bench_wall_time_raw(fn: Callable[[], Any], *, repeat: int = 3) -> list[float]:
+    times: list[float] = []
+    for _ in range(repeat):
+        t0 = time.perf_counter()
+        fn()
+        times.append(time.perf_counter() - t0)
+    return times
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", default="simple_workspace_nll", help="Case id for reporting.")
@@ -99,6 +109,8 @@ def main() -> int:
     parser.add_argument("--deterministic", action="store_true", help="Deterministic output.")
     parser.add_argument("--target-s", type=float, default=0.25, help="Target timing window (seconds).")
     parser.add_argument("--repeat", type=int, default=5, help="Number of timing repeats.")
+    parser.add_argument("--fit", action="store_true", help="Also benchmark full MLE fits.")
+    parser.add_argument("--fit-repeat", type=int, default=3, help="Fit timing repeats (wall-clock).")
     parser.add_argument("--dataset-id", default="", help="Optional dataset id for reporting (stable, portable).")
     parser.add_argument("--dataset-sha256", default="", help="Optional dataset sha256 override.")
     args = parser.parse_args()
@@ -193,6 +205,94 @@ def main() -> int:
             },
         },
     }
+
+    if args.fit:
+        fit_repeat = int(args.fit_repeat)
+        poi_name = getattr(pyhf_model.config, "poi_name", None)
+        poi_index = getattr(pyhf_model.config, "poi_index", None)
+        if poi_index is None:
+            doc["fit"] = {"status": "skipped", "reason": "pyhf model has no POI"}
+        else:
+            try:
+                def fit_pyhf():
+                    pyhf.infer.mle.fit(pyhf_data, pyhf_model)
+
+                def fit_nextstat():
+                    mle = nextstat.MaximumLikelihoodEstimator()
+                    mle.fit(ns_model)
+
+                # Warmup once each (avoid one-time allocations dominating timing).
+                fit_pyhf()
+                fit_nextstat()
+
+                pyhf_fit_times = bench_wall_time_raw(fit_pyhf, repeat=fit_repeat)
+                ns_fit_times = bench_wall_time_raw(fit_nextstat, repeat=fit_repeat)
+                pyhf_fit = min(pyhf_fit_times) if pyhf_fit_times else 0.0
+                ns_fit = min(ns_fit_times) if ns_fit_times else 0.0
+                fit_speedup = pyhf_fit / ns_fit if ns_fit > 0 else float("inf")
+
+                # Basic fit metadata (one run each; independent of timing repeats).
+                pyhf_best = pyhf.infer.mle.fit(pyhf_data, pyhf_model)
+                pyhf_nll_at_pyhf = pyhf_nll(pyhf_model, pyhf_data, pyhf_best)
+                pyhf_poi_hat = float(pyhf_best[int(poi_index)])
+
+                ns_res = nextstat.MaximumLikelihoodEstimator().fit(ns_model)
+                ns_nll_at_ns = float(getattr(ns_res, "nll", float("nan")))
+                ns_names = list(ns_model.parameter_names())
+                ns_poi_hat = None
+                if poi_name and poi_name in ns_names:
+                    ns_poi_hat = float(ns_res.bestfit[ns_names.index(poi_name)])
+
+                # Compare NLL values at a shared point (mapped by parameter names).
+                ns_at_pyhf = map_params_by_name(
+                    pyhf_model.config.par_names,
+                    pyhf_best,
+                    ns_names,
+                    ns_model.suggested_init(),
+                )
+                ns_nll_at_pyhf = float(ns_model.nll(array("d", ns_at_pyhf)))
+                abs_diff_pyhf_point = abs(ns_nll_at_pyhf - pyhf_nll_at_pyhf)
+
+                pyhf_at_ns = map_params_by_name(
+                    ns_names,
+                    ns_res.bestfit,
+                    pyhf_model.config.par_names,
+                    pyhf_model.config.suggested_init(),
+                )
+                pyhf_nll_at_ns = pyhf_nll(pyhf_model, pyhf_data, pyhf_at_ns)
+                abs_diff_ns_point = abs(pyhf_nll_at_ns - ns_nll_at_ns)
+
+                doc["fit"] = {
+                    "status": "ok",
+                    "time_s": {"pyhf": float(pyhf_fit), "nextstat": float(ns_fit)},
+                    "speedup_pyhf_over_nextstat": float(fit_speedup),
+                    "raw": {
+                        "repeat": int(fit_repeat),
+                        "policy": "min",
+                        "per_fit_s": {
+                            "pyhf": [float(x) for x in pyhf_fit_times],
+                            "nextstat": [float(x) for x in ns_fit_times],
+                        },
+                    },
+                    "meta": {
+                        **({} if poi_name is None else {"poi_name": str(poi_name)}),
+                        "poi_hat_pyhf": float(pyhf_poi_hat),
+                        **({} if ns_poi_hat is None else {"poi_hat_nextstat": float(ns_poi_hat)}),
+                        "nll_pyhf": float(pyhf_nll_at_pyhf),
+                        "nll_nextstat": float(ns_nll_at_ns),
+                        "nextstat_success": bool(getattr(ns_res, "success", False)),
+                        "nextstat_converged": bool(getattr(ns_res, "converged", False)),
+                        "nextstat_n_iter": int(getattr(ns_res, "n_iter", 0)),
+                        "nextstat_n_evaluations": int(getattr(ns_res, "n_evaluations", 0)),
+                        "nextstat_termination_reason": str(getattr(ns_res, "termination_reason", "")),
+                    },
+                    "parity": {
+                        "abs_diff_nll_at_pyhf_bestfit": float(abs_diff_pyhf_point),
+                        "abs_diff_nll_at_nextstat_bestfit": float(abs_diff_ns_point),
+                    },
+                }
+            except Exception as e:
+                doc["fit"] = {"status": "failed", "reason": f"{type(e).__name__}: {e}"}
 
     if not ok:
         # Write the artifact anyway (for debugging) but return non-zero.

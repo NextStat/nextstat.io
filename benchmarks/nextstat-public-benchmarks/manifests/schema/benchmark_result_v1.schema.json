@@ -91,5 +91,73 @@
         }
       }
     }
+    ,
+    "fit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "skipped", "failed"] },
+        "reason": { "type": "string" },
+        "time_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pyhf", "nextstat"],
+          "properties": {
+            "pyhf": { "type": "number", "minimum": 0 },
+            "nextstat": { "type": "number", "minimum": 0 }
+          }
+        },
+        "speedup_pyhf_over_nextstat": { "type": "number" },
+        "raw": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repeat", "policy", "per_fit_s"],
+          "properties": {
+            "repeat": { "type": "integer", "minimum": 1 },
+            "policy": { "type": "string", "enum": ["min", "median"] },
+            "per_fit_s": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pyhf", "nextstat"],
+              "properties": {
+                "pyhf": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+                "nextstat": { "type": "array", "items": { "type": "number", "minimum": 0 } }
+              }
+            }
+          }
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "poi_name": { "type": "string" },
+            "poi_hat_pyhf": { "type": "number" },
+            "poi_hat_nextstat": { "type": "number" },
+            "nll_pyhf": { "type": "number" },
+            "nll_nextstat": { "type": "number" },
+            "nextstat_success": { "type": "boolean" },
+            "nextstat_converged": { "type": "boolean" },
+            "nextstat_n_iter": { "type": "integer", "minimum": 0 },
+            "nextstat_n_evaluations": { "type": "integer", "minimum": 0 },
+            "nextstat_termination_reason": { "type": "string" }
+          }
+        },
+        "parity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "abs_diff_nll_at_pyhf_bestfit": { "type": "number", "minimum": 0 },
+            "abs_diff_nll_at_nextstat_bestfit": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "ok" } }, "required": ["status"] },
+          "then": { "required": ["time_s", "speedup_pyhf_over_nextstat", "raw"] }
+        }
+      ]
+    }
   }
 }

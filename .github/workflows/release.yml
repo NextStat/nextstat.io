@@ -255,7 +255,7 @@ jobs:
             exit 1
           fi
           pip install "${WHEEL}"
-          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9"
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9" "jsonschema>=4.0"
 
       - name: Render validation pack (JSON + PDF)
         shell: bash
@@ -274,6 +274,67 @@ jobs:
             --python python \
             --nextstat-bin "${NEXTSTAT_BIN}" \
             --deterministic
+
+      - name: Validate validation report schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+
+          schema = json.loads(Path("docs/schemas/validation/validation_report_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts/validation_report.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("validation_report_v1: schema ok")
+          PY
+
+      - name: Compare validation pack determinism (Apex2 master input)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts2
+          NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f | head -n 1)"
+          chmod +x "${NEXTSTAT_BIN}"
+
+          # Re-render using the exact Apex2 master JSON output and ensure JSON+PDF+manifest are bit-identical.
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts2 \
+            --workspace tests/fixtures/complex_workspace.json \
+            --apex2-master artifacts/apex2_master_report.json \
+            --python python \
+            --nextstat-bin "${NEXTSTAT_BIN}" \
+            --deterministic
+
+          sha256sum artifacts/validation_report.json artifacts2/validation_report.json
+          sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
+          sha256sum artifacts/validation_pack_manifest.json artifacts2/validation_pack_manifest.json
+
+          test "$(sha256sum artifacts/validation_report.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.json | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_pack_manifest.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_pack_manifest.json | awk '{print $1}')"
+
+      - name: Write snapshot index (artifact hashes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Digest the manifest itself (stdlib-only). This is useful for audit trails even without signatures.
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          inp = Path("artifacts/validation_pack_manifest.json")
+          h = hashlib.sha256(inp.read_bytes()).hexdigest()
+          Path("artifacts/validation_pack_manifest.sha256").write_text(h + "\n", encoding="utf-8")
+          Path("artifacts/validation_pack_manifest.sha256.bin").write_bytes(bytes.fromhex(h))
+          print("validation_pack_manifest: sha256 ok")
+          PY
+
+          python3 scripts/benchmarks/write_snapshot_index.py \
+            --suite release-validation-pack \
+            --artifacts-dir artifacts \
+            --out artifacts/snapshot_index.json
 
       - name: Upload validation pack
         uses: actions/upload-artifact@v4
@@ -325,8 +386,14 @@ jobs:
             dist/**/nextstat-*
             dist/**/nextstat-whitepaper-*.pdf
             dist/**/nextstat-whitepaper-*.pdf.sha256
+            dist/**/apex2_master_report.json
             dist/**/validation_report.json
             dist/**/validation_report.pdf
+            dist/**/validation_report_v1.schema.json
+            dist/**/validation_pack_manifest.json
+            dist/**/validation_pack_manifest.sha256
+            dist/**/validation_pack_manifest.sha256.bin
+            dist/**/snapshot_index.json
 
   # ── PyPI publish (optional, needs PYPI_TOKEN secret) ─────────
   pypi-publish:
