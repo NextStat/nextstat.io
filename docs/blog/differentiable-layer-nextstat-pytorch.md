@@ -27,6 +27,8 @@ is traditionally **non‑differentiable**: histogram binning is discrete, and th
 
 The result is a PyTorch‑native loss: you can train a network directly to **maximize $Z_0$** (or minimize $-Z_0$) with standard optimizers.
 
+If you just want the usage/API surface (and not the derivations), start with `docs/differentiable-layer.md`.
+
 ---
 
 ## 1. The problem: the metric lives *after* inference

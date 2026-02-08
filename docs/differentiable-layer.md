@@ -133,9 +133,9 @@ Available as `nextstat._core.DifferentiableSession` when built with CUDA.
 - `.n_params()` — number of model parameters
 - `.parameter_init()` — default parameter values
 
-## Profiled significance (q₀ / qμ) on GPU (CUDA)
+## Profiled significance (q₀ / qμ) on GPU (CUDA / Metal)
 
-NextStat also provides a CUDA-accelerated **profiled** layer for the common
+NextStat also provides a GPU-accelerated **profiled** layer (CUDA or Metal) for the common
 profile-likelihood test statistics:
 
 - Discovery: `q₀ = 2·(NLL(μ=0, θ̂₀) − NLL(μ̂, θ̂))`
