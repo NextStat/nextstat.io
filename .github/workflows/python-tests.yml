@@ -55,7 +55,7 @@ jobs:
         run: |
           # PDF renderer dependency (runs via `python -m nextstat.validation_report`).
           pip install "matplotlib>=3.8" "jsonschema>=4.0"
-          mkdir -p artifacts
+          mkdir -p artifacts artifacts2 artifacts_jsononly
           bash validation-pack/render_validation_pack.sh \
             --out-dir artifacts \
             --workspace tests/fixtures/simple_workspace.json \
@@ -69,6 +69,36 @@ jobs:
           inst = json.loads(Path("artifacts/validation_report.json").read_text())
           jsonschema.validate(inst, schema)
           print("validation_report_v1: schema ok")
+          PY
+
+          # Determinism: re-render using the same Apex2 master input and ensure JSON+PDF are bit-identical.
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts2 \
+            --workspace tests/fixtures/simple_workspace.json \
+            --apex2-master artifacts/apex2_master_report.json \
+            --python python \
+            --deterministic
+          sha256sum artifacts/validation_report.json artifacts2/validation_report.json
+          sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
+          test "$(sha256sum artifacts/validation_report.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.json | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
+
+          # JSON-only smoke: ensure the script can run without matplotlib/PDF and still produces schema-valid JSON.
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts_jsononly \
+            --workspace tests/fixtures/simple_workspace.json \
+            --apex2-master artifacts/apex2_master_report.json \
+            --python python \
+            --deterministic \
+            --json-only
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+          schema = json.loads(Path("docs/schemas/validation/validation_report_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts_jsononly/validation_report.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("validation_report_v1 (json-only): schema ok")
           PY
 
       - name: Upload Apex2 report artifact
@@ -86,6 +116,16 @@ jobs:
           path: |
             artifacts/validation_report.json
             artifacts/validation_report.pdf
+
+      - name: Upload validation pack determinism artifacts (debug)
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report-determinism-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            artifacts2/validation_report.json
+            artifacts2/validation_report.pdf
+            artifacts_jsononly/validation_report.json
 
   lint:
     name: Python Linting
