@@ -41,6 +41,52 @@ pub fn router() -> Router<SharedState> {
 // POST /v1/fit
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum GpuSelector {
+    Bool(bool),
+    String(String),
+}
+
+impl Default for GpuSelector {
+    fn default() -> Self {
+        GpuSelector::Bool(true)
+    }
+}
+
+impl GpuSelector {
+    fn should_use_gpu(&self, has_gpu: bool, server_device: Option<&str>) -> Result<bool, String> {
+        match self {
+            GpuSelector::Bool(b) => Ok(*b && has_gpu),
+            GpuSelector::String(s) => {
+                let v = s.trim().to_ascii_lowercase();
+                match v.as_str() {
+                    "" => Err("gpu must be a boolean or a non-empty string".into()),
+                    "true" | "auto" => Ok(has_gpu),
+                    "false" | "off" | "cpu" | "none" => Ok(false),
+                    "cuda" | "metal" => {
+                        if !has_gpu {
+                            return Err(format!(
+                                "requested gpu={v} but server has no GPU configured (start with --gpu cuda|metal)"
+                            ));
+                        }
+                        if server_device != Some(v.as_str()) {
+                            return Err(format!(
+                                "requested gpu={v} but server device is {}",
+                                server_device.unwrap_or("cpu")
+                            ));
+                        }
+                        Ok(true)
+                    }
+                    _ => Err(format!(
+                        "invalid gpu value: {s:?}. Use true/false, 'auto', 'cpu', 'cuda', or 'metal'."
+                    )),
+                }
+            }
+        }
+    }
+}
+
 /// Request body for `/v1/fit`.
 #[derive(Debug, Deserialize)]
 struct FitRequest {
@@ -52,8 +98,13 @@ struct FitRequest {
     model_id: Option<String>,
 
     /// Use GPU if available on this server (default: true).
-    #[serde(default = "default_true")]
-    gpu: bool,
+    ///
+    /// Back-compat: accepts a boolean. For convenience, also accepts a string:
+    /// - "auto"/true: use GPU if the server was started with `--gpu ...` (else CPU)
+    /// - "cpu"/false: force CPU
+    /// - "cuda"/"metal": require that specific server GPU device (case-insensitive)
+    #[serde(default)]
+    gpu: GpuSelector,
 }
 
 /// Response body for `/v1/fit`.
@@ -82,7 +133,10 @@ async fn fit_handler(
     let _dec = DecrementOnDrop(&state.inflight);
     state.total_requests.fetch_add(1, Ordering::Relaxed);
 
-    let use_gpu = req.gpu && state.has_gpu();
+    let use_gpu = req
+        .gpu
+        .should_use_gpu(state.has_gpu(), state.gpu_device.as_deref())
+        .map_err(AppError::bad_request)?;
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
@@ -176,8 +230,8 @@ struct RankingRequest {
     model_id: Option<String>,
 
     /// Use GPU if available (default: true).
-    #[serde(default = "default_true")]
-    gpu: bool,
+    #[serde(default)]
+    gpu: GpuSelector,
 }
 
 /// Single ranking entry in the response.
@@ -206,7 +260,10 @@ async fn ranking_handler(
     let _dec = DecrementOnDrop(&state.inflight);
     state.total_requests.fetch_add(1, Ordering::Relaxed);
 
-    let use_gpu = req.gpu && state.has_gpu();
+    let use_gpu = req
+        .gpu
+        .should_use_gpu(state.has_gpu(), state.gpu_device.as_deref())
+        .map_err(AppError::bad_request)?;
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
 
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
@@ -288,8 +345,8 @@ struct BatchFitRequest {
 
     /// Use GPU if available (default: true). On GPU, fits run sequentially;
     /// on CPU they run in parallel via Rayon.
-    #[serde(default = "default_true")]
-    gpu: bool,
+    #[serde(default)]
+    gpu: GpuSelector,
 }
 
 /// Response body for `/v1/batch/fit`.
@@ -323,7 +380,10 @@ async fn batch_fit_handler(
     let _dec = DecrementOnDrop(&state.inflight);
     state.total_requests.fetch_add(1, Ordering::Relaxed);
 
-    let use_gpu = req.gpu && state.has_gpu();
+    let use_gpu = req
+        .gpu
+        .should_use_gpu(state.has_gpu(), state.gpu_device.as_deref())
+        .map_err(AppError::bad_request)?;
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
@@ -462,8 +522,8 @@ struct BatchToysRequest {
     seed: u64,
 
     /// Use GPU if available (default: true).
-    #[serde(default = "default_true")]
-    gpu: bool,
+    #[serde(default)]
+    gpu: GpuSelector,
 }
 
 /// Response body for `/v1/batch/toys`.
@@ -499,7 +559,10 @@ async fn batch_toys_handler(
     let _dec = DecrementOnDrop(&state.inflight);
     state.total_requests.fetch_add(1, Ordering::Relaxed);
 
-    let use_gpu = req.gpu && state.has_gpu();
+    let use_gpu = req
+        .gpu
+        .should_use_gpu(state.has_gpu(), state.gpu_device.as_deref())
+        .map_err(AppError::bad_request)?;
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
@@ -757,10 +820,6 @@ async fn tools_execute_handler(
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn default_true() -> bool {
-    true
-}
-
 /// Resolve a model from either a workspace JSON or a cached model_id.
 /// Returns an `Arc` — cheap clone from cache, or wraps a freshly parsed model.
 fn resolve_model(
@@ -843,5 +902,32 @@ struct DecrementOnDrop<'a>(&'a std::sync::atomic::AtomicU64);
 impl Drop for DecrementOnDrop<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FitRequest, GpuSelector};
+
+    #[test]
+    fn gpu_selector_accepts_bool_and_string() {
+        // Default (missing gpu) is equivalent to gpu=true with "try GPU if available".
+        let req: FitRequest = serde_json::from_value(serde_json::json!({"workspace": {}})).unwrap();
+        match req.gpu {
+            GpuSelector::Bool(true) => {}
+            other => panic!("expected default gpu=true, got: {other:?}"),
+        }
+        assert_eq!(req.gpu.should_use_gpu(false, None).unwrap(), false);
+
+        // Case-insensitive string form.
+        let req: FitRequest =
+            serde_json::from_value(serde_json::json!({"workspace": {}, "gpu": "Metal"})).unwrap();
+        assert_eq!(req.gpu.should_use_gpu(true, Some("metal")).unwrap(), true);
+        assert!(req.gpu.should_use_gpu(true, Some("cuda")).is_err());
+
+        // Explicit CPU.
+        let req: FitRequest =
+            serde_json::from_value(serde_json::json!({"workspace": {}, "gpu": "cpu"})).unwrap();
+        assert_eq!(req.gpu.should_use_gpu(true, Some("metal")).unwrap(), false);
     }
 }

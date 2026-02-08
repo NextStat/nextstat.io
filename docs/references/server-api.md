@@ -23,6 +23,27 @@ The server is a self-hosted HTTP API for running NextStat inference centrally (C
 - `GET /v1/tools/schema` (tool registry for agents)
 - `POST /v1/tools/execute` (tool execution, `nextstat.tool_result.v1` envelope)
 
+## `POST /v1/fit` (MLE fit)
+
+Request JSON:
+
+- `workspace` (object, optional): pyhf/HS3 workspace JSON (full object, not a string)
+- `model_id` (string, optional): cached model id (SHA-256) from `/v1/models`
+- `gpu` (boolean or string, optional; default `true`):
+  - `true` / `"auto"`: use GPU if server started with `--gpu cuda|metal` (else CPU)
+  - `false` / `"cpu"`: force CPU
+  - `"cuda"` / `"metal"`: require that specific server GPU device (case-insensitive)
+
+Examples:
+
+```json
+{ "workspace": { "...": "..." }, "gpu": true }
+```
+
+```json
+{ "workspace": { "...": "..." }, "gpu": "Metal" }
+```
+
 ## Tool Runtime (Agent Surface)
 
 The tool runtime is designed to mirror `nextstat.tools`:
@@ -74,8 +95,24 @@ Response is always a tool envelope:
 }
 ```
 
+Python client usage (no extra deps; uses stdlib HTTP in `nextstat.tools`):
+
+```python
+from nextstat.tools import get_toolkit, execute_tool
+
+server_url = "http://127.0.0.1:3742"
+tools = get_toolkit(transport="server", server_url=server_url)
+
+out = execute_tool(
+    "nextstat_fit",
+    {"workspace_json": "...", "execution": {"deterministic": True}},
+    transport="server",
+    server_url=server_url,
+)
+print(out)
+```
+
 ## Security / Input Policy
 
 Server mode does **not** expose file-ingest tools (like reading ROOT files from arbitrary paths) via `/v1/tools/*`.
 If you need ROOT ingest for a demo agent, do it client-side (local Python) and send derived data to the server.
-
