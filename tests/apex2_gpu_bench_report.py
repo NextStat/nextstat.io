@@ -117,6 +117,40 @@ def _bench_repeated(label: str, repeats: int, fn) -> Tuple[Any, Dict[str, float]
         times.append(float(dt))
     return last, {"median_s": _median(times), "min_s": float(min(times)), "max_s": float(max(times))}
 
+def _scan_parity(cpu_scan: Dict[str, Any], gpu_scan: Dict[str, Any], *, nll_atol: float) -> Dict[str, Any]:
+    cpu_points = list(cpu_scan.get("points") or [])
+    gpu_points = list(gpu_scan.get("points") or [])
+    n = min(len(cpu_points), len(gpu_points))
+    if n == 0:
+        return {"ok": None, "reason": "no_points"}
+
+    deltas_nll: List[float] = []
+    deltas_qmu: List[float] = []
+    for i in range(n):
+        cp = cpu_points[i]
+        gp = gpu_points[i]
+        try:
+            if float(cp.get("mu")) != float(gp.get("mu")):
+                return {"ok": None, "reason": "mu_grid_mismatch"}
+            if not (bool(cp.get("converged")) and bool(gp.get("converged"))):
+                continue
+            deltas_nll.append(abs(float(cp.get("nll_mu")) - float(gp.get("nll_mu"))))
+            deltas_qmu.append(abs(float(cp.get("q_mu")) - float(gp.get("q_mu"))))
+        except Exception:
+            return {"ok": None, "reason": "bad_point_format"}
+
+    if not deltas_nll:
+        return {"ok": None, "reason": "no_converged_points"}
+
+    max_abs_nll = max(deltas_nll)
+    return {
+        "ok": bool(max_abs_nll <= float(nll_atol)),
+        "n_points_compared": int(len(deltas_nll)),
+        "max_abs_delta_nll_mu": float(max_abs_nll),
+        "nll_atol": float(nll_atol),
+        "max_abs_delta_q_mu": float(max(deltas_qmu) if deltas_qmu else float("nan")),
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -257,6 +291,17 @@ def main() -> int:
                     "n_points": int(len(cuda_scan.get("points", []) or [])),
                 }
                 case_row["perf"]["timing_s"]["profile_scan_cuda_median"] = float(cuda_scan_t["median_s"])
+
+                # Scan parity is useful even when the global fit does not converge.
+                case_row["parity_scan"] = _scan_parity(cpu_scan, cuda_scan, nll_atol=gpu_fit_nll_atol)
+                if case_row["parity_scan"].get("ok") is False:
+                    failures.append(
+                        {
+                            "case": ws_path.name,
+                            "reason": "gpu_parity_scan_out_of_tolerance",
+                            "max_abs_delta_nll_mu": case_row["parity_scan"].get("max_abs_delta_nll_mu"),
+                        }
+                    )
             except BaseException as e:
                 cuda_errs.append({"op": "profile_scan", "error": f"{type(e).__name__}: {e}"})
 
