@@ -46,12 +46,15 @@ jobs:
             const repo = context.repo.repo;
             const workflow_id = 'perf-smoke.yml';
             const artifact_name = 'criterion-reports';
+            const ref = context.ref || '';
+            const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
 
             const runs = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
               workflow_id,
               status: 'success',
+              ...(branch ? { branch } : {}),
               per_page: 1,
             });
 
@@ -61,6 +64,11 @@ jobs:
             }
 
             const run_id = runs.data.workflow_runs[0].id;
+            if (run_id === context.runId) {
+              // Only one successful run exists (this one). No baseline yet.
+              core.setOutput('found', 'false');
+              return;
+            }
             const arts = await github.rest.actions.listWorkflowRunArtifacts({
               owner,
               repo,
@@ -102,13 +110,26 @@ jobs:
           mkdir -p baseline
           unzip -q baseline_artifact.zip -d baseline
           baseline_index="$(find baseline -maxdepth 4 -name snapshot_index.json | head -n 1)"
-          test -n "$baseline_index"
+          if [[ -z "$baseline_index" ]]; then
+            echo "Baseline artifact does not contain snapshot_index.json (older baseline). Skipping drift report." >&2
+            exit 0
+          fi
 
           bash scripts/benchmarks/make_replication_bundle.sh \
             --original-index "$baseline_index" \
             --artifacts-dir target/criterion \
             --suite perf-smoke \
             --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rr = json.loads(Path("target/criterion/.replication/replication_report.json").read_text())
+          ok = rr.get("comparison", {}).get("ok")
+          if ok is True:
+            raise SystemExit(0)
+          raise SystemExit("perf-smoke drift detected (replication_report comparison.ok=false)")
+          PY
 
       - name: Upload Criterion reports
         if: always()

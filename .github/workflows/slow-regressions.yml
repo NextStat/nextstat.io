@@ -98,5 +98,118 @@ jobs:
           NS_SEED: "0"
           NS_SCAN_POINTS: ${{ inputs.scan_points || '81' }}
         run: |
-          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6"
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0"
           pytest -q -m slow tests/python
+
+      - name: Write snapshot index (artifact hashes)
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 scripts/benchmarks/write_snapshot_index.py \
+            --suite slow-regressions \
+            --artifacts-dir artifacts \
+            --out artifacts/snapshot_index.json
+
+      - name: Find baseline (previous successful run artifact)
+        if: always()
+        id: baseline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflow_id = 'slow-regressions.yml';
+            const artifact_name = 'slow-regressions';
+            const ref = context.ref || '';
+            const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
+
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              status: 'success',
+              ...(branch ? { branch } : {}),
+              per_page: 1,
+            });
+
+            if (!runs.data.workflow_runs.length) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const run_id = runs.data.workflow_runs[0].id;
+            if (run_id === context.runId) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const arts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id,
+              per_page: 100,
+            });
+
+            const a = arts.data.artifacts.find(x => x.name === artifact_name && !x.expired);
+            if (!a) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            core.setOutput('found', 'true');
+            core.setOutput('run_id', String(run_id));
+            core.setOutput('artifact_id', String(a.id));
+
+      - name: Download baseline artifact
+        if: steps.baseline.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const artifact_id = Number('${{ steps.baseline.outputs.artifact_id }}');
+            const download = await github.rest.actions.downloadArtifact({
+              owner,
+              repo,
+              artifact_id,
+              archive_format: 'zip',
+            });
+            fs.writeFileSync('baseline_artifact.zip', Buffer.from(download.data));
+
+      - name: Build replication report vs baseline
+        if: steps.baseline.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p baseline
+          unzip -q baseline_artifact.zip -d baseline
+          if [[ ! -f baseline/snapshot_index.json ]]; then
+            echo "Baseline artifact does not contain snapshot_index.json (older baseline). Skipping drift report." >&2
+            exit 0
+          fi
+
+          bash scripts/benchmarks/make_replication_bundle.sh \
+            --original-index baseline/snapshot_index.json \
+            --artifacts-dir artifacts \
+            --suite slow-regressions \
+            --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rr = json.loads(Path("artifacts/.replication/replication_report.json").read_text())
+          ok = rr.get("comparison", {}).get("ok")
+          if ok is True:
+            raise SystemExit(0)
+          raise SystemExit("slow-regressions drift detected (replication_report comparison.ok=false)")
+          PY
+
+      - name: Upload slow-regressions artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slow-regressions
+          path: |
+            artifacts/snapshot_index.json
+            artifacts/.replication/*

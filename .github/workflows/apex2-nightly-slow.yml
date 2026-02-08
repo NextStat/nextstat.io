@@ -101,12 +101,15 @@ jobs:
             const repo = context.repo.repo;
             const workflow_id = 'apex2-nightly-slow.yml';
             const artifact_name = 'apex2-nightly-slow';
+            const ref = context.ref || '';
+            const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
 
             const runs = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
               workflow_id,
               status: 'success',
+              ...(branch ? { branch } : {}),
               per_page: 1,
             });
 
@@ -164,7 +167,18 @@ jobs:
             --suite apex2-nightly-slow \
             --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
 
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rr = json.loads(Path("artifacts/.replication/replication_report.json").read_text())
+          ok = rr.get("comparison", {}).get("ok")
+          if ok is True:
+            raise SystemExit(0)
+          raise SystemExit("apex2-nightly-slow drift detected (replication_report comparison.ok=false)")
+          PY
+
       - name: Upload Apex2 artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex2-nightly-slow
