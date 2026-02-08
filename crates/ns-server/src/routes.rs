@@ -204,15 +204,6 @@ async fn ranking_handler(
     let use_gpu = req.gpu && state.has_gpu();
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
 
-    // Metal ranking is not implemented. Reject explicitly to avoid silent CPU fallback
-    // (which makes it easy to misinterpret "server is in Metal mode" as "ranking uses Metal").
-    if gpu_device.as_deref() == Some("metal") {
-        return Err(AppError::not_implemented(
-            "Metal ranking is not supported. Set `gpu=false` for CPU ranking, or run nextstat-server with `--gpu cuda`."
-                .into(),
-        ));
-    }
-
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
     let pool_ref = Arc::clone(&state);
@@ -239,6 +230,16 @@ async fn ranking_handler(
             #[cfg(not(feature = "cuda"))]
             Some("cuda") => {
                 return Err(AppError::internal("CUDA not compiled".into()));
+            }
+            #[cfg(feature = "metal")]
+            Some("metal") => {
+                let r = ns_inference::mle::ranking_metal(&mle, &*model)
+                    .map_err(|e| AppError::internal(format!("Metal ranking failed: {e}")))?;
+                (r, "metal".to_string())
+            }
+            #[cfg(not(feature = "metal"))]
+            Some("metal") => {
+                return Err(AppError::internal("Metal not compiled".into()));
             }
             _ => {
                 let r = mle.ranking(&*model)
@@ -763,9 +764,6 @@ impl AppError {
         Self { status: StatusCode::NOT_FOUND, message: msg }
     }
 
-    fn not_implemented(msg: String) -> Self {
-        Self { status: StatusCode::NOT_IMPLEMENTED, message: msg }
-    }
 }
 
 impl IntoResponse for AppError {

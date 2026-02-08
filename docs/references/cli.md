@@ -397,7 +397,7 @@ Arguments:
 All endpoints accept/return JSON. Errors return `{"error": "<message>"}` with appropriate HTTP status codes.
 
 Notes:
-- `POST /v1/ranking`: CUDA supports GPU ranking. Metal ranking is currently not implemented; on Metal servers use `{"gpu": false, ...}` to force CPU ranking.
+- `POST /v1/ranking`: hybrid CPU+GPU. Nominal fit is CPU (f64, Hessian), per-nuisance refits use the configured GPU (CUDA f64 or Metal f32) when `gpu=true`.
 
 ### Model caching
 

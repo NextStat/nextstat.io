@@ -110,6 +110,8 @@ pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_availabl
     pub use gpu_session::{MetalGpuSession, metal_session, is_metal_single_available};
 #[cfg(feature = "cuda")]
 pub use mle::ranking_gpu;
+#[cfg(feature = "metal")]
+pub use mle::ranking_metal;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};

@@ -35,7 +35,7 @@ impl<'a> SliceOutputBuffer<'a> {
     }
 
     #[inline(always)]
-    fn ensure_capacity(&self, extra: usize) -> Result<(), ExecuteSequencesError> {
+    fn ensure_capacity_inner(&self, extra: usize) -> Result<(), ExecuteSequencesError> {
         let need = self.pos.saturating_add(extra);
         if need <= self.out.len() {
             Ok(())
@@ -62,7 +62,7 @@ impl<'a> SliceOutputBuffer<'a> {
             ));
         }
 
-        self.ensure_capacity(match_length)?;
+        self.ensure_capacity_inner(match_length)?;
 
         for i in 0..match_length {
             let d = self.pos + i;
@@ -87,15 +87,95 @@ impl<'a> SliceOutputBuffer<'a> {
         self.pos += match_length;
         Ok(())
     }
+
+    #[inline(always)]
+    unsafe fn push_unchecked_inner(&mut self, data: &[u8]) {
+        debug_assert!(self.pos + data.len() <= self.out.len());
+        core::ptr::copy_nonoverlapping(data.as_ptr(), self.out.as_mut_ptr().add(self.pos), data.len());
+        self.pos += data.len();
+    }
+
+    #[inline(always)]
+    unsafe fn repeat_unchecked_inner(&mut self, offset: usize, match_length: usize) {
+        debug_assert!(offset > 0);
+        debug_assert!(offset <= self.pos);
+        debug_assert!(self.pos + match_length <= self.out.len());
+
+        let base = self.out.as_mut_ptr();
+        fast_copy_match(
+            base.add(self.pos - offset),
+            base.add(self.pos),
+            offset,
+            match_length,
+        );
+        self.pos += match_length;
+    }
+
+    #[inline(always)]
+    fn repeat_from_dict_checked(
+        &mut self,
+        offset: usize,
+        match_length: usize,
+    ) -> Result<(), ExecuteSequencesError> {
+        let dict_len = self.dict_len;
+        if dict_len == 0 {
+            return Err(ExecuteSequencesError::DecodebufferError(
+                DecodeBufferError::NotEnoughBytesInDictionary {
+                    got: 0,
+                    need: offset.saturating_sub(self.pos),
+                },
+            ));
+        }
+
+        self.ensure_capacity_inner(match_length)?;
+
+        let bytes_from_dict = offset - self.pos;
+        if bytes_from_dict > dict_len {
+            return Err(ExecuteSequencesError::DecodebufferError(
+                DecodeBufferError::NotEnoughBytesInDictionary {
+                    got: dict_len,
+                    need: bytes_from_dict,
+                },
+            ));
+        }
+
+        unsafe {
+            let dst = self.out.as_mut_ptr().add(self.pos);
+            let dict_src = self.dict_ptr.add(dict_len - bytes_from_dict);
+
+            if bytes_from_dict >= match_length {
+                core::ptr::copy_nonoverlapping(dict_src, dst, match_length);
+                self.pos += match_length;
+                return Ok(());
+            }
+
+            core::ptr::copy_nonoverlapping(dict_src, dst, bytes_from_dict);
+            self.pos += bytes_from_dict;
+
+            let remaining = match_length - bytes_from_dict;
+            self.repeat_unchecked_inner(offset, remaining);
+        }
+
+        Ok(())
+    }
 }
 
 impl FusedOutputBuffer for SliceOutputBuffer<'_> {
     #[inline(always)]
+    fn ensure_capacity(&mut self, extra: usize) -> Result<(), ExecuteSequencesError> {
+        self.ensure_capacity_inner(extra)
+    }
+
+    #[inline(always)]
     fn push(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError> {
-        self.ensure_capacity(data.len())?;
-        let end = self.pos + data.len();
-        self.out[self.pos..end].copy_from_slice(data);
-        self.pos = end;
+        self.ensure_capacity_inner(data.len())?;
+        unsafe { self.push_unchecked_inner(data) };
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn push_unchecked(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError> {
+        unsafe { self.push_unchecked_inner(data) };
         Ok(())
     }
 
@@ -107,22 +187,25 @@ impl FusedOutputBuffer for SliceOutputBuffer<'_> {
         if match_length == 0 {
             return Ok(());
         }
-        self.ensure_capacity(match_length)?;
-
         if offset > self.pos {
-            return self.repeat_from_dict_slow(offset, match_length);
+            return self.repeat_from_dict_checked(offset, match_length);
         }
 
-        unsafe {
-            let base = self.out.as_mut_ptr();
-            fast_copy_match(
-                base.add(self.pos - offset),
-                base.add(self.pos),
-                offset,
-                match_length,
-            );
+        self.ensure_capacity_inner(match_length)?;
+        unsafe { self.repeat_unchecked_inner(offset, match_length) };
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn repeat_unchecked(
+        &mut self,
+        offset: usize,
+        match_length: usize,
+    ) -> Result<(), ExecuteSequencesError> {
+        if offset > self.pos {
+            return self.repeat_from_dict_checked(offset, match_length);
         }
-        self.pos += match_length;
+        unsafe { self.repeat_unchecked_inner(offset, match_length) };
         Ok(())
     }
 }

@@ -1486,6 +1486,8 @@ pub fn ranking_gpu(
     mle: &MaximumLikelihoodEstimator,
     model: &HistFactoryModel,
 ) -> Result<Vec<RankingEntry>> {
+    use std::collections::HashSet;
+
     let poi_idx = model
         .poi_index()
         .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
@@ -1495,14 +1497,26 @@ pub fn ranking_gpu(
     let mu_hat = nominal_result.parameters[poi_idx];
     let base_bounds = model.parameter_bounds();
 
-    // Only constrained NPs
-    let np_indices: Vec<usize> = model
+    // Ranking applies to nuisance parameters constrained by either:
+    // - explicit Gaussian constraints (constraint_width.is_some()), OR
+    // - auxiliary Poisson constraints (Barlow–Beeston ShapeSys).
+    //
+    // Keep this selection aligned with the CPU ranking implementation.
+    let poisson_sigmas = model.poisson_constraint_sigmas();
+    let mut np_set: HashSet<usize> = model
         .parameters()
         .iter()
         .enumerate()
         .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
         .map(|(i, _)| i)
         .collect();
+    for (&idx, _) in &poisson_sigmas {
+        if idx != poi_idx {
+            np_set.insert(idx);
+        }
+    }
+    let mut np_indices: Vec<usize> = np_set.into_iter().collect();
+    np_indices.sort_unstable();
 
     // Shared GPU session — model uploaded once
     let session = crate::gpu_session::cuda_session(model)?;
@@ -1513,10 +1527,14 @@ pub fn ranking_gpu(
     for &np_idx in &np_indices {
         let param = &model.parameters()[np_idx];
         let center = param.constraint_center.unwrap_or(param.init);
-        let sigma = param.constraint_width.unwrap(); // guaranteed by filter
+        let sigma = param
+            .constraint_width
+            .or_else(|| poisson_sigmas.get(&np_idx).copied())
+            .unwrap_or(0.1);
 
         // +1σ: fix NP via bounds-clamping
-        let val_up = center + sigma;
+        let (b_lo, b_hi) = base_bounds[np_idx];
+        let val_up = (center + sigma).min(b_hi);
         let mut bounds_up = base_bounds.clone();
         bounds_up[np_idx] = (val_up, val_up);
         let mut warm = nominal_result.parameters.clone();
@@ -1527,7 +1545,7 @@ pub fn ranking_gpu(
         let mu_up = result_up.parameters[poi_idx];
 
         // -1σ
-        let val_down = center - sigma;
+        let val_down = (center - sigma).max(b_lo);
         let mut bounds_down = base_bounds.clone();
         bounds_down[np_idx] = (val_down, val_down);
         warm = nominal_result.parameters.clone();
@@ -1564,6 +1582,111 @@ pub fn ranking_gpu(
     Ok(entries)
 }
 
+/// Compute NP ranking using Metal GPU for per-NP refits (hybrid CPU+Metal).
+///
+/// Nominal fit uses CPU (needs Hessian for pull/constraint). Per-NP ±1σ refits
+/// use a shared `MetalGpuSession` with warm-start and bounds-clamping — sequential
+/// but each refit is GPU-accelerated in f32.
+#[cfg(feature = "metal")]
+pub fn ranking_metal(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+) -> Result<Vec<RankingEntry>> {
+    use std::collections::HashSet;
+
+    let poi_idx = model
+        .poi_index()
+        .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
+
+    // Nominal fit WITH Hessian (CPU — need uncertainties for constraint)
+    let nominal_result = mle.fit_histfactory(model)?;
+    let mu_hat = nominal_result.parameters[poi_idx];
+    let base_bounds = model.parameter_bounds();
+
+    // Keep NP selection aligned with CPU ranking.
+    let poisson_sigmas = model.poisson_constraint_sigmas();
+    let mut np_set: HashSet<usize> = model
+        .parameters()
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| *i != poi_idx && p.constraint_width.is_some())
+        .map(|(i, _)| i)
+        .collect();
+    for (&idx, _) in &poisson_sigmas {
+        if idx != poi_idx {
+            np_set.insert(idx);
+        }
+    }
+    let mut np_indices: Vec<usize> = np_set.into_iter().collect();
+    np_indices.sort_unstable();
+
+    // Shared Metal GPU session — model uploaded once.
+    let session = crate::gpu_session::metal_session(model)?;
+
+    // f32 ranking refits: use slightly stricter tol than full Metal fit by default.
+    // Warm-started, fixed-NP refits are typically easier than the nominal fit.
+    let mut config = mle.config().clone();
+    config.tol = config.tol.max(5e-4);
+
+    let mut entries = Vec::with_capacity(np_indices.len());
+
+    for &np_idx in &np_indices {
+        let param = &model.parameters()[np_idx];
+        let center = param.constraint_center.unwrap_or(param.init);
+        let sigma = param
+            .constraint_width
+            .or_else(|| poisson_sigmas.get(&np_idx).copied())
+            .unwrap_or(0.1);
+
+        // +1σ: fix NP via bounds-clamping
+        let (b_lo, b_hi) = base_bounds[np_idx];
+        let val_up = (center + sigma).min(b_hi);
+        let mut bounds_up = base_bounds.clone();
+        bounds_up[np_idx] = (val_up, val_up);
+        let mut warm = nominal_result.parameters.clone();
+        warm[np_idx] = val_up;
+
+        let result_up = session.fit_minimum_from_with_bounds(model, &warm, &bounds_up, &config)?;
+        let mu_up = result_up.parameters[poi_idx];
+
+        // -1σ
+        let val_down = (center - sigma).max(b_lo);
+        let mut bounds_down = base_bounds.clone();
+        bounds_down[np_idx] = (val_down, val_down);
+        warm = nominal_result.parameters.clone();
+        warm[np_idx] = val_down;
+
+        let result_down =
+            session.fit_minimum_from_with_bounds(model, &warm, &bounds_down, &config)?;
+        let mu_down = result_down.parameters[poi_idx];
+
+        // Pull and constraint from CPU nominal fit.
+        let theta_hat = nominal_result.parameters[np_idx];
+        let pull = (theta_hat - center) / sigma;
+        let constraint = nominal_result.uncertainties[np_idx] / sigma;
+
+        entries.push(RankingEntry {
+            name: param.name.clone(),
+            delta_mu_up: mu_up - mu_hat,
+            delta_mu_down: mu_down - mu_hat,
+            pull,
+            constraint,
+        });
+    }
+
+    // Sort by |impact| descending (deterministic tie-break).
+    entries.sort_by(|a, b| {
+        let impact_a = a.delta_mu_up.abs().max(a.delta_mu_down.abs());
+        let impact_b = b.delta_mu_up.abs().max(b.delta_mu_down.abs());
+        impact_b
+            .partial_cmp(&impact_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1572,6 +1695,16 @@ mod tests {
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");
         serde_json::from_str(json).unwrap()
+    }
+
+    fn load_model_from_fixture(name: &str) -> HistFactoryModel {
+        use std::path::PathBuf;
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures").join(name);
+        let json = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()));
+        let ws: Workspace = serde_json::from_str(&json).unwrap();
+        HistFactoryModel::from_workspace(&ws).unwrap()
     }
 
     #[test]
@@ -2246,5 +2379,83 @@ mod tests {
             g,
             rel
         );
+    }
+
+    #[cfg(feature = "metal")]
+    #[test]
+    fn metal_ranking_matches_cpu_on_simple_fixture() {
+        if !crate::gpu_session::is_metal_single_available() {
+            eprintln!("Skipping: Metal not available");
+            return;
+        }
+
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let mle = MaximumLikelihoodEstimator::new();
+
+        // CPU reference.
+        let cpu = mle.ranking(&model).unwrap();
+        // Metal hybrid (CPU nominal + Metal refits).
+        let metal = ranking_metal(&mle, &model).unwrap();
+
+        use std::collections::HashMap;
+        let cpu_map: HashMap<&str, &RankingEntry> = cpu.iter().map(|e| (e.name.as_str(), e)).collect();
+        let metal_map: HashMap<&str, &RankingEntry> =
+            metal.iter().map(|e| (e.name.as_str(), e)).collect();
+
+        // For meaningful impacts, require reasonable agreement.
+        for (name, c) in cpu_map {
+            let Some(m) = metal_map.get(name) else { continue };
+            assert!(
+                (m.pull - c.pull).abs() < 1e-10,
+                "pull mismatch for {name}: metal={} cpu={}",
+                m.pull,
+                c.pull
+            );
+            assert!(
+                (m.constraint - c.constraint).abs() < 1e-10,
+                "constraint mismatch for {name}: metal={} cpu={}",
+                m.constraint,
+                c.constraint
+            );
+
+            let c_impact = c.delta_mu_up.abs().max(c.delta_mu_down.abs());
+            if c_impact > 0.01 {
+                assert!(
+                    (m.delta_mu_up - c.delta_mu_up).abs() <= 1e-2,
+                    "delta_mu_up mismatch for {name}: metal={} cpu={}",
+                    m.delta_mu_up,
+                    c.delta_mu_up
+                );
+                assert!(
+                    (m.delta_mu_down - c.delta_mu_down).abs() <= 1e-2,
+                    "delta_mu_down mismatch for {name}: metal={} cpu={}",
+                    m.delta_mu_down,
+                    c.delta_mu_down
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "metal")]
+    #[test]
+    #[ignore = "slow; run manually to validate Metal ranking tolerances on large fixtures"]
+    fn metal_ranking_smoke_thu_fixture() {
+        if !crate::gpu_session::is_metal_single_available() {
+            eprintln!("Skipping: Metal not available");
+            return;
+        }
+
+        // Large fixture (O(100) NPs). This is for manual regression only.
+        let model = load_model_from_fixture("workspace_tHu.json");
+        let mle = MaximumLikelihoodEstimator::new();
+
+        let ranking = ranking_metal(&mle, &model).unwrap();
+        assert!(!ranking.is_empty());
+        // Basic sanity: impacts should be finite.
+        for e in ranking.iter().take(10) {
+            assert!(e.delta_mu_up.is_finite());
+            assert!(e.delta_mu_down.is_finite());
+        }
     }
 }

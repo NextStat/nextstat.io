@@ -60,6 +60,19 @@ Architecture: Phase A performs 3 baseline CPU fits (free, conditional at μ_test
 
 CLI: `nextstat hypotest-toys --gpu cuda` or `nextstat hypotest-toys --gpu metal` (requires building with the corresponding feature).
 
+## Ranking (Nuisance Impacts)
+
+`/v1/ranking` uses a hybrid strategy on both CUDA and Metal:
+
+- Nominal fit: CPU f64 (needs Hessian for pull/constraint).
+- Per-nuisance refits (±1σ): GPU-accelerated session (CUDA f64 or Metal f32), warm-started and bounds-clamped.
+
+Contract:
+- `pull`, `constraint`: CPU f64 nominal fit; treat as the reference (should match CPU ranking).
+- `delta_mu_up/down`: Metal refits are f32; expected agreement with CPU ranking is approximate.
+  - For meaningful impacts (`max(|delta_mu|) > 0.01`): expect ~1e-3 relative error; use `atol ~ 1e-2` for regression tests.
+  - Sorting: top-10 impacts should be stable; tail can permute when impacts are near numerical noise.
+
 ## Performance (RTX 4000 SFF Ada, CUDA 12.0)
 
 | Operation | CPU | CUDA | Winner |

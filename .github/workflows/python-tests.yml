@@ -54,7 +54,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pip install "pytest>=9.0" "pytest-cov>=7.0" "numpy>=2.0" "pyhf>=0.7.6"
+          pip install "pytest>=9.0" "pytest-cov>=7.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0"
           pytest -q -m "not slow" tests/python
 
   validation-pack:

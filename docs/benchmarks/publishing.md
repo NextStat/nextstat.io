@@ -123,4 +123,5 @@ The `validation_report.json` includes SHA-256 hashes for both the workspace and 
 
 - [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec for suite structure and protocols.
 - [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
+- [Third-Party Replication Runbook](/docs/benchmarks/replication) — step-by-step rerun + signed report template.
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — blog post on the replication protocol.
