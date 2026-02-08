@@ -1870,7 +1870,14 @@ fn cmd_import_histfactory(
     let output_json = serde_json::to_value(&ws)?;
     write_json(output, &output_json)?;
     if let Some(dir) = bundle {
-        report::write_bundle(dir, "import_histfactory", serde_json::json!({}), xml, &output_json)?;
+        report::write_bundle(
+            dir,
+            "import_histfactory",
+            serde_json::json!({}),
+            xml,
+            &output_json,
+            false,
+        )?;
     }
     Ok(())
 }
@@ -1912,6 +1919,7 @@ fn cmd_import_trex_config(
             }),
             config,
             &output_json,
+            false,
         )?;
     }
 
@@ -2028,6 +2036,7 @@ fn cmd_import_patchset(
             }),
             workspace,
             &out_json,
+            false,
         )?;
     }
 
@@ -2259,6 +2268,7 @@ fn cmd_fit(
             serde_json::json!({ "threads": threads }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3225,6 +3235,7 @@ fn cmd_ts_kalman_filter(
             serde_json::json!({}),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3257,6 +3268,7 @@ fn cmd_ts_kalman_smooth(
             serde_json::json!({}),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3306,6 +3318,7 @@ fn cmd_ts_kalman_em(
             serde_json::json!({ "max_iter": max_iter, "tol": tol }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3398,6 +3411,7 @@ fn cmd_ts_kalman_fit(
             serde_json::json!({ "max_iter": max_iter, "tol": tol, "forecast_steps": forecast_steps, "no_smooth": no_smooth }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3672,6 +3686,7 @@ fn cmd_ts_kalman_viz(
             serde_json::json!({ "max_iter": max_iter, "tol": tol, "level": level, "forecast_steps": forecast_steps }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3716,6 +3731,7 @@ fn cmd_ts_kalman_forecast(
             serde_json::json!({ "steps": steps, "alpha": alpha }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3744,6 +3760,7 @@ fn cmd_ts_kalman_simulate(
             serde_json::json!({ "t_max": t_max, "seed": seed }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3814,6 +3831,7 @@ fn cmd_hypotest(
             serde_json::json!({ "mu": mu, "expected_set": expected_set, "threads": threads }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -3938,6 +3956,7 @@ fn cmd_hypotest_toys(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4048,6 +4067,7 @@ fn cmd_upper_limit(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4147,6 +4167,7 @@ fn cmd_scan(
             serde_json::json!({ "start": start, "stop": stop, "points": points, "threads": threads }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4182,6 +4203,7 @@ fn cmd_viz_profile(
             serde_json::json!({ "start": start, "stop": stop, "points": points, "threads": threads }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4228,6 +4250,7 @@ fn cmd_viz_cls(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4255,6 +4278,7 @@ fn cmd_viz_ranking(
             serde_json::json!({ "threads": threads }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4628,6 +4652,7 @@ fn cmd_viz_distributions(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4695,6 +4720,7 @@ fn cmd_viz_pulls(
             serde_json::json!({ "threads": threads, "fit": fit }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())
@@ -4771,6 +4797,7 @@ fn cmd_viz_corr(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
     Ok(())

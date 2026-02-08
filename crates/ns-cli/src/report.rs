@@ -130,6 +130,7 @@ pub fn write_bundle(
     args: serde_json::Value,
     input_path: &Path,
     output_value: &serde_json::Value,
+    deterministic: bool,
 ) -> Result<()> {
     ensure_empty_dir(bundle_dir)?;
 
@@ -155,7 +156,11 @@ pub fn write_bundle(
             (None, None)
         };
 
-    let created_unix_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+    let created_unix_ms = if deterministic {
+        0
+    } else {
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis()
+    };
     let meta = BundleMeta {
         tool: "nextstat".to_string(),
         tool_version: ns_core::VERSION.to_string(),

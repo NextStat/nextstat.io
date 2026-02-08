@@ -501,6 +501,7 @@ pub fn cmd_survival_cox_ph_fit(
             }),
             input,
             &output_json,
+            false,
         )?;
     }
 
