@@ -4,6 +4,7 @@
 Requires: pip install uproot awkward numpy
 """
 
+import argparse
 import json
 import os
 
@@ -404,10 +405,60 @@ def create_fixed_array_tree():
     print(f"Created {path}")
     print(f"Created {expected_path}")
 
+
+def create_bench_zstd_tree(
+    out_path: str,
+    n_branches: int,
+    chunk_rows: int,
+    n_chunks: int,
+    seed: int,
+    zstd_level: int,
+):
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+
+    rng = np.random.RandomState(seed)
+    branches = {f"f{i}": np.float32 for i in range(n_branches)}
+
+    total_bytes = n_branches * chunk_rows * n_chunks * 4
+    print(
+        f"Creating bench ROOT: out={out_path} branches={n_branches} chunk_rows={chunk_rows} chunks={n_chunks} total_uncompressed_bytes={total_bytes}"
+    )
+
+    with uproot.recreate(out_path, compression=uproot.ZSTD(zstd_level)) as f:
+        f.mktree("events", branches)
+        tree = f["events"]
+
+        for i in range(n_chunks):
+            data = rng.standard_normal(size=(chunk_rows, n_branches)).astype(np.float32, copy=False)
+            tree.extend({f"f{j}": data[:, j] for j in range(n_branches)})
+            if (i + 1) % 64 == 0:
+                print(f"  wrote chunk {i + 1}/{n_chunks}")
+
+    print(f"Created {out_path}")
+
 if __name__ == "__main__":
-    create_simple_root()
-    create_histfactory_fixtures()
-    create_simple_tree()
-    create_vector_tree()
-    create_fixed_array_tree()
-    print("\nAll fixtures created successfully.")
+    p = argparse.ArgumentParser()
+    p.add_argument("--bench-zstd-tree", default=None)
+    p.add_argument("--branches", type=int, default=16)
+    p.add_argument("--chunk-rows", type=int, default=8192)
+    p.add_argument("--chunks", type=int, default=512)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--zstd-level", type=int, default=6)
+    args = p.parse_args()
+
+    if args.bench_zstd_tree is not None:
+        create_bench_zstd_tree(
+            args.bench_zstd_tree,
+            n_branches=args.branches,
+            chunk_rows=args.chunk_rows,
+            n_chunks=args.chunks,
+            seed=args.seed,
+            zstd_level=args.zstd_level,
+        )
+    else:
+        create_simple_root()
+        create_histfactory_fixtures()
+        create_simple_tree()
+        create_vector_tree()
+        create_fixed_array_tree()
+        print("\nAll fixtures created successfully.")

@@ -188,8 +188,13 @@ impl CudaBatchAccelerator {
         let zeros = vec![0.0f64; n_active * self.n_params];
         self.stream.memcpy_htod(&zeros, &mut self.d_grad_out).map_err(|e| cuda_err(e))?;
 
-        // Kernel launch: 1 block = 1 toy, threads = min(n_main_bins, 256)
-        let block_size = self.n_main_bins.min(256) as u32;
+        // Kernel launch: 1 block = 1 toy.
+        //
+        // IMPORTANT: The kernels use a power-of-two reduction over `block_size` threads.
+        // If `block_size` is not a power of two, the reduction drops some lanes and NLL
+        // becomes inconsistent with the gradient (which is accumulated via atomics).
+        let n_threads = self.n_main_bins.max(1).min(256);
+        let block_size = n_threads.next_power_of_two() as u32;
         let shared_bytes =
             ((self.n_params + block_size as usize) * std::mem::size_of::<f64>()) as u32;
 
@@ -261,7 +266,9 @@ impl CudaBatchAccelerator {
 
         self.stream.memcpy_htod(params_flat, &mut self.d_params).map_err(|e| cuda_err(e))?;
 
-        let block_size = self.n_main_bins.min(256) as u32;
+        // See `batch_nll_grad`: kernels assume power-of-two `block_size`.
+        let n_threads = self.n_main_bins.max(1).min(256);
+        let block_size = n_threads.next_power_of_two() as u32;
         let shared_bytes =
             ((self.n_params + block_size as usize) * std::mem::size_of::<f64>()) as u32;
 

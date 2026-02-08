@@ -79,9 +79,9 @@ pub mod differentiable;
 /// GPU-accelerated batch toy fitting (requires `cuda` feature + NVIDIA GPU).
 #[cfg(feature = "cuda")]
 pub mod gpu_batch;
-/// GPU-accelerated single-model fit path (requires `cuda` feature + NVIDIA GPU).
-#[cfg(feature = "cuda")]
-pub mod gpu_single;
+    /// GPU-accelerated single-model fit path (CUDA/Metal).
+    #[cfg(any(feature = "cuda", feature = "metal"))]
+    pub mod gpu_session;
 /// Metal GPU-accelerated batch toy fitting (requires `metal` feature + Apple Silicon).
 #[cfg(feature = "metal")]
 pub mod metal_batch;
@@ -102,8 +102,10 @@ pub use diagnostics::DiagnosticsResult;
 pub use differentiable::{DifferentiableSession, ProfiledDifferentiableSession};
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_available};
-#[cfg(feature = "cuda")]
-pub use gpu_single::{GpuSession, is_cuda_single_available};
+    #[cfg(feature = "cuda")]
+    pub use gpu_session::{CudaGpuSession, cuda_session, is_cuda_single_available};
+    #[cfg(feature = "metal")]
+    pub use gpu_session::{MetalGpuSession, metal_session, is_metal_single_available};
 #[cfg(feature = "cuda")]
 pub use mle::ranking_gpu;
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};

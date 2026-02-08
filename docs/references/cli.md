@@ -269,6 +269,8 @@ Partial TREx semantics in `ReadFrom: HIST`:
 - If the config includes `Sample:` blocks, they act as an **include-list** for samples; per-sample `Regions:` filters
   are respected to mask samples per-channel. Empty channels are dropped unless channels were explicitly selected via
   `Region:` blocks (then it is an error).
+- In HIST mode, `Region:` blocks do **not** require `Variable`/`Binning`, and `Sample:` blocks do **not** require `File`
+  (they can be used as pure filters).
 - When `HistoPath` is provided, it is used as the **base directory** for resolving relative paths inside the HistFactory XML
   (common when `combination.xml` lives under `config/` but ROOT inputs are referenced from the export root).
 

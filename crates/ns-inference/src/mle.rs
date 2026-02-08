@@ -1024,13 +1024,13 @@ impl MaximumLikelihoodEstimator {
     ///
     /// Creates a `GpuSession` internally. For repeated fits on the same model
     /// structure (e.g. profile scan, ranking), prefer using `GpuSession` directly
-    /// via [`gpu_single::GpuSession`].
+    /// via [`gpu_session::CudaGpuSession`].
     #[cfg(feature = "cuda")]
     pub fn fit_minimum_gpu(
         &self,
         model: &HistFactoryModel,
     ) -> Result<crate::optimizer::OptimizationResult> {
-        let session = crate::gpu_single::GpuSession::new(model)?;
+        let session = crate::gpu_session::cuda_session(model)?;
         session.fit_minimum(model, &self.config)
     }
 
@@ -1041,7 +1041,7 @@ impl MaximumLikelihoodEstimator {
         model: &HistFactoryModel,
         initial_params: &[f64],
     ) -> Result<crate::optimizer::OptimizationResult> {
-        let session = crate::gpu_single::GpuSession::new(model)?;
+        let session = crate::gpu_session::cuda_session(model)?;
         session.fit_minimum_from(model, initial_params, &self.config)
     }
 
@@ -1056,7 +1056,7 @@ impl MaximumLikelihoodEstimator {
         initial_params: &[f64],
         bounds: &[(f64, f64)],
     ) -> Result<crate::optimizer::OptimizationResult> {
-        let session = crate::gpu_single::GpuSession::new(model)?;
+        let session = crate::gpu_session::cuda_session(model)?;
         session.fit_minimum_from_with_bounds(model, initial_params, bounds, &self.config)
     }
 
@@ -1066,7 +1066,7 @@ impl MaximumLikelihoodEstimator {
     /// computation (finite differences of GPU NLL+gradient).
     #[cfg(feature = "cuda")]
     pub fn fit_gpu(&self, model: &HistFactoryModel) -> Result<FitResult> {
-        let session = crate::gpu_single::GpuSession::new(model)?;
+        let session = crate::gpu_session::cuda_session(model)?;
         let result = session.fit_minimum(model, &self.config)?;
         let bounds = model.parameter_bounds();
         let diag = diagnostics_from_opt(&result, &bounds);
@@ -1137,7 +1137,7 @@ impl MaximumLikelihoodEstimator {
     /// computation (finite differences of GPU NLL+gradient).
     #[cfg(feature = "cuda")]
     pub fn fit_gpu_from(&self, model: &HistFactoryModel, initial_params: &[f64]) -> Result<FitResult> {
-        let session = crate::gpu_single::GpuSession::new(model)?;
+        let session = crate::gpu_session::cuda_session(model)?;
         let result = session.fit_minimum_from(model, initial_params, &self.config)?;
         let bounds = model.parameter_bounds();
         let diag = diagnostics_from_opt(&result, &bounds);
@@ -1206,7 +1206,7 @@ impl MaximumLikelihoodEstimator {
     #[cfg(feature = "cuda")]
     fn compute_hessian_gpu(
         &self,
-        session: &crate::gpu_single::GpuSession,
+        session: &crate::gpu_session::CudaGpuSession,
         best_params: &[f64],
     ) -> Result<DMatrix<f64>> {
         let n = best_params.len();
@@ -1227,6 +1227,223 @@ impl MaximumLikelihoodEstimator {
         }
 
         // Symmetrise: H = (H + H^T) / 2
+        let ht = hessian.transpose();
+        hessian = (&hessian + &ht) * 0.5;
+
+        Ok(hessian)
+    }
+
+    // --- Metal GPU-accelerated methods (requires `metal` feature) ---
+
+    /// Metal GPU-accelerated NLL minimization (no Hessian).
+    ///
+    /// Convergence tolerance is clamped to at least `1e-3` for f32 precision.
+    #[cfg(feature = "metal")]
+    pub fn fit_minimum_metal(
+        &self,
+        model: &HistFactoryModel,
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_session::metal_session(model)?;
+        let mut config = self.config.clone();
+        config.tol = config.tol.max(1e-3);
+        session.fit_minimum(model, &config)
+    }
+
+    /// Metal GPU-accelerated NLL minimization from an explicit starting point.
+    #[cfg(feature = "metal")]
+    pub fn fit_minimum_metal_from(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_session::metal_session(model)?;
+        let mut config = self.config.clone();
+        config.tol = config.tol.max(1e-3);
+        session.fit_minimum_from(model, initial_params, &config)
+    }
+
+    /// Metal GPU-accelerated NLL minimization with warm-start + custom bounds.
+    #[cfg(feature = "metal")]
+    pub fn fit_minimum_metal_from_with_bounds(
+        &self,
+        model: &HistFactoryModel,
+        initial_params: &[f64],
+        bounds: &[(f64, f64)],
+    ) -> Result<crate::optimizer::OptimizationResult> {
+        let session = crate::gpu_session::metal_session(model)?;
+        let mut config = self.config.clone();
+        config.tol = config.tol.max(1e-3);
+        session.fit_minimum_from_with_bounds(model, initial_params, bounds, &config)
+    }
+
+    /// Metal GPU-accelerated full fit with Hessian-based uncertainties.
+    ///
+    /// Uses Metal GPU for NLL minimization, then falls back to CPU for Hessian
+    /// computation (finite differences of GPU gradient).
+    #[cfg(feature = "metal")]
+    pub fn fit_metal(&self, model: &HistFactoryModel) -> Result<FitResult> {
+        let session = crate::gpu_session::metal_session(model)?;
+        let mut config = self.config.clone();
+        config.tol = config.tol.max(1e-3);
+
+        let result = session.fit_minimum(model, &config)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
+
+        let n = result.parameters.len();
+        let hessian = self.compute_hessian_metal(&session, &result.parameters)?;
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        let fr = match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                } else {
+                    log::warn!("Metal fit: invalid covariance diagonal; omitting covariance matrix");
+                    FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                }
+            }
+            None => {
+                log::warn!("Metal fit: Hessian inversion failed, using diagonal approximation");
+                FitResult::new(
+                    result.parameters,
+                    diag_uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                )
+            }
+        };
+        Ok(apply_diagnostics(fr, diag))
+    }
+
+    /// Metal GPU-accelerated full fit from an explicit starting point (warm-start),
+    /// with Hessian-based uncertainties.
+    #[cfg(feature = "metal")]
+    pub fn fit_metal_from(&self, model: &HistFactoryModel, initial_params: &[f64]) -> Result<FitResult> {
+        let session = crate::gpu_session::metal_session(model)?;
+        let mut config = self.config.clone();
+        config.tol = config.tol.max(1e-3);
+
+        let result = session.fit_minimum_from(model, initial_params, &config)?;
+        let bounds = model.parameter_bounds();
+        let diag = diagnostics_from_opt(&result, &bounds);
+
+        let n = result.parameters.len();
+        let hessian = self.compute_hessian_metal(&session, &result.parameters)?;
+        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+
+        let fr = match self.invert_hessian(&hessian, n) {
+            Some(covariance) => {
+                let mut all_variances_ok = true;
+                let mut uncertainties = Vec::with_capacity(n);
+                for i in 0..n {
+                    let var = covariance[(i, i)];
+                    if var.is_finite() && var > 0.0 {
+                        uncertainties.push(var.sqrt());
+                    } else {
+                        all_variances_ok = false;
+                        uncertainties.push(diag_uncertainties[i]);
+                    }
+                }
+                if all_variances_ok {
+                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
+                    FitResult::with_covariance(
+                        result.parameters,
+                        uncertainties,
+                        cov_flat,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                } else {
+                    log::warn!(
+                        "Metal fit (warm-start): invalid covariance diagonal; omitting covariance matrix"
+                    );
+                    FitResult::new(
+                        result.parameters,
+                        uncertainties,
+                        result.fval,
+                        result.converged,
+                        result.n_iter as usize,
+                        result.n_fev,
+                        result.n_gev,
+                    )
+                }
+            }
+            None => {
+                log::warn!("Metal fit (warm-start): Hessian inversion failed, using diagonal approximation");
+                FitResult::new(
+                    result.parameters,
+                    diag_uncertainties,
+                    result.fval,
+                    result.converged,
+                    result.n_iter as usize,
+                    result.n_fev,
+                    result.n_gev,
+                )
+            }
+        };
+        Ok(apply_diagnostics(fr, diag))
+    }
+
+    /// Compute Hessian via finite differences of Metal GPU gradient.
+    #[cfg(feature = "metal")]
+    fn compute_hessian_metal(
+        &self,
+        session: &crate::gpu_session::MetalGpuSession,
+        best_params: &[f64],
+    ) -> Result<DMatrix<f64>> {
+        let n = best_params.len();
+        let (_, grad_center) = session.nll_grad(best_params)?;
+
+        let mut hessian = DMatrix::zeros(n, n);
+
+        for j in 0..n {
+            let eps = 1e-4 * best_params[j].abs().max(1.0);
+
+            let mut params_plus = best_params.to_vec();
+            params_plus[j] += eps;
+            let (_, grad_plus) = session.nll_grad(&params_plus)?;
+
+            for i in 0..n {
+                hessian[(i, j)] = (grad_plus[i] - grad_center[i]) / eps;
+            }
+        }
+
         let ht = hessian.transpose();
         hessian = (&hessian + &ht) * 0.5;
 
@@ -1288,7 +1505,7 @@ pub fn ranking_gpu(
         .collect();
 
     // Shared GPU session — model uploaded once
-    let session = crate::gpu_single::GpuSession::new(model)?;
+    let session = crate::gpu_session::cuda_session(model)?;
     let config = mle.config().clone();
 
     let mut entries = Vec::with_capacity(np_indices.len());

@@ -6,7 +6,7 @@
 use crate::MaximumLikelihoodEstimator;
 use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel};
 use ns_core::{Error, Result};
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 use ns_translate::pyhf::HistFactoryModel;
 
 /// Single point in a profile likelihood scan.
@@ -345,7 +345,7 @@ pub fn scan_gpu(
 ) -> Result<ProfileLikelihoodScan> {
     let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))?;
 
-    let session = crate::gpu_single::GpuSession::new(model)?;
+    let session = crate::gpu_session::cuda_session(model)?;
     let config = mle.config().clone();
 
     // Free fit (unconditional MLE)
@@ -372,6 +372,58 @@ pub fn scan_gpu(
         }
 
         // Update warm-start for next point
+        warm_params = fixed.parameters.clone();
+
+        points.push(ProfilePoint {
+            mu,
+            q_mu: q,
+            nll_mu: fixed.fval,
+            converged: fixed.converged,
+            n_iter: fixed.n_iter,
+        });
+    }
+
+    Ok(ProfileLikelihoodScan { poi_index: poi, mu_hat, nll_hat, points })
+}
+
+/// Metal GPU-accelerated profile likelihood scan (Apple Silicon, f32).
+///
+/// Mirrors [`scan_gpu`] but uses the Metal single-model session. Convergence
+/// tolerance is clamped to at least `1e-3` for f32 precision.
+#[cfg(feature = "metal")]
+pub fn scan_metal(
+    mle: &MaximumLikelihoodEstimator,
+    model: &HistFactoryModel,
+    mu_values: &[f64],
+) -> Result<ProfileLikelihoodScan> {
+    let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))?;
+
+    let session = crate::gpu_session::metal_session(model)?;
+    let mut config = mle.config().clone();
+    config.tol = config.tol.max(1e-3);
+
+    // Free fit (unconditional MLE)
+    let free = session.fit_minimum(model, &config)?;
+    let mu_hat = free.parameters[poi];
+    let nll_hat = free.fval;
+
+    let base_bounds = model.parameter_bounds();
+    let mut warm_params = free.parameters.clone();
+
+    let mut points = Vec::with_capacity(mu_values.len());
+    for &mu in mu_values {
+        let mut bounds = base_bounds.clone();
+        bounds[poi] = (mu, mu);
+        warm_params[poi] = mu;
+
+        let fixed = session.fit_minimum_from_with_bounds(model, &warm_params, &bounds, &config)?;
+
+        let llr = 2.0 * (fixed.fval - nll_hat);
+        let mut q = llr.max(0.0);
+        if mu_hat > mu {
+            q = 0.0;
+        }
+
         warm_params = fixed.parameters.clone();
 
         points.push(ProfilePoint {

@@ -270,7 +270,9 @@ impl MetalDifferentiableAccelerator {
     }
 
     fn dispatch_kernel(&self) -> ns_core::Result<()> {
-        let block_size = self.n_main_bins.min(256);
+        // IMPORTANT: kernel uses a power-of-two reduction over `block_size` threads.
+        let n_threads = self.n_main_bins.max(1).min(256);
+        let block_size = n_threads.next_power_of_two();
         let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
 
         let cmd_buffer = self.queue.new_command_buffer();

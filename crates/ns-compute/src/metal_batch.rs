@@ -229,7 +229,12 @@ impl MetalBatchAccelerator {
         Self::copy_to_buffer(&self.buf_grad_out, &self.scratch_zeros_f32[..count]);
 
         // Dispatch kernel
-        let block_size = self.n_main_bins.min(256);
+        //
+        // IMPORTANT: the Metal kernels use a power-of-two reduction over `block_size` threads.
+        // If `block_size` is not a power of two, the reduction drops some lanes and NLL becomes
+        // inconsistent with the gradient (which is accumulated via atomics).
+        let n_threads = self.n_main_bins.max(1).min(256);
+        let block_size = n_threads.next_power_of_two();
         let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
 
         let cmd_buffer = self.queue.new_command_buffer();
@@ -272,7 +277,9 @@ impl MetalBatchAccelerator {
         }
         Self::copy_to_buffer(&self.buf_params, &self.scratch_params_f32[..count]);
 
-        let block_size = self.n_main_bins.min(256);
+        // See `batch_nll_grad`: kernels assume power-of-two `block_size`.
+        let n_threads = self.n_main_bins.max(1).min(256);
+        let block_size = n_threads.next_power_of_two();
         let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
 
         let cmd_buffer = self.queue.new_command_buffer();

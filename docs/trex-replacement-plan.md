@@ -44,7 +44,8 @@ Completed (importer semantics + tests):
 - Lumi semantics: `NormalizeByTheory=True` samples receive `lumi` modifier; `LumiRelErr` and `ParamSetting Const`
   are surfaced via `measurements[].config.parameters` (auxdata/sigmas + fixed).
 - NormFactor `Val/Low/High` surfaced via `measurements[].config.parameters` as init + bounds.
-- CLI: `--parity` uses pyhf/HistFactory interpolation defaults (NormSys=Code1, HistoSys=Code0).
+- CLI: `--parity` enforces deterministic execution (threads=1, stable reductions, Accelerate disabled). Interpolation
+  defaults are selected by the ingest path/settings and are documented in `docs/pyhf-parity-contract.md`.
 
 Remaining (next focus):
 1. HistFactory `ConstraintTerm` support in `combination.xml` (Gamma/LogNormal/Gaussian).
@@ -57,4 +58,3 @@ Use BMCP epics/tasks as the source of truth for execution order and progress:
 - Epic: HistFactory XML import parity (pyhf + ROOT/TREx)
 - Epic: TREx `.config/.trf` import compatibility
 - Epic: Expression compatibility (ROOT/TMath spellings + vector branches)
-

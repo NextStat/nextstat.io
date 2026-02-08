@@ -15,7 +15,7 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use nalgebra::{DMatrix, DVector};
 use serde::Deserialize;
 use statrs::distribution::ContinuousCDF;
@@ -57,6 +57,15 @@ const SCHEMA_REPORT_UNCERTAINTY_V0: &str = include_str!(concat!(
     "/../../docs/schemas/trex/report_uncertainty_v0.schema.json"
 ));
 
+/// Interpolation defaults for pyhf JSON inputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum InterpDefaults {
+    /// pyhf defaults: NormSys=code1, HistoSys=code0.
+    Pyhf,
+    /// TREx/ROOT-style smooth polynomials: NormSys=code4, HistoSys=code4p.
+    Root,
+}
+
 #[derive(Parser)]
 #[command(name = "nextstat")]
 #[command(about = "NextStat - High-performance statistical fitting")]
@@ -69,6 +78,13 @@ struct Cli {
     /// Write an immutable run bundle (inputs + hashes + outputs) into this empty directory.
     #[arg(long, global = true)]
     bundle: Option<PathBuf>,
+
+    /// Interpolation defaults for pyhf JSON inputs (NormSys/HistoSys).
+    ///
+    /// - `pyhf`: NormSys=code1, HistoSys=code0
+    /// - `root`: NormSys=code4, HistoSys=code4p
+    #[arg(long, global = true, value_enum, default_value_t = InterpDefaults::Root)]
+    interp_defaults: InterpDefaults,
 
     #[command(subcommand)]
     command: Commands,
@@ -975,12 +991,12 @@ enum SurvivalCommands {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let Cli { log_level, bundle, interp_defaults, command } = Cli::parse();
 
-    tracing_subscriber::fmt().with_max_level(cli.log_level).with_target(false).init();
+    tracing_subscriber::fmt().with_max_level(log_level).with_target(false).init();
 
-    match cli.command {
-        Commands::Run { config } => cmd_run(&config, cli.bundle.as_ref()),
+    match command {
+        Commands::Run { config } => cmd_run(&config, bundle.as_ref(), interp_defaults),
         Commands::Validate { config } => cmd_validate(&config),
         Commands::BuildHists { config, base_dir, out_dir, overwrite, coverage_json, expr_coverage_json } => {
             cmd_build_hists(
@@ -1026,8 +1042,9 @@ fn main() -> Result<()> {
                 output.as_ref(),
                 json_metrics.as_ref(),
                 threads,
+                interp_defaults,
                 gpu.as_deref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
                 parity,
                 &fit_regions,
                 &validation_regions,
@@ -1037,7 +1054,16 @@ fn main() -> Result<()> {
             cmd_audit(&input, &format, output.as_ref())
         }
         Commands::Hypotest { input, mu, expected_set, output, json_metrics, threads } => {
-            cmd_hypotest(&input, mu, expected_set, output.as_ref(), json_metrics.as_ref(), threads, cli.bundle.as_ref())
+            cmd_hypotest(
+                &input,
+                mu,
+                expected_set,
+                output.as_ref(),
+                json_metrics.as_ref(),
+                threads,
+                interp_defaults,
+                bundle.as_ref(),
+            )
         }
         Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads, gpu } => {
             if let Some(ref dev) = gpu {
@@ -1073,8 +1099,9 @@ fn main() -> Result<()> {
                 expected_set,
                 output.as_ref(),
                 threads,
+                interp_defaults,
                 gpu.as_deref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             )
         }
         Commands::UpperLimit {
@@ -1105,7 +1132,8 @@ fn main() -> Result<()> {
             output.as_ref(),
             json_metrics.as_ref(),
             threads,
-            cli.bundle.as_ref(),
+            interp_defaults,
+            bundle.as_ref(),
         ),
         Commands::Scan { input, start, stop, points, output, json_metrics, threads, gpu } => {
             if let Some(ref dev) = gpu {
@@ -1141,8 +1169,9 @@ fn main() -> Result<()> {
                 output.as_ref(),
                 json_metrics.as_ref(),
                 threads,
+                interp_defaults,
                 gpu.as_deref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             )
         }
         Commands::Report {
@@ -1175,6 +1204,7 @@ fn main() -> Result<()> {
             skip_uncertainty,
             uncertainty_grouping.as_str(),
             threads,
+            interp_defaults,
             deterministic,
             &blind_regions,
         ),
@@ -1187,7 +1217,8 @@ fn main() -> Result<()> {
                     points,
                     output.as_ref(),
                     threads,
-                    cli.bundle.as_ref(),
+                    interp_defaults,
+                    bundle.as_ref(),
                 )
             }
             VizCommands::Cls {
@@ -1206,13 +1237,14 @@ fn main() -> Result<()> {
                 scan_points,
                 output.as_ref(),
                 threads,
-                cli.bundle.as_ref(),
+                interp_defaults,
+                bundle.as_ref(),
             ),
             VizCommands::Ranking { input, output, threads } => {
-                cmd_viz_ranking(&input, output.as_ref(), threads, cli.bundle.as_ref())
+                cmd_viz_ranking(&input, output.as_ref(), threads, interp_defaults, bundle.as_ref())
             }
             VizCommands::Pulls { input, fit, output, threads } => {
-                cmd_viz_pulls(&input, &fit, output.as_ref(), threads, cli.bundle.as_ref())
+                cmd_viz_pulls(&input, &fit, output.as_ref(), threads, interp_defaults, bundle.as_ref())
             }
             VizCommands::Corr { input, fit, include_covariance, output, threads } => cmd_viz_corr(
                 &input,
@@ -1220,7 +1252,8 @@ fn main() -> Result<()> {
                 include_covariance,
                 output.as_ref(),
                 threads,
-                cli.bundle.as_ref(),
+                interp_defaults,
+                bundle.as_ref(),
             ),
             VizCommands::Distributions { input, histfactory_xml, fit, output, threads } => {
                 cmd_viz_distributions(
@@ -1229,7 +1262,8 @@ fn main() -> Result<()> {
                     fit.as_ref(),
                     output.as_ref(),
                     threads,
-                    cli.bundle.as_ref(),
+                    interp_defaults,
+                    bundle.as_ref(),
                 )
             }
         },
@@ -1245,7 +1279,7 @@ fn main() -> Result<()> {
                     &xml_path,
                     basedir.as_deref(),
                     output.as_ref(),
-                    cli.bundle.as_ref(),
+                    bundle.as_ref(),
                 )
             }
             ImportCommands::TrexConfig {
@@ -1262,7 +1296,7 @@ fn main() -> Result<()> {
                 analysis_yaml.as_ref(),
                 coverage_json.as_ref(),
                 expr_coverage_json.as_ref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             ),
             ImportCommands::Patchset { workspace, patchset, patch_name, output } => {
                 cmd_import_patchset(
@@ -1270,7 +1304,7 @@ fn main() -> Result<()> {
                     &patchset,
                     patch_name.as_deref(),
                     output.as_ref(),
-                    cli.bundle.as_ref(),
+                    bundle.as_ref(),
                 )
             }
         },
@@ -1306,10 +1340,10 @@ fn main() -> Result<()> {
         },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {
-                cmd_ts_kalman_filter(&input, output.as_ref(), cli.bundle.as_ref())
+                cmd_ts_kalman_filter(&input, output.as_ref(), bundle.as_ref())
             }
             TimeseriesCommands::KalmanSmooth { input, output } => {
-                cmd_ts_kalman_smooth(&input, output.as_ref(), cli.bundle.as_ref())
+                cmd_ts_kalman_smooth(&input, output.as_ref(), bundle.as_ref())
             }
             TimeseriesCommands::KalmanEm {
                 input,
@@ -1331,7 +1365,7 @@ fn main() -> Result<()> {
                 estimate_h,
                 min_diag,
                 output.as_ref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanFit {
                 input,
@@ -1357,7 +1391,7 @@ fn main() -> Result<()> {
                 forecast_steps,
                 no_smooth,
                 output.as_ref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanViz {
                 input,
@@ -1383,13 +1417,13 @@ fn main() -> Result<()> {
                 level,
                 forecast_steps,
                 output.as_ref(),
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             ),
             TimeseriesCommands::KalmanForecast { input, steps, alpha, output } => {
-                cmd_ts_kalman_forecast(&input, steps, alpha, output.as_ref(), cli.bundle.as_ref())
+                cmd_ts_kalman_forecast(&input, steps, alpha, output.as_ref(), bundle.as_ref())
             }
             TimeseriesCommands::KalmanSimulate { input, t_max, seed, output } => {
-                cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref(), cli.bundle.as_ref())
+                cmd_ts_kalman_simulate(&input, t_max, seed, output.as_ref(), bundle.as_ref())
             }
         },
         Commands::Survival { command } => match command {
@@ -1407,7 +1441,7 @@ fn main() -> Result<()> {
                 /*robust*/ !no_robust,
                 /*cluster_correction*/ !no_cluster_correction,
                 /*baseline*/ !no_baseline,
-                cli.bundle.as_ref(),
+                bundle.as_ref(),
             ),
         },
         Commands::Config { command } => match command {
@@ -1420,10 +1454,14 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>) -> Result<()> {
+fn cmd_run(config_path: &PathBuf, bundle: Option<&PathBuf>, interp_defaults: InterpDefaults) -> Result<()> {
     match analysis_spec::read_any_run_config(config_path.as_path())? {
-        analysis_spec::AnyRunConfig::Legacy(cfg) => cmd_run_legacy(config_path, bundle, &cfg),
-        analysis_spec::AnyRunConfig::SpecV0(spec) => cmd_run_spec_v0(config_path, bundle, &spec),
+        analysis_spec::AnyRunConfig::Legacy(cfg) => {
+            cmd_run_legacy(config_path, bundle, interp_defaults, &cfg)
+        }
+        analysis_spec::AnyRunConfig::SpecV0(spec) => {
+            cmd_run_spec_v0(config_path, bundle, interp_defaults, &spec)
+        }
     }
 }
 
@@ -1579,6 +1617,7 @@ fn cmd_trex_import_config(
 fn cmd_run_legacy(
     config_path: &PathBuf,
     bundle: Option<&PathBuf>,
+    interp_defaults: InterpDefaults,
     cfg: &run::RunConfig,
 ) -> Result<()> {
     setup_runtime(cfg.threads, false);
@@ -1606,6 +1645,7 @@ fn cmd_run_legacy(
         cfg.skip_uncertainty,
         cfg.uncertainty_grouping.as_str(),
         cfg.threads,
+        interp_defaults,
         cfg.deterministic,
         &[],
     )?;
@@ -1630,6 +1670,7 @@ fn cmd_run_legacy(
 fn cmd_run_spec_v0(
     config_path: &PathBuf,
     bundle: Option<&PathBuf>,
+    interp_defaults: InterpDefaults,
     spec: &analysis_spec::AnalysisSpecV0,
 ) -> Result<()> {
     let plan = spec.to_run_plan(config_path.as_path())?;
@@ -1706,6 +1747,7 @@ fn cmd_run_spec_v0(
             Some(fit_out),
             /*json_metrics*/ None,
             plan.threads,
+            interp_defaults,
             None,
             /*bundle*/ None,
             false,
@@ -1726,6 +1768,7 @@ fn cmd_run_spec_v0(
             Some(&scan.output_json),
             /*json_metrics*/ None,
             plan.threads,
+            interp_defaults,
             None,
             /*bundle*/ None,
         )?;
@@ -1746,6 +1789,7 @@ fn cmd_run_spec_v0(
             report.skip_uncertainty,
             report.uncertainty_grouping.as_str(),
             plan.threads,
+            interp_defaults,
             deterministic,
             &spec.execution.report.blind_regions,
         )?;
@@ -2066,6 +2110,7 @@ fn cmd_fit(
     output: Option<&PathBuf>,
     json_metrics: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
     parity: bool,
@@ -2078,7 +2123,7 @@ fn cmd_fit(
         );
     }
     let model = {
-        let base = load_model(input, threads, parity)?;
+        let base = load_model(input, threads, parity, interp_defaults)?;
         base.with_fit_channel_selection(
             (!fit_regions.is_empty()).then_some(fit_regions),
             (!validation_regions.is_empty()).then_some(validation_regions),
@@ -2099,10 +2144,14 @@ fn cmd_fit(
             }
         }
         Some("metal") => {
-            // Metal single-model fit not implemented yet (only batch toys).
-            anyhow::bail!(
-                "--gpu metal is only supported for hypotest-toys (batch toy fitting), not single-model fit"
-            );
+            #[cfg(feature = "metal")]
+            {
+                mle.fit_metal(&model)?
+            }
+            #[cfg(not(feature = "metal"))]
+            {
+                unreachable!("--gpu metal check should have bailed earlier")
+            }
         }
         Some(_) => unreachable!("unknown device should have bailed earlier"),
         None => mle.fit(&model)?,
@@ -2291,6 +2340,7 @@ fn load_model(
     input: &PathBuf,
     threads: usize,
     parity: bool,
+    interp_defaults: InterpDefaults,
 ) -> Result<ns_translate::pyhf::HistFactoryModel> {
     setup_runtime(threads, parity);
 
@@ -2307,7 +2357,14 @@ fn load_model(
         ns_translate::hs3::detect::WorkspaceFormat::Pyhf
         | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
             let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
-            ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?
+            match interp_defaults {
+                InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
+                    &workspace,
+                    ns_translate::pyhf::NormSysInterpCode::Code1,
+                    ns_translate::pyhf::HistoSysInterpCode::Code0,
+                )?,
+                InterpDefaults::Root => ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?,
+            }
         }
     };
 
@@ -2318,13 +2375,21 @@ fn load_model(
 fn load_workspace_and_model(
     input: &PathBuf,
     threads: usize,
+    interp_defaults: InterpDefaults,
 ) -> Result<(ns_translate::pyhf::Workspace, ns_translate::pyhf::HistFactoryModel)> {
     setup_runtime(threads, false);
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
     let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
-    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?;
+    let model = match interp_defaults {
+        InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
+            &workspace,
+            ns_translate::pyhf::NormSysInterpCode::Code1,
+            ns_translate::pyhf::HistoSysInterpCode::Code0,
+        )?,
+        InterpDefaults::Root => ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)?,
+    };
     tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok((workspace, model))
 }
@@ -2428,6 +2493,29 @@ mod deterministic_json_tests {
         assert_eq!(samples_a[1].get("name").unwrap().as_str().unwrap(), "b");
         let meta_created = out.get("meta").unwrap().get("created_unix_ms").unwrap().as_u64().unwrap();
         assert_eq!(meta_created, 0);
+    }
+}
+
+#[cfg(test)]
+mod cli_parse_tests {
+    use super::{Cli, InterpDefaults};
+    use clap::Parser;
+
+    #[test]
+    fn interp_defaults_parses_and_defaults() {
+        let cli = Cli::try_parse_from(["nextstat", "fit", "--input", "workspace.json"]).unwrap();
+        assert_eq!(cli.interp_defaults, InterpDefaults::Root);
+
+        let cli = Cli::try_parse_from([
+            "nextstat",
+            "--interp-defaults",
+            "pyhf",
+            "fit",
+            "--input",
+            "workspace.json",
+        ])
+        .unwrap();
+        assert_eq!(cli.interp_defaults, InterpDefaults::Pyhf);
     }
 }
 
@@ -3573,10 +3661,11 @@ fn cmd_hypotest(
     output: Option<&PathBuf>,
     json_metrics: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let start = std::time::Instant::now();
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
     let r = ctx.hypotest_qtilde(&mle, mu)?;
@@ -3643,10 +3732,11 @@ fn cmd_hypotest_toys(
     expected_set: bool,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let output_json = if let Some(device) = gpu {
@@ -3772,10 +3862,11 @@ fn cmd_upper_limit(
     output: Option<&PathBuf>,
     json_metrics: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     let start = std::time::Instant::now();
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
 
@@ -3875,13 +3966,14 @@ fn cmd_scan(
     output: Option<&PathBuf>,
     json_metrics: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     gpu: Option<&str>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
         anyhow::bail!("points must be >= 2");
     }
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let t0 = std::time::Instant::now();
@@ -3899,9 +3991,14 @@ fn cmd_scan(
             }
         }
         Some("metal") => {
-            anyhow::bail!(
-                "--gpu metal is only supported for hypotest-toys (batch toy fitting), not profile scan"
-            );
+            #[cfg(feature = "metal")]
+            {
+                ns_inference::profile_likelihood::scan_metal(&mle, &model, &mu_values)?
+            }
+            #[cfg(not(feature = "metal"))]
+            {
+                unreachable!("--gpu metal check should have bailed earlier")
+            }
         }
         Some(_) => unreachable!("unknown device should have bailed earlier"),
         None => ns_inference::profile_likelihood::scan(&mle, &model, &mu_values)?,
@@ -3967,12 +4064,13 @@ fn cmd_viz_profile(
     points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if points < 2 {
         anyhow::bail!("points must be >= 2");
     }
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let step = (stop - start) / (points as f64 - 1.0);
@@ -4002,6 +4100,7 @@ fn cmd_viz_cls(
     scan_points: usize,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     if scan_points < 2 {
@@ -4011,7 +4110,7 @@ fn cmd_viz_cls(
         anyhow::bail!("scan_stop must be > scan_start");
     }
 
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
     let ctx = ns_inference::AsymptoticCLsContext::new(&mle, &model)?;
 
@@ -4043,9 +4142,10 @@ fn cmd_viz_ranking(
     input: &PathBuf,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let entries = mle.ranking(&model)?;
@@ -4126,12 +4226,13 @@ fn cmd_report(
     skip_uncertainty: bool,
     uncertainty_grouping: &str,
     threads: usize,
+    interp_defaults: InterpDefaults,
     deterministic: bool,
     blind_regions: &[String],
 ) -> Result<()> {
     ensure_out_dir(out_dir, overwrite)?;
 
-    let (workspace, model) = load_workspace_and_model(input, threads)?;
+    let (workspace, model) = load_workspace_and_model(input, threads, interp_defaults)?;
     let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
 
     let (params_postfit, fit_result) = if let Some(fit_path) = fit {
@@ -4349,9 +4450,10 @@ fn cmd_viz_distributions(
     fit: Option<&PathBuf>,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let (workspace, model) = load_workspace_and_model(input, threads)?;
+    let (workspace, model) = load_workspace_and_model(input, threads, interp_defaults)?;
     let params_prefit: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
 
     let params_postfit: Vec<f64> = if let Some(fit_path) = fit {
@@ -4404,9 +4506,10 @@ fn cmd_viz_pulls(
     fit: &PathBuf,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
 
     let bytes = std::fs::read(fit)?;
     let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
@@ -4471,9 +4574,10 @@ fn cmd_viz_corr(
     include_covariance: bool,
     output: Option<&PathBuf>,
     threads: usize,
+    interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
-    let model = load_model(input, threads, false)?;
+    let model = load_model(input, threads, false, interp_defaults)?;
 
     let bytes = std::fs::read(fit)?;
     let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
