@@ -4123,6 +4123,25 @@ fn set_eval_mode(mode: &str) -> PyResult<()> {
     Ok(())
 }
 
+/// Best-effort: configure the global Rayon thread pool.
+///
+/// Returns `True` if the requested configuration was applied, `False` if Rayon
+/// was already initialized (or threads==0, meaning "do not force").
+///
+/// Notes:
+/// - Rayon global thread pool can only be configured once per process.
+/// - This is primarily intended for deterministic / parity-mode automation.
+#[pyfunction]
+fn set_threads(threads: usize) -> PyResult<bool> {
+    if threads == 0 {
+        return Ok(false);
+    }
+    let r = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build_global();
+    Ok(r.is_ok())
+}
+
 /// Get the current evaluation mode ("fast" or "parity").
 #[pyfunction]
 fn get_eval_mode() -> &'static str {
@@ -5023,6 +5042,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
     m.add_function(wrap_pyfunction!(set_eval_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(set_threads, m)?)?;
     m.add_function(wrap_pyfunction!(get_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
     m.add_function(wrap_pyfunction!(has_cuda, m)?)?;

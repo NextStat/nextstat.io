@@ -174,6 +174,7 @@ bash validation-pack/render_validation_pack.sh \
 Notes:
 
 - PDF rendering requires `matplotlib` (install via `pip install 'nextstat[viz]'`).
+- To override the Python interpreter used by the validation pack script, pass `--python /path/to/python3` to `validation-pack/render_validation_pack.sh`.
 - `--nuts-quality` enables the (potentially slower) NUTS quality report for richer diagnostics.
 
 ### Schema (`validation_report.json`)

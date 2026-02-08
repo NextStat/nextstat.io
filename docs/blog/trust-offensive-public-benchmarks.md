@@ -1,12 +1,25 @@
-<!--
-  Blog draft (technical / trust-building).
-  Canonical benchmark spec lives in: docs/benchmarks/public-benchmarks.md
--->
+---
+title: "Trust Offensive: Why We Publish Reproducible Benchmarks for Scientific Software"
+slug: trust-offensive-public-benchmarks
+description: "NextStat's public benchmark program treats performance as a scientific claim — with protocols, pinned environments, correctness gates, and artifacts anyone can rerun. Learn why reproducible benchmarks matter for HEP, pharma, and Bayesian inference."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - reproducible benchmarks
+  - scientific software performance
+  - statistical computing benchmarks
+  - pyhf comparison
+  - HistFactory benchmark
+  - NLME benchmark
+  - NUTS ESS per second
+  - benchmark reproducibility
+  - open source validation
+  - NextStat benchmarks
+category: trust
+---
 
 # Trust Offensive: Public Benchmarks
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 Benchmarks are easy to get wrong — even when nobody is trying to cheat.
 
@@ -20,7 +33,7 @@ In scientific software, that creates a trust gap: users can’t tell whether a p
 
 So we’re doing a **trust offensive**: we will publish public benchmark snapshots that are designed like experiments — with protocols, pinned environments, correctness gates, and artifacts that others can rerun.
 
-If you prefer the spec (what we measure, how we publish, what gets pinned), start here: `docs/benchmarks/public-benchmarks.md`.
+If you prefer the spec (what we measure, how we publish, what gets pinned), start here: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
 
 ---
 
@@ -53,7 +66,7 @@ For binned likelihood pipelines, a benchmark is meaningless if the implementatio
 
 Our rule: before timing, the harness must validate correctness (within an explicit tolerance) for the exact inputs being benchmarked.
 
-Example: our pyhf-vs-NextStat harness checks NLL agreement before it prints timings (`tests/benchmark_pyhf_vs_nextstat.py`).
+Example: our pyhf-vs-NextStat harness checks NLL agreement before it prints timings (`tests/benchmark_pyhf_vs_nextstat.py`). The [validation report system](/docs/references/validation-report) formalizes this: every published snapshot includes a `validation_report.json` with dataset SHA-256 hashes, model specs, and per-suite pass/fail gates.
 
 ### B. The benchmark is “fast” because it’s warmed up differently
 
@@ -111,19 +124,21 @@ If a benchmark can’t be reproduced, it’s not evidence. It’s an anecdote.
 
 ---
 
-## 5) What’s next (the suites)
+## 5) The suites
 
-We’re organizing the benchmark program into suites:
+The benchmark program is organized into vertical-specific suites:
 
-- **HEP suite**: pyhf + (optionally) ROOT/RooFit harness with NLL parity gates
-- **Pharma suite**: PK/NLME plan + datasets
-- **Bayesian suite**: ESS/sec comparisons vs Stan + PyMC with fully specified inference settings
-- **ML suite**: JAX compile vs execution comparisons (where compilation dominates)
+- **[HEP suite](/docs/benchmarks/suites/hep)**: pyhf + ROOT/RooFit harness with NLL parity gates, GPU batch toy benchmarks (CUDA + Metal)
+- **[Pharma suite](/docs/benchmarks/suites/pharma)**: PK/NLME likelihood + fitting loops with analytic reference baselines
+- **[Bayesian suite](/docs/benchmarks/suites/bayesian)**: ESS/sec comparisons vs Stan + PyMC with fully specified inference settings, SBC calibration
+- **[ML suite](/docs/benchmarks/suites/ml)**: compile vs execution latency, differentiable pipeline throughput
+- **[Time Series suite](/docs/benchmarks/suites/timeseries)**: Kalman filter/smoother throughput, EM convergence cost
+- **[Econometrics suite](/docs/benchmarks/suites/econometrics)**: Panel FE, DiD, IV/2SLS scaling with cluster count
 
-Each suite will have:
+Each suite has:
 
-1. a documentation page (how to run, what is measured, what gets gated),
-2. public snapshot artifacts, and
+1. a runbook page (how to run, what is measured, what gets gated),
+2. public snapshot artifacts (JSON + optional PDF via `nextstat validation-report`), and
 3. a blog post interpreting the results and tradeoffs.
 
 ---
@@ -138,5 +153,14 @@ When the first snapshot is published, the most valuable contribution you can mak
 - publish your manifest + results,
 - and tell us what diverges (numbers, settings, correctness gates).
 
-That is how “fast” becomes “trusted”.
+That is how "fast" becomes "trusted".
 
+---
+
+## Related reading
+
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — the canonical spec for protocols, artifacts, and suite structure.
+- [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — why reproducible benchmarking changes how we build scientific software.
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — how external reruns + signed reports close the trust gap.
+- [Publishing Benchmarks (CI, Artifacts, DOI)](/docs/benchmarks/publishing) — CI automation, DOI minting, and baseline management.
+- [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system that gates every published snapshot.

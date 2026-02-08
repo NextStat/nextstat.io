@@ -354,7 +354,7 @@ Sample: signal                      # top-level definition
 **NTUP composition rules (Selection/Weight):**
 - Region `Selection` (or `Cut`) becomes the channel selection (shared across samples in the region).
 - Sample `Selection` (or `Cut`) is applied as an event gate by multiplying a booleanized mask into the sample weight:
-  `mask = !!(SelectionExpr)` (TREx/TTreeFormula truthiness). This avoids accidental scaling when `Selection` is numeric.
+  `mask = !!(SelectionExpr)` (TREx/TTreeFormula truthiness: non-zero is true, including negatives and NaN). This avoids accidental scaling when `Selection` is numeric.
 - Nested Sample overrides under a Region (no `File`/`Path`) can provide additional per-(region,sample) `Selection` and `Weight`:
   they are combined with the top-level Sample and applied only in that region.
 

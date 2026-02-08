@@ -68,6 +68,66 @@ fn histfactory_from_xml_is_fast_enough_smoke() {
 }
 
 #[test]
+fn histfactory_missing_staterrorconfig_defaults_to_gamma_constraints_for_staterror_params() {
+    let xml = fixture_combination_xml();
+    let ws = from_xml(&xml).expect("from_xml");
+
+    let ch = ws
+        .channels
+        .iter()
+        .find(|c| c.name == "SR")
+        .expect("SR channel");
+    let bkg = ch
+        .samples
+        .iter()
+        .find(|s| s.name == "background")
+        .expect("background sample");
+
+    let (stat_name, sigma_abs) = bkg
+        .modifiers
+        .iter()
+        .find_map(|m| match m {
+            crate::pyhf::schema::Modifier::StatError { name, data } => Some((name.as_str(), data)),
+            _ => None,
+        })
+        .expect("StatError modifier on background");
+    assert_eq!(stat_name, "staterror_SR");
+    assert_eq!(sigma_abs.len(), bkg.data.len());
+
+    let meas = ws
+        .measurements
+        .iter()
+        .find(|m| m.name == "NominalMeasurement")
+        .expect("NominalMeasurement");
+
+    for (i, (&nom, &sig)) in bkg.data.iter().zip(sigma_abs.iter()).enumerate() {
+        if nom <= 0.0 || sig <= 0.0 {
+            continue;
+        }
+        let expected_rel = sig / nom;
+        let pname = format!("staterror_SR[{i}]");
+        let pcfg = meas
+            .config
+            .parameters
+            .iter()
+            .find(|p| p.name == pname)
+            .unwrap_or_else(|| panic!("expected parameter config for {pname}"));
+        let c = pcfg
+            .constraint
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected Gamma constraint spec for {pname}"));
+        assert_eq!(c.constraint_type, "Gamma");
+        let got_rel = c
+            .rel_uncertainty
+            .unwrap_or_else(|| panic!("expected rel_uncertainty for {pname}"));
+        assert!(
+            (got_rel - expected_rel).abs() < 1e-12,
+            "rel_uncertainty mismatch for {pname}: got={got_rel} expected={expected_rel}"
+        );
+    }
+}
+
+#[test]
 fn histfactory_absolute_inputfile_falls_back_to_basedir_basename() {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};

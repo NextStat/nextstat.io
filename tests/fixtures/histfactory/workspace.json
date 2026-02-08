@@ -78,6 +78,42 @@
             "fixed": false,
             "auxdata": [],
             "sigmas": []
+          },
+          {
+            "name": "staterror_SR[0]",
+            "inits": [],
+            "bounds": [],
+            "fixed": false,
+            "auxdata": [],
+            "sigmas": [],
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.31622776601683794
+            }
+          },
+          {
+            "name": "staterror_SR[1]",
+            "inits": [],
+            "bounds": [],
+            "fixed": false,
+            "auxdata": [],
+            "sigmas": [],
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.2357022603955158
+            }
+          },
+          {
+            "name": "staterror_SR[2]",
+            "inits": [],
+            "bounds": [],
+            "fixed": false,
+            "auxdata": [],
+            "sigmas": [],
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.3333333333333333
+            }
           }
         ]
       }

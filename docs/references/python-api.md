@@ -98,6 +98,7 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 - `nextstat.ols_fit(x, y, *, include_intercept=True) -> list[float]` — closed-form OLS.
 - `nextstat.rk4_linear(a, y0, t0, t1, dt, *, max_steps=100000) -> dict` — RK4 ODE solver for linear systems.
 - `nextstat.set_eval_mode(mode: str) -> None` — set evaluation mode (`"fast"` or `"parity"`).
+- `nextstat.set_threads(threads: int) -> bool` — best-effort: configure the global Rayon thread pool size (returns `True` if applied).
 - `nextstat.get_eval_mode() -> str` — query current evaluation mode.
 - `nextstat.has_accelerate() -> bool` — check Apple Accelerate backend availability.
 - `nextstat.has_cuda() -> bool` — check CUDA backend availability.
@@ -348,6 +349,11 @@ nextstat.set_eval_mode("fast")
 # Parity: deterministic (Kahan summation, Accelerate disabled, single-thread recommended)
 nextstat.set_eval_mode("parity")
 
+# Optional (recommended for parity in CI): force single-thread execution.
+# Note: Rayon global thread pool can only be configured once per process,
+# so call this early (before any parallel NextStat calls).
+nextstat.set_threads(1)
+
 # Query current mode
 print(nextstat.get_eval_mode())  # "fast" or "parity"
 ```
@@ -468,8 +474,8 @@ fig.savefig("ranking.png")
 
 LLM tool definitions for AI-driven statistical analysis. Compatible with OpenAI function calling, LangChain, and MCP (Model Context Protocol).
 
-- `nextstat.tools.get_toolkit() -> list[dict]` — OpenAI-compatible tool definitions for 7 operations: `nextstat_fit`, `nextstat_hypotest`, `nextstat_upper_limit`, `nextstat_ranking`, `nextstat_significance`, `nextstat_scan`, `nextstat_workspace_audit`.
-- `nextstat.tools.execute_tool(name, arguments) -> dict` — execute a tool call by name, returns JSON-serialisable result.
+- `nextstat.tools.get_toolkit() -> list[dict]` — OpenAI-compatible tool definitions for 8 operations: `nextstat_fit`, `nextstat_hypotest`, `nextstat_hypotest_toys`, `nextstat_upper_limit`, `nextstat_ranking`, `nextstat_discovery_asymptotic`, `nextstat_scan`, `nextstat_workspace_audit`.
+- `nextstat.tools.execute_tool(name, arguments) -> dict` — execute a tool call by name. Returns a stable envelope: `{schema_version, ok, result, error, meta}`.
 - `nextstat.tools.get_langchain_tools() -> list[StructuredTool]` — LangChain adapter (requires `langchain-core`).
 - `nextstat.tools.get_mcp_tools() -> list[dict]` — MCP tool definitions (`name`, `description`, `inputSchema`).
 - `nextstat.tools.get_tool_names() -> list[str]` — list available tool names.
@@ -488,6 +494,9 @@ response = openai.chat.completions.create(
 
 for call in response.choices[0].message.tool_calls:
     result = execute_tool(call.function.name, json.loads(call.function.arguments))
+    if not result.get("ok"):
+        raise RuntimeError(result.get("error"))
+    payload = result["result"]
 ```
 
 ## Surrogate Distillation (`nextstat.distill`)

@@ -22,7 +22,7 @@
 	playground-build-wasm \
 	playground-serve
 
-PY ?= ./.venv/bin/python
+PY ?= python3
 PYTHONPATH ?= bindings/ns-py/python
 RECORD_ARGS ?=
 COMPARE_ARGS ?=
@@ -71,7 +71,6 @@ validation-pack:
 	bash validation-pack/render_validation_pack.sh \
 		--out-dir "$(VALIDATION_PACK_OUT_DIR)" \
 		--workspace "$(VALIDATION_PACK_WORKSPACE)" \
-		--python "$(PY)" \
 		$(VALIDATION_PACK_ARGS)
 
 rust-slow-tests:

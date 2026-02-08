@@ -373,7 +373,7 @@ nextstat-server --host 0.0.0.0 --port 3742 --gpu metal --threads 8
 Arguments:
 - `--port <PORT>` — listening port (default: 3742)
 - `--host <HOST>` — bind address (default: 0.0.0.0)
-- `--gpu <DEVICE>` — GPU device: `cuda` or `metal` (omit for CPU-only)
+- `--gpu <DEVICE>` — GPU device: `cuda` or `metal` (omit for CPU-only). If the binary was built without the corresponding feature, `nextstat-server` exits with an error.
 - `--threads <N>` — Rayon thread pool size (default: 0 = auto)
 
 ### Endpoints

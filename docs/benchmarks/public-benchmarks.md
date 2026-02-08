@@ -1,14 +1,29 @@
 ---
 title: "Public Benchmarks"
+description: "Canonical specification for NextStat's public benchmark program: protocols, correctness gates, environment pinning, artifacts, and suite structure for reproducible performance evidence across HEP, pharma, Bayesian, ML, time series, and econometrics."
 status: draft
 last_updated: 2026-02-08
+keywords:
+  - public benchmarks
+  - reproducible benchmarks
+  - scientific software validation
+  - HistFactory benchmark
+  - pyhf comparison
+  - NLME benchmark
+  - NUTS sampler benchmark
+  - benchmark protocol
+  - NextStat
 ---
 
 # Public Benchmarks (Trust Offensive)
 
-This page is the **canonical specification** for how NextStat benchmarks are designed, executed, and published. The goal is not “a fast number” — it is **trustworthy, reproducible evidence** that other people can rerun and audit.
+This page is the **canonical specification** for how NextStat benchmarks are designed, executed, and published. The goal is not "a fast number" — it is **trustworthy, reproducible evidence** that other people can rerun and audit.
 
-If you want the narrative version (why we’re doing this and what it changes), see the blog posts in `docs/blog/`.
+If you want the narrative version (why we're doing this and what it changes), see the blog posts:
+
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks)
+- [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks)
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
 
 ## Scope
 
@@ -18,6 +33,8 @@ We benchmark **end-to-end user workflows** rather than isolated micro-kernels:
 - Pharma: PK/NLME likelihood evaluation + fitting loops.
 - Bayesian: gradient-based samplers (NUTS) with ESS/sec and wall-time.
 - ML infra: compilation vs execution time (e.g., JAX compile latency vs steady-state throughput) where relevant to scientific pipelines.
+- Time Series: Kalman filter/smoother throughput, EM convergence cost, forecasting latency.
+- Econometrics: panel FE fit wall-time, DiD TWFE + event study wall-time, IV/2SLS first-stage + second-stage cost, AIPW doubly-robust estimator vs naive OLS.
 
 We also publish “fast path vs reference path” comparisons (e.g., parity mode vs fast mode) when correctness contracts are part of the product.
 
@@ -71,15 +88,16 @@ Each benchmark snapshot should publish:
 - Summary tables (median/best-of-N policy must be explicit)
 - A **baseline manifest**: code SHA, env versions, dataset hashes, and run configuration
 - Any correctness/parity reports used as gating
+- A **validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail summary
 
-## Suites (planned structure)
+## Suites
 
 ### HEP suite (pyhf + ROOT/RooFit harness)
 
 **Docs:** this site (how to run, what’s measured, what is gated).  
 **Blog:** results + interpretation once snapshots are public.
 
-Suite doc: `docs/benchmarks/suites/hep.md`.
+Suite doc: [HEP Benchmark Suite](/docs/benchmarks/suites/hep).
 
 Measurements:
 
@@ -94,9 +112,15 @@ Correctness gates:
 - NLL parity vs pyhf at representative parameter points
 - Fit-level checks (POI estimates, likelihood differences within tolerance)
 
-### Pharma suite (PK/NLME plan + datasets)
+GPU measurements (shipped):
 
-Suite doc: `docs/benchmarks/suites/pharma.md`.
+- CPU vs CUDA vs Metal batch toy throughput (toys/sec at 100–5000 toys)
+- Profile scan crossover analysis (~150+ parameters for GPU advantage)
+- Differentiable layer latency (NLL + signal gradient, profiled q₀)
+
+### Pharma suite (PK/NLME + analytic reference baselines)
+
+Suite doc: [Pharma Benchmark Suite](/docs/benchmarks/suites/pharma).
 
 Measurements:
 
@@ -106,7 +130,7 @@ Measurements:
 
 ### Bayesian suite (ESS/sec vs Stan + PyMC)
 
-Suite doc: `docs/benchmarks/suites/bayesian.md`.
+Suite doc: [Bayesian Benchmark Suite](/docs/benchmarks/suites/bayesian).
 
 Primary metrics:
 
@@ -118,9 +142,9 @@ Notes:
 - ESS is only meaningful with matched model, priors, and diagnostics settings.
 - We must publish the exact inference settings (step size adaptation, target accept, mass matrix policy).
 
-### ML suite (JAX compile vs execution)
+### ML suite (compile vs execution + differentiable pipelines)
 
-Suite doc: `docs/benchmarks/suites/ml.md`.
+Suite doc: [ML Benchmark Suite](/docs/benchmarks/suites/ml).
 
 Primary metrics:
 
@@ -128,15 +152,38 @@ Primary metrics:
 - Warm throughput (steady-state execution)
 - Memory footprint (where measurable and stable)
 
+### Time Series suite (Kalman + state space)
+
+Suite doc: [Time Series Benchmark Suite](/docs/benchmarks/suites/timeseries).
+
+Measurements:
+
+- Kalman filter/smoother throughput (states/sec) at varying state dimension
+- EM convergence cost (iterations × NLL evaluations)
+- Forecasting latency per horizon step
+
+### Econometrics suite (panel + causal inference)
+
+Suite doc: [Econometrics Benchmark Suite](/docs/benchmarks/suites/econometrics).
+
+Measurements:
+
+- Panel FE fit wall-time scaling with entity count and cluster count
+- DiD TWFE + event study wall-time
+- IV/2SLS first-stage + second-stage cost
+- AIPW doubly-robust estimator vs naive OLS
+
 ## Publishing (CI artifacts + baselines)
 
 We publish benchmark snapshots via CI:
 
 - Every run has a unique, immutable identifier.
-- Artifacts include raw results + baseline manifest.
-- Baseline comparisons are opt-in and versioned (no silent “moving targets”).
+- Artifacts include raw results + baseline manifest + `validation_report.json`.
+- Baseline comparisons are opt-in and versioned (no silent "moving targets").
 
-Publishing + replication doc: `docs/benchmarks/publishing.md`.
+Publishing + replication doc: [Publishing Benchmarks](/docs/benchmarks/publishing).
+
+Benchmarks repo skeleton (pinned envs, manifests): [Benchmarks Repo Skeleton](/docs/benchmarks/repo-skeleton).
 
 ## DOI + citation
 
@@ -152,5 +199,6 @@ The strongest trust signal is an independent rerun. The replication process shou
 
 ## Blog posts (narrative)
 
-- Trust Offensive: Public Benchmarks — why this exists and how to interpret it.
-- “The End of the Scripting Era” — how reproducible benchmarking changes how we build scientific software.
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why this exists and how to interpret it.
+- [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — how reproducible benchmarking changes how we build scientific software.
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — external reruns + signed validation reports as the ultimate trust signal.

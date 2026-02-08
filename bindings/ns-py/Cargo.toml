@@ -30,6 +30,7 @@ ns-root.workspace = true
 ns-translate = { workspace = true, features = ["root-io", "arrow-io"] }
 ns-viz.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
+rayon = { workspace = true }
 serde_json = { workspace = true }
 
 [features]

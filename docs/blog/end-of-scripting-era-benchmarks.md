@@ -1,12 +1,23 @@
-<!--
-  Blog draft (thought leadership / technical).
-  Canonical benchmark spec lives in: docs/benchmarks/public-benchmarks.md
--->
+---
+title: "The End of the Scripting Era: Why Reproducible Benchmarks Change Scientific Software"
+slug: end-of-scripting-era-benchmarks
+description: "Scripts gave us speed. Reproducible benchmark harnesses give us trust. How NextStat treats performance claims as scientific experiments — with protocols, correctness gates, and auditable artifacts."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - scientific software benchmarks
+  - reproducible computing
+  - benchmark reproducibility
+  - statistical software validation
+  - HistFactory performance
+  - performance as evidence
+  - open science benchmarks
+  - NextStat
+category: trust
+---
 
 # The End of the Scripting Era (Benchmarks)
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 For a long time, scientific software lived in a world of scripts:
 
@@ -58,7 +69,7 @@ This is why our benchmark program is structured around:
 - raw result publishing (not only summaries)
 - baseline manifests and CI artifacts
 
-The canonical spec is here: `docs/benchmarks/public-benchmarks.md`.
+The canonical spec is here: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
 
 ---
 
@@ -126,5 +137,13 @@ If we do this right, the conversation changes from:
 
 to:
 
-> “Here’s the harness. Let’s measure it together.”
+> "Here's the harness. Let's measure it together."
 
+---
+
+## Related reading
+
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why this program exists and how to interpret it.
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — external reruns as the ultimate trust signal.
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — the canonical spec.
+- [Validation Report Artifacts](/docs/references/validation-report) — the machine-readable + PDF validation pack.

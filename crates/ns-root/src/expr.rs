@@ -382,67 +382,35 @@ fn compile_bytecode(
         Expr::BinOp(op, a, b) => {
             match op {
                 BinOp::And => {
-                    // Short-circuit `a && b`:
-                    // - evaluate `a`
-                    // - if false: push 0 and skip `b`
-                    // - else: evaluate `b` and booleanize
+                    // Mask-based `a && b` (no control-flow) to keep vectorized path:
+                    //   mask_and(a, b) = (!!a) * (!!b)
+                    //
+                    // We intentionally evaluate both sides (no short-circuit). The expression
+                    // engine has no side effects, and this avoids falling back to row-wise eval.
                     compile_bytecode(input, a, out, jagged)?;
-
-                    let jz_pos = out.len();
-                    out.push(Instr::Jz(usize::MAX));
+                    out.push(Instr::Not);
+                    out.push(Instr::Not);
 
                     compile_bytecode(input, b, out, jagged)?;
-                    // booleanize: !!b
                     out.push(Instr::Not);
                     out.push(Instr::Not);
 
-                    let jmp_pos = out.len();
-                    out.push(Instr::Jmp(usize::MAX));
-
-                    let false_target = out.len();
-                    out.push(Instr::Const(0.0));
-
-                    let end_target = out.len();
-                    match out[jz_pos] {
-                        Instr::Jz(ref mut t) => *t = false_target,
-                        _ => unreachable!(),
-                    }
-                    match out[jmp_pos] {
-                        Instr::Jmp(ref mut t) => *t = end_target,
-                        _ => unreachable!(),
-                    }
+                    out.push(Instr::Mul);
                 }
                 BinOp::Or => {
-                    // Short-circuit `a || b`:
-                    // - evaluate `a`
-                    // - if true: push 1 and skip `b`
-                    // - else: evaluate `b` and booleanize
+                    // Mask-based `a || b` (no control-flow) to keep vectorized path:
+                    //   mask_or(a, b) = max(!!a, !!b)
+                    //
+                    // Always evaluates both sides (see comment in `BinOp::And`).
                     compile_bytecode(input, a, out, jagged)?;
-                    // Convert jump condition into "a is true" using Not + Jz.
                     out.push(Instr::Not);
-
-                    let jz_pos = out.len();
-                    out.push(Instr::Jz(usize::MAX));
+                    out.push(Instr::Not);
 
                     compile_bytecode(input, b, out, jagged)?;
                     out.push(Instr::Not);
                     out.push(Instr::Not);
 
-                    let jmp_pos = out.len();
-                    out.push(Instr::Jmp(usize::MAX));
-
-                    let true_target = out.len();
-                    out.push(Instr::Const(1.0));
-
-                    let end_target = out.len();
-                    match out[jz_pos] {
-                        Instr::Jz(ref mut t) => *t = true_target,
-                        _ => unreachable!(),
-                    }
-                    match out[jmp_pos] {
-                        Instr::Jmp(ref mut t) => *t = end_target,
-                        _ => unreachable!(),
-                    }
+                    out.push(Instr::Max);
                 }
                 _ => {
                     compile_bytecode(input, a, out, jagged)?;
@@ -2728,6 +2696,24 @@ mod tests {
         let a = [-3.0, -1.0, 0.0, 1.0, 5.0];
         let got = e.eval_bulk(&[&a]);
         assert_eq!(got, vec![3.0, 1.0, 0.0, 1.0, 5.0]);
+    }
+
+    #[test]
+    fn boolean_ops_use_vectorized_path_when_no_dynload() {
+        let e = CompiledExpr::compile("(a > 0 && b > 0) || (a < 0 && b < 0)").unwrap();
+        assert!(
+            !bytecode_has_control_flow(&e.bytecode),
+            "&&/|| should compile without Jz/Jmp (mask-based), bytecode={:?}",
+            e.bytecode
+        );
+
+        let a = [-2.0, -1.0, 0.0, 1.0, 2.0];
+        let b = [-3.0, 2.0, 0.0, 3.0, -4.0];
+        let got = e.eval_bulk(&[&a, &b]);
+
+        // Same sign and non-zero => true, else false under ROOT truthiness rules.
+        // (a>0 && b>0) OR (a<0 && b<0)
+        assert_eq!(got, vec![1.0, 0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]

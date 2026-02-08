@@ -58,7 +58,7 @@ Both CUDA and Metal support GPU-accelerated batch toy fitting for CLs hypothesis
 
 Architecture: Phase A performs 3 baseline CPU fits (free, conditional at μ_test, conditional at μ=0), then Phase B dispatches to the appropriate GPU backend for batch toy ensemble generation.
 
-CLI: `nextstat hypotest-toys --gpu cuda` or `nextstat hypotest-toys --gpu metal`.
+CLI: `nextstat hypotest-toys --gpu cuda` or `nextstat hypotest-toys --gpu metal` (requires building with the corresponding feature).
 
 ## Performance (RTX 4000 SFF Ada, CUDA 12.0)
 

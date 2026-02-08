@@ -548,7 +548,7 @@ impl FrameDecoder {
                         .map_err(FrameDecoderError::FailedToReadBlockHeader)?;
                     state.bytes_read_counter += u64::from(block_header_size);
 
-                    let bytes_read_in_block_body = match block_dec.decode_block_content_to(
+                    let bytes_read_in_block_body = match block_dec.decode_block_content_from_slice_to(
                         &block_header,
                         &mut state.decoder_scratch,
                         &mut out,

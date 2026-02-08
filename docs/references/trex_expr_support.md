@@ -23,6 +23,9 @@ Source of truth:
 - Boolean: `&&`, `||`, `!`
 - Ternary: `cond ? a : b` (right-associative)
 
+### Truthiness (ROOT/TTreeFormula)
+- Numeric conditions are truthy iff they are **non-zero** (including negatives and NaN).
+
 ### Indexing syntax (parsing)
 - `branch[idx]` is accepted syntactically and rewritten into a required scalar “virtual” branch name `branch[idx]`.
 - Reading `branch[idx]` from ROOT TTrees is supported via `RootFile::branch_data("name[idx]")`:

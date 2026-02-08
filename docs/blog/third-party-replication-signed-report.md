@@ -1,12 +1,24 @@
-<!--
-  Blog draft (trust-building).
-  Canonical replication spec lives in: docs/benchmarks/publishing.md
--->
+---
+title: "Third-Party Replication: How External Reruns and Signed Reports Close the Benchmark Trust Gap"
+slug: third-party-replication-signed-report
+description: "The strongest trust signal for software benchmarks is an independent rerun. Learn how NextStat's replication protocol works — same harness, published manifests, signed reports, and verifiable artifacts."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - benchmark replication
+  - third-party validation
+  - signed benchmark report
+  - reproducible performance
+  - scientific software trust
+  - benchmark verification
+  - GPG signed report
+  - Sigstore verification
+  - NextStat validation
+category: trust
+---
 
 # Third-Party Replication: External Reruns + Signed Reports
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 If you’ve ever been burned by an “impressive benchmark”, you already know the problem:
 
@@ -16,7 +28,7 @@ And the only robust way to evaluate a claim is to replicate it.
 
 That’s why our public benchmark program treats **third-party replication** as a first-class feature, not a nice-to-have.
 
-The canonical replication protocol is documented here: `docs/benchmarks/publishing.md`.
+The canonical replication protocol is documented here: [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing).
 
 ---
 
@@ -63,9 +75,11 @@ A signed report is a lightweight way to guarantee:
 
 - who produced the report
 - what snapshot it refers to
-- that the published artifact hasn’t been modified
+- that the published artifact hasn't been modified
 
-We don’t need bureaucracy. We need integrity.
+The `validation_report.json` produced by [`nextstat validation-report`](/docs/references/validation-report) already includes SHA-256 hashes for both the workspace and the Apex2 master report. Adding a GPG or Sigstore signature to that JSON creates a complete chain: *data hash → validation result → signer identity*.
+
+We don't need bureaucracy. We need integrity.
 
 ---
 
@@ -91,3 +105,11 @@ If you care about reproducible scientific computing, the most valuable contribut
 
 That’s how performance claims become community knowledge.
 
+---
+
+## Related reading
+
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why we publish reproducible benchmarks.
+- [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — how benchmarking shifts from scripts to experiments.
+- [Publishing Benchmarks (CI, Artifacts, DOI)](/docs/benchmarks/publishing) — CI automation, DOI minting, and baseline management.
+- [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
