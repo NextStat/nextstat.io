@@ -37,7 +37,7 @@ Each published snapshot must include:
   - hardware: CPU, RAM, GPU, driver/runtime versions
   - benchmark configuration (flags, suite selection, warmup policy)
 - **Correctness gates report** (e.g., parity deltas used to validate the run)
-- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix
+- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix (plus a signable `validation_pack_manifest.json`)
 
 The single-command entrypoint for generating a complete validation pack is:
 
@@ -45,7 +45,7 @@ The single-command entrypoint for generating a complete validation pack is:
 make validation-pack
 ```
 
-This produces `apex2_master_report.json` + `validation_report.json` + `validation_report.pdf` in `tmp/validation_pack/`.
+This produces `apex2_master_report.json` + `validation_report.json` (+ optional PDF) + `validation_pack_manifest.json` in `tmp/validation_pack/`.
 
 ## 2) CI publishing workflow
 

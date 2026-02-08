@@ -196,6 +196,7 @@ fi
 
 validation_json="$out_dir/validation_report.json"
 validation_pdf="$out_dir/validation_report.pdf"
+manifest_json="$out_dir/validation_pack_manifest.json"
 
 echo "Rendering unified validation report..." >&2
 if [[ "$nextstat_bin" == "nextstat" ]]; then
@@ -224,12 +225,54 @@ MPLCONFIGDIR="$mplconfig" "${ns_cmd[@]}" "${ns_args[@]}"
 report_rc=$?
 set -e
 
+manifest_files=("apex2_master_report.json" "validation_report.json")
+if [[ "$render_pdf" == "1" ]]; then
+  manifest_files+=("validation_report.pdf")
+fi
+if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
+  manifest_files+=("validation_report_v1.schema.json")
+fi
+
+"$py" - "$out_dir" "$deterministic" "${manifest_files[@]}" >"$manifest_json" <<'PY'
+import hashlib
+import json
+import os
+import sys
+from typing import Any
+
+out_dir = sys.argv[1]
+deterministic = sys.argv[2] == "1"
+files = sys.argv[3:]
+
+def sha256_file(p: str) -> str:
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+entries: list[dict[str, Any]] = []
+for rel in sorted(set(files)):
+    path = os.path.join(out_dir, rel)
+    st = os.stat(path)
+    entries.append({"path": rel, "bytes": st.st_size, "sha256": sha256_file(path)})
+
+doc: dict[str, Any] = {
+    "schema_version": "validation_pack_manifest_v1",
+    "deterministic": deterministic,
+    "files": entries,
+}
+json.dump(doc, sys.stdout, indent=2, sort_keys=True)
+sys.stdout.write("\n")
+PY
+
 echo "Wrote:" >&2
 echo "  $apex2_master" >&2
 echo "  $validation_json" >&2
 if [[ "$render_pdf" == "1" ]]; then
   echo "  $validation_pdf" >&2
 fi
+echo "  $manifest_json" >&2
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   echo "  $out_dir/validation_report_v1.schema.json" >&2
 fi

@@ -147,6 +147,12 @@ cargo test -p ns-cli --test cli_validation_report
 
 CI runs these invariants explicitly in the `Rust Tests` workflow (`.github/workflows/rust-tests.yml`) on `ubuntu-latest` + `stable`.
 
+CI also exercises the end-to-end `validation-pack/render_validation_pack.sh` flow in the `Python Tests` workflow (`.github/workflows/python-tests.yml`) on `ubuntu-latest` + Python 3.13, including:
+
+- Schema validation for `validation_report.json`
+- A deterministic re-render check (JSON+PDF hashes match across two runs)
+- A `--json-only` smoke run (no PDF / no matplotlib dependency path)
+
 ### Single Entrypoint (Local + CI)
 
 To generate a complete "validation pack" (Apex2 master + unified JSON + publishable PDF) in one command:
@@ -189,6 +195,7 @@ bash validation-pack/render_validation_pack.sh \
 - `apex2_master_report.json`
 - `validation_report.json`
 - `validation_report.pdf` (unless `--json-only`)
+- `validation_pack_manifest.json` (SHA-256 + sizes for the core pack files; convenient for signing/replication)
 - `validation_report_v1.schema.json`
 
 Notes:
