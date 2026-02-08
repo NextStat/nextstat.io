@@ -136,7 +136,7 @@ So for ROOT comparisons, we will:
 
 We already have a rigorous numerical comparison write-up as a separate blog draft:
 
-- `docs/blog/numerical-accuracy.md`
+- [Numerical Accuracy](/blog/numerical-accuracy)
 
 Benchmarks and numerical accuracy are two sides of the same trust problem.
 
@@ -153,7 +153,7 @@ Performance results should include:
 
 This is the difference between a screenshot and an artifact.
 
-Publishing spec: `docs/benchmarks/publishing.md`.
+Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 

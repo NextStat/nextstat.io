@@ -1,12 +1,28 @@
+---
+title: "Bayesian Benchmarks That Mean Something: ESS/sec vs Wall-Time"
+slug: bayesian-benchmarks-ess-per-sec
+description: "How NextStat benchmarks Bayesian inference rigorously: ESS/sec methodology, stable protocols, diagnostics settings, and publishable artifacts for comparisons vs Stan and PyMC."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - Bayesian benchmarks
+  - ESS per second
+  - NUTS benchmarks
+  - Stan comparison
+  - PyMC comparison
+  - reproducible benchmarks
+  - inference diagnostics
+  - NextStat
+category: bayesian
+---
+
 <!--
   Blog draft (technical).
   Suite runbook: docs/benchmarks/suites/bayesian.md
 -->
 
 # Bayesian Benchmarks That Mean Something: ESS/sec vs Wall-Time
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 Bayesian benchmarks are notorious because they collapse a multi-dimensional object (a posterior + a sampling algorithm) into a single number.
 
@@ -16,7 +32,7 @@ This post explains how we plan to benchmark Bayesian inference in NextStat using
 
 Runbook/spec:
 
-- `docs/benchmarks/suites/bayesian.md`
+- [Bayesian Benchmark Suite](/docs/benchmarks/suites/bayesian)
 
 ---
 
@@ -70,7 +86,7 @@ For each benchmark snapshot:
 
 If a run has pathologies (divergences, failure to adapt), we publish that as a result, not as a footnote.
 
-Publishing spec: `docs/benchmarks/publishing.md`.
+Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 
@@ -105,4 +121,3 @@ When we publish Bayesian benchmark numbers, the intent is that you can answer:
 and rerun the same harness on your hardware.
 
 That’s how a Bayesian benchmark becomes evidence rather than a chart.
-

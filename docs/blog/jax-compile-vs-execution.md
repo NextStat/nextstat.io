@@ -1,12 +1,27 @@
+---
+title: "JAX Compile vs Execution: The Benchmark You Actually Need"
+slug: jax-compile-vs-execution
+description: "Why compile latency matters in scientific ML pipelines and how NextStat plans to benchmark cold-start vs warm throughput with reproducible harnesses and published artifacts."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - JAX compile latency
+  - compile vs execution benchmark
+  - cold start latency
+  - warm throughput
+  - reproducible benchmarks
+  - scientific ML pipelines
+  - NextStat
+category: ml
+---
+
 <!--
   Blog draft (technical).
   Suite runbook: docs/benchmarks/suites/ml.md
 -->
 
 # JAX Compile vs Execution: The Benchmark You Actually Need
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 Many ML “benchmarks” measure only steady-state throughput.
 
@@ -25,7 +40,7 @@ This post explains how we plan to benchmark “compile vs execution” as a firs
 
 Runbook/spec:
 
-- `docs/benchmarks/suites/ml.md`
+- [ML Benchmark Suite](/docs/benchmarks/suites/ml)
 
 ---
 
@@ -78,7 +93,7 @@ For each snapshot:
 - baseline manifest (versions, hardware, settings)
 - cache policy and harness version
 
-Publishing spec: `docs/benchmarks/publishing.md`.
+Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 
@@ -93,4 +108,3 @@ It’s that entire scientific pipelines become:
 - and easier to audit.
 
 Compile-vs-execution tradeoffs are part of that story when ML is inside the loop.
-

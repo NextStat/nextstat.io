@@ -14,3 +14,8 @@ Run:
 python run.py --deterministic --out ../../out/hep_simple_nll.json
 ```
 
+Suite runner (multiple cases + synthetic scaling):
+
+```bash
+python suite.py --deterministic --out-dir ../../out/hep
+```

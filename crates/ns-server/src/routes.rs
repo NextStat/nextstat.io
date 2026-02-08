@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use ns_core::traits::LogDensityModel;
 
 use crate::state::SharedState;
+use crate::tools::{ToolExecuteRequest, ToolResultEnvelope};
 
 // ---------------------------------------------------------------------------
 // Router
@@ -28,6 +29,8 @@ pub fn router() -> Router<SharedState> {
         .route("/v1/ranking", post(ranking_handler))
         .route("/v1/batch/fit", post(batch_fit_handler))
         .route("/v1/batch/toys", post(batch_toys_handler))
+        .route("/v1/tools/execute", post(tools_execute_handler))
+        .route("/v1/tools/schema", get(tools_schema_handler))
         .route("/v1/models", post(upload_model_handler))
         .route("/v1/models", get(list_models_handler))
         .route("/v1/models/{id}", delete(delete_model_handler))
@@ -88,6 +91,8 @@ async fn fit_handler(
     // Offload blocking compute to a Rayon/blocking thread
     let result = tokio::task::spawn_blocking(move || {
         let t0 = Instant::now();
+
+        let _compute_guard = pool_ref.compute_lock.blocking_lock();
 
         let model = resolve_model(&pool_ref, req.workspace.as_ref(), req.model_id.as_deref())?;
 
@@ -211,6 +216,8 @@ async fn ranking_handler(
     let result = tokio::task::spawn_blocking(move || {
         let t0 = Instant::now();
 
+        let _compute_guard = pool_ref.compute_lock.blocking_lock();
+
         let model = resolve_model(&pool_ref, req.workspace.as_ref(), req.model_id.as_deref())?;
         let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
 
@@ -320,8 +327,11 @@ async fn batch_fit_handler(
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
+    let st = Arc::clone(&state);
     let result = tokio::task::spawn_blocking(move || {
         let t0 = Instant::now();
+
+        let _compute_guard = st.compute_lock.blocking_lock();
 
         let _gpu_guard = if let Some(ref st) = gpu_lock {
             Some(st.gpu_lock.blocking_lock())
@@ -493,8 +503,11 @@ async fn batch_toys_handler(
     let gpu_device = if use_gpu { state.gpu_device.clone() } else { None };
     let gpu_lock = if use_gpu { Some(Arc::clone(&state)) } else { None };
 
+    let st = Arc::clone(&state);
     let result = tokio::task::spawn_blocking(move || {
         let t0 = Instant::now();
+
+        let _compute_guard = st.compute_lock.blocking_lock();
 
         let json_str = serde_json::to_string(&req.workspace)
             .map_err(|e| AppError::bad_request(format!("invalid workspace JSON: {e}")))?;
@@ -674,6 +687,7 @@ struct HealthResponse {
     version: &'static str,
     uptime_s: f64,
     device: String,
+    eval_mode: &'static str,
     inflight: u64,
     total_requests: u64,
     cached_models: usize,
@@ -685,10 +699,58 @@ async fn health_handler(State(state): State<SharedState>) -> Json<HealthResponse
         version: ns_core::VERSION,
         uptime_s: state.started_at.elapsed().as_secs_f64(),
         device: state.device_str().to_string(),
+        eval_mode: match ns_compute::eval_mode() {
+            ns_compute::EvalMode::Parity => "parity",
+            ns_compute::EvalMode::Fast => "fast",
+        },
         inflight: state.inflight.load(Ordering::Relaxed),
         total_requests: state.total_requests.load(Ordering::Relaxed),
         cached_models: state.model_pool.len(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tool API
+// ---------------------------------------------------------------------------
+
+async fn tools_schema_handler() -> Json<serde_json::Value> {
+    Json(crate::tools::get_tool_schema())
+}
+
+async fn tools_execute_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<ToolExecuteRequest>,
+) -> Json<ToolResultEnvelope> {
+    state.inflight.fetch_add(1, Ordering::Relaxed);
+    let _dec = DecrementOnDrop(&state.inflight);
+    state.total_requests.fetch_add(1, Ordering::Relaxed);
+
+    // Execute under compute lock to avoid races with process-wide EvalMode.
+    let st = Arc::clone(&state);
+    let out = tokio::task::spawn_blocking(move || {
+        let _compute_guard = st.compute_lock.blocking_lock();
+        crate::tools::execute_tool(&st, req)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        // Return an envelope-shaped error even if the task panicked.
+        let meta = crate::tools::ToolMeta {
+            tool_name: "unknown".to_string(),
+            nextstat_version: Some(ns_core::VERSION.to_string()),
+            deterministic: true,
+            eval_mode: match ns_compute::eval_mode() {
+                ns_compute::EvalMode::Parity => "parity".to_string(),
+                ns_compute::EvalMode::Fast => "fast".to_string(),
+            },
+            threads_requested: Some(1),
+            threads_applied: None,
+            device: Some(state.device_str().to_string()),
+            warnings: vec![format!("task panicked: {e}")],
+        };
+        ToolResultEnvelope::err("unknown", meta, "Panic", "server task panicked".to_string())
+    });
+
+    Json(out)
 }
 
 // ---------------------------------------------------------------------------

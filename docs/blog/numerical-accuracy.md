@@ -1,3 +1,21 @@
+---
+title: "Where ROOT Gets It Wrong: A Rigorous Numerical Comparison of HistFactory Implementations"
+slug: numerical-accuracy
+description: "A reproducible numerical comparison of HistFactory implementations (ROOT/RooFit, pyhf, NextStat): profile scans, optimizer failure modes, cross-evaluation, and evidence-backed conclusions."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - HistFactory numerical accuracy
+  - ROOT RooFit comparison
+  - pyhf parity
+  - profile likelihood scan
+  - optimizer convergence
+  - reproducible validation
+  - NextStat
+category: hep
+---
+
 <!--
   Blog draft (technical).
   Keep in sync with:
@@ -7,9 +25,6 @@
 -->
 
 # Where ROOT Gets It Wrong: A Rigorous Numerical Comparison of HistFactory Implementations
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 *NextStat Team, February 2026*
 

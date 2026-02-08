@@ -1715,6 +1715,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "statrs",
  "tokio",
  "tower-http",
  "tracing",

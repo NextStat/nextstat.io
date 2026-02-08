@@ -1,3 +1,21 @@
+---
+title: "Pharma Benchmarks: PK and NLME Without Benchmark Theater"
+slug: pharma-benchmarks-pk-nlme
+description: "A rigorous plan for benchmarking PK/NLME workflows in NextStat: objective definitions, stopping rules, scaling protocols, correctness gates, and publishable artifacts."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - pharmacometrics benchmarks
+  - PK model benchmark
+  - NLME benchmark
+  - population PK
+  - reproducible benchmarks
+  - regulated validation
+  - NextStat
+category: pharma
+---
+
 <!--
   Blog draft (technical).
   Suite runbook: docs/benchmarks/suites/pharma.md
@@ -7,9 +25,6 @@
 -->
 
 # Pharma Benchmarks: PK and NLME Without Benchmark Theater
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 Pharmacometrics benchmarks are deceptively easy to do wrong.
 
@@ -24,7 +39,7 @@ This post defines what we will benchmark in NextStat’s PK/NLME baselines and h
 
 Runbook/spec:
 
-- `docs/benchmarks/suites/pharma.md`
+- [Pharma Benchmark Suite](/docs/benchmarks/suites/pharma)
 
 ---
 
@@ -72,10 +87,10 @@ and always publish:
 NextStat’s baseline models are intentionally minimal and explicit:
 
 - Individual PK: 1-compartment oral model with first-order absorption  
-  Tutorial: `docs/tutorials/phase-13-pk.md`
+  Tutorial: [Phase 13 PK baseline](/docs/tutorials/phase-13-pk)
 
 - NLME baseline: population parameters + independent log-normal random effects (diagonal Omega), joint MAP fit  
-  Tutorial: `docs/tutorials/phase-13-nlme.md`
+  Tutorial: [Phase 13 NLME baseline](/docs/tutorials/phase-13-nlme)
 
 This matters because “NLME” can mean many different approximations in production tools; benchmarks must compare like with like.
 
@@ -128,5 +143,4 @@ So we treat benchmarks as artifacts:
 - raw result publishing,
 - and external reruns when possible.
 
-Public benchmark contract: `docs/benchmarks/public-benchmarks.md`.
-
+Public benchmark contract: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).

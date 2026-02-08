@@ -12,6 +12,9 @@ import argparse
 import hashlib
 import json
 import os
+import platform
+import subprocess
+import sys
 from pathlib import Path
 
 import pyhf
@@ -50,33 +53,61 @@ def make_synthetic_shapesys_workspace(n_bins: int) -> dict:
     }
 
 
-def run_case_with_imported_runpy(case_id: str, workspace: dict, measurement_name: str, *, deterministic: bool, out_path: Path) -> int:
-    # Import the single-case runner as a module so we reuse its benchmark logic and JSON format.
-    from . import run as run_one  # type: ignore
+def sha256_json_obj(obj: dict) -> str:
+    b = (json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return hashlib.sha256(b).hexdigest()
 
-    # Emulate CLI args via direct call.
-    argv = [
-        "--out",
-        str(out_path),
+
+def run_case(
+    case_id: str,
+    *,
+    workspace_path: Path,
+    measurement_name: str,
+    deterministic: bool,
+    out_path: Path,
+    dataset_id: str,
+    dataset_sha256: str | None,
+    workspace_obj: dict | None = None,
+) -> int:
+    run_py = Path(__file__).resolve().parent / "run.py"
+
+    # For generated/synthetic cases, we write a temporary workspace file; for file-based datasets,
+    # we pass the dataset file path directly to preserve portability.
+    tmp_ws: Path | None = None
+    ws_arg_path = workspace_path
+    if workspace_obj is not None:
+        tmp_ws = out_path.with_suffix(".workspace.json")
+        tmp_ws.write_text(json.dumps(workspace_obj, indent=2, sort_keys=True) + "\n")
+        ws_arg_path = tmp_ws
+
+    args = [
+        sys.executable,
+        str(run_py),
+        "--case",
+        case_id,
+        "--workspace",
+        str(ws_arg_path),
         "--measurement-name",
         measurement_name,
+        "--out",
+        str(out_path),
+        "--dataset-id",
+        dataset_id,
     ]
+    if dataset_sha256:
+        args.extend(["--dataset-sha256", dataset_sha256])
     if deterministic:
-        argv.append("--deterministic")
-
-    # The single-case runner expects a workspace file path; write a temp copy next to the output.
-    tmp_ws = out_path.with_suffix(".workspace.json")
-    tmp_ws.write_text(json.dumps(workspace, indent=2, sort_keys=True) + "\n")
-    argv.extend(["--workspace", str(tmp_ws)])
+        args.append("--deterministic")
 
     try:
-        rc = run_one.main_from_argv(argv, case_override=case_id)
+        p = subprocess.run(args)
+        return int(p.returncode)
     finally:
-        try:
-            tmp_ws.unlink()
-        except OSError:
-            pass
-    return rc
+        if tmp_ws is not None:
+            try:
+                tmp_ws.unlink()
+            except OSError:
+                pass
 
 
 def main() -> int:
@@ -104,26 +135,66 @@ def main() -> int:
     case_groups = [x.strip() for x in args.cases.split(",") if x.strip()]
     sizes = [int(x.strip()) for x in args.sizes.split(",") if x.strip()]
 
-    suite_cases: list[tuple[str, dict, str]] = []
+    suite_cases: list[dict] = []
+    repo_root = Path(__file__).resolve().parents[2]
     ds_dir = Path(__file__).resolve().parent / "datasets"
     if "simple" in case_groups:
-        suite_cases.append(("simple_workspace_nll", load_workspace(ds_dir / "simple_workspace.json"), "GaussExample"))
+        ws_path = ds_dir / "simple_workspace.json"
+        suite_cases.append(
+            {
+                "case_id": "simple_workspace_nll",
+                "workspace_path": ws_path,
+                "workspace_obj": None,
+                "measurement": "GaussExample",
+                "dataset_id": os.path.relpath(ws_path, repo_root),
+                "dataset_sha256": None,
+            }
+        )
     if "complex" in case_groups:
         complex_path = ds_dir / "complex_workspace.json"
         if complex_path.exists():
-            suite_cases.append(("complex_workspace_nll", load_workspace(complex_path), "measurement"))
+            suite_cases.append(
+                {
+                    "case_id": "complex_workspace_nll",
+                    "workspace_path": complex_path,
+                    "workspace_obj": None,
+                    "measurement": "measurement",
+                    "dataset_id": os.path.relpath(complex_path, repo_root),
+                    "dataset_sha256": None,
+                }
+            )
     if "synthetic" in case_groups:
         for n in sizes:
-            suite_cases.append((f"synthetic_shapesys_{n}", make_synthetic_shapesys_workspace(n), "m"))
+            ws = make_synthetic_shapesys_workspace(n)
+            suite_cases.append(
+                {
+                    "case_id": f"synthetic_shapesys_{n}",
+                    "workspace_path": ds_dir / "synthetic.workspace.json",
+                    "workspace_obj": ws,
+                    "measurement": "m",
+                    "dataset_id": f"generated:synthetic_shapesys_{n}",
+                    "dataset_sha256": sha256_json_obj(ws),
+                }
+            )
 
     index_cases = []
     n_ok = 0
     worst_abs = 0.0
     worst_case = "none"
 
-    for case_id, ws, measurement in suite_cases:
+    for c in suite_cases:
+        case_id = c["case_id"]
         out_path = cases_dir / f"{case_id}.json"
-        rc = run_case_with_imported_runpy(case_id, ws, measurement, deterministic=deterministic, out_path=out_path)
+        rc = run_case(
+            case_id,
+            workspace_path=c["workspace_path"],
+            workspace_obj=c["workspace_obj"],
+            measurement_name=c["measurement"],
+            deterministic=deterministic,
+            out_path=out_path,
+            dataset_id=c["dataset_id"],
+            dataset_sha256=c["dataset_sha256"],
+        )
         if rc != 0:
             # Still include it in the index if it exists, but fail overall.
             pass
@@ -148,16 +219,18 @@ def main() -> int:
             }
         )
 
+    meta = {
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "pyhf_version": pyhf.__version__,
+        "nextstat_version": nextstat.__version__,
+    }
+
     index = {
         "schema_version": "nextstat.benchmark_suite_result.v1",
         "suite": "hep",
         "deterministic": deterministic,
-        "meta": {
-            "python": obj["meta"]["python"] if index_cases else "unknown",
-            "platform": obj["meta"]["platform"] if index_cases else "unknown",
-            "pyhf_version": pyhf.__version__,
-            "nextstat_version": nextstat.__version__,
-        },
+        "meta": meta,
         "cases": index_cases,
         "summary": {
             "n_cases": len(index_cases),
@@ -175,4 +248,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

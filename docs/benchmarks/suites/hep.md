@@ -58,6 +58,10 @@ Existing harness (today, in-repo):
 
 - `tests/benchmark_pyhf_vs_nextstat.py` (Python end-to-end, includes correctness sanity before timing)
 
+Seed harness (public benchmarks repo bootstrap):
+
+- `benchmarks/nextstat-public-benchmarks/suites/hep/` (single-case `run.py` and multi-case `suite.py`)
+
 ### 2) Gradient time / call
 
 Measures the cost of gradient evaluation required for optimizers/samplers.

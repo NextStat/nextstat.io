@@ -114,8 +114,9 @@ fn launch_kernel(
     let nap = n_aux_poisson as u32;
     let ngc = n_gauss_constr as u32;
 
-    // For GradSignalTarget::External, we need the ptr to live long enough
-    let mut grad_ptr_val: u64 = 0;
+    // For GradSignalTarget::External, we need the ptr to live long enough.
+    // Avoid initializing with a dummy value (would trigger `unused_assignments`).
+    let grad_ptr_val: u64;
 
     let mut builder = stream.launch_builder(kernel);
 

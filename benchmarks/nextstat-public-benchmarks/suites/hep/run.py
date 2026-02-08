@@ -99,6 +99,8 @@ def main() -> int:
     parser.add_argument("--deterministic", action="store_true", help="Deterministic output.")
     parser.add_argument("--target-s", type=float, default=0.25, help="Target timing window (seconds).")
     parser.add_argument("--repeat", type=int, default=5, help="Number of timing repeats.")
+    parser.add_argument("--dataset-id", default="", help="Optional dataset id for reporting (stable, portable).")
+    parser.add_argument("--dataset-sha256", default="", help="Optional dataset sha256 override.")
     args = parser.parse_args()
 
     ws_path = Path(args.workspace).resolve()
@@ -149,6 +151,9 @@ def main() -> int:
 
     n_main_bins = sum(len(obs["data"]) for obs in workspace.get("observations", []))
 
+    dataset_id = str(args.dataset_id).strip() or str(args.workspace)
+    dataset_sha = str(args.dataset_sha256).strip() or sha256_file(ws_path)
+
     doc: dict[str, Any] = {
         "schema_version": "nextstat.benchmark_result.v1",
         "suite": "hep",
@@ -161,8 +166,9 @@ def main() -> int:
             "nextstat_version": nextstat.__version__,
         },
         "dataset": {
-            "path": str(ws_path),
-            "sha256": sha256_file(ws_path),
+            "id": dataset_id,
+            "path": str(args.workspace),
+            "sha256": dataset_sha,
         },
         "model": {"n_main_bins": int(n_main_bins), "n_params": int(ns_model.n_params())},
         "parity": {

@@ -13,16 +13,19 @@ install: venv
 	$(PIP) install -r env/python/requirements.txt
 
 hep: install
-	$(PYBIN) suites/hep/run.py --deterministic --out out/hep_simple_nll.json
+	$(PYBIN) suites/hep/suite.py --deterministic --out-dir out/hep
 
 validate: install
 	$(PYBIN) - <<'PY'
 	import json
 	from pathlib import Path
 	import jsonschema
-	schema = json.loads(Path("manifests/schema/benchmark_result_v1.schema.json").read_text())
-	inst = json.loads(Path("out/hep_simple_nll.json").read_text())
-	jsonschema.validate(inst, schema)
-	print("benchmark_result_v1: schema ok")
+	schema_case = json.loads(Path("manifests/schema/benchmark_result_v1.schema.json").read_text())
+	schema_suite = json.loads(Path("manifests/schema/benchmark_suite_result_v1.schema.json").read_text())
+	suite = json.loads(Path("out/hep/hep_suite.json").read_text())
+	jsonschema.validate(suite, schema_suite)
+	for e in suite["cases"]:
+	    inst = json.loads((Path("out/hep") / e["path"]).read_text())
+	    jsonschema.validate(inst, schema_case)
+	print("benchmark_suite_result_v1: schema ok")
 	PY
-
