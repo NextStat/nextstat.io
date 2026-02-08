@@ -1,5 +1,7 @@
 # Benchmarks
 
+For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: `docs/benchmarks/public-benchmarks.md`.
+
 NextStat has two benchmark layers:
 
 1. **Rust micro-benchmarks** (Criterion.rs) — low-level NLL, gradient, fit kernels
