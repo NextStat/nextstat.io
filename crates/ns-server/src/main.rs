@@ -13,6 +13,7 @@
 mod pool;
 mod routes;
 mod state;
+mod tools;
 
 use std::net::SocketAddr;
 use std::sync::Arc;

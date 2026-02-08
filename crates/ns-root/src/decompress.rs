@@ -49,6 +49,14 @@ pub fn decompress(src: &[u8], expected_len: usize) -> Result<Vec<u8>> {
             )));
         }
 
+        let remaining = expected_len - out.len();
+        if u_size > remaining {
+            return Err(RootError::Decompression(format!(
+                "uncompressed block size {} exceeds remaining expected {}",
+                u_size, remaining
+            )));
+        }
+
         let compressed = &src[offset..end];
 
         let decompressed = match tag {
@@ -253,6 +261,24 @@ mod tests {
         let compressed = [0xFFu8; 16];
         let block = make_root_block(b"ZS", 0x04, &compressed, 64);
         assert!(decompress(&block, 64).is_err());
+    }
+
+    #[test]
+    fn refuses_block_larger_than_total_expected_len() {
+        // u_size=1024, but total expected_len=1 => must fail before any algorithm decoder allocates.
+        let block = make_root_block(b"ZS", 0x04, &[], 1024);
+        assert!(decompress(&block, 1).is_err());
+    }
+
+    #[test]
+    fn refuses_block_larger_than_remaining_expected_len() {
+        // First block consumes 8 bytes, second claims 8 more but only 2 remain.
+        let b1 = make_root_block(b"ZL", 0x08, &[], 8);
+        let b2 = make_root_block(b"ZL", 0x08, &[], 8);
+        let mut src = Vec::new();
+        src.extend_from_slice(&b1);
+        src.extend_from_slice(&b2);
+        assert!(decompress(&src, 10).is_err());
     }
 
     #[test]

@@ -67,8 +67,28 @@
           }
         },
         "speedup_pyhf_over_nextstat": { "type": "number" }
+        ,
+        "raw": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["number", "repeat", "target_s", "policy", "per_call_s"],
+          "properties": {
+            "number": { "type": "integer", "minimum": 1 },
+            "repeat": { "type": "integer", "minimum": 1 },
+            "target_s": { "type": "number", "minimum": 0 },
+            "policy": { "type": "string", "enum": ["min", "median"] },
+            "per_call_s": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pyhf", "nextstat"],
+              "properties": {
+                "pyhf": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+                "nextstat": { "type": "array", "items": { "type": "number", "minimum": 0 } }
+              }
+            }
+          }
+        }
       }
     }
   }
 }
-

@@ -302,10 +302,15 @@ pub(crate) fn maybe_update_fse_tables(
         }
         ModeType::Predefined => {
             vprintln!("Use predefined ll table");
-            scratch.literal_lengths.build_from_probabilities(
-                LL_DEFAULT_ACC_LOG,
-                &LITERALS_LENGTH_DEFAULT_DISTRIBUTION,
-            )?;
+            if scratch.literal_lengths.accuracy_log != LL_DEFAULT_ACC_LOG
+                || scratch.literal_lengths.symbol_probabilities.as_slice()
+                    != LITERALS_LENGTH_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch.literal_lengths.build_from_probabilities(
+                    LL_DEFAULT_ACC_LOG,
+                    &LITERALS_LENGTH_DEFAULT_DISTRIBUTION,
+                )?;
+            }
             scratch.ll_rle = None;
         }
         ModeType::Repeat => {
@@ -337,10 +342,14 @@ pub(crate) fn maybe_update_fse_tables(
         }
         ModeType::Predefined => {
             vprintln!("Use predefined of table");
-            scratch.offsets.build_from_probabilities(
-                OF_DEFAULT_ACC_LOG,
-                &OFFSET_DEFAULT_DISTRIBUTION,
-            )?;
+            if scratch.offsets.accuracy_log != OF_DEFAULT_ACC_LOG
+                || scratch.offsets.symbol_probabilities.as_slice() != OFFSET_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch.offsets.build_from_probabilities(
+                    OF_DEFAULT_ACC_LOG,
+                    &OFFSET_DEFAULT_DISTRIBUTION,
+                )?;
+            }
             scratch.of_rle = None;
         }
         ModeType::Repeat => {
@@ -372,10 +381,15 @@ pub(crate) fn maybe_update_fse_tables(
         }
         ModeType::Predefined => {
             vprintln!("Use predefined ml table");
-            scratch.match_lengths.build_from_probabilities(
-                ML_DEFAULT_ACC_LOG,
-                &MATCH_LENGTH_DEFAULT_DISTRIBUTION,
-            )?;
+            if scratch.match_lengths.accuracy_log != ML_DEFAULT_ACC_LOG
+                || scratch.match_lengths.symbol_probabilities.as_slice()
+                    != MATCH_LENGTH_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch.match_lengths.build_from_probabilities(
+                    ML_DEFAULT_ACC_LOG,
+                    &MATCH_LENGTH_DEFAULT_DISTRIBUTION,
+                )?;
+            }
             scratch.ml_rle = None;
         }
         ModeType::Repeat => {

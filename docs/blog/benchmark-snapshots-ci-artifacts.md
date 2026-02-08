@@ -1,3 +1,21 @@
+---
+title: "Benchmark Snapshots as Products: CI Artifacts, Manifests, and Baselines"
+slug: benchmark-snapshots-ci-artifacts
+description: "How NextStat publishes benchmark snapshots as rerunnable artifact sets: CI automation, baseline manifests, correctness gates, and validation-report-backed evidence."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - benchmark snapshots
+  - CI benchmark artifacts
+  - baseline manifest
+  - reproducible benchmarks
+  - benchmark publishing
+  - validation report
+  - NextStat
+category: trust
+---
+
 <!--
   Blog draft (technical / trust-building).
   Canonical publishing spec: docs/benchmarks/publishing.md
@@ -5,18 +23,13 @@
 
 # Benchmark Snapshots as Products: CI Artifacts, Manifests, and Baselines
 
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
-
 If a benchmark result is not reproducible, it’s not a benchmark.
 
 It’s a screenshot.
 
 This post explains the publishing layer of our public benchmark program — the part that turns “we ran it once” into “anyone can rerun it”.
 
-Canonical spec:
-
-- `docs/benchmarks/publishing.md`
+Canonical spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 
@@ -90,4 +103,3 @@ They are an ongoing program:
 - external replications
 
 The only way to keep that trustworthy is to make the *artifacts* first-class.
-

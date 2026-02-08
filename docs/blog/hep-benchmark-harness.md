@@ -1,3 +1,21 @@
+---
+title: "Building a Trustworthy HEP Benchmark Harness (pyhf + ROOT/RooFit)"
+slug: hep-benchmark-harness
+description: "How NextStat benchmarks HistFactory inference engines without benchmark theater: correctness gates, optimizer convergence checks, warm-start policies, pinned environments, and auditable artifacts."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - HistFactory benchmark
+  - pyhf comparison
+  - ROOT RooFit benchmark
+  - profile likelihood scan
+  - correctness gates
+  - reproducible benchmarks
+  - NextStat
+category: hep
+---
+
 <!--
   Blog draft (technical).
   Canonical suite runbook: docs/benchmarks/suites/hep.md
@@ -5,9 +23,6 @@
 -->
 
 # Building a Trustworthy HEP Benchmark Harness (pyhf + ROOT/RooFit)
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 HEP benchmarking has a unique failure mode:
 
@@ -19,8 +34,8 @@ This post explains how we’re building a benchmark harness that treats performa
 
 If you want the runbook/spec rather than the narrative, start with:
 
-- `docs/benchmarks/suites/hep.md` (suite definition)
-- `docs/benchmarks/public-benchmarks.md` (global benchmark program contract)
+- [HEP Benchmark Suite](/docs/benchmarks/suites/hep) (suite definition)
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) (global benchmark program contract)
 
 ---
 
@@ -153,4 +168,3 @@ Our end state is:
 - and compare results with full context.
 
 That’s how performance becomes evidence.
-

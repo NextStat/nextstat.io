@@ -19,7 +19,10 @@ fn trex_expr_corpora_compile() {
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
         .expect("read trex_expr_corpus dir")
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.file_name().and_then(|s| s.to_str()).unwrap_or("").ends_with("_exprs.json"))
+        .filter(|p| {
+            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            name.ends_with("_exprs.json") && !name.starts_with("._")
+        })
         .collect();
     files.sort();
     assert!(!files.is_empty(), "expected at least one *_exprs.json under {}", dir.display());

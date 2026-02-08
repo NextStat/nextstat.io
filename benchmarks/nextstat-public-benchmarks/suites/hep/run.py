@@ -69,8 +69,22 @@ def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat
     return min(times)
 
 
+def bench_time_per_call_raw(
+    fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 5
+) -> tuple[int, list[float]]:
+    number = 1
+    while True:
+        t = timeit.timeit(fn, number=number)
+        if t >= target_s or number >= 1_000_000:
+            break
+        number *= 2
+    times = [timeit.timeit(fn, number=number) / number for _ in range(repeat)]
+    return number, times
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--case", default="simple_workspace_nll", help="Case id for reporting.")
     parser.add_argument(
         "--workspace",
         default=str(Path(__file__).resolve().parent / "datasets/simple_workspace.json"),
@@ -83,6 +97,8 @@ def main() -> int:
     )
     parser.add_argument("--out", required=True, help="Output JSON path.")
     parser.add_argument("--deterministic", action="store_true", help="Deterministic output.")
+    parser.add_argument("--target-s", type=float, default=0.25, help="Target timing window (seconds).")
+    parser.add_argument("--repeat", type=int, default=5, help="Number of timing repeats.")
     args = parser.parse_args()
 
     ws_path = Path(args.workspace).resolve()
@@ -120,8 +136,15 @@ def main() -> int:
         f_pyhf()
         f_ns()
 
-    pyhf_t = bench_time_per_call(f_pyhf)
-    ns_t = bench_time_per_call(f_ns)
+    target_s = float(args.target_s)
+    repeat = int(args.repeat)
+    number, pyhf_times = bench_time_per_call_raw(f_pyhf, target_s=target_s, repeat=repeat)
+    number2, ns_times = bench_time_per_call_raw(f_ns, target_s=target_s, repeat=repeat)
+    # Keep a single shared `number` in the raw metadata. If they differ, record the larger
+    # and keep the arrays as-is (this is fine for reporting).
+    number = max(number, number2)
+    pyhf_t = min(pyhf_times)
+    ns_t = min(ns_times)
     speedup = pyhf_t / ns_t if ns_t > 0 else float("inf")
 
     n_main_bins = sum(len(obs["data"]) for obs in workspace.get("observations", []))
@@ -129,7 +152,7 @@ def main() -> int:
     doc: dict[str, Any] = {
         "schema_version": "nextstat.benchmark_result.v1",
         "suite": "hep",
-        "case": "simple_workspace_nll",
+        "case": str(args.case),
         "deterministic": bool(args.deterministic),
         "meta": {
             "python": sys.version.split()[0],
@@ -154,6 +177,13 @@ def main() -> int:
         "timing": {
             "nll_time_s_per_call": {"pyhf": float(pyhf_t), "nextstat": float(ns_t)},
             "speedup_pyhf_over_nextstat": float(speedup),
+            "raw": {
+                "number": int(number),
+                "repeat": int(repeat),
+                "target_s": float(target_s),
+                "policy": "min",
+                "per_call_s": {"pyhf": [float(x) for x in pyhf_times], "nextstat": [float(x) for x in ns_times]},
+            },
         },
     }
 
@@ -168,4 +198,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
