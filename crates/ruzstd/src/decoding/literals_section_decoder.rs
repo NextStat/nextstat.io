@@ -144,33 +144,40 @@ fn decompress_literals(
             // execute both in parallel via out-of-order execution.
             while br_a.bits_remaining() > threshold && br_b.bits_remaining() > threshold {
                 if w_a < end_a {
-                    unsafe { *out_ptr.add(w_a) = dec_a.decode_symbol() };
+                    let sym = dec_a.decode_and_advance(&mut br_a);
+                    unsafe { *out_ptr.add(w_a) = sym };
+                } else {
+                    let _ = dec_a.decode_and_advance(&mut br_a);
                 }
                 w_a += 1;
 
                 if w_b < end_b {
-                    unsafe { *out_ptr.add(w_b) = dec_b.decode_symbol() };
+                    let sym = dec_b.decode_and_advance(&mut br_b);
+                    unsafe { *out_ptr.add(w_b) = sym };
+                } else {
+                    let _ = dec_b.decode_and_advance(&mut br_b);
                 }
                 w_b += 1;
-
-                dec_a.next_state(&mut br_a);
-                dec_b.next_state(&mut br_b);
             }
 
             // Drain whichever stream is longer
             while br_a.bits_remaining() > threshold {
                 if w_a < end_a {
-                    unsafe { *out_ptr.add(w_a) = dec_a.decode_symbol() };
+                    let sym = dec_a.decode_and_advance(&mut br_a);
+                    unsafe { *out_ptr.add(w_a) = sym };
+                } else {
+                    let _ = dec_a.decode_and_advance(&mut br_a);
                 }
                 w_a += 1;
-                dec_a.next_state(&mut br_a);
             }
             while br_b.bits_remaining() > threshold {
                 if w_b < end_b {
-                    unsafe { *out_ptr.add(w_b) = dec_b.decode_symbol() };
+                    let sym = dec_b.decode_and_advance(&mut br_b);
+                    unsafe { *out_ptr.add(w_b) = sym };
+                } else {
+                    let _ = dec_b.decode_and_advance(&mut br_b);
                 }
                 w_b += 1;
-                dec_b.next_state(&mut br_b);
             }
 
             if br_a.bits_remaining() != threshold {
@@ -212,10 +219,12 @@ fn decompress_literals(
         let threshold = -(scratch.table.max_num_bits as isize);
         while br.bits_remaining() > threshold {
             if write_idx < regen {
-                unsafe { *out_ptr.add(write_idx) = decoder.decode_symbol() };
+                let sym = decoder.decode_and_advance(&mut br);
+                unsafe { *out_ptr.add(write_idx) = sym };
+            } else {
+                let _ = decoder.decode_and_advance(&mut br);
             }
             write_idx += 1;
-            decoder.next_state(&mut br);
         }
         bytes_read += source.len() as u32;
     }

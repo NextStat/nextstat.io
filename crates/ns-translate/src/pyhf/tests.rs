@@ -219,6 +219,155 @@ fn test_model_rejects_histosys_template_length_mismatch() {
     );
 }
 
+#[test]
+fn test_constraintterm_lognormal_applies_root_alpha_transform_to_normsys() {
+    use ns_core::traits::LogDensityModel;
+
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "s",
+          "data": [1.0],
+          "modifiers": [
+            {"name": "syst2", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [1.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {"name": "syst2", "constraint": {"type": "LogNormal", "rel_uncertainty": 0.3}}
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let model = super::HistFactoryModel::from_workspace_with_settings(
+        &ws,
+        super::NormSysInterpCode::Code1,
+        super::HistoSysInterpCode::Code0,
+    )
+    .expect("build model");
+
+    let names = model.parameter_names();
+    let mu_idx = names.iter().position(|n| n == "mu").expect("mu param");
+    let syst_idx = names.iter().position(|n| n == "syst2").expect("syst2 param");
+
+    let mut params = model.parameter_init();
+    params[mu_idx] = 1.0;
+    params[syst_idx] = 2.0; // alpha
+
+    let exp = model.expected_data(&params).expect("expected_data");
+    assert_eq!(exp.len(), 1);
+
+    // ROOT alphaOfBeta transform for LogNormal:
+    // alpha_eff = (1/rel) * ((1+rel)^alpha - 1)
+    let rel = 0.3_f64;
+    let alpha = 2.0_f64;
+    let alpha_eff = (1.0 / rel) * ((1.0 + rel).powf(alpha) - 1.0);
+    let want = 1.0_f64 * 1.05_f64.powf(alpha_eff);
+    assert!((exp[0] - want).abs() < 1e-12, "got={} want={}", exp[0], want);
+
+    // Smoke-check NLL is finite.
+    let nll = model.nll(&params).expect("nll");
+    assert!(nll.is_finite());
+}
+
+#[test]
+fn test_constraintterm_gamma_adds_gamma_penalty_and_maps_beta_to_alpha_for_normsys() {
+    use ns_core::traits::LogDensityModel;
+    use statrs::function::gamma::ln_gamma;
+
+    let json = r#"
+{
+  "channels": [
+    {
+      "name": "ch",
+      "samples": [
+        {
+          "name": "s",
+          "data": [1.0],
+          "modifiers": [
+            {"name": "syst2", "type": "normsys", "data": {"hi": 1.05, "lo": 0.95}}
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [{"name": "ch", "data": [1.0]}],
+  "measurements": [
+    {
+      "name": "meas",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {"name": "syst2", "constraint": {"type": "Gamma", "rel_uncertainty": 0.3}}
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
+"#;
+
+    let ws: Workspace = serde_json::from_str(json).expect("parse workspace");
+    let model = super::HistFactoryModel::from_workspace_with_settings(
+        &ws,
+        super::NormSysInterpCode::Code1,
+        super::HistoSysInterpCode::Code0,
+    )
+    .expect("build model");
+
+    let names = model.parameter_names();
+    let mu_idx = names.iter().position(|n| n == "mu").expect("mu param");
+    let syst_idx = names.iter().position(|n| n == "syst2").expect("syst2 param");
+
+    // Beta parameter; choose beta=1.3 so alpha=(beta-1)/rel == 1.0.
+    let rel = 0.3_f64;
+    let beta = 1.0 + rel;
+    let mut params = model.parameter_init();
+    params[mu_idx] = 1.0;
+    params[syst_idx] = beta;
+
+    let exp = model.expected_data(&params).expect("expected_data");
+    let want = 1.0_f64 * 1.05_f64.powf(1.0);
+    assert!((exp[0] - want).abs() < 1e-12, "got={} want={}", exp[0], want);
+
+    // At beta=1.0 (alpha=0), main-bin Poisson NLL for obs=1, exp=1 is exactly 1.
+    params[syst_idx] = 1.0;
+    let nll = model.nll(&params).expect("nll");
+    let gamma_term = nll - 1.0;
+
+    // ROOT/HistFactory gamma constraint:
+    // tau = 1/rel^2, k = tau + 1, theta = 1/tau (scale)
+    // NLL = beta/theta - (k-1)*ln(beta) + k*ln(theta) + lnGamma(k)
+    let tau = 1.0 / (rel * rel);
+    let k = tau + 1.0;
+    let theta = 1.0 / tau;
+    let beta = 1.0_f64;
+    let want_gamma = beta / theta - (k - 1.0) * beta.ln() + k * theta.ln() + ln_gamma(k);
+    assert!(
+        (gamma_term - want_gamma).abs() < 1e-10,
+        "gamma_term={} want_gamma={}",
+        gamma_term,
+        want_gamma
+    );
+}
+
 /// f32 vs f64 precision PoC for Metal GPU feasibility.
 ///
 /// Tests whether f32 NLL computation produces results accurate enough

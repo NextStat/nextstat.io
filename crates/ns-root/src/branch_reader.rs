@@ -314,14 +314,19 @@ fn decode_indexed_from_payload(
         )));
     }
 
-    // Observed (uproot) basket layout for jagged leaflist branches:
-    //   [data bytes...][count = (n_entries+1)][offset_0..offset_n]
-    // where offsets are absolute to the full TBasket buffer; subtract `offset_0` to
-    // get indices into `data`.
+    // Observed ROOT basket layout for jagged branches:
+    //   [data bytes...][count: u32][offset_0..offset_n]
+    // Offsets are absolute to the full TBasket buffer (i.e. they include the
+    // TKey header length). When `payload` comes from `read_basket_data`, it
+    // starts at `key_len`, so subtracting `offset_0` yields indices into
+    // `data`.
     let n_offsets = n_entries + 1;
-    let tail_words = n_offsets + 1; // +1 for the count word
-    let tail_bytes = tail_words
-        .checked_mul(bytes_per_offset)
+    let tail_bytes = (4usize)
+        .checked_add(
+            n_offsets
+                .checked_mul(bytes_per_offset)
+                .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?,
+        )
         .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?;
     if payload.len() < tail_bytes {
         return Err(RootError::Deserialization(format!(
@@ -344,24 +349,54 @@ fn decode_indexed_from_payload(
         }
     };
 
-    let count = read_word_be(&tail[..bytes_per_offset]);
-    if count != n_entries + 1 {
+    let count = u32::from_be_bytes(tail[..4].try_into().unwrap()) as usize;
+    if count != n_offsets {
         return Err(RootError::Deserialization(format!(
             "unexpected entry-offset count word: got {} want {}",
             count,
-            n_entries + 1
+            n_offsets
         )));
     }
 
     let mut offsets: Vec<usize> = Vec::with_capacity(n_offsets);
     for i in 0..n_offsets {
-        let start = bytes_per_offset * (1 + i);
+        let start = 4 + bytes_per_offset * i;
         let end = start + bytes_per_offset;
         offsets.push(read_word_be(&tail[start..end]));
     }
 
     let base = offsets[0];
+    if offsets[n_offsets - 1] == 0 {
+        offsets[n_offsets - 1] = base
+            .checked_add(data.len())
+            .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
+    }
     let elem_size = leaf_type.byte_size();
+
+    let mut assume_root_streamed_vector = false;
+    if elem_size > 1 {
+        for i in 0..n_entries {
+            let start = offsets[i].saturating_sub(base);
+            let end = offsets[i + 1].saturating_sub(base);
+            if end > data.len() || start > end {
+                return Err(RootError::Deserialization(format!(
+                    "invalid entry offsets in basket: start={start} end={end} data_len={}",
+                    data.len()
+                )));
+            }
+            if (end - start) % elem_size != 0 {
+                assume_root_streamed_vector = true;
+                break;
+            }
+        }
+    } else {
+        // `elem_size == 1` cannot use the modulo heuristic. Probe the first entry.
+        let start = offsets[0].saturating_sub(base);
+        let end = offsets[1].saturating_sub(base);
+        if end <= data.len() && start <= end {
+            assume_root_streamed_vector = try_parse_root_stl_vector_chunk(&data[start..end], elem_size).is_some();
+        }
+    }
 
     for i in 0..n_entries {
         let start = offsets[i].saturating_sub(base);
@@ -373,31 +408,31 @@ fn decode_indexed_from_payload(
             )));
         }
 
-        let need = (index + 1) * elem_size;
-        if start + need > end {
-            out.push(out_of_range_value);
-            continue;
-        }
+        if assume_root_streamed_vector {
+            let chunk = &data[start..end];
+            let Some((n, values_off)) = try_parse_root_stl_vector_chunk(chunk, elem_size) else {
+                return Err(RootError::Deserialization(
+                    "failed to parse ROOT-streamed std::vector<T> entry payload".into(),
+                ));
+            };
 
-        let off = start + index * elem_size;
-        let val = match leaf_type {
-            LeafType::F64 => f64::from_be_bytes(data[off..off + 8].try_into().unwrap()),
-            LeafType::F32 => f32::from_be_bytes(data[off..off + 4].try_into().unwrap()) as f64,
-            LeafType::I32 => i32::from_be_bytes(data[off..off + 4].try_into().unwrap()) as f64,
-            LeafType::I64 => i64::from_be_bytes(data[off..off + 8].try_into().unwrap()) as f64,
-            LeafType::U32 => u32::from_be_bytes(data[off..off + 4].try_into().unwrap()) as f64,
-            LeafType::U64 => u64::from_be_bytes(data[off..off + 8].try_into().unwrap()) as f64,
-            LeafType::I16 => i16::from_be_bytes(data[off..off + 2].try_into().unwrap()) as f64,
-            LeafType::I8 => data[off] as i8 as f64,
-            LeafType::Bool => {
-                if data[off] != 0 {
-                    1.0
-                } else {
-                    0.0
-                }
+            if index >= n {
+                out.push(out_of_range_value);
+                continue;
             }
-        };
-        out.push(val);
+
+            let off = values_off + index * elem_size;
+            out.push(decode_one_f64(chunk, off, leaf_type));
+        } else {
+            let need = (index + 1) * elem_size;
+            if start + need > end {
+                out.push(out_of_range_value);
+                continue;
+            }
+
+            let off = start + index * elem_size;
+            out.push(decode_one_f64(data, off, leaf_type));
+        }
     }
 
     Ok(())
@@ -433,9 +468,12 @@ fn decode_jagged_from_payload(
     }
 
     let n_offsets = n_entries + 1;
-    let tail_words = n_offsets + 1;
-    let tail_bytes = tail_words
-        .checked_mul(bytes_per_offset)
+    let tail_bytes = (4usize)
+        .checked_add(
+            n_offsets
+                .checked_mul(bytes_per_offset)
+                .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?,
+        )
         .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?;
     if payload.len() < tail_bytes {
         return Err(RootError::Deserialization(format!(
@@ -458,24 +496,53 @@ fn decode_jagged_from_payload(
         }
     };
 
-    let count = read_word_be(&tail[..bytes_per_offset]);
-    if count != n_entries + 1 {
+    let count = u32::from_be_bytes(tail[..4].try_into().unwrap()) as usize;
+    if count != n_offsets {
         return Err(RootError::Deserialization(format!(
             "unexpected entry-offset count word: got {} want {}",
             count,
-            n_entries + 1
+            n_offsets
         )));
     }
 
     let mut entry_offsets: Vec<usize> = Vec::with_capacity(n_offsets);
     for i in 0..n_offsets {
-        let start = bytes_per_offset * (1 + i);
+        let start = 4 + bytes_per_offset * i;
         let end = start + bytes_per_offset;
         entry_offsets.push(read_word_be(&tail[start..end]));
     }
 
     let base = entry_offsets[0];
+    if entry_offsets[n_offsets - 1] == 0 {
+        entry_offsets[n_offsets - 1] = base
+            .checked_add(data.len())
+            .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
+    }
     let elem_size = leaf_type.byte_size();
+
+    let mut assume_root_streamed_vector = false;
+    if elem_size > 1 {
+        for i in 0..n_entries {
+            let start = entry_offsets[i].saturating_sub(base);
+            let end = entry_offsets[i + 1].saturating_sub(base);
+            if end > data.len() || start > end {
+                return Err(RootError::Deserialization(format!(
+                    "invalid entry offsets in basket: start={start} end={end} data_len={}",
+                    data.len()
+                )));
+            }
+            if (end - start) % elem_size != 0 {
+                assume_root_streamed_vector = true;
+                break;
+            }
+        }
+    } else {
+        let start = entry_offsets[0].saturating_sub(base);
+        let end = entry_offsets[1].saturating_sub(base);
+        if end <= data.len() && start <= end {
+            assume_root_streamed_vector = try_parse_root_stl_vector_chunk(&data[start..end], elem_size).is_some();
+        }
+    }
 
     for i in 0..n_entries {
         let start = entry_offsets[i].saturating_sub(base);
@@ -484,19 +551,55 @@ fn decode_jagged_from_payload(
             return Err(RootError::Deserialization(format!(
                 "invalid entry offsets in basket: start={start} end={end} data_len={}",
                 data.len()
-            )));
+                )));
         }
 
-        let n_elems = (end - start) / elem_size;
-        for j in 0..n_elems {
-            let off = start + j * elem_size;
-            let val = decode_one_f64(data, off, leaf_type);
-            flat.push(val);
+        if assume_root_streamed_vector {
+            let chunk = &data[start..end];
+            let Some((n, values_off)) = try_parse_root_stl_vector_chunk(chunk, elem_size) else {
+                return Err(RootError::Deserialization(
+                    "failed to parse ROOT-streamed std::vector<T> entry payload".into(),
+                ));
+            };
+            for j in 0..n {
+                let off = values_off + j * elem_size;
+                let val = decode_one_f64(chunk, off, leaf_type);
+                flat.push(val);
+            }
+        } else {
+            let n_elems = (end - start) / elem_size;
+            for j in 0..n_elems {
+                let off = start + j * elem_size;
+                let val = decode_one_f64(data, off, leaf_type);
+                flat.push(val);
+            }
         }
         offsets.push(flat.len());
     }
 
     Ok(())
+}
+
+fn try_parse_root_stl_vector_chunk(chunk: &[u8], elem_size: usize) -> Option<(usize, usize)> {
+    if chunk.len() < 10 {
+        return None;
+    }
+    let raw = u32::from_be_bytes(chunk[0..4].try_into().ok()?);
+    if raw & 0x4000_0000 == 0 {
+        return None;
+    }
+    let byte_count = (raw & !0x4000_0000) as usize;
+    if byte_count != chunk.len().checked_sub(4)? {
+        return None;
+    }
+    let _ver = u16::from_be_bytes(chunk[4..6].try_into().ok()?);
+    let n = u32::from_be_bytes(chunk[6..10].try_into().ok()?) as usize;
+    let payload_bytes = chunk.len().checked_sub(10)?;
+    let expect = n.checked_mul(elem_size)?;
+    if payload_bytes != expect {
+        return None;
+    }
+    Some((n, 10))
 }
 
 // ── Best-effort decoding: unsplit std::vector<T> (TBranchElement) ──────────────

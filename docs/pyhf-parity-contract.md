@@ -25,6 +25,11 @@ For HistFactory-style workspaces, this includes the interpolation scheme for:
 This repo's parity tests configure **pyhf** to use Code4/Code4p and compare against NextStat's
 default model builder settings. If you want strict HistFactory defaults instead, use Code1/Code0.
 
+Note: NextStat may preserve extra HistFactory metadata that is **not** part of the pyhf JSON schema
+(e.g. `measurements[].config.parameters[].constraint` from `<ConstraintTerm>`). pyhf will ignore such
+fields; parity is defined over the numerical model surfaces (expected data, NLL, gradients), not
+over byte-identical JSON.
+
 ### Activating Parity Mode
 
 **CLI:**

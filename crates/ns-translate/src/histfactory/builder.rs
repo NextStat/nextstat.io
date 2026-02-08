@@ -365,6 +365,7 @@ fn build_measurements(
                         fixed: ps.is_const,
                         auxdata: Vec::new(),
                         sigmas: Vec::new(),
+                        constraint: None,
                     })
                 })
                 .collect();
@@ -390,6 +391,7 @@ fn build_measurements(
                         fixed: false,
                         auxdata: vec![1.0],
                         sigmas: vec![m.lumi_rel_err],
+                        constraint: None,
                     });
                 }
             }
@@ -408,6 +410,7 @@ fn build_measurements(
                         fixed: false,
                         auxdata: Vec::new(),
                         sigmas: Vec::new(),
+                        constraint: None,
                     });
                 }
             }

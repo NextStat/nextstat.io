@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/KillingSpark/zstd-rs"
 
 [features]
-default = ["hash", "std"]
+default = ["std"]
 std = []
 hash = ["dep:twox-hash"]
 

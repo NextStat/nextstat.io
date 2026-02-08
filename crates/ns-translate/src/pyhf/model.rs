@@ -189,13 +189,48 @@ pub(crate) enum ModelModifier {
 impl HistFactoryModel {
     fn normsys_alpha_effective<T: Scalar>(&self, param_idx: usize, alpha: T) -> T {
         let Some(p) = self.parameters.get(param_idx) else { return alpha };
-        match p.constraint_term {
-            Some(ConstraintTerm::LogNormal { rel }) if rel > 0.0 => {
+        match &p.constraint_term {
+            Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                // Parameter is interpreted as beta (positive). Map to alpha=(beta-1)/rel.
+                let inv_rel = 1.0 / *rel;
+                (alpha - T::from_f64(1.0)) * T::from_f64(inv_rel)
+            }
+            Some(ConstraintTerm::LogNormal { rel }) if *rel > 0.0 => {
                 // ROOT/HistFactory: alphaOfBeta = (1/rel) * ((1+rel)^alpha - 1)
                 // Implement as tau * (exp(alpha*ln(1+rel)) - 1).
-                let tau = 1.0 / rel;
-                let kappa_ln = (1.0 + rel).ln();
+                let tau = 1.0 / *rel;
+                let kappa_ln = (1.0 + *rel).ln();
                 T::from_f64(tau) * ((alpha * T::from_f64(kappa_ln)).exp() - T::from_f64(1.0))
+            }
+            _ => alpha,
+        }
+    }
+
+    fn normsys_alpha_effective_on_tape(
+        &self,
+        tape: &mut ns_ad::tape::Tape,
+        param_idx: usize,
+        alpha: ns_ad::tape::Var,
+    ) -> ns_ad::tape::Var {
+        let Some(p) = self.parameters.get(param_idx) else { return alpha };
+        match &p.constraint_term {
+            Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                let inv_rel = 1.0 / *rel;
+                let one = tape.constant(1.0);
+                let inv = tape.constant(inv_rel);
+                let diff = tape.sub(alpha, one);
+                tape.mul(diff, inv)
+            }
+            Some(ConstraintTerm::LogNormal { rel }) if *rel > 0.0 => {
+                let tau = 1.0 / *rel;
+                let kappa_ln = (1.0 + *rel).ln();
+                let tau_c = tape.constant(tau);
+                let kln_c = tape.constant(kappa_ln);
+                let one = tape.constant(1.0);
+                let prod = tape.mul(alpha, kln_c);
+                let exp = tape.exp(prod);
+                let minus_one = tape.sub(exp, one);
+                tape.mul(tau_c, minus_one)
             }
             _ => alpha,
         }
@@ -627,13 +662,14 @@ impl HistFactoryModel {
                     vec_scale(out, norm);
                 }
                 ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                    let alpha = *params.get(*param_idx).ok_or_else(|| {
+                    let alpha_raw = *params.get(*param_idx).ok_or_else(|| {
                         ns_core::Error::Validation(format!(
                             "NormSys param index out of range: idx={} len={}",
                             param_idx,
                             params.len()
                         ))
                     })?;
+                    let alpha = self.normsys_alpha_effective(*param_idx, alpha_raw);
                     let factor = match interp_code {
                         NormSysInterpCode::Code1 => normsys_code1(alpha, *hi_factor, *lo_factor),
                         NormSysInterpCode::Code4 => normsys_code4(alpha, *hi_factor, *lo_factor),
@@ -998,18 +1034,19 @@ impl HistFactoryModel {
                                 "gamma" => {
                                     if rel > 0.0 {
                                         param.constraint_term = Some(ConstraintTerm::Gamma { rel });
-                                        // For reporting-only "pull" style outputs, use a Gaussian-equivalent
-                                        // width in alpha-space based on the Gamma prior variance.
-                                        param.constrained = true;
-                                        param.constraint_center = Some(0.0);
-                                        param.constraint_width = Some((1.0 + rel * rel).sqrt());
+                                        // Match ROOT convention: Gamma constraints are applied to a positive
+                                        // parameter `beta` (nominal ~ 1). In this mode we interpret the
+                                        // parameter value as `beta` and map it into the interpolation-space
+                                        // `alpha = (beta - 1)/rel`.
+                                        param.init = if param.init == 0.0 { 1.0 } else { param.init };
+                                        let lo = param.bounds.0.max(1e-10);
+                                        let hi = param.bounds.1.max(lo);
+                                        param.bounds = (lo, hi);
 
-                                        // Ensure bounds do not allow invalid beta <= 0.
-                                        // beta = 1 + rel * alpha => alpha > -1/rel.
-                                        let alpha_min = -1.0 / rel + 1e-10;
-                                        if param.bounds.0 < alpha_min {
-                                            param.bounds = (alpha_min, param.bounds.1);
-                                        }
+                                        // Reporting/diagnostics: store a simple Gaussian-equivalent width in beta-space.
+                                        param.constrained = true;
+                                        param.constraint_center = Some(1.0);
+                                        param.constraint_width = Some(rel);
                                     }
                                 }
                                 _ => {
@@ -1505,13 +1542,14 @@ impl HistFactoryModel {
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                            let alpha_raw = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
                                     param_idx,
                                     params.len()
                                 ))
                             })?;
+                            let alpha = self.normsys_alpha_effective(*param_idx, alpha_raw);
                             let factor = match interp_code {
                                 NormSysInterpCode::Code1 => {
                                     normsys_code1(alpha, *hi_factor, *lo_factor)
@@ -1691,13 +1729,14 @@ impl HistFactoryModel {
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                            let alpha_raw = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
                                     param_idx,
                                     params.len()
                                 ))
                             })?;
+                            let alpha = self.normsys_alpha_effective(*param_idx, alpha_raw);
                             let factor = match interp_code {
                                 NormSysInterpCode::Code1 => {
                                     normsys_code1(alpha, *hi_factor, *lo_factor)
@@ -1879,13 +1918,14 @@ impl HistFactoryModel {
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                            let alpha = *params.get(*param_idx).ok_or_else(|| {
+                            let alpha_raw = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
                                     param_idx,
                                     params.len()
                                 ))
                             })?;
+                            let alpha = self.normsys_alpha_effective(*param_idx, alpha_raw);
                             let factor = match interp_code {
                                 NormSysInterpCode::Code1 => {
                                     normsys_code1(alpha, *hi_factor, *lo_factor)
@@ -2309,11 +2349,46 @@ impl HistFactoryModel {
             }
         }
 
-        // Gaussian constraints (pyhf `constrained_by_normal`)
+        // Constraint terms
         for (param_idx, param) in self.parameters.iter().enumerate() {
+            // Skip parameters without constraints.
             if !param.constrained {
                 continue;
             }
+
+            // Non-standard HistFactory constraint terms.
+            match &param.constraint_term {
+                Some(ConstraintTerm::Uniform) | Some(ConstraintTerm::NoConstraint) => {
+                    continue;
+                }
+                Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                    // Gamma constraint on beta (parameter value), using ROOT/HistFactory convention:
+                    // tau = 1/rel^2, k = tau + 1, theta = 1/tau (scale).
+                    let beta = params.get(param_idx).copied().ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "Constrained parameter index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    let beta = beta.max_s(T::from_f64(1e-10));
+
+                    let tau = 1.0 / (*rel * *rel);
+                    let k = tau + 1.0;
+                    let theta = 1.0 / tau;
+                    let c = k * theta.ln() + ln_gamma(k);
+
+                    // NLL = beta/theta - (k-1)*ln(beta) + k*ln(theta) + lnGamma(k)
+                    let term = beta * T::from_f64(1.0 / theta)
+                        - T::from_f64(k - 1.0) * beta.ln()
+                        + T::from_f64(c);
+                    nll = nll + term;
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Gaussian constraints (pyhf `constrained_by_normal`)
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
@@ -2383,13 +2458,14 @@ impl HistFactoryModel {
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                            let alpha_raw = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
                                     param_idx,
                                     params.len()
                                 ))
                             })?;
+                            let alpha = self.normsys_alpha_effective(*param_idx, alpha_raw);
                             let factor = match interp_code {
                                 NormSysInterpCode::Code1 => {
                                     normsys_code1(alpha, *hi_factor, *lo_factor)
@@ -2769,11 +2845,48 @@ impl HistFactoryModel {
             }
         }
 
-        // Gaussian constraints (pyhf `constrained_by_normal`)
+        // Constraint terms
         for (param_idx, param) in self.parameters.iter().enumerate() {
             if !param.constrained {
                 continue;
             }
+
+            match &param.constraint_term {
+                Some(ConstraintTerm::Uniform) | Some(ConstraintTerm::NoConstraint) => {
+                    continue;
+                }
+                Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                    let beta = params.get(param_idx).copied().ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "Constrained parameter index out of range (tape): idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    let floor = tape.constant(1e-10);
+                    let beta = tape.max(beta, floor);
+
+                    let tau = 1.0 / (*rel * *rel);
+                    let k = tau + 1.0;
+                    let theta = 1.0 / tau;
+                    let c = k * theta.ln() + ln_gamma(k);
+
+                    // NLL = beta/theta - (k-1)*ln(beta) + k*ln(theta) + lnGamma(k)
+                    let inv_theta = tape.constant(1.0 / theta);
+                    let beta_over_theta = tape.mul(beta, inv_theta);
+                    let ln_beta = tape.ln(beta);
+                    let km1 = tape.constant(k - 1.0);
+                    let km1_ln = tape.mul(km1, ln_beta);
+                    let c_c = tape.constant(c);
+                    let term = tape.sub(beta_over_theta, km1_ln);
+                    let term = tape.add(term, c_c);
+                    nll = tape.add(nll, term);
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Gaussian constraints (pyhf `constrained_by_normal`)
             if let (Some(center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
@@ -2858,13 +2971,15 @@ impl HistFactoryModel {
                             }
                         }
                         ModelModifier::NormSys { param_idx, hi_factor, lo_factor, interp_code } => {
-                            let alpha = params.get(*param_idx).copied().ok_or_else(|| {
+                            let alpha_raw = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
                                     "NormSys param index out of range: idx={} len={}",
                                     param_idx,
                                     params.len()
                                 ))
                             })?;
+                            let alpha =
+                                self.normsys_alpha_effective_on_tape(tape, *param_idx, alpha_raw);
                             let factor = match interp_code {
                                 NormSysInterpCode::Code1 => {
                                     normsys_code1_on_tape(tape, alpha, *hi_factor, *lo_factor)

@@ -53,6 +53,18 @@ impl<'t> HuffmanDecoder<'t> {
         self.state |= new_bits;
         num_bits
     }
+
+    #[inline(always)]
+    pub fn decode_and_advance(&mut self, br: &mut BitReaderReversed<'_>) -> u8 {
+        let entry = &self.table.decode[self.state as usize];
+        let symbol = entry.symbol;
+        let num_bits = entry.num_bits;
+        let new_bits = br.get_bits(num_bits);
+        self.state <<= num_bits;
+        self.state &= self.table.decode.len() as u64 - 1;
+        self.state |= new_bits;
+        symbol
+    }
 }
 
 /// A Huffman decoding table contains a list of Huffman prefix codes and their associated values

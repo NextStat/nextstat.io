@@ -253,6 +253,12 @@ It follows HistFactory conventions used by pyhf's `readxml` validation fixtures:
 - Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`.
 - `LumiRelErr` and `ParamSetting Const="True"` are surfaced via `measurements[].config.parameters` (`auxdata=[1]`, `sigmas=[LumiRelErr]`, `fixed=true`).
 - `<NormFactor Val/Low/High>` is surfaced via `measurements[].config.parameters` as `inits` and `bounds`.
+- HistFactory `<ConstraintTerm>` (ROOT extension) is preserved as a non-standard field
+  `measurements[].config.parameters[].constraint` and is interpreted by NextStat when building the model:
+  - `Type="LogNormal"`: applies ROOT's `alphaOfBeta` transform for `normsys` evaluation (keeps Gaussian constraint on `alpha`).
+  - `Type="Gamma"`: applies a Gamma constraint term and interprets the parameter as a positive `beta` with `alpha=(beta-1)/rel`.
+  - `Type="Uniform"`: removes the Gaussian penalty (flat within bounds).
+  - `Type="NoConstraint"/"NoSyst"`: fixes the parameter at nominal.
 
 `nextstat import trex-config` currently supports only a small subset of TRExFitter configs:
 - `ReadFrom: NTUP` (or omitted).

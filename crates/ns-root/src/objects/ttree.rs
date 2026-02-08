@@ -314,7 +314,7 @@ fn read_tbranch_base(r: &mut RBuffer, recurse_sub: bool) -> Result<TBranchFields
         .ok_or_else(|| RootError::Deserialization("TBranch missing byte count".into()))?;
 
     // TNamed
-    let (name, _title) = r.read_tnamed()?;
+    let (name, title) = r.read_tnamed()?;
 
     // TAttFill — skip
     skip_versioned(r)?;
@@ -352,7 +352,7 @@ fn read_tbranch_base(r: &mut RBuffer, recurse_sub: bool) -> Result<TBranchFields
     };
 
     // fLeaves: TObjArray of TLeaf
-    let leaf_type = read_tobjarray_leaves(r)?;
+    let leaf_type = read_tobjarray_leaves(r)?.or_else(|| leaf_type_from_branch_title(&title));
 
     // fBaskets: TObjArray (in-memory baskets, usually empty or references)
     skip_tobjarray(r)?;
@@ -429,7 +429,21 @@ fn read_tbranch_element(r: &mut RBuffer, element_end: usize) -> Result<Vec<Branc
     let (_elem_ver, _elem_end) = r.read_version()?;
 
     // TBranch base fields with sub-branch recursion
-    let fields = read_tbranch_base(r, true)?;
+    let mut fields = read_tbranch_base(r, true)?;
+    // Ensure we're positioned at the end of the TBranch base-class portion before
+    // reading TBranchElement-specific fields.
+    if fields.branch_end > r.pos() {
+        r.set_pos(fields.branch_end);
+    }
+
+    // Best-effort: infer leaf type for unsplit `std::vector<T>` (TBranchElement)
+    // branches. These often use `TLeafElement` (which we don't fully parse yet),
+    // so `leaf_type` may be missing unless we read `fClassName` here.
+    if fields.leaf_type.is_none() && r.pos() < element_end {
+        if let Ok(class_name) = r.read_string() {
+            fields.leaf_type = leaf_type_from_vector_class_name(&class_name);
+        }
+    }
 
     // Skip TBranchElement-specific fields to element_end
     r.set_pos(element_end);
@@ -497,6 +511,42 @@ fn leaf_type_from_class(class_name: &str) -> Option<LeafType> {
         "TLeafS" => Some(LeafType::I16),
         "TLeafB" => Some(LeafType::I8),
         "TLeafO" => Some(LeafType::Bool),
+        _ => None,
+    }
+}
+
+fn leaf_type_from_branch_title(title: &str) -> Option<LeafType> {
+    let t = title.trim();
+    let t = t.strip_prefix("std::").unwrap_or(t);
+    let inner = t.strip_prefix("vector<")?.strip_suffix('>')?.trim();
+    match inner {
+        "float" | "Float_t" => Some(LeafType::F32),
+        "double" | "Double_t" => Some(LeafType::F64),
+        "int" | "Int_t" => Some(LeafType::I32),
+        "unsigned int" | "UInt_t" => Some(LeafType::U32),
+        "long" | "Long64_t" => Some(LeafType::I64),
+        "unsigned long" | "ULong64_t" => Some(LeafType::U64),
+        "short" | "Short_t" => Some(LeafType::I16),
+        "char" | "Char_t" => Some(LeafType::I8),
+        "bool" | "Bool_t" => Some(LeafType::Bool),
+        _ => None,
+    }
+}
+
+fn leaf_type_from_vector_class_name(class_name: &str) -> Option<LeafType> {
+    let t = class_name.trim();
+    let t = t.strip_prefix("std::").unwrap_or(t);
+    let inner = t.strip_prefix("vector<")?.strip_suffix('>')?.trim();
+    match inner {
+        "float" | "Float_t" => Some(LeafType::F32),
+        "double" | "Double_t" => Some(LeafType::F64),
+        "int" | "Int_t" => Some(LeafType::I32),
+        "unsigned int" | "UInt_t" => Some(LeafType::U32),
+        "long" | "Long64_t" => Some(LeafType::I64),
+        "unsigned long" | "ULong64_t" => Some(LeafType::U64),
+        "short" | "Short_t" => Some(LeafType::I16),
+        "char" | "Char_t" => Some(LeafType::I8),
+        "bool" | "Bool_t" => Some(LeafType::Bool),
         _ => None,
     }
 }

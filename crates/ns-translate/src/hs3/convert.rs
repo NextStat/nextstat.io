@@ -100,6 +100,7 @@ pub fn convert(
             constrained: false,
             constraint_center: None,
             constraint_width: None,
+            constraint_term: None,
         });
         param_map.insert(poi_name.clone(), idx);
     }
@@ -157,6 +158,7 @@ pub fn convert(
             constrained,
             constraint_center: center,
             constraint_width: width,
+            constraint_term: None,
         });
         map.insert(name.to_string(), idx);
         idx
