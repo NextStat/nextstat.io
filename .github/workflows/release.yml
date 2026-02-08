@@ -232,13 +232,13 @@ jobs:
           python-version: "3.13"
 
       - name: Download wheel (linux x86_64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: wheels-x86_64-unknown-linux-gnu
           path: dist
 
       - name: Download CLI (linux x86_64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: cli-x86_64-unknown-linux-gnu
           path: dist
@@ -291,7 +291,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
 
@@ -339,14 +339,14 @@ jobs:
       id-token: write
     steps:
       - name: Download wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: wheels-*
           path: dist
           merge-multiple: true
 
       - name: Download sdist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sdist
           path: dist
