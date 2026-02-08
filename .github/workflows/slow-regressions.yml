@@ -194,16 +194,7 @@ jobs:
             --artifacts-dir artifacts \
             --suite slow-regressions \
             --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          rr = json.loads(Path("artifacts/.replication/replication_report.json").read_text())
-          ok = rr.get("comparison", {}).get("ok")
-          if ok is True:
-            raise SystemExit(0)
-          raise SystemExit("slow-regressions drift detected (replication_report comparison.ok=false)")
-          PY
+          echo "Drift bundle generated under artifacts/.replication (informational; not a CI gate)."
 
       - name: Upload slow-regressions artifacts
         if: always()

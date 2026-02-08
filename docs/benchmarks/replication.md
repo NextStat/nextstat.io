@@ -142,3 +142,8 @@ For internal drift detection (CI), we recommend using "yesterday's nightly" as t
 - next nightly downloads the **previous successful run** artifact and generates a `replication_report.json`
 
 This catches regressions between consecutive commits without pinning to a "frozen" DOI artifact.
+
+Important nuance:
+
+- `replication_report.json` is **hash-level** and may change between commits for non-semantic reasons (provenance fields, noisy perf outputs).
+- For `validation_report.json`, CI should gate on a **semantic comparator** (suite/overall status regressions), emitting a `validation_drift_summary.json` alongside the replication bundle.

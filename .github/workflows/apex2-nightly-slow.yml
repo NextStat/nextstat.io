@@ -167,15 +167,17 @@ jobs:
             --suite apex2-nightly-slow \
             --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
 
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          rr = json.loads(Path("artifacts/.replication/replication_report.json").read_text())
-          ok = rr.get("comparison", {}).get("ok")
-          if ok is True:
-            raise SystemExit(0)
-          raise SystemExit("apex2-nightly-slow drift detected (replication_report comparison.ok=false)")
-          PY
+          if [[ ! -f baseline/validation_report.json ]]; then
+            echo "Baseline artifact does not contain validation_report.json (older baseline). Skipping semantic drift check." >&2
+            exit 0
+          fi
+
+          python3 scripts/benchmarks/compare_validation_reports.py \
+            --baseline baseline/validation_report.json \
+            --current artifacts/validation_report.json \
+            --out artifacts/.replication/validation_drift_summary.json \
+            --meta baseline_run_id=${{ steps.baseline.outputs.run_id }} \
+            --meta baseline_artifact_id=${{ steps.baseline.outputs.artifact_id }}
 
       - name: Upload Apex2 artifacts
         if: always()

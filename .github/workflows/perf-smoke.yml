@@ -120,16 +120,7 @@ jobs:
             --artifacts-dir target/criterion \
             --suite perf-smoke \
             --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          rr = json.loads(Path("target/criterion/.replication/replication_report.json").read_text())
-          ok = rr.get("comparison", {}).get("ok")
-          if ok is True:
-            raise SystemExit(0)
-          raise SystemExit("perf-smoke drift detected (replication_report comparison.ok=false)")
-          PY
+          echo "Drift bundle generated under target/criterion/.replication (informational; not a CI gate)."
 
       - name: Upload Criterion reports
         if: always()
