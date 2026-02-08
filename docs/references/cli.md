@@ -261,6 +261,9 @@ It follows HistFactory conventions used by pyhf's `readxml` validation fixtures:
 - `StatError` follows channel `<StatErrorConfig ConstraintType=...>`:
   - `ConstraintType="Poisson"` => Barlow-Beeston `shapesys` (per-sample, name `staterror_<channel>_<sample>`).
   - `ConstraintType="Gaussian"` => `staterror` (per-channel, name `staterror_<channel>`).
+- `StatError` histograms (`<StatError Activate="True" HistoName="...">`) are treated as **absolute** per-bin uncertainties (`sigma_abs`).
+- If `<StatErrorConfig>` is omitted, NextStat matches ROOT/HistFactory default behavior by importing `staterror` and attaching per-bin
+  `Gamma` constraint metadata to `measurements[].config.parameters[]` entries named `staterror_<channel>[i]` (non-standard extension).
 - Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`.
 - `LumiRelErr` and `ParamSetting Const="True"` are surfaced via `measurements[].config.parameters` (`auxdata=[1]`, `sigmas=[LumiRelErr]`, `fixed=true`).
 - `<NormFactor Val/Low/High>` is surfaced via `measurements[].config.parameters` as `inits` and `bounds`.
@@ -375,6 +378,7 @@ Arguments:
 - `--host <HOST>` — bind address (default: 0.0.0.0)
 - `--gpu <DEVICE>` — GPU device: `cuda` or `metal` (omit for CPU-only). If the binary was built without the corresponding feature, `nextstat-server` exits with an error.
 - `--threads <N>` — Rayon thread pool size (default: 0 = auto)
+- `--max-body-mb <MiB>` — maximum request body size in MiB (default: 64). Requests exceeding the limit return HTTP 413.
 
 ### Endpoints
 
@@ -390,6 +394,9 @@ Arguments:
 | `GET` | `/v1/health` | Server health check |
 
 All endpoints accept/return JSON. Errors return `{"error": "<message>"}` with appropriate HTTP status codes.
+
+Notes:
+- `POST /v1/ranking`: CUDA supports GPU ranking. Metal ranking is currently not implemented; on Metal servers use `{"gpu": false, ...}` to force CPU ranking.
 
 ### Model caching
 
