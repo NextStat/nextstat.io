@@ -17,7 +17,13 @@ keywords:
 category: trust
 ---
 
-# The End of the Scripting Era (Benchmarks)
+# The End of the Scripting Era: Why Reproducible Benchmarks Change Scientific Software
+
+## Abstract
+
+For years, performance “benchmarks” in scientific software were mostly scripts: a notebook, a dataset download, a chart, and a number. That workflow is great for exploration, but it is a poor substrate for trust — because it rarely produces artifacts that can be rerun, audited, diffed, or replicated by outsiders.
+
+This post argues that the *unit of publication* is shifting from a single number to a **benchmark snapshot**: an immutable artifact set with pinned environments, correctness gates, manifests, and raw distributions. That shift changes how scientific software is built: determinism becomes a mode, correctness becomes a gate, and CI becomes a publisher.
 
 For a long time, scientific software lived in a world of scripts:
 
@@ -73,7 +79,25 @@ The canonical spec is here: [Public Benchmarks Specification](/docs/benchmarks/p
 
 ---
 
-## 3) Why this matters in HEP-like pipelines
+## 3) The new unit: benchmark snapshots (artifact sets)
+
+The key move is to make a benchmark run produce a **publishable artifact set**, not just a number.
+
+At minimum, a snapshot should include:
+
+- raw per-test/per-repeat measurements (so variance and policy are visible),
+- correctness gates results (so “fast” implies “correct under a contract”),
+- a baseline manifest (versions, hardware, dataset hashes, flags),
+- and an index with file hashes (so outsiders can verify the bytes they downloaded).
+
+If you want the full publishing contract, see:
+
+- [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing)
+- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
+
+---
+
+## 4) Why this matters in HEP-like pipelines
 
 HEP-style inference pipelines have a property that breaks naive benchmarking:
 
@@ -89,7 +113,7 @@ So “end of scripting era” here means:
 
 ---
 
-## 4) The deeper shift: software becomes a system
+## 5) The deeper shift: software becomes a system
 
 The shift is not about Rust vs Python, or compiled vs interpreted.
 
@@ -104,7 +128,7 @@ That is what replaces “a script” as your source of truth.
 
 ---
 
-## 5) What to expect from our public benchmark snapshots
+## 6) What to expect from our public benchmark snapshots
 
 When we publish benchmark snapshots, the goal is that you can:
 
@@ -123,7 +147,22 @@ That is progress: disagreement becomes diagnosable.
 
 ---
 
-## 6) The point of a “trust offensive”
+## 7) Replication is the endgame
+
+If you want the strongest possible trust signal, you want an independent rerun with a publishable report.
+
+That’s why our program treats third‑party replication as a first-class protocol:
+
+- same suite definition,
+- same dataset IDs,
+- published hashes/manifests,
+- and (optionally) signatures for tamper resistance.
+
+Runbook: [Third-Party Replication Runbook (Signed Reports)](/docs/benchmarks/replication).
+
+---
+
+## 8) The point of a “trust offensive”
 
 Publishing benchmarks is not a marketing stunt. It’s a commitment:
 

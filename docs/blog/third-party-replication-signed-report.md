@@ -28,7 +28,25 @@ And the only robust way to evaluate a claim is to replicate it.
 
 That’s why our public benchmark program treats **third-party replication** as a first-class feature, not a nice-to-have.
 
-The canonical replication protocol is documented here: [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing).
+The canonical replication protocol is documented here:
+
+- [Third-Party Replication Runbook (Signed Reports)](/docs/benchmarks/replication)
+- [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing)
+
+---
+
+## Abstract
+
+The strongest trust signal for a benchmark is not “more charts”, “more machines”, or “more blog posts”. It is an **independent rerun**.
+
+In NextStat we operationalize replication as a publishable artifact set:
+
+- a rerun **snapshot index** (hashed artifact inventory),
+- a machine-readable **replication report** comparing original vs rerun,
+- the rerun **validation pack** (including a `validation_report.json`), and
+- optional **signatures** for integrity and attribution.
+
+If you can’t map a claim to a concrete artifact set, you don’t have evidence — you have a story.
 
 ---
 
@@ -67,7 +85,29 @@ The goal is that disagreements become diagnosable:
 
 ---
 
-## 3) Why signed reports
+## 3) The replication artifact set (what gets published)
+
+Replication only works if outsiders can identify *exactly* what was compared.
+
+We therefore publish two small, machine-readable “index” documents alongside the raw results:
+
+1. `snapshot_index.json` (schema `nextstat.snapshot_index.v1`) — the list of artifact paths + sizes + SHA-256 hashes.
+2. `replication_report.json` (schema `nextstat.replication_report.v1`) — a structured comparison (overlap count + mismatches).
+
+Additionally, each validation pack includes:
+
+- `validation_report.json` (schema `validation_report_v1`) — dataset fingerprint + environment + suite pass/fail summary
+- `validation_pack_manifest.json` (format version `validation_pack_manifest_v1`) — SHA-256 + sizes for the core validation pack files
+
+Schemas live in-repo:
+
+- `docs/schemas/benchmarks/snapshot_index_v1.schema.json`
+- `docs/schemas/benchmarks/replication_report_v1.schema.json`
+- `docs/schemas/validation/validation_report_v1.schema.json`
+
+---
+
+## 4) Why signed reports
 
 If replication reports matter, they must be attributable and tamper-resistant.
 
@@ -83,7 +123,22 @@ We don't need bureaucracy. We need integrity.
 
 ---
 
-## 4) What we will do with replications
+## 5) Step-by-step: a minimal replication loop
+
+The full runbook is in [/docs/benchmarks/replication](/docs/benchmarks/replication). The minimal loop is:
+
+1. Download the original snapshot artifacts (`snapshot_index.json`, `validation_pack_manifest.json`, `validation_report.json`).
+2. Verify original signatures (if provided).
+3. Rerun the suite to produce your own validation pack (`make validation-pack`).
+4. Write your rerun `snapshot_index.json`.
+5. Generate a `replication_report.json` comparing original vs rerun.
+6. Sign and publish your replication bundle.
+
+This is intentionally designed to be mostly file operations, not “trust our interpretation”.
+
+---
+
+## 6) What we will do with replications
 
 Replications should not disappear in a comment thread.
 
@@ -95,7 +150,7 @@ We plan to:
 
 ---
 
-## 5) The ask
+## 7) The ask
 
 If you care about reproducible scientific computing, the most valuable contribution is:
 
