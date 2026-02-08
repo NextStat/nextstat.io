@@ -9,6 +9,7 @@ This directory contains templates and a runbook. The actual publication step req
 For each snapshot, publish a zipped artifact set that contains at least:
 
 - `baseline_manifest.json`
+- `snapshot_index.json` (hash inventory of the artifact set)
 - suite outputs (e.g. `hep/hep_suite.json` and per-case JSONs)
 - `README_snippet.md` (human summary table)
 

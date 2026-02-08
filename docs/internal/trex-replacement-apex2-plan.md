@@ -37,10 +37,12 @@ Status: active
 
 ### 2.1 ROOT-suite parity closure на реалистичных export dirs (блокер)
 - Epic: `ROOT-suite Parity Closure: Profile Scan q(mu) matches ROOT` (`c2f00478-1927-4a5a-94b0-6fc66d4e21f8`)
-  - Текущее состояние (2026-02-08): likelihood совпадает с ROOT при оценке в ROOT best-fit параметрах (до константного сдвига),
-    но NextStat optimizer может сходиться в другой nuisance minimum, из-за чего `q(mu)` слегка расходится (напр. max_abs_dq_mu ~ 0.04
-    на committed fixture `tests/fixtures/trex_exports/tttt-prod`).
-  - Следующие шаги: multi-start conditional fits + диагностический dump best-fit параметров по точкам скана.
+  - Текущее состояние (2026-02-08): профайл-скан на реалистичном fixture `tests/fixtures/tttt-prod_workspace.json` проходит gate:
+    - grid: μ in [0, 3], 11 points
+    - `max_abs_dq_mu ≈ 1.4e-2` (atol=2e-2)
+    - `mu_hat_delta ≈ -2.7e-3` (atol=5e-2)
+  - Диагностика: `tests/validate_root_profile_scan.py --dump-root-params` теперь сравнивает fitted params ROOT vs NextStat (в NextStat порядке)
+    и пишет `ns_vs_root_params_*` в `summary.json`.
 
 ### 2.2 Внешние baselines на реальных TREx export dirs (DEFERRED, вернемся позже)
 - Epic: `External TREx Export Dirs: Collect + Record Baselines` (`fe04caac-ab97-4567-b0cc-77d11681072c`)

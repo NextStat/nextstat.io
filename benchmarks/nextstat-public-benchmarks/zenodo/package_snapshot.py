@@ -46,10 +46,15 @@ def main() -> int:
     if not manifest_path.exists():
         raise SystemExit(f"missing baseline_manifest.json in {snap_dir}")
 
+    index_path = snap_dir / "snapshot_index.json"
+    if not index_path.exists():
+        raise SystemExit(f"missing snapshot_index.json in {snap_dir} (run scripts/publish_snapshot.py first)")
+
     manifest = load_json(manifest_path)
     snapshot_id = str(manifest.get("snapshot_id") or snap_dir.name)
     harness_sha = str((manifest.get("harness") or {}).get("git_commit", "unknown"))
     nextstat_version = str((manifest.get("nextstat") or {}).get("version", "unknown"))
+    nextstat_wheel_sha256 = str((manifest.get("nextstat") or {}).get("wheel_sha256", ""))
 
     archive_name = f"{snapshot_id}.tar.gz"
     archive_path = out_dir / archive_name
@@ -72,6 +77,7 @@ def main() -> int:
         f"Snapshot id: {snapshot_id}\n"
         f"Harness commit: {harness_sha}\n"
         f"NextStat version: {nextstat_version}\n"
+        + (f"NextStat wheel sha256: {nextstat_wheel_sha256}\n" if nextstat_wheel_sha256 else "")
         f"Archive sha256: {digest}\n"
     )
     meta["title"] = f"NextStat Public Benchmarks: {snapshot_id}"

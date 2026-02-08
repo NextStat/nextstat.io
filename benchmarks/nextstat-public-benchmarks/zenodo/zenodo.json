@@ -1,7 +1,7 @@
 {
   "title": "NextStat Public Benchmarks: Snapshot (Template)",
   "upload_type": "software",
-  "description": "Immutable benchmark snapshot for NextStat public benchmarks. Includes baseline_manifest.json, raw suite outputs, and a README snippet.",
+  "description": "Immutable benchmark snapshot for NextStat public benchmarks. Includes baseline_manifest.json, snapshot_index.json (hash inventory), raw suite outputs, and a README snippet.",
   "creators": [
     {
       "name": "NextStat Contributors"
@@ -18,4 +18,3 @@
   ],
   "notes": "Fill in snapshot id, harness commit SHA, and NextStat version in the description before publishing."
 }
-
