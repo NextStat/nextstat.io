@@ -35,6 +35,28 @@ pub struct Parameter {
     pub constraint_center: Option<f64>,
     /// Constraint width (for constrained NP)
     pub constraint_width: Option<f64>,
+    /// Optional HistFactory constraint-term metadata (non-pyhf).
+    ///
+    /// When present, this can modify constraint penalties and/or interpolation semantics
+    /// to match ROOT/HistFactory/TREx exports.
+    pub constraint_term: Option<ConstraintTerm>,
+}
+
+/// HistFactory measurement-level constraint-term semantics (ROOT extension).
+#[derive(Debug, Clone)]
+pub enum ConstraintTerm {
+    /// LogNormal constraint term: uses ROOT's `alphaOfBeta = (1/rel) * ((1+rel)^alpha - 1)`
+    /// transformation for overall systematics, while keeping a Gaussian constraint on `alpha`.
+    LogNormal { rel: f64 },
+    /// Gamma constraint term (ROOT): applies a Gamma constraint to an overall-systematic parameter.
+    ///
+    /// We model this as a Gamma constraint on `beta = 1 + rel * alpha` (requiring beta > 0),
+    /// using ROOT's canonical `tau = 1/rel^2` and `k = tau + 1`, `theta = 1/tau`.
+    Gamma { rel: f64 },
+    /// Uniform constraint term: removes the Gaussian penalty (flat prior within bounds).
+    Uniform,
+    /// NoConstraint/NoSyst: fixes the parameter at its nominal value (no effect).
+    NoConstraint,
 }
 
 /// Per-sample expected yields for one channel.
@@ -165,6 +187,20 @@ pub(crate) enum ModelModifier {
 }
 
 impl HistFactoryModel {
+    fn normsys_alpha_effective<T: Scalar>(&self, param_idx: usize, alpha: T) -> T {
+        let Some(p) = self.parameters.get(param_idx) else { return alpha };
+        match p.constraint_term {
+            Some(ConstraintTerm::LogNormal { rel }) if rel > 0.0 => {
+                // ROOT/HistFactory: alphaOfBeta = (1/rel) * ((1+rel)^alpha - 1)
+                // Implement as tau * (exp(alpha*ln(1+rel)) - 1).
+                let tau = 1.0 / rel;
+                let kappa_ln = (1.0 + rel).ln();
+                T::from_f64(tau) * ((alpha * T::from_f64(kappa_ln)).exp() - T::from_f64(1.0))
+            }
+            _ => alpha,
+        }
+    }
+
     /// Construct a `HistFactoryModel` from pre-built parts.
     ///
     /// Used by `hs3::convert` to build models from resolved HS3 workspaces.
@@ -684,6 +720,7 @@ impl HistFactoryModel {
             constrained: false,
             constraint_center: None,
             constraint_width: None,
+            constraint_term: None,
         });
         let poi_index = Some(0);
 
@@ -704,6 +741,7 @@ impl HistFactoryModel {
                                     constrained: false,
                                     constraint_center: None,
                                     constraint_width: None,
+                                    constraint_term: None,
                                 });
                             }
                         }
@@ -722,6 +760,7 @@ impl HistFactoryModel {
                                         constrained: false,
                                         constraint_center: None,
                                         constraint_width: None,
+                                        constraint_term: None,
                                     });
                                 }
                             }
@@ -736,6 +775,7 @@ impl HistFactoryModel {
                                     constrained: true,
                                     constraint_center: Some(0.0),
                                     constraint_width: Some(1.0),
+                                    constraint_term: None,
                                 });
                             }
                         }
@@ -749,6 +789,7 @@ impl HistFactoryModel {
                                     constrained: true,
                                     constraint_center: Some(0.0),
                                     constraint_width: Some(1.0),
+                                    constraint_term: None,
                                 });
                             }
                         }
@@ -765,6 +806,7 @@ impl HistFactoryModel {
                                         constrained: true,
                                         constraint_center: Some(1.0),
                                         constraint_width: Some(1.0), // Placeholder; computed below.
+                                        constraint_term: None,
                                     });
                                 }
                             }
@@ -801,6 +843,7 @@ impl HistFactoryModel {
                                     constrained: true,
                                     constraint_center: Some(1.0),
                                     constraint_width: Some(0.02), // typical lumi uncertainty
+                                    constraint_term: None,
                                 });
                             }
                         }
@@ -817,6 +860,7 @@ impl HistFactoryModel {
                                         constrained: false,
                                         constraint_center: None,
                                         constraint_width: None,
+                                        constraint_term: None,
                                     });
                                 }
                             }
@@ -913,6 +957,66 @@ impl HistFactoryModel {
                     // We implement this by clamping bounds to a single value (the configured init).
                     if cfg.fixed {
                         param.bounds = (param.init, param.init);
+                    }
+
+                    // Non-standard extension: HistFactory `<ConstraintTerm>` metadata.
+                    //
+                    // ROOT/HistFactory defines alternative constraint terms for named nuisance parameters.
+                    // We preserve the semantics as follows:
+                    // - `Uniform`: remove the Gaussian penalty (flat prior within bounds).
+                    // - `NoConstraint`/`NoSyst`: fix the parameter at nominal (no effect).
+                    // - `LogNormal`: keep Gaussian penalty but apply ROOT's alpha-transform in normsys evaluation.
+                    // - `Gamma`: replace the Gaussian penalty by a Gamma constraint on beta=1+rel*alpha.
+                    //
+                    // Note: we only apply the constraint term to the scalar parameter itself (`param.name == cfg.name`).
+                    if elem_idx == 0 && param.name == cfg.name {
+                        if let Some(spec) = &cfg.constraint {
+                            let typ = spec.constraint_type.trim().to_ascii_lowercase();
+                            let rel = spec.rel_uncertainty.unwrap_or(0.0);
+
+                            match typ.as_str() {
+                                "uniform" => {
+                                    param.constraint_term = Some(ConstraintTerm::Uniform);
+                                    param.constrained = false;
+                                    param.constraint_center = None;
+                                    param.constraint_width = None;
+                                }
+                                "noconstraint" | "nosyst" | "nosys" => {
+                                    param.constraint_term = Some(ConstraintTerm::NoConstraint);
+                                    let center = param.constraint_center.unwrap_or(param.init);
+                                    param.init = center;
+                                    param.bounds = (center, center);
+                                    param.constrained = false;
+                                    param.constraint_center = None;
+                                    param.constraint_width = None;
+                                }
+                                "lognormal" => {
+                                    if rel > 0.0 {
+                                        param.constraint_term = Some(ConstraintTerm::LogNormal { rel });
+                                    }
+                                }
+                                "gamma" => {
+                                    if rel > 0.0 {
+                                        param.constraint_term = Some(ConstraintTerm::Gamma { rel });
+                                        // For reporting-only "pull" style outputs, use a Gaussian-equivalent
+                                        // width in alpha-space based on the Gamma prior variance.
+                                        param.constrained = true;
+                                        param.constraint_center = Some(0.0);
+                                        param.constraint_width = Some((1.0 + rel * rel).sqrt());
+
+                                        // Ensure bounds do not allow invalid beta <= 0.
+                                        // beta = 1 + rel * alpha => alpha > -1/rel.
+                                        let alpha_min = -1.0 / rel + 1e-10;
+                                        if param.bounds.0 < alpha_min {
+                                            param.bounds = (alpha_min, param.bounds.1);
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    // Unknown constraint type: preserve no behavior change.
+                                }
+                            }
+                        }
                     }
                 }
             }

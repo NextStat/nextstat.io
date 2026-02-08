@@ -175,4 +175,23 @@ pub struct ParameterConfig {
     /// Constraint widths
     #[serde(default)]
     pub sigmas: Vec<f64>,
+    /// Non-standard extension: HistFactory `<ConstraintTerm>` metadata.
+    ///
+    /// This is ignored by pyhf, but preserved by NextStat to support ROOT/HistFactory/TREx
+    /// constraint-term semantics when ingesting from `combination.xml`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub constraint: Option<ConstraintSpec>,
+}
+
+/// Non-standard extension: constraint-term specification (from HistFactory `<ConstraintTerm>`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConstraintSpec {
+    /// Constraint distribution type (case-insensitive).
+    ///
+    /// Common values: `Gamma`, `LogNormal`, `Uniform`, `NoConstraint`/`NoSyst`.
+    #[serde(rename = "type")]
+    pub constraint_type: String,
+    /// Relative uncertainty parameter (HistFactory attribute `RelativeUncertainty`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rel_uncertainty: Option<f64>,
 }

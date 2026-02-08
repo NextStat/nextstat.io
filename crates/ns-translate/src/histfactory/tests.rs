@@ -208,8 +208,9 @@ fn histfactory_pyhf_xmlimport_constraintterm_imported_into_measurement_params() 
         .iter()
         .find(|p| p.name == "syst2")
         .expect("GammaExample should include parameter config for syst2");
-    assert_eq!(syst2_gamma.auxdata, vec![0.0]);
-    assert_eq!(syst2_gamma.sigmas, vec![0.3]);
+    let c = syst2_gamma.constraint.as_ref().expect("GammaExample syst2 constraint spec");
+    assert_eq!(c.constraint_type, "Gamma");
+    assert_eq!(c.rel_uncertainty, Some(0.3));
 
     let lognorm = ws
         .measurements
@@ -222,6 +223,10 @@ fn histfactory_pyhf_xmlimport_constraintterm_imported_into_measurement_params() 
         .iter()
         .find(|p| p.name == "syst2")
         .expect("LogNormExample should include parameter config for syst2");
-    assert_eq!(syst2_logn.auxdata, vec![0.0]);
-    assert_eq!(syst2_logn.sigmas, vec![(1.0_f64 + 0.3).ln()]);
+    let c = syst2_logn
+        .constraint
+        .as_ref()
+        .expect("LogNormExample syst2 constraint spec");
+    assert_eq!(c.constraint_type, "LogNormal");
+    assert_eq!(c.rel_uncertainty, Some(0.3));
 }

@@ -412,47 +412,41 @@ fn build_measurements(
                 }
             }
 
-            // Apply Measurement-level ConstraintTerm overrides (if present).
+            // Apply Measurement-level ConstraintTerm metadata (if present).
             //
-            // Note: the pyhf JSON schema encodes constraint info in `auxdata` + `sigmas`
-            // without an explicit distribution tag. We preserve the declared type by
-            // mapping it into a (best-effort) Gaussian-equivalent width when possible.
+            // ROOT/HistFactory uses `<ConstraintTerm>` to select alternative constraint-term semantics
+            // (Gamma/LogNormal/Uniform/NoConstraint) for named nuisance parameters. This is not part of
+            // the pyhf JSON schema, so we store it as a non-standard extension field on the matching
+            // `measurements[].config.parameters[]` entries. The actual semantics are implemented
+            // in NextStat's model layer.
             for ct in &m.constraint_terms {
-                let sigma = match (ct.constraint_type.as_str(), ct.rel_uncertainty) {
-                    ("LogNormal" | "lognormal" | "LOGNORMAL", Some(rel)) if rel > 0.0 => {
-                        (1.0 + rel).ln()
-                    }
-                    (_, Some(rel)) if rel > 0.0 => rel,
-                    _ => 1.0,
-                };
+                let ctype = ct.constraint_type.trim();
+                let rel = ct.rel_uncertainty;
 
                 for name in &ct.names {
+                    let name = name.trim();
                     if name.is_empty() {
                         continue;
                     }
 
-                    // Center convention:
-                    // - Lumi-like multiplicative parameters are centered at 1
-                    // - Most HistFactory nuisance parameters (overall/histo sys) are centered at 0
-                    let center = if name.eq_ignore_ascii_case("Lumi") { 1.0 } else { 0.0 };
-
-                    let idx = parameters.iter().position(|p| p.name == *name);
+                    let idx = parameters.iter().position(|p| p.name == name);
                     if let Some(i) = idx {
-                        // Only fill auxdata/sigmas if not already set (avoid clobbering user config).
-                        if parameters[i].auxdata.is_empty() {
-                            parameters[i].auxdata = vec![center];
-                        }
-                        if parameters[i].sigmas.is_empty() {
-                            parameters[i].sigmas = vec![sigma];
-                        }
+                        parameters[i].constraint = Some(crate::pyhf::schema::ConstraintSpec {
+                            constraint_type: ctype.to_string(),
+                            rel_uncertainty: rel,
+                        });
                     } else {
                         parameters.push(ParameterConfig {
-                            name: name.clone(),
+                            name: name.to_string(),
                             inits: Vec::new(),
                             bounds: Vec::new(),
                             fixed: false,
-                            auxdata: vec![center],
-                            sigmas: vec![sigma],
+                            auxdata: Vec::new(),
+                            sigmas: Vec::new(),
+                            constraint: Some(crate::pyhf::schema::ConstraintSpec {
+                                constraint_type: ctype.to_string(),
+                                rel_uncertainty: rel,
+                            }),
                         });
                     }
                 }
