@@ -36,7 +36,7 @@ cuda = ["ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-translate/metal", "ns-compute/metal"]
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 approx.workspace = true

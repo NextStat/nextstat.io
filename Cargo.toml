@@ -95,7 +95,7 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # GPU backends (Phase 2C - Optional)
 cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "std", "dynamic-loading", "cuda-version-from-build-system"] }
-metal = "0.30"
+metal = "0.33"
 objc = "0.2"
 block = "0.1"
 
