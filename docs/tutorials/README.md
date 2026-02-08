@@ -7,6 +7,13 @@ status: stable
 
 This directory contains end-to-end tutorials for the implemented packs and workflows.
 
+## Start Here
+
+- Docs index: `docs/README.md`
+- Persona: Data Scientists: `docs/personas/data-scientists.md`
+- Persona: Quants: `docs/personas/quants.md`
+- Persona: Biologists / PK/NLME: `docs/personas/biologists.md`
+
 ## Core HEP workflows
 
 - Phase 3.1 (frequentist): `docs/tutorials/phase-3.1-frequentist.md`

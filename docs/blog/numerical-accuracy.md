@@ -289,22 +289,18 @@ The HistFactory specification is defined by the mathematical model [1], not by a
 
 ### 6.3 Reproducibility
 
-All comparisons can be reproduced. The scripts print tool versions (ROOT, SciPy, pyhf, NextStat) and record fit diagnostics; include these in bug reports.
+All comparisons can be reproduced from a NextStat checkout. The scripts print tool versions (ROOT, SciPy, pyhf, NextStat) and record fit diagnostics; include these in bug reports.
 
-Install NextStat:
-
-```bash
-pip install nextstat
-```
+Re-run the 3-way profile scan on the `xmlimport` fixture:
 
 ```bash
-python tests/validate_root_profile_scan.py \
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
   --histfactory-xml tests/fixtures/pyhf_xmlimport/config/example.xml \
   --rootdir tests/fixtures/pyhf_xmlimport \
   --include-pyhf --keep
 ```
 
-This command requires ROOT with PyROOT (HistFactory/RooFit/RooStats) available in your environment.
+This command requires ROOT with PyROOT (`hist2workspace`, HistFactory/RooFit/RooStats) available in your environment. The `--include-pyhf` path requires pyhf XML I/O support (e.g. `pyhf[xmlio]`, which pulls `uproot`).
 
 Cross-evaluation and optimizer diagnostics:
 
