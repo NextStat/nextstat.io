@@ -1,6 +1,6 @@
 ---
 title: "Public Benchmarks Repo Skeleton"
-status: draft
+status: shipped
 last_updated: 2026-02-08
 ---
 
@@ -11,6 +11,8 @@ This document specifies the intended structure of the **public benchmarks** repo
 Goal: make benchmarks **rerunnable by outsiders** with minimal friction and minimal ambiguity.
 
 Canonical benchmark program overview: `docs/benchmarks/public-benchmarks.md`.
+
+Seed implementation (in this repo): `benchmarks/nextstat-public-benchmarks/`.
 
 ## Principles
 
@@ -29,7 +31,8 @@ nextstat-public-benchmarks/
 
   manifests/
     schema/
-      baseline_manifest.schema.json
+      baseline_manifest_v1.schema.json
+      benchmark_result_v1.schema.json
     snapshots/
       <snapshot_id>.json
 

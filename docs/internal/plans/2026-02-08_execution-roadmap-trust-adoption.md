@@ -117,7 +117,8 @@ Goal:
 Deliverables:
 - Choose distribution:
   - `nextstat-benchmarks` repo, or
-  - `benchmarks/` folder in this repo with pinned lockfiles and runners.
+  - promote the existing seed harness at `benchmarks/nextstat-public-benchmarks/` into a standalone repo, or
+  - keep it as a `benchmarks/` distribution in this repo with pinned lockfiles and runners.
 - Produce “Snapshot v1” artifacts:
   - environment manifest
   - raw outputs
@@ -214,4 +215,3 @@ BMCP mapping:
 - High-level trust/bridge/vertical plan: `docs/internal/plans/2026-02-08_trust-bridge-vertical-plan.md`
 - Tool API contract: `docs/internal/plans/2026-02-08_tool-api-contract-v1.md`
 - Benchmark suite runbooks: `docs/benchmarks/suites/`
-

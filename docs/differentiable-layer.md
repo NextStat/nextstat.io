@@ -1,3 +1,20 @@
+---
+title: "Differentiable HistFactory Layer for PyTorch"
+description: "Canonical API and correctness contract for NextStat’s differentiable HistFactory likelihood and profiled discovery significance objectives in PyTorch (CUDA zero-copy, Metal fallback)."
+status: shipped
+last_updated: 2026-02-08
+keywords:
+  - differentiable inference
+  - HistFactory
+  - discovery significance
+  - Z0
+  - q0
+  - PyTorch autograd
+  - CUDA zero-copy
+  - envelope theorem
+  - NextStat
+---
+
 # Differentiable HistFactory Layer for PyTorch
 
 NextStat provides a differentiable NLL layer that integrates directly into PyTorch training loops. This enables **end-to-end optimization of neural network classifiers on physics significance** with full systematic uncertainty handling.
@@ -7,6 +24,13 @@ If you want to train on the actual discovery metric (rather than a surrogate lik
 > NN scores → differentiable histogram → profiled likelihood → q₀ → Z₀
 
 Concretely, this is exposed as `SoftHistogram` + `SignificanceLoss` in `nextstat.torch`.
+
+## What is differentiable (and what is not)
+
+- The layer is **differentiable w.r.t. the signal histogram** `s` (a 1D tensor of bin yields produced by your model + `SoftHistogram`).
+- For the fixed-parameter objective `nll_loss(...)`, nuisance parameters are treated as constants: the backward pass returns `∂NLL/∂s`.
+- For profiled objectives (`q₀`, `qμ`, `Z₀`, `Zμ`), NextStat uses the **envelope theorem** to compute an exact gradient w.r.t. `s` *at the fitted optima*, without backpropagating through optimizer iterations.
+- This does **not** (yet) differentiate derived quantities like CLs bands or `μ_up(α)`; those generally require implicit differentiation through root-finding (see “Phase 2 (future)” below).
 
 ## Architecture
 
@@ -209,6 +233,13 @@ If the signal sample appears in multiple channels, NextStat treats the external 
 
 `session.signal_n_bins()` returns the **total** number of signal bins across all entries.
 
+In PyTorch, the expected shape is therefore a single 1D tensor. For multi-channel setups, build it by concatenating per-channel histograms in the same order as the model’s signal entries:
+
+```python
+signal = torch.cat([signal_sr, signal_vr], dim=0).double().cuda()
+loss = loss_fn(signal)
+```
+
 ## Metal (Apple Silicon) support
 
 `create_profiled_session(..., device="auto")` prefers CUDA when available and can fall back to a Metal backend (if NextStat is built with `--features metal`).
@@ -219,29 +250,13 @@ Key differences vs CUDA:
 - The signal histogram is uploaded from CPU (no raw pointer interop with MPS tensors), so there is no CUDA-style zero-copy path.
 - L-BFGS-B tolerance is relaxed (default 1e-3) to match f32 behavior.
 
-## Competitive Landscape (February 2026)
+## Validation and evidence
 
-| Project | Status | Limitations |
-|---------|--------|-------------|
-| [pyhf #882](https://github.com/scikit-hep/pyhf/issues/882) | Open, not implemented | Pure Python, SLSQP not differentiable |
-| [neos](https://github.com/gradhep/neos) ([arXiv:2203.05570](https://arxiv.org/abs/2203.05570)) | PoC 2022, no updates | Slow, no GPU batch, simple models only |
-| [gradhep/relaxed](https://github.com/gradhep/relaxed) | Utility library | Not a pipeline, only soft histogram ops |
-| [arXiv:2508.17802](https://arxiv.org/abs/2508.17802) | Scikit-HEP+JAX, 2025 | JAX-only (no PyTorch), JIT tracer leaks |
-| [cabinetry](https://iris-hep.org/projects/cabinetry.html) | AD planned | Not implemented |
-| **NextStat** | **Production** | **First PyTorch-native, CUDA zero-copy** |
+This layer is validated with finite-difference checks and integration tests:
 
-### NextStat advantages
-
-1. **Native PyTorch integration** — `torch.autograd.Function`, works with any optimizer
-2. **CUDA zero-copy** — no data movement between PyTorch and NextStat GPU memory
-3. **Full HistFactory** — all modifier types (NormSys, HistoSys, ShapeSys, StatError, etc.)
-4. **37-880x faster** than pyhf on profile scans (CPU), even faster on GPU
-5. **Analytical gradients** — no finite differences, no AD overhead for signal gradient
-
-### Related work
-
-- [Differentiable Histogram (Hard-Binning)](https://arxiv.org/abs/2012.06311)
-- [The Elements of Differentiable Programming](https://arxiv.org/abs/2403.14606)
+- CUDA zero-copy NLL + signal gradient (`∂NLL/∂s`): `tests/python/test_torch_layer.py`
+- Profiled `q₀`/`qμ` envelope gradients: `tests/python/test_differentiable_profiled_q0.py`
+- Benchmark fixtures report max FD error (example): `docs/benchmarks.md`
 
 ## Architecture Decisions
 
@@ -278,4 +293,4 @@ This requires the cross-Hessian d2NLL/ds/dtheta, which can be computed via finit
 ## Further reading
 
 - Canonical implementation reference: `bindings/ns-py/python/nextstat/torch.py`
-- Scientific deep-dive (problem → solution → derivations): `docs/blog/differentiable-layer-nextstat-pytorch.md`
+- Scientific deep-dive (problem → solution → derivations): [How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch](/blog/differentiable-layer-nextstat-pytorch)

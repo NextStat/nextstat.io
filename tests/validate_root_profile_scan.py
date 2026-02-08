@@ -655,6 +655,18 @@ def main() -> int:
     # NextStat: profile scan (direct HistFactory import, no pyhf dependency)
     # ---------------------------------------------------------------------
     t3 = time.perf_counter()
+    # Validation runs should prefer numerical robustness and determinism.
+    #
+    # - Parity mode enables Kahan summation and other "numbers-first" behaviors.
+    # - Threads=1 avoids non-deterministic reductions.
+    try:
+        nextstat.set_eval_mode("parity")
+    except Exception:
+        pass
+    try:
+        nextstat.set_threads(1)
+    except Exception:
+        pass
     ns_model = nextstat.from_histfactory_xml(str(combo_xml))
     ns_scan = ns_infer.profile_scan(ns_model, mu_values)
     t_ns = time.perf_counter() - t3

@@ -185,6 +185,8 @@ Publishing + replication doc: [Publishing Benchmarks](/docs/benchmarks/publishin
 
 Benchmarks repo skeleton (pinned envs, manifests): [Benchmarks Repo Skeleton](/docs/benchmarks/repo-skeleton).
 
+Seed harness directory (in this repo, to bootstrap the standalone benchmarks repo): `benchmarks/nextstat-public-benchmarks/`.
+
 ## DOI + citation
 
 Benchmark snapshots that are stable enough to cite should be published with a DOI (e.g., Zenodo) and a machine-readable citation file (e.g., `CITATION.cff`).

@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use NextStat public benchmark snapshots in academic work, please cite the snapshot DOI (when published) and the harness repository."
+title: "NextStat Public Benchmarks Harness"
+type: software
+authors:
+  - name: "NextStat Contributors"
+license: "AGPL-3.0-or-later"
+
