@@ -341,7 +341,7 @@ openssl pkeyutl -verify -pubin -inkey tmp/manifest_pub.pem -rawin \
 
 The OSS baseline provides:
 - `validation_report.json` (machine-readable, deterministic)
-- `validation_report.pdf` (matplotlib-rendered, basic layout)
+- `validation_report.pdf` (matplotlib-rendered, publishable layout: cover + matrix + key-suite worst-cases)
 
 Enterprise extensions (commercial license) may add:
 - Branded PDF templates with corporate identity
