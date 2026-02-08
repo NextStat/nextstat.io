@@ -79,6 +79,8 @@ Each benchmark snapshot should publish:
 **Docs:** this site (how to run, what’s measured, what is gated).  
 **Blog:** results + interpretation once snapshots are public.
 
+Suite doc: `docs/benchmarks/suites/hep.md`.
+
 Measurements:
 
 - NLL time / call (CPU parity mode and fast mode)
@@ -94,6 +96,8 @@ Correctness gates:
 
 ### Pharma suite (PK/NLME plan + datasets)
 
+Suite doc: `docs/benchmarks/suites/pharma.md`.
+
 Measurements:
 
 - Likelihood + gradient time for standard models
@@ -101,6 +105,8 @@ Measurements:
 - Scaling with subject count / observation count
 
 ### Bayesian suite (ESS/sec vs Stan + PyMC)
+
+Suite doc: `docs/benchmarks/suites/bayesian.md`.
 
 Primary metrics:
 
@@ -113,6 +119,8 @@ Notes:
 - We must publish the exact inference settings (step size adaptation, target accept, mass matrix policy).
 
 ### ML suite (JAX compile vs execution)
+
+Suite doc: `docs/benchmarks/suites/ml.md`.
 
 Primary metrics:
 
@@ -127,6 +135,8 @@ We publish benchmark snapshots via CI:
 - Every run has a unique, immutable identifier.
 - Artifacts include raw results + baseline manifest.
 - Baseline comparisons are opt-in and versioned (no silent “moving targets”).
+
+Publishing + replication doc: `docs/benchmarks/publishing.md`.
 
 ## DOI + citation
 
@@ -144,4 +154,3 @@ The strongest trust signal is an independent rerun. The replication process shou
 
 - Trust Offensive: Public Benchmarks — why this exists and how to interpret it.
 - “The End of the Scripting Era” — how reproducible benchmarking changes how we build scientific software.
-

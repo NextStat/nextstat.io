@@ -34,13 +34,42 @@ Usage standalone (MCP server)::
 
 from __future__ import annotations
 
+import copy
 import json
+import math
 from typing import Any, Optional
 
 
 # ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
+
+_EXECUTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Optional execution controls. If deterministic=true (default), NextStat will attempt to "
+        "enforce parity-friendly settings (threads=1, eval_mode='parity') where supported."
+    ),
+    "properties": {
+        "deterministic": {
+            "type": "boolean",
+            "description": "If true, prefer deterministic parity behavior (default: true).",
+            "default": True,
+        },
+        "threads": {
+            "type": "integer",
+            "description": (
+                "Requested thread count. If omitted and deterministic=true, defaults to 1. "
+                "If 0, use library default."
+            ),
+        },
+        "eval_mode": {
+            "type": "string",
+            "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+            "enum": ["parity", "fast"],
+        },
+    },
+}
 
 _TOOLS: list[dict[str, Any]] = [
     {

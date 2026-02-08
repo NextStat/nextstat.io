@@ -1,0 +1,17 @@
+{
+  "schema_version": "nextstat.tool_result.v1",
+  "ok": true,
+  "result": {
+    "nll": 0.123,
+    "converged": true
+  },
+  "error": null,
+  "meta": {
+    "tool_name": "nextstat_fit",
+    "nextstat_version": "0.0.0",
+    "deterministic": true,
+    "eval_mode": "parity",
+    "threads_requested": 1
+  }
+}
+
