@@ -134,6 +134,12 @@ Publish (as a GitHub release, Zenodo upload, or a public object store) at minimu
 - `docs/benchmarks/replication_template.md` (human-readable report template)
 - `docs/specs/replication_report_v1.example.json` (machine-readable example)
 
+## Public Benchmarks Seed Repo (Bootstrap)
+
+For the standalone public benchmarks harness seed (directory: `benchmarks/nextstat-public-benchmarks/`), replication templates and lightweight tooling live under:
+
+- `benchmarks/nextstat-public-benchmarks/replication/`
+
 ## CI drift detection (NextStat nightly)
 
 For internal drift detection (CI), we recommend using "yesterday's nightly" as the baseline rather than a DOI-published snapshot:

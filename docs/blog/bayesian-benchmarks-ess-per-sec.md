@@ -28,7 +28,7 @@ Bayesian benchmarks are notorious because they collapse a multi-dimensional obje
 
 That can be useful — if you control the experiment.
 
-This post explains how we plan to benchmark Bayesian inference in NextStat using **ESS/sec** in a way that is reproducible and comparable across frameworks (Stan, PyMC), and what we will publish so that outsiders can rerun the claim.
+This post explains how we benchmark Bayesian inference in NextStat using **ESS/sec** in a way that is reproducible and comparable across frameworks (Stan, PyMC), and what we publish so outsiders can rerun the claim.
 
 Runbook/spec:
 
@@ -36,7 +36,18 @@ Runbook/spec:
 
 ---
 
-## 1. Why ESS/sec is the right first metric (and when it isn’t)
+## Abstract
+
+We treat Bayesian performance numbers as scientific claims. That means:
+
+- we define the *posterior* (model + priors + parameterization),
+- we define the *inference protocol* (warmup, adaptation, mass matrix policy, stopping rules),
+- we report **sampling efficiency** (ESS/sec, bulk + tail) *and* health (divergences, treedepth saturation, $\hat{R}$, E‑BFMI),
+- and we publish artifacts (raw timings, manifests, and validation packs) so an outsider can rerun.
+
+---
+
+## 1) Why ESS/sec is the right first metric (and when it isn’t)
 
 For gradient-based samplers, wall-time per iteration is not the whole story. What matters is:
 
@@ -58,7 +69,24 @@ But ESS/sec only makes sense when:
 
 ---
 
-## 2. The benchmarking protocol (what must be pinned)
+## 2) What we publish: ESS/sec + “health” metrics
+
+ESS/sec alone can be gamed by pathological runs (e.g., a chain that “moves” fast but is invalid).
+
+So we publish, at minimum:
+
+- bulk ESS/sec and tail ESS/sec (per parameter group),
+- divergence rate,
+- max treedepth saturation rate,
+- max $\hat{R}$ across parameters,
+- minimum ESS (bulk + tail) across parameters,
+- minimum E‑BFMI across chains.
+
+Those are not “extra diagnostics”; they are part of what it means for a run to count.
+
+---
+
+## 3) The benchmarking protocol (what must be pinned)
 
 To avoid benchmark theater, we pin:
 
@@ -75,7 +103,46 @@ If any of these differ, we don’t call it a comparison — we call it a differe
 
 ---
 
-## 3. What we will publish (artifacts)
+## 4) Correctness gates: performance numbers must be “allowed to exist”
+
+We separate **posterior correctness** from **performance** and publish both.
+
+### 4.1 NUTS quality smoke suite (fast)
+
+The Apex2 “NUTS quality” runner exists specifically to catch catastrophic regressions in:
+
+- posterior transform plumbing (bounded/unbounded parameters),
+- HMC/NUTS stability (finite energies, low divergence/treedepth saturation),
+- diagnostics plumbing ($\hat{R}$/ESS/E‑BFMI present and finite).
+
+With `--deterministic` it produces a deterministic JSON artifact:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_nuts_quality_report.py \
+  --deterministic \
+  --out tmp/apex2_nuts_quality_report.json
+```
+
+The suite includes small, interpretable cases (e.g., a Gaussian mean, a strong-prior posterior sanity, and a Neal’s funnel stress case).
+
+### 4.2 Simulation-Based Calibration (SBC) (slow, stronger evidence)
+
+SBC validates the *posterior* more directly: for synthetic datasets generated from the prior, posterior ranks should be uniform.
+
+The Apex2 SBC runner is intentionally “nightly/slow”:
+
+```bash
+NS_RUN_SLOW=1 NS_SBC_RUNS=20 NS_SBC_WARMUP=200 NS_SBC_SAMPLES=200 \
+  PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_sbc_report.py \
+    --deterministic \
+    --out tmp/apex2_sbc_report.json
+```
+
+This is not a performance benchmark — it’s a correctness gate that makes performance comparisons meaningful.
+
+---
+
+## 5) What we publish (artifacts)
 
 For each benchmark snapshot:
 
@@ -90,7 +157,7 @@ Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 
-## 4. Known pitfalls (we will document them explicitly)
+## 6) Known pitfalls (we will document them explicitly)
 
 ### A) Parameterization dominates
 
@@ -110,7 +177,19 @@ ESS depends on the method and version of the diagnostics tool. We will publish t
 
 ---
 
-## 5. What you should take away
+## 7) How to run a local microbenchmark (today)
+
+For a Rust-only microbenchmark of NUTS wall-time under a pinned `NutsConfig`, we ship a Criterion bench:
+
+```bash
+cargo bench -p ns-inference --bench nuts_benchmark
+```
+
+This covers a small Normal mean model and a tiny HistFactory model fixture; it is useful for regression detection, not for cross-framework “wins”.
+
+---
+
+## 8) What you should take away
 
 When we publish Bayesian benchmark numbers, the intent is that you can answer:
 
