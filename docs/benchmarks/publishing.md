@@ -1,7 +1,17 @@
 ---
 title: "Publishing Benchmarks (CI, Artifacts, DOI, Replication)"
+description: "How NextStat benchmark snapshots are published: CI automation, immutable artifacts, baseline manifests, DOI minting, validation report integration, and third-party replication with signed reports."
 status: draft
 last_updated: 2026-02-08
+keywords:
+  - benchmark publishing
+  - CI benchmark artifacts
+  - DOI benchmarks
+  - Zenodo scientific software
+  - benchmark replication
+  - signed benchmark report
+  - validation report
+  - NextStat
 ---
 
 # Publishing Benchmarks (CI, Artifacts, DOI, Replication)
@@ -27,6 +37,15 @@ Each published snapshot must include:
   - hardware: CPU, RAM, GPU, driver/runtime versions
   - benchmark configuration (flags, suite selection, warmup policy)
 - **Correctness gates report** (e.g., parity deltas used to validate the run)
+- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix
+
+The single-command entrypoint for generating a complete validation pack is:
+
+```bash
+make validation-pack
+```
+
+This produces `apex2_master_report.json` + `validation_report.json` + `validation_report.pdf` in `tmp/validation_pack/`.
 
 ## 2) CI publishing workflow
 
@@ -90,8 +109,15 @@ The replication report should include:
 - correctness/parity deltas (must still pass)
 - signature (GPG, Sigstore, or equivalent)
 
+The `validation_report.json` includes SHA-256 hashes for both the workspace and the Apex2 master report. Signing this JSON with GPG or Sigstore creates a complete chain: *data hash → validation result → signer identity*.
+
 ### What we do with replications
 
 - link replications from the canonical snapshot index
-- prefer “rerun me” evidence over “trust us” claims in blog posts
+- prefer "rerun me" evidence over "trust us" claims in blog posts
 
+## Related reading
+
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec for suite structure and protocols.
+- [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — blog post on the replication protocol.

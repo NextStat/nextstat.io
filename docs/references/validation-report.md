@@ -164,11 +164,21 @@ bash validation-pack/render_validation_pack.sh \
   --deterministic
 ```
 
+To generate JSON only (skip PDF rendering and the `matplotlib` dependency):
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack \
+  --workspace tests/fixtures/complex_workspace.json \
+  --deterministic \
+  --json-only
+```
+
 **Outputs (in `--out-dir`):**
 
 - `apex2_master_report.json`
 - `validation_report.json`
-- `validation_report.pdf`
+- `validation_report.pdf` (unless `--json-only`)
 - `validation_report_v1.schema.json`
 
 Notes:

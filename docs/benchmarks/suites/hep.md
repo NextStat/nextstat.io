@@ -1,7 +1,19 @@
 ---
 title: "Benchmark Suite: HEP (HistFactory)"
+description: "HEP benchmark suite for NextStat: NLL evaluation, gradients, MLE fits, profile scans, toy ensembles, and GPU batch benchmarks against pyhf and ROOT/RooFit with correctness-gated protocols."
 status: draft
 last_updated: 2026-02-08
+keywords:
+  - HistFactory benchmark
+  - pyhf comparison
+  - ROOT RooFit benchmark
+  - NLL evaluation performance
+  - profile likelihood scan
+  - toy ensemble throughput
+  - CUDA GPU batch fit
+  - Metal GPU benchmark
+  - HEP statistical inference
+  - NextStat
 ---
 
 # HEP Benchmark Suite (HistFactory / pyhf / ROOT)
@@ -13,7 +25,7 @@ This suite benchmarks NextStat on the workflows that dominate binned-likelihood 
 - profile likelihood scans
 - hypothesis tests / toy ensembles
 
-This page is a **runbook + methodology**. Results are published as benchmark snapshots (see `docs/benchmarks/public-benchmarks.md`).
+This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/benchmarks/public-benchmarks)).
 
 ## What is compared
 
@@ -104,9 +116,15 @@ Rust microbenchmarks (Criterion):
 cargo bench -p ns-inference --bench mle_benchmark
 ```
 
-## Known pitfalls (what we will not “benchmark away”)
+## Known pitfalls (what we will not "benchmark away")
 
 - Reference mismatches (wrong interpolation codes, constraints, masking) invalidate the benchmark; correctness gates must fail fast.
 - Cold-start vs warm-start must be declared; mixing them produces misleading scan numbers.
-- For Python comparisons, “Python overhead included” vs “core-only” must be separated and both published.
+- For Python comparisons, "Python overhead included" vs "core-only" must be separated and both published.
 
+## Related reading
+
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
+- [Benchmarks — GPU section](/docs/benchmarks#gpu-benchmarks-cuda) — full GPU benchmark tables.
+- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Numerical Accuracy](/blog/numerical-accuracy) — ROOT/pyhf/NextStat 3-way profile scan comparison.

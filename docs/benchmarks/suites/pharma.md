@@ -1,7 +1,17 @@
 ---
 title: "Benchmark Suite: Pharma (PK / NLME)"
+description: "Pharmacometrics benchmark suite for NextStat: PK/NLME likelihood evaluation, fit wall-time, subject-count scaling, and analytic reference baselines with correctness-gated protocols for regulated-industry validation."
 status: draft
 last_updated: 2026-02-08
+keywords:
+  - NLME benchmark
+  - pharmacometrics performance
+  - PK model benchmark
+  - population PK fitting
+  - NONMEM alternative
+  - Monolix comparison
+  - pharmaceutical software validation
+  - NextStat pharma
 ---
 
 # Pharma Benchmark Suite (PK / NLME)
@@ -77,5 +87,26 @@ Every published run must include:
 
 Rust microbenchmarks live under `crates/ns-inference/benches/` and can be run via Criterion. If/when a dedicated PK/NLME bench is added, it will be listed here.
 
-For a minimal “smoke” benchmark today, you can script repeated fits using the tutorial models from `docs/tutorials/phase-13-pk.md` and `docs/tutorials/phase-13-nlme.md` and publish your manifest (Python/Rust versions, CPU model, etc.).
+For a minimal “smoke” benchmark today, you can script repeated fits using the tutorial models from [/docs/tutorials/phase-13-pk](/docs/tutorials/phase-13-pk) and [/docs/tutorials/phase-13-nlme](/docs/tutorials/phase-13-nlme) and publish your manifest (Python/Rust versions, CPU model, etc.).
 
+## Apex2 pharma reference suite (shipped)
+
+The `apex2_pharma_reference_report.py` runner produces a JSON report covering:
+
+- Analytic 1-compartment PK reference (closed-form vs ODE solver parity)
+- NLME fit smoke tests on synthetic population data
+- Per-case pass/fail with numeric deltas
+
+This report is included in the Apex2 master report under the `pharma_reference` key and consumed by [/docs/references/validation-report](/docs/references/validation-report) for the unified validation pack.
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pharma_reference_report.py \
+  --out tmp/apex2_pharma_reference_report.json
+```
+
+## Related reading
+
+- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
+- [PK Baseline Tutorial](/docs/tutorials/phase-13-pk) — 1-compartment PK model walkthrough.
+- [NLME Baseline Tutorial](/docs/tutorials/phase-13-nlme) — population PK with random effects.
+- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.

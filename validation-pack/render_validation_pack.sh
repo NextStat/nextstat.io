@@ -16,6 +16,7 @@ Options:
   --apex2-master PATH      Use an existing Apex2 master JSON instead of running Apex2
   --python PATH            Python interpreter to run Apex2 + PDF renderer (default: .venv/bin/python or python3)
   --nextstat-bin PATH      nextstat CLI binary (default: target/release/nextstat, target/debug/nextstat, or nextstat in PATH)
+  --json-only              Generate validation_report.json only (skip PDF rendering and matplotlib requirement)
   --deterministic          Deterministic JSON/PDF output (default)
   --non-deterministic      Allow timestamps/timings in outputs
   --nuts-quality           Also run NUTS quality report (can be slower)
@@ -32,6 +33,7 @@ apex2_master_in=""
 py=""
 nextstat_bin=""
 deterministic=1
+render_pdf=1
 run_nuts_quality=0
 root_search_dir=""
 
@@ -56,6 +58,10 @@ while [[ $# -gt 0 ]]; do
     --nextstat-bin)
       nextstat_bin="$2"
       shift 2
+      ;;
+    --json-only)
+      render_pdf=0
+      shift 1
       ;;
     --deterministic)
       deterministic=1
@@ -128,11 +134,14 @@ echo "Using python: $py" >&2
 echo "Using nextstat: $nextstat_bin" >&2
 echo "Output dir: $out_dir" >&2
 
-# PDF render requires matplotlib (via nextstat[viz] or a dev env).
-if ! "$py" -c 'import matplotlib' >/dev/null 2>&1; then
-  echo "Missing dependency: matplotlib (required to render validation_report.pdf)." >&2
-  echo "Install with: pip install 'nextstat[viz]'  (or install matplotlib into your venv)" >&2
-  exit 2
+if [[ "$render_pdf" == "1" ]]; then
+  # PDF render requires matplotlib (via nextstat[viz] or a dev env).
+  if ! "$py" -c 'import matplotlib' >/dev/null 2>&1; then
+    echo "Missing dependency: matplotlib (required to render validation_report.pdf)." >&2
+    echo "Install with: pip install 'nextstat[viz]'  (or install matplotlib into your venv)" >&2
+    echo "Alternatively, re-run with --json-only to skip PDF rendering." >&2
+    exit 2
+  fi
 fi
 
 apex2_master="$out_dir/apex2_master_report.json"
@@ -199,7 +208,10 @@ else
   ns_cmd=("$nextstat_bin")
 fi
 
-ns_args=(validation-report --apex2 "$apex2_master" --workspace "$workspace" --out "$validation_json" --pdf "$validation_pdf" --python "$py")
+ns_args=(validation-report --apex2 "$apex2_master" --workspace "$workspace" --out "$validation_json")
+if [[ "$render_pdf" == "1" ]]; then
+  ns_args+=(--pdf "$validation_pdf" --python "$py")
+fi
 if [[ "$deterministic" == "1" ]]; then
   ns_args+=(--deterministic)
 fi
@@ -215,7 +227,9 @@ set -e
 echo "Wrote:" >&2
 echo "  $apex2_master" >&2
 echo "  $validation_json" >&2
-echo "  $validation_pdf" >&2
+if [[ "$render_pdf" == "1" ]]; then
+  echo "  $validation_pdf" >&2
+fi
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   echo "  $out_dir/validation_report_v1.schema.json" >&2
 fi
