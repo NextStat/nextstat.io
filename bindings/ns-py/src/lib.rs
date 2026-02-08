@@ -4460,14 +4460,15 @@ fn profile_scan(
     data: Option<Vec<f64>>,
     device: &str,
 ) -> PyResult<Py<PyAny>> {
-    // Profile scans are used as a parity surface against ROOT/HistFactory.
-    // Use stricter optimizer tolerances than the general-purpose defaults to reduce
-    // POI mu_hat drift on large real-world exports.
+    // Profile scans are used as a parity surface against ROOT/HistFactory. In practice,
+    // ROOT's Minuit stopping criteria are looser than our strict-gradient defaults; an
+    // overly strict tolerance can push the fit into slightly different basins and produce
+    // small but systematic q(mu) differences on large exports.
     let mle = RustMLE::with_config(OptimizerConfig {
         max_iter: 20000,
-        tol: 1e-12,
+        tol: 1e-6,
         m: 20,
-        smooth_bounds: true,
+        smooth_bounds: false,
     });
     let fit_model = if let Some(obs_main) = data {
         model
