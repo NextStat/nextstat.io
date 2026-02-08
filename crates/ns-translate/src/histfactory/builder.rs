@@ -306,6 +306,17 @@ fn build_sample(
     }
 
     for m in &s.modifiers {
+        let staterror_constraint_type =
+            ch.stat_error_config.as_ref().map(|c| c.constraint_type.as_str());
+        // ROOT/HistFactory `RelErrorThreshold` is optional. When absent, treat it as 0.0
+        // (i.e., do not disable any bins by default).
+        //
+        // When `<StatErrorConfig>` is present and `RelErrorThreshold` is specified, use it.
+        let staterror_rel_threshold = ch
+            .stat_error_config
+            .as_ref()
+            .and_then(|c| c.rel_error_threshold)
+            .unwrap_or(0.0);
         let mods =
             build_modifier(
                 m,
@@ -316,7 +327,8 @@ fn build_sample(
                 &nominal,
                 &ch.name,
                 &s.name,
-                ch.stat_error_config.as_ref().map(|c| c.constraint_type.as_str()),
+                staterror_constraint_type,
+                staterror_rel_threshold,
             )?;
         modifiers.extend(mods);
     }
@@ -335,6 +347,7 @@ fn build_modifier(
     channel_name: &str,
     sample_name: &str,
     staterror_constraint_type: Option<&str>,
+    staterror_rel_threshold: f64,
 ) -> Result<Vec<Modifier>> {
     match m {
         ModifierXml::NormFactor { name, .. } => {
@@ -417,14 +430,37 @@ fn build_modifier(
                         channel_name,
                     )));
                 }
-                rel.iter().zip(nominal.bin_content.iter()).map(|(r, n)| r * n).collect()
+                rel.iter()
+                    .zip(nominal.bin_content.iter())
+                    .map(|(r, n)| {
+                        // HistFactory convention: StatError histogram stores RELATIVE uncertainties.
+                        // Apply the per-channel RelErrorThreshold (bins below threshold are treated as no staterror).
+                        let rr = if *r >= staterror_rel_threshold { *r } else { 0.0 };
+                        rr * n
+                    })
+                    .collect()
             } else {
                 // Prefer nominal sumw2 if available (weighted MC templates).
                 if let Some(sw2) = nominal.sumw2.as_ref() {
-                    sw2.iter().map(|v| v.max(0.0).sqrt()).collect()
+                    sw2.iter()
+                        .zip(nominal.bin_content.iter())
+                        .map(|(v, n)| {
+                            let sigma_abs = v.max(0.0).sqrt();
+                            let rel = if *n > 0.0 { sigma_abs / *n } else { 0.0 };
+                            if rel >= staterror_rel_threshold { sigma_abs } else { 0.0 }
+                        })
+                        .collect()
                 } else {
                     // Fallback: Poisson-ish sqrt(nominal).
-                    nominal.bin_content.iter().map(|v| v.sqrt()).collect()
+                    nominal
+                        .bin_content
+                        .iter()
+                        .map(|v| {
+                            let sigma_abs = v.sqrt();
+                            let rel = if *v > 0.0 { sigma_abs / *v } else { 0.0 };
+                            if rel >= staterror_rel_threshold { sigma_abs } else { 0.0 }
+                        })
+                        .collect()
                 }
             };
 

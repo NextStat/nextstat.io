@@ -78,6 +78,17 @@ pub mod toys;
 /// Differentiable NLL session for PyTorch zero-copy integration (requires `cuda` feature).
 #[cfg(feature = "cuda")]
 pub mod differentiable;
+
+#[cfg(test)]
+pub(crate) mod testutil {
+    use std::sync::Mutex;
+
+    /// Global lock for tests that mutate process-wide runtime flags (e.g. `ns_compute::set_eval_mode`).
+    ///
+    /// Rust tests run concurrently by default; without a lock, concurrent mutations can make
+    /// determinism tests flaky.
+    pub static RUNTIME_MODE_LOCK: Mutex<()> = Mutex::new(());
+}
 /// GPU-accelerated batch toy fitting (requires `cuda` feature + NVIDIA GPU).
 #[cfg(feature = "cuda")]
 pub mod gpu_batch;

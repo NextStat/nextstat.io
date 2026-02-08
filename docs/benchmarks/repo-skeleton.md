@@ -33,6 +33,9 @@ nextstat-public-benchmarks/
     schema/
       baseline_manifest_v1.schema.json
       benchmark_result_v1.schema.json
+      benchmark_suite_result_v1.schema.json
+      pharma_benchmark_result_v1.schema.json
+      pharma_benchmark_suite_result_v1.schema.json
     snapshots/
       <snapshot_id>.json
 

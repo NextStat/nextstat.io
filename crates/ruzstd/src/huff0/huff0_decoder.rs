@@ -56,10 +56,25 @@ impl<'t> HuffmanDecoder<'t> {
 
     #[inline(always)]
     pub fn decode_and_advance(&mut self, br: &mut BitReaderReversed<'_>) -> u8 {
-        let entry = &self.table.decode[self.state as usize];
+        let entry = unsafe { *self.table.decode.get_unchecked(self.state as usize) };
         let symbol = entry.symbol;
         let num_bits = entry.num_bits;
-        let new_bits = br.get_bits(num_bits);
+        let new_bits = br.get_bits_nonzero(num_bits);
+        self.state <<= num_bits;
+        self.state &= self.table.decode.len() as u64 - 1;
+        self.state |= new_bits;
+        symbol
+    }
+
+    /// Fast version: caller guarantees refill has been done and at least max_num_bits
+    /// bits are available. Skips refill check and n==0 check. Uses unchecked table access.
+    #[inline(always)]
+    pub fn decode_and_advance_fast(&mut self, br: &mut BitReaderReversed<'_>) -> u8 {
+        let entry = unsafe { *self.table.decode.get_unchecked(self.state as usize) };
+        let symbol = entry.symbol;
+        let num_bits = entry.num_bits;
+        let new_bits = br.peek_bits_fast(num_bits);
+        br.consume(num_bits);
         self.state <<= num_bits;
         self.state &= self.table.decode.len() as u64 - 1;
         self.state |= new_bits;
@@ -69,7 +84,7 @@ impl<'t> HuffmanDecoder<'t> {
 
 /// A Huffman decoding table contains a list of Huffman prefix codes and their associated values
 pub struct HuffmanTable {
-    decode: Vec<Entry>,
+    pub(crate) decode: Vec<Entry>,
     /// The weight of a symbol is the number of occurences in a table.
     /// This value is used in constructing a binary tree referred to as
     /// a Huffman tree. Once this tree is constructed, it can be used to build the
@@ -402,9 +417,9 @@ impl Default for HuffmanTable {
 #[derive(Copy, Clone, Debug)]
 pub struct Entry {
     /// The byte that the prefix code replaces during encoding.
-    symbol: u8,
+    pub(crate) symbol: u8,
     /// The number of bits the prefix code occupies.
-    num_bits: u8,
+    pub(crate) num_bits: u8,
 }
 
 /// Assert that the provided value is greater than zero, and returns the

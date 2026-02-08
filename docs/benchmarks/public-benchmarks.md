@@ -190,6 +190,8 @@ Benchmarks repo skeleton (pinned envs, manifests): [Benchmarks Repo Skeleton](/d
 
 Seed harness directory (in this repo, to bootstrap the standalone benchmarks repo): `benchmarks/nextstat-public-benchmarks/`.
 
+Seed publishing helper (in this repo): `benchmarks/nextstat-public-benchmarks/scripts/publish_snapshot.py` can generate a local snapshot directory under `benchmarks/nextstat-public-benchmarks/manifests/snapshots/<snapshot_id>/` and schema-validate the produced artifacts.
+
 ## DOI + citation
 
 Benchmark snapshots that are stable enough to cite should be published with a DOI (e.g., Zenodo) and a machine-readable citation file (e.g., `CITATION.cff`).

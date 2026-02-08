@@ -181,6 +181,43 @@ fn histfactory_trex_export_dirs_ingest_is_deterministic_smoke() {
 }
 
 #[test]
+fn histfactory_missing_staterrorconfig_does_not_disable_staterror_bins_by_default() {
+    // TREx/ROOT exports often omit `<StatErrorConfig>`. ROOT/HistFactory treats an omitted
+    // RelErrorThreshold as 0.0, i.e. no bins are disabled by default.
+    let (xml, basedir) = fixture_trex_export_dir("tttt-prod");
+    let ws = from_xml_with_basedir(&xml, Some(&basedir)).expect("from_xml_with_basedir");
+
+    let ch = ws
+        .channels
+        .iter()
+        .find(|c| c.name == "SR_AllBDT")
+        .expect("SR_AllBDT channel");
+    let ttW = ch.samples.iter().find(|s| s.name == "ttW").expect("ttW sample");
+
+    let sigmas = ttW
+        .modifiers
+        .iter()
+        .find_map(|m| match m {
+            crate::pyhf::schema::Modifier::StatError { name, data }
+                if name == "staterror_SR_AllBDT" =>
+            {
+                Some(data.clone())
+            }
+            _ => None,
+        })
+        .expect("StatError staterror_SR_AllBDT");
+
+    // In this fixture, the StatError hist has rel errors:
+    // Some bins have rel errors below 0.05 (e.g. idx 3/4), but they should NOT be disabled
+    // when RelErrorThreshold is omitted.
+    assert!(sigmas.len() > 16, "expected SR_AllBDT to have 17 bins");
+    assert!(sigmas[3] > 0.0, "idx 3 should remain enabled (no default threshold)");
+    assert!(sigmas[4] > 0.0, "idx 4 should remain enabled (no default threshold)");
+    assert!(sigmas[13] > 0.0, "bin 13 should remain enabled");
+    assert!(sigmas[16] > 0.0, "bin 16 should remain enabled");
+}
+
+#[test]
 fn histfactory_pyhf_multichannel_shapesys_hist_is_relative_uncertainty() {
     let (xml, basedir) = fixture_pyhf_multichannel();
     let ws = from_xml_with_basedir(&xml, Some(&basedir)).expect("from_xml_with_basedir");

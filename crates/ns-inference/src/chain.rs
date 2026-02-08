@@ -106,6 +106,13 @@ mod tests {
 
     #[test]
     fn test_multichain_deterministic() {
+        let _lock = crate::testutil::RUNTIME_MODE_LOCK.lock().unwrap();
+
+        // Ensure deterministic model evaluation: NUTS trajectories are extremely sensitive to
+        // tiny floating-point differences, so we must disable any non-deterministic fast paths.
+        let old_mode = ns_compute::eval_mode();
+        ns_compute::set_eval_mode(ns_compute::EvalMode::Parity);
+
         let ws = load_simple_workspace();
         let model = HistFactoryModel::from_workspace(&ws).unwrap();
 
@@ -125,6 +132,12 @@ mod tests {
                 c1.draws_constrained, c2.draws_constrained,
                 "Multi-chain should be deterministic"
             );
+        }
+
+        // Best-effort restore (Parity disables Accelerate via a process-wide flag).
+        ns_compute::set_eval_mode(old_mode);
+        if old_mode == ns_compute::EvalMode::Fast {
+            ns_compute::set_accelerate_enabled(true);
         }
     }
 

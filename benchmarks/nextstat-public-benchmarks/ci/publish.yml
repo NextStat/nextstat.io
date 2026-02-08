@@ -27,21 +27,13 @@ jobs:
 
       - name: Run suite(s)
         run: |
-          mkdir -p out
-          python suites/hep/run.py --deterministic --out out/hep_simple_nll.json
-
-      - name: Write baseline manifest
-        run: |
-          python scripts/write_baseline_manifest.py \
+          python scripts/publish_snapshot.py \
             --snapshot-id "${{ inputs.snapshot_id }}" \
             --deterministic \
-            --result out/hep_simple_nll.json \
-            --dataset suites/hep/datasets/simple_workspace.json \
-            --out out/baseline_manifest.json
+            --fit --fit-repeat 3
 
       - name: Upload snapshot artifacts
         uses: actions/upload-artifact@v4
         with:
           name: snapshot-${{ inputs.snapshot_id }}
-          path: out/
-
+          path: manifests/snapshots/${{ inputs.snapshot_id }}/

@@ -112,6 +112,11 @@ out = execute_tool(
 print(out)
 ```
 
+Notes:
+- `server_url` can also be provided via `NEXTSTAT_SERVER_URL` or `NEXTSTAT_TOOLS_SERVER_URL`.
+- `execute_tool(..., transport="server")` falls back to local execution by default on transport errors.
+  - Use `fallback_to_local=False` if you want server-only behavior.
+
 ## Security / Input Policy
 
 Server mode does **not** expose file-ingest tools (like reading ROOT files from arbitrary paths) via `/v1/tools/*`.

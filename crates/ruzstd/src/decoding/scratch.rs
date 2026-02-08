@@ -11,6 +11,17 @@ use crate::blocks::sequence_section::{
     MAX_LITERAL_LENGTH_CODE, MAX_MATCH_LENGTH_CODE, MAX_OFFSET_CODE,
 };
 
+/// Merged FSE + sequence value entry (matches libzstd's ZSTD_seqSymbol layout).
+/// One table lookup gives base_value + nb_additional_bits + state transition info.
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct SeqSymbol {
+    pub base_value: u32,
+    pub next_state_base: u16,
+    pub nb_bits: u8,
+    pub nb_additional_bits: u8,
+}
+
 /// A block level decoding buffer.
 pub struct DecoderScratch {
     /// The decoder used for Huffman blocks.
@@ -32,14 +43,7 @@ impl DecoderScratch {
             huf: HuffmanScratch {
                 table: HuffmanTable::new(),
             },
-            fse: FSEScratch {
-                offsets: FSETable::new(MAX_OFFSET_CODE),
-                of_rle: None,
-                literal_lengths: FSETable::new(MAX_LITERAL_LENGTH_CODE),
-                ll_rle: None,
-                match_lengths: FSETable::new(MAX_MATCH_LENGTH_CODE),
-                ml_rle: None,
-            },
+            fse: FSEScratch::new(),
             buffer: FlatDecodeBuffer::new(window_size),
             offset_hist: [1, 4, 8],
 
@@ -63,6 +67,7 @@ impl DecoderScratch {
         self.fse.ll_rle = None;
         self.fse.ml_rle = None;
         self.fse.of_rle = None;
+        self.fse.seq_tables_valid = false;
 
         self.huf.table.reset();
     }
@@ -103,6 +108,18 @@ pub struct FSEScratch {
     pub ll_rle: Option<u8>,
     pub match_lengths: FSETable,
     pub ml_rle: Option<u8>,
+
+    /// Merged sequence tables: one lookup = base_value + extra bits + state transition.
+    /// Built after maybe_update_fse_tables. For RLE modes, contains a single entry.
+    pub seq_ll: Vec<SeqSymbol>,
+    pub seq_ml: Vec<SeqSymbol>,
+    pub seq_of: Vec<SeqSymbol>,
+    pub seq_ll_log: u8,
+    pub seq_ml_log: u8,
+    pub seq_of_log: u8,
+    /// True when seq_ll/seq_ml/seq_of are up-to-date with the FSE tables.
+    /// Set to false when any FSE table changes; set to true after build_seq_symbols.
+    pub seq_tables_valid: bool,
 }
 
 impl FSEScratch {
@@ -114,6 +131,13 @@ impl FSEScratch {
             ll_rle: None,
             match_lengths: FSETable::new(MAX_MATCH_LENGTH_CODE),
             ml_rle: None,
+            seq_ll: Vec::new(),
+            seq_ml: Vec::new(),
+            seq_of: Vec::new(),
+            seq_ll_log: 0,
+            seq_ml_log: 0,
+            seq_of_log: 0,
+            seq_tables_valid: false,
         }
     }
 
@@ -124,6 +148,13 @@ impl FSEScratch {
         self.of_rle = other.of_rle;
         self.ll_rle = other.ll_rle;
         self.ml_rle = other.ml_rle;
+        self.seq_ll.clear();
+        self.seq_ml.clear();
+        self.seq_of.clear();
+        self.seq_ll_log = 0;
+        self.seq_ml_log = 0;
+        self.seq_of_log = 0;
+        self.seq_tables_valid = false;
     }
 }
 

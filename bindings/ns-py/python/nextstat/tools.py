@@ -37,6 +37,9 @@ from __future__ import annotations
 import copy
 import json
 import math
+import os
+import urllib.error
+import urllib.request
 from typing import Any, Optional
 
 
@@ -350,11 +353,72 @@ _TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def get_toolkit() -> list[dict[str, Any]]:
+def _http_json_get(url: str, *, timeout_s: float) -> Any:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            data = resp.read().decode("utf-8")
+            return json.loads(data)
+    except urllib.error.HTTPError as e:
+        body = None
+        try:
+            body = e.read().decode("utf-8")
+        except Exception:
+            body = None
+        raise RuntimeError(f"HTTP {e.code} from {url}: {body or e.reason}")
+    except Exception as e:
+        raise RuntimeError(f"Failed GET {url}: {e}")
+
+
+def _http_json_post(url: str, payload: dict[str, Any], *, timeout_s: float) -> Any:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            out = resp.read().decode("utf-8")
+            return json.loads(out)
+    except urllib.error.HTTPError as e:
+        body = None
+        try:
+            body = e.read().decode("utf-8")
+        except Exception:
+            body = None
+        raise RuntimeError(f"HTTP {e.code} from {url}: {body or e.reason}")
+    except Exception as e:
+        raise RuntimeError(f"Failed POST {url}: {e}")
+
+def _resolve_server_url(server_url: Optional[str]) -> Optional[str]:
+    if server_url:
+        return server_url.strip()
+    for k in ("NEXTSTAT_TOOLS_SERVER_URL", "NEXTSTAT_SERVER_URL"):
+        v = os.environ.get(k)
+        if v and v.strip():
+            return v.strip()
+    return None
+
+
+def get_toolkit(
+    *,
+    transport: str = "local",
+    server_url: Optional[str] = None,
+    timeout_s: float = 10.0,
+) -> list[dict[str, Any]]:
     """Return OpenAI-compatible function-calling tool definitions.
 
     These can be passed directly to ``openai.chat.completions.create(tools=...)``,
     or adapted for any agent framework that uses the OpenAI tool schema.
+
+    Args:
+        transport:
+            - ``"local"`` (default): return the in-process Python tool registry.
+            - ``"server"``: fetch the registry from ``nextstat-server`` at ``GET /v1/tools/schema``.
+        server_url: Base URL for server mode, e.g. ``"http://127.0.0.1:3742"``.
+        timeout_s: HTTP timeout (server mode only).
 
     Returns:
         ``list[dict]`` — each dict has ``type: "function"`` and a ``function``
@@ -372,7 +436,18 @@ def get_toolkit() -> list[dict[str, Any]]:
             tools=tools,
         )
     """
-    return copy.deepcopy(_TOOLS)
+    if transport == "local":
+        return copy.deepcopy(_TOOLS)
+    if transport != "server":
+        raise ValueError(f"Unknown transport: {transport!r}. Use 'local' or 'server'.")
+    server_url = _resolve_server_url(server_url)
+    if not server_url:
+        raise ValueError("server_url is required for transport='server'")
+    schema = _http_json_get(f"{server_url.rstrip('/')}/v1/tools/schema", timeout_s=timeout_s)
+    tools = schema.get("tools")
+    if not isinstance(tools, list):
+        raise RuntimeError("Invalid server schema response: missing 'tools' list")
+    return tools
 
 
 def get_tool_names() -> list[str]:
@@ -610,8 +685,69 @@ def execute_tool_raw(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         _restore_execution(nextstat, meta)
 
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Execute a NextStat tool call and return a stable response envelope."""
+def execute_tool(
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    transport: str = "local",
+    server_url: Optional[str] = None,
+    timeout_s: float = 30.0,
+    fallback_to_local: bool = True,
+) -> dict[str, Any]:
+    """Execute a NextStat tool call and return a stable response envelope.
+
+    Args:
+        transport:
+            - ``"local"`` (default): execute in-process via Python bindings.
+            - ``"server"``: execute over HTTP via ``nextstat-server`` at ``POST /v1/tools/execute``.
+        server_url: Base URL for server mode, e.g. ``"http://127.0.0.1:3742"``.
+        timeout_s: HTTP timeout (server mode only).
+        fallback_to_local: If true (default), failed server calls fall back to local execution (if available).
+    """
+    if transport == "server":
+        server_url = _resolve_server_url(server_url)
+        if not server_url:
+            raise ValueError(
+                "server_url is required for transport='server' "
+                "(or set NEXTSTAT_SERVER_URL / NEXTSTAT_TOOLS_SERVER_URL)"
+            )
+        try:
+            out = _http_json_post(
+                f"{server_url.rstrip('/')}/v1/tools/execute",
+                {"name": name, "arguments": arguments},
+                timeout_s=timeout_s,
+            )
+            if not isinstance(out, dict) or out.get("schema_version") != "nextstat.tool_result.v1":
+                raise RuntimeError("Invalid server tool response (missing tool_result.v1 envelope)")
+            return out
+        except Exception as e:
+            if fallback_to_local:
+                try:
+                    local = execute_tool(name, arguments, transport="local")
+                    meta = local.get("meta")
+                    if isinstance(meta, dict):
+                        warnings = meta.get("warnings")
+                        if not isinstance(warnings, list):
+                            warnings = []
+                        warnings.append(
+                            f"server transport failed ({server_url}): {e.__class__.__name__}: {e}; fell back to local"
+                        )
+                        meta["warnings"] = warnings
+                    return local
+                except Exception:
+                    # Fall through to a transport error envelope if local execution is unavailable.
+                    pass
+            return {
+                "schema_version": "nextstat.tool_result.v1",
+                "ok": False,
+                "result": None,
+                "error": {"type": e.__class__.__name__, "message": str(e)},
+                "meta": {"tool_name": name, "nextstat_version": None, "warnings": [f"server_url={server_url}"]},
+            }
+
+    if transport != "local":
+        raise ValueError(f"Unknown transport: {transport!r}. Use 'local' or 'server'.")
+
     import nextstat
 
     envelope: dict[str, Any] = {

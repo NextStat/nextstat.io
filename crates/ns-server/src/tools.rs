@@ -478,20 +478,36 @@ fn execute_tool_impl(
             let parameter_names: Vec<String> =
                 model.parameters().iter().map(|p| p.name.clone()).collect();
             let poi_index = model.poi_index();
+            let (poi_value, poi_error) = if let Some(poi) = poi_index {
+                (
+                    fit.parameters.get(poi).copied(),
+                    fit.uncertainties.get(poi).copied(),
+                )
+            } else {
+                (None, None)
+            };
+
+            let mut params_map = serde_json::Map::new();
+            let n = parameter_names
+                .len()
+                .min(fit.parameters.len())
+                .min(fit.uncertainties.len());
+            for i in 0..n {
+                params_map.insert(
+                    parameter_names[i].clone(),
+                    serde_json::json!({ "value": fit.parameters[i], "error": fit.uncertainties[i] }),
+                );
+            }
 
             Ok((
                 serde_json::json!({
-                    "parameter_names": parameter_names,
-                    "poi_index": poi_index,
-                    "bestfit": fit.parameters,
-                    "uncertainties": fit.uncertainties,
                     "nll": fit.nll,
-                    "twice_nll": 2.0 * fit.nll,
                     "converged": fit.converged,
                     "n_iter": fit.n_iter,
-                    "n_fev": fit.n_fev,
-                    "n_gev": fit.n_gev,
-                    "covariance": fit.covariance,
+                    "poi_index": poi_index,
+                    "poi_value": poi_value,
+                    "poi_error": poi_error,
+                    "parameters": params_map,
                     "wall_time_s": t0.elapsed().as_secs_f64()
                 }),
                 Some(device),
@@ -529,18 +545,43 @@ fn execute_tool_impl(
                 ),
             };
 
+            // Match the Python `nextstat.interpret.rank_impact()` contract:
+            // - total_impact = |up| + |down|
+            // - sort by total_impact descending (tie-break by name)
+            // - assign 1-based rank
             let mut rows: Vec<serde_json::Value> = ranking
                 .into_iter()
                 .map(|e| {
+                    let total_impact = e.delta_mu_up.abs() + e.delta_mu_down.abs();
                     serde_json::json!({
                         "name": e.name,
                         "delta_mu_up": e.delta_mu_up,
                         "delta_mu_down": e.delta_mu_down,
+                        "total_impact": total_impact,
                         "pull": e.pull,
                         "constraint": e.constraint
                     })
                 })
                 .collect();
+
+            rows.sort_by(|a, b| {
+                let ia = a.get("total_impact").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                let ib = b.get("total_impact").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                ib.partial_cmp(&ia)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        let na = a.get("name").and_then(|x| x.as_str()).unwrap_or("");
+                        let nb = b.get("name").and_then(|x| x.as_str()).unwrap_or("");
+                        na.cmp(nb)
+                    })
+            });
+
+            for (i, row) in rows.iter_mut().enumerate() {
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert("rank".to_string(), serde_json::Value::from((i + 1) as u64));
+                }
+            }
+
             if let Some(n) = args.top_n {
                 if rows.len() > n {
                     rows.truncate(n);
@@ -625,6 +666,7 @@ fn execute_tool_impl(
                     "poi_index": scan.poi_index,
                     "mu_hat": scan.mu_hat,
                     "nll_hat": scan.nll_hat,
+                    "mu_values": mu_values,
                     "points": points_json,
                     "wall_time_s": t0.elapsed().as_secs_f64()
                 }),
@@ -704,6 +746,7 @@ fn execute_tool_impl(
                 .map_err(|e| e.to_string())?;
             Ok((
                 serde_json::json!({
+                    "mu": args.mu,
                     "cls": r.cls,
                     "clsb": r.clsb,
                     "clb": r.clb,
@@ -757,15 +800,9 @@ fn execute_tool_impl(
                     .map_err(|e| e.to_string())?;
                 Ok((
                     serde_json::json!({
-                        "observed": obs,
-                        "expected_set": {
-                            "p2": exp[0],
-                            "p1": exp[1],
-                            "median": exp[2],
-                            "m1": exp[3],
-                            "m2": exp[4]
-                        },
                         "alpha": args.alpha,
+                        "obs_limit": obs,
+                        "exp_limits": exp,
                         "wall_time_s": t0.elapsed().as_secs_f64()
                     }),
                     Some("cpu".to_string()),
@@ -776,8 +813,8 @@ fn execute_tool_impl(
                     .map_err(|e| e.to_string())?;
                 Ok((
                     serde_json::json!({
-                        "observed": obs,
                         "alpha": args.alpha,
+                        "obs_limit": obs,
                         "wall_time_s": t0.elapsed().as_secs_f64()
                     }),
                     Some("cpu".to_string()),
@@ -881,6 +918,81 @@ fn normal_sf(z: f64) -> f64 {
 mod tests {
     use super::*;
 
+    fn normalize_envelope(mut v: serde_json::Value) -> serde_json::Value {
+        fn drop_n_iter(x: &mut serde_json::Value) {
+            match x {
+                serde_json::Value::Object(obj) => {
+                    obj.remove("n_iter");
+                    for v in obj.values_mut() {
+                        drop_n_iter(v);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for v in arr.iter_mut() {
+                        drop_n_iter(v);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        drop_n_iter(&mut v);
+
+        // Keep comparisons focused on semantics, not build metadata or timings.
+        if let Some(meta) = v.get_mut("meta").and_then(|m| m.as_object_mut()) {
+            meta.remove("nextstat_version");
+            meta.remove("threads_applied");
+            meta.remove("device");
+            meta.remove("warnings");
+        }
+        if let Some(res) = v.get_mut("result").and_then(|r| r.as_object_mut()) {
+            res.remove("wall_time_s");
+            // Local tool goldens do not include this convenience field (mu is already in points).
+            res.remove("mu_values");
+        }
+        v
+    }
+
+    fn assert_json_close(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
+        use serde_json::Value;
+
+        const RTOL: f64 = 1e-6;
+        const ATOL: f64 = 1e-8;
+
+        match (a, b) {
+            (Value::Number(na), Value::Number(nb)) => {
+                let af = na.as_f64().unwrap_or(f64::NAN);
+                let bf = nb.as_f64().unwrap_or(f64::NAN);
+                let diff = (af - bf).abs();
+                if diff <= ATOL {
+                    return;
+                }
+                let denom = af.abs().max(bf.abs()).max(1.0);
+                if diff / denom <= RTOL {
+                    return;
+                }
+                panic!("{path}: {af} != {bf} (diff={diff}, rtol={RTOL}, atol={ATOL})");
+            }
+            (Value::Object(oa), Value::Object(ob)) => {
+                let ka: std::collections::BTreeSet<_> = oa.keys().collect();
+                let kb: std::collections::BTreeSet<_> = ob.keys().collect();
+                assert_eq!(ka, kb, "{path}: key mismatch");
+                for k in oa.keys() {
+                    assert_json_close(&oa[k], &ob[k], &format!("{path}.{k}"));
+                }
+            }
+            (Value::Array(aa), Value::Array(ab)) => {
+                assert_eq!(aa.len(), ab.len(), "{path}: length mismatch");
+                for (i, (xa, xb)) in aa.iter().zip(ab.iter()).enumerate() {
+                    assert_json_close(xa, xb, &format!("{path}[{i}]"));
+                }
+            }
+            _ => {
+                assert_eq!(a, b, "{path}: value mismatch");
+            }
+        }
+    }
+
     #[test]
     fn tool_execute_fit_smoke_ok() {
         let state = AppState::new(None);
@@ -898,5 +1010,85 @@ mod tests {
         assert_eq!(out.schema_version, "nextstat.tool_result.v1");
         assert!(out.ok, "expected ok=true, got error={:?}", out.error);
         assert_eq!(out.meta.tool_name, "nextstat_fit");
+        let obj = out.result.as_object().expect("result must be an object");
+        for k in ["nll", "converged", "n_iter", "poi_index", "poi_value", "poi_error", "parameters"] {
+            assert!(obj.contains_key(k), "missing key {k} in result");
+        }
+    }
+
+    #[test]
+    fn server_tools_match_local_tool_goldens_on_simple_workspace_deterministic() {
+        let state = AppState::new(None);
+        let ws = include_str!("../../../tests/fixtures/simple_workspace.json");
+        let gold_raw = include_str!("../../../tests/fixtures/tool_goldens/simple_workspace_deterministic.v1.json");
+        let gold: serde_json::Value = serde_json::from_str(gold_raw).expect("golden JSON must parse");
+        let tools = gold
+            .get("tools")
+            .and_then(|x| x.as_object())
+            .expect("golden must contain tools map");
+
+        // Keep this tight: only tools that should match across local/server in deterministic mode.
+        // (server mode intentionally does not expose file ingest tools like ROOT histogram reads).
+        let cases: &[(&str, serde_json::Value)] = &[
+            (
+                "nextstat_fit",
+                serde_json::json!({ "workspace_json": ws, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_hypotest",
+                serde_json::json!({ "workspace_json": ws, "mu": 1.0, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_upper_limit",
+                serde_json::json!({ "workspace_json": ws, "expected": true, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_ranking",
+                serde_json::json!({ "workspace_json": ws, "top_n": 5, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_scan",
+                serde_json::json!({ "workspace_json": ws, "start": 0.0, "stop": 2.0, "points": 5, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_discovery_asymptotic",
+                serde_json::json!({ "workspace_json": ws, "execution": { "deterministic": true } }),
+            ),
+            (
+                "nextstat_workspace_audit",
+                serde_json::json!({ "workspace_json": ws, "execution": { "deterministic": true } }),
+            ),
+        ];
+
+        let _guard = state.compute_lock.blocking_lock();
+        for (name, args) in cases {
+            let req = ToolExecuteRequest {
+                name: (*name).to_string(),
+                arguments: args.clone(),
+            };
+            let out = execute_tool(&state, req);
+            assert!(
+                out.ok,
+                "expected ok=true for {name}, got error={:?}",
+                out.error
+            );
+            assert_eq!(out.schema_version, "nextstat.tool_result.v1");
+            assert_eq!(out.meta.tool_name, *name);
+            assert!(out.meta.deterministic, "meta.deterministic must be true for {name}");
+            assert_eq!(out.meta.eval_mode, "parity", "meta.eval_mode must be parity for {name}");
+            assert_eq!(
+                out.meta.threads_requested,
+                Some(1),
+                "meta.threads_requested must be 1 for {name}"
+            );
+
+            let got = normalize_envelope(serde_json::to_value(&out).expect("envelope must serialize"));
+            let want_raw = tools
+                .get(*name)
+                .unwrap_or_else(|| panic!("missing golden for {name}"));
+            let want = normalize_envelope(want_raw.clone());
+
+            assert_json_close(&got, &want, &format!("tool:{name}"));
+        }
     }
 }

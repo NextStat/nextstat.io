@@ -68,10 +68,13 @@ fn decompress_literals(
 
     let source = &source[bytes_read as usize..];
 
-    // Pre-size target buffer to avoid per-byte push overhead
+    // Pre-size target buffer to avoid per-byte push overhead.
+    // Use reserve + set_len instead of resize to skip the zero-fill;
+    // all bytes up to write_idx will be overwritten, and we truncate at the end.
     let regen = section.regenerated_size as usize;
     let start_len = target.len();
-    target.resize(start_len + regen, 0);
+    target.reserve(regen);
+    unsafe { target.set_len(start_len + regen) };
     // Use raw pointer to avoid holding a mutable borrow on `target`,
     // which would conflict with `target.truncate()` in error paths.
     let out_ptr = target[start_len..].as_mut_ptr();
@@ -110,87 +113,80 @@ fn decompress_literals(
 
         let threshold = -(scratch.table.max_num_bits as isize);
 
-        // Process streams in pairs for ILP: (0,1) then (2,3).
-        // Two independent Huffman state machines let the CPU pipeline
-        // table lookups from one stream while the other's load completes.
-        for pair in 0..2 {
-            let si_a = pair * 2;
-            let si_b = pair * 2 + 1;
+        // Initialize all 4 streams + decoders.
+        let mut dec = [
+            HuffmanDecoder::new(&scratch.table),
+            HuffmanDecoder::new(&scratch.table),
+            HuffmanDecoder::new(&scratch.table),
+            HuffmanDecoder::new(&scratch.table),
+        ];
+        let mut br = [
+            BitReaderReversed::new(streams[0]),
+            BitReaderReversed::new(streams[1]),
+            BitReaderReversed::new(streams[2]),
+            BitReaderReversed::new(streams[3]),
+        ];
 
-            let mut dec_a = HuffmanDecoder::new(&scratch.table);
-            let mut dec_b = HuffmanDecoder::new(&scratch.table);
-            let mut br_a = BitReaderReversed::new(streams[si_a]);
-            let mut br_b = BitReaderReversed::new(streams[si_b]);
-
-            if let Err(e) = skip_padding(&mut br_a) {
+        for i in 0..4 {
+            if let Err(e) = skip_padding(&mut br[i]) {
                 target.truncate(start_len);
                 return Err(e);
             }
-            if let Err(e) = skip_padding(&mut br_b) {
-                target.truncate(start_len);
-                return Err(e);
+            dec[i].init_state(&mut br[i]);
+        }
+
+        // Count-based termination: we know each stream produces exactly sizes[i]
+        // symbols. Loop that many times without per-iteration bits_remaining() checks
+        // (which cost ~16 arithmetic ops per iteration for 4 streams).
+        // The 4th stream has the fewest symbols (regen - 3*seg <= seg).
+        let min_count = sizes[3]; // 4th stream is smallest or equal
+
+        // Phase 1: all 4 streams active — pure decode+write, zero checks.
+        let mut w0 = starts[0];
+        let mut w1 = starts[1];
+        let mut w2 = starts[2];
+        let mut w3 = starts[3];
+
+        for _ in 0..min_count {
+            let sym0 = dec[0].decode_and_advance(&mut br[0]);
+            let sym1 = dec[1].decode_and_advance(&mut br[1]);
+            let sym2 = dec[2].decode_and_advance(&mut br[2]);
+            let sym3 = dec[3].decode_and_advance(&mut br[3]);
+            unsafe {
+                *out_ptr.add(w0) = sym0;
+                *out_ptr.add(w1) = sym1;
+                *out_ptr.add(w2) = sym2;
+                *out_ptr.add(w3) = sym3;
             }
+            w0 += 1;
+            w1 += 1;
+            w2 += 1;
+            w3 += 1;
+        }
 
-            dec_a.init_state(&mut br_a);
-            dec_b.init_state(&mut br_b);
-
-            let mut w_a = starts[si_a];
-            let mut w_b = starts[si_b];
-            let end_a = starts[si_a] + sizes[si_a];
-            let end_b = starts[si_b] + sizes[si_b];
-
-            // Interleaved main loop: decode one symbol from each stream per iteration.
-            // The two decode_symbol + next_state chains are independent — CPU can
-            // execute both in parallel via out-of-order execution.
-            while br_a.bits_remaining() > threshold && br_b.bits_remaining() > threshold {
-                if w_a < end_a {
-                    let sym = dec_a.decode_and_advance(&mut br_a);
-                    unsafe { *out_ptr.add(w_a) = sym };
-                } else {
-                    let _ = dec_a.decode_and_advance(&mut br_a);
-                }
-                w_a += 1;
-
-                if w_b < end_b {
-                    let sym = dec_b.decode_and_advance(&mut br_b);
-                    unsafe { *out_ptr.add(w_b) = sym };
-                } else {
-                    let _ = dec_b.decode_and_advance(&mut br_b);
-                }
-                w_b += 1;
+        // Phase 2: drain remaining symbols for streams 0-2 (they may have more).
+        // Streams 0,1,2 all have `seg` symbols; stream 3 has `regen - 3*seg`.
+        let extra = sizes[0] - min_count; // same for streams 0,1,2
+        for _ in 0..extra {
+            let sym0 = dec[0].decode_and_advance(&mut br[0]);
+            let sym1 = dec[1].decode_and_advance(&mut br[1]);
+            let sym2 = dec[2].decode_and_advance(&mut br[2]);
+            unsafe {
+                *out_ptr.add(w0) = sym0;
+                *out_ptr.add(w1) = sym1;
+                *out_ptr.add(w2) = sym2;
             }
+            w0 += 1;
+            w1 += 1;
+            w2 += 1;
+        }
 
-            // Drain whichever stream is longer
-            while br_a.bits_remaining() > threshold {
-                if w_a < end_a {
-                    let sym = dec_a.decode_and_advance(&mut br_a);
-                    unsafe { *out_ptr.add(w_a) = sym };
-                } else {
-                    let _ = dec_a.decode_and_advance(&mut br_a);
-                }
-                w_a += 1;
-            }
-            while br_b.bits_remaining() > threshold {
-                if w_b < end_b {
-                    let sym = dec_b.decode_and_advance(&mut br_b);
-                    unsafe { *out_ptr.add(w_b) = sym };
-                } else {
-                    let _ = dec_b.decode_and_advance(&mut br_b);
-                }
-                w_b += 1;
-            }
-
-            if br_a.bits_remaining() != threshold {
+        // Phase 3: verify bitstream alignment for all 4 streams.
+        for i in 0..4 {
+            if br[i].bits_remaining() != threshold {
                 target.truncate(start_len);
                 return Err(DecompressLiteralsError::BitstreamReadMismatch {
-                    read_til: br_a.bits_remaining(),
-                    expected: threshold,
-                });
-            }
-            if br_b.bits_remaining() != threshold {
-                target.truncate(start_len);
-                return Err(DecompressLiteralsError::BitstreamReadMismatch {
-                    read_til: br_b.bits_remaining(),
+                    read_til: br[i].bits_remaining(),
                     expected: threshold,
                 });
             }

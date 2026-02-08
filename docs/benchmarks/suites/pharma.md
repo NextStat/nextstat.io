@@ -68,13 +68,23 @@ Benchmarks should include correctness sanity checks such as:
 Planned dataset tiers:
 
 1. **Synthetic** datasets generated from the model (for recovery + scaling)
-2. **Open** datasets (where licensing permits redistribution and deterministic preprocessing)
+2. **Packaged / easy-to-obtain** datasets (e.g., bundled with R packages) with deterministic preprocessing
+3. **Open** datasets (where licensing permits redistribution and deterministic preprocessing)
 
 Every published run must include:
 
 - dataset ID + hash
 - generator parameters (for synthetic)
 - preprocessing protocol (for real datasets)
+
+## Baselines (planned)
+
+We intend to publish comparisons against at least:
+
+- **nlmixr2** (R) for NLME fitting workflows (where we can pin the full R environment reproducibly)
+- **Torsten (Stan)** for selected PK/NLME workflows (runner or recorded reference outputs)
+
+Baselines are only meaningful under a declared protocol (optimizer choice, stopping criteria, initialization policy). Where possible, we use fixed-iteration protocols to reduce ambiguity.
 
 ## Scaling axes (what we vary)
 
@@ -88,6 +98,11 @@ Every published run must include:
 Rust microbenchmarks live under `crates/ns-inference/benches/` and can be run via Criterion. If/when a dedicated PK/NLME bench is added, it will be listed here.
 
 For a minimal “smoke” benchmark today, you can script repeated fits using the tutorial models from [/docs/tutorials/phase-13-pk](/docs/tutorials/phase-13-pk) and [/docs/tutorials/phase-13-nlme](/docs/tutorials/phase-13-nlme) and publish your manifest (Python/Rust versions, CPU model, etc.).
+
+Seed harness (public benchmarks repo bootstrap):
+
+- `benchmarks/nextstat-public-benchmarks/suites/pharma/` (single-case `run.py` and multi-case `suite.py`)
+- Baseline templates (R): `benchmarks/nextstat-public-benchmarks/suites/pharma/baselines/`
 
 ## Apex2 pharma reference suite (shipped)
 

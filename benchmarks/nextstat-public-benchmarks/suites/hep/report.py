@@ -11,9 +11,35 @@ import json
 from pathlib import Path
 
 
+def format_rows_text(rows: list[tuple]) -> str:
+    lines = []
+    lines.append(
+        f"{'case':<28} {'bins':>6} {'pars':>6}  {'parity':>6}  {'|dNLL|':>12}  {'NLL speedup':>11}  {'fit':>6}  {'fit speedup':>11}"
+    )
+    lines.append("-" * 104)
+    for case, bins, pars, parity, abs_diff, nll_speedup, fit_status, fit_speedup in rows:
+        lines.append(
+            f"{str(case):<28} {bins:>6} {pars:>6}  {parity:>6}  {abs_diff:>12.3e}  {nll_speedup:>10.2f}x  {fit_status:>6}  {fit_speedup:>11}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def format_rows_markdown(rows: list[tuple]) -> str:
+    lines = []
+    lines.append("| case | bins | pars | parity | \\|dNLL\\| | NLL speedup | fit | fit speedup |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for case, bins, pars, parity, abs_diff, nll_speedup, fit_status, fit_speedup in rows:
+        lines.append(
+            f"| `{case}` | {bins} | {pars} | {parity} | {abs_diff:.3e} | {nll_speedup:.2f}x | {fit_status} | {fit_speedup} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--suite", default="out/hep/hep_suite.json", help="Path to hep_suite.json")
+    ap.add_argument("--format", default="text", choices=["text", "markdown"])
+    ap.add_argument("--out", default="", help="Optional output file path.")
     args = ap.parse_args()
 
     suite_path = Path(args.suite).resolve()
@@ -46,17 +72,17 @@ def main() -> int:
             )
         )
 
-    print(
-        f"{'case':<28} {'bins':>6} {'pars':>6}  {'parity':>6}  {'|dNLL|':>12}  {'NLL speedup':>11}  {'fit':>6}  {'fit speedup':>11}"
-    )
-    print("-" * 104)
-    for case, bins, pars, parity, abs_diff, nll_speedup, fit_status, fit_speedup in rows:
-        print(
-            f"{str(case):<28} {bins:>6} {pars:>6}  {parity:>6}  {abs_diff:>12.3e}  {nll_speedup:>10.2f}x  {fit_status:>6}  {fit_speedup:>11}"
-        )
+    if args.format == "markdown":
+        txt = format_rows_markdown(rows)
+    else:
+        txt = format_rows_text(rows)
+
+    if str(args.out).strip():
+        Path(args.out).resolve().write_text(txt)
+    else:
+        print(txt, end="")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

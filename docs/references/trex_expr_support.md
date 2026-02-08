@@ -64,6 +64,11 @@ Binary:
 - `eval_row`: scalar evaluation for one event (used in tests/diagnostics)
 - `eval_bulk`: columnar evaluation with a vectorized fast path (falls back to row-wise when control-flow is present)
 
+#### Short-circuit vs mask-based boolean/ternary
+To preserve vectorization, boolean and ternary operators are compiled differently depending on whether dynamic indexing is present:
+- No dynamic indexing: `&&`, `||`, and `cond ? a : b` are compiled in a mask-based (branch-free) form and **both sides/branches are evaluated**.
+- With dynamic indexing (`branch[expr]`): the compiler emits explicit control-flow (`Jz`/`Jmp`) so `&&`, `||`, and ternary **short-circuit** in the row-wise path (avoids evaluating the unused branch).
+
 ## Limitations / known gaps
 
 ### Vector branches (real `jet_pt[0]`)

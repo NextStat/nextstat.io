@@ -125,7 +125,7 @@ enum Instr {
     /// Pop index from stack, load element from jagged branch #id. OOR → 0.0.
     /// Forces row-wise evaluation since index varies per row.
     DynLoad(usize),
-    /// Jump to absolute instruction index if condition (popped) is <= 0.
+    /// Jump to absolute instruction index if condition (popped) is == 0.0.
     /// Used for short-circuit boolean operators (&&/||) and DynLoad row-wise fallback.
     Jz(usize),
     /// Unconditional jump to absolute instruction index.
@@ -175,7 +175,14 @@ impl CompiledExpr {
         prune_unused_branches(&mut ast, &mut parser.branches);
         let mut jagged_branches = Vec::new();
         let mut bytecode = Vec::new();
-        compile_bytecode(input, &ast, &mut bytecode, &mut jagged_branches)?;
+        let needs_dynload = expr_contains_dynamic_index(&ast);
+        compile_bytecode(
+            input,
+            &ast,
+            &mut bytecode,
+            &mut jagged_branches,
+            needs_dynload,
+        )?;
         let branches = std::mem::take(&mut parser.branches);
         Ok(CompiledExpr {
             ast,
@@ -362,59 +369,117 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
     }
 }
 
+fn expr_contains_dynamic_index(e: &Expr) -> bool {
+    match e {
+        Expr::DynamicIndex { .. } => true,
+        Expr::Number(_) | Expr::Var(_) => false,
+        Expr::UnaryNeg(a) | Expr::UnaryNot(a) => expr_contains_dynamic_index(a),
+        Expr::BinOp(_, a, b) => expr_contains_dynamic_index(a) || expr_contains_dynamic_index(b),
+        Expr::Ternary(c, t, f) => {
+            expr_contains_dynamic_index(c)
+                || expr_contains_dynamic_index(t)
+                || expr_contains_dynamic_index(f)
+        }
+        Expr::Call(_, args) => args.iter().any(expr_contains_dynamic_index),
+        Expr::Index { base, .. } => expr_contains_dynamic_index(base),
+    }
+}
+
 fn compile_bytecode(
     input: &str,
     e: &Expr,
     out: &mut Vec<Instr>,
     jagged: &mut Vec<String>,
+    needs_dynload: bool,
 ) -> Result<()> {
     match e {
         Expr::Number(n) => out.push(Instr::Const(*n)),
         Expr::Var(i) => out.push(Instr::Load(*i)),
         Expr::UnaryNeg(a) => {
-            compile_bytecode(input, a, out, jagged)?;
+            compile_bytecode(input, a, out, jagged, needs_dynload)?;
             out.push(Instr::Neg);
         }
         Expr::UnaryNot(a) => {
-            compile_bytecode(input, a, out, jagged)?;
+            compile_bytecode(input, a, out, jagged, needs_dynload)?;
             out.push(Instr::Not);
         }
         Expr::BinOp(op, a, b) => {
             match op {
                 BinOp::And => {
-                    // Mask-based `a && b` (no control-flow) to keep vectorized path:
-                    //   mask_and(a, b) = (!!a) * (!!b)
-                    //
-                    // We intentionally evaluate both sides (no short-circuit). The expression
-                    // engine has no side effects, and this avoids falling back to row-wise eval.
-                    compile_bytecode(input, a, out, jagged)?;
-                    out.push(Instr::Not);
-                    out.push(Instr::Not);
+                    if needs_dynload {
+                        // Short-circuit `a && b` for the row-wise path (DynLoad already forces it):
+                        //   if (!a) return 0; else return !!b
+                        compile_bytecode(input, a, out, jagged, needs_dynload)?;
+                        let jz_pos = out.len();
+                        out.push(Instr::Jz(usize::MAX));
 
-                    compile_bytecode(input, b, out, jagged)?;
-                    out.push(Instr::Not);
-                    out.push(Instr::Not);
+                        compile_bytecode(input, b, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+                        let jmp_pos = out.len();
+                        out.push(Instr::Jmp(usize::MAX));
 
-                    out.push(Instr::Mul);
+                        let false_pos = out.len();
+                        out.push(Instr::Const(0.0));
+                        let end_pos = out.len();
+                        out[jz_pos] = Instr::Jz(false_pos);
+                        out[jmp_pos] = Instr::Jmp(end_pos);
+                    } else {
+                        // Mask-based `a && b` (no control-flow) to keep vectorized path:
+                        //   mask_and(a, b) = (!!a) * (!!b)
+                        //
+                        // We intentionally evaluate both sides (no short-circuit). The expression
+                        // engine has no side effects, and this avoids falling back to row-wise eval.
+                        compile_bytecode(input, a, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+
+                        compile_bytecode(input, b, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+
+                        out.push(Instr::Mul);
+                    }
                 }
                 BinOp::Or => {
-                    // Mask-based `a || b` (no control-flow) to keep vectorized path:
-                    //   mask_or(a, b) = max(!!a, !!b)
-                    //
-                    // Always evaluates both sides (see comment in `BinOp::And`).
-                    compile_bytecode(input, a, out, jagged)?;
-                    out.push(Instr::Not);
-                    out.push(Instr::Not);
+                    if needs_dynload {
+                        // Short-circuit `a || b` for the row-wise path (DynLoad already forces it):
+                        //   if (a) return 1; else return !!b
+                        compile_bytecode(input, a, out, jagged, needs_dynload)?;
+                        let jz_pos = out.len();
+                        out.push(Instr::Jz(usize::MAX));
 
-                    compile_bytecode(input, b, out, jagged)?;
-                    out.push(Instr::Not);
-                    out.push(Instr::Not);
+                        out.push(Instr::Const(1.0));
+                        let jmp_pos = out.len();
+                        out.push(Instr::Jmp(usize::MAX));
 
-                    out.push(Instr::Max);
+                        let eval_b_pos = out.len();
+                        compile_bytecode(input, b, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+
+                        let end_pos = out.len();
+                        out[jz_pos] = Instr::Jz(eval_b_pos);
+                        out[jmp_pos] = Instr::Jmp(end_pos);
+                    } else {
+                        // Mask-based `a || b` (no control-flow) to keep vectorized path:
+                        //   mask_or(a, b) = max(!!a, !!b)
+                        //
+                        // Always evaluates both sides (see comment in `BinOp::And`).
+                        compile_bytecode(input, a, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+
+                        compile_bytecode(input, b, out, jagged, needs_dynload)?;
+                        out.push(Instr::Not);
+                        out.push(Instr::Not);
+
+                        out.push(Instr::Max);
+                    }
                 }
                 _ => {
-                    compile_bytecode(input, a, out, jagged)?;
-                    compile_bytecode(input, b, out, jagged)?;
+                    compile_bytecode(input, a, out, jagged, needs_dynload)?;
+                    compile_bytecode(input, b, out, jagged, needs_dynload)?;
                     out.push(match op {
                         BinOp::Add => Instr::Add,
                         BinOp::Sub => Instr::Sub,
@@ -432,14 +497,33 @@ fn compile_bytecode(
             }
         }
         Expr::Ternary(c, t, f) => {
-            compile_bytecode(input, c, out, jagged)?;  // mask
-            compile_bytecode(input, t, out, jagged)?;  // then_val
-            compile_bytecode(input, f, out, jagged)?;  // else_val
-            out.push(Instr::Select);
+            if needs_dynload {
+                // Short-circuit ternary for the row-wise path (DynLoad already forces it):
+                //   if (c) { t } else { f }
+                compile_bytecode(input, c, out, jagged, needs_dynload)?;
+                let jz_pos = out.len();
+                out.push(Instr::Jz(usize::MAX));
+
+                compile_bytecode(input, t, out, jagged, needs_dynload)?;
+                let jmp_pos = out.len();
+                out.push(Instr::Jmp(usize::MAX));
+
+                let else_pos = out.len();
+                compile_bytecode(input, f, out, jagged, needs_dynload)?;
+
+                let end_pos = out.len();
+                out[jz_pos] = Instr::Jz(else_pos);
+                out[jmp_pos] = Instr::Jmp(end_pos);
+            } else {
+                compile_bytecode(input, c, out, jagged, needs_dynload)?; // mask
+                compile_bytecode(input, t, out, jagged, needs_dynload)?; // then_val
+                compile_bytecode(input, f, out, jagged, needs_dynload)?; // else_val
+                out.push(Instr::Select);
+            }
         }
         Expr::Call(func, args) => {
             for a in args {
-                compile_bytecode(input, a, out, jagged)?;
+                compile_bytecode(input, a, out, jagged, needs_dynload)?;
             }
             out.push(match func {
                 Func::Abs => Instr::Abs,
@@ -460,7 +544,7 @@ fn compile_bytecode(
             return Err(expr_err(input, *span, "vector branches are not supported".to_string()));
         }
         Expr::DynamicIndex { base, index, .. } => {
-            compile_bytecode(input, index, out, jagged)?;  // push index value
+            compile_bytecode(input, index, out, jagged, needs_dynload)?; // push index value
             let id = jagged.iter().position(|s| s == base).unwrap_or_else(|| {
                 jagged.push(base.clone());
                 jagged.len() - 1
@@ -732,6 +816,24 @@ struct BulkEvalState<'a> {
 mod simd_arm {
     use std::arch::aarch64::*;
 
+    #[inline]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn select_f64(mask: uint64x2_t, on_true: float64x2_t, on_false: float64x2_t) -> float64x2_t {
+        vreinterpretq_f64_u64(vbslq_u64(
+            mask,
+            vreinterpretq_u64_f64(on_true),
+            vreinterpretq_u64_f64(on_false),
+        ))
+    }
+
+    #[inline]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn is_nan_mask_f64(v: float64x2_t) -> uint64x2_t {
+        // v != v iff NaN; vceqq is false for NaN, true otherwise.
+        let not_nan = vceqq_f64(v, v);
+        veorq_u64(not_nan, vdupq_n_u64(u64::MAX))
+    }
+
     #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn add_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
         let mut i = 0usize;
@@ -849,6 +951,82 @@ mod simd_arm {
         }
         for j in i..n {
             lhs[j] /= scalar;
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn min_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            let min0 = vminq_f64(a, b);
+            let a_nan = is_nan_mask_f64(a);
+            let b_nan = is_nan_mask_f64(b);
+            let r = select_f64(b_nan, a, select_f64(a_nan, b, min0));
+            vst1q_f64(lhs.as_mut_ptr().add(i), r);
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].min(rhs[j]);
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn max_inplace_neon(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let b = vld1q_f64(rhs.as_ptr().add(i));
+            let max0 = vmaxq_f64(a, b);
+            let a_nan = is_nan_mask_f64(a);
+            let b_nan = is_nan_mask_f64(b);
+            let r = select_f64(b_nan, a, select_f64(a_nan, b, max0));
+            vst1q_f64(lhs.as_mut_ptr().add(i), r);
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].max(rhs[j]);
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn min_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        let s_nan = is_nan_mask_f64(s);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let min0 = vminq_f64(a, s);
+            let a_nan = is_nan_mask_f64(a);
+            let r = select_f64(s_nan, a, select_f64(a_nan, s, min0));
+            vst1q_f64(lhs.as_mut_ptr().add(i), r);
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].min(scalar);
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn max_scalar_inplace_neon(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = vdupq_n_f64(scalar);
+        let s_nan = is_nan_mask_f64(s);
+        while i + 2 <= n {
+            let a = vld1q_f64(lhs.as_ptr().add(i));
+            let max0 = vmaxq_f64(a, s);
+            let a_nan = is_nan_mask_f64(a);
+            let r = select_f64(s_nan, a, select_f64(a_nan, s, max0));
+            vst1q_f64(lhs.as_mut_ptr().add(i), r);
+            i += 2;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].max(scalar);
         }
     }
 
@@ -1002,10 +1180,92 @@ mod simd_x86 {
     impl_avx_binop_inplace!(mul_inplace_avx, _mm256_mul_pd, |a, b| a * b);
     impl_avx_binop_inplace!(div_inplace_avx, _mm256_div_pd, |a, b| a / b);
 
+    // f64::min/max semantics: if one operand is NaN, return the other operand.
+    // AVX min/max intrinsics are asymmetric for NaNs, so we repair lanes via blends.
+    #[allow(unsafe_op_in_unsafe_fn)]
+    #[target_feature(enable = "avx")]
+    pub unsafe fn min_inplace_avx(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 4 <= n {
+            let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+            let b = _mm256_loadu_pd(rhs.as_ptr().add(i));
+            let min0 = _mm256_min_pd(a, b);
+            let a_nan = _mm256_cmp_pd(a, a, _CMP_UNORD_Q);
+            let b_nan = _mm256_cmp_pd(b, b, _CMP_UNORD_Q);
+            let r = _mm256_blendv_pd(_mm256_blendv_pd(min0, b, a_nan), a, b_nan);
+            _mm256_storeu_pd(lhs.as_mut_ptr().add(i), r);
+            i += 4;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].min(rhs[j]);
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    #[target_feature(enable = "avx")]
+    pub unsafe fn max_inplace_avx(lhs: &mut [f64], rhs: &[f64]) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        while i + 4 <= n {
+            let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+            let b = _mm256_loadu_pd(rhs.as_ptr().add(i));
+            let max0 = _mm256_max_pd(a, b);
+            let a_nan = _mm256_cmp_pd(a, a, _CMP_UNORD_Q);
+            let b_nan = _mm256_cmp_pd(b, b, _CMP_UNORD_Q);
+            let r = _mm256_blendv_pd(_mm256_blendv_pd(max0, b, a_nan), a, b_nan);
+            _mm256_storeu_pd(lhs.as_mut_ptr().add(i), r);
+            i += 4;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].max(rhs[j]);
+        }
+    }
+
     impl_avx_scalar_inplace!(add_scalar_inplace_avx, _mm256_add_pd, |a, s| a + s);
     impl_avx_scalar_inplace!(sub_scalar_inplace_avx, _mm256_sub_pd, |a, s| a - s);
     impl_avx_scalar_inplace!(mul_scalar_inplace_avx, _mm256_mul_pd, |a, s| a * s);
     impl_avx_scalar_inplace!(div_scalar_inplace_avx, _mm256_div_pd, |a, s| a / s);
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    #[target_feature(enable = "avx")]
+    pub unsafe fn min_scalar_inplace_avx(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = _mm256_set1_pd(scalar);
+        let s_nan = _mm256_cmp_pd(s, s, _CMP_UNORD_Q);
+        while i + 4 <= n {
+            let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+            let min0 = _mm256_min_pd(a, s);
+            let a_nan = _mm256_cmp_pd(a, a, _CMP_UNORD_Q);
+            let r = _mm256_blendv_pd(_mm256_blendv_pd(min0, s, a_nan), a, s_nan);
+            _mm256_storeu_pd(lhs.as_mut_ptr().add(i), r);
+            i += 4;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].min(scalar);
+        }
+    }
+
+    #[allow(unsafe_op_in_unsafe_fn)]
+    #[target_feature(enable = "avx")]
+    pub unsafe fn max_scalar_inplace_avx(lhs: &mut [f64], scalar: f64) {
+        let mut i = 0usize;
+        let n = lhs.len();
+        let s = _mm256_set1_pd(scalar);
+        let s_nan = _mm256_cmp_pd(s, s, _CMP_UNORD_Q);
+        while i + 4 <= n {
+            let a = _mm256_loadu_pd(lhs.as_ptr().add(i));
+            let max0 = _mm256_max_pd(a, s);
+            let a_nan = _mm256_cmp_pd(a, a, _CMP_UNORD_Q);
+            let r = _mm256_blendv_pd(_mm256_blendv_pd(max0, s, a_nan), a, s_nan);
+            _mm256_storeu_pd(lhs.as_mut_ptr().add(i), r);
+            i += 4;
+        }
+        for j in i..n {
+            lhs[j] = lhs[j].max(scalar);
+        }
+    }
 
     impl_avx_rscalar_inplace!(rsub_scalar_inplace_avx, _mm256_sub_pd, |a, s| s - a);
     impl_avx_rscalar_inplace!(rdiv_scalar_inplace_avx, _mm256_div_pd, |a, s| s / a);
@@ -1097,6 +1357,46 @@ fn div_inplace(lhs: &mut [f64], rhs: &[f64]) {
 }
 
 #[cfg(target_arch = "aarch64")]
+fn min_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::min_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn min_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::min_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x = (*x).min(y);
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn max_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    unsafe { simd_arm::max_inplace_neon(lhs, rhs) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn max_inplace(lhs: &mut [f64], rhs: &[f64]) {
+    debug_assert_eq!(lhs.len(), rhs.len());
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::max_inplace_avx(lhs, rhs) };
+            return;
+        }
+    }
+    for (x, &y) in lhs.iter_mut().zip(rhs.iter()) {
+        *x = (*x).max(y);
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
 fn add_scalar_inplace(lhs: &mut [f64], scalar: f64) {
     unsafe { simd_arm::add_scalar_inplace_neon(lhs, scalar) };
 }
@@ -1165,6 +1465,42 @@ fn div_scalar_inplace(lhs: &mut [f64], scalar: f64) {
     }
     for x in lhs.iter_mut() {
         *x /= scalar;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn min_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::min_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn min_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::min_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x = (*x).min(scalar);
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn max_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    unsafe { simd_arm::max_scalar_inplace_neon(lhs, scalar) };
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn max_scalar_inplace(lhs: &mut [f64], scalar: f64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::is_x86_feature_detected!("avx") {
+            unsafe { simd_x86::max_scalar_inplace_avx(lhs, scalar) };
+            return;
+        }
+    }
+    for x in lhs.iter_mut() {
+        *x = (*x).max(scalar);
     }
 }
 
@@ -1485,6 +1821,94 @@ impl<'a> BulkEvalState<'a> {
         }
     }
 
+    fn min(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x.min(y)),
+            (Slot::Owned(i), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Owned(i)) => {
+                min_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) | (Slot::Col(c), Slot::Owned(i)) => {
+                min_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Col(ca)) => {
+                let mut out = ca.to_vec();
+                min_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                min_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    min_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    min_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
+    }
+
+    fn max(&mut self, a: Slot<'a>, b: Slot<'a>) -> Slot<'a> {
+        match (a, b) {
+            (Slot::Scalar(x), Slot::Scalar(y)) => Slot::Scalar(x.max(y)),
+            (Slot::Owned(i), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Owned(i)) => {
+                max_scalar_inplace(&mut self.arena[i], y);
+                Slot::Owned(i)
+            }
+            (Slot::Owned(i), Slot::Col(c)) | (Slot::Col(c), Slot::Owned(i)) => {
+                max_inplace(&mut self.arena[i], c);
+                Slot::Owned(i)
+            }
+            (Slot::Col(ca), Slot::Scalar(y)) | (Slot::Scalar(y), Slot::Col(ca)) => {
+                let mut out = ca.to_vec();
+                max_scalar_inplace(&mut out, y);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Col(ca), Slot::Col(cb)) => {
+                let mut out = ca.to_vec();
+                max_inplace(&mut out, cb);
+                self.arena.push(out);
+                Slot::Owned(self.arena.len() - 1)
+            }
+            (Slot::Owned(i), Slot::Owned(j)) => {
+                if i == j {
+                    return Slot::Owned(i);
+                }
+                if i < j {
+                    let (left, right) = self.arena.split_at_mut(j);
+                    let lhs = &mut left[i];
+                    let rhs = &right[0];
+                    max_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                } else {
+                    let (left, right) = self.arena.split_at_mut(i);
+                    let rhs = &left[j];
+                    let lhs = &mut right[0];
+                    max_inplace(lhs, rhs);
+                    Slot::Owned(i)
+                }
+            }
+        }
+    }
+
     fn unary<F>(&mut self, v: Slot<'a>, f: F) -> Slot<'a>
     where
         F: Fn(f64) -> f64 + Copy,
@@ -1756,13 +2180,13 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             Instr::Min => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x.min(y));
+                let r = st.min(a, b);
                 st.push(r);
             }
             Instr::Max => {
                 let b = st.pop();
                 let a = st.pop();
-                let r = st.binary(a, b, |x, y| x.max(y));
+                let r = st.max(a, b);
                 st.push(r);
             }
             Instr::Select => {
@@ -2820,6 +3244,92 @@ mod tests {
             bytecode_has_control_flow(&expr.bytecode),
             "dynamic index should trigger control flow path"
         );
+    }
+
+    #[test]
+    fn dynload_and_or_use_short_circuit_bytecode() {
+        use crate::branch_reader::JaggedCol;
+
+        let expr = CompiledExpr::compile("njet > 0 && jet_pt[njet - 1] > 25").unwrap();
+        assert!(
+            expr.bytecode.iter().any(|i| matches!(i, Instr::Jz(_))),
+            "expected Jz in bytecode when DynLoad is present: {:?}",
+            expr.bytecode
+        );
+        assert!(
+            expr.bytecode.iter().any(|i| matches!(i, Instr::Jmp(_))),
+            "expected Jmp in bytecode when DynLoad is present: {:?}",
+            expr.bytecode
+        );
+
+        // 4 entries; jet_pt is jagged: [10,30], [], [50], [20,100]
+        let jet_pt = JaggedCol { flat: vec![10.0, 30.0, 50.0, 20.0, 100.0], offsets: vec![0, 2, 2, 3, 5] };
+        let njet_col = vec![2.0, 0.0, 1.0, 2.0];
+
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "njet");
+                njet_col.as_slice()
+            })
+            .collect();
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "jet_pt");
+                &jet_pt
+            })
+            .collect();
+
+        let got = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(got, vec![1.0, 0.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn dynload_ternary_uses_short_circuit_bytecode() {
+        use crate::branch_reader::JaggedCol;
+
+        let expr = CompiledExpr::compile("njet > 0 ? jet_pt[njet - 1] : 999").unwrap();
+        assert!(
+            expr.bytecode.iter().any(|i| matches!(i, Instr::Jz(_))),
+            "expected Jz in bytecode when DynLoad is present: {:?}",
+            expr.bytecode
+        );
+        assert!(
+            expr.bytecode.iter().any(|i| matches!(i, Instr::Jmp(_))),
+            "expected Jmp in bytecode when DynLoad is present: {:?}",
+            expr.bytecode
+        );
+        assert!(
+            !expr.bytecode.iter().any(|i| matches!(i, Instr::Select)),
+            "ternary should not compile to Select when DynLoad is present: {:?}",
+            expr.bytecode
+        );
+
+        let jet_pt = JaggedCol { flat: vec![10.0, 30.0, 50.0, 20.0, 100.0], offsets: vec![0, 2, 2, 3, 5] };
+        let njet_col = vec![2.0, 0.0, 1.0, 2.0];
+
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "njet");
+                njet_col.as_slice()
+            })
+            .collect();
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|name| {
+                assert_eq!(name, "jet_pt");
+                &jet_pt
+            })
+            .collect();
+
+        let got = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(got, vec![30.0, 999.0, 50.0, 100.0]);
     }
 
     #[test]

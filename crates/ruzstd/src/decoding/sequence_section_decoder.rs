@@ -288,6 +288,7 @@ pub(crate) fn maybe_update_fse_tables(
             vprintln!("Updating ll table");
             vprintln!("Used bytes: {}", bytes);
             scratch.ll_rle = None;
+            scratch.seq_tables_valid = false;
         }
         ModeType::RLE => {
             vprintln!("Use RLE ll table");
@@ -299,6 +300,7 @@ pub(crate) fn maybe_update_fse_tables(
                 return Err(DecodeSequenceError::MissingByteForRleMlTable);
             }
             scratch.ll_rle = Some(source[0]);
+            scratch.seq_tables_valid = false;
         }
         ModeType::Predefined => {
             vprintln!("Use predefined ll table");
@@ -310,6 +312,7 @@ pub(crate) fn maybe_update_fse_tables(
                     LL_DEFAULT_ACC_LOG,
                     &LITERALS_LENGTH_DEFAULT_DISTRIBUTION,
                 )?;
+                scratch.seq_tables_valid = false;
             }
             scratch.ll_rle = None;
         }
@@ -328,6 +331,7 @@ pub(crate) fn maybe_update_fse_tables(
             vprintln!("Used bytes: {}", bytes);
             bytes_read += bytes;
             scratch.of_rle = None;
+            scratch.seq_tables_valid = false;
         }
         ModeType::RLE => {
             vprintln!("Use RLE of table");
@@ -339,6 +343,7 @@ pub(crate) fn maybe_update_fse_tables(
                 return Err(DecodeSequenceError::MissingByteForRleMlTable);
             }
             scratch.of_rle = Some(of_source[0]);
+            scratch.seq_tables_valid = false;
         }
         ModeType::Predefined => {
             vprintln!("Use predefined of table");
@@ -349,6 +354,7 @@ pub(crate) fn maybe_update_fse_tables(
                     OF_DEFAULT_ACC_LOG,
                     &OFFSET_DEFAULT_DISTRIBUTION,
                 )?;
+                scratch.seq_tables_valid = false;
             }
             scratch.of_rle = None;
         }
@@ -367,6 +373,7 @@ pub(crate) fn maybe_update_fse_tables(
             vprintln!("Updating ml table");
             vprintln!("Used bytes: {}", bytes);
             scratch.ml_rle = None;
+            scratch.seq_tables_valid = false;
         }
         ModeType::RLE => {
             vprintln!("Use RLE ml table");
@@ -378,6 +385,7 @@ pub(crate) fn maybe_update_fse_tables(
                 return Err(DecodeSequenceError::MissingByteForRleMlTable);
             }
             scratch.ml_rle = Some(ml_source[0]);
+            scratch.seq_tables_valid = false;
         }
         ModeType::Predefined => {
             vprintln!("Use predefined ml table");
@@ -389,6 +397,7 @@ pub(crate) fn maybe_update_fse_tables(
                     ML_DEFAULT_ACC_LOG,
                     &MATCH_LENGTH_DEFAULT_DISTRIBUTION,
                 )?;
+                scratch.seq_tables_valid = false;
             }
             scratch.ml_rle = None;
         }
@@ -399,6 +408,98 @@ pub(crate) fn maybe_update_fse_tables(
     };
 
     Ok(bytes_read)
+}
+
+/// Build merged SeqSymbol tables from the raw FSE tables and RLE state.
+/// Must be called after `maybe_update_fse_tables`.
+/// For RLE modes, creates a single-entry table with nb_bits=0 (state stays at 0).
+pub(crate) fn build_seq_symbols(fse: &mut FSEScratch) {
+    if fse.seq_tables_valid {
+        return;
+    }
+    use crate::decoding::scratch::SeqSymbol;
+
+    // --- Literal Lengths ---
+    if let Some(rle_code) = fse.ll_rle {
+        let (base_value, nb_additional_bits) = lookup_ll_code(rle_code);
+        fse.seq_ll.clear();
+        fse.seq_ll.push(SeqSymbol {
+            base_value,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits,
+        });
+        fse.seq_ll_log = 0;
+    } else {
+        let table = &fse.literal_lengths.decode;
+        fse.seq_ll.clear();
+        fse.seq_ll.reserve(table.len());
+        for entry in table {
+            let (base_value, nb_additional_bits) = lookup_ll_code(entry.symbol);
+            fse.seq_ll.push(SeqSymbol {
+                base_value,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits,
+            });
+        }
+        fse.seq_ll_log = fse.literal_lengths.accuracy_log;
+    }
+
+    // --- Match Lengths ---
+    if let Some(rle_code) = fse.ml_rle {
+        let (base_value, nb_additional_bits) = lookup_ml_code(rle_code);
+        fse.seq_ml.clear();
+        fse.seq_ml.push(SeqSymbol {
+            base_value,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits,
+        });
+        fse.seq_ml_log = 0;
+    } else {
+        let table = &fse.match_lengths.decode;
+        fse.seq_ml.clear();
+        fse.seq_ml.reserve(table.len());
+        for entry in table {
+            let (base_value, nb_additional_bits) = lookup_ml_code(entry.symbol);
+            fse.seq_ml.push(SeqSymbol {
+                base_value,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits,
+            });
+        }
+        fse.seq_ml_log = fse.match_lengths.accuracy_log;
+    }
+
+    // --- Offsets ---
+    if let Some(rle_code) = fse.of_rle {
+        fse.seq_of.clear();
+        fse.seq_of.push(SeqSymbol {
+            base_value: 1u32 << rle_code,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits: rle_code,
+        });
+        fse.seq_of_log = 0;
+    } else {
+        let table = &fse.offsets.decode;
+        fse.seq_of.clear();
+        fse.seq_of.reserve(table.len());
+        for entry in table {
+            let of_code = entry.symbol;
+            fse.seq_of.push(SeqSymbol {
+                base_value: 1u32 << of_code,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits: of_code,
+            });
+        }
+        fse.seq_of_log = fse.offsets.accuracy_log;
+    }
+
+    fse.seq_tables_valid = true;
 }
 
 // The default Literal Length decoding table uses an accuracy logarithm of 6 bits.

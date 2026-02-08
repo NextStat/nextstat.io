@@ -167,6 +167,8 @@ mod tests {
 
     #[test]
     fn test_fit_toys_batch_parity_mode_deterministic() {
+        let _lock = crate::testutil::RUNTIME_MODE_LOCK.lock().unwrap();
+
         // In parity mode, batch toy fitting must produce bit-exact results
         // across multiple runs. This test enables parity mode (Kahan summation)
         // and verifies that two runs with the same seed produce identical results.

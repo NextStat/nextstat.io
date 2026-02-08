@@ -10,6 +10,136 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[derive(Debug, Clone, Copy)]
+enum BoundTransform {
+    /// x = u
+    Identity,
+    /// x = lo + (hi - lo) * sigmoid(u)
+    Finite { lo: f64, hi: f64 },
+    /// x = lo + exp(u)
+    Lower { lo: f64 },
+    /// x = hi - exp(u)
+    Upper { hi: f64 },
+}
+
+impl BoundTransform {
+    fn forward(self, u: f64) -> f64 {
+        match self {
+            BoundTransform::Identity => u,
+            BoundTransform::Finite { lo, hi } => {
+                let s = sigmoid(u);
+                lo + (hi - lo) * s
+            }
+            BoundTransform::Lower { lo } => lo + u.exp(),
+            BoundTransform::Upper { hi } => hi - u.exp(),
+        }
+    }
+
+    fn inverse(self, x: f64) -> f64 {
+        const EPS: f64 = 1e-12;
+        match self {
+            BoundTransform::Identity => x,
+            BoundTransform::Finite { lo, hi } => {
+                let denom = (hi - lo).max(EPS);
+                let mut t = (x - lo) / denom;
+                t = t.clamp(EPS, 1.0 - EPS);
+                logit(t)
+            }
+            BoundTransform::Lower { lo } => (x - lo).max(EPS).ln(),
+            BoundTransform::Upper { hi } => (hi - x).max(EPS).ln(),
+        }
+    }
+
+    /// dx/du at the given u (diagonal Jacobian).
+    fn deriv(self, u: f64) -> f64 {
+        match self {
+            BoundTransform::Identity => 1.0,
+            BoundTransform::Finite { lo, hi } => {
+                let s = sigmoid(u);
+                (hi - lo) * s * (1.0 - s)
+            }
+            BoundTransform::Lower { .. } => u.exp(),
+            BoundTransform::Upper { .. } => -u.exp(),
+        }
+    }
+}
+
+fn sigmoid(x: f64) -> f64 {
+    // Numerically stable sigmoid.
+    if x >= 0.0 {
+        let z = (-x).exp();
+        1.0 / (1.0 + z)
+    } else {
+        let z = x.exp();
+        z / (1.0 + z)
+    }
+}
+
+fn logit(t: f64) -> f64 {
+    (t / (1.0 - t)).ln()
+}
+
+fn build_bound_transforms(bounds: &[(f64, f64)]) -> Vec<BoundTransform> {
+    bounds
+        .iter()
+        .map(|&(lo, hi)| {
+            let lo_f = lo.is_finite();
+            let hi_f = hi.is_finite();
+            match (lo_f, hi_f) {
+                (false, false) => BoundTransform::Identity,
+                (true, false) => BoundTransform::Lower { lo },
+                (false, true) => BoundTransform::Upper { hi },
+                (true, true) => {
+                    if (hi - lo).abs() <= 0.0 {
+                        // Degenerate bounds are handled by ReducedObjective, but keep identity here.
+                        BoundTransform::Identity
+                    } else {
+                        BoundTransform::Finite { lo, hi }
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
+struct TransformedObjective<'a> {
+    objective: &'a dyn ObjectiveFunction,
+    transforms: Vec<BoundTransform>,
+}
+
+impl<'a> TransformedObjective<'a> {
+    fn to_x(&self, u: &[f64]) -> Vec<f64> {
+        u.iter()
+            .zip(self.transforms.iter().copied())
+            .map(|(&ui, t)| t.forward(ui))
+            .collect()
+    }
+
+    fn to_u(&self, x: &[f64]) -> Vec<f64> {
+        x.iter()
+            .zip(self.transforms.iter().copied())
+            .map(|(&xi, t)| t.inverse(xi))
+            .collect()
+    }
+}
+
+impl<'a> ObjectiveFunction for TransformedObjective<'a> {
+    fn eval(&self, params: &[f64]) -> Result<f64> {
+        let x = self.to_x(params);
+        self.objective.eval(&x)
+    }
+
+    fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+        let x = self.to_x(params);
+        let g_x = self.objective.gradient(&x)?;
+        let mut g_u = Vec::with_capacity(g_x.len());
+        for ((&ui, &gi), t) in params.iter().zip(g_x.iter()).zip(self.transforms.iter().copied()) {
+            g_u.push(gi * t.deriv(ui));
+        }
+        Ok(g_u)
+    }
+}
+
 /// Configuration for L-BFGS-B optimizer
 #[derive(Debug, Clone)]
 pub struct OptimizerConfig {
@@ -19,11 +149,16 @@ pub struct OptimizerConfig {
     pub tol: f64,
     /// Number of corrections to approximate inverse Hessian
     pub m: usize,
+    /// If true, use a smooth bounds transform (logistic/exp) instead of hard clamping.
+    ///
+    /// This is closer in spirit to Minuit-style internal variable transforms, but can change
+    /// behavior at exact boundaries. Keep false by default; enable only where parity needs it.
+    pub smooth_bounds: bool,
 }
 
 impl Default for OptimizerConfig {
     fn default() -> Self {
-        Self { max_iter: 1000, tol: 1e-6, m: 10 }
+        Self { max_iter: 1000, tol: 1e-6, m: 10, smooth_bounds: false }
     }
 }
 
@@ -239,6 +374,7 @@ impl LbfgsbOptimizer {
         }
 
         let init_clamped = clamp_params(init_params, bounds);
+        let use_smooth_bounds = self.config.smooth_bounds;
 
         // Reduce any fixed dimensions (lo == hi) out of the optimizer space.
         //
@@ -387,6 +523,79 @@ impl LbfgsbOptimizer {
             });
         }
 
+        // Smooth bounds transform path (multi-dimensional): optimize in unconstrained space.
+        //
+        // This tends to be more robust than hard clamping for large constrained problems,
+        // and closer in spirit to Minuit's internal variable transforms.
+        if use_smooth_bounds && bounds.len() > 1 {
+            let transforms = build_bound_transforms(bounds);
+            let transformed = TransformedObjective { objective, transforms };
+            let init_u = transformed.to_u(&init_clamped);
+
+            let counts = Arc::new(FuncCounts::default());
+            let unbounded: Vec<(f64, f64)> = vec![(f64::NEG_INFINITY, f64::INFINITY); bounds.len()];
+            let problem = ArgminProblem {
+                objective: &transformed,
+                bounds: &unbounded,
+                counts: counts.clone(),
+            };
+
+            let linesearch = MoreThuenteLineSearch::new();
+            let tol_cost =
+                if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
+            let solver = LBFGS::new(linesearch, self.config.m)
+                .with_tolerance_grad(self.config.tol)
+                .map_err(|e| {
+                    ns_core::Error::Validation(format!("Invalid optimizer configuration (tol): {e}"))
+                })?;
+            let solver = solver.with_tolerance_cost(tol_cost).map_err(|e| {
+                ns_core::Error::Validation(format!(
+                    "Invalid optimizer configuration (tol_cost): {e}"
+                ))
+            })?;
+
+            let initial_cost = objective.eval(&init_clamped)?;
+
+            let res = Executor::new(problem, solver)
+                .configure(|state| state.param(init_u).max_iters(self.config.max_iter))
+                .run()
+                .map_err(|e| ns_core::Error::Validation(format!("Optimization failed: {}", e)))?;
+
+            let state = res.state();
+            let best_u = state
+                .get_best_param()
+                .ok_or_else(|| ns_core::Error::Validation("No best parameters found".to_string()))?
+                .clone();
+            let best_x = transformed.to_x(&best_u);
+            let fval = objective.eval(&best_x)?;
+            let n_iter = state.get_iter();
+            let n_fev = counts.cost.load(Ordering::Relaxed);
+            let n_gev = counts.grad.load(Ordering::Relaxed);
+
+            // Provide the gradient in the original x-space for diagnostics.
+            let final_gradient = objective.gradient(&best_x).ok();
+
+            let termination = state.get_termination_status();
+            let converged = matches!(
+                termination,
+                TerminationStatus::Terminated(TerminationReason::SolverConverged)
+                    | TerminationStatus::Terminated(TerminationReason::TargetCostReached)
+            );
+            let message = format!("smooth-bounds: {}", termination);
+
+            return Ok(OptimizationResult {
+                parameters: best_x,
+                fval,
+                n_iter,
+                n_fev,
+                n_gev,
+                converged,
+                message,
+                final_gradient,
+                initial_cost,
+            });
+        }
+
         let counts = Arc::new(FuncCounts::default());
 
         // Create argmin problem
@@ -485,7 +694,7 @@ mod tests {
 
     #[test]
     fn test_optimizer_quadratic() {
-        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10 };
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10, smooth_bounds: false };
 
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = QuadraticFunction;
@@ -538,7 +747,7 @@ mod tests {
     fn test_optimizer_handles_fixed_dimensions() {
         // Fix y=3 exactly via degenerate bounds and optimize x only. This should behave like
         // optimizing the reduced 1D objective (x - 2)^2, and must not degrade convergence.
-        let config = OptimizerConfig { max_iter: 200, tol: 1e-8, m: 10 };
+        let config = OptimizerConfig { max_iter: 200, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = QuadraticFunction;
 
@@ -569,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_optimizer_does_not_stop_at_negative_cost() {
-        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10 };
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-6, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = QuadraticNegativeOffset;
 
@@ -601,7 +810,7 @@ mod tests {
 
     #[test]
     fn test_optimizer_rosenbrock() {
-        let config = OptimizerConfig { max_iter: 1000, tol: 1e-6, m: 10 };
+        let config = OptimizerConfig { max_iter: 1000, tol: 1e-6, m: 10, smooth_bounds: false };
 
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = RosenbrockFunction;
@@ -640,6 +849,7 @@ mod tests {
         }
 
         let config = OptimizerConfig { max_iter: 200, tol: 1e-6, m: 10 };
+        let config = OptimizerConfig { max_iter: 200, tol: 1e-6, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let objective = ShiftedQuadratic;
 
@@ -683,6 +893,7 @@ mod tests {
         }
 
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
 
         let init = vec![5.0];
@@ -721,6 +932,7 @@ mod tests {
             }
         }
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let result =
             optimizer.minimize(&Quad, &[0.0], &[(f64::NEG_INFINITY, f64::INFINITY)]).unwrap();
@@ -742,6 +954,7 @@ mod tests {
             }
         }
         let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10 };
+        let config = OptimizerConfig { max_iter: 100, tol: 1e-8, m: 10, smooth_bounds: false };
         let optimizer = LbfgsbOptimizer::new(config);
         let result = optimizer.minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)]).unwrap();
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);

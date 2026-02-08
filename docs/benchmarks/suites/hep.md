@@ -64,6 +64,8 @@ Seed harness (public benchmarks repo bootstrap):
 
 The seed harness also supports optional full MLE fit timing via `--fit --fit-repeat N` and records results in the per-case JSON under the `fit` block.
 
+Baseline templates (optional): `benchmarks/nextstat-public-benchmarks/suites/hep/baselines/`
+
 ### 2) Gradient time / call
 
 Measures the cost of gradient evaluation required for optimizers/samplers.

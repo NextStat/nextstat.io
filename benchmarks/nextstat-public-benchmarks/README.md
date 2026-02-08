@@ -41,11 +41,24 @@ Optional: also benchmark full MLE fits (more expensive):
 python suites/hep/run.py --deterministic --fit --fit-repeat 3 --out out/hep_simple_nll_fit.json
 ```
 
+## Publish A Local Snapshot (Seed)
+
+Generate a local snapshot directory (results + baseline manifest + README snippet) under
+`manifests/snapshots/<snapshot_id>/`:
+
+```bash
+python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --fit --fit-repeat 3
+```
+
+## DOI Publishing (Template)
+
+For Zenodo/DOI publishing guidance and metadata templates, see `zenodo/`.
+
 ## What This Seed Provides
 
 - `env/` pinned environment scaffolding (Python + Rust + Docker templates)
 - `manifests/schema/` JSON Schemas for results + baseline manifests
-- `suites/` runnable suite layout (starts with a minimal `hep` smoke benchmark)
+- `suites/` runnable suite layout (currently: `hep` and `pharma` seeds)
 - `ci/` workflow templates for verify/publish (standalone repo)
 
 ## Notes

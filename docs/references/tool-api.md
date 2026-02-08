@@ -115,3 +115,24 @@ If you run `nextstat-server`, you can also fetch tools and execute them over HTT
 - Tool execution: `POST /v1/tools/execute`
 
 See: `/Users/andresvlc/WebDev/nextstat.io/docs/references/server-api.md`
+
+Python usage:
+
+```python
+from nextstat.tools import get_toolkit, execute_tool
+
+server_url = "http://127.0.0.1:3742"
+tools = get_toolkit(transport="server", server_url=server_url)
+
+out = execute_tool(
+    "nextstat_hypotest",
+    {"workspace_json": "...", "mu": 1.0, "execution": {"deterministic": True}},
+    transport="server",
+    server_url=server_url,
+)
+```
+
+Notes:
+- `server_url` can also be provided via env vars: `NEXTSTAT_SERVER_URL` or `NEXTSTAT_TOOLS_SERVER_URL`.
+- `execute_tool(..., transport="server")` falls back to local execution by default when the server call fails.
+  - To disable fallback: `fallback_to_local=False`.
