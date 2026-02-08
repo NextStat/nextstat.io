@@ -182,8 +182,8 @@ def generate_dataset(
             Default: model init ± 5, clipped to physical bounds.
         seed: random seed for reproducibility.
         include_gradient: if ``True`` (default), compute ∂NLL/∂params at each point.
-        batch_size: internal batch size for GPU evaluation.
-        gpu: if ``True``, use GPU kernel for evaluation (requires CUDA build).
+        batch_size: internal batch size for evaluation.
+        gpu: reserved for future GPU batch evaluation (currently unused).
 
     Returns:
         :class:`SurrogateDataset` containing parameters, NLL values, gradients.

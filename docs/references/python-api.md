@@ -457,6 +457,94 @@ fig = plot_rank_impact(model, top_n=15)
 fig.savefig("ranking.png")
 ```
 
+## Agentic Analysis (`nextstat.tools`)
+
+LLM tool definitions for AI-driven statistical analysis. Compatible with OpenAI function calling, LangChain, and MCP (Model Context Protocol).
+
+- `nextstat.tools.get_toolkit() -> list[dict]` — OpenAI-compatible tool definitions for 7 operations: `nextstat_fit`, `nextstat_hypotest`, `nextstat_upper_limit`, `nextstat_ranking`, `nextstat_significance`, `nextstat_scan`, `nextstat_workspace_audit`.
+- `nextstat.tools.execute_tool(name, arguments) -> dict` — execute a tool call by name, returns JSON-serialisable result.
+- `nextstat.tools.get_langchain_tools() -> list[StructuredTool]` — LangChain adapter (requires `langchain-core`).
+- `nextstat.tools.get_mcp_tools() -> list[dict]` — MCP tool definitions (`name`, `description`, `inputSchema`).
+- `nextstat.tools.get_tool_names() -> list[str]` — list available tool names.
+- `nextstat.tools.get_tool_schema(name) -> dict | None` — JSON Schema for a specific tool.
+
+```python
+import json, openai
+from nextstat.tools import get_toolkit, execute_tool
+
+tools = get_toolkit()
+response = openai.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Fit this workspace"}],
+    tools=tools,
+)
+
+for call in response.choices[0].message.tool_calls:
+    result = execute_tool(call.function.name, json.loads(call.function.arguments))
+```
+
+## Surrogate Distillation (`nextstat.distill`)
+
+Generate training datasets for neural likelihood surrogates. NextStat serves as the ground-truth oracle; the surrogate provides nanosecond inference.
+
+- `nextstat.distill.generate_dataset(model, n_samples=100_000, *, method="sobol", bounds=None, seed=42, include_gradient=True) -> SurrogateDataset` — sample parameter space and evaluate NLL + gradient at each point. Methods: `"sobol"`, `"lhs"`, `"uniform"`, `"gaussian"`.
+- `nextstat.distill.SurrogateDataset` — container with `.parameters`, `.nll`, `.gradient` (NumPy arrays), `.parameter_names`, `.parameter_bounds`, `.metadata`.
+- `nextstat.distill.to_torch_dataset(ds) -> TensorDataset` — convert for PyTorch DataLoader.
+- `nextstat.distill.to_numpy(ds) -> dict[str, ndarray]` — export as dict of arrays.
+- `nextstat.distill.to_npz(ds, path)` / `from_npz(path)` — save/load compressed `.npz`.
+- `nextstat.distill.to_parquet(ds, path)` — export to Parquet (zstd, requires `pyarrow`).
+- `nextstat.distill.train_mlp_surrogate(ds, *, hidden_layers=(256,256,128), epochs=100, lr=1e-3, grad_weight=0.1, device="cpu") -> nn.Module` — convenience MLP trainer with Sobolev loss.
+- `nextstat.distill.predict_nll(surrogate, params_np) -> ndarray` — evaluate trained surrogate on raw parameters.
+
+```python
+from nextstat.distill import generate_dataset, train_mlp_surrogate, predict_nll
+
+model = nextstat.from_pyhf(workspace_json)
+ds = generate_dataset(model, n_samples=100_000, method="sobol")
+
+surrogate = train_mlp_surrogate(ds, epochs=50, device="cuda")
+pred = predict_nll(surrogate, np.array(model.parameter_init()))
+```
+
+## Arrow / Polars Integration
+
+Zero-copy interchange between NextStat and the Arrow columnar ecosystem (PyArrow, Polars, DuckDB, Spark). Backed by Rust `arrow` 57.3 + `parquet` 57.3 crates; the Python ↔ Rust bridge uses Arrow IPC.
+
+### High-level API
+
+- `nextstat.from_arrow(table, *, poi="mu", observations=None) -> HistFactoryModel` — create a model from a **PyArrow Table** or **RecordBatch**. The table must have columns `channel` (Utf8), `sample` (Utf8), `yields` (List\<Float64\>), optionally `stat_error` (List\<Float64\>). Works with any Arrow-compatible source (Polars, DuckDB, Spark).
+- `nextstat.to_arrow(model, *, params=None, what="yields") -> pyarrow.Table` — export model data. `what="yields"` returns expected yields per channel; `what="params"` returns parameter metadata (name, index, value, bounds, init).
+- `nextstat.from_parquet(path, *, poi="mu", observations=None) -> HistFactoryModel` — read a Parquet file directly (Zstd/Snappy), same schema as `from_arrow`.
+
+### Low-level IPC API
+
+- `nextstat.from_arrow_ipc(ipc_bytes, poi="mu", observations=None) -> HistFactoryModel` — ingest raw Arrow IPC stream bytes.
+- `nextstat.to_arrow_yields_ipc(model, params=None) -> bytes` — export yields as IPC bytes.
+- `nextstat.to_arrow_params_ipc(model, params=None) -> bytes` — export parameters as IPC bytes.
+
+```python
+import pyarrow as pa
+import nextstat
+
+# From PyArrow
+table = pa.table({
+    "channel": ["SR", "SR", "CR"],
+    "sample":  ["signal", "background", "background"],
+    "yields":  [[5., 10., 15.], [100., 200., 150.], [500., 600.]],
+})
+model = nextstat.from_arrow(table, poi="mu")
+result = nextstat.fit(model)
+
+# From Polars
+import polars as pl
+df = pl.read_parquet("histograms.parquet")
+model = nextstat.from_arrow(df.to_arrow())
+
+# Export to Arrow
+yields = nextstat.to_arrow(model, what="yields")
+params = nextstat.to_arrow(model, what="params")
+```
+
 ## CLI parity
 
 The CLI mirrors the core workflows for HEP (fit/hypotest/scan/limits) and time series.

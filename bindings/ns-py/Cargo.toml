@@ -27,7 +27,7 @@ ns-core.workspace = true
 ns-compute.workspace = true
 ns-inference = { workspace = true, features = ["root-io"] }
 ns-root.workspace = true
-ns-translate = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io", "arrow-io"] }
 ns-viz.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }

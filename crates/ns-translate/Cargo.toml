@@ -24,9 +24,13 @@ log.workspace = true
 rayon.workspace = true
 statrs.workspace = true
 json-patch.workspace = true
+arrow = { workspace = true, optional = true }
+parquet = { workspace = true, optional = true }
+bytes = { version = "1", optional = true }
 
 [features]
 default = ["root-io"]
+arrow-io = ["dep:arrow", "dep:parquet", "dep:bytes"]
 root-io = ["dep:ns-root"]
 accelerate = ["ns-compute/accelerate"]
 cuda = ["ns-compute/cuda"]

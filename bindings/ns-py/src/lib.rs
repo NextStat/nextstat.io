@@ -3745,6 +3745,117 @@ fn from_pyhf(json_str: &str) -> PyResult<PyHistFactoryModel> {
     PyHistFactoryModel::from_workspace(json_str)
 }
 
+// ---------------------------------------------------------------------------
+// Arrow / Parquet integration
+// ---------------------------------------------------------------------------
+
+/// Create a HistFactoryModel from Arrow IPC bytes.
+///
+/// The IPC stream must contain a table with columns:
+/// `channel` (Utf8), `sample` (Utf8), `yields` (List<Float64>),
+/// optionally `stat_error` (List<Float64>).
+///
+/// Args:
+///     ipc_bytes: bytes from `table.serialize()` (PyArrow IPC stream).
+///     poi: parameter of interest name (default "mu").
+///     observations: optional dict {channel_name: [obs_counts]}.
+///
+/// Returns:
+///     HistFactoryModel
+#[pyfunction]
+#[pyo3(signature = (ipc_bytes, poi="mu", observations=None))]
+fn from_arrow_ipc(
+    ipc_bytes: &[u8],
+    poi: &str,
+    observations: Option<std::collections::HashMap<String, Vec<f64>>>,
+) -> PyResult<PyHistFactoryModel> {
+    let config = ns_translate::arrow::ingest::ArrowIngestConfig {
+        poi: poi.to_string(),
+        observations,
+        ..Default::default()
+    };
+
+    let workspace = ns_translate::arrow::ingest::from_arrow_ipc(ipc_bytes, &config)
+        .map_err(|e| PyValueError::new_err(format!("Arrow ingest failed: {e}")))?;
+
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)
+        .map_err(|e| PyValueError::new_err(format!("Model construction failed: {e}")))?;
+
+    Ok(PyHistFactoryModel { inner: model })
+}
+
+/// Create a HistFactoryModel from a Parquet file.
+///
+/// The Parquet file must contain the histogram table schema:
+/// `channel` (Utf8), `sample` (Utf8), `yields` (List<Float64>),
+/// optionally `stat_error` (List<Float64>).
+#[pyfunction]
+#[pyo3(signature = (path, poi="mu", observations=None))]
+fn from_parquet(
+    path: &str,
+    poi: &str,
+    observations: Option<std::collections::HashMap<String, Vec<f64>>>,
+) -> PyResult<PyHistFactoryModel> {
+    let config = ns_translate::arrow::ingest::ArrowIngestConfig {
+        poi: poi.to_string(),
+        observations,
+        ..Default::default()
+    };
+
+    let workspace = ns_translate::arrow::parquet::from_parquet(
+        std::path::Path::new(path),
+        &config,
+    )
+    .map_err(|e| PyValueError::new_err(format!("Parquet ingest failed: {e}")))?;
+
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)
+        .map_err(|e| PyValueError::new_err(format!("Model construction failed: {e}")))?;
+
+    Ok(PyHistFactoryModel { inner: model })
+}
+
+/// Export model expected yields as Arrow IPC bytes.
+///
+/// Returns bytes that can be deserialized with:
+///     `pyarrow.ipc.open_stream(bytes).read_all()`
+///
+/// Schema: channel (Utf8), sample (Utf8), yields (List<Float64>).
+#[pyfunction]
+#[pyo3(signature = (model, params=None))]
+fn to_arrow_yields_ipc<'py>(
+    py: Python<'py>,
+    model: &PyHistFactoryModel,
+    params: Option<Vec<f64>>,
+) -> PyResult<Py<pyo3::types::PyBytes>> {
+    let p = params.unwrap_or_else(|| {
+        model.inner.parameters().iter().map(|p| p.init).collect()
+    });
+
+    let ipc = ns_translate::arrow::export::yields_to_ipc(&model.inner, &p)
+        .map_err(|e| PyValueError::new_err(format!("Arrow export failed: {e}")))?;
+
+    Ok(pyo3::types::PyBytes::new(py, &ipc).unbind())
+}
+
+/// Export model parameters as Arrow IPC bytes.
+///
+/// Schema: name (Utf8), index (UInt32), value (Float64),
+///         bound_lo (Float64), bound_hi (Float64), init (Float64).
+#[pyfunction]
+#[pyo3(signature = (model, params=None))]
+fn to_arrow_params_ipc<'py>(
+    py: Python<'py>,
+    model: &PyHistFactoryModel,
+    params: Option<Vec<f64>>,
+) -> PyResult<Py<pyo3::types::PyBytes>> {
+    let p_ref = params.as_deref();
+
+    let ipc = ns_translate::arrow::export::parameters_to_ipc(&model.inner, p_ref)
+        .map_err(|e| PyValueError::new_err(format!("Arrow export failed: {e}")))?;
+
+    Ok(pyo3::types::PyBytes::new(py, &ipc).unbind())
+}
+
 /// Audit a pyhf workspace JSON string for compatibility.
 ///
 /// Returns a dict with channels, modifier types, unsupported features, etc.
@@ -4935,6 +5046,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_simulate, m)?)?;
+
+    // Arrow / Parquet
+    m.add_function(wrap_pyfunction!(from_arrow_ipc, m)?)?;
+    m.add_function(wrap_pyfunction!(from_parquet, m)?)?;
+    m.add_function(wrap_pyfunction!(to_arrow_yields_ipc, m)?)?;
+    m.add_function(wrap_pyfunction!(to_arrow_params_ipc, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;

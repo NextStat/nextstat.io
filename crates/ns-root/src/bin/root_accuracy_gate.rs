@@ -11,6 +11,21 @@ fn main() -> Result<(), io::Error> {
     let file = RootFile::open(&cfg.root_path)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to open root file: {e}")))?;
 
+    let bytes = file.file_data();
+    let _is_large = file.is_large();
+
+    if cfg.scan {
+        let stats = scan_root_for_zs_blocks(bytes, cfg.verbose, cfg.fail_fast)?;
+        println!(
+            "Summary(scan): zs_blocks_checked={}, candidates_skipped={}, failures={}",
+            stats.zs_blocks_checked, stats.candidates_skipped, stats.failures
+        );
+        if stats.failures == 0 {
+            return Ok(());
+        }
+        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate failed"));
+    }
+
     let tree_name = match cfg.tree_name {
         Some(t) => t,
         None => select_first_tree_name(&file)?,
@@ -18,10 +33,7 @@ fn main() -> Result<(), io::Error> {
 
     let tree = file
         .get_tree(&tree_name)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to read tree '{tree_name}': {e}")))?;
-
-    let bytes = file.file_data();
-    let _is_large = file.is_large();
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to read tree '{tree_name}': {e} (try --scan)")))?;
 
     let max_baskets_per_branch = cfg.max_baskets_per_branch.unwrap_or(usize::MAX);
 
@@ -114,6 +126,7 @@ struct Config {
     max_baskets_per_branch: Option<usize>,
     fail_fast: bool,
     verbose: bool,
+    scan: bool,
 }
 
 impl Config {
@@ -126,6 +139,7 @@ impl Config {
         let mut max_baskets_per_branch: Option<usize> = Some(32);
         let mut fail_fast = false;
         let mut verbose = false;
+        let mut scan = false;
 
         while let Some(arg) = args.next() {
             match arg.to_string_lossy().as_ref() {
@@ -158,6 +172,7 @@ impl Config {
                     max_baskets_per_branch = if n == 0 { None } else { Some(n) };
                 }
                 "--fail-fast" => fail_fast = true,
+                "--scan" => scan = true,
                 "--verbose" | "-v" => verbose = true,
                 "--help" | "-h" => {
                     print_help();
@@ -193,14 +208,126 @@ impl Config {
             max_baskets_per_branch,
             fail_fast,
             verbose,
+            scan,
         })
     }
 }
 
 fn print_help() {
     eprintln!(
-        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--fail-fast] [--verbose]\n\nBehavior:\n  - Iterates all branches in the tree (default: first TTree in top-level keys)\n  - Iterates up to N baskets per branch (default: 32; N=0 means all)\n  - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n  - Compare output byte-for-byte\n\nExit status:\n  - 0 if all checked blocks match\n  - non-zero on any mismatch\n"
+        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--scan] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\nExit status:\n  - 0 if all checked blocks match\n  - non-zero on any mismatch\n"
     );
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct ScanStats {
+    zs_blocks_checked: usize,
+    candidates_skipped: usize,
+    failures: usize,
+}
+
+fn scan_root_for_zs_blocks(
+    bytes: &[u8],
+    verbose: bool,
+    fail_fast: bool,
+) -> Result<ScanStats, io::Error> {
+    const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+    let mut stats = ScanStats::default();
+    let mut pos = 0usize;
+    while pos + 9 <= bytes.len() {
+        if &bytes[pos..pos + 2] != b"ZS" {
+            pos += 1;
+            continue;
+        }
+
+        let c_size = read_le24(&bytes[pos + 3..pos + 6]);
+        let u_size = read_le24(&bytes[pos + 6..pos + 9]);
+        if c_size == 0 || u_size == 0 {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        let payload = pos + 9;
+        let end = payload.saturating_add(c_size);
+        if end > bytes.len() {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        if payload + 4 > bytes.len() || bytes[payload..payload + 4] != ZSTD_MAGIC {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        let compressed = &bytes[payload..end];
+
+        let ctx = ScanCtx {
+            file_offset: pos,
+            block_c_size: c_size,
+            block_u_size: u_size,
+        };
+
+        match compare_zstd_block_scan(compressed, &ctx, verbose) {
+            Ok(()) => {
+                stats.zs_blocks_checked += 1;
+                pos = end;
+            }
+            Err(e) => {
+                stats.failures += 1;
+                eprintln!("FAIL(scan) file_off={} : {}", pos, e);
+                if fail_fast {
+                    return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate failed"));
+                }
+                pos += 2;
+            }
+        }
+    }
+
+    Ok(stats)
+}
+
+#[derive(Copy, Clone)]
+struct ScanCtx {
+    file_offset: usize,
+    block_c_size: usize,
+    block_u_size: usize,
+}
+
+fn compare_zstd_block_scan(compressed: &[u8], ctx: &ScanCtx, verbose: bool) -> Result<(), String> {
+    use std::io::Cursor;
+
+    let mut ref_dec = zstd::stream::Decoder::new(Cursor::new(compressed))
+        .map_err(|e| format!("libzstd (zstd crate) init failed: {e}"))?;
+
+    let mut ruz_source = compressed;
+    let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
+        .map_err(|e| format!("ruzstd init failed: {e}"))?;
+
+    let bytes = stream_compare(&mut ruz_dec, &mut ref_dec).map_err(|e| {
+        format!(
+            "{} (file_off={} c_size={} u_size={})",
+            e, ctx.file_offset, ctx.block_c_size, ctx.block_u_size
+        )
+    })?;
+
+    if bytes != ctx.block_u_size as u64 {
+        return Err(format!(
+            "decoded size mismatch: got {} expected {} (file_off={} c_size={})",
+            bytes, ctx.block_u_size, ctx.file_offset, ctx.block_c_size
+        ));
+    }
+
+    if verbose {
+        println!(
+            "OK(scan) file_off={} out={} bytes",
+            ctx.file_offset, bytes
+        );
+    }
+    Ok(())
 }
 
 fn select_first_tree_name(file: &RootFile) -> Result<String, io::Error> {

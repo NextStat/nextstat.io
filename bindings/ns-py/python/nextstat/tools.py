@@ -345,13 +345,13 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         model = _load_model(arguments["workspace_json"])
         result = nextstat.hypotest(0.0, model)
         cls_val = float(result)
-        import math
-        if cls_val > 0 and cls_val < 1:
-            from nextstat._core import _normal_quantile  # type: ignore
+        if 0 < cls_val < 1:
             try:
+                from nextstat._core import _normal_quantile  # type: ignore
                 z0 = _normal_quantile(1.0 - cls_val)
             except Exception:
-                z0 = math.sqrt(2) * math.erfc(2 * cls_val) if cls_val > 0 else 0.0
+                from scipy.stats import norm  # type: ignore
+                z0 = float(norm.ppf(1.0 - cls_val))
         else:
             z0 = 0.0
         return {"cls_obs": cls_val, "significance_sigma": z0}

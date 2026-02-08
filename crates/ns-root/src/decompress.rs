@@ -11,6 +11,11 @@
 
 use crate::error::{Result, RootError};
 
+std::thread_local! {
+    static ZSTD_DECODER: std::cell::RefCell<ruzstd::decoding::FrameDecoder> =
+        std::cell::RefCell::new(ruzstd::decoding::FrameDecoder::new());
+}
+
 /// Decompress ROOT-compressed data into `expected_len` bytes.
 pub fn decompress(src: &[u8], expected_len: usize) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(expected_len);
@@ -92,15 +97,37 @@ fn decompress_lz4(data: &[u8], expected: usize) -> Result<Vec<u8>> {
 }
 
 fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
-    use std::io::Read;
+    let mut out: Vec<u8> = Vec::with_capacity(expected);
 
-    let mut source = data;
-    let mut decoder = ruzstd::decoding::StreamingDecoder::new(&mut source)
-        .map_err(|e| RootError::Decompression(format!("zstd init: {}", e)))?;
-    let mut out = Vec::with_capacity(expected);
-    decoder
-        .read_to_end(&mut out)
+    let spare = out.spare_capacity_mut();
+    if spare.len() < expected {
+        return Err(RootError::Decompression(
+            "zstd: output buffer capacity smaller than expected".into(),
+        ));
+    }
+
+    let target = unsafe {
+        std::slice::from_raw_parts_mut(spare.as_mut_ptr() as *mut u8, expected)
+    };
+
+    let bytes_written = ZSTD_DECODER
+        .with(|cell| {
+            let mut dec = cell.borrow_mut();
+            dec.decode_all(data, target)
+        })
         .map_err(|e| RootError::Decompression(format!("zstd: {}", e)))?;
+
+    unsafe {
+        out.set_len(bytes_written);
+    }
+
+    if bytes_written != expected {
+        return Err(RootError::Decompression(format!(
+            "zstd: expected {} uncompressed bytes, got {}",
+            expected, bytes_written
+        )));
+    }
+
     Ok(out)
 }
 

@@ -906,6 +906,29 @@ def kalman_simulate(
 ) -> Dict[str, Any]: ...
 
 
+def from_arrow_ipc(
+    ipc_bytes: bytes,
+    poi: str = "mu",
+    observations: Optional[Dict[str, List[float]]] = ...,
+) -> HistFactoryModel: ...
+
+def from_parquet(
+    path: str,
+    poi: str = "mu",
+    observations: Optional[Dict[str, List[float]]] = ...,
+) -> HistFactoryModel: ...
+
+def to_arrow_yields_ipc(
+    model: HistFactoryModel,
+    params: Optional[List[float]] = ...,
+) -> bytes: ...
+
+def to_arrow_params_ipc(
+    model: HistFactoryModel,
+    params: Optional[List[float]] = ...,
+) -> bytes: ...
+
+
 class DifferentiableSession:
     def __init__(self, model: HistFactoryModel, signal_sample_name: str) -> None: ...
     def nll_grad_signal(

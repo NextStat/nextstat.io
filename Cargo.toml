@@ -74,6 +74,10 @@ rand = "0.9"
 rand_distr = "0.5"
 json-patch = "4.1.0"
 
+# Arrow / Parquet
+arrow = { version = "57.3", default-features = false, features = ["ffi", "ipc"] }
+parquet = { version = "57.3", default-features = false, features = ["arrow", "zstd", "snap"] }
+
 # Python bindings
 pyo3 = { version = "0.28", features = ["extension-module"] }
 numpy = "0.27"

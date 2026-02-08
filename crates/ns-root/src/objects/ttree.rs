@@ -146,11 +146,19 @@ impl ClassRefTracker {
                 // New class: read null-terminated class name
                 let name_start = r.pos();
                 let name = r.read_cstring()?;
-                // Register this class with the offset of the class tag
-                // ROOT uses (class_tag_pos | kClassMask) for back-references
+                // Register this class for later back-references.
+                // Different ROOT writers may use different base offsets for the reference tag.
+                // We register a few plausible offsets to maximize compatibility.
+                // - class_tag_pos: offset of the u32 class tag
+                // - obj_start: offset of the enclosing byte-count tag
+                // - name_start: offset where the class name bytes start
                 self.classes.push((class_tag_pos, name.clone()));
-                // Also register at name_start - some ROOT versions reference differently
-                let _ = name_start;
+                self.classes.push((obj_start, name.clone()));
+                self.classes.push((name_start, name.clone()));
+                // Some ROOT versions appear to reference near the end of the byte-count wrapper.
+                // These two offsets are added defensively.
+                self.classes.push((obj_end.saturating_sub(4), name.clone()));
+                self.classes.push((obj_end, name.clone()));
                 name
             } else if class_tag & K_CLASS_MASK != 0 {
                 // Reference to existing class by offset

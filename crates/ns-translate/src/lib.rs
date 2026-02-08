@@ -18,6 +18,8 @@
 pub mod histfactory;
 #[cfg(feature = "root-io")]
 pub mod ntuple;
+#[cfg(feature = "arrow-io")]
+pub mod arrow;
 pub mod hs3;
 pub mod pyhf;
 #[cfg(feature = "root-io")]

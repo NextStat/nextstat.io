@@ -31,6 +31,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `as_tensor()` — DLPack array-API bridge: JAX, CuPy, Arrow, NumPy → `torch.Tensor`.
 - `nextstat.mlops` — fit metrics extraction for W&B / MLflow / Neptune: `metrics_dict(result)`, `significance_metrics(z0)`, `StepTimer`.
 - `nextstat.interpret` — systematic-impact ranking as Feature Importance: `rank_impact(model)`, `rank_impact_df()`, `plot_rank_impact()`.
+- **`nextstat.tools`** — LLM tool definitions (OpenAI function calling, LangChain, MCP) for 7 operations: fit, hypotest, upper_limit, ranking, significance, scan, workspace_audit. `get_toolkit()` returns JSON Schema; `execute_tool(name, args)` bridges agent calls to NextStat.
+- **`nextstat.distill`** — surrogate training dataset generator. `generate_dataset(model, n_samples=100k, method="sobol")` produces `(params, NLL, gradient)` tuples. Export to PyTorch `TensorDataset`, `.npz`, or Parquet. Built-in `train_mlp_surrogate()` with Sobolev loss.
 - Fit convergence check: returns error if GPU profile fit fails to converge.
 
 #### Gymnasium RL Environment
@@ -82,6 +84,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - Python: `HistFactoryModel.from_workspace()` (auto-detect), `HistFactoryModel.from_hs3(json_str)`. CLI: auto-detection in `nextstat fit`, `nextstat scan`.
 - HistoSys interpolation Code 0 (piecewise linear) — now default, matching pyhf.
 - HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
+- **Arrow / Polars ingestion** — `nextstat.from_arrow(table)` creates a HistFactoryModel from PyArrow Table, RecordBatch, or any Arrow-compatible source (Polars, DuckDB, Spark). `nextstat.from_parquet(path)` reads Parquet directly.
+- **Arrow export** — `nextstat.to_arrow(model, what="yields"|"params")` exports expected yields or parameter metadata as a PyArrow Table. Uses Arrow IPC bridge (zero pyo3 version conflicts).
 
 #### Report System
 
@@ -160,6 +164,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - StatError: incorrect `sqrt(sumw2)` propagation with zero nominal counts.
 - Metal GPU: scratch buffer reuse (~40% less allocation overhead).
 - HistFactory XML: strip `<!DOCTYPE>` declarations before parsing.
+- 10 missing Python re-exports in `__init__.py`: `has_metal`, `read_root_histogram`, `workspace_audit`, `cls_curve`, `profile_curve`, `kalman_filter/smooth/em/forecast/simulate`.
 
 ---
 

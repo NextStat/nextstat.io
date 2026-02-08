@@ -81,6 +81,10 @@ kalman_smooth = _get("kalman_smooth")
 kalman_em = _get("kalman_em")
 kalman_forecast = _get("kalman_forecast")
 kalman_simulate = _get("kalman_simulate")
+from_arrow_ipc = _get("from_arrow_ipc")
+from_parquet = _get("from_parquet")
+to_arrow_yields_ipc = _get("to_arrow_yields_ipc")
+to_arrow_params_ipc = _get("to_arrow_params_ipc")
 
 # Optional convenience wrappers (use optional deps like arviz).
 from . import bayes as bayes  # noqa: E402
@@ -129,6 +133,62 @@ def histfactory_bin_edges_by_channel(xml_path: str | Path) -> dict[str, list[flo
 
     xml_path = Path(xml_path).resolve()
     return _core.histfactory_bin_edges_by_channel(str(xml_path))
+
+
+def from_arrow(table, *, poi: str = "mu", observations: dict | None = None) -> HistFactoryModel:
+    """Create a HistFactoryModel from a PyArrow Table or RecordBatch.
+
+    The table must have columns: ``channel`` (Utf8), ``sample`` (Utf8),
+    ``yields`` (List<Float64>), optionally ``stat_error`` (List<Float64>).
+
+    Args:
+        table: ``pyarrow.Table`` or ``pyarrow.RecordBatch``.
+        poi: parameter of interest name (default ``"mu"``).
+        observations: optional ``{channel_name: [obs_counts]}``.
+            If ``None``, Asimov data (sum of yields) is used.
+
+    Returns:
+        :class:`HistFactoryModel`
+    """
+    import pyarrow as pa
+
+    if isinstance(table, pa.RecordBatch):
+        table = pa.Table.from_batches([table])
+
+    sink = pa.BufferOutputStream()
+    writer = pa.ipc.new_stream(sink, table.schema)
+    for batch in table.to_batches():
+        writer.write_batch(batch)
+    writer.close()
+    ipc_bytes = sink.getvalue().to_pybytes()
+
+    return from_arrow_ipc(ipc_bytes, poi=poi, observations=observations)
+
+
+def to_arrow(model: HistFactoryModel, *, params: list[float] | None = None, what: str = "yields"):
+    """Export model data as a PyArrow Table.
+
+    Args:
+        model: a :class:`HistFactoryModel`.
+        params: parameter values (default: model init).
+        what: ``"yields"`` (expected yields per channel) or ``"params"``
+            (parameter metadata).
+
+    Returns:
+        ``pyarrow.Table``
+    """
+    import pyarrow as pa
+
+    if what == "yields":
+        ipc_bytes = to_arrow_yields_ipc(model, params=params)
+    elif what == "params":
+        ipc_bytes = to_arrow_params_ipc(model, params=params)
+    else:
+        raise ValueError(f"Unknown export type: {what!r}. Use 'yields' or 'params'.")
+
+    reader = pa.ipc.open_stream(ipc_bytes)
+    return reader.read_all()
+
 
 __all__ = [
     "__version__",
@@ -203,6 +263,12 @@ __all__ = [
     "kalman_em",
     "kalman_forecast",
     "kalman_simulate",
+    "from_arrow_ipc",
+    "from_parquet",
+    "to_arrow_yields_ipc",
+    "to_arrow_params_ipc",
+    "from_arrow",
+    "to_arrow",
     "from_pyhf",
     "apply_patchset",
     "from_histfactory_xml",
