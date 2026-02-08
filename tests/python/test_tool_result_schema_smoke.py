@@ -20,6 +20,16 @@ def test_tool_result_schema_and_example_smoke():
     example = json.loads(example_path.read_text())
     assert example.get("schema_version") == "nextstat.tool_result.v1"
 
+    strict_schema_path = (
+        _repo_root()
+        / "docs"
+        / "schemas"
+        / "tools"
+        / "nextstat_tool_result_strict_v1.schema.json"
+    )
+    assert strict_schema_path.exists(), f"missing schema: {strict_schema_path}"
+    strict_schema = json.loads(strict_schema_path.read_text())
+
     try:
         import jsonschema  # type: ignore
     except Exception:
@@ -27,4 +37,4 @@ def test_tool_result_schema_and_example_smoke():
 
     if jsonschema is not None:
         jsonschema.validate(instance=example, schema=schema)
-
+        jsonschema.validate(instance=example, schema=strict_schema)

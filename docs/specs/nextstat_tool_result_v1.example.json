@@ -3,7 +3,15 @@
   "ok": true,
   "result": {
     "nll": 0.123,
-    "converged": true
+    "converged": true,
+    "n_iter": 12,
+    "poi_index": 0,
+    "poi_value": 1.0,
+    "poi_error": 0.1,
+    "parameters": {
+      "mu": { "value": 1.0, "error": 0.1 },
+      "theta": { "value": 0.0, "error": 1.0 }
+    }
   },
   "error": null,
   "meta": {
@@ -14,4 +22,3 @@
     "threads_requested": 1
   }
 }
-
