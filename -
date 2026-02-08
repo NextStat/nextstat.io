@@ -1,0 +1,87 @@
+{
+  "channels": [
+    {
+      "name": "SR",
+      "samples": [
+        {
+          "data": [
+            5.0,
+            10.0,
+            3.0
+          ],
+          "modifiers": [
+            {
+              "data": null,
+              "name": "mu",
+              "type": "normfactor"
+            }
+          ],
+          "name": "signal"
+        },
+        {
+          "data": [
+            10.0,
+            18.0,
+            9.0
+          ],
+          "modifiers": [
+            {
+              "data": {
+                "hi": 1.1,
+                "lo": 0.9
+              },
+              "name": "bkg_norm",
+              "type": "normsys"
+            },
+            {
+              "data": [
+                3.1622776601683795,
+                4.242640687119285,
+                3.0
+              ],
+              "name": "staterror_SR",
+              "type": "staterror"
+            }
+          ],
+          "name": "background"
+        }
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "config": {
+        "parameters": [
+          {
+            "auxdata": [],
+            "bounds": [
+              [
+                0.0,
+                10.0
+              ]
+            ],
+            "fixed": false,
+            "inits": [
+              1.0
+            ],
+            "name": "mu",
+            "sigmas": []
+          }
+        ],
+        "poi": "mu"
+      },
+      "name": "NominalMeasurement"
+    }
+  ],
+  "observations": [
+    {
+      "data": [
+        15.0,
+        25.0,
+        12.0
+      ],
+      "name": "SR"
+    }
+  ],
+  "version": "1.0.0"
+}

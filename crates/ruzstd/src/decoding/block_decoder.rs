@@ -16,7 +16,7 @@ use crate::decoding::fused::{
 };
 use crate::decoding::scratch::DecoderScratch;
 use crate::decoding::slice_output_buffer::SliceOutputBuffer;
-use crate::io::Read;
+use crate::io::{Error, ErrorKind, Read};
 
 pub struct BlockDecoder {
     header_buffer: [u8; 3],
@@ -39,6 +39,100 @@ pub fn new() -> BlockDecoder {
 }
 
 impl BlockDecoder {
+    pub(crate) fn decode_block_content_from_slice_to(
+        &mut self,
+        header: &BlockHeader,
+        workspace: &mut DecoderScratch,
+        out: &mut SliceOutputBuffer<'_>,
+        source: &mut &[u8],
+    ) -> Result<u64, DecodeBlockContentError> {
+        match self.internal_state {
+            DecoderState::ReadyToDecodeNextBody => { /* Happy :) */ }
+            DecoderState::Failed => return Err(DecodeBlockContentError::DecoderStateIsFailed),
+            DecoderState::ReadyToDecodeNextHeader => {
+                return Err(DecodeBlockContentError::ExpectedHeaderOfPreviousBlock)
+            }
+        }
+
+        #[inline(always)]
+        fn take_bytes<'a>(src: &mut &'a [u8], n: usize) -> Result<&'a [u8], Error> {
+            if src.len() < n {
+                return Err(Error::from(ErrorKind::UnexpectedEof));
+            }
+            let (head, rest) = src.split_at(n);
+            *src = rest;
+            Ok(head)
+        }
+
+        let block_type = header.block_type;
+        match block_type {
+            BlockType::RLE => {
+                let b = take_bytes(source, 1).map_err(|err| DecodeBlockContentError::ReadError {
+                    step: block_type,
+                    source: err,
+                })?;
+                self.internal_state = DecoderState::ReadyToDecodeNextHeader;
+
+                let mut remaining = header.decompressed_size as usize;
+                while remaining != 0 {
+                    let chunk = remaining.min(out.remaining_mut().len());
+                    if chunk == 0 {
+                        return Err(DecodeBlockContentError::DecompressBlockError(
+                            ExecuteSequencesError::NotEnoughBytesForSequence {
+                                wanted: out.bytes_written() + remaining,
+                                have: out.bytes_written(),
+                            }
+                            .into(),
+                        ));
+                    }
+                    out.remaining_mut()[..chunk].fill(b[0]);
+                    out.advance(chunk);
+                    remaining -= chunk;
+                }
+
+                Ok(1)
+            }
+            BlockType::Raw => {
+                let mut remaining = header.decompressed_size as usize;
+                while remaining != 0 {
+                    let chunk = remaining.min(out.remaining_mut().len());
+                    if chunk == 0 {
+                        return Err(DecodeBlockContentError::DecompressBlockError(
+                            ExecuteSequencesError::NotEnoughBytesForSequence {
+                                wanted: out.bytes_written() + remaining,
+                                have: out.bytes_written(),
+                            }
+                            .into(),
+                        ));
+                    }
+
+                    let bytes = take_bytes(source, chunk)
+                        .map_err(|err| DecodeBlockContentError::ReadError {
+                            step: block_type,
+                            source: err,
+                        })?;
+                    out.remaining_mut()[..chunk].copy_from_slice(bytes);
+                    out.advance(chunk);
+                    remaining -= chunk;
+                }
+
+                self.internal_state = DecoderState::ReadyToDecodeNextHeader;
+                Ok(u64::from(header.decompressed_size))
+            }
+            BlockType::Reserved => {
+                panic!("How did you even get this. The decoder should error out if it detects a reserved-type block");
+            }
+            BlockType::Compressed => {
+                let size = header.content_size as usize;
+                let raw = take_bytes(source, size).map_err(DecompressBlockError::from)?;
+                self.decompress_block_from_slice_to(header, workspace, out, raw)?;
+
+                self.internal_state = DecoderState::ReadyToDecodeNextHeader;
+                Ok(u64::from(header.content_size))
+            }
+        }
+    }
+
     pub(crate) fn decode_block_content_to(
         &mut self,
         header: &BlockHeader,
@@ -307,6 +401,88 @@ impl BlockDecoder {
                 ));
             }
             workspace.buffer.push(&workspace.literals_buffer);
+            workspace.sequences.clear();
+        }
+
+        Ok(())
+    }
+
+    fn decompress_block_from_slice_to(
+        &mut self,
+        header: &BlockHeader,
+        workspace: &mut DecoderScratch,
+        out: &mut SliceOutputBuffer<'_>,
+        raw: &[u8],
+    ) -> Result<(), DecompressBlockError> {
+        let mut section = LiteralsSection::new();
+        let bytes_in_literals_header = section.parse_from_header(raw)?;
+        let raw = &raw[bytes_in_literals_header as usize..];
+
+        let upper_limit_for_literals = match section.compressed_size {
+            Some(x) => x as usize,
+            None => match section.ls_type {
+                LiteralsSectionType::RLE => 1,
+                LiteralsSectionType::Raw => section.regenerated_size as usize,
+                _ => panic!("Bug in this library"),
+            },
+        };
+
+        if raw.len() < upper_limit_for_literals {
+            return Err(DecompressBlockError::MalformedSectionHeader {
+                expected_len: upper_limit_for_literals,
+                remaining_bytes: raw.len(),
+            });
+        }
+
+        let raw_literals = &raw[..upper_limit_for_literals];
+
+        workspace.literals_buffer.clear();
+        let bytes_used_in_literals_section = decode_literals(
+            &section,
+            &mut workspace.huf,
+            raw_literals,
+            &mut workspace.literals_buffer,
+        )?;
+        assert!(
+            section.regenerated_size == workspace.literals_buffer.len() as u32,
+            "Wrong number of literals: {}, Should have been: {}",
+            workspace.literals_buffer.len(),
+            section.regenerated_size
+        );
+        assert!(bytes_used_in_literals_section == upper_limit_for_literals as u32);
+
+        let raw = &raw[upper_limit_for_literals..];
+
+        let mut seq_section = SequencesHeader::new();
+        let bytes_in_sequence_header = seq_section.parse_from_header(raw)?;
+        let raw = &raw[bytes_in_sequence_header as usize..];
+
+        assert!(
+            u32::from(bytes_in_literals_header)
+                + bytes_used_in_literals_section
+                + u32::from(bytes_in_sequence_header)
+                + raw.len() as u32
+                == header.content_size
+        );
+
+        if seq_section.num_sequences != 0 {
+            decode_and_execute_sequences_to(
+                &seq_section,
+                raw,
+                &mut workspace.fse,
+                out,
+                &mut workspace.offset_hist,
+                &workspace.literals_buffer,
+            )?;
+        } else {
+            if !raw.is_empty() {
+                return Err(DecompressBlockError::DecodeSequenceError(
+                    DecodeSequenceError::ExtraBits {
+                        bits_remaining: raw.len() as isize * 8,
+                    },
+                ));
+            }
+            out.push(&workspace.literals_buffer)?;
             workspace.sequences.clear();
         }
 

@@ -88,6 +88,7 @@ _TOOLS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "JSON string of the pyhf or HS3 workspace. Auto-detected.",
                     },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -98,8 +99,8 @@ _TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "nextstat_hypotest",
             "description": (
-                "Run an asymptotic CLs hypothesis test at a given signal strength mu. "
-                "Returns CLs, CLs+b, CLb values and optionally the expected band (±1σ, ±2σ)."
+                "Run an asymptotic CLs hypothesis test at a given signal strength mu (qtilde). "
+                "Returns CLs, CLs+b, and CLb (pyhf-compatible semantics)."
             ),
             "parameters": {
                 "type": "object",
@@ -112,11 +113,54 @@ _TOOLS: list[dict[str, Any]] = [
                         "type": "number",
                         "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
                     },
+                    "execution": _EXECUTION_SCHEMA,
+                },
+                "required": ["workspace_json", "mu"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_hypotest_toys",
+            "description": (
+                "Run a toy-based CLs hypothesis test at a given signal strength mu (qtilde). "
+                "This is stochastic; specify seed for reproducibility."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_json": {
+                        "type": "string",
+                        "description": "JSON string of the pyhf or HS3 workspace.",
+                    },
+                    "mu": {
+                        "type": "number",
+                        "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
+                    },
+                    "n_toys": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Number of toy pseudo-experiments. Default 1000.",
+                        "default": 1000,
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "RNG seed. Default 42.",
+                        "default": 42,
+                    },
                     "expected_set": {
                         "type": "boolean",
-                        "description": "If true, return expected CLs band (±1σ, ±2σ). Default false.",
+                        "description": "If true, return expected CLs bands (±1σ, ±2σ). Default false.",
                         "default": False,
                     },
+                    "return_meta": {
+                        "type": "boolean",
+                        "description": "If true, include toy meta/statistics in the result. Default false.",
+                        "default": False,
+                    },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json", "mu"],
             },
@@ -142,6 +186,33 @@ _TOOLS: list[dict[str, Any]] = [
                         "description": "If true, return expected limits with ±1σ/±2σ bands.",
                         "default": False,
                     },
+                    "alpha": {
+                        "type": "number",
+                        "description": "Confidence level alpha (default 0.05 for 95% CL).",
+                        "default": 0.05,
+                    },
+                    "lo": {
+                        "type": "number",
+                        "description": "Lower bracket for root finding (default 0.0).",
+                        "default": 0.0,
+                    },
+                    "hi": {
+                        "type": ["number", "null"],
+                        "description": "Upper bracket for root finding (default: POI upper bound or 10.0).",
+                        "default": None,
+                    },
+                    "rtol": {
+                        "type": "number",
+                        "description": "Relative tolerance for root finding (default 1e-4).",
+                        "default": 1e-4,
+                    },
+                    "max_iter": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Max root-finding iterations (default 80).",
+                        "default": 80,
+                    },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -167,6 +238,7 @@ _TOOLS: list[dict[str, Any]] = [
                         "type": "integer",
                         "description": "Return only the top N most impactful systematics. Default: all.",
                     },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -175,11 +247,10 @@ _TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "nextstat_significance",
+            "name": "nextstat_discovery_asymptotic",
             "description": (
-                "Compute the discovery significance (Z₀) for the signal in the workspace. "
-                "Runs a hypothesis test at mu=0 (background-only) and returns the p-value "
-                "and significance in standard deviations."
+                "Compute an asymptotic discovery-style statistic at mu=0 from a profiled likelihood scan. "
+                "Returns q0, z0, and p0 (one-sided). This is NOT CLs."
             ),
             "parameters": {
                 "type": "object",
@@ -188,6 +259,7 @@ _TOOLS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "JSON string of the pyhf or HS3 workspace.",
                     },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -223,6 +295,7 @@ _TOOLS: list[dict[str, Any]] = [
                         "description": "Number of scan points. Default 21.",
                         "default": 21,
                     },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -243,6 +316,7 @@ _TOOLS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "JSON string of the pyhf workspace to audit.",
                     },
+                    "execution": _EXECUTION_SCHEMA,
                 },
                 "required": ["workspace_json"],
             },
@@ -273,7 +347,7 @@ def get_toolkit() -> list[dict[str, Any]]:
             tools=tools,
         )
     """
-    return [dict(t) for t in _TOOLS]
+    return copy.deepcopy(_TOOLS)
 
 
 def get_tool_names() -> list[str]:
@@ -305,110 +379,233 @@ def _load_model(workspace_json: str):
     return model
 
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Execute a NextStat tool by name with the given arguments.
+def _normal_sf(z: float) -> float:
+    """Standard normal survival function (1 - CDF) without SciPy."""
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
 
-    This is the bridge between an LLM agent's tool call and NextStat's
-    Python API. The return value is always a JSON-serialisable dict.
 
-    Args:
-        name: tool name (e.g. ``"nextstat_fit"``).
-        arguments: dict of arguments matching the tool's JSON Schema.
+def _apply_execution(nextstat, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Apply best-effort execution controls. Returns meta additions."""
+    exec_cfg = arguments.get("execution") or {}
+    deterministic = bool(exec_cfg.get("deterministic", True))
 
-    Returns:
-        ``dict`` — result payload (JSON-serialisable).
+    requested_eval_mode = exec_cfg.get("eval_mode")
+    if deterministic:
+        eval_mode = "parity"
+    else:
+        eval_mode = requested_eval_mode
 
-    Raises:
-        ValueError: if the tool name is unknown.
-        Exception: if the underlying NextStat call fails (propagated).
+    prev_eval_mode = None
+    if eval_mode in ("fast", "parity"):
+        try:
+            prev_eval_mode = nextstat.get_eval_mode()
+            if prev_eval_mode != eval_mode:
+                nextstat.set_eval_mode(eval_mode)
+        except Exception:
+            prev_eval_mode = None
 
-    Example::
+    requested_threads = exec_cfg.get("threads")
+    if requested_threads is None and deterministic:
+        requested_threads = 1
 
-        result = execute_tool("nextstat_fit", {"workspace_json": ws_str})
-        print(result["nll"], result["converged"])
-    """
+    threads_applied = None
+    if isinstance(requested_threads, int):
+        try:
+            set_threads = getattr(nextstat, "set_threads", None)
+            if callable(set_threads):
+                threads_applied = bool(set_threads(int(requested_threads)))
+        except Exception:
+            threads_applied = False
+
+    return {
+        "tool_name": tool_name,
+        "deterministic": deterministic,
+        "eval_mode_prev": prev_eval_mode,
+        "threads_requested": requested_threads,
+        "threads_applied": threads_applied,
+    }
+
+
+def _restore_execution(nextstat, meta: dict[str, Any]) -> None:
+    prev = meta.get("eval_mode_prev")
+    if prev in ("fast", "parity"):
+        try:
+            if nextstat.get_eval_mode() != prev:
+                nextstat.set_eval_mode(prev)
+        except Exception:
+            pass
+
+
+def execute_tool_raw(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Execute a NextStat tool by name, returning the raw tool result (no envelope)."""
     import nextstat
 
-    if name == "nextstat_fit":
-        model = _load_model(arguments["workspace_json"])
-        result = nextstat.fit(model)
-        params = result.parameters
-        names = model.parameter_names()
-        poi_idx = model.poi_index()
-        return {
-            "nll": result.nll,
-            "converged": result.converged,
-            "n_iter": result.n_iter,
-            "poi_index": poi_idx,
-            "poi_value": params[poi_idx] if poi_idx is not None else None,
-            "poi_error": result.uncertainties[poi_idx] if poi_idx is not None else None,
-            "parameters": {n: {"value": v, "error": e}
-                          for n, v, e in zip(names, params, result.uncertainties)},
-        }
+    meta = _apply_execution(nextstat, name, arguments)
+    try:
+        if name == "nextstat_fit":
+            model = _load_model(arguments["workspace_json"])
+            result = nextstat.fit(model)
+            params = result.parameters
+            names = model.parameter_names()
+            poi_idx = model.poi_index()
+            return {
+                "nll": result.nll,
+                "converged": result.converged,
+                "n_iter": result.n_iter,
+                "poi_index": poi_idx,
+                "poi_value": params[poi_idx] if poi_idx is not None else None,
+                "poi_error": result.uncertainties[poi_idx] if poi_idx is not None else None,
+                "parameters": {
+                    n: {"value": v, "error": e}
+                    for n, v, e in zip(names, params, result.uncertainties)
+                },
+            }
 
-    elif name == "nextstat_hypotest":
-        model = _load_model(arguments["workspace_json"])
-        mu = float(arguments["mu"])
-        expected_set = arguments.get("expected_set", False)
-        result = nextstat.hypotest(mu, model, expected_set=expected_set)
-        if expected_set:
-            return {"cls_obs": result[0], "cls_exp": result[1]}
-        return {"cls_obs": float(result)}
+        if name == "nextstat_hypotest":
+            model = _load_model(arguments["workspace_json"])
+            mu = float(arguments["mu"])
+            cls_val, tails = nextstat.hypotest(mu, model, return_tail_probs=True)
+            clsb, clb = tails
+            return {"mu": mu, "cls": float(cls_val), "clsb": float(clsb), "clb": float(clb)}
 
-    elif name == "nextstat_upper_limit":
-        model = _load_model(arguments["workspace_json"])
-        expected = arguments.get("expected", False)
-        result = nextstat.upper_limit(model, expected=expected)
-        if expected and isinstance(result, tuple):
-            return {"obs_limit": result[0], "exp_limits": list(result[1])}
-        return {"obs_limit": float(result)}
+        if name == "nextstat_hypotest_toys":
+            model = _load_model(arguments["workspace_json"])
+            mu = float(arguments["mu"])
+            n_toys = int(arguments.get("n_toys", 1000))
+            seed = int(arguments.get("seed", 42))
+            expected_set = bool(arguments.get("expected_set", False))
+            return_meta = bool(arguments.get("return_meta", False))
+            r = nextstat.hypotest_toys(
+                mu,
+                model,
+                n_toys=n_toys,
+                seed=seed,
+                expected_set=expected_set,
+                return_tail_probs=True,
+                return_meta=return_meta,
+            )
+            # Return shape depends on expected_set/return_meta; keep it explicit and lossless.
+            return {
+                "mu": mu,
+                "n_toys": n_toys,
+                "seed": seed,
+                "expected_set": expected_set,
+                "raw": r,
+            }
 
-    elif name == "nextstat_ranking":
-        model = _load_model(arguments["workspace_json"])
-        from nextstat.interpret import rank_impact
-        top_n = arguments.get("top_n")
-        table = rank_impact(model, top_n=top_n)
-        return {"ranking": table}
+        if name == "nextstat_upper_limit":
+            model = _load_model(arguments["workspace_json"])
+            expected = bool(arguments.get("expected", False))
+            alpha = float(arguments.get("alpha", 0.05))
+            lo = float(arguments.get("lo", 0.0))
+            hi = arguments.get("hi", None)
+            hi_val = None if hi is None else float(hi)
+            rtol = float(arguments.get("rtol", 1e-4))
+            max_iter = int(arguments.get("max_iter", 80))
+            if expected:
+                obs, exp = nextstat.upper_limits_root(
+                    model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
+                )
+                return {
+                    "alpha": alpha,
+                    "obs_limit": float(obs),
+                    "exp_limits": [float(x) for x in exp],
+                }
+            obs = nextstat.upper_limit(
+                model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
+            )
+            return {"alpha": alpha, "obs_limit": float(obs)}
 
-    elif name == "nextstat_significance":
-        model = _load_model(arguments["workspace_json"])
-        result = nextstat.hypotest(0.0, model)
-        cls_val = float(result)
-        if 0 < cls_val < 1:
-            try:
-                from nextstat._core import _normal_quantile  # type: ignore
-                z0 = _normal_quantile(1.0 - cls_val)
-            except Exception:
-                from scipy.stats import norm  # type: ignore
-                z0 = float(norm.ppf(1.0 - cls_val))
-        else:
-            z0 = 0.0
-        return {"cls_obs": cls_val, "significance_sigma": z0}
+        if name == "nextstat_ranking":
+            model = _load_model(arguments["workspace_json"])
+            from nextstat.interpret import rank_impact
 
-    elif name == "nextstat_scan":
-        model = _load_model(arguments["workspace_json"])
-        start = arguments.get("start", 0.0)
-        stop = arguments.get("stop", 5.0)
-        points = arguments.get("points", 21)
-        step = (stop - start) / max(points - 1, 1)
-        mu_values = [start + i * step for i in range(points)]
-        result = nextstat.profile_scan(model, mu_values)
-        return {
-            "mu_values": result.get("mu_values", mu_values),
-            "twice_delta_nll": result.get("twice_delta_nll", []),
-            "mu_hat": result.get("mu_hat"),
-            "nll_hat": result.get("nll_hat"),
-        }
+            top_n = arguments.get("top_n")
+            table = rank_impact(model, top_n=top_n)
+            return {"ranking": table}
 
-    elif name == "nextstat_workspace_audit":
-        ws_json = arguments["workspace_json"]
-        result = nextstat.workspace_audit(ws_json)
-        return dict(result)
+        if name == "nextstat_discovery_asymptotic":
+            model = _load_model(arguments["workspace_json"])
+            fit_res = nextstat.fit(model)
+            poi_idx = model.poi_index()
+            mu_hat = None
+            if poi_idx is not None:
+                try:
+                    mu_hat = float(fit_res.parameters[poi_idx])
+                except Exception:
+                    mu_hat = None
+            scan = nextstat.profile_scan(model, [0.0])
+            pts = scan.get("points") or []
+            if not pts:
+                raise RuntimeError("profile_scan returned no points for mu=0")
+            nll0 = float(pts[0].get("nll_mu"))
+            nll_hat = float(fit_res.nll)
+            q0_raw = 2.0 * (nll0 - nll_hat)
+            q0 = max(0.0, q0_raw)
+            if mu_hat is not None and mu_hat <= 0.0:
+                q0 = 0.0
+            z0 = math.sqrt(q0)
+            p0 = _normal_sf(z0)
+            return {
+                "mu_hat": mu_hat,
+                "nll_hat": nll_hat,
+                "nll_mu0": nll0,
+                "q0": q0,
+                "z0": z0,
+                "p0": p0,
+            }
 
-    else:
-        raise ValueError(
-            f"Unknown tool: {name!r}. Available: {get_tool_names()}"
-        )
+        if name == "nextstat_scan":
+            model = _load_model(arguments["workspace_json"])
+            start = float(arguments.get("start", 0.0))
+            stop = float(arguments.get("stop", 5.0))
+            points = int(arguments.get("points", 21))
+            step = (stop - start) / max(points - 1, 1)
+            mu_values = [start + i * step for i in range(points)]
+            artifact = nextstat.profile_scan(model, mu_values)
+            return dict(artifact)
+
+        if name == "nextstat_workspace_audit":
+            ws_json = arguments["workspace_json"]
+            result = nextstat.workspace_audit(ws_json)
+            return dict(result)
+
+        raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")
+    finally:
+        _restore_execution(nextstat, meta)
+
+
+def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Execute a NextStat tool call and return a stable response envelope."""
+    import nextstat
+
+    envelope: dict[str, Any] = {
+        "schema_version": "nextstat.tool_result.v1",
+        "ok": False,
+        "result": None,
+        "error": None,
+        "meta": {
+            "tool_name": name,
+            "nextstat_version": getattr(nextstat, "__version__", None),
+        },
+    }
+
+    try:
+        envelope["result"] = execute_tool_raw(name, arguments)
+        envelope["ok"] = True
+    except Exception as e:
+        envelope["error"] = {"type": e.__class__.__name__, "message": str(e)}
+
+    try:
+        exec_cfg = arguments.get("execution") or {}
+        deterministic = bool(exec_cfg.get("deterministic", True))
+        envelope["meta"]["deterministic"] = deterministic
+        envelope["meta"]["eval_mode"] = nextstat.get_eval_mode()
+        envelope["meta"]["threads_requested"] = exec_cfg.get("threads", 1 if deterministic else None)
+    except Exception:
+        pass
+
+    return envelope
 
 
 # ---------------------------------------------------------------------------

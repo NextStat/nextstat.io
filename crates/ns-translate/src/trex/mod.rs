@@ -3218,6 +3218,55 @@ EndRegion: channel2
     }
 
     #[test]
+    fn trex_import_hist_mode_filters_realistic_trex_export_dir_tttt_prod() {
+        // Realistic HistFactory export dir recorded from TREx (committed under tests/baselines/trex).
+        // Validate that channel + sample masking semantics match the documented HIST-mode behavior.
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/baselines/trex/tttt-prod/histfactory_stage
+
+Region: SR_AllBDT
+Sample: tttt
+Type: SIGNAL
+Regions: SR_AllBDT
+Sample: ttW
+Type: BACKGROUND
+Regions: SR_AllBDT
+"#;
+        let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (tttt-prod filtered)");
+        assert_eq!(ws.channels.len(), 1);
+        assert_eq!(ws.channels[0].name, "SR_AllBDT");
+        let names: Vec<&str> = ws.channels[0].samples.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["tttt", "ttW"]);
+        assert_eq!(ws.observations.len(), 1);
+        assert_eq!(ws.observations[0].name, "SR_AllBDT");
+    }
+
+    #[test]
+    fn trex_import_hist_mode_filters_realistic_trex_export_dir_hepdata_ewk() {
+        let cfg = r#"
+ReadFrom: HIST
+HistoPath: tests/baselines/trex/hepdata.116034_DR_Int_EWK/histfactory_stage
+
+Region: DRInt_cuts
+Sample: ttbar
+Type: BACKGROUND
+Regions: DRInt_cuts
+Sample: Zjets
+Type: BACKGROUND
+Regions: DRInt_cuts
+"#;
+        let ws =
+            workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace (hepdata filtered)");
+        assert_eq!(ws.channels.len(), 1);
+        assert_eq!(ws.channels[0].name, "DRInt_cuts");
+        let names: Vec<&str> = ws.channels[0].samples.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["ttbar", "Zjets"]);
+        assert_eq!(ws.observations.len(), 1);
+        assert_eq!(ws.observations[0].name, "DRInt_cuts");
+    }
+
+    #[test]
     fn trex_import_hist_mode_errors_when_requested_sample_missing_in_channel() {
         // `signal` does not exist in channel2 in the imported workspace, so if the config
         // requests it in channel2 we should fail loudly.

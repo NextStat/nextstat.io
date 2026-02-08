@@ -253,7 +253,8 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
         Expr::Var(i) => vals[*i],
         Expr::UnaryNeg(a) => -eval_expr(a, vals),
         Expr::UnaryNot(a) => {
-            if eval_expr(a, vals) > 0.0 {
+            // ROOT/TTreeFormula truthiness: non-zero is true (including negative and NaN).
+            if eval_expr(a, vals) != 0.0 {
                 0.0
             } else {
                 1.0
@@ -315,23 +316,23 @@ fn eval_expr(e: &Expr, vals: &[f64]) -> f64 {
                     }
                 }
                 BinOp::And => {
-                    if lhs > 0.0 {
-                        if eval_expr(b, vals) > 0.0 { 1.0 } else { 0.0 }
+                    if lhs != 0.0 {
+                        if eval_expr(b, vals) != 0.0 { 1.0 } else { 0.0 }
                     } else {
                         0.0
                     }
                 }
                 BinOp::Or => {
-                    if lhs > 0.0 {
+                    if lhs != 0.0 {
                         1.0
                     } else {
-                        if eval_expr(b, vals) > 0.0 { 1.0 } else { 0.0 }
+                        if eval_expr(b, vals) != 0.0 { 1.0 } else { 0.0 }
                     }
                 }
             }
         }
         Expr::Ternary(c, t, f) => {
-            if eval_expr(c, vals) > 0.0 {
+            if eval_expr(c, vals) != 0.0 {
                 eval_expr(t, vals)
             } else {
                 eval_expr(f, vals)
@@ -517,7 +518,8 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             }
             Instr::Not => {
                 let a = stack.pop().unwrap();
-                stack.push(if a > 0.0 { 0.0 } else { 1.0 });
+                // ROOT/TTreeFormula truthiness: non-zero is true (including negative and NaN).
+                stack.push(if a != 0.0 { 0.0 } else { 1.0 });
             }
             Instr::Add => bin2(&mut stack, |a, b| a + b),
             Instr::Sub => bin2(&mut stack, |a, b| a - b),
@@ -569,7 +571,7 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 let else_val = stack.pop().unwrap();
                 let then_val = stack.pop().unwrap();
                 let mask = stack.pop().unwrap();
-                stack.push(if mask > 0.0 { then_val } else { else_val });
+                stack.push(if mask != 0.0 { then_val } else { else_val });
             }
             Instr::DynLoad(_) => {
                 // DynLoad requires jagged data context — not available in plain row eval.
@@ -579,7 +581,8 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             }
             Instr::Jz(target) => {
                 let c = stack.pop().unwrap();
-                if c <= 0.0 {
+                // Jump if condition is falsey (zero). NaN is truthy in ROOT/TTreeFormula.
+                if c == 0.0 {
                     ip = target;
                     continue;
                 }
@@ -641,7 +644,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 }
                 Instr::Not => {
                     let a = stack.pop().unwrap();
-                    stack.push(if a > 0.0 { 0.0 } else { 1.0 });
+                    stack.push(if a != 0.0 { 0.0 } else { 1.0 });
                 }
                 Instr::Add => bin2(&mut stack, |a, b| a + b),
                 Instr::Sub => bin2(&mut stack, |a, b| a - b),
@@ -693,11 +696,11 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                     let else_val = stack.pop().unwrap();
                     let then_val = stack.pop().unwrap();
                     let mask = stack.pop().unwrap();
-                    stack.push(if mask > 0.0 { then_val } else { else_val });
+                    stack.push(if mask != 0.0 { then_val } else { else_val });
                 }
                 Instr::Jz(target) => {
                     let c = stack.pop().unwrap();
-                    if c <= 0.0 {
+                    if c == 0.0 {
                         ip = target;
                         continue;
                     }
@@ -1622,7 +1625,7 @@ impl<'a> BulkEvalState<'a> {
     fn select(&mut self, mask: Slot<'a>, then_val: Slot<'a>, else_val: Slot<'a>) -> Slot<'a> {
         match (mask, then_val, else_val) {
             (Slot::Scalar(m), Slot::Scalar(t), Slot::Scalar(e)) => {
-                Slot::Scalar(if m > 0.0 { t } else { e })
+                Slot::Scalar(if m != 0.0 { t } else { e })
             }
             _ => {
                 let mut out = Vec::with_capacity(self.n);
@@ -1630,7 +1633,7 @@ impl<'a> BulkEvalState<'a> {
                     let m = self.read_at(&mask, i);
                     let t = self.read_at(&then_val, i);
                     let e = self.read_at(&else_val, i);
-                    out.push(if m > 0.0 { t } else { e });
+                    out.push(if m != 0.0 { t } else { e });
                 }
                 self.arena.push(out);
                 Slot::Owned(self.arena.len() - 1)
@@ -1670,7 +1673,7 @@ fn eval_bytecode_bulk_vectorized(code: &[Instr], cols: &[&[f64]]) -> Vec<f64> {
             }
             Instr::Not => {
                 let a = st.pop();
-                let r = st.unary(a, |x| if x > 0.0 { 0.0 } else { 1.0 });
+                let r = st.unary(a, |x| if x != 0.0 { 0.0 } else { 1.0 });
                 st.push(r);
             }
             Instr::Abs => {
@@ -2522,6 +2525,42 @@ mod tests {
         assert!((e.eval_row(&[4.0, 30.0]) - 1.0).abs() < 1e-10);
         assert!((e.eval_row(&[3.0, 30.0]) - 0.0).abs() < 1e-10);
         assert!((e.eval_row(&[4.0, 20.0]) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn truthiness_matches_ttreeformula_nonzero_is_true() {
+        // In ROOT/TTreeFormula, any non-zero numeric value is truthy (including negatives and NaN).
+        // Ensure `!`, `&&`, `||`, and ternary conditions follow that rule.
+        let e = CompiledExpr::compile("!!x").unwrap();
+        assert_eq!(e.required_branches, vec!["x"]);
+        assert_eq!(e.eval_row(&[0.0]), 0.0);
+        assert_eq!(e.eval_row(&[1.0]), 1.0);
+        assert_eq!(e.eval_row(&[-1.0]), 1.0);
+        assert_eq!(e.eval_row(&[f64::NAN]), 1.0);
+
+        let e = CompiledExpr::compile("!x").unwrap();
+        assert_eq!(e.eval_row(&[0.0]), 1.0);
+        assert_eq!(e.eval_row(&[2.0]), 0.0);
+        assert_eq!(e.eval_row(&[-2.0]), 0.0);
+        assert_eq!(e.eval_row(&[f64::NAN]), 0.0);
+
+        let e = CompiledExpr::compile("x && 1").unwrap();
+        assert_eq!(e.eval_row(&[0.0]), 0.0);
+        assert_eq!(e.eval_row(&[2.0]), 1.0);
+        assert_eq!(e.eval_row(&[-2.0]), 1.0);
+        assert_eq!(e.eval_row(&[f64::NAN]), 1.0);
+
+        let e = CompiledExpr::compile("x || 0").unwrap();
+        assert_eq!(e.eval_row(&[0.0]), 0.0);
+        assert_eq!(e.eval_row(&[2.0]), 1.0);
+        assert_eq!(e.eval_row(&[-2.0]), 1.0);
+        assert_eq!(e.eval_row(&[f64::NAN]), 1.0);
+
+        let e = CompiledExpr::compile("x ? 10 : 20").unwrap();
+        assert_eq!(e.eval_row(&[0.0]), 20.0);
+        assert_eq!(e.eval_row(&[2.0]), 10.0);
+        assert_eq!(e.eval_row(&[-2.0]), 10.0);
+        assert_eq!(e.eval_row(&[f64::NAN]), 10.0);
     }
 
     #[test]

@@ -133,15 +133,60 @@ pub fn from_xml_with_basedir(
     let mut ws_channels = Vec::new();
     let mut ws_observations = Vec::new();
     let mut normfactor_settings: HashMap<String, (f64, f64, f64)> = HashMap::new();
+    let mut staterror_gamma_rels: HashMap<String, f64> = HashMap::new();
 
     for ch_xml in &channels_xml {
         let (channel, observation) =
             build_channel(ch_xml, base_dir, &config, &mut root_cache, &mut normfactor_settings)?;
+
+        // HistFactory/ROOT exports often omit `<StatErrorConfig>`. In that case, ROOT defaults to
+        // Poisson/Gamma-constrained per-bin staterror parameters (gamma_stat_<ch>_bin_<i>).
+        //
+        // The pyhf JSON schema doesn't encode this directly for `staterror`, so we attach the
+        // constraint semantics via a non-standard `measurements[].config.parameters[].constraint`
+        // extension. The model layer interprets `constraint.type="Gamma"` for the named parameter.
+        if ch_xml.stat_error_config.is_none() {
+            let stat_name = format!("staterror_{}", channel.name);
+            let mut sum_nominal: Option<Vec<f64>> = None;
+            let mut sum_sigma2: Option<Vec<f64>> = None;
+
+            for s in &channel.samples {
+                for m in &s.modifiers {
+                    let Modifier::StatError { name, data } = m else { continue };
+                    if name != &stat_name {
+                        continue;
+                    }
+                    if sum_nominal.is_none() {
+                        sum_nominal = Some(vec![0.0; s.data.len()]);
+                        sum_sigma2 = Some(vec![0.0; data.len()]);
+                    }
+                    let sn = sum_nominal.as_mut().unwrap();
+                    let ss = sum_sigma2.as_mut().unwrap();
+                    for (i, (&sigma_abs, &nom)) in data.iter().zip(s.data.iter()).enumerate() {
+                        sn[i] += nom;
+                        ss[i] += sigma_abs * sigma_abs;
+                    }
+                }
+            }
+
+            if let (Some(sn), Some(ss)) = (sum_nominal, sum_sigma2) {
+                for (i, (nom, sigma2)) in sn.into_iter().zip(ss.into_iter()).enumerate() {
+                    if nom <= 0.0 || sigma2 <= 0.0 {
+                        continue;
+                    }
+                    let rel = sigma2.sqrt() / nom;
+                    if rel.is_finite() && rel > 0.0 {
+                        staterror_gamma_rels.insert(format!("{stat_name}[{i}]"), rel);
+                    }
+                }
+            }
+        }
+
         ws_channels.push(channel);
         ws_observations.push(observation);
     }
 
-    let ws_measurements = build_measurements(&config, &normfactor_settings)?;
+    let ws_measurements = build_measurements(&config, &normfactor_settings, &staterror_gamma_rels)?;
 
     let mut ws = Workspace {
         channels: ws_channels,
@@ -401,6 +446,7 @@ fn build_modifier(
 fn build_measurements(
     config: &CombinationConfig,
     normfactor_settings: &HashMap<String, (f64, f64, f64)>,
+    staterror_gamma_rels: &HashMap<String, f64>,
 ) -> Result<Vec<Measurement>> {
     config
         .measurements
@@ -463,6 +509,37 @@ fn build_measurements(
                         auxdata: Vec::new(),
                         sigmas: Vec::new(),
                         constraint: None,
+                    });
+                }
+            }
+
+            // Non-standard extension: represent default (omitted StatErrorConfig) as Gamma constraints
+            // on the staterror per-bin parameters.
+            //
+            // Apply this before explicit `<ConstraintTerm>` overrides so that measurement-level
+            // metadata can replace it if present.
+            for (pname, rel) in staterror_gamma_rels {
+                if *rel <= 0.0 || !rel.is_finite() {
+                    continue;
+                }
+                let idx = parameters.iter().position(|p| p.name == *pname);
+                let spec = crate::pyhf::schema::ConstraintSpec {
+                    constraint_type: "Gamma".to_string(),
+                    rel_uncertainty: Some(*rel),
+                };
+                if let Some(i) = idx {
+                    if parameters[i].constraint.is_none() {
+                        parameters[i].constraint = Some(spec);
+                    }
+                } else {
+                    parameters.push(ParameterConfig {
+                        name: pname.clone(),
+                        inits: Vec::new(),
+                        bounds: Vec::new(),
+                        fixed: false,
+                        auxdata: Vec::new(),
+                        sigmas: Vec::new(),
+                        constraint: Some(spec),
                     });
                 }
             }

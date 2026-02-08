@@ -41,6 +41,13 @@ jobs:
       - name: Run tests (no default features)
         run: cargo test --workspace --no-default-features --verbose
 
+      # Keep validation-report invariants (determinism + regulated_review) explicitly exercised in CI.
+      # This is intentionally redundant with the workspace test run above, but makes the signal obvious
+      # and resilient to future test selection changes.
+      - name: Run validation-report CLI tests
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: cargo test -p ns-cli --test cli_validation_report --verbose
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

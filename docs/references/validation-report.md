@@ -137,6 +137,16 @@ nextstat config schema --name validation_report_v1
 
 Example JSON is in `docs/specs/validation_report_v1.example.json`.
 
+### Tests
+
+The `nextstat validation-report` CLI has integration tests covering deterministic JSON output and the minimum required `regulated_review` fields:
+
+```bash
+cargo test -p ns-cli --test cli_validation_report
+```
+
+CI runs these invariants explicitly in the `Rust Tests` workflow (`.github/workflows/rust-tests.yml`) on `ubuntu-latest` + `stable`.
+
 ### Single Entrypoint (Local + CI)
 
 To generate a complete "validation pack" (Apex2 master + unified JSON + publishable PDF) in one command:
