@@ -7,6 +7,12 @@ on:
         description: "Opaque snapshot id (immutable)"
         required: true
         default: "snapshot-YYYY-MM-DD"
+      nextstat_wheel_url:
+        description: "URL to the pinned NextStat wheel (.whl) being measured"
+        required: true
+      nextstat_wheel_sha256:
+        description: "SHA-256 of the wheel file (hex)"
+        required: true
 
 jobs:
   publish:
@@ -19,17 +25,29 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install deps
+      - name: Install harness deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r env/python/requirements.txt
-          echo "TODO: install a pinned NextStat wheel artifact"
+          python -m pip install -r env/python/requirements.txt
+
+      - name: Install pinned NextStat wheel
+        env:
+          NEXTSTAT_WHEEL_URL: ${{ inputs.nextstat_wheel_url }}
+          NEXTSTAT_WHEEL_SHA256: ${{ inputs.nextstat_wheel_sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          curl -L "${NEXTSTAT_WHEEL_URL}" -o tmp/nextstat.whl
+          echo "${NEXTSTAT_WHEEL_SHA256}  tmp/nextstat.whl" | sha256sum -c -
+          python -m pip install tmp/nextstat.whl
 
       - name: Run suite(s)
         run: |
           python scripts/publish_snapshot.py \
             --snapshot-id "${{ inputs.snapshot_id }}" \
             --deterministic \
+            --suite "public-benchmarks" \
+            --nextstat-wheel tmp/nextstat.whl \
             --fit --fit-repeat 3
 
       - name: Upload snapshot artifacts

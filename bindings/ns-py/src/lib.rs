@@ -4452,13 +4452,14 @@ fn hypotest_toys(
 ///
 /// Pass `device="cuda"` to use GPU-accelerated NLL+gradient (requires CUDA build).
 #[pyfunction]
-#[pyo3(signature = (model, mu_values, *, data=None, device="cpu"))]
+#[pyo3(signature = (model, mu_values, *, data=None, device="cpu", return_params=false))]
 fn profile_scan(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     mu_values: Vec<f64>,
     data: Option<Vec<f64>>,
     device: &str,
+    return_params: bool,
 ) -> PyResult<Py<PyAny>> {
     // Profile scans are used as a parity surface against ROOT/HistFactory. In practice,
     // ROOT's Minuit stopping criteria are looser than our strict-gradient defaults; an
@@ -4479,6 +4480,12 @@ fn profile_scan(
         model.inner.clone()
     };
 
+    if return_params && device == "cuda" {
+        return Err(PyValueError::new_err(
+            "return_params is not supported for device='cuda' yet (cpu-only debug surface)",
+        ));
+    }
+
     let scan = if device == "cuda" {
         #[cfg(feature = "cuda")]
         {
@@ -4492,8 +4499,13 @@ fn profile_scan(
             ));
         }
     } else {
-        pl::scan_histfactory(&mle, &fit_model, &mu_values)
-            .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
+        if return_params {
+            pl::scan_histfactory_diag(&mle, &fit_model, &mu_values)
+                .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
+        } else {
+            pl::scan_histfactory(&mle, &fit_model, &mu_values)
+                .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
+        }
     };
 
     let out = PyDict::new(py);
@@ -4509,6 +4521,16 @@ fn profile_scan(
         d.set_item("nll_mu", p.nll_mu)?;
         d.set_item("converged", p.converged)?;
         d.set_item("n_iter", p.n_iter)?;
+        if return_params {
+            if let Some(diag) = p.diag {
+                d.set_item("params", diag.parameters)?;
+                d.set_item("message", diag.message)?;
+                d.set_item("n_fev", diag.n_fev)?;
+                d.set_item("n_gev", diag.n_gev)?;
+                d.set_item("initial_cost", diag.initial_cost)?;
+                d.set_item("grad_l2", diag.grad_l2)?;
+            }
+        }
         point_objs.push(d.into_any().unbind());
     }
     let points = PyList::new(py, point_objs)?;

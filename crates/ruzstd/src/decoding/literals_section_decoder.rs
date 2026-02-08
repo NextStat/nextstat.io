@@ -18,12 +18,23 @@ fn peek_skip_decode(
     table_ptr: *const Entry,
     table_mask: usize,
 ) -> u8 {
-    if max_bits == 0 {
-        // Degenerate Huffman table: a single symbol with 0-bit code.
-        let entry = unsafe { *table_ptr };
-        return entry.symbol;
-    }
     let val = br.peek_bits_refill(max_bits) as usize & table_mask;
+    let entry = unsafe { *table_ptr.add(val) };
+    br.consume(entry.num_bits);
+    entry.symbol
+}
+
+/// Like peek_skip_decode but WITHOUT refill check.
+/// Caller must guarantee at least max_bits are available in the container.
+/// Used inside batched-refill blocks (5 symbols per refill for max_bits≤11).
+#[inline(always)]
+fn peek_skip_decode_norefill(
+    br: &mut BitReaderReversed<'_>,
+    max_bits: u8,
+    table_ptr: *const Entry,
+    table_mask: usize,
+) -> u8 {
+    let val = br.peek_bits(max_bits) as usize & table_mask;
     let entry = unsafe { *table_ptr.add(val) };
     br.consume(entry.num_bits);
     entry.symbol
@@ -154,17 +165,49 @@ fn decompress_literals(
             }
         }
 
-        // Count-based decode: we know exactly how many symbols each stream produces.
-        // The 4th stream has the fewest symbols (regen - 3*seg <= seg).
-        let min_count = sizes[3];
+        // Batched-refill decode: after one refill() we have ≥56 bits (bits_consumed < 8).
+        // Safe batch size = floor(57 / max_bits): worst-case K symbols consume
+        // 7 + K*max_bits bits, need 7 + K*max_bits ≤ 64 → K ≤ 57/max_bits.
+        // max_bits=11→5, =9→6, =8→7, =7→8, =6→9
+        let batch = if max_bits > 0 { 57 / max_bits as usize } else { 1 };
+        let min_count = sizes[3]; // 4th stream is smallest or equal
 
         let mut w0 = starts[0];
         let mut w1 = starts[1];
         let mut w2 = starts[2];
         let mut w3 = starts[3];
 
-        // Phase 1: all 4 streams active — pure peek+skip+write, zero bounds checks.
-        for _ in 0..min_count {
+        // Phase 1: all 4 streams active, batched refill.
+        let full_batches = min_count / batch;
+        let remainder4 = min_count % batch;
+
+        for _ in 0..full_batches {
+            // Single refill per stream per batch
+            br[0].refill();
+            br[1].refill();
+            br[2].refill();
+            br[3].refill();
+
+            for _ in 0..batch {
+                let sym0 = peek_skip_decode_norefill(&mut br[0], max_bits, table_ptr, table_mask);
+                let sym1 = peek_skip_decode_norefill(&mut br[1], max_bits, table_ptr, table_mask);
+                let sym2 = peek_skip_decode_norefill(&mut br[2], max_bits, table_ptr, table_mask);
+                let sym3 = peek_skip_decode_norefill(&mut br[3], max_bits, table_ptr, table_mask);
+                unsafe {
+                    *out_ptr.add(w0) = sym0;
+                    *out_ptr.add(w1) = sym1;
+                    *out_ptr.add(w2) = sym2;
+                    *out_ptr.add(w3) = sym3;
+                }
+                w0 += 1;
+                w1 += 1;
+                w2 += 1;
+                w3 += 1;
+            }
+        }
+
+        // Remainder for all 4 streams (with per-symbol refill)
+        for _ in 0..remainder4 {
             let sym0 = peek_skip_decode(&mut br[0], max_bits, table_ptr, table_mask);
             let sym1 = peek_skip_decode(&mut br[1], max_bits, table_ptr, table_mask);
             let sym2 = peek_skip_decode(&mut br[2], max_bits, table_ptr, table_mask);
@@ -183,7 +226,30 @@ fn decompress_literals(
 
         // Phase 2: drain remaining symbols for streams 0-2 (they may have more).
         let extra = sizes[0] - min_count;
-        for _ in 0..extra {
+        let full_batches3 = extra / batch;
+        let remainder3 = extra % batch;
+
+        for _ in 0..full_batches3 {
+            br[0].refill();
+            br[1].refill();
+            br[2].refill();
+
+            for _ in 0..batch {
+                let sym0 = peek_skip_decode_norefill(&mut br[0], max_bits, table_ptr, table_mask);
+                let sym1 = peek_skip_decode_norefill(&mut br[1], max_bits, table_ptr, table_mask);
+                let sym2 = peek_skip_decode_norefill(&mut br[2], max_bits, table_ptr, table_mask);
+                unsafe {
+                    *out_ptr.add(w0) = sym0;
+                    *out_ptr.add(w1) = sym1;
+                    *out_ptr.add(w2) = sym2;
+                }
+                w0 += 1;
+                w1 += 1;
+                w2 += 1;
+            }
+        }
+
+        for _ in 0..remainder3 {
             let sym0 = peek_skip_decode(&mut br[0], max_bits, table_ptr, table_mask);
             let sym1 = peek_skip_decode(&mut br[1], max_bits, table_ptr, table_mask);
             let sym2 = peek_skip_decode(&mut br[2], max_bits, table_ptr, table_mask);

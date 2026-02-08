@@ -761,6 +761,8 @@ def profile_scan(
     mu_values: List[float],
     *,
     data: Optional[List[float]] = ...,
+    device: str = ...,
+    return_params: bool = ...,
 ) -> Dict[str, Any]: ...
 
 

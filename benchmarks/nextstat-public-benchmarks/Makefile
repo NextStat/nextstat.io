@@ -45,6 +45,28 @@ validate: install
 		    inst = json.loads((Path("out/pharma") / e["path"]).read_text())
 		    jsonschema.validate(inst, schema_pharma_case)
 		print("pharma_benchmark_suite_result_v1: schema ok")
+
+		schema_baseline = json.loads(Path("manifests/schema/baseline_manifest_v1.schema.json").read_text())
+		schema_index = json.loads(Path("manifests/schema/snapshot_index_v1.schema.json").read_text())
+		schema_rep = json.loads(Path("manifests/schema/replication_report_v1.schema.json").read_text())
+		snap_root = Path("manifests/snapshots")
+		if snap_root.exists():
+		    n = 0
+		    for d in sorted(p for p in snap_root.iterdir() if p.is_dir()):
+		        baseline = d / "baseline_manifest.json"
+		        if baseline.exists():
+		            jsonschema.validate(json.loads(baseline.read_text()), schema_baseline)
+		        index = d / "snapshot_index.json"
+		        if index.exists():
+		            jsonschema.validate(json.loads(index.read_text()), schema_index)
+		        rep1 = d / "replication_report.json"
+		        rep2 = d / "replication" / "replication_report.json"
+		        rep = rep1 if rep1.exists() else rep2 if rep2.exists() else None
+		        if rep is not None:
+		            jsonschema.validate(json.loads(rep.read_text()), schema_rep)
+		        n += 1
+		    if n:
+		        print(f"snapshots: schema ok ({n})")
 		PY
 
 snapshot: install

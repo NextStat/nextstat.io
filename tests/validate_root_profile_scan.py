@@ -668,7 +668,7 @@ def main() -> int:
     except Exception:
         pass
     ns_model = nextstat.from_histfactory_xml(str(combo_xml))
-    ns_scan = ns_infer.profile_scan(ns_model, mu_values)
+    ns_scan = ns_infer.profile_scan(ns_model, mu_values, return_params=bool(args.dump_root_params))
     t_ns = time.perf_counter() - t3
     ns_out = run_dir / "nextstat_profile_scan.json"
     ns_out.write_text(json.dumps(ns_scan, indent=2))
@@ -749,6 +749,61 @@ def main() -> int:
                     diagnostic["delta_nll_mu_ns_minus_root_max"]
                     - diagnostic["delta_nll_mu_ns_minus_root_min"]
                 )
+
+            # Optional: compare fitted parameters (NextStat vs ROOT) at fixed-mu points, expressed
+            # in NextStat parameter order. This helps diagnose q(mu) differences caused by
+            # optimizer basin selection.
+            ns_points = list(ns_scan.get("points") or [])
+            root_points = list(root_result.get("points") or [])
+            if (
+                ns_points
+                and root_points
+                and len(ns_points) == len(mu_values)
+                and len(root_points) == len(mu_values)
+                and all(isinstance(p, dict) and ("params" in p) for p in ns_points)
+            ):
+                per_point: List[Tuple[float, float, float]] = []  # (mu, maxabs, l2)
+                worst: Optional[Tuple[float, float, float, int]] = None  # (mu, maxabs, l2, idx)
+                for i, mu_expected in enumerate(mu_values):
+                    p_root = root_points[i]
+                    p_ns = ns_points[i]
+                    if "params" not in p_root or "params" not in p_ns:
+                        continue
+                    root_map = dict(zip(root_names, map(float, p_root["params"])))
+                    root_ns = _ns_params_from_root_map(root_map)
+                    ns_params = list(map(float, p_ns["params"]))
+                    if len(ns_params) != len(root_ns):
+                        continue
+                    diffs = [a - b for a, b in zip(ns_params, root_ns)]
+                    maxabs = max(abs(d) for d in diffs) if diffs else 0.0
+                    l2 = float(sum(d * d for d in diffs) ** 0.5)
+                    per_point.append((float(mu_expected), float(maxabs), float(l2)))
+                    if worst is None or abs(maxabs) > abs(worst[1]):
+                        worst = (float(mu_expected), float(maxabs), float(l2), i)
+
+                if per_point and worst is not None:
+                    diagnostic["ns_vs_root_params_max_abs"] = worst[1]
+                    diagnostic["ns_vs_root_params_l2"] = worst[2]
+                    diagnostic["ns_vs_root_params_mu_at_max_abs"] = worst[0]
+
+                    # Top parameter deltas at the worst mu (by abs delta).
+                    _, _, _, worst_i = worst
+                    p_root = root_points[worst_i]
+                    p_ns = ns_points[worst_i]
+                    root_map = dict(zip(root_names, map(float, p_root["params"])))
+                    root_ns = _ns_params_from_root_map(root_map)
+                    ns_params = list(map(float, p_ns["params"]))
+                    diffs = [a - b for a, b in zip(ns_params, root_ns)]
+                    top = sorted(enumerate(diffs), key=lambda t: abs(t[1]), reverse=True)[:10]
+                    diagnostic["ns_vs_root_params_top_abs"] = [
+                        {
+                            "name": ns_names[j],
+                            "delta": float(d),
+                            "root": float(root_ns[j]),
+                            "nextstat": float(ns_params[j]),
+                        }
+                        for j, d in top
+                    ]
         except Exception as e:
             diagnostic["error"] = f"{e}"
 

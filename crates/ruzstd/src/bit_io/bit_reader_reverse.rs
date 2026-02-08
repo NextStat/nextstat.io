@@ -38,7 +38,7 @@ impl<'s> BitReaderReversed<'s> {
 
     /// We refill the container in full bytes, shifting the still unread portion to the left, and filling the lower bits with new data
     #[inline(always)]
-    fn refill(&mut self) {
+    pub fn refill(&mut self) {
         let bytes_consumed = self.bits_consumed as usize / 8;
         if bytes_consumed == 0 {
             return;

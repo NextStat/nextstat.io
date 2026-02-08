@@ -45,6 +45,16 @@ def main() -> int:
     ap.add_argument("--snapshot-id", default="", help="Snapshot id (default: auto-generated).")
     ap.add_argument("--out-root", default="manifests/snapshots", help="Root directory for snapshots.")
     ap.add_argument("--deterministic", action="store_true")
+    ap.add_argument(
+        "--suite",
+        default="public-benchmarks-seed",
+        help="Suite label recorded in snapshot_index.json (for discovery).",
+    )
+    ap.add_argument(
+        "--nextstat-wheel",
+        default="",
+        help="Optional: path to the measured NextStat wheel (hashed into baseline_manifest.json).",
+    )
     ap.add_argument("--hep", action="store_true", help="Run HEP suite.")
     ap.add_argument("--pharma", action="store_true", help="Run pharma suite.")
     ap.add_argument("--fit", action="store_true", help="Also benchmark MLE fits where supported.")
@@ -159,11 +169,33 @@ def main() -> int:
     ]
     if args.deterministic:
         cmd.append("--deterministic")
+    if str(args.nextstat_wheel).strip():
+        cmd.extend(["--nextstat-wheel", str(args.nextstat_wheel)])
     for r in results:
         cmd.extend(["--result", str(r)])
     subprocess.check_call(cmd, cwd=str(repo_root))
 
     validate_json(baseline_path, repo_root / "manifests/schema/baseline_manifest_v1.schema.json")
+
+    # Write an index for the full snapshot artifact set (hash inventory).
+    index_path = snap_dir / "snapshot_index.json"
+    subprocess.check_call(
+        [
+            sys.executable,
+            "scripts/write_snapshot_index.py",
+            "--suite",
+            str(args.suite),
+            "--artifacts-dir",
+            str(snap_dir),
+            "--out",
+            str(index_path),
+            "--snapshot-id",
+            snapshot_id,
+        ],
+        cwd=str(repo_root),
+    )
+    validate_json(index_path, repo_root / "manifests/schema/snapshot_index_v1.schema.json")
+
     print(f"snapshot ready: {snap_dir}")
     return 0
 

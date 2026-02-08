@@ -22,6 +22,25 @@ pub struct ProfilePoint {
     pub converged: bool,
     /// Conditional fit iterations (argmin iterations).
     pub n_iter: u64,
+    /// Optional fit diagnostics (debug/parity workflows only).
+    pub diag: Option<ProfilePointDiag>,
+}
+
+/// Optional diagnostics for a profile scan point.
+#[derive(Debug, Clone)]
+pub struct ProfilePointDiag {
+    /// Best-fit parameters (NextStat parameter order).
+    pub parameters: Vec<f64>,
+    /// Optimizer termination message.
+    pub message: String,
+    /// Objective evaluations.
+    pub n_fev: usize,
+    /// Gradient evaluations.
+    pub n_gev: usize,
+    /// Initial objective value at the start point.
+    pub initial_cost: f64,
+    /// L2 norm of the final gradient vector (if available).
+    pub grad_l2: Option<f64>,
 }
 
 /// Profile likelihood scan result.
@@ -95,6 +114,7 @@ pub fn scan(
             nll_mu: fixed.fval,
             converged: fixed.converged,
             n_iter: fixed.n_iter,
+            diag: None,
         });
     }
 
@@ -114,7 +134,17 @@ pub fn scan_histfactory(
     // This helps avoid small but systematic q(mu) mismatches vs ROOT when warm-start drifts into a
     // slightly suboptimal nuisance minimum.
     let multistart = ns_compute::eval_mode() == ns_compute::EvalMode::Parity;
-    scan_histfactory_impl(mle, model, mu_values, multistart)
+    scan_histfactory_impl(mle, model, mu_values, multistart, false)
+}
+
+/// Like [`scan_histfactory`], but includes per-point fitted parameter vectors and optimizer diagnostics.
+pub fn scan_histfactory_diag(
+    mle: &MaximumLikelihoodEstimator,
+    model: &ns_translate::pyhf::HistFactoryModel,
+    mu_values: &[f64],
+) -> Result<ProfileLikelihoodScan> {
+    let multistart = ns_compute::eval_mode() == ns_compute::EvalMode::Parity;
+    scan_histfactory_impl(mle, model, mu_values, multistart, true)
 }
 
 fn scan_histfactory_impl(
@@ -122,6 +152,7 @@ fn scan_histfactory_impl(
     model: &ns_translate::pyhf::HistFactoryModel,
     mu_values: &[f64],
     multistart: bool,
+    include_diag: bool,
 ) -> Result<ProfileLikelihoodScan> {
     let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".into()))?;
 
@@ -132,95 +163,48 @@ fn scan_histfactory_impl(
     let nll_hat = free.fval;
 
     let base_bounds = model.parameter_bounds();
-    let free_params = free.parameters.clone();
+    let mut warm_params = free.parameters.clone();
 
-    fn pick_best(a: Option<crate::optimizer::OptimizationResult>, b: crate::optimizer::OptimizationResult) -> crate::optimizer::OptimizationResult {
-        match a {
-            None => b,
-            Some(prev) => {
-                if b.fval < prev.fval { b } else { prev }
-            }
-        }
-    }
-
-    let mut init_params = model.parameter_init();
-
-    let mut run_pass = |mus: &[f64]| -> Result<Vec<crate::optimizer::OptimizationResult>> {
-        let mut tape = ns_ad::tape::Tape::new();
-        // Warm-start state for this pass.
-        let mut warm_params = free_params.clone();
-
-        let mut out: Vec<crate::optimizer::OptimizationResult> = Vec::with_capacity(mus.len());
-        for &mu in mus {
-            // Fix POI via bounds clamping — no model clone
-            let mut bounds = base_bounds.clone();
-            bounds[poi] = (mu, mu);
-            warm_params[poi] = mu;
-            init_params[poi] = mu;
-
-            // Build deterministic candidate starts. In parity mode, more starts are worth it.
-            let mut best: Option<crate::optimizer::OptimizationResult> = None;
-            let mut last_err: Option<Error> = None;
-
-            let mut try_start = |start: &[f64]| {
-                match mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, start, &bounds, &mut tape) {
-                    Ok(r) => best = Some(pick_best(best.take(), r)),
-                    Err(e) => {
-                        last_err = Some(e);
-                    }
-                }
-            };
-
-            // 1) Warm-start from previous mu point.
-            try_start(&warm_params);
-
-            if multistart {
-                // 2) Clamp the global MLE to this mu (often a strong start).
-                let mut start2 = free_params.clone();
-                start2[poi] = mu;
-                try_start(&start2);
-
-                // 3) Clamp parameter_init (can help escape warm-start basins on large exports).
-                try_start(&init_params);
-            }
-
-            let fixed = match best {
-                Some(r) => r,
-                None => {
-                    return Err(last_err.unwrap_or_else(|| {
-                        Error::Validation("profile scan: all candidate starts failed".to_string())
-                    }))
-                }
-            };
-
-            // Carry forward for warm-start within this pass.
-            warm_params = fixed.parameters.clone();
-            out.push(fixed);
-        }
-        Ok(out)
-    };
-
-    let forward = run_pass(mu_values)?;
-
-    // In parity mode, also run the scan in reverse order and take the best conditional minimum
-    // per mu. This is deterministic and helps avoid warm-start path dependence on large exports.
-    let reverse: Option<Vec<crate::optimizer::OptimizationResult>> = if multistart {
-        let mut mus_rev = mu_values.to_vec();
-        mus_rev.reverse();
-        Some(run_pass(&mus_rev)?)
+    // In parity mode we do a cheap "polish" pass with tighter tolerance, starting from the
+    // best-found conditional minimum. This often recovers small NLL gaps on large exports
+    // without requiring heavy multi-start strategies.
+    let polish_mle = if multistart {
+        let mut cfg = mle.config().clone();
+        cfg.max_iter = cfg.max_iter.max(5000).min(100000);
+        cfg.tol = cfg.tol.min(1e-9);
+        Some(MaximumLikelihoodEstimator::with_config(cfg))
     } else {
         None
     };
 
     let mut points = Vec::with_capacity(mu_values.len());
-    for (i, &mu) in mu_values.iter().enumerate() {
-        let mut fixed = &forward[i];
-        if let Some(ref rev) = reverse {
-            // rev is in reversed mu order.
-            let j = mu_values.len() - 1 - i;
-            let cand = &rev[j];
-            if cand.fval < fixed.fval {
-                fixed = cand;
+    for &mu in mu_values {
+        // Fix POI via bounds clamping — no model clone
+        let mut bounds = base_bounds.clone();
+        bounds[poi] = (mu, mu);
+        warm_params[poi] = mu;
+
+        let fixed_warm =
+            mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &warm_params, &bounds, &mut tape)?;
+        let mut fixed = if multistart {
+            // Secondary start: clamp the global MLE to the tested mu. This is deterministic and
+            // often provides a better initial point than chaining warm-starts across mu.
+            let mut start2 = free.parameters.clone();
+            start2[poi] = mu;
+            let fixed2 =
+                mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &start2, &bounds, &mut tape)?;
+            if fixed2.fval < fixed_warm.fval { fixed2 } else { fixed_warm }
+        } else {
+            fixed_warm
+        };
+
+        if let Some(ref pmle) = polish_mle {
+            if let Ok(polished) =
+                pmle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &fixed.parameters, &bounds, &mut tape)
+            {
+                if polished.fval < fixed.fval {
+                    fixed = polished;
+                }
             }
         }
 
@@ -230,13 +214,27 @@ fn scan_histfactory_impl(
             q = 0.0;
         }
 
-        points.push(ProfilePoint {
-            mu,
-            q_mu: q,
-            nll_mu: fixed.fval,
-            converged: fixed.converged,
-            n_iter: fixed.n_iter,
-        });
+        // Carry forward for warm-start
+        warm_params = fixed.parameters.clone();
+
+        let diag = if include_diag {
+            let grad_l2 = fixed.final_gradient.as_ref().map(|g| {
+                let ss: f64 = g.iter().map(|x| x * x).sum();
+                ss.sqrt()
+            });
+            Some(ProfilePointDiag {
+                parameters: fixed.parameters.clone(),
+                message: fixed.message.clone(),
+                n_fev: fixed.n_fev,
+                n_gev: fixed.n_gev,
+                initial_cost: fixed.initial_cost,
+                grad_l2,
+            })
+        } else {
+            None
+        };
+
+        points.push(ProfilePoint { mu, q_mu: q, nll_mu: fixed.fval, converged: fixed.converged, n_iter: fixed.n_iter, diag });
     }
 
     Ok(ProfileLikelihoodScan { poi_index: poi, mu_hat, nll_hat, points })
@@ -501,6 +499,7 @@ pub fn scan_gpu(
             nll_mu: fixed.fval,
             converged: fixed.converged,
             n_iter: fixed.n_iter,
+            diag: None,
         });
     }
 
@@ -553,6 +552,7 @@ pub fn scan_metal(
             nll_mu: fixed.fval,
             converged: fixed.converged,
             n_iter: fixed.n_iter,
+            diag: None,
         });
     }
 

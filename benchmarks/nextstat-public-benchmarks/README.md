@@ -41,13 +41,27 @@ Optional: also benchmark full MLE fits (more expensive):
 python suites/hep/run.py --deterministic --fit --fit-repeat 3 --out out/hep_simple_nll_fit.json
 ```
 
+## CI configuration (template)
+
+The workflow templates under `ci/` expect a **pinned** NextStat wheel to be installed (so published snapshots can record the exact build being measured).
+
+- `ci/verify.yml` (PR/push): set GitHub Actions variables:
+  - `NEXTSTAT_WHEEL_URL` — URL to the wheel file
+  - `NEXTSTAT_WHEEL_SHA256` — SHA-256 of the wheel file (hex)
+- `ci/publish.yml` (manual): provide `nextstat_wheel_url` + `nextstat_wheel_sha256` as workflow inputs.
+
 ## Publish A Local Snapshot (Seed)
 
-Generate a local snapshot directory (results + baseline manifest + README snippet) under
-`manifests/snapshots/<snapshot_id>/`:
+Generate a local snapshot directory (suite outputs + `baseline_manifest.json` + `snapshot_index.json` + README snippet) under `manifests/snapshots/<snapshot_id>/`:
 
 ```bash
 python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --fit --fit-repeat 3
+```
+
+If you want the baseline manifest to pin the exact measured NextStat build, pass the wheel path so the manifest records `nextstat.wheel_sha256`:
+
+```bash
+python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --nextstat-wheel /path/to/nextstat-*.whl
 ```
 
 This currently includes both:

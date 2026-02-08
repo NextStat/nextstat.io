@@ -210,6 +210,17 @@ def test_profile_scan_contracts():
         assert isinstance(p, dict)
         assert {"mu", "q_mu", "nll_mu", "converged", "n_iter"} <= set(p.keys())
 
+    out_diag = nextstat.profile_scan(model, [0.0, 0.5, 1.0], return_params=True)
+    assert isinstance(out_diag, dict)
+    assert "points" in out_diag
+    assert isinstance(out_diag["points"], list)
+    assert len(out_diag["points"]) == 3
+    n_params = len(model.parameter_names())
+    for p in out_diag["points"]:
+        assert "params" in p
+        assert isinstance(p["params"], list)
+        assert len(p["params"]) == n_params
+
 
 def test_upper_limit_contract():
     ws = load_fixture("simple_workspace.json")

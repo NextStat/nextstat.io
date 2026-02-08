@@ -32,12 +32,27 @@ nextstat-public-benchmarks/
   manifests/
     schema/
       baseline_manifest_v1.schema.json
+      snapshot_index_v1.schema.json
+      replication_report_v1.schema.json
       benchmark_result_v1.schema.json
       benchmark_suite_result_v1.schema.json
       pharma_benchmark_result_v1.schema.json
       pharma_benchmark_suite_result_v1.schema.json
+      hep_root_baseline_result_v1.schema.json
+      pharma_baseline_result_v1.schema.json
     snapshots/
-      <snapshot_id>.json
+      <snapshot_id>/
+        baseline_manifest.json
+        snapshot_index.json
+        README_snippet.md
+        hep/
+          hep_suite.json
+          *.json
+        pharma/
+          pharma_suite.json
+          *.json
+        replication/
+          replication_report.json  # optional (external rerun)
 
   suites/
     hep/
@@ -90,8 +105,8 @@ Each CI run that publishes numbers creates:
 - a baseline manifest JSON (schema-validated)
 - raw results per suite
 
-In `nextstat.io` CI, we also publish a small `snapshot_index.json` containing file hashes for the
-artifact set (schema: `docs/schemas/benchmarks/snapshot_index_v1.schema.json`).
+In addition, each snapshot includes a small `snapshot_index.json` containing file hashes for the full
+artifact set, which makes snapshots discoverable and supports third-party replication.
 
 The snapshot manifest should include:
 

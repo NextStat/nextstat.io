@@ -138,6 +138,7 @@ pub use posterior::{Posterior, Prior};
 #[cfg(feature = "cuda")]
 pub use profile_likelihood::scan_gpu;
 pub use profile_likelihood::{ProfileLikelihoodScan, ProfilePoint, scan_histfactory};
+pub use profile_likelihood::scan_histfactory_diag;
 pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, ols_fit,
 };
