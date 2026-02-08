@@ -222,6 +222,8 @@ def _write_root_macro_fit(macro_path: Path, *, root_workspace_file: Path, out_js
     out_path = _c_str(out_json.as_posix())
 
     # Build the C++ macro as a list of lines to avoid Python/C++ escaping confusion.
+    # ROOT executes macros by calling a function matching the filename stem, so keep them aligned.
+    fn_name = macro_path.stem
     lines = [
         '#include <TFile.h>',
         '#include <TKey.h>',
@@ -283,15 +285,15 @@ def _write_root_macro_fit(macro_path: Path, *, root_workspace_file: Path, out_js
         '  std::string out;',
         '  out.reserve(s.size()+8);',
         '  for (char c : s) {',
-        r'    if (c == \'\\') out += "\\\\";',
-        r'    else if (c == \'"\') out += "\\\"";',
-        r'    else if (c == \'\n\') out += "\\n";',
+        "    if (c == '\\\\') out += \"\\\\\\\\\";",
+        "    else if (c == '\"') out += \"\\\\\\\"\";",
+        "    else if (c == '\\n') out += \"\\\\n\";",
         '    else out += c;',
         '  }',
         '  return out;',
         '}',
         '',
-        'void fit() {',
+        f'void {fn_name}() {{',
         '  gSystem->Load("libRooFit");',
         '  gSystem->Load("libRooStats");',
         '',
@@ -425,6 +427,48 @@ def _build_expected_data(*, workspace_json_text: str, root_fit: Dict[str, Any]) 
         "missing_params": sorted(set(missing)),
     }
 
+def _build_expected_data_from_histfactory(
+    *,
+    combination_xml: Path,
+    root_fit: Dict[str, Any],
+) -> Dict[str, Any]:
+    # Prefer a pure NextStat path (no pyhf dependency). This makes the recorder usable on
+    # dev machines without `pyhf[xmlio]` installed.
+    try:
+        import nextstat._core as _core  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"Missing NextStat Python bindings (set PYTHONPATH=bindings/ns-py/python): {e}")
+
+    model = _core.from_histfactory(str(combination_xml))
+    names = list(model.parameter_names())
+    init = [float(x) for x in model.suggested_init()]
+    name_to_index = {str(n): i for i, n in enumerate(names)}
+
+    vec = list(init)
+    params = root_fit.get("parameters") or []
+    if not isinstance(params, list):
+        raise RuntimeError("root fit JSON missing `parameters` list")
+
+    missing: List[str] = []
+    for p in params:
+        if not isinstance(p, dict):
+            continue
+        n = str(p.get("name") or "")
+        if not n:
+            continue
+        if n not in name_to_index:
+            missing.append(n)
+            continue
+        vec[name_to_index[n]] = float(p.get("value"))
+
+    exp_main = [float(x) for x in model.expected_data(vec, include_auxdata=False)]
+    exp_with_aux = [float(x) for x in model.expected_data(vec, include_auxdata=True)]
+    return {
+        "pyhf_main": exp_main,
+        "pyhf_with_aux": exp_with_aux,
+        "missing_params": sorted(set(missing)),
+    }
+
 
 def _import_histfactory_to_workspace_json(*, combination_xml: Path, rootdir: Path) -> str:
     # Use pyhf.readxml for conversion (external env can install `uproot`).
@@ -437,6 +481,27 @@ def _import_histfactory_to_workspace_json(*, combination_xml: Path, rootdir: Pat
         )
     ws = readxml.parse(str(combination_xml), rootdir=str(rootdir), track_progress=False)
     return json.dumps(ws)
+
+def _stage_histfactory_export_dir(*, export_dir: Path, stage_dir: Path) -> ExportInput:
+    """Copy an export directory into `stage_dir` so ROOT tools can write outputs safely."""
+    export_dir = export_dir.resolve()
+    stage_dir = stage_dir.resolve()
+
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    # Best-effort copy. Keep it conservative and avoid copying previously generated model ROOT files.
+    for p in sorted(export_dir.iterdir(), key=lambda x: x.name):
+        dest = stage_dir / p.name
+        if p.is_dir():
+            shutil.copytree(p, dest, dirs_exist_ok=True)
+        elif p.is_file():
+            if p.suffix == ".root" and p.name.endswith("_model.root"):
+                continue
+            shutil.copy2(p, dest)
+
+    return _resolve_export_input(export_dir=stage_dir)
 
 
 def record_one_case(
@@ -452,8 +517,10 @@ def record_one_case(
 ) -> Path:
     repo = _repo_root()
 
+    out_root = out_root.resolve()
     out_dir = out_root / _sanitize_case_name(case_name)
     out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = out_dir.resolve()
     baseline_path = out_dir / "baseline.json"
 
     root_version = _root_version()
@@ -506,18 +573,30 @@ def record_one_case(
             continue
 
     # ROOT: hist2workspace + free fit via macro.
-    # NOTE: This runs in-place in the export dir (hist2workspace writes ROOT files there).
-    root_ws_file = _hist2workspace(combination_xml=export.combination_xml)
+    #
+    # Do not run in-place in the source export dir, since hist2workspace writes output ROOT files
+    # next to the XML (which would mutate committed fixtures). Stage into a writable work dir.
+    stage_dir = out_dir / "histfactory_stage"
+    staged = _stage_histfactory_export_dir(export_dir=export.export_dir, stage_dir=stage_dir)
+    root_ws_file = _hist2workspace(combination_xml=staged.combination_xml)
     fit_out = out_dir / "root_fit.json"
     macro_path = out_dir / "root_fit.C"
     _write_root_macro_fit(macro_path, root_workspace_file=root_ws_file, out_json=fit_out)
     _run_root_macro(macro_path, cwd=out_dir)
     root_fit = _load_json(fit_out)
 
-    # Expected data: convert HistFactory XML -> pyhf JSON workspace; evaluate with NextStat.
-    resolved_rootdir = (rootdir or export.export_dir).resolve()
-    ws_text = _import_histfactory_to_workspace_json(combination_xml=export.combination_xml, rootdir=resolved_rootdir)
-    exp = _build_expected_data(workspace_json_text=ws_text, root_fit=root_fit)
+    # Expected data: preferred path is direct HistFactory import via NextStat bindings (no pyhf).
+    # If pyhf XML import is available, we still accept it as an alternative reference conversion.
+    exp = None
+    try:
+        exp = _build_expected_data_from_histfactory(combination_xml=staged.combination_xml, root_fit=root_fit)
+    except Exception:
+        resolved_rootdir = (rootdir or export.export_dir).resolve()
+        ws_text = _import_histfactory_to_workspace_json(
+            combination_xml=export.combination_xml, rootdir=resolved_rootdir
+        )
+        exp = _build_expected_data(workspace_json_text=ws_text, root_fit=root_fit)
+        exp["used_pyhf_readxml"] = True
 
     # Build baseline payload (numbers-first).
     # Align meta with `docs/schemas/trex/baseline_v0.schema.json`.
@@ -541,7 +620,7 @@ def record_one_case(
             "inputs": {
                 "export_dir": str(export.export_dir),
                 "combination_xml": str(export.combination_xml),
-                "rootdir": str(resolved_rootdir),
+                "rootdir": str((rootdir or export.export_dir).resolve()),
                 "hashes": input_hashes,
             },
             # Extra context (non-contract) for reproducibility.

@@ -54,6 +54,17 @@ pub fn decode_and_execute_sequences(
     decode_and_execute_sequences_impl(section, source, fse, buffer, offset_hist, literals_buffer)
 }
 
+pub(crate) fn decode_and_execute_sequences_to(
+    section: &SequencesHeader,
+    source: &[u8],
+    fse: &mut FSEScratch,
+    buffer: &mut impl FusedOutputBuffer,
+    offset_hist: &mut [u32; 3],
+    literals_buffer: &[u8],
+) -> Result<(), DecompressBlockError> {
+    decode_and_execute_sequences_impl(section, source, fse, buffer, offset_hist, literals_buffer)
+}
+
 fn decode_and_execute_sequences_impl(
     section: &SequencesHeader,
     source: &[u8],

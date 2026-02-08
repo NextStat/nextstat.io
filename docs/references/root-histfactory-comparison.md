@@ -376,7 +376,7 @@ SPECIFICATION (mathematical definition)
 
 ### 8.1 Test Cases
 
-Two realistic TREx exports from `tmp/trex_exports/` were tested alongside the
+Two realistic TREx exports from `tests/fixtures/trex_exports/` were tested alongside the
 built-in smoke fixtures:
 
 | Case | Source | Model size | Status |
@@ -419,7 +419,7 @@ Results are locked as a regression baseline via the Apex2 suite infrastructure:
 ```bash
 # Record baseline (requires ROOT in PATH)
 make apex2-root-baseline-record \
-  ROOT_SEARCH_DIR=tmp/trex_exports \
+  ROOT_SEARCH_DIR=tests/fixtures/trex_exports \
   ROOT_BASELINE_ARGS="--root-include-fixtures --root-cases-absolute-paths --root-keep-going"
 
 # Compare against baseline (no ROOT needed)

@@ -68,6 +68,39 @@ fn histfactory_from_xml_is_fast_enough_smoke() {
 }
 
 #[test]
+fn histfactory_absolute_inputfile_falls_back_to_basedir_basename() {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Build a minimal export dir in a temp folder by copying the small local fixture
+    // and rewriting the Channel InputFile to a non-existent absolute path.
+    let base = std::env::temp_dir()
+        .join(format!(
+            "nextstat_histfactory_abs_inputfile_{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+    fs::create_dir_all(&base).expect("mkdir base");
+
+    let src_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/histfactory");
+    fs::copy(src_dir.join("data.root"), base.join("data.root")).expect("copy data.root");
+
+    let combo_src = fs::read_to_string(src_dir.join("combination.xml")).expect("read combination.xml");
+    fs::write(base.join("combination.xml"), combo_src).expect("write combination.xml");
+
+    let channel_src = fs::read_to_string(src_dir.join("channel_SR.xml")).expect("read channel_SR.xml");
+    let channel_rewritten = channel_src.replace("InputFile=\"data.root\"", "InputFile=\"/nonexistent/data.root\"");
+    fs::write(base.join("channel_SR.xml"), channel_rewritten).expect("write channel_SR.xml");
+
+    let ws = from_xml_with_basedir(&base.join("combination.xml"), Some(&base))
+        .expect("from_xml_with_basedir with abs fallback");
+    assert_eq!(ws.channels.len(), 1);
+    assert_eq!(ws.channels[0].name, "SR");
+
+    // Best-effort cleanup (ignore failures).
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
 fn histfactory_trex_export_dirs_ingest_is_deterministic_smoke() {
     // These are HistFactory export directories (combination.xml + data.root + channels/*.xml).
     // They intentionally exercise “real export dir” path semantics beyond the small unit fixtures.

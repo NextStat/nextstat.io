@@ -12,3 +12,6 @@ Each export directory includes:
 These fixtures are intended to exercise “real export dir” path semantics beyond the smaller
 unit fixtures under `tests/fixtures/pyhf_*` and `tests/fixtures/histfactory/`.
 
+Notes:
+- Many real TRExFitter exports embed **absolute** `InputFile=".../data.root"` paths in the channel XML.
+  NextStat supports this by falling back to `export_dir/<basename>` when the absolute path does not exist.

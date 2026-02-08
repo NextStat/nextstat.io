@@ -14,6 +14,26 @@ use crate::pyhf::schema::{
 use super::channel::{self, ChannelXml, ModifierXml};
 use super::combination::{self, CombinationConfig};
 
+fn resolve_input_file_path(base_dir: &Path, input_file: &str) -> PathBuf {
+    let p = Path::new(input_file);
+    if p.is_absolute() {
+        // TREx/HistFactory export dirs often embed absolute paths. Prefer them when they exist,
+        // but fall back to the export-dir copy (`base_dir/<basename>`) when the absolute path
+        // is not available on this machine.
+        if p.exists() {
+            return p.to_path_buf();
+        }
+        if let Some(name) = p.file_name() {
+            let candidate = base_dir.join(name);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        return p.to_path_buf();
+    }
+    base_dir.join(p)
+}
+
 /// Extract per-channel bin edges from a HistFactory export.
 ///
 /// This uses each channel's `data` histogram as the canonical binning source.
@@ -54,7 +74,7 @@ pub fn bin_edges_by_channel_from_xml_with_basedir(
             ))
         })?;
 
-        let root_path = base_dir.join(input_file);
+        let root_path = resolve_input_file_path(base_dir, input_file);
         if !root_cache.contains_key(&root_path) {
             let rf = RootFile::open(&root_path)
                 .map_err(|e| Error::RootFile(format!("opening {}: {}", root_path.display(), e)))?;
@@ -507,7 +527,7 @@ fn resolve_and_read_histogram(
         Error::Xml(format!("no InputFile specified for histogram '{}'", histo_name))
     })?;
 
-    let root_path = base_dir.join(input_file);
+    let root_path = resolve_input_file_path(base_dir, input_file);
 
     // Open or reuse cached ROOT file
     if !root_cache.contains_key(&root_path) {
