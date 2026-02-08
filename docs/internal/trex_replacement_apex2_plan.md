@@ -2,6 +2,9 @@
 
 Methodology: **Apex2 = Planning → Exploration → Execution → Verification**.
 
+NOTE: This doc is kept for history. The current active plan is:
+- `docs/internal/trex-replacement-apex2-plan.md`
+
 Goal: **full TRExFitter replacement** with:
 - **identical numbers** (parity contracts + baselines),
 - **publication-ready PDF/SVG** exports,
@@ -93,4 +96,3 @@ Process:
 - Expression compat epic: `53b3d3fc-ef1f-42b2-b067-b4df90c1044e`
 - Parity/baselines epic: `f4ead082-aa4a-49f0-8468-6201df649039`
   - External export-dir baselines task: `23711a70-dfb5-48e3-a96c-27abaa1f8fdc`
-

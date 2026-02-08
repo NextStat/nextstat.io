@@ -35,9 +35,16 @@ Status: active
 
 ## 2) Что реально осталось до “TREx replacement” (BMCP)
 
-### 2.1 Внешние baselines на реальных TREx export dirs (блокер)
-- Epic: `TREx Replacement: Parity Contracts + Baselines` (`f4ead082-aa4a-49f0-8468-6201df649039`)
-  - Task (DEFERRED): `23711a70-dfb5-48e3-a96c-27abaa1f8fdc`
+### 2.1 ROOT-suite parity closure на реалистичных export dirs (блокер)
+- Epic: `ROOT-suite Parity Closure: Profile Scan q(mu) matches ROOT` (`c2f00478-1927-4a5a-94b0-6fc66d4e21f8`)
+  - Текущее состояние (2026-02-08): likelihood совпадает с ROOT при оценке в ROOT best-fit параметрах (до константного сдвига),
+    но NextStat optimizer может сходиться в другой nuisance minimum, из-за чего `q(mu)` слегка расходится (напр. max_abs_dq_mu ~ 0.04
+    на committed fixture `tests/fixtures/trex_exports/tttt-prod`).
+  - Следующие шаги: multi-start conditional fits + диагностический dump best-fit параметров по точкам скана.
+
+### 2.2 Внешние baselines на реальных TREx export dirs (DEFERRED, вернемся позже)
+- Epic: `External TREx Export Dirs: Collect + Record Baselines` (`fe04caac-ab97-4567-b0cc-77d11681072c`)
+  - Task (DEFERRED): `24475739-0c6e-4572-a342-a9dc369463f6`
     - Нужны 1–3 реальных TREx export dir (каждый: `combination.xml` + ROOT hists).
     - Пользователь собирает cases JSON; мы прогоняем ROOT-suite в окружении с ROOT/TREx и пишем baseline через `tests/record_baseline.py` (см. `README.md`).
 
