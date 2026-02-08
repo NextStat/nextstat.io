@@ -20,6 +20,9 @@ The CLI supports a global `--bundle` flag that writes an immutable bundle
 containing inputs, outputs, hashes, and a manifest. See:
 `docs/tutorials/phase-3.1-frequentist.md`.
 
+Note: bundle `meta.json` includes `created_unix_ms` by default. When a command supports
+`--deterministic`, timestamps are normalized to `0` for reproducible artifacts.
+
 ### 2) Python run bundles
 
 Python can write the same bundle layout via:
@@ -53,4 +56,3 @@ To reach regulated audit trail requirements (e.g. 21 CFR Part 11), typical needs
 
 OSS provides the run bundle primitives needed to feed those systems, but does not
 implement them.
-

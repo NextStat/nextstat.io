@@ -179,11 +179,11 @@
         "title": { "type": "string" },
         "bin_edges": { "type": "array", "items": { "type": "number" } },
         "bin_content": { "type": "array", "items": { "type": "number" } },
-        "sumw2": { "type": "array", "items": { "type": "number" } },
+        "sumw2": { "type": ["array", "null"], "items": { "type": "number" } },
         "underflow": { "type": "number" },
         "overflow": { "type": "number" },
-        "underflow_sumw2": { "type": "number" },
-        "overflow_sumw2": { "type": "number" }
+        "underflow_sumw2": { "type": ["number", "null"] },
+        "overflow_sumw2": { "type": ["number", "null"] }
       },
       "additionalProperties": true
     }

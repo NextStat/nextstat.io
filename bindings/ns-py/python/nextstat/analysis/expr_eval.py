@@ -7,8 +7,8 @@ This is a small, deterministic evaluator intended for:
 The grammar intentionally matches the Rust `ns-root` expression engine subset:
 - arithmetic: + - * /
 - comparisons: == != < <= > >=
-- boolean: && || ! (truthiness: >0 is true)
-- functions: abs, sqrt, log, exp, pow, min, max
+- boolean: && || ! (truthiness: non-zero is true, including negatives and NaN)
+- functions: abs/fabs, sqrt, log/log10, exp, sin/cos, pow/power, atan2, min, max
 - ternary: cond ? a : b (right-associative)
 - indexing: x[0] for per-event arrays (list-of-arrays). Indexing is evaluated lazily
   through ternary masks so missing indices can be avoided.
@@ -160,8 +160,12 @@ def _tokenize(src: str) -> list[_Tok]:
             i += 1
             while i < len(b):
                 cc = chr(b[i])
-                if cc.isalnum() or cc == "_":
+                if cc.isalnum() or cc == "_" or cc == ".":
                     i += 1
+                    continue
+                # Allow C++-style namespace qualifier inside identifiers (e.g. `TMath::Abs`).
+                if cc == ":" and i + 1 < len(b) and chr(b[i + 1]) == ":":
+                    i += 2
                     continue
                 break
             emit(_K.IDENT, src[start:i], start, i)
@@ -216,7 +220,7 @@ class _Ternary(_Node):
 @dataclass(frozen=True)
 class _Index(_Node):
     base: _Ast
-    index: int
+    index: _Ast
 
 
 _Ast = _Num | _Var | _Unary | _Bin | _Call | _Ternary | _Index
@@ -338,11 +342,9 @@ class _Parser:
                 return e
             lb = self._advance()
             assert lb is not None
-            idx = self._expect(_K.NUM)
-            if not float(idx.value).is_integer() or float(idx.value) < 0:
-                raise _err(self._src, idx.span, "index must be a non-negative integer literal")
+            idx_expr = self._parse_ternary()
             rb = self._expect(_K.RBRACKET)
-            e = _Index(span=Span(lb.span.start, rb.span.end), base=e, index=int(idx.value))
+            e = _Index(span=Span(lb.span.start, rb.span.end), base=e, index=idx_expr)
 
     def _parse_atom(self) -> _Ast:
         t = self._advance()
@@ -402,10 +404,31 @@ def eval_expr(expr: str, env: Mapping[str, Any], *, n: int | None = None) -> np.
     ast = _Parser(expr, toks).parse()
     n_total = int(_infer_n(env) if n is None else n)
     idxs = np.arange(n_total, dtype=np.int64)
-    return _eval(ast, expr, env, idxs)
+    return _eval(ast, expr, env, idxs, strict_indexing=False)
 
 
-def _eval(ast: _Ast, src: str, env: Mapping[str, Any], idxs: np.ndarray) -> np.ndarray:
+def eval_expr_strict(expr: str, env: Mapping[str, Any], *, n: int | None = None) -> np.ndarray:
+    """Like `eval_expr`, but out-of-range indexing is an error (better diagnostics in tests)."""
+    toks = _tokenize(expr)
+    ast = _Parser(expr, toks).parse()
+    n_total = int(_infer_n(env) if n is None else n)
+    idxs = np.arange(n_total, dtype=np.int64)
+    return _eval(ast, expr, env, idxs, strict_indexing=True)
+
+
+def _truthy(x: np.ndarray) -> np.ndarray:
+    # ROOT/TTreeFormula truthiness: any non-zero is true (including negatives and NaN).
+    return x != 0.0
+
+
+def _eval(
+    ast: _Ast,
+    src: str,
+    env: Mapping[str, Any],
+    idxs: np.ndarray,
+    *,
+    strict_indexing: bool,
+) -> np.ndarray:
     n = int(idxs.shape[0])
 
     if isinstance(ast, _Num):
@@ -432,26 +455,42 @@ def _eval(ast: _Ast, src: str, env: Mapping[str, Any], idxs: np.ndarray) -> np.n
         if v is None:
             raise _err(src, ast.span, f"unknown variable: '{name}'")
         if not isinstance(v, list):
-            raise _err(src, ast.span, f"variable '{name}' is not an array; cannot index with [{ast.index}]")
+            raise _err(src, ast.span, f"variable '{name}' is not an array; cannot index with [...]")
+
+        idx_vals = _eval(ast.index, src, env, idxs, strict_indexing=strict_indexing)
         out = np.empty(n, dtype=np.float64)
         for j, event_idx in enumerate(idxs.tolist()):
             row = v[event_idx]
-            if ast.index >= len(row):
-                raise _err(src, ast.span, f"index out of bounds: {name}[{ast.index}] for event {event_idx}")
-            out[j] = float(row[ast.index])
+            idx_f = float(idx_vals[j])
+            if not np.isfinite(idx_f):
+                idx_i = -1
+            else:
+                # Match ROOT-like behavior: truncate float to int.
+                idx_i = int(np.trunc(idx_f))
+
+            if idx_i < 0 or idx_i >= len(row):
+                if strict_indexing:
+                    raise _err(
+                        src,
+                        ast.span,
+                        f"index out of bounds: {name}[{idx_i}] for event {event_idx}",
+                    )
+                out[j] = 0.0
+                continue
+            out[j] = float(row[idx_i])
         return out
 
     if isinstance(ast, _Unary):
-        a = _eval(ast.expr, src, env, idxs)
+        a = _eval(ast.expr, src, env, idxs, strict_indexing=strict_indexing)
         if ast.op == _K.MINUS:
             return -a
         if ast.op == _K.NOT:
-            return np.where(a > 0.0, 0.0, 1.0).astype(np.float64)
+            return np.where(_truthy(a), 0.0, 1.0).astype(np.float64)
         raise _err(src, ast.span, f"unknown unary op: {ast.op}")
 
     if isinstance(ast, _Bin):
-        lhs = _eval(ast.left, src, env, idxs)
-        rhs = _eval(ast.right, src, env, idxs)
+        lhs = _eval(ast.left, src, env, idxs, strict_indexing=strict_indexing)
+        rhs = _eval(ast.right, src, env, idxs, strict_indexing=strict_indexing)
         op = ast.op
         if op == _K.PLUS:
             return lhs + rhs
@@ -476,42 +515,50 @@ def _eval(ast: _Ast, src: str, env: Mapping[str, Any], idxs: np.ndarray) -> np.n
         if op == _K.GE:
             return np.where(lhs >= rhs, 1.0, 0.0)
         if op == _K.AND:
-            return np.where((lhs > 0.0) & (rhs > 0.0), 1.0, 0.0)
+            return np.where(_truthy(lhs) & _truthy(rhs), 1.0, 0.0)
         if op == _K.OR:
-            return np.where((lhs > 0.0) | (rhs > 0.0), 1.0, 0.0)
+            return np.where(_truthy(lhs) | _truthy(rhs), 1.0, 0.0)
         raise _err(src, ast.span, f"unknown binary op: {op}")
 
     if isinstance(ast, _Ternary):
         # Lazy per-mask evaluation to match row-wise semantics.
-        cond = _eval(ast.cond, src, env, idxs)
-        mask = cond > 0.0
+        cond = _eval(ast.cond, src, env, idxs, strict_indexing=strict_indexing)
+        mask = _truthy(cond)
         out = np.empty(n, dtype=np.float64)
         if bool(mask.any()):
-            out[mask] = _eval(ast.then_expr, src, env, idxs[mask])
+            out[mask] = _eval(ast.then_expr, src, env, idxs[mask], strict_indexing=strict_indexing)
         if bool((~mask).any()):
-            out[~mask] = _eval(ast.else_expr, src, env, idxs[~mask])
+            out[~mask] = _eval(ast.else_expr, src, env, idxs[~mask], strict_indexing=strict_indexing)
         return out
 
     if isinstance(ast, _Call):
-        fn = ast.fn
-        args = [_eval(a, src, env, idxs) for a in ast.args]
+        fn_raw = ast.fn
+        leaf = fn_raw.rsplit("::", 1)[-1].strip().lower()
+        args = [_eval(a, src, env, idxs, strict_indexing=strict_indexing) for a in ast.args]
 
-        if fn == "abs" and len(args) == 1:
+        if leaf in ("abs", "fabs") and len(args) == 1:
             return np.abs(args[0])
-        if fn == "sqrt" and len(args) == 1:
+        if leaf == "sqrt" and len(args) == 1:
             return np.sqrt(args[0])
-        if fn == "log" and len(args) == 1:
+        if leaf == "log" and len(args) == 1:
             return np.log(args[0])
-        if fn == "exp" and len(args) == 1:
+        if leaf == "log10" and len(args) == 1:
+            return np.log10(args[0])
+        if leaf == "exp" and len(args) == 1:
             return np.exp(args[0])
-        if fn == "pow" and len(args) == 2:
+        if leaf == "sin" and len(args) == 1:
+            return np.sin(args[0])
+        if leaf == "cos" and len(args) == 1:
+            return np.cos(args[0])
+        if leaf in ("pow", "power") and len(args) == 2:
             return np.power(args[0], args[1])
-        if fn == "min" and len(args) == 2:
+        if leaf == "atan2" and len(args) == 2:
+            return np.arctan2(args[0], args[1])
+        if leaf == "min" and len(args) == 2:
             return np.minimum(args[0], args[1])
-        if fn == "max" and len(args) == 2:
+        if leaf == "max" and len(args) == 2:
             return np.maximum(args[0], args[1])
 
-        raise _err(src, ast.span, f"unknown function or invalid arity: {fn}({len(args)})")
+        raise _err(src, ast.span, f"unknown function or invalid arity: {fn_raw}({len(args)})")
 
     raise _err(src, ast.span, "internal error: unknown AST node")
-

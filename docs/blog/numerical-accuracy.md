@@ -249,7 +249,7 @@ Profile scan timing (31 mu points, including free fit) on the canonical fixtures
 | multichannel | 1.98 s | 0.26 s | **0.007 s** | **283x** | **37x** |
 | coupled_histosys | 1.76 s | 0.15 s | **0.002 s** | **880x** | **75x** |
 
-NextStat's speed advantage comes from three factors: compiled Rust code (vs. Python interpreter overhead in pyhf), reverse-mode automatic differentiation (vs. finite-difference gradients in pyhf's NumPy backend), and a zero-allocation hot path with pre-compiled modifier evaluation.
+NextStat's speed advantage comes from three factors: compiled Rust code (reducing Python overhead in end-to-end loops), an analytical/AD gradient path that supports quasi-Newton optimization without expensive numerical gradient estimation (as in many NumPy+SciPy configurations), and a zero-allocation hot path with pre-compiled modifier evaluation.
 
 The CPU timings in the table above were measured on Apple M5 (arm64, macOS 26.2). The GPU toy benchmark below uses a separate NVIDIA RTX 4000 machine.
 
@@ -309,7 +309,10 @@ This command requires ROOT with PyROOT (HistFactory/RooFit/RooStats) available i
 Cross-evaluation and optimizer diagnostics:
 
 ```bash
-python tests/diagnose_optimizer.py workspace_tHu.json
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/diagnose_optimizer.py \
+  --workspace tests/fixtures/workspace_tHu.json \
+  --workspace tests/fixtures/tttt-prod_workspace.json \
+  --multi-start 20
 ```
 
 Regenerate the figures in this post (reads snapshot data under `docs/blog/assets/numerical-accuracy/data/`):

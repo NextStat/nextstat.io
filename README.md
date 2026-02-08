@@ -41,6 +41,13 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py
 - Rust library, Python package (PyO3/maturin), and a CLI
 - Implemented packs: regression/GLM, hierarchical models, time series (Kalman/EM/forecast), econometrics/causal helpers, and PK/NLME baselines
 
+## Docs
+
+- Docs index: `docs/README.md`
+- Tutorials (end-to-end): `docs/tutorials/README.md`
+- References (CLI/Python/Rust/Server/Tools): `docs/references/`
+- Demo: Physics Assistant (ROOT -> anomaly scan -> p-values + plots): `docs/demos/physics-assistant.md`
+
 ## Quickstart
 
 ### Install (Rust)

@@ -401,6 +401,10 @@ Bundle layout:
 - `outputs/result.json`: the command output JSON
 - `manifest.json`: SHA-256 + size for each file in the bundle
 
+Note on determinism:
+- `meta.json` includes `created_unix_ms` by default, so bundles are not byte-identical across runs.
+- Some commands support `--deterministic`, which normalizes timestamps (including bundle `created_unix_ms`) to `0` for reproducible artifacts.
+
 ## Minimal plotting example (Python)
 
 This example reads the CLs artifact JSON and plots the observed curve and the median expected curve.
