@@ -265,3 +265,95 @@ Optional outputs:
 
 Example config: `docs/examples/trex_config_ntup_minimal.txt`.
 Example config (HIST wrapper): `docs/examples/trex_config_hist_minimal.txt`.
+
+## Workspace audit
+
+`nextstat audit` inspects a pyhf/HS3 workspace and reports channel/sample/modifier counts plus any unsupported features:
+
+```bash
+nextstat audit --input workspace.json
+nextstat audit --input workspace.json --format json --output audit.json
+```
+
+## Export
+
+`nextstat export histfactory` converts a pyhf workspace back to HistFactory XML + ROOT histogram files:
+
+```bash
+nextstat export histfactory --input workspace.json --out-dir export/
+nextstat export histfactory --input workspace.json --out-dir export/ --prefix meas --overwrite --python
+```
+
+`--python` generates a Python driver script alongside the XML/ROOT artifacts.
+
+## Time series visualization
+
+`nextstat timeseries kalman-viz` produces a plot-friendly JSON artifact with smoothed states, observations, marginal normal bands, and optional forecast:
+
+```bash
+nextstat timeseries kalman-viz --input kalman_1d.json
+nextstat timeseries kalman-viz --input kalman_1d.json --level 0.99 --forecast-steps 20
+```
+
+Internally runs EM → Kalman smooth → computes `±z_{α/2} × √diag(P)` bands at the requested `--level` (default 0.95).
+
+## Version
+
+```bash
+nextstat version
+```
+
+Prints the NextStat version string and exits.
+
+---
+
+## `nextstat-server` (separate binary)
+
+A self-hosted REST API for shared GPU inference. Built as a separate binary in `crates/ns-server`.
+
+### Build
+
+```bash
+# CPU only
+cargo build -p ns-server --release
+
+# With GPU support
+cargo build -p ns-server --features cuda --release
+cargo build -p ns-server --features metal --release
+```
+
+### Run
+
+```bash
+nextstat-server --port 3742 --gpu cuda
+nextstat-server --host 0.0.0.0 --port 3742 --gpu metal --threads 8
+```
+
+Arguments:
+- `--port <PORT>` — listening port (default: 3742)
+- `--host <HOST>` — bind address (default: 0.0.0.0)
+- `--gpu <DEVICE>` — GPU device: `cuda` or `metal` (omit for CPU-only)
+- `--threads <N>` — Rayon thread pool size (default: 0 = auto)
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/fit` | MLE fit (workspace → FitResult) |
+| `POST` | `/v1/ranking` | Nuisance parameter ranking |
+| `POST` | `/v1/batch/fit` | Batch fit (multiple workspaces, max 100) |
+| `POST` | `/v1/batch/toys` | Batch toy fitting |
+| `POST` | `/v1/models` | Upload and cache a model |
+| `GET` | `/v1/models` | List cached models |
+| `DELETE` | `/v1/models/{id}` | Remove cached model |
+| `GET` | `/v1/health` | Server health check |
+
+All endpoints accept/return JSON. Errors return `{"error": "<message>"}` with appropriate HTTP status codes.
+
+### Model caching
+
+Models are cached by SHA-256 hash of the workspace JSON. Pass `model_id` instead of `workspace` in fit/ranking requests to skip re-parsing. LRU eviction at 64 models by default.
+
+### Python client
+
+See `nextstat.remote` in the Python API reference (`docs/references/python-api.md`).

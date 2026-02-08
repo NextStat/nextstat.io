@@ -90,6 +90,8 @@ extern "C" __global__ void differentiable_nll_grad(
 
             /* Check if this sample+bin is in a signal entry */
             double nom = g_nominal[sample_bin];
+            int is_signal = 0;
+            unsigned int sig_local_bin_candidate = 0;
             unsigned int sig_global_offset = 0;
             for (unsigned int se = 0; se < n_signal_entries; se++) {
                 unsigned int se_sidx = g_signal_sample_indices[se];
@@ -97,8 +99,8 @@ extern "C" __global__ void differentiable_nll_grad(
                 unsigned int se_nbins = g_signal_n_bins_arr[se];
                 if (s == se_sidx && bin >= se_first && bin < se_first + se_nbins) {
                     nom = g_external_signal[sig_global_offset + (bin - se_first)];
-                    has_signal = 1;
-                    sig_local_bin = sig_global_offset + (bin - se_first);
+                    is_signal = 1;
+                    sig_local_bin_candidate = sig_global_offset + (bin - se_first);
                     break;
                 }
                 sig_global_offset += se_nbins;
@@ -138,8 +140,10 @@ extern "C" __global__ void differentiable_nll_grad(
             double sample_expected = (nom + delta) * factor;
             expected_bin += sample_expected;
 
-            /* Remember signal factor for gradient (last match wins — only one per bin) */
-            if (has_signal) {
+            /* If this sample is signal, remember its factor for the signal gradient. */
+            if (is_signal) {
+                has_signal = 1;
+                sig_local_bin = sig_local_bin_candidate;
                 signal_factor = factor;
             }
         }

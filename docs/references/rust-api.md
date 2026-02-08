@@ -20,6 +20,7 @@ This page summarizes the main Rust crates and their public entry points.
 | `ns-inference` | Inference algorithms and model packs (MLE, NUTS, CLs, time series, PK/NLME, etc.) |
 | `ns-viz` | Plot-friendly artifacts (CLs curves, profile scans) |
 | `ns-cli` | `nextstat` CLI |
+| `ns-server` | `nextstat-server` REST API for shared GPU inference (axum) |
 | `ns-wasm` | WebAssembly bindings for the browser playground |
 | `ns-py` | Python bindings via PyO3/maturin |
 
@@ -233,6 +234,29 @@ match detect_format(&json) {
 
 Supported modifier types: `normfactor`, `normsys`, `histosys`, `staterror`, `shapesys`, `shapefactor`, `lumi`. Unknown types are silently skipped.
 
+### Arrow / Parquet module (`ns_translate::arrow`)
+
+Zero-copy columnar data interchange with the Arrow ecosystem. Feature-gated behind `arrow-io`.
+
+Sub-modules:
+- `ns_translate::arrow::ingest` — Arrow IPC / RecordBatch → pyhf `Workspace`.
+  - `ArrowIngestConfig { poi, observations, measurement_name }` — ingestion configuration.
+  - `from_arrow_ipc(ipc_bytes, config) -> Result<Workspace>` — ingest Arrow IPC bytes.
+  - `from_record_batches(batches, config) -> Result<Workspace>` — ingest RecordBatch slice.
+  - `read_ipc_batches(ipc_bytes) -> Result<Vec<RecordBatch>>` — deserialize IPC to batches.
+- `ns_translate::arrow::export` — `HistFactoryModel` → Arrow RecordBatch / IPC bytes.
+  - `yields_to_ipc(model, params) -> Result<Vec<u8>>` — export expected yields.
+  - `parameters_to_ipc(model, params) -> Result<Vec<u8>>` — export parameter metadata.
+  - `yields_to_record_batch(model, params) -> Result<RecordBatch>` — yields as RecordBatch.
+  - `parameters_to_record_batch(model, params) -> Result<RecordBatch>` — params as RecordBatch.
+  - `record_batch_to_ipc(batch) -> Result<Vec<u8>>` — generic batch → IPC serialization.
+- `ns_translate::arrow::parquet` — Parquet read/write (Zstd compression).
+  - `from_parquet(path, config) -> Result<Workspace>` — read Parquet file to Workspace.
+  - `from_parquet_bytes(data, config) -> Result<Workspace>` — read Parquet bytes.
+  - `write_parquet(path, batches) -> Result<()>` — write RecordBatches to Parquet.
+
+Schema: `channel` (Utf8), `sample` (Utf8), `yields` (List\<Float64\>), optional `stat_error` (List\<Float64\>).
+
 Ntuple-to-workspace example:
 
 ```rust
@@ -392,6 +416,21 @@ Model serialization:
 ## `ns-viz`
 
 Lightweight, dependency-free artifacts for plot-friendly output. Models return plain structs that can be serialized to JSON or consumed directly.
+
+---
+
+## `ns-server`
+
+Self-hosted REST API for shared GPU inference. Built on axum 0.8.
+
+Key exports:
+- `ns_server::state::AppState` — server state with GPU lock, atomic counters, model cache.
+- `ns_server::pool::ModelPool` — LRU model cache keyed by SHA-256 hash of workspace JSON.
+- `ns_server::pool::ModelInfo` — cached model metadata (id, name, n_params, n_channels, age, hit count).
+
+Endpoints: `/v1/fit`, `/v1/ranking`, `/v1/batch/fit`, `/v1/batch/toys`, `/v1/models`, `/v1/health`.
+
+See `docs/references/cli.md` for full endpoint documentation and CLI arguments.
 
 ---
 

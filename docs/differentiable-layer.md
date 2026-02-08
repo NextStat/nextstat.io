@@ -2,6 +2,12 @@
 
 NextStat provides a differentiable NLL layer that integrates directly into PyTorch training loops. This enables **end-to-end optimization of neural network classifiers on physics significance** with full systematic uncertainty handling.
 
+If you want to train on the actual discovery metric (rather than a surrogate like BCE/MSE), the intended end-to-end pipeline is:
+
+> NN scores → differentiable histogram → profiled likelihood → q₀ → Z₀
+
+Concretely, this is exposed as `SoftHistogram` + `SignificanceLoss` in `nextstat.torch`.
+
 ## Architecture
 
 ```
@@ -21,9 +27,39 @@ PyTorch Training Loop (GPU)
         +-- return grad_output * grad_signal --> flows back to NN
 ```
 
-**Key insight**: No Host-to-Device or Device-to-Host copies in the training loop. The CUDA kernel reads signal bins directly from PyTorch's GPU memory and writes gradients directly back.
+**Key insight (CUDA, Phase 1 NLL)**: No device↔host copies of the *signal histogram* (or its *signal-gradient*) in the training loop. The CUDA kernel reads signal bins directly from PyTorch GPU memory and writes gradients directly back. (There are still small transfers for nuisance parameters and returning the scalar NLL.)
 
-## Quick Start
+For the profiled objectives (q₀/qμ/Z₀/Zμ), the signal histogram is still read zero-copy via a raw device pointer, but the final ∂/∂signal vector is currently returned to Python as a small host `Vec<f64>` and then materialized as a CUDA tensor (tiny D↔H transfer: O(100–1000) floats).
+
+## Quick Start (end-to-end Z₀ training)
+
+```python
+import torch
+import nextstat
+from nextstat.torch import SoftHistogram, SignificanceLoss
+
+model = nextstat.from_pyhf(workspace_json)
+
+# One-time GPU session init (CUDA preferred, Metal fallback if enabled)
+loss_fn = SignificanceLoss(model, signal_sample_name="signal", device="auto")  # returns -Z0 by default
+
+soft_hist = SoftHistogram(bin_edges=torch.linspace(0.0, 1.0, 11), bandwidth="auto", mode="kde")
+
+optimizer = torch.optim.Adam(nn.parameters(), lr=1e-3)
+for batch in dataloader:
+    optimizer.zero_grad()
+
+    scores = nn(batch)                      # [N]
+    signal_hist = soft_hist(scores).double()  # [B]
+    if torch.cuda.is_available():
+        signal_hist = signal_hist.cuda()    # CUDA path expects CUDA float64
+
+    loss = loss_fn(signal_hist)             # -Z0
+    loss.backward()
+    optimizer.step()
+```
+
+## Quick Start (fixed-parameter NLL)
 
 ```python
 import torch
@@ -139,6 +175,8 @@ So for `q₀` the gradient w.r.t. the signal histogram is:
 ∂q₀/∂s = 2 · ( ∂NLL/∂s |_{θ̂₀} − ∂NLL/∂s |_{θ̂} )
 ```
 
+**One-sided discovery note**: NextStat implements the standard one-sided discovery convention: if the fitted signal strength satisfies `μ̂ < 0` (or the statistic clamps to `q₀ = 0`), the returned `q₀` and its gradient are zero.
+
 ## Phase 1 Gradient Formula
 
 For fixed nuisance parameters, the gradient of NLL w.r.t. signal bin `i` is:
@@ -149,6 +187,37 @@ dNLL/d(signal_i) = (1 - obs_i / expected_i) * factor_i
 ```
 
 Where `factor_i` is the product of all multiplicative modifiers (NormFactor, NormSys, ShapeSys, etc.) applied to the signal sample at bin `i`.
+
+## Practical notes (important for correctness)
+
+### Signal gradient buffer must start at zero (CUDA)
+
+The CUDA kernel accumulates into the gradient buffer with `atomicAdd`. That means the gradient output tensor **must be zeroed** before calling into NextStat. The Python wrapper does this via `torch.zeros_like(signal)`.
+
+### CUDA stream synchronization
+
+PyTorch and NextStat may use different CUDA streams. The current `nextstat.torch` wrappers call `torch.cuda.synchronize()` before and after the native call to ensure that:
+
+- the NextStat kernel sees the fully-written `signal_histogram`, and
+- PyTorch sees the fully-written `grad_signal`.
+
+### Multi-channel signal layout
+
+If the signal sample appears in multiple channels, NextStat treats the external signal buffer as a concatenation of the per-channel segments:
+
+`signal = [ch0_bins..., ch1_bins..., ...]`
+
+`session.signal_n_bins()` returns the **total** number of signal bins across all entries.
+
+## Metal (Apple Silicon) support
+
+`create_profiled_session(..., device="auto")` prefers CUDA when available and can fall back to a Metal backend (if NextStat is built with `--features metal`).
+
+Key differences vs CUDA:
+
+- GPU computation is **f32** (Apple GPU precision constraints); inputs/outputs are converted at the API boundary.
+- The signal histogram is uploaded from CPU (no raw pointer interop with MPS tensors), so there is no CUDA-style zero-copy path.
+- L-BFGS-B tolerance is relaxed (default 1e-3) to match f32 behavior.
 
 ## Competitive Landscape (February 2026)
 
@@ -205,3 +274,8 @@ dq/ds = dq/ds|_{theta fixed} - (d2NLL/ds dtheta)^T (d2NLL/dtheta^2)^{-1} dq/dthe
 ```
 
 This requires the cross-Hessian d2NLL/ds/dtheta, which can be computed via finite differences of the GPU gradient w.r.t. signal bins.
+
+## Further reading
+
+- Canonical implementation reference: `bindings/ns-py/python/nextstat/torch.py`
+- Scientific deep-dive (problem → solution → derivations): `docs/blog/differentiable-layer-nextstat-pytorch.md`

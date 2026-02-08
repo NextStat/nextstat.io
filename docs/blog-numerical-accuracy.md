@@ -1,4 +1,14 @@
+<!--
+  Blog draft (technical).
+  Keep in sync with:
+    - tests/validate_root_profile_scan.py
+    - tests/diagnose_optimizer.py
+-->
+
 # Where ROOT Gets It Wrong: A Rigorous Numerical Comparison of HistFactory Implementations
+
+**Last updated:** 2026-02-08  
+**Status:** Blog draft (technical)
 
 *NextStat Team, February 2026*
 
@@ -6,7 +16,15 @@
 
 ## Abstract
 
-We present a systematic numerical comparison of three independent implementations of the HistFactory likelihood model: **ROOT/RooFit** (C++, Minuit2), **pyhf** (Python, SLSQP), and **NextStat** (Rust, L-BFGS-B). Using canonical validation fixtures from the pyhf test suite and real-world ATLAS-scale analyses with up to 249 nuisance parameters, we demonstrate that NextStat and pyhf agree on the profile likelihood ratio q(mu) to better than 1e-5 across all tested configurations. ROOT/RooFit, by contrast, exhibits three distinct failure modes: optimizer non-convergence on coupled HistoSys models (`status = -1`), catastrophic free-fit divergence (`mu_hat = 4.9 x 10^23`), and systematic overestimation of q(mu) at high signal strengths. We trace the ROOT divergence to both optimizer limitations (Minuit2) and, in one case, a likely model-level discrepancy in coupled HistoSys interpolation at large nuisance parameter values. We further show that on models with more than 100 parameters, NextStat's L-BFGS-B optimizer consistently finds deeper likelihood minima than pyhf's SLSQP, with NLL improvements of 0.01-0.08 verified by cross-evaluation of the objective function. All results are fully reproducible via open-source validation scripts.
+We present a systematic numerical comparison of three independent implementations of the HistFactory likelihood model: **ROOT/RooFit** (C++, Minuit2), **pyhf** (Python, SLSQP), and **NextStat** (Rust, L-BFGS-B). Using canonical validation fixtures from the pyhf test suite and real-world ATLAS-scale analyses with up to 249 nuisance parameters, we demonstrate that NextStat and pyhf agree on the profile likelihood ratio q(mu) to better than 1e-5 across all tested configurations. ROOT/RooFit, by contrast, exhibits three distinct failure modes: optimizer non-convergence on coupled HistoSys models (`status = -1`), catastrophic free-fit divergence (`mu_hat = 4.9e23`), and systematic overestimation of q(mu) at high signal strengths. We trace the ROOT divergence to both optimizer limitations (Minuit2) and, in one case, a likely model-level discrepancy in coupled HistoSys interpolation at large nuisance parameter values. We further show that on models with more than 100 parameters, NextStat's L-BFGS-B optimizer consistently finds deeper likelihood minima than pyhf's SLSQP, with NLL improvements of 0.01-0.08 verified by cross-evaluation of the objective function. All results are fully reproducible via open-source validation scripts.
+
+## Key Takeaways
+
+- **ShapeSys:** ROOT, pyhf, and NextStat agree to < 1e-6 when the fits converge.
+- **OverallSys:** ROOT inflates q(mu) by up to 0.6% at high mu (Minuit2 conditional fits).
+- **Coupled HistoSys:** ROOT diverges by Δq(mu) = 22.5 at mu = 3.0; the NLL offset is non-constant, pointing to a model-level discrepancy (not just the optimizer).
+- **Large models:** L-BFGS-B reaches a better stationary point (‖grad‖ = 0.020 vs 4.63 on a 184-parameter workspace).
+- **Performance:** NextStat is 37x-880x faster for 31-point profile scans; +6.4x with GPU for toys on NVIDIA hardware.
 
 ---
 
@@ -18,7 +36,7 @@ Three independent software implementations of this model are widely used:
 
 - **ROOT/RooFit** [3]: The original C++ implementation. Uses `hist2workspace` for model construction and Minuit2 [4] for optimization. De facto standard for data I/O and visualization at CERN, but increasingly ceded to specialized tools for statistical inference.
 
-- **pyhf** [5]: A pure Python implementation developed by ATLAS physicists as the formal reference for the HistFactory specification. Adopted by ATLAS for reinterpretation and combinations (ATL-PHYS-PUB-2019-029). Uses scipy's SLSQP optimizer.
+- **pyhf** [5]: A pure Python implementation developed by ATLAS physicists as the formal reference for the HistFactory specification. Adopted by ATLAS for reinterpretation and combinations (ATL-PHYS-PUB-2019-029). Uses SciPy's SLSQP optimizer.
 
 - **NextStat**: A Rust implementation with Python bindings, using L-BFGS-B optimization, reverse-mode automatic differentiation, and optional GPU acceleration (CUDA f64, Metal f32). Validates against pyhf as the specification reference.
 
@@ -55,6 +73,8 @@ q_tilde(mu) = |
 ```
 
 as defined in Cowan et al. [2], implemented identically in all three tools.
+
+**Notation:** mu is the parameter of interest (signal strength), theta denotes nuisance parameters, hats denote MLEs. For brevity, we write q(mu) as shorthand for q_tilde(mu).
 
 ### 2.3 Fixtures
 
@@ -137,13 +157,13 @@ The offset grows from 420.74 to 432.00 — an 11.26 increase. This **rules out a
 
 We extend the comparison to TRExFitter exports from real ATLAS analyses:
 
-| Analysis | Parameters | NS vs pyhf max |dq| | NS vs ROOT max |dq| | ROOT issue |
-|----------|------------|----|----|------------|
+| Analysis | Params | max Δq(mu) (NS vs pyhf) | max Δq(mu) (NS vs ROOT) | ROOT issue |
+|---------|--------|--------------------------|--------------------------|-----------|
 | simple fixture | ~5 | < 1e-8 | **1.6e-10** | None |
-| EWK (HEPData) | medium | < 1e-5 | **0.0** | Free fit diverged (mu_hat = 4.9e23) |
+| EWK (HEPData) | medium | < 1e-5 | **0.0** | Free fit diverged (`mu_hat = 4.9e23`) |
 | tttt-prod | 249 | < 1e-5 | **0.04** | Tail optimizer convergence |
 
-The EWK analysis is particularly striking: ROOT's unconditional fit diverged so severely that Minuit2 returned mu_hat = 4.9 x 10^23 with NLL = 1.8 x 10^23. NextStat converges normally to mu_hat = 6.57. Since mu_hat >> all scan points, all q_tilde values happen to be zero in both cases, masking the catastrophic failure in the final physics result.
+The EWK analysis is particularly striking: ROOT's unconditional fit diverged so severely that Minuit2 returned `mu_hat = 4.9e23` with `NLL = 1.8e23`. NextStat converges normally to `mu_hat = 6.57`. Since `mu_hat >>` all scan points, all q_tilde values happen to be zero in both cases, masking the catastrophic failure in the final physics result.
 
 ---
 
@@ -153,12 +173,14 @@ Beyond the 3-way comparison, we investigate optimizer behavior on models with >1
 
 ### 4.1 Cross-Evaluation Results
 
-| Model | Params | pyhf NLL | NextStat NLL | Delta | ||grad|| at pyhf min | ||grad|| at NS min |
-|-------|--------|----------|--------------|-------|-----|------|
+| Model | Params | pyhf NLL | NextStat NLL | ΔNLL (NS - pyhf) | ‖grad‖ at pyhf min | ‖grad‖ at NS min |
+|-------|--------|----------|--------------|------------------|--------------------|------------------|
 | simple | 3 | identical | identical | 0.0 | < 1e-6 | < 1e-6 |
 | complex | 8 | identical | identical | 0.0 | < 1e-6 | < 1e-6 |
 | tHu | 184 | 179.485 | **179.404** | **-0.081** | 4.63 | 0.020 |
 | tttt | 249 | — | — | **-0.010** | 1.44 | 0.008 |
+
+For the 249-parameter tttt workspace, we omit absolute NLL values and report only ΔNLL and ‖grad‖.
 
 On models with 184+ parameters, NextStat finds NLL values 0.01-0.08 lower than pyhf. Cross-evaluation confirms objective parity at ~1e-13: the likelihood functions are identical; the difference is purely optimizer quality.
 
@@ -166,11 +188,11 @@ On models with 184+ parameters, NextStat finds NLL values 0.01-0.08 lower than p
 
 The projected gradient norm at the best-fit point is a direct measure of optimizer quality. A value near zero indicates a true stationary point (KKT conditions satisfied). At pyhf's best-fit point on the tHu workspace:
 
-- **||grad|| = 4.63** — not stationary (SLSQP stopped prematurely)
+- **‖grad‖ = 4.63** — not stationary (SLSQP stopped prematurely)
 
 At NextStat's best-fit point:
 
-- **||grad|| = 0.020** — stationary to numerical precision
+- **‖grad‖ = 0.020** — stationary to numerical precision
 
 ### 4.3 Can pyhf Recover the Better Minimum?
 
@@ -178,7 +200,7 @@ When pyhf is initialized at NextStat's best-fit parameters (warm-start), it reco
 
 ### 4.4 Technical Explanation
 
-L-BFGS-B maintains a limited-memory approximation of the inverse Hessian using the most recent *m* = 10 (s, y) pairs. This provides O(mn) per-iteration cost with effective curvature information for problems with hundreds of parameters. SLSQP uses rank-1 Hessian updates, which can lose curvature information in high-dimensional spaces. The practical consequence is premature convergence on landscapes with narrow valleys — common in HistFactory models with correlated nuisance parameters.
+L-BFGS-B maintains a limited-memory approximation of the inverse Hessian using the most recent *m* = 10 (s, y) pairs. This provides O(mn) per-iteration cost with effective curvature information for problems with hundreds of parameters. In practice, SLSQP can struggle on high-dimensional HistFactory likelihoods (tight bounds, correlated nuisance parameters), where the NLL surface often contains narrow valleys; this shows up as premature stopping with a large projected gradient norm.
 
 ---
 
@@ -192,7 +214,7 @@ Profile scan timing (31 mu points, including free fit) on the canonical fixtures
 | multichannel | 1.98 s | 0.26 s | **0.007 s** | **283x** | **37x** |
 | coupled_histosys | 1.76 s | 0.15 s | **0.002 s** | **880x** | **75x** |
 
-NextStat's speed advantage comes from three factors: compiled Rust code (vs. Python interpreter overhead in pyhf), reverse-mode automatic differentiation (vs. finite-difference gradients in pyhf), and a zero-allocation hot path with pre-compiled modifier evaluation.
+NextStat's speed advantage comes from three factors: compiled Rust code (vs. Python interpreter overhead in pyhf), reverse-mode automatic differentiation (vs. finite-difference gradients in pyhf's NumPy backend), and a zero-allocation hot path with pre-compiled modifier evaluation.
 
 For batch toy-based hypothesis testing on the tHu workspace (184 parameters, 1000 toys), GPU acceleration provides an additional 6.4x speedup over the already-fast CPU path on an NVIDIA RTX 4000.
 
@@ -230,7 +252,13 @@ The HistFactory specification is defined by the mathematical model [1], not by a
 
 ### 6.3 Reproducibility
 
-All comparisons can be reproduced:
+All comparisons can be reproduced. The scripts print tool versions (ROOT, SciPy, pyhf, NextStat) and record fit diagnostics; include these in bug reports.
+
+Install NextStat:
+
+```bash
+pip install nextstat
+```
 
 ```bash
 python tests/validate_root_profile_scan.py \
@@ -238,6 +266,8 @@ python tests/validate_root_profile_scan.py \
   --rootdir tests/fixtures/pyhf_xmlimport \
   --include-pyhf --keep
 ```
+
+This command requires ROOT with PyROOT (HistFactory/RooFit/RooStats) available in your environment.
 
 Cross-evaluation and optimizer diagnostics:
 
@@ -255,7 +285,7 @@ The ROOT overestimation of q(mu) on OverallSys models (Section 3.2) and the coup
 
 - **OverallSys bias**: A systematic 0.6% overestimation of q(mu) at mu = 3.0 translates to a slightly tighter exclusion limit than warranted. For most analyses this is negligible compared to statistical uncertainties, but it is a systematic bias that grows with distance from the best-fit point.
 
-- **Coupled HistoSys failure**: The q(mu) = 41.6 vs 19.0 discrepancy at mu = 3.0 is not negligible. An analysis relying on ROOT's value would overestimate the exclusion significance by approximately sqrt(41.6) - sqrt(19.0) = 6.4 - 4.4 = 2.0 sigma units. This is the difference between a 4.4-sigma and a 6.4-sigma exclusion.
+- **Coupled HistoSys failure**: The q(mu) = 41.6 vs 19.0 discrepancy at mu = 3.0 is not negligible. In the asymptotic approximation (Z ≈ sqrt(q)), an analysis relying on ROOT's value would overestimate the exclusion significance by about sqrt(41.6) - sqrt(19.0) = 6.4 - 4.4 = 2.0 sigma units (4.4σ → 6.4σ).
 
 We emphasize that this affects only analyses using coupled HistoSys modifiers at extreme parameter values. The overwhelming majority of HistFactory analyses use OverallSys as the dominant systematic, where ROOT's bias is small.
 
@@ -271,6 +301,14 @@ The cross-evaluation results (Section 4) demonstrate unambiguously that the NLL 
 
 - **Specification-first validation**: Every CI run gates against pyhf's NumPy backend, not against ROOT. If ROOT disagrees, we investigate why — but we don't break our CI to match ROOT's bugs.
 
+### 7.4 Practical Safeguards (Regardless of Tool)
+
+- Treat non-zero fit status / failed covariance as a hard failure; don't publish results from failed fits.
+- Cross-check at least one representative workspace with an independent implementation (pyhf) or cross-evaluate the NLL at best-fit points.
+- Track a convergence metric (e.g., projected gradient norm / KKT residuals) on high-dimensional models.
+- Warm-start conditional fits along a mu scan from neighboring points to reduce optimizer discontinuities.
+- Record tool versions and fit tolerances with every published limit.
+
 ---
 
 ## 8. Conclusion
@@ -279,7 +317,7 @@ We have demonstrated through systematic comparison that:
 
 1. **NextStat and pyhf agree to < 1e-5 on q(mu)** across all canonical HistFactory fixtures and real-world analyses with up to 249 parameters, confirming specification correctness.
 
-2. **ROOT/RooFit exhibits three failure modes**: optimizer non-convergence (coupled HistoSys, status = -1), catastrophic fit divergence (EWK analysis, mu_hat = 4.9e23), and systematic q(mu) overestimation at high signal strengths (OverallSys, up to 0.6%).
+2. **ROOT/RooFit exhibits three failure modes**: optimizer non-convergence (coupled HistoSys, `status = -1`), catastrophic fit divergence (EWK analysis, `mu_hat = 4.9e23`), and systematic q(mu) overestimation at high signal strengths (OverallSys, up to 0.6%).
 
 3. **On large models (>100 parameters)**, NextStat's L-BFGS-B optimizer finds NLL values 0.01-0.08 lower than pyhf's SLSQP, verified by cross-evaluation at ~1e-13 objective parity.
 
@@ -291,7 +329,7 @@ The physics community has long treated ROOT as the gold standard for statistical
 
 ## References
 
-[1] K. Cranmer, G. Lewis, L. Moneta, A. Shandilya, W. Verkerke. "HistFactory: A tool for creating statistical models for use with RooFit and RooStats." CERN-OPEN-2012-016, 2012. arXiv:1007.1727.
+[1] K. Cranmer, G. Lewis, L. Moneta, A. Shibata, W. Verkerke. "HistFactory: A tool for creating statistical models for use with RooFit and RooStats." CERN-OPEN-2012-016, 2012.
 
 [2] G. Cowan, K. Cranmer, E. Gross, O. Vitells. "Asymptotic formulae for likelihood-based tests of new physics." Eur. Phys. J. C 71 (2011) 1554. arXiv:1007.1727.
 

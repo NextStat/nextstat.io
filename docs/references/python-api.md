@@ -253,7 +253,7 @@ These modules live under `nextstat.*` as convenience helpers. Some require optio
 - `nextstat.survival` — high-level survival helpers (parametric right-censoring + Cox PH).
 - `nextstat.econometrics` — robust SE, FE baseline, DiD/event-study, IV/2SLS, and reporting.
 - `nextstat.causal` — propensity + AIPW baselines and sensitivity hooks.
-- `nextstat.gym` — Gymnasium/Gym environments for RL / design-of-experiments (requires `gymnasium` + `numpy`).
+- `nextstat.gym` — Gymnasium/Gym environments for RL / design-of-experiments (requires `gymnasium` + `numpy`). See below.
 - `nextstat.mlops` — fit metrics extraction for experiment loggers (W&B, MLflow, Neptune).
 - `nextstat.interpret` — systematic-impact ranking as ML-style Feature Importance.
 - `nextstat.glm` — regression/GLM convenience wrappers.
@@ -506,6 +506,54 @@ surrogate = train_mlp_surrogate(ds, epochs=50, device="cuda")
 pred = predict_nll(surrogate, np.array(model.parameter_init()))
 ```
 
+## Gymnasium / RL Environment (`nextstat.gym`)
+
+Gymnasium-compatible environment for optimizing a single sample's nominal yields via reinforcement learning. Requires `gymnasium` (or legacy `gym`) + `numpy`.
+
+### `HistFactoryEnv`
+
+```python
+from nextstat.gym import HistFactoryEnv
+
+env = HistFactoryEnv(
+    workspace_json=json_str,
+    channel="SR",
+    sample="signal",
+    reward_metric="z0",       # "nll", "q0", "z0", "qmu", "zmu"
+    mu_test=5.0,              # for qmu/zmu metrics
+    max_steps=128,
+    action_scale=0.05,
+    action_mode="logmul",     # "add" or "logmul"
+    init_noise=0.0,
+    clip_min=1e-12,
+    clip_max=1e12,
+)
+
+obs, info = env.reset(seed=42)
+obs, reward, terminated, truncated, info = env.step(action)
+```
+
+- `observation_space` / `action_space` — standard Gym `Box` spaces (shape = n_bins).
+- `reset(seed=None, options=None)` — reset episode, returns `(observation, info)`.
+- `step(action)` — apply action to signal yields, compute reward, return `(obs, reward, terminated, truncated, info)`.
+
+Compatible with both Gymnasium (5-tuple) and legacy gym (4-tuple) APIs.
+
+### `make_histfactory_env()`
+
+Factory function:
+
+```python
+from nextstat.gym import make_histfactory_env
+
+env = make_histfactory_env(
+    workspace_json,
+    channel="SR",
+    sample="signal",
+    reward_metric="z0",
+)
+```
+
 ## Arrow / Polars Integration
 
 Zero-copy interchange between NextStat and the Arrow columnar ecosystem (PyArrow, Polars, DuckDB, Spark). Backed by Rust `arrow` 57.3 + `parquet` 57.3 crates; the Python ↔ Rust bridge uses Arrow IPC.
@@ -556,6 +604,8 @@ Pure-Python HTTP client for a remote `nextstat-server` instance. Zero native dep
 - `client.close()` — close the connection. Also supports context manager (`with`).
 
 Result types are typed dataclasses: `FitResult`, `RankingResult`, `RankingEntry`, `HealthResult`.
+
+Raises `NextStatServerError(status_code, detail)` on non-2xx HTTP responses.
 
 ```python
 import nextstat.remote as remote

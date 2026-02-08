@@ -218,6 +218,8 @@ kernel void differentiable_nll_grad(
 
             /* Check if this sample+bin is in a signal entry */
             float nom = g_nominal[sample_bin];
+            bool is_signal = false;
+            uint sig_local_bin_candidate = 0;
             uint sig_global_offset = 0;
             for (uint se = 0; se < n_signal_entries; se++) {
                 uint se_sidx = g_signal_sample_indices[se];
@@ -225,8 +227,8 @@ kernel void differentiable_nll_grad(
                 uint se_nbins = g_signal_n_bins_arr[se];
                 if (s == se_sidx && bin >= se_first && bin < se_first + se_nbins) {
                     nom = g_external_signal[sig_global_offset + (bin - se_first)];
-                    has_signal = true;
-                    sig_local_bin = sig_global_offset + (bin - se_first);
+                    is_signal = true;
+                    sig_local_bin_candidate = sig_global_offset + (bin - se_first);
                     break;
                 }
                 sig_global_offset += se_nbins;
@@ -266,7 +268,9 @@ kernel void differentiable_nll_grad(
             float sample_expected = (nom + delta) * factor;
             expected_bin += sample_expected;
 
-            if (has_signal) {
+            if (is_signal) {
+                has_signal = true;
+                sig_local_bin = sig_local_bin_candidate;
                 signal_factor = factor;
             }
         }

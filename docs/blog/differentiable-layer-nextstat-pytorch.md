@@ -57,7 +57,44 @@ NextStat’s differentiable layer addresses both.
 
 ---
 
-## 2. Architecture at a glance (four layers)
+## 2. Notation and objective
+
+We use the standard HistFactory binned likelihood notation:
+
+- Main (observed) bins indexed by $i$.
+- Observed counts $n_i \in \mathbb{N}$.
+- Model expected counts $\nu_i(\mu,\theta; s)$, a sum over samples with multiplicative and additive modifiers.
+- POI $\mu$ (signal strength) and nuisance parameters $\theta$.
+- The “signal histogram” $s \in \mathbb{R}_+^B$ is the vector we want to differentiate with respect to. In an ML loop, $s$ is produced by a neural network + differentiable binning.
+
+The (constrained) negative log-likelihood is:
+
+$$
+\mathrm{NLL}(\mu,\theta; s)
+=
+\sum_{i}\left(\nu_i(\mu,\theta; s) - n_i\log \nu_i(\mu,\theta; s) + \log(n_i!)\right)
+\;+\;\mathrm{constraints}(\theta),
+$$
+
+with the convention that the $n_i\log \nu_i$ term is masked when $n_i=0$ (to avoid $0\cdot\log 0$), and with a small clamp $\nu_i \leftarrow \max(\nu_i, \epsilon)$ to avoid $\log 0$ in floating-point arithmetic.
+
+The discovery statistic is the profile-likelihood ratio test statistic:
+
+$$
+q_0(s)
+=
+2\Bigl[\mathrm{NLL}(\mu=0,\hat\theta_0(s); s) - \mathrm{NLL}(\hat\mu(s),\hat\theta(s); s)\Bigr]_+,
+\qquad
+Z_0(s) = \sqrt{q_0(s)}.
+$$
+
+The goal is to obtain $\partial Z_0/\partial s$ and therefore, by the chain rule, $\partial Z_0/\partial w$ for the neural network weights $w$.
+
+**One-sided discovery convention and differentiability at the boundary.** The $[\cdot]_+$ clipping makes $q_0$ non-differentiable at the boundary where it transitions to zero. NextStat follows the standard one-sided discovery convention used in practice: if $\hat\mu < 0$ or $q_0$ clamps to zero, the returned value is $q_0=0$ and the gradient is set to zero (a valid subgradient choice that avoids pushing the solution into the unphysical negative-$\mu$ region). For $Z_0=\sqrt{q_0}$ we also add a small $\epsilon$ inside the square-root in the PyTorch wrapper to avoid division-by-zero when forming $\partial Z_0/\partial q_0$.
+
+---
+
+## 3. Architecture at a glance (four layers)
 
 Below is the end‑to‑end stack that turns a network output into a differentiable $Z_0$ objective:
 
@@ -82,7 +119,7 @@ Implementation anchors:
 - **Profiled objective + envelope gradient:** `crates/ns-inference/src/differentiable.rs`
 - **PyTorch autograd wrappers, SoftHistogram, SignificanceLoss:** `bindings/ns-py/python/nextstat/torch.py`
 
-### 2.1 What actually happens when you call `loss.backward()`
+### 3.1 What actually happens when you call `loss.backward()`
 
 It helps to make the cross‑language control flow explicit.
 
@@ -108,7 +145,7 @@ It helps to make the cross‑language control flow explicit.
 
 ---
 
-## 3. Layer 1 — SoftHistogram: making binning differentiable
+## 4. Layer 1 — SoftHistogram: making binning differentiable
 
 HistFactory consumes **binned yields**, but a neural network emits **continuous scores**. A hard histogram
 
@@ -120,7 +157,7 @@ is not differentiable w.r.t. $x_k$.
 
 NextStat’s `SoftHistogram` replaces the indicator function with a smooth approximation. Two modes are implemented:
 
-### 3.1 Gaussian KDE mode (default)
+### 4.1 Gaussian KDE mode (default)
 
 Each event contributes softly to all bins via a Gaussian kernel centered at the bin center:
 
@@ -132,7 +169,7 @@ $$
 
 with per‑event normalization $\sum_j \tilde w_{k j}=1$ to keep the total contribution stable.
 
-### 3.2 Sigmoid‑edge mode (faster)
+### 4.2 Sigmoid‑edge mode (faster)
 
 Approximate bin membership as a difference of two sigmoids:
 
@@ -146,7 +183,7 @@ Both modes produce a differentiable tensor of bin counts, which becomes the “s
 
 ---
 
-## 4. Layer 2 — the fused GPU kernel: NLL + analytical gradients
+## 5. Layer 2 — the fused GPU kernel: NLL + analytical gradients
 
 The core performance and differentiability primitive is a fused kernel that evaluates:
 
@@ -155,7 +192,7 @@ The core performance and differentiability primitive is a fused kernel that eval
    - nuisance parameters $\theta$ (for L‑BFGS‑B), and
    - signal yields $s$ (for backpropagation to the network).
 
-### 4.1 HistFactory expected yields and NLL
+### 5.1 HistFactory expected yields and NLL
 
 For each main bin $i$:
 
@@ -177,9 +214,29 @@ $$
 
 with a small clamp $\nu_i \leftarrow \max(\nu_i, 10^{-10})$ to avoid $\log 0$.
 
-### 4.2 The key gradient identity
+### 5.2 Deriving the key gradient identity
 
-Let $w_i = \partial \mathrm{NLL}_i / \partial \nu_i = 1 - n_i/\nu_i$. For the signal yield $s_i$ (nominal of the signal sample in bin $i$),
+For one bin $i$ (ignoring constraints for the moment), define:
+
+$$
+\ell_i(\nu_i) = \nu_i - n_i\log \nu_i + \log(n_i!).
+$$
+
+Then:
+
+$$
+\frac{\partial \ell_i}{\partial \nu_i}
+=
+1 - \frac{n_i}{\nu_i}.
+$$
+
+This is the scalar “weight” used throughout the kernel:
+
+$$
+w_i \equiv \frac{\partial \mathrm{NLL}}{\partial \nu_i} = 1 - \frac{n_i}{\nu_i}.
+$$
+
+For the signal yield $s_i$ (nominal of the signal sample in bin $i$),
 
 $$
 \frac{\partial \mathrm{NLL}}{\partial s_i}
@@ -189,7 +246,7 @@ $$
 
 This is exactly what the kernel writes into the signal gradient buffer.
 
-### 4.3 Zero‑copy for PyTorch CUDA tensors (Phase 1)
+### 5.3 Zero‑copy for PyTorch CUDA tensors (Phase 1)
 
 For the fixed‑parameter differentiable NLL layer, PyTorch owns the signal tensor on GPU. NextStat never copies it:
 
@@ -207,7 +264,7 @@ double w = 1.0 - obs / expected_bin;
 atomicAdd(&g_grad_signal_out[sig_local_bin], w * signal_factor);
 ```
 
-### 4.4 Systematic modifiers covered
+### 5.4 Systematic modifiers covered
 
 The fused kernel implements all 7 HistFactory modifier types used in NextStat’s GPU contract:
 
@@ -223,7 +280,7 @@ and includes gradients for:
 
 ---
 
-## 5. Layer 3 — Rust GPU sessions: keep the model on device
+## 6. Layer 3 — Rust GPU sessions: keep the model on device
 
 The CUDA kernel is only useful if we can call it repeatedly (hundreds of times per forward pass for profiled objectives) without paying setup costs.
 
@@ -235,7 +292,7 @@ NextStat does this by serializing a HistFactory model once into flat GPU buffers
 - modifier data (e.g. NormSys coefficients, HistoSys deltas),
 - constraint tables.
 
-### 5.1 `DifferentiableAccelerator` (CUDA)
+### 6.1 `DifferentiableAccelerator` (CUDA)
 
 `crates/ns-compute/src/differentiable.rs` implements `DifferentiableAccelerator`:
 
@@ -248,7 +305,7 @@ NextStat does this by serializing a HistFactory model once into flat GPU buffers
 
 The build script compiles the differentiable kernel *without* `--use_fast_math` to avoid introducing gradient noise that can harm neural network training stability (`crates/ns-compute/build.rs`).
 
-### 5.2 Multi‑channel signal support
+### 6.2 Multi‑channel signal support
 
 In real analyses, the “signal sample” often appears in multiple channels (SR/CR/VR). NextStat represents this as a list of `(sample_idx, first_bin, n_bins)` entries.
 
@@ -262,13 +319,13 @@ The kernel uses these entries to map a main‑bin index $i$ to the correct offse
 
 ---
 
-## 6. Layer 4 — profiled significance + envelope theorem (no “differentiate through argmin”)
+## 7. Layer 4 — profiled significance + envelope theorem (no “differentiate through argmin”)
 
 Profiling introduces a nested optimization problem. Naively, one might unroll the optimizer iterations and backpropagate through them. That is expensive, memory‑heavy, and yields gradients that depend on the chosen optimizer and stopping criteria.
 
 NextStat takes the classical alternative: **envelope theorem**.
 
-### 6.1 Discovery statistic as difference of two profiled optima
+### 7.1 Discovery statistic as difference of two profiled optima
 
 NextStat’s `ProfiledDifferentiableSession` computes:
 
@@ -282,7 +339,7 @@ Both are found with **bounded L‑BFGS‑B on CPU**, where each function/gradien
 
 Warm‑starting the constrained fit from the free fit makes this practical.
 
-### 6.2 Envelope gradient for $q_0$
+### 7.2 Envelope gradient for $q_0$ (proposition + proof sketch)
 
 For an optimum value function
 
@@ -296,7 +353,18 @@ $$
 \frac{dV}{ds} = \left.\frac{\partial f}{\partial s}\right|_{\theta=\hat\theta(s)}.
 $$
 
-Intuitively: at the optimum, $\partial f / \partial \theta = 0$, so the implicit dependence $\theta(s)$ does not contribute to the total derivative.
+**Proof sketch (unconstrained case).** Let $\hat\theta(s)$ be a local minimizer and assume $f$ is continuously differentiable. Define $V(s)=f(\hat\theta(s),s)$. By the chain rule,
+
+$$
+\frac{dV}{ds}
+=
+\frac{\partial f}{\partial s}(\hat\theta(s),s)
+\underbrace{\frac{\partial f}{\partial \theta}(\hat\theta(s),s)}_{=\,0}\cdot \frac{d\hat\theta}{ds}.
+$$
+
+At a (first-order) optimum, $\partial f/\partial\theta = 0$, so the second term vanishes and we obtain $dV/ds=\partial f/\partial s$ evaluated at the optimizer.
+
+**Constrained / bounded case (L‑BFGS‑B).** With box constraints, the correct statement is in terms of KKT conditions: at the solution, the *projected* gradient is zero and complementarity holds. The same envelope conclusion holds under standard constraint qualifications; operationally, it means we can treat the fitted parameters as constants when differentiating w.r.t. the external signal histogram.
 
 Applying this to both terms in $q_0$ yields a remarkably simple exact gradient:
 
@@ -322,11 +390,11 @@ This gradient is **exact at convergence**. If the optimizer fails to converge, N
 
 ---
 
-## 7. PyTorch autograd: wiring gradients into backprop
+## 8. PyTorch autograd: wiring gradients into backprop
 
 On the Python side, NextStat exposes these objectives as `torch.autograd.Function` wrappers.
 
-### 7.1 Fixed‑parameter differentiable NLL (Phase 1)
+### 8.1 Fixed‑parameter differentiable NLL (Phase 1)
 
 The forward pass:
 
@@ -342,7 +410,9 @@ $$
 \frac{\partial L}{\partial s} = \frac{\partial L}{\partial \mathrm{NLL}}\cdot\frac{\partial \mathrm{NLL}}{\partial s}.
 $$
 
-### 7.2 Profiled $q_0$, $Z_0$, and the `SignificanceLoss` convenience API
+**Correctness detail:** because the kernel accumulates into `grad_signal` with `atomicAdd`, the output gradient buffer must be initialized to zeros. The Python wrapper does `grad_signal = torch.zeros_like(signal)` for this reason.
+
+### 8.2 Profiled $q_0$, $Z_0$, and the `SignificanceLoss` convenience API
 
 The blog‑friendly API is:
 
@@ -362,7 +432,7 @@ optimizer.step()
 
 `SignificanceLoss` simply wraps `profiled_z0_loss` and negates it so you can maximize $Z_0$ with standard gradient descent.
 
-### 7.3 Why the explicit `torch.cuda.synchronize()` calls?
+### 8.3 Why the explicit `torch.cuda.synchronize()` calls?
 
 PyTorch and NextStat launch kernels on different CUDA streams. Without a barrier, the NextStat kernel might read a signal tensor that PyTorch has not finished writing, or PyTorch might read a gradient tensor that NextStat has not finished writing.
 
@@ -370,7 +440,20 @@ The current implementation uses full `torch.cuda.synchronize()` before and after
 
 ---
 
-## 8. Metal backend (Apple Silicon): same algorithm, different constraints
+## 9. Experimental validation (evidence)
+
+For a differentiable inference layer, the *gradient* is the product. NextStat validates gradients in two ways:
+
+1. **Unit/integration tests** compare analytical gradients against central finite differences on GPU:
+   - Fixed-parameter NLL signal gradient: `tests/python/test_torch_layer.py`
+   - Profiled q₀/qμ envelope gradients: `tests/python/test_differentiable_profiled_q0.py`
+2. **Benchmark fixtures** report maximum absolute gradient error vs finite differences; for the differentiable NLL layer this is **2.07e‑9** on the benchmark workspace (`docs/benchmarks.md`).
+
+These checks are designed to catch both algebraic mistakes in the fused kernel and subtle issues such as missing stream synchronization or non-zero-initialized gradient buffers.
+
+---
+
+## 10. Metal backend (Apple Silicon): same algorithm, different constraints
 
 Apple GPUs do not provide hardware `f64` arithmetic in the same way NVIDIA GPUs do, so NextStat’s Metal backend:
 
@@ -383,20 +466,18 @@ Empirically, NLL parity vs the CPU f64 reference mode is at the ~1e‑6 relative
 
 ---
 
-## 9. Validation and performance notes
+## 11. Performance notes (what actually dominates)
 
-Two things must be true for a differentiable inference layer to be trustworthy:
+At a high level, the differentiable layer is engineered so that:
 
-1. **Numerical correctness** (parity of NLL and fits), and
-2. **Gradient correctness** (analytical gradients match finite differences).
+- per-iteration likelihood evaluation and gradients are computed in one fused GPU kernel launch, and
+- CPU work is limited to coordinating the profiled fit (L‑BFGS‑B state updates).
 
-NextStat validates gradients with finite‑difference checks; for the differentiable NLL layer, the maximum absolute error vs finite differences is reported as **2.07e‑9** on the benchmark fixture (`docs/benchmarks.md`).
-
-In terms of runtime, the differentiable layer is designed so that the expensive computation stays on the GPU, while CPU work is limited to orchestrating the profiled fit (L‑BFGS‑B state updates).
+In practice, the profiled objectives are more expensive because they require two profile fits per forward pass. This is still often acceptable in modern training loops because the profiled computation runs on a small histogram (O(10–1000) bins), not per-event data, and because warm-started fits converge quickly in typical workspaces.
 
 ---
 
-## 10. Limitations and future work
+## 12. Limitations and future work
 
 - **Derived inference quantities** (e.g. $\mu_\text{up}$, CLs bands) generally require differentiating through a root‑finder and/or implicit differentiation through the profiled solution. The envelope theorem is sufficient for $q_0$ and $q_\mu$, but not for all downstream statistics.
 - **CUDA stream interop** can reduce synchronization overhead.
@@ -414,3 +495,23 @@ NextStat turns a historically non‑differentiable HEP inference pipeline into a
 - using the envelope theorem to obtain exact gradients for profiled test statistics without differentiating through the optimizer.
 
 This enables training neural networks *directly on physics significance*—optimizing what the analysis ultimately cares about, not a surrogate proxy.
+
+---
+
+## References
+
+Suggested background reading (non-exhaustive):
+
+1. HistFactory / pyhf ecosystem (conceptual baseline for the likelihood model and modifiers).
+2. neos (gradhep): End-to-end optimized summary statistics in HEP (arXiv:2203.05570).
+3. Differentiating a HEP analysis pipeline (Scikit-HEP + JAX, arXiv:2508.17802).
+4. Differentiable histogramming / soft binning methods (e.g. arXiv:2012.06311).
+5. Envelope theorem / value-function differentiation (e.g. Danskin-type results; constrained/KKT variants for box constraints).
+6. Differentiable programming overview (arXiv:2403.14606).
+
+The NextStat-specific implementation is fully documented in-repo and directly traceable to:
+
+- `crates/ns-compute/kernels/differentiable_nll_grad.cu` (CUDA kernel)
+- `crates/ns-compute/src/differentiable.rs` (CUDA session / PTX loading / zero-copy pointer plumbing)
+- `crates/ns-inference/src/differentiable.rs` (profiled q₀/qμ + envelope gradient)
+- `bindings/ns-py/python/nextstat/torch.py` (PyTorch autograd + SoftHistogram + SignificanceLoss)

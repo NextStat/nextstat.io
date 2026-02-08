@@ -99,8 +99,15 @@ class TestNextStatNLL:
         nominal = _load_signal_nominal(WS_PATH, "singlechannel", "signal")
         signal = torch.tensor(nominal, dtype=torch.float64, device="cuda", requires_grad=True)
 
+        # Use nontrivial POI value so dNLL/d(signal) must scale with the signal sample factor.
+        # This catches bugs where the kernel accidentally uses a non-signal sample factor.
+        poi_idx = model.poi_index()
+        assert poi_idx is not None, "Workspace has no POI"
+        params_tensor = torch.tensor(session.parameter_init(), dtype=torch.float64)
+        params_tensor[poi_idx] = 2.0
+
         # Analytical gradient
-        loss = nll_loss(signal, session)
+        loss = nll_loss(signal, session, params=params_tensor)
         loss.backward()
         analytical_grad = signal.grad.clone()
 
@@ -108,14 +115,14 @@ class TestNextStatNLL:
         eps = 1e-5
         fd_grad = torch.zeros_like(signal)
         for i in range(len(nominal)):
-            signal_plus = signal.data.clone()
+            signal_plus = signal.detach().clone()
             signal_plus[i] += eps
-            signal_minus = signal.data.clone()
+            signal_minus = signal.detach().clone()
             signal_minus[i] -= eps
 
             # Need fresh session calls (no grad tracking)
-            nll_plus = nll_loss(signal_plus.detach(), session).item()
-            nll_minus = nll_loss(signal_minus.detach(), session).item()
+            nll_plus = nll_loss(signal_plus, session, params=params_tensor).item()
+            nll_minus = nll_loss(signal_minus, session, params=params_tensor).item()
             fd_grad[i] = (nll_plus - nll_minus) / (2 * eps)
 
         # Compare
