@@ -36,7 +36,8 @@
             "nextstat_ranking",
             "nextstat_discovery_asymptotic",
             "nextstat_scan",
-            "nextstat_workspace_audit"
+            "nextstat_workspace_audit",
+            "nextstat_read_root_histogram"
           ]
         },
         "nextstat_version": { "type": ["string", "null"] },
@@ -169,6 +170,22 @@
         "p0": { "type": "number" }
       },
       "additionalProperties": true
+    },
+    "root_histogram_result": {
+      "type": "object",
+      "required": ["name", "title", "bin_edges", "bin_content", "sumw2", "underflow", "overflow", "underflow_sumw2", "overflow_sumw2"],
+      "properties": {
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "bin_edges": { "type": "array", "items": { "type": "number" } },
+        "bin_content": { "type": "array", "items": { "type": "number" } },
+        "sumw2": { "type": "array", "items": { "type": "number" } },
+        "underflow": { "type": "number" },
+        "overflow": { "type": "number" },
+        "underflow_sumw2": { "type": "number" },
+        "overflow_sumw2": { "type": "number" }
+      },
+      "additionalProperties": true
     }
   },
   "allOf": [
@@ -259,7 +276,16 @@
         "required": ["ok", "meta"]
       },
       "then": { "properties": { "result": { "$ref": "#/$defs/discovery_asymptotic_result" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": { "const": true },
+          "meta": { "properties": { "tool_name": { "const": "nextstat_read_root_histogram" } }, "required": ["tool_name"] }
+        },
+        "required": ["ok", "meta"]
+      },
+      "then": { "properties": { "result": { "$ref": "#/$defs/root_histogram_result" } } }
     }
   ]
 }
-

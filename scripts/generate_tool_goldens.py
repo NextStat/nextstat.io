@@ -26,6 +26,13 @@ def main() -> None:
     ws = _load_text("tests/fixtures/simple_workspace.json")
 
     calls: list[tuple[str, dict[str, Any]]] = [
+        (
+            "nextstat_read_root_histogram",
+            {
+                "root_path": str(_repo_root() / "tests" / "fixtures" / "simple_histos.root"),
+                "hist_path": "hist1",
+            },
+        ),
         ("nextstat_workspace_audit", {"workspace_json": ws}),
         ("nextstat_fit", {"workspace_json": ws}),
         ("nextstat_hypotest", {"workspace_json": ws, "mu": 1.0}),
@@ -54,4 +61,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

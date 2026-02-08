@@ -6,8 +6,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_discovery_asymptotic"
       },
@@ -26,8 +27,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_fit"
       },
@@ -60,8 +62,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_hypotest"
       },
@@ -78,8 +81,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_hypotest_toys"
       },
@@ -103,8 +107,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_ranking"
       },
@@ -133,12 +138,30 @@
       },
       "schema_version": "nextstat.tool_result.v1"
     },
+    "nextstat_read_root_histogram": {
+      "error": {
+        "message": "Unknown tool: 'nextstat_read_root_histogram'. Available: ['nextstat_fit', 'nextstat_hypotest', 'nextstat_hypotest_toys', 'nextstat_upper_limit', 'nextstat_ranking', 'nextstat_discovery_asymptotic', 'nextstat_scan', 'nextstat_workspace_audit']",
+        "type": "ValueError"
+      },
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "nextstat_version": "0.1.0",
+        "threads_applied": true,
+        "threads_requested": 1,
+        "tool_name": "nextstat_read_root_histogram"
+      },
+      "ok": false,
+      "result": null,
+      "schema_version": "nextstat.tool_result.v1"
+    },
     "nextstat_scan": {
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_scan"
       },
@@ -191,8 +214,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_upper_limit"
       },
@@ -214,8 +238,9 @@
       "error": null,
       "meta": {
         "deterministic": true,
-        "eval_mode": "fast",
+        "eval_mode": "parity",
         "nextstat_version": "0.1.0",
+        "threads_applied": false,
         "threads_requested": 1,
         "tool_name": "nextstat_workspace_audit"
       },

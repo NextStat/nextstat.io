@@ -53,7 +53,7 @@ NextStat supports all seven modifier types defined in the pyhf JSON schema:
 | NormSys | `normsys` | 1 | Gaussian |
 | HistoSys | `histosys` | 1 | Gaussian |
 | ShapeSys | `shapesys` | $N_\text{bins}$ | Poisson ($\gamma\tau$) |
-| StatError | `staterror` | $N_\text{bins}$ | Gaussian |
+| StatError | `staterror` | $N_\text{bins}$ | Gaussian (default), optionally Gamma via measurement parameter constraint metadata |
 | ShapeFactor | `shapefactor` | $N_\text{bins}$ | None |
 | Lumi | `lumi` | 1 | Gaussian |
 

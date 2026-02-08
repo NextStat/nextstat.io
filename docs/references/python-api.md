@@ -17,7 +17,7 @@ Notes:
 ### Model construction
 
 - `nextstat.from_pyhf(json_str) -> HistFactoryModel` — create model from pyhf JSON workspace.
-- `nextstat.from_histfactory(xml_path) -> HistFactoryModel` — create model from HistFactory XML.
+- `nextstat.from_histfactory_xml(xml_path) -> HistFactoryModel` — create model from HistFactory XML.
 - `nextstat.workspace_audit(json_str) -> dict` — audit pyhf workspace for compatibility (counts channels, samples, modifiers; flags unsupported features).
 - `nextstat.apply_patchset(workspace_json_str, patchset_json_str, patch_name=None) -> str` — apply a pyhf patchset.
 - `nextstat.read_root_histogram(root_path, hist_path) -> dict` — read a TH1 histogram from a ROOT file. Returns `{name, title, bin_edges, bin_content, sumw2, underflow, overflow}`.
@@ -25,7 +25,12 @@ Notes:
 
 Notes on HistFactory XML ingest (`from_histfactory` and `nextstat import histfactory`):
 - `ShapeSys` histograms are treated as **relative** per-bin uncertainties and converted to absolute `sigma_abs = rel * nominal`.
-- Channel `StatErrorConfig ConstraintType="Poisson"` maps `StatError Activate=True` to Barlow-Beeston `shapesys` (per-sample).
+- `StatError` histograms are treated as **absolute** per-bin uncertainties (`sigma_abs`).
+- `StatError` follows channel `<StatErrorConfig ConstraintType=...>`:
+  - `ConstraintType="Poisson"` => Barlow-Beeston `shapesys` (per-sample, name `staterror_<channel>_<sample>`).
+  - `ConstraintType="Gaussian"` => `staterror` (per-channel, name `staterror_<channel>`).
+  - If `<StatErrorConfig>` is omitted, NextStat matches ROOT/HistFactory default behavior by importing `staterror` and attaching per-bin
+    `Gamma` constraint metadata to `measurement.config.parameters` entries named `staterror_<channel>[i]` (non-standard extension).
 - Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`, and `LumiRelErr` is surfaced via
   measurement parameter config (`auxdata=[1]`, `sigmas=[LumiRelErr]`).
 - `NormFactor Val/Low/High` is surfaced via measurement parameter config (`inits` and `bounds`).
@@ -474,8 +479,9 @@ fig.savefig("ranking.png")
 
 LLM tool definitions for AI-driven statistical analysis. Compatible with OpenAI function calling, LangChain, and MCP (Model Context Protocol).
 
-- `nextstat.tools.get_toolkit() -> list[dict]` — OpenAI-compatible tool definitions for 8 operations: `nextstat_fit`, `nextstat_hypotest`, `nextstat_hypotest_toys`, `nextstat_upper_limit`, `nextstat_ranking`, `nextstat_discovery_asymptotic`, `nextstat_scan`, `nextstat_workspace_audit`.
+- `nextstat.tools.get_toolkit() -> list[dict]` — OpenAI-compatible tool definitions for 9 operations: `nextstat_fit`, `nextstat_hypotest`, `nextstat_hypotest_toys`, `nextstat_upper_limit`, `nextstat_ranking`, `nextstat_discovery_asymptotic`, `nextstat_scan`, `nextstat_workspace_audit`, `nextstat_read_root_histogram`.
 - `nextstat.tools.execute_tool(name, arguments) -> dict` — execute a tool call by name. Returns a stable envelope: `{schema_version, ok, result, error, meta}`.
+- `nextstat.tools.execute_tool_raw(name, arguments) -> dict` — execute a tool call by name, returning only the raw payload (no envelope).
 - `nextstat.tools.get_langchain_tools() -> list[StructuredTool]` — LangChain adapter (requires `langchain-core`).
 - `nextstat.tools.get_mcp_tools() -> list[dict]` — MCP tool definitions (`name`, `description`, `inputSchema`).
 - `nextstat.tools.get_tool_names() -> list[str]` — list available tool names.

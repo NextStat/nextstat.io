@@ -52,6 +52,8 @@ def _normalize_envelope(x: dict[str, Any]) -> dict[str, Any]:
     meta = x.get("meta", {})
     if isinstance(meta, dict):
         meta.pop("nextstat_version", None)
+        # May differ depending on whether Rayon was already initialized in-process.
+        meta.pop("threads_applied", None)
     # Optimizer iteration counts are not a stable contract and can change with
     # benign improvements to stopping rules or line-search behavior.
     def _drop_n_iter(v: Any) -> Any:
@@ -95,7 +97,17 @@ def test_tool_goldens_simple_workspace_deterministic():
 
     for name, golden_env in tools.items():
         # Reconstruct args used by generator.
-        args: dict[str, Any] = {"workspace_json": ws, "execution": {"deterministic": True}}
+        args: dict[str, Any] = {"execution": {"deterministic": True}}
+        if name == "nextstat_read_root_histogram":
+            args.update(
+                {
+                    "root_path": str(_repo_root() / "tests" / "fixtures" / "simple_histos.root"),
+                    "hist_path": "hist1",
+                }
+            )
+        else:
+            args["workspace_json"] = ws
+
         if name == "nextstat_hypotest":
             args["mu"] = 1.0
         elif name == "nextstat_hypotest_toys":
@@ -106,7 +118,7 @@ def test_tool_goldens_simple_workspace_deterministic():
             args.update({"top_n": 5})
         elif name == "nextstat_scan":
             args.update({"start": 0.0, "stop": 2.0, "points": 5})
-        elif name in ("nextstat_workspace_audit", "nextstat_fit", "nextstat_discovery_asymptotic"):
+        elif name in ("nextstat_workspace_audit", "nextstat_fit", "nextstat_discovery_asymptotic", "nextstat_read_root_histogram"):
             pass
         else:
             raise AssertionError(f"unknown golden tool name: {name}")

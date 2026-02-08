@@ -322,6 +322,31 @@ _TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_read_root_histogram",
+            "description": (
+                "Read a TH1 histogram from a ROOT file, including sumw2 and under/overflow bins. "
+                "Returns bin edges, bin content, and flow bins for downstream analysis."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root_path": {
+                        "type": "string",
+                        "description": "Path to a ROOT file on disk.",
+                    },
+                    "hist_path": {
+                        "type": "string",
+                        "description": "Histogram path/key inside the ROOT file (e.g. 'dir/hist').",
+                    },
+                    "execution": _EXECUTION_SCHEMA,
+                },
+                "required": ["root_path", "hist_path"],
+            },
+        },
+    },
 ]
 
 
@@ -362,7 +387,7 @@ def get_tool_schema(name: str) -> Optional[dict[str, Any]]:
     """
     for t in _TOOLS:
         if t["function"]["name"] == name:
-            return dict(t)
+            return copy.deepcopy(t)
     return None
 
 
@@ -565,6 +590,12 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         result = nextstat.workspace_audit(ws_json)
         return dict(result)
 
+    if name == "nextstat_read_root_histogram":
+        root_path = arguments["root_path"]
+        hist_path = arguments["hist_path"]
+        result = nextstat.read_root_histogram(root_path, hist_path)
+        return dict(result)
+
     raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")
 
 
@@ -607,9 +638,15 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
     if exec_meta is not None:
         envelope["meta"]["deterministic"] = exec_meta.get("deterministic")
-        envelope["meta"]["eval_mode"] = exec_meta.get("eval_mode_effective")
-        envelope["meta"]["threads_requested"] = exec_meta.get("threads_requested")
-        envelope["meta"]["threads_applied"] = exec_meta.get("threads_applied")
+        ev = exec_meta.get("eval_mode_effective")
+        if ev is not None:
+            envelope["meta"]["eval_mode"] = ev
+        tr = exec_meta.get("threads_requested")
+        if tr is not None:
+            envelope["meta"]["threads_requested"] = tr
+        ta = exec_meta.get("threads_applied")
+        if ta is not None:
+            envelope["meta"]["threads_applied"] = ta
 
     return envelope
 
