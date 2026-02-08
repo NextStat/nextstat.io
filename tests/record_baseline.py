@@ -48,8 +48,17 @@ from typing import Any, Dict, List, Optional, Tuple
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
+def _local_nextstat_extension_present(repo: Path) -> bool:
+    pkg = repo / "bindings" / "ns-py" / "python" / "nextstat"
+    if not pkg.exists():
+        return False
+    pats = ("_core.*.so", "_core.*.pyd", "_core.*.dylib", "_core.*.dll")
+    return any(pkg.glob(p) for p in pats)
+
 def _ensure_nextstat_import_path(repo: Path) -> None:
     """Ensure `import nextstat` works in this process (not just subprocesses)."""
+    if not (_local_nextstat_extension_present(repo) or os.environ.get("NEXTSTAT_FORCE_PYTHONPATH") == "1"):
+        return
     add = repo / "bindings" / "ns-py" / "python"
     add_s = str(add)
     if add_s not in sys.path:
@@ -157,6 +166,8 @@ def collect_environment(repo: Path) -> Dict[str, Any]:
 
 def _with_py_path(env: Dict[str, str]) -> Dict[str, str]:
     repo = _repo_root()
+    if not (_local_nextstat_extension_present(repo) or os.environ.get("NEXTSTAT_FORCE_PYTHONPATH") == "1"):
+        return env
     add = str(repo / "bindings" / "ns-py" / "python")
     cur = env.get("PYTHONPATH", "")
     if cur:

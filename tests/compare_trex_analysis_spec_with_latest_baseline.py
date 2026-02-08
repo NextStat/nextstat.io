@@ -37,12 +37,24 @@ import yaml
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
+def _local_nextstat_extension_present(repo: Path) -> bool:
+    pkg = repo / "bindings" / "ns-py" / "python" / "nextstat"
+    if not pkg.exists():
+        return False
+    pats = ("_core.*.so", "_core.*.pyd", "_core.*.dylib", "_core.*.dll")
+    return any(pkg.glob(p) for p in pats)
+
 
 def _ensure_import_paths() -> None:
     repo = _repo_root()
     tests_py = repo / "tests" / "python"
     bindings = repo / "bindings" / "ns-py" / "python"
-    for p in [tests_py, bindings]:
+    paths = [tests_py]
+    if _local_nextstat_extension_present(repo) or os.environ.get("NEXTSTAT_FORCE_PYTHONPATH") == "1":
+        # Only add local bindings path if the in-tree compiled extension is present.
+        # Otherwise we'd shadow an installed wheel (CI) and break `import nextstat`.
+        paths.append(bindings)
+    for p in paths:
         ps = str(p)
         if ps not in sys.path:
             sys.path.insert(0, ps)
@@ -57,6 +69,8 @@ from _trex_baseline_compare import Tol, compare_baseline_v0, format_report  # ty
 
 def _with_py_path(env: Dict[str, str]) -> Dict[str, str]:
     repo = _repo_root()
+    if not (_local_nextstat_extension_present(repo) or os.environ.get("NEXTSTAT_FORCE_PYTHONPATH") == "1"):
+        return env
     add = str(repo / "bindings" / "ns-py" / "python")
     cur = env.get("PYTHONPATH", "")
     if cur:

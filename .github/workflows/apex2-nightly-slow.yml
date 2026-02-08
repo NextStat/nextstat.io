@@ -54,7 +54,7 @@ jobs:
       - name: Install Python package + deps
         run: |
           pip install bindings/ns-py/target/wheels/*.whl
-          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6"
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "matplotlib>=3.9"
 
       - name: Run Apex2 master report (slow suites enabled)
         run: |
@@ -72,9 +72,20 @@ jobs:
             --sbc-warmup "${{ inputs.sbc_warmup || '200' }}" \
             --sbc-samples "${{ inputs.sbc_samples || '200' }}"
 
+      - name: Build CLI (for validation-report)
+        run: cargo build --release -p ns-cli
+
+      - name: Render validation pack (JSON + PDF)
+        run: |
+          target/release/nextstat validation-report \
+            --apex2 artifacts/apex2_master_report.json \
+            --workspace tests/fixtures/complex_workspace.json \
+            --out artifacts/validation_report.json \
+            --pdf artifacts/validation_report.pdf \
+            --deterministic
+
       - name: Upload Apex2 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: apex2-nightly-slow
-          path: artifacts/*.json
-
+          path: artifacts/*

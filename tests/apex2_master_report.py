@@ -35,11 +35,24 @@ from _apex2_json import write_report_json
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
+def _local_nextstat_extension_present(repo: Path) -> bool:
+    pkg = repo / "bindings" / "ns-py" / "python" / "nextstat"
+    if not pkg.exists():
+        return False
+    # If a compiled extension is present in-tree (common for local dev via `maturin develop`),
+    # prefer it for subprocess runs. In CI we typically install a wheel, so injecting
+    # `bindings/ns-py/python` into PYTHONPATH would shadow the wheel and break imports.
+    pats = ("_core.*.so", "_core.*.pyd", "_core.*.dylib", "_core.*.dll")
+    return any(pkg.glob(p) for p in pats)
+
 
 def _with_py_path(env: Dict[str, str]) -> Dict[str, str]:
+    repo = _repo_root()
+    if not (_local_nextstat_extension_present(repo) or os.environ.get("NEXTSTAT_FORCE_PYTHONPATH") == "1"):
+        return env
+
     # Ensure the editable python package is importable for subprocess calls.
     # Prefer to preserve existing PYTHONPATH order.
-    repo = _repo_root()
     add = str(repo / "bindings" / "ns-py" / "python")
     cur = env.get("PYTHONPATH", "")
     if cur:

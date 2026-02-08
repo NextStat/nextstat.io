@@ -340,23 +340,54 @@ pub fn cmd_validation_report(
         };
         let python = python.cloned().unwrap_or(default_python);
 
-        let mut pythonpath = std::ffi::OsString::new();
-        pythonpath.push("bindings/ns-py/python");
-        if let Some(existing) = std::env::var_os("PYTHONPATH")
-            && !existing.is_empty()
-        {
-            pythonpath.push(":");
-            pythonpath.push(existing);
-        }
-
         // Matplotlib may try to write cache/config under $HOME; in restricted environments this
         // can fail or create noisy warnings. Force a writable, repo-local cache dir.
         let mplconfigdir = PathBuf::from("tmp/mplconfig");
         let _ = std::fs::create_dir_all(&mplconfigdir);
 
-        let status = Command::new(&python)
-            .env("PYTHONPATH", pythonpath)
-            .env("MPLCONFIGDIR", &mplconfigdir)
+        // Only inject repo-local Python sources when the in-tree compiled extension exists.
+        // Otherwise this would shadow an installed wheel (CI / end users) and break imports.
+        let local_ext_present = {
+            let pkg = PathBuf::from("bindings/ns-py/python/nextstat");
+            if pkg.is_dir() {
+                std::fs::read_dir(pkg)
+                    .ok()
+                    .and_then(|it| {
+                        for e in it.flatten() {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            if name.starts_with("_core.")
+                                && (name.ends_with(".so")
+                                    || name.ends_with(".pyd")
+                                    || name.ends_with(".dylib")
+                                    || name.ends_with(".dll"))
+                            {
+                                return Some(());
+                            }
+                        }
+                        None
+                    })
+                    .is_some()
+            } else {
+                false
+            }
+        };
+        let force_py_path = std::env::var("NEXTSTAT_FORCE_PYTHONPATH").ok().as_deref() == Some("1");
+
+        let mut py = Command::new(&python);
+        py.env("MPLCONFIGDIR", &mplconfigdir);
+        if local_ext_present || force_py_path {
+            let mut pythonpath = std::ffi::OsString::new();
+            pythonpath.push("bindings/ns-py/python");
+            if let Some(existing) = std::env::var_os("PYTHONPATH")
+                && !existing.is_empty()
+            {
+                pythonpath.push(":");
+                pythonpath.push(existing);
+            }
+            py.env("PYTHONPATH", pythonpath);
+        }
+
+        let status = py
             .arg("-m")
             .arg("nextstat.validation_report")
             .arg("render")
