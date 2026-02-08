@@ -83,6 +83,19 @@ python3 scripts/benchmarks/write_replication_report.py \
 
 Schema: `docs/schemas/benchmarks/replication_report_v1.schema.json`.
 
+## Optional: One-command bundle helper
+
+To generate a `.replication/` bundle folder (replication report + digest + optional signature) in one command:
+
+```bash
+bash scripts/benchmarks/make_replication_bundle.sh \
+  --original-index /path/to/original/snapshot_index.json \
+  --artifacts-dir tmp/validation_pack_rerun \
+  --suite apex2-nightly-slow \
+  --snapshot-id external-YYYY-MM-DD-your-org \
+  --notes "CPU-only, deterministic rerun"
+```
+
 ## Step 5: Sign your rerun (publishable artifact)
 
 Recommended: sign the SHA-256 digest bytes of `validation_pack_manifest.json` with OpenSSL.
@@ -120,4 +133,3 @@ Publish (as a GitHub release, Zenodo upload, or a public object store) at minimu
 
 - `docs/benchmarks/replication_template.md` (human-readable report template)
 - `docs/specs/replication_report_v1.example.json` (machine-readable example)
-

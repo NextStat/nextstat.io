@@ -16,6 +16,8 @@ def test_snapshot_index_schema_smoke(tmp_path: Path) -> None:
     artifacts_dir.mkdir()
     (artifacts_dir / "a.txt").write_text("hello\n", encoding="utf-8")
     (artifacts_dir / "b.bin").write_bytes(b"\x00\x01\x02")
+    (artifacts_dir / ".replication").mkdir()
+    (artifacts_dir / ".replication" / "ignore.txt").write_text("ignore\n", encoding="utf-8")
 
     out = artifacts_dir / "snapshot_index.json"
     subprocess.check_call(
@@ -40,6 +42,8 @@ def test_snapshot_index_schema_smoke(tmp_path: Path) -> None:
     )
     inst = json.loads(out.read_text(encoding="utf-8"))
     jsonschema.validate(inst, schema)
+    paths = [a["path"] for a in inst.get("artifacts", [])]
+    assert ".replication/ignore.txt" not in paths
 
 
 def test_replication_report_schema_smoke(tmp_path: Path) -> None:
@@ -108,4 +112,3 @@ def test_replication_report_schema_smoke(tmp_path: Path) -> None:
     )
     inst = json.loads(out.read_text(encoding="utf-8"))
     jsonschema.validate(inst, schema)
-

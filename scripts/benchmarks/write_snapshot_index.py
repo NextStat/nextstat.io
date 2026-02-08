@@ -91,7 +91,8 @@ def main() -> None:
 
     snapshot_id = args.snapshot_id.strip() or _default_snapshot_id()
 
-    exclude_dirs = {"mplconfig", ".gnupg"}
+    # Exclude implementation detail dirs that may exist inside artifact bundles.
+    exclude_dirs = {"mplconfig", ".gnupg", ".replication"}
     artifacts = list(_iter_artifacts(root, exclude_dirs=exclude_dirs))
 
     doc: dict[str, Any] = {
