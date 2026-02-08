@@ -93,12 +93,10 @@ jobs:
           mkdir -p artifacts artifacts2 artifacts_jsononly
 
           # JSON-only smoke (no matplotlib/PDF): prove the script can run in minimal environments.
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts_jsononly \
-            --workspace tests/fixtures/simple_workspace.json \
-            --python python \
-            --deterministic \
-            --json-only
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts_jsononly \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/simple_workspace.json \
+            VALIDATION_PACK_ARGS="--python python --deterministic --json-only"
           python - <<'PY'
           import json
           from pathlib import Path
@@ -111,11 +109,10 @@ jobs:
 
           # PDF renderer dependency (runs via `python -m nextstat.validation_report`).
           pip install "matplotlib>=3.8"
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts \
-            --workspace tests/fixtures/simple_workspace.json \
-            --python python \
-            --deterministic
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/simple_workspace.json \
+            VALIDATION_PACK_ARGS="--python python --deterministic"
           python - <<'PY'
           import json
           from pathlib import Path
@@ -127,12 +124,10 @@ jobs:
           PY
 
           # Determinism: re-render using the same Apex2 master input and ensure JSON+PDF are bit-identical.
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts2 \
-            --workspace tests/fixtures/simple_workspace.json \
-            --apex2-master artifacts/apex2_master_report.json \
-            --python python \
-            --deterministic
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts2 \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/simple_workspace.json \
+            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --deterministic"
           sha256sum artifacts/validation_report.json artifacts2/validation_report.json
           sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
           sha256sum artifacts/validation_pack_manifest.json artifacts2/validation_pack_manifest.json

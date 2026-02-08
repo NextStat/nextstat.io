@@ -77,13 +77,10 @@ jobs:
 
       - name: Render validation pack (JSON + PDF)
         run: |
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts \
-            --apex2-master artifacts/apex2_master_report.json \
-            --workspace tests/fixtures/complex_workspace.json \
-            --python python \
-            --nextstat-bin target/release/nextstat \
-            --deterministic
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
+            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin target/release/nextstat --deterministic"
 
       - name: Write snapshot index (artifact hashes)
         run: |

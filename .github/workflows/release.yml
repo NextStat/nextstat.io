@@ -268,12 +268,10 @@ jobs:
             exit 1
           fi
           chmod +x "${NEXTSTAT_BIN}"
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts \
-            --workspace tests/fixtures/complex_workspace.json \
-            --python python \
-            --nextstat-bin "${NEXTSTAT_BIN}" \
-            --deterministic
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
+            VALIDATION_PACK_ARGS="--python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
 
       - name: Validate validation report schema
         shell: bash
@@ -299,13 +297,10 @@ jobs:
           chmod +x "${NEXTSTAT_BIN}"
 
           # Re-render using the exact Apex2 master JSON output and ensure JSON+PDF+manifest are bit-identical.
-          bash validation-pack/render_validation_pack.sh \
-            --out-dir artifacts2 \
-            --workspace tests/fixtures/complex_workspace.json \
-            --apex2-master artifacts/apex2_master_report.json \
-            --python python \
-            --nextstat-bin "${NEXTSTAT_BIN}" \
-            --deterministic
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts2 \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
+            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
 
           sha256sum artifacts/validation_report.json artifacts2/validation_report.json
           sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
