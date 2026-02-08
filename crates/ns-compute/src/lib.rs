@@ -13,11 +13,11 @@
 //!
 //! ## Architecture
 //!
-//! High-level inference code (ns-inference) depends on the `ComputeBackend`
-//! trait from ns-core, NOT on concrete implementations. This allows:
-//! - Testing with simple CPU backend
-//! - Optional GPU acceleration
-//! - Easy addition of new backends (TPU, etc.)
+//! High-level inference code (`ns-inference`) depends on core abstractions from
+//! `ns-core` and uses session/accelerator APIs for GPU execution. This allows:
+//! - Testing with the simple CPU backend
+//! - Optional GPU acceleration via feature-gated accelerators
+//! - Easy addition of new accelerators/backends (TPU, etc.)
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]

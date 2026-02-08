@@ -294,6 +294,17 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
                 .and_then(|v| v.get("report"))
                 .and_then(|v| v.as_object())
             {
+                let dq_atol = rep
+                    .get("meta")
+                    .and_then(|v| v.get("thresholds"))
+                    .and_then(|v| v.get("dq_atol"))
+                    .and_then(|v| v.as_f64());
+                let mu_hat_atol = rep
+                    .get("meta")
+                    .and_then(|v| v.get("thresholds"))
+                    .and_then(|v| v.get("mu_hat_atol"))
+                    .and_then(|v| v.as_f64());
+
                 if let Some(sum) = rep.get("summary").and_then(|v| v.as_object()) {
                     if let Some(n_cases) = sum.get("n_cases").and_then(|v| v.as_u64()) {
                         out.insert("n_cases".to_string(), Value::Number(n_cases.into()));
@@ -308,6 +319,54 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
                         map_push_highlight(&mut out, format!("cases ok: {}/{}", n_ok, n_cases));
                     }
                 }
+
+                // Worst-case extraction across ROOT parity cases.
+                // The suite report stores per-case diffs in `cases[].diff`.
+                if let Some(cases) = rep.get("cases").and_then(|v| v.as_array()) {
+                    let mut by_dq: Vec<(f64, String)> = Vec::new();
+                    let mut by_abs_mu: Vec<(f64, f64, String)> = Vec::new(); // (abs, signed, name)
+                    for c in cases {
+                        let name = c
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        let diff = c.get("diff").unwrap_or(&Value::Null);
+
+                        if let Some(v) = diff.get("max_abs_dq_mu").and_then(|v| v.as_f64())
+                            && v.is_finite()
+                        {
+                            by_dq.push((v.abs(), name.clone()));
+                        }
+
+                        if let Some(v) = diff.get("d_mu_hat").and_then(|v| v.as_f64())
+                            && v.is_finite()
+                        {
+                            by_abs_mu.push((v.abs(), v, name));
+                        }
+                    }
+
+                    by_dq.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                    by_abs_mu.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+                    if let Some((worst, worst_case)) = by_dq.first() {
+                        map_push_highlight(&mut out, format!("worst max_abs_dq_mu = {:.3e} ({})", worst, worst_case));
+                    }
+                    if let Some((worst, _signed, worst_case)) = by_abs_mu.first() {
+                        map_push_highlight(&mut out, format!("worst abs d_mu_hat = {:.3e} ({})", worst, worst_case));
+                    }
+
+                    // Record top cases so the PDF can render a compact table.
+                    for (v, name) in by_dq.into_iter().take(5) {
+                        let notes = dq_atol.map(|a| format!("allowed={:.3e}", a));
+                        map_push_worst_case(&mut out, name, "max_abs_dq_mu", v, notes);
+                    }
+                    for (abs_v, signed, name) in by_abs_mu.into_iter().take(5) {
+                        let notes = mu_hat_atol.map(|a| format!("signed={:.3e} allowed={:.3e}", signed, a));
+                        map_push_worst_case(&mut out, name, "abs_d_mu_hat", abs_v, notes);
+                    }
+                }
+
                 if let Some(pr) = rep
                     .get("meta")
                     .and_then(|v| v.get("prereqs"))
@@ -328,6 +387,37 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
             }
         }
         _ => {}
+    }
+
+    // Generic per-case summary: if the suite section exposes `cases` (either top-level
+    // or nested under `report`), compute n_cases and n_ok when the `ok` flag convention
+    // is used. This improves the unified report without hardcoding every suite schema.
+    if !out.contains_key("n_cases") {
+        let cases_any = master
+            .get(key)
+            .and_then(|v| v.get("cases"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .or_else(|| {
+                master
+                    .get(key)
+                    .and_then(|v| v.get("report"))
+                    .and_then(|v| v.get("cases"))
+                    .and_then(|v| v.as_array())
+                    .cloned()
+            });
+
+        if let Some(cases) = cases_any {
+            if cases.iter().any(|c| c.get("ok").is_some()) {
+                out.insert("n_cases".to_string(), Value::Number((cases.len() as u64).into()));
+                let n_ok = cases
+                    .iter()
+                    .filter(|c| c.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+                    .count();
+                out.insert("n_ok".to_string(), Value::Number((n_ok as u64).into()));
+                map_push_highlight(&mut out, format!("cases ok: {}/{}", n_ok, cases.len()));
+            }
+        }
     }
 
     // Generic hint: preserve human-readable reasons for skipped suites.
@@ -370,16 +460,25 @@ pub fn cmd_validation_report(
     let ws_bytes_len = ws_bytes.len() as u64;
     let model = load_model_from_workspace_bytes(&ws_bytes, interp_defaults)?;
 
-    let channels = model.channel_names();
     let n_channels = model.n_channels();
-    let mut n_bins_per_channel: Vec<usize> = Vec::with_capacity(n_channels);
+    let channel_names = model.channel_names();
+    let mut channel_bins: Vec<(String, usize)> = Vec::with_capacity(n_channels);
     let mut uniq_samples: HashSet<String> = HashSet::new();
     for ch in 0..n_channels {
-        n_bins_per_channel.push(model.channel_bin_count(ch)?);
+        let name = channel_names
+            .get(ch)
+            .cloned()
+            .unwrap_or_else(|| format!("ch{ch}"));
+        channel_bins.push((name, model.channel_bin_count(ch)?));
         for s in model.sample_names(ch) {
             uniq_samples.insert(s);
         }
     }
+    if deterministic {
+        channel_bins.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+    let channels: Vec<String> = channel_bins.iter().map(|(n, _)| n.clone()).collect();
+    let n_bins_per_channel: Vec<usize> = channel_bins.iter().map(|(_, b)| *b).collect();
 
     let observed = model.observed_main_by_channel();
     let mut total_observed = 0.0f64;
@@ -416,6 +515,14 @@ pub fn cmd_validation_report(
             })
         })
         .collect();
+    let mut params_json = params_json;
+    if deterministic {
+        params_json.sort_by(|a, b| {
+            let ak = a.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+            let bk = b.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+            ak.cmp(bk)
+        });
+    }
 
     let (normsys, histosys) = match interp_defaults {
         InterpDefaults::Pyhf => ("code1", "code0"),
@@ -525,6 +632,9 @@ pub fn cmd_validation_report(
         if let Some(status) = suite_status(&apex2_master, "pharma") {
             evidence.push(format!("apex2:suite:pharma:status={status}"));
         }
+        if let Some(status) = suite_status(&apex2_master, "pharma_reference") {
+            evidence.push(format!("apex2:suite:pharma_reference:status={status}"));
+        }
         risk_items.push(serde_json::json!({
             "risk": "Incorrect PK/NLME surface behavior (finite NLL/grad, fit smoke) in pharma-oriented tools.",
             "mitigation": "Apex2 pharma suite runs PK/NLME smoke tests plus a reference check against the analytic 1-compartment oral dosing formula.",
@@ -630,6 +740,12 @@ pub fn cmd_validation_report(
             "risk_based_assurance": risk_items,
         }
     });
+
+    let out_json = if deterministic {
+        crate::normalize_json_for_determinism(out_json)
+    } else {
+        out_json
+    };
 
     crate::write_json_file(out_path, &out_json)?;
 

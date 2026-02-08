@@ -9,6 +9,7 @@ Run with: python tests/validate_pyhf_nll.py
 Requires: pip install -e bindings/ns-py[validation]
 """
 
+import argparse
 import json
 from pathlib import Path
 import time
@@ -174,6 +175,23 @@ def validate_simple_workspace():
     print(f"  - NLL changes with POI: {nll_mu_0 != nll_nominal != nll_mu_2}")
     timing.print_summary()
     timing.print_pyhf_vs_nextstat()
+    return {
+        "fixture": "simple_workspace.json",
+        "nll": {
+            "pyhf_nominal": float(nll_nominal),
+            "nextstat_nominal": float(nll_ns_nominal),
+            "abs_diff_nominal": float(abs(nll_ns_nominal - nll_nominal)),
+            "pyhf_mu0": float(nll_mu_0),
+            "pyhf_mu2": float(nll_mu_2),
+            "nextstat_mu0": float(nll_ns_mu_0),
+            "nextstat_mu2": float(nll_ns_mu_2),
+        },
+        "timing_s": {k: float(v) for k, v in timing.totals_s.items()},
+        "timing_summary_s": {
+            "reference_total": float(timing.sum_prefix("pyhf:")),
+            "nextstat_total": float(timing.sum_prefix("nextstat:")),
+        },
+    }
 
 
 def validate_complex_workspace():
@@ -226,10 +244,36 @@ def validate_complex_workspace():
     print(f"NextStat NLL at mu=2.0: {nll_ns_mu_2:.10f}")
     timing.print_summary()
     timing.print_pyhf_vs_nextstat()
+    return {
+        "fixture": "complex_workspace.json",
+        "nll": {
+            "pyhf_nominal": float(nll_nominal),
+            "nextstat_nominal": float(nll_ns_nominal),
+            "abs_diff_nominal": float(abs(nll_ns_nominal - nll_nominal)),
+            "pyhf_mu0": float(nll_mu_0),
+            "pyhf_mu2": float(nll_mu_2),
+            "nextstat_mu0": float(nll_ns_mu_0),
+            "nextstat_mu2": float(nll_ns_mu_2),
+        },
+        "timing_s": {k: float(v) for k, v in timing.totals_s.items()},
+        "timing_summary_s": {
+            "reference_total": float(timing.sum_prefix("pyhf:")),
+            "nextstat_total": float(timing.sum_prefix("nextstat:")),
+        },
+    }
 
 
 def main():
     """Run all validation tests."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional JSON output path (machine-readable summary, includes timings).",
+    )
+    args = ap.parse_args()
+
     print("\n" + "=" * 70)
     print("pyhf NLL Validation - Reference Values")
     print("=" * 70)
@@ -237,12 +281,35 @@ def main():
     print()
 
     try:
-        validate_simple_workspace()
-        validate_complex_workspace()
+        t0 = time.perf_counter()
+        cases = [
+            validate_simple_workspace(),
+            validate_complex_workspace(),
+        ]
+        wall_s = time.perf_counter() - t0
 
         print("\n" + "=" * 70)
         print("✓ Validation complete!")
         print("=" * 70)
+
+        if args.out is not None:
+            ref_total = float(sum(c["timing_summary_s"]["reference_total"] for c in cases))
+            ns_total = float(sum(c["timing_summary_s"]["nextstat_total"] for c in cases))
+            report = {
+                "schema_version": "validate_pyhf_nll_v1",
+                "status": "ok",
+                "timing_summary_s": {
+                    "reference_total": ref_total,
+                    "nextstat_total": ns_total,
+                    "speedup_reference_over_nextstat": float(ref_total / max(ns_total, 1e-12)),
+                    "wall_total": float(wall_s),
+                },
+                "cases": cases,
+            }
+            if args.out.parent and not args.out.parent.exists():
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            print(f"Wrote: {args.out}")
 
     except Exception as e:
         print(f"\n✗ Error: {e}")

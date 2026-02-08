@@ -659,8 +659,29 @@ fn decode_unsplit_vector_indexed_from_payload(
                 "unsplit vector payload underflow (missing length)".into(),
             ));
         }
-        let len = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
-        pos += 4;
+        let raw = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap());
+
+        // ROOT streamer layout for std::vector<T>:
+        //   [bytecount+0x4000_0000][u16 ver][u32 len][len elems]
+        // Without an entry-offset table, we still can parse sequentially because
+        // the bytecount tells us the chunk boundary.
+        let (len, values_off, next_pos) = if raw & 0x4000_0000 != 0 {
+            let byte_count = (raw & !0x4000_0000) as usize;
+            let chunk_len = 4usize
+                .checked_add(byte_count)
+                .ok_or_else(|| RootError::Deserialization("unsplit vector chunk overflow".into()))?;
+            if pos + chunk_len > payload.len() || chunk_len < 10 {
+                return Err(RootError::Deserialization(
+                    "unsplit vector payload underflow (streamed chunk)".into(),
+                ));
+            }
+            let _ver = u16::from_be_bytes(payload[pos + 4..pos + 6].try_into().unwrap());
+            let len = u32::from_be_bytes(payload[pos + 6..pos + 10].try_into().unwrap()) as usize;
+            (len, pos + 10, pos + chunk_len)
+        } else {
+            let len = raw as usize;
+            (len, pos + 4, pos + 4)
+        };
 
         if len > MAX_UNSPLIT_VECTOR_LEN {
             return Err(RootError::Deserialization(format!(
@@ -670,20 +691,34 @@ fn decode_unsplit_vector_indexed_from_payload(
         let bytes = len
             .checked_mul(elem_size)
             .ok_or_else(|| RootError::Deserialization("unsplit vector length overflow".into()))?;
-        if pos + bytes > payload.len() {
+
+        // For streamed chunks, `values_off` points to the element payload within
+        // the current entry; `next_pos` is the end of the entry chunk.
+        //
+        // For plain len+payload, `values_off == pos + 4` and `next_pos == pos + 4`,
+        // so `values_off + bytes` is also the end-of-entry.
+        let end = values_off
+            .checked_add(bytes)
+            .ok_or_else(|| RootError::Deserialization("unsplit vector element overflow".into()))?;
+        if end > payload.len() {
             return Err(RootError::Deserialization(
                 "unsplit vector payload underflow (elements)".into(),
             ));
         }
+        if raw & 0x4000_0000 != 0 && end != next_pos {
+            return Err(RootError::Deserialization(
+                "failed to parse ROOT-streamed std::vector<T> entry payload".into(),
+            ));
+        }
 
         if index < len {
-            let off = pos + index * elem_size;
+            let off = values_off + index * elem_size;
             out.push(decode_one_f64(payload, off, elem_type));
         } else {
             out.push(out_of_range_value);
         }
 
-        pos += bytes;
+        pos = if raw & 0x4000_0000 != 0 { next_pos } else { end };
         total_elems += len;
     }
 
@@ -713,8 +748,24 @@ fn decode_unsplit_vector_jagged_from_payload(
                 "unsplit vector payload underflow (missing length)".into(),
             ));
         }
-        let len = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
-        pos += 4;
+        let raw = u32::from_be_bytes(payload[pos..pos + 4].try_into().unwrap());
+        let (len, values_off, next_pos) = if raw & 0x4000_0000 != 0 {
+            let byte_count = (raw & !0x4000_0000) as usize;
+            let chunk_len = 4usize
+                .checked_add(byte_count)
+                .ok_or_else(|| RootError::Deserialization("unsplit vector chunk overflow".into()))?;
+            if pos + chunk_len > payload.len() || chunk_len < 10 {
+                return Err(RootError::Deserialization(
+                    "unsplit vector payload underflow (streamed chunk)".into(),
+                ));
+            }
+            let _ver = u16::from_be_bytes(payload[pos + 4..pos + 6].try_into().unwrap());
+            let len = u32::from_be_bytes(payload[pos + 6..pos + 10].try_into().unwrap()) as usize;
+            (len, pos + 10, pos + chunk_len)
+        } else {
+            let len = raw as usize;
+            (len, pos + 4, pos + 4)
+        };
 
         if len > MAX_UNSPLIT_VECTOR_LEN {
             return Err(RootError::Deserialization(format!(
@@ -724,17 +775,25 @@ fn decode_unsplit_vector_jagged_from_payload(
         let bytes = len
             .checked_mul(elem_size)
             .ok_or_else(|| RootError::Deserialization("unsplit vector length overflow".into()))?;
-        if pos + bytes > payload.len() {
+        let end = values_off
+            .checked_add(bytes)
+            .ok_or_else(|| RootError::Deserialization("unsplit vector element overflow".into()))?;
+        if end > payload.len() {
             return Err(RootError::Deserialization(
                 "unsplit vector payload underflow (elements)".into(),
             ));
         }
+        if raw & 0x4000_0000 != 0 && end != next_pos {
+            return Err(RootError::Deserialization(
+                "failed to parse ROOT-streamed std::vector<T> entry payload".into(),
+            ));
+        }
 
         for j in 0..len {
-            let off = pos + j * elem_size;
+            let off = values_off + j * elem_size;
             flat.push(decode_one_f64(payload, off, elem_type));
         }
-        pos += bytes;
+        pos = if raw & 0x4000_0000 != 0 { next_pos } else { end };
         total_elems += len;
         offsets.push(flat.len());
     }
@@ -857,8 +916,27 @@ mod tests {
         x.to_be_bytes()
     }
 
+    fn be_u16(x: u16) -> [u8; 2] {
+        x.to_be_bytes()
+    }
+
     fn be_f32(x: f32) -> [u8; 4] {
         x.to_be_bytes()
+    }
+
+    fn root_stream_vec_f32(values: &[f32]) -> Vec<u8> {
+        // ROOT streamer layout:
+        //   [bytecount+0x4000_0000][u16 ver][u32 len][len f32]
+        let byte_count = 2u32 + 4u32 + (values.len() as u32) * 4u32;
+        let raw = 0x4000_0000u32 | byte_count;
+        let mut out = Vec::new();
+        out.extend_from_slice(&be_u32(raw));
+        out.extend_from_slice(&be_u16(1));
+        out.extend_from_slice(&be_u32(values.len() as u32));
+        for &v in values {
+            out.extend_from_slice(&be_f32(v));
+        }
+        out
     }
 
     #[test]
@@ -885,6 +963,22 @@ mod tests {
     }
 
     #[test]
+    fn unsplit_vector_indexed_decodes_root_streamer_layout() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&root_stream_vec_f32(&[1.0, 2.0]));
+        payload.extend_from_slice(&root_stream_vec_f32(&[]));
+        payload.extend_from_slice(&root_stream_vec_f32(&[3.0]));
+
+        let mut out = Vec::new();
+        decode_unsplit_vector_indexed_from_payload(&payload, LeafType::F32, 3, 0, 0.0, &mut out).unwrap();
+        assert_eq!(out, vec![1.0, 0.0, 3.0]);
+
+        let mut out = Vec::new();
+        decode_unsplit_vector_indexed_from_payload(&payload, LeafType::F32, 3, 1, 0.0, &mut out).unwrap();
+        assert_eq!(out, vec![2.0, 0.0, 0.0]);
+    }
+
+    #[test]
     fn unsplit_vector_jagged_builds_flat_and_offsets() {
         let mut payload = Vec::new();
         payload.extend_from_slice(&be_u32(2));
@@ -893,6 +987,20 @@ mod tests {
         payload.extend_from_slice(&be_u32(0));
         payload.extend_from_slice(&be_u32(1));
         payload.extend_from_slice(&be_f32(3.0));
+
+        let mut flat = Vec::new();
+        let mut offsets = vec![0usize];
+        decode_unsplit_vector_jagged_from_payload(&payload, LeafType::F32, 3, &mut flat, &mut offsets).unwrap();
+        assert_eq!(flat, vec![1.0, 2.0, 3.0]);
+        assert_eq!(offsets, vec![0, 2, 2, 3]);
+    }
+
+    #[test]
+    fn unsplit_vector_jagged_decodes_root_streamer_layout() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&root_stream_vec_f32(&[1.0, 2.0]));
+        payload.extend_from_slice(&root_stream_vec_f32(&[]));
+        payload.extend_from_slice(&root_stream_vec_f32(&[3.0]));
 
         let mut flat = Vec::new();
         let mut offsets = vec![0usize];

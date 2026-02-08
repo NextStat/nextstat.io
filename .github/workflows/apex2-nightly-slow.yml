@@ -77,11 +77,12 @@ jobs:
 
       - name: Render validation pack (JSON + PDF)
         run: |
-          target/release/nextstat validation-report \
-            --apex2 artifacts/apex2_master_report.json \
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts \
+            --apex2-master artifacts/apex2_master_report.json \
             --workspace tests/fixtures/complex_workspace.json \
-            --out artifacts/validation_report.json \
-            --pdf artifacts/validation_report.pdf \
+            --python python \
+            --nextstat-bin target/release/nextstat \
             --deterministic
 
       - name: Upload Apex2 artifacts

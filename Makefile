@@ -2,6 +2,7 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	validation-pack \
 	rust-slow-tests \
 	rust-very-slow-tests \
 	trex-spec-validate \
@@ -53,6 +54,9 @@ ROOT_ROOT_MANIFEST ?= tmp/baselines/latest_root_manifest.json
 PYHF_AUDIT_ARGS ?=
 PYHF_AUDIT_FIT_ARGS ?=
 PLAYGROUND_PORT ?= 8000
+VALIDATION_PACK_OUT_DIR ?= tmp/validation_pack
+VALIDATION_PACK_WORKSPACE ?= tests/fixtures/complex_workspace.json
+VALIDATION_PACK_ARGS ?=
 
 apex2-baseline-record:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py $(RECORD_ARGS)
@@ -62,6 +66,13 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+validation-pack:
+	bash validation-pack/render_validation_pack.sh \
+		--out-dir "$(VALIDATION_PACK_OUT_DIR)" \
+		--workspace "$(VALIDATION_PACK_WORKSPACE)" \
+		--python "$(PY)" \
+		$(VALIDATION_PACK_ARGS)
 
 rust-slow-tests:
 	cargo test -p ns-inference -- --ignored --skip test_fit_toys_pull_distribution

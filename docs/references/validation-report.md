@@ -5,7 +5,7 @@ status: shipped
 
 # Validation Report Artifacts
 
-NextStat produces two categories of validation artifacts: **Apex2 JSON reports** (shipped) and a planned **unified validation report pack** (JSON + PDF).
+NextStat produces two categories of validation artifacts: **Apex2 JSON reports** (shipped) and a **unified validation report pack** (JSON + PDF) produced by `nextstat validation-report`.
 
 ## Apex2 JSON Reports (Shipped)
 
@@ -35,6 +35,9 @@ PYTHONPATH=bindings/ns-py/python \
   "survival":             { "status": "ok|fail|skipped", ... },
   "survival_statsmodels": { "status": "ok|fail|skipped", ... },
   "regression_golden":    { "status": "ok|fail|skipped", ... },
+  "timeseries":           { "status": "ok|fail|skipped", ... },
+  "pharma":               { "status": "ok|fail|skipped", ... },
+  "pharma_reference":     { "status": "ok|fail|skipped", ... },
   "nuts_quality":         { "status": "ok|fail|skipped", ... },
   "nuts_quality_report":  { "status": "ok|fail|skipped", ... },
   "p6_glm_bench":         { "status": "ok|fail|skipped", ... },
@@ -61,6 +64,7 @@ The `--deterministic` flag strips non-reproducible keys (timestamps, wall-clock 
 | `apex2_nuts_quality_report.py` | `tmp/apex2_nuts_quality_report.json` | Divergence rate, R-hat, ESS, E-BFMI |
 | `apex2_p6_glm_benchmark_report.py` | `tmp/apex2_p6_glm_bench_report.json` | GLM fit/predict performance |
 | `apex2_survival_statsmodels_report.py` | `tmp/apex2_survival_statsmodels_report.json` | Cox PH parity vs statsmodels |
+| `apex2_pharma_reference_report.py` | `tmp/apex2_pharma_reference_report.json` | Simulated PK/NLME reference suite (analytic PK + fit smoke) |
 | `aggregate_apex2_root_suite_reports.py` | `tmp/apex2_root_suite_aggregate.json` | Merge HTCondor per-case reports |
 
 ### HTCondor / Job Array Support
@@ -133,6 +137,35 @@ nextstat config schema --name validation_report_v1
 
 Example JSON is in `docs/specs/validation_report_v1.example.json`.
 
+### Single Entrypoint (Local + CI)
+
+To generate a complete "validation pack" (Apex2 master + unified JSON + publishable PDF) in one command:
+
+```bash
+make validation-pack
+```
+
+This calls:
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack \
+  --workspace tests/fixtures/complex_workspace.json \
+  --deterministic
+```
+
+**Outputs (in `--out-dir`):**
+
+- `apex2_master_report.json`
+- `validation_report.json`
+- `validation_report.pdf`
+- `validation_report_v1.schema.json`
+
+Notes:
+
+- PDF rendering requires `matplotlib` (install via `pip install 'nextstat[viz]'`).
+- `--nuts-quality` enables the (potentially slower) NUTS quality report for richer diagnostics.
+
 ### Schema (`validation_report.json`)
 
 ```json
@@ -184,11 +217,25 @@ Example JSON is in `docs/specs/validation_report_v1.example.json`.
       "pyhf":              {"status": "ok", "n_cases": 9, "worst_delta_nll": 1.2e-10},
       "histfactory_golden": {"status": "ok"},
       "regression_golden":  {"status": "ok", "n_cases": 8, "n_ok": 8},
+      "timeseries":         {"status": "ok"},
+      "pharma":             {"status": "ok"},
+      "pharma_reference":   {"status": "ok", "n_cases": 3, "n_ok": 3},
       "survival":           {"status": "ok"},
       "nuts_quality":       {"status": "ok"},
       "root":               {"status": "ok", "n_cases": 3}
     },
     "overall": "pass"
+  },
+
+  "regulated_review": {
+    "contains_raw_data": false,
+    "intended_use": "...",
+    "scope": "...",
+    "limitations": ["..."],
+    "data_handling": {"notes": ["..."]},
+    "risk_based_assurance": [
+      {"risk": "...", "mitigation": "...", "evidence": ["apex2:suite:pharma_reference:status=ok"]}
+    ]
   }
 }
 ```

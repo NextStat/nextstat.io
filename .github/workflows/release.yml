@@ -257,32 +257,22 @@ jobs:
           pip install "${WHEEL}"
           pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9"
 
-      - name: Run Apex2 master report (deterministic)
+      - name: Render validation pack (JSON + PDF)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          python tests/apex2_master_report.py \
-            --deterministic \
-            --out artifacts/apex2_master_report.json \
-            --pyhf-out artifacts/apex2_pyhf_report.json \
-            --root-out artifacts/apex2_root_suite_report.json
-
-      - name: Generate validation report (JSON + PDF)
-        shell: bash
-        run: |
-          set -euo pipefail
           NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f | head -n 1)"
           if [[ -z "${NEXTSTAT_BIN}" ]]; then
             echo "::error::No nextstat CLI found under dist/"
             exit 1
           fi
           chmod +x "${NEXTSTAT_BIN}"
-          "${NEXTSTAT_BIN}" validation-report \
-            --apex2 artifacts/apex2_master_report.json \
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts \
             --workspace tests/fixtures/complex_workspace.json \
-            --out artifacts/validation_report.json \
-            --pdf artifacts/validation_report.pdf \
+            --python python \
+            --nextstat-bin "${NEXTSTAT_BIN}" \
             --deterministic
 
       - name: Upload validation pack

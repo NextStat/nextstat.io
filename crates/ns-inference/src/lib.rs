@@ -10,8 +10,10 @@
 //!
 //! ## Architecture
 //!
-//! This crate depends on `ComputeBackend` trait from ns-core, NOT on
-//! concrete backend implementations. This is clean architecture in action.
+//! This crate depends on core model/compute abstractions from `ns-core`, and
+//! does not depend on concrete backend implementations. GPU execution is
+//! accessed through session/accelerator APIs (see `gpu_session`, `gpu_batch`,
+//! `metal_batch`, and differentiable modules).
 
 #![allow(missing_docs)]
 #![warn(clippy::all)]

@@ -171,8 +171,52 @@ def _write_root_macro_profile_scan(
     root_workspace_file: Path,
     mu_values: List[float],
     out_json: Path,
+    dump_params: bool,
 ) -> None:
     mu_list = ", ".join(f"{x:.16g}" for x in mu_values)
+    params_hat_code = ""
+    params_mu_decl_code = ""
+    params_mu_push_code = ""
+    json_header_code = ""
+    point_params_json_code = ""
+    if dump_params:
+        params_hat_code = r"""
+  std::vector<double> params_hat;
+  params_hat.reserve(params.size());
+  for (auto* p : params) params_hat.push_back(p->getVal());
+"""
+        params_mu_decl_code = r"""
+  std::vector<std::vector<double>> params_mu;
+  params_mu.reserve(mu_values.size());
+"""
+        params_mu_push_code = r"""
+    std::vector<double> pv;
+    pv.reserve(params.size());
+    for (auto* p : params) pv.push_back(p->getVal());
+    params_mu.push_back(pv);
+"""
+        json_header_code = r"""
+  out << "  \"parameter_names\": [";
+  for (size_t i = 0; i < params.size(); ++i) {
+    out << "\"" << params[i]->GetName() << "\"";
+    if (i + 1 != params.size()) out << ", ";
+  }
+  out << "],\n";
+  out << "  \"params_hat\": [";
+  for (size_t i = 0; i < params_hat.size(); ++i) {
+    out << params_hat[i];
+    if (i + 1 != params_hat.size()) out << ", ";
+  }
+  out << "],\n";
+"""
+        point_params_json_code = r"""
+    out << ", \"params\": [";
+    for (size_t j = 0; j < params_mu[i].size(); ++j) {
+      out << params_mu[i][j];
+      if (j + 1 != params_mu[i].size()) out << ", ";
+    }
+    out << "]";
+"""
     macro = f"""
 #include <TFile.h>
 #include <TKey.h>
@@ -183,6 +227,7 @@ def _write_root_macro_profile_scan(
 #include <RooAbsPdf.h>
 #include <RooAbsData.h>
 #include <RooAbsReal.h>
+#include <RooAbsCollection.h>
 #include <RooRealVar.h>
 #include <RooArgSet.h>
 #include <RooMinimizer.h>
@@ -302,6 +347,23 @@ void profile_scan() {{
   const RooArgSet* globs = mc->GetGlobalObservables();
   if (!nuis) nuis = &empty;
   if (!globs) globs = &empty;
+
+  // Optional: collect a stable parameter ordering for debugging.
+  // We use pdf->getParameters(data) to capture any RooFit-side parameters beyond the
+  // explicit ModelConfig POI/nuisance sets (e.g. lumi factors), then sort by name.
+  std::unique_ptr<RooArgSet> params_set(pdf->getParameters(*data));
+  if (!params_set) params_set.reset(new RooArgSet());
+  std::vector<RooRealVar*> params;
+  params.reserve((size_t)params_set->getSize());
+  for (auto* a : *params_set) {{
+    if (auto* v = dynamic_cast<RooRealVar*>(a)) params.push_back(v);
+  }}
+  std::sort(params.begin(), params.end(), [](const RooRealVar* a, const RooRealVar* b) {{
+    return std::string(a->GetName()) < std::string(b->GetName());
+  }});
+  params.erase(std::unique(params.begin(), params.end(), [](const RooRealVar* a, const RooRealVar* b) {{
+    return std::string(a->GetName()) == std::string(b->GetName());
+  }}), params.end());
   std::unique_ptr<RooAbsReal> nll(pdf->createNLL(
       *data,
       RooFit::Extended(true),
@@ -324,10 +386,12 @@ void profile_scan() {{
   sw_free.Stop();
   double mu_hat = poi->getVal();
   double nll_hat = nll->getVal();
+{params_hat_code}
 
   // Fixed-POI scan
   std::vector<double> nll_mu;
   std::vector<int> status_mu;
+{params_mu_decl_code}
   nll_mu.reserve(mu_values.size());
   status_mu.reserve(mu_values.size());
 
@@ -345,6 +409,7 @@ void profile_scan() {{
     double v = nll_fixed->getVal();
     nll_mu.push_back(v);
     status_mu.push_back(st);
+{params_mu_push_code}
   }}
   poi->setConstant(false);
 
@@ -387,13 +452,15 @@ void profile_scan() {{
   out << "  \\"status_free\\": " << status_free << ",\\n";
   out << "  \\"mu_hat_source\\": \\"" << mu_hat_source << "\\",\\n";
   out << "  \\"timing_s\\": {{\\"total\\": " << sw_total.RealTime() << ", \\"free_fit\\": " << sw_free.RealTime() << "}},\\n";
+{json_header_code}
   out << "  \\"points\\": [\\n";
   for (size_t i = 0; i < mu_values.size(); ++i) {{
     out << "    {{\\"mu\\": " << mu_values[i]
         << ", \\"nll_mu\\": " << nll_mu[i]
         << ", \\"q_mu\\": " << q_mu[i]
-        << ", \\"status\\": " << status_mu[i]
-        << "}}";
+        << ", \\"status\\": " << status_mu[i];
+{point_params_json_code}
+    out << "}}";
     if (i + 1 != mu_values.size()) out << ",";
     out << "\\n";
   }}
@@ -501,6 +568,11 @@ def main() -> int:
     ap.add_argument("--workdir", type=Path, default=Path("tmp/root_parity"))
     ap.add_argument("--keep", action="store_true", help="Keep intermediate HistFactory/ROOT artifacts.")
     ap.add_argument(
+        "--dump-root-params",
+        action="store_true",
+        help="Include ROOT fitted parameter vectors in root_profile_scan.json (diagnostic; large output).",
+    )
+    ap.add_argument(
         "--include-pyhf",
         action="store_true",
         help="Also compute a pyhf q(mu) scan for diagnosis (slow but canonical for pyhf semantics).",
@@ -573,6 +645,7 @@ def main() -> int:
         root_workspace_file=root_ws_file,
         mu_values=mu_values,
         out_json=root_out,
+        dump_params=args.dump_root_params,
     )
     _run_root_macro(macro_path, cwd=run_dir)
     root_result = json.loads(root_out.read_text())
@@ -587,6 +660,85 @@ def main() -> int:
     t_ns = time.perf_counter() - t3
     ns_out = run_dir / "nextstat_profile_scan.json"
     ns_out.write_text(json.dumps(ns_scan, indent=2))
+
+    diagnostic: Dict[str, Any] = {}
+    if args.dump_root_params and "parameter_names" in root_result and "params_hat" in root_result:
+        try:
+            root_names = list(root_result["parameter_names"])
+            ns_names = list(ns_model.parameter_names())
+            if not ns_names:
+                raise RuntimeError("NextStat model did not expose parameter_names()")
+
+            def _ns_params_from_root_map(m: Dict[str, float]) -> List[float]:
+                out = []
+                for n in ns_names:
+                    if n in m:
+                        out.append(float(m[n]))
+                        continue
+                    # RooFit/HistFactory naming conventions:
+                    # - nuisance parameters: alpha_<name>
+                    # - norm factors: NF_<name>
+                    alpha = f"alpha_{n}"
+                    nf = f"NF_{n}"
+                    if alpha in m:
+                        out.append(float(m[alpha]))
+                        continue
+                    if nf in m:
+                        out.append(float(m[nf]))
+                        continue
+                    if n.startswith("staterror_") and "[" in n and n.endswith("]"):
+                        # NextStat staterror naming: staterror_<channel>[<bin>]
+                        # RooFit/HistFactory naming: gamma_stat_<channel>_bin_<bin>
+                        try:
+                            tail = n[len("staterror_") :]
+                            chan, idx_part = tail.rsplit("[", 1)
+                            idx = idx_part[:-1]
+                            gamma = f"gamma_stat_{chan}_bin_{idx}"
+                            if gamma in m:
+                                out.append(float(m[gamma]))
+                                continue
+                        except Exception:
+                            pass
+                    if n.startswith("shape_stat_") and "[" in n and n.endswith("]"):
+                        # NextStat shapesys-stat naming: shape_stat_<...>[<bin>]
+                        # RooFit/HistFactory naming: gamma_shape_stat_<...>_bin_<bin>
+                        try:
+                            tail = n[len("shape_stat_") :]
+                            base, idx_part = tail.rsplit("[", 1)
+                            idx = idx_part[:-1]
+                            gamma = f"gamma_shape_stat_{base}_bin_{idx}"
+                            if gamma in m:
+                                out.append(float(m[gamma]))
+                                continue
+                        except Exception:
+                            pass
+                    raise KeyError(n)
+                return out
+
+            root_hat = dict(zip(root_names, map(float, root_result["params_hat"])))
+            ns_nll_hat_at_root = float(ns_model.nll(_ns_params_from_root_map(root_hat)))
+            diagnostic["ns_nll_at_root_hat_params"] = ns_nll_hat_at_root
+            diagnostic["delta_nll_hat_ns_minus_root"] = ns_nll_hat_at_root - float(root_result["nll_hat"])
+
+            deltas: List[Tuple[float, float]] = []
+            for p in root_result.get("points") or []:
+                if "params" not in p:
+                    continue
+                mu = float(p["mu"])
+                root_map = dict(zip(root_names, map(float, p["params"])))
+                ns_nll = float(ns_model.nll(_ns_params_from_root_map(root_map)))
+                delta = ns_nll - float(p["nll_mu"])
+                deltas.append((mu, delta))
+
+            if deltas:
+                diagnostic["delta_nll_mu_ns_minus_root_min"] = min(d for _, d in deltas)
+                diagnostic["delta_nll_mu_ns_minus_root_max"] = max(d for _, d in deltas)
+                diagnostic["delta_nll_mu_ns_minus_root_span"] = (
+                    diagnostic["delta_nll_mu_ns_minus_root_max"]
+                    - diagnostic["delta_nll_mu_ns_minus_root_min"]
+                )
+        except Exception as e:
+            diagnostic["error"] = f"{e}"
 
     # Normalize NextStat scan into comparable format.
     #
@@ -669,6 +821,7 @@ def main() -> int:
             "mu_hat": mu_hat_ns,
             "nll_hat": float(ns_scan["nll_hat"]),
         },
+        "diagnostic": (diagnostic or None),
         "diff": {
             "mu_hat": d_mu_hat,
             "max_abs_dq_mu": max_abs_dq,

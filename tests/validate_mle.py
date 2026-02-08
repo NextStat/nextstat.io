@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 import numpy as np
 try:
     import pyhf  # type: ignore
@@ -304,7 +305,31 @@ def compare_results(pyhf_res, nextstat_res):
             reasons.append(f"NLL diff={diff_nll:.4e}")
         print(f"FAILED: {', '.join(reasons)}")
 
-    return 0 if passed else 1
+    compare = {
+        "status": "ok" if passed else "fail",
+        "poi_name": poi_name,
+        "d_poi": float(diff_poi),
+        "n_params_pyhf": int(len(pyhf_names)),
+        "n_params_nextstat": int(len(ns_names)),
+        "n_name_matched": int(n_mapped),
+        "param_tol": float(PARAM_TOL),
+        "n_param_ok": int(n_param_ok),
+        "param_pass_rate": float(param_pass_rate),
+        "max_abs_param_diff": float(param_diffs.max()) if param_diffs.size else float("nan"),
+        "mean_abs_param_diff": float(param_diffs.mean()) if param_diffs.size else float("nan"),
+        "nll_tol": float(NLL_TOL),
+        "d_nll": float(diff_nll),
+        "nll_ok": bool(nll_ok),
+        "nextstat_converged": bool(nextstat_res.get("converged", False)),
+        "nextstat_n_evaluations": int(nextstat_res.get("n_evaluations", -1)),
+    }
+    timing_summary_s = {
+        "reference_total": float(t_pyhf.get("total", 0.0) or 0.0),
+        "nextstat_total": float(t_ns.get("total", 0.0) or 0.0),
+        "speedup_reference_over_nextstat": float(speedup),
+    }
+
+    return (0 if passed else 1), {"compare": compare, "timing_summary_s": timing_summary_s}
 
 
 def main():
@@ -320,6 +345,12 @@ def main():
         action="store_true",
         help="Skip expensive numerical Hessian uncertainties for pyhf (timing/fit parity only).",
     )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional JSON output path (machine-readable summary, includes timings).",
+    )
     args = ap.parse_args()
 
     t_all0 = time.perf_counter()
@@ -332,9 +363,28 @@ def main():
     print("Fitting with NextStat...")
     nextstat_res = nextstat_fit(workspace)
 
-    rc = compare_results(pyhf_res, nextstat_res)
+    rc, summary = compare_results(pyhf_res, nextstat_res)
     t_all = time.perf_counter() - t_all0
     print(f"\nTOTAL wall time: {t_all:.3f} s")
+
+    if args.out is not None:
+        out = {
+            "schema_version": "validate_mle_v1",
+            "status": summary["compare"]["status"],
+            "workspace": str(args.workspace),
+            "skip_uncertainties": bool(args.skip_uncertainties),
+            "timing_summary_s": {
+                **summary["timing_summary_s"],
+                "wall_total": float(t_all),
+            },
+            "compare": summary["compare"],
+            "pyhf": pyhf_res,
+            "nextstat": nextstat_res,
+        }
+        if args.out.parent and not args.out.parent.exists():
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"Wrote: {args.out}")
     return rc
 
 

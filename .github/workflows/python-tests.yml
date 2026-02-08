@@ -50,25 +50,16 @@ jobs:
           pip install "pytest>=9.0" "pytest-cov>=7.0" "numpy>=2.0" "pyhf>=0.7.6"
           pytest -q -m "not slow" tests/python
 
-      - name: Run Apex2 master report
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: |
-          mkdir -p artifacts
-          python tests/apex2_master_report.py \
-            --out artifacts/apex2_master_report.json \
-            --pyhf-out artifacts/apex2_pyhf_report.json \
-            --root-out artifacts/apex2_root_suite_report.json
-
-      - name: Build unified validation report (JSON + PDF)
+      - name: Render validation pack (JSON + PDF)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         run: |
           # PDF renderer dependency (runs via `python -m nextstat.validation_report`).
           pip install "matplotlib>=3.8" "jsonschema>=4.0"
-          cargo run -p ns-cli --quiet -- validation-report \
-            --apex2 artifacts/apex2_master_report.json \
+          mkdir -p artifacts
+          bash validation-pack/render_validation_pack.sh \
+            --out-dir artifacts \
             --workspace tests/fixtures/simple_workspace.json \
-            --out artifacts/validation_report.json \
-            --pdf artifacts/validation_report.pdf \
+            --python python \
             --deterministic
           python - <<'PY'
           import json

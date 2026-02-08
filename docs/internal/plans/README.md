@@ -92,16 +92,18 @@
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │   ns-inference: MLE, NUTS, Profile Likelihood            │   │
-│  │   - Использует trait ComputeBackend                      │   │
-│  │   - НЕ знает о CPU/GPU/Metal/CUDA                        │   │
+│  │   - Зависит от абстракций ns-core (LogDensityModel, etc.) │   │
+│  │   - GPU single-fit: GpuSession<A> where A: GpuAccelerator │   │
+│  │   - НЕ знает о конкретных CUDA/Metal kernel API           │   │
 │  └─────────────────────────┬───────────────────────────────┘   │
 │                            │ depends on abstraction            │
 │  ┌─────────────────────────┴───────────────────────────────┐   │
-│  │   trait ComputeBackend {                                 │   │
-│  │       fn nll(&self, ...) -> Result<f64>;                 │   │
-│  │       fn gradient(&self, ...) -> Result<Vec<f64>>;       │   │
-│  │       fn fit_batch(&self, ...) -> Result<Vec<Fit>>;      │   │
-│  │   }                                                      │   │
+│  │   CPU (generic):                                         │   │
+│  │     ns_core::ComputeBackend                               │   │
+│  │                                                          │   │
+│  │   GPU single-model (session-based):                      │   │
+│  │     ns_compute::gpu_accel::GpuAccelerator                 │   │
+│  │     + ns_inference::gpu_session::GpuSession<A>            │   │
 │  └─────────────────────────┬───────────────────────────────┘   │
 │                            │ implemented by                    │
 ├────────────────────────────┼───────────────────────────────────┤
@@ -109,12 +111,12 @@
 │              (реализации, взаимозаменяемые)                     │
 │                            │                                   │
 │  ┌─────────────┬───────────┴───────────┬─────────────┐         │
-│  │ CpuBackend  │    MetalBackend       │ CudaBackend │         │
-│  │             │    (macOS only)       │ (NVIDIA)    │         │
-│  │ - Rayon     │    - Metal shaders    │ - CUDA      │         │
-│  │ - SIMD      │    - Accelerate       │ - cuBLAS    │         │
-│  │ - ВСЕГДА    │    - ОПЦИОНАЛЬНО      │ - ОПЦИОНАЛЬНО│        │
-│  └─────────────┴───────────────────────┴─────────────┘         │
+│  │ CpuBackend  │  GPU accelerators      │  Differentiable │     │
+│  │             │  (feature-gated)       │  accelerators   │     │
+│  │ - Rayon     │  - cuda_batch          │  - CUDA torch   │     │
+│  │ - SIMD      │  - metal_batch         │  - Metal prof.  │     │
+│  │ - ВСЕГДА    │  - gpu_session wrappers│  - zero-copy    │     │
+│  └─────────────┴────────────────────────┴───────────────┘      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -137,7 +139,7 @@
 │  └──────────────────────┬────────────────────────┘             │
 │                         │                                       │
 │  ┌──────────────────────┴────────────────────────┐             │
-│  │              ns-compute (trait-based)          │  Compute    │
+│  │              ns-compute (CPU + accelerators)   │  Compute    │
 │  │                                                │  Layer      │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐        │             │
 │  │  │   CPU   │  │  Metal  │  │  CUDA   │        │             │
@@ -166,7 +168,7 @@
 | Кластеры без GPU (lxplus, NAF) | CpuBackend + Rayon + job arrays |
 | Воспроизводимость | Детерминизм не зависит от backend |
 | Тестирование | Можно тестировать с CpuBackend |
-| Новые ускорители (TPU, etc.) | Добавить новый impl ComputeBackend |
+| Новые ускорители (TPU, etc.) | Добавить новый accelerator/session API (или impl ComputeBackend для CPU-style) |
 
 ## Tech Stack
 

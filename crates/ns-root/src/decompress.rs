@@ -110,10 +110,16 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
     })) {
         Ok(Ok(n)) => n,
         Ok(Err(e)) => {
+            ZSTD_DECODER.with(|cell| {
+                *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+            });
             out.truncate(0);
             return Err(RootError::Decompression(format!("zstd: {}", e)));
         }
         Err(payload) => {
+            ZSTD_DECODER.with(|cell| {
+                *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+            });
             out.truncate(0);
             let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
                 *s
@@ -134,6 +140,9 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
     }
 
     if bytes_written != expected {
+        ZSTD_DECODER.with(|cell| {
+            *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+        });
         return Err(RootError::Decompression(format!(
             "zstd: expected {} uncompressed bytes, got {}",
             expected, bytes_written
@@ -225,6 +234,13 @@ mod tests {
 
         let result = decompress(&block, original.len()).unwrap();
         assert_eq!(result, &original[..]);
+    }
+
+    #[test]
+    fn zstd_malformed_returns_error() {
+        let compressed = [0xFFu8; 16];
+        let block = make_root_block(b"ZS", 0x04, &compressed, 64);
+        assert!(decompress(&block, 64).is_err());
     }
 
     #[test]

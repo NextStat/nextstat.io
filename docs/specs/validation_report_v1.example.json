@@ -44,20 +44,64 @@
         "n_cases": 9,
         "worst_delta_nll": 1.2e-10,
         "worst_delta_expected_full": 0.0,
-        "highlights": ["expected_data parity: OK (full + main)"],
+        "highlights": [
+          "worst |dNLL| = 1.200e-10",
+          "worst |d expected(full)| = 0.000e+00"
+        ],
         "worst_cases": [
-          { "case": "synthetic_shapesys_256", "metric": "max_abs_delta_nll", "value": 1.2e-10 },
-          { "case": "synthetic_shapesys_256", "metric": "max_abs_delta_expected_full", "value": 0.0 }
+          {
+            "case": "synthetic_shapesys_256",
+            "metric": "max_abs_delta_nll",
+            "value": 1.2e-10,
+            "notes": "allowed=2.238e-02"
+          },
+          {
+            "case": "fixture_complex",
+            "metric": "max_abs_delta_expected_full",
+            "value": 0.0
+          }
         ]
       },
       "regression_golden": { "status": "ok", "n_cases": 8, "n_ok": 8 },
       "nuts_quality": {
         "status": "ok",
         "highlights": [
-          "smoke diagnostics: divergence_rate=0.00, max_r_hat=1.01, min_ebfmi=0.80"
+          "quality status: ok",
+          "smoke diagnostics: div=0.000, treedepth=0.000, r_hat=1.010, ess_bulk=500.0, ess_tail=450.0, ebfmi=0.800"
+        ],
+        "worst_cases": [
+          { "case": "nuts_quality_smoke", "metric": "divergence_rate", "value": 0.0 },
+          { "case": "nuts_quality_smoke", "metric": "max_treedepth_rate", "value": 0.0 },
+          { "case": "nuts_quality_smoke", "metric": "max_r_hat", "value": 1.01 },
+          { "case": "nuts_quality_smoke", "metric": "min_ess_bulk", "value": 500.0 },
+          { "case": "nuts_quality_smoke", "metric": "min_ess_tail", "value": 450.0 },
+          { "case": "nuts_quality_smoke", "metric": "min_ebfmi", "value": 0.8 }
         ]
       },
-      "root": { "status": "skipped", "highlights": ["ROOT prereqs missing on this environment"] }
+      "root": {
+        "status": "ok",
+        "n_cases": 3,
+        "n_ok": 3,
+        "highlights": [
+          "cases ok: 3/3",
+          "worst max_abs_dq_mu = 1.900e-02 (trexfitter_export)",
+          "worst abs d_mu_hat = 3.000e-02 (trexfitter_export)"
+        ],
+        "worst_cases": [
+          {
+            "case": "trexfitter_export",
+            "metric": "max_abs_dq_mu",
+            "value": 1.9e-2,
+            "notes": "allowed=2.000e-02"
+          },
+          {
+            "case": "trexfitter_export",
+            "metric": "abs_d_mu_hat",
+            "value": 3.0e-2,
+            "notes": "signed=-3.000e-02 allowed=5.000e-02"
+          }
+        ]
+      }
     },
     "overall": "pass"
   },

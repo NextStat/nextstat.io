@@ -442,6 +442,8 @@ NextStat ships a **unified validation report generator** that combines Apex2 JSO
 
 CLI: `nextstat validation-report --apex2 ... --workspace ... --out ... [--pdf ...] [--deterministic]`.
 
+Entrypoint (local + CI): `make validation-pack` (calls `validation-pack/render_validation_pack.sh` to produce `apex2_master_report.json` + `validation_report.json` + `validation_report.pdf`).
+
 The intent is to keep the OSS baseline minimal (JSON + optional PDF via matplotlib) and deterministic, while supporting a future enterprise audit trail layer (open-core boundary aware). Target consumers: Pharma IQ/OQ/PQ validation packs, FinTech model risk management (SR 11-7), and HEP analysis preservation.
 
 ## 10. Reproducibility

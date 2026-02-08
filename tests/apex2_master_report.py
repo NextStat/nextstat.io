@@ -6,6 +6,7 @@ This script combines existing Apex2 runners into a single JSON artifact:
   - HistFactory golden (no pyhf runtime): `tests/python/test_pyhf_model_zoo_goldens.py`
   - time series (Phase 8): Kalman + forecasting smoke (always) + optional parity vs statsmodels
   - pharma (Phase 9B): PK/NLME surface smoke (always; dependency-light)
+  - pharma reference (Phase 9B): simulated PK/NLME reference suite (deterministic JSON report)
   - survival (Phase 9): `tests/python/test_survival_contract.py` + `tests/python/test_survival_high_level_api.py`
   - regression golden: `tests/fixtures/regression/*.json` via `nextstat.glm.*`
   - P6 benchmarks (GLM fit/predict): `tests/apex2_p6_glm_benchmark_report.py` (optional)
@@ -155,6 +156,29 @@ def _run_pharma_pack(*, cwd: Path, env: Dict[str, str], deterministic: bool) -> 
         env=env,
         deterministic=deterministic,
     )
+
+def _run_pharma_reference(
+    *, cwd: Path, env: Dict[str, str], out_path: Path, deterministic: bool
+) -> Dict[str, Any]:
+    repo = _repo_root()
+    runner = repo / "tests" / "apex2_pharma_reference_report.py"
+    cmd = [sys.executable, str(runner), "--out", str(out_path)]
+    if deterministic:
+        cmd.append("--deterministic")
+    rc, out = _run_json(cmd, cwd=cwd, env=env)
+    rep = _read_json(out_path) if out_path.exists() else None
+    declared = (rep or {}).get("status") if isinstance(rep, dict) else None
+    if declared in ("ok", "fail", "skipped", "error"):
+        status = str(declared)
+    else:
+        status = "ok" if rc == 0 else "fail"
+    return {
+        "status": status,
+        "returncode": int(rc),
+        "stdout_tail": "" if deterministic else out[-4000:],
+        "report_path": str(out_path),
+        "report": rep,
+    }
 
 def _run_survival_statsmodels(
     *, cwd: Path, env: Dict[str, str], out_path: Path, deterministic: bool
@@ -618,6 +642,12 @@ def main() -> int:
     ap.add_argument("--sbc-rhat-max", type=float, default=1.40)
     ap.add_argument("--sbc-divergence-rate-max", type=float, default=0.05)
     ap.add_argument("--root-prereq-only", action="store_true", help="Only check ROOT prereqs.")
+    ap.add_argument(
+        "--pharma-reference-out",
+        type=Path,
+        default=Path("tmp/apex2_pharma_reference_report.json"),
+        help="Output path for pharma reference suite report JSON.",
+    )
     args = ap.parse_args()
 
     repo = _repo_root()
@@ -638,6 +668,7 @@ def main() -> int:
         "histfactory_golden": None,
         "timeseries": None,
         "pharma": None,
+        "pharma_reference": None,
         "survival": None,
         "survival_statsmodels": None,
         "regression_golden": None,
@@ -701,6 +732,16 @@ def main() -> int:
     # ------------------------------------------------------------------
     report["pharma"] = _run_pharma_pack(
         cwd=cwd, env=env, deterministic=bool(args.deterministic)
+    )
+
+    # ------------------------------------------------------------------
+    # Pharma reference suite (Phase 9B): simulated PK/NLME report
+    # ------------------------------------------------------------------
+    report["pharma_reference"] = _run_pharma_reference(
+        cwd=cwd,
+        env=env,
+        out_path=args.pharma_reference_out,
+        deterministic=bool(args.deterministic),
     )
 
     # ------------------------------------------------------------------
@@ -1054,6 +1095,7 @@ def main() -> int:
     reg_ok_or_skipped = report["regression_golden"]["status"] in ("ok", "skipped")
     timeseries_ok_or_skipped = report["timeseries"]["status"] in ("ok", "skipped")
     pharma_ok_or_skipped = report["pharma"]["status"] in ("ok", "skipped")
+    pharma_ref_ok_or_skipped = report["pharma_reference"]["status"] in ("ok", "skipped")
     p6_ok_or_skipped = report["p6_glm_bench"]["status"] in ("ok", "skipped")
     bias_ok_or_skipped = report["bias_pulls"]["status"] in ("ok", "skipped")
     sbc_ok_or_skipped = report["sbc"]["status"] in ("ok", "skipped")
@@ -1073,6 +1115,8 @@ def main() -> int:
     if not timeseries_ok_or_skipped:
         return 2
     if not pharma_ok_or_skipped:
+        return 2
+    if not pharma_ref_ok_or_skipped:
         return 2
     if not p6_ok_or_skipped:
         return 2
