@@ -29,6 +29,7 @@ This folder is a template; the actual replication requires an external runner an
 ## Seed Tooling
 
 - `compare_snapshots.py` compares two snapshot directories and emits a structured JSON diff (datasets + hashes + suite-specific checks where supported).
+- `make_rerun_bundle.py` creates a rerun snapshot and writes `snapshot_comparison.json` + `signed_report_draft.md`.
 
 ## Output
 

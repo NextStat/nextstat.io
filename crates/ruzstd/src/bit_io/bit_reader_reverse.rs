@@ -89,23 +89,6 @@ impl<'s> BitReaderReversed<'s> {
         debug_assert!(self.bits_consumed < 8);
     }
 
-    /// Ensure at least 56 bits are available in the container.
-    /// Safe to call multiple times — no-op if already refilled.
-    #[inline(always)]
-    pub fn refill_fast(&mut self) {
-        self.refill();
-    }
-
-    /// Peek `n` bits without consuming. Caller guarantees n > 0 and enough bits available.
-    /// Skips the n==0 check for Huffman decode hot path.
-    #[inline(always)]
-    pub fn peek_bits_fast(&self, n: u8) -> u64 {
-        debug_assert!(n > 0);
-        let mask = (1u64 << n) - 1u64;
-        let shift_by = 64 - self.bits_consumed - n;
-        (self.bit_container >> shift_by) & mask
-    }
-
     /// Read `n` number of bits from the source. Will read at most 56 bits.
     /// If there are no more bits to be read from the source zero bits will be returned instead.
     #[inline(always)]
@@ -116,20 +99,6 @@ impl<'s> BitReaderReversed<'s> {
 
         let value = self.peek_bits(n);
         self.consume(n);
-        value
-    }
-
-    /// Like get_bits but caller guarantees n > 0. Skips the n==0 check in peek.
-    #[inline(always)]
-    pub fn get_bits_nonzero(&mut self, n: u8) -> u64 {
-        debug_assert!(n > 0);
-        if self.bits_consumed + n > 64 {
-            self.refill();
-        }
-        let mask = (1u64 << n) - 1u64;
-        let shift_by = 64 - self.bits_consumed - n;
-        let value = (self.bit_container >> shift_by) & mask;
-        self.bits_consumed += n;
         value
     }
 

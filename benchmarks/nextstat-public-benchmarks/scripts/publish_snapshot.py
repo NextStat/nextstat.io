@@ -46,6 +46,7 @@ def main() -> int:
     ap.add_argument("--out-root", default="manifests/snapshots", help="Root directory for snapshots.")
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--hep", action="store_true", help="Run HEP suite.")
+    ap.add_argument("--pharma", action="store_true", help="Run pharma suite.")
     ap.add_argument("--fit", action="store_true", help="Also benchmark MLE fits where supported.")
     ap.add_argument("--fit-repeat", type=int, default=3)
     args = ap.parse_args()
@@ -66,8 +67,11 @@ def main() -> int:
 
     results: list[Path] = []
 
-    if args.hep or (not args.hep):
-        # Default: run HEP (this seed repo currently only provides HEP).
+    run_any = bool(args.hep or args.pharma)
+    run_hep = bool(args.hep or (not run_any))
+    run_pharma = bool(args.pharma or (not run_any))
+
+    if run_hep:
         hep_out = snap_dir / "hep"
         cmd = [
             sys.executable,
@@ -96,9 +100,37 @@ def main() -> int:
             cwd=str(repo_root),
         )
 
+    if run_pharma:
+        pharma_out = snap_dir / "pharma"
+        cmd = [
+            sys.executable,
+            "suites/pharma/suite.py",
+            "--out-dir",
+            str(pharma_out),
+        ]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        if args.fit:
+            cmd.extend(["--fit", "--fit-repeat", str(int(args.fit_repeat))])
+        subprocess.check_call(cmd, cwd=str(repo_root))
+        results.append(pharma_out / "pharma_suite.json")
+        subprocess.check_call(
+            [
+                sys.executable,
+                "suites/pharma/report.py",
+                "--suite",
+                str(pharma_out / "pharma_suite.json"),
+                "--out",
+                str(snap_dir / "README_snippet_pharma.md"),
+            ],
+            cwd=str(repo_root),
+        )
+
     # Validate suite + case schemas.
     schema_case = repo_root / "manifests/schema/benchmark_result_v1.schema.json"
     schema_suite = repo_root / "manifests/schema/benchmark_suite_result_v1.schema.json"
+    schema_pharma_case = repo_root / "manifests/schema/pharma_benchmark_result_v1.schema.json"
+    schema_pharma_suite = repo_root / "manifests/schema/pharma_benchmark_suite_result_v1.schema.json"
     for r in results:
         obj = load_json(r)
         sv = str(obj.get("schema_version", ""))
@@ -106,8 +138,14 @@ def main() -> int:
             validate_json(r, schema_suite)
             for e in obj.get("cases", []):
                 validate_json((r.parent / e["path"]).resolve(), schema_case)
+        elif sv == "nextstat.pharma_benchmark_suite_result.v1":
+            validate_json(r, schema_pharma_suite)
+            for e in obj.get("cases", []):
+                validate_json((r.parent / e["path"]).resolve(), schema_pharma_case)
         elif sv == "nextstat.benchmark_result.v1":
             validate_json(r, schema_case)
+        elif sv == "nextstat.pharma_benchmark_result.v1":
+            validate_json(r, schema_pharma_case)
 
     # Write baseline manifest referencing produced results; dataset list will be derived from results.
     baseline_path = snap_dir / "baseline_manifest.json"

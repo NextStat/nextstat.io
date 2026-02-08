@@ -59,22 +59,7 @@ impl<'t> HuffmanDecoder<'t> {
         let entry = unsafe { *self.table.decode.get_unchecked(self.state as usize) };
         let symbol = entry.symbol;
         let num_bits = entry.num_bits;
-        let new_bits = br.get_bits_nonzero(num_bits);
-        self.state <<= num_bits;
-        self.state &= self.table.decode.len() as u64 - 1;
-        self.state |= new_bits;
-        symbol
-    }
-
-    /// Fast version: caller guarantees refill has been done and at least max_num_bits
-    /// bits are available. Skips refill check and n==0 check. Uses unchecked table access.
-    #[inline(always)]
-    pub fn decode_and_advance_fast(&mut self, br: &mut BitReaderReversed<'_>) -> u8 {
-        let entry = unsafe { *self.table.decode.get_unchecked(self.state as usize) };
-        let symbol = entry.symbol;
-        let num_bits = entry.num_bits;
-        let new_bits = br.peek_bits_fast(num_bits);
-        br.consume(num_bits);
+        let new_bits = br.get_bits(num_bits);
         self.state <<= num_bits;
         self.state &= self.table.decode.len() as u64 - 1;
         self.state |= new_bits;

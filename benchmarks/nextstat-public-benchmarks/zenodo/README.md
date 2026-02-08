@@ -31,4 +31,4 @@ For snapshots: prefer citing the DOI + snapshot id rather than “latest”.
 ## Templates
 
 - `zenodo.json` contains a minimal metadata stub you can adapt for Zenodo deposits.
-
+- `package_snapshot.py` packages a local snapshot directory into a `.tar.gz` plus sha256 and a derived `zenodo_deposition.json`.

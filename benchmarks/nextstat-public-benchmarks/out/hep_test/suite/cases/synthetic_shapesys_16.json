@@ -1,0 +1,58 @@
+{
+  "case": "synthetic_shapesys_16",
+  "dataset": {
+    "id": "generated:synthetic_shapesys_16",
+    "sha256": "6ebd005fe7cd0307786886e65b5da1e4a4324a2cb1f2b3c1020fa1562109bd84"
+  },
+  "deterministic": true,
+  "meta": {
+    "nextstat_version": "0.1.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "pyhf_version": "0.7.6",
+    "python": "3.13.11"
+  },
+  "model": {
+    "n_main_bins": 16,
+    "n_params": 17
+  },
+  "parity": {
+    "abs_diff": 4.547473508864641e-12,
+    "atol": 1e-08,
+    "nll_nextstat": 98.63722169703306,
+    "nll_pyhf": 98.63722169702851,
+    "ok": true,
+    "rel_diff": 4.6103017001354026e-14,
+    "rtol": 1e-12
+  },
+  "schema_version": "nextstat.benchmark_result.v1",
+  "suite": "hep",
+  "timing": {
+    "nll_time_s_per_call": {
+      "nextstat": 1.6728762318507506e-05,
+      "pyhf": 5.016404224988946e-05
+    },
+    "raw": {
+      "number": 16384,
+      "per_call_s": {
+        "nextstat": [
+          1.6728762318507506e-05,
+          2.290423071826808e-05,
+          2.460698951267659e-05,
+          2.8063878346529236e-05,
+          1.9636009227497198e-05
+        ],
+        "pyhf": [
+          6.386477662090329e-05,
+          8.497149656250258e-05,
+          0.00010349685658184171,
+          5.016404224988946e-05,
+          5.051790355992125e-05
+        ]
+      },
+      "policy": "min",
+      "repeat": 5,
+      "target_s": 0.25
+    },
+    "speedup_pyhf_over_nextstat": 2.9986702718820717
+  }
+}

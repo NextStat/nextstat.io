@@ -50,6 +50,11 @@ Generate a local snapshot directory (results + baseline manifest + README snippe
 python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --fit --fit-repeat 3
 ```
 
+This currently includes both:
+
+- `hep/` (pyhf vs NextStat)
+- `pharma/` (NextStat-only seed + baseline templates)
+
 ## DOI Publishing (Template)
 
 For Zenodo/DOI publishing guidance and metadata templates, see `zenodo/`.

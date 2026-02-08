@@ -1,0 +1,55 @@
+{
+  "case": "simple_workspace_nll",
+  "dataset": {
+    "id": "/Users/andresvlc/WebDev/nextstat.io/benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
+    "path": "/Users/andresvlc/WebDev/nextstat.io/benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
+    "sha256": "4568b9f815cf9b405aa1c1ad462b3737753a0995f5fc020c1f1eb85afd5bc641"
+  },
+  "deterministic": true,
+  "meta": {
+    "nextstat_version": "0.1.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "pyhf_version": "0.7.6",
+    "python": "3.13.11"
+  },
+  "model": {
+    "n_main_bins": 2,
+    "n_params": 3
+  },
+  "parity": {
+    "abs_diff": 4.547473508864641e-13,
+    "atol": 1e-08,
+    "nll_nextstat": 12.57757933214748,
+    "nll_pyhf": 12.577579332147025,
+    "ok": true,
+    "rel_diff": 3.615539515812548e-14,
+    "rtol": 1e-12
+  },
+  "schema_version": "nextstat.benchmark_result.v1",
+  "suite": "hep",
+  "timing": {
+    "nll_time_s_per_call": {
+      "nextstat": 5.380477901439917e-06,
+      "pyhf": 7.488391111110104e-05
+    },
+    "raw": {
+      "number": 32768,
+      "per_call_s": {
+        "nextstat": [
+          6.547275546608944e-06,
+          5.380477901439917e-06,
+          6.55659866310998e-06
+        ],
+        "pyhf": [
+          9.78461503109429e-05,
+          7.624869840583415e-05,
+          7.488391111110104e-05
+        ]
+      },
+      "policy": "min",
+      "repeat": 3,
+      "target_s": 0.05
+    },
+    "speedup_pyhf_over_nextstat": 13.917706286101593
+  }
+}
