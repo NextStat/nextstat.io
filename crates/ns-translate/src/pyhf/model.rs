@@ -3606,6 +3606,11 @@ impl HistFactoryModel {
             if !param.constrained {
                 continue;
             }
+            // Gamma constraints have their own normalization term and are handled explicitly
+            // in `PreparedModel::{nll,nll_reuse}` to match `nll_generic` semantics.
+            if matches!(param.constraint_term, Some(ConstraintTerm::Gamma { .. })) {
+                continue;
+            }
             if let (Some(_center), Some(width)) = (param.constraint_center, param.constraint_width)
                 && width > 0.0
             {
@@ -3721,6 +3726,36 @@ impl PreparedModel<'_> {
 
         // 5. Gaussian constraints: 0.5 * pull^2 only (constant part pre-computed)
         for (param_idx, param) in self.model.parameters.iter().enumerate() {
+            // Match `nll_generic` constraint semantics.
+            match &param.constraint_term {
+                Some(ConstraintTerm::Uniform) | Some(ConstraintTerm::NoConstraint) => {
+                    continue;
+                }
+                Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                    // Gamma constraint on beta (parameter value), using ROOT/HistFactory convention:
+                    // tau = 1/rel^2, k = tau + 1, theta = 1/tau (scale).
+                    let beta = params.get(param_idx).copied().ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "Constrained parameter index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    let beta = beta.max(1e-10);
+
+                    let tau = 1.0 / (*rel * *rel);
+                    let k = tau + 1.0;
+                    let theta = 1.0 / tau;
+                    let c = k * theta.ln() + ln_gamma(k);
+
+                    // NLL = beta/theta - (k-1)*ln(beta) + k*ln(theta) + lnGamma(k)
+                    let term = beta * (1.0 / theta) - (k - 1.0) * beta.ln() + c;
+                    nll += term;
+                    continue;
+                }
+                _ => {}
+            }
+
             if !param.constrained {
                 continue;
             }
@@ -3833,6 +3868,32 @@ impl PreparedModel<'_> {
 
         // 5. Gaussian constraints
         for (param_idx, param) in self.model.parameters.iter().enumerate() {
+            // Match `nll_generic` constraint semantics.
+            match &param.constraint_term {
+                Some(ConstraintTerm::Uniform) | Some(ConstraintTerm::NoConstraint) => {
+                    continue;
+                }
+                Some(ConstraintTerm::Gamma { rel }) if *rel > 0.0 => {
+                    let beta = params.get(param_idx).copied().ok_or_else(|| {
+                        ns_core::Error::Validation(format!(
+                            "Constrained parameter index out of range: idx={} len={}",
+                            param_idx,
+                            params.len()
+                        ))
+                    })?;
+                    let beta = beta.max(1e-10);
+
+                    let tau = 1.0 / (*rel * *rel);
+                    let k = tau + 1.0;
+                    let theta = 1.0 / tau;
+                    let c = k * theta.ln() + ln_gamma(k);
+                    let term = beta * (1.0 / theta) - (k - 1.0) * beta.ln() + c;
+                    nll += term;
+                    continue;
+                }
+                _ => {}
+            }
+
             if !param.constrained {
                 continue;
             }

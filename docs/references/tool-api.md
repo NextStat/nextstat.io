@@ -8,8 +8,8 @@ Scope: nextstat.tools contract usage
 
 This is the user-facing reference for NextStat's **agent/tool-calling** surface.
 
-Source of truth for determinism semantics: `/Users/andresvlc/WebDev/nextstat.io/docs/internal/plans/standards.md`  
-Tool contract (schemas/seed policy): `/Users/andresvlc/WebDev/nextstat.io/docs/internal/plans/2026-02-08_tool-api-contract-v1.md`
+Determinism semantics: see `tests/python/_tolerances.py` and the parity contract (`docs/references/pyhf-parity-contract.md`).  
+Tool result schema: `docs/schemas/tools/nextstat_tool_result_v1.schema.json`
 
 ## What You Get
 
@@ -33,8 +33,8 @@ Tool contract (schemas/seed policy): `/Users/andresvlc/WebDev/nextstat.io/docs/i
 ```
 
 Schema files:
-- `/Users/andresvlc/WebDev/nextstat.io/docs/schemas/tools/nextstat_tool_result_v1.schema.json` (envelope)
-- `/Users/andresvlc/WebDev/nextstat.io/docs/schemas/tools/nextstat_tool_result_strict_v1.schema.json` (envelope + strict result shapes)
+- `docs/schemas/tools/nextstat_tool_result_v1.schema.json` (envelope)
+- `docs/schemas/tools/nextstat_tool_result_strict_v1.schema.json` (envelope + strict result shapes)
 
 ## Execution Controls
 
@@ -104,9 +104,9 @@ Use `nextstat_read_root_histogram` to fetch TH1 content for downstream analysis.
 
 ## Regression Harness
 
-- Golden outputs: `/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/tool_goldens/simple_workspace_deterministic.v1.json`
-- Generator: `/Users/andresvlc/WebDev/nextstat.io/scripts/generate_tool_goldens.py`
-- Smoke runner: `/Users/andresvlc/WebDev/nextstat.io/scripts/tool_call_smoke.py`
+- Golden outputs: `tests/fixtures/tool_goldens/simple_workspace_deterministic.v1.json`
+- Generator: `scripts/generate_tool_goldens.py`
+- Smoke runner: `scripts/tool_call_smoke.py`
 
 ## Server Mode (nextstat-server)
 
@@ -114,7 +114,7 @@ If you run `nextstat-server`, you can also fetch tools and execute them over HTT
 - Tool registry: `GET /v1/tools/schema`
 - Tool execution: `POST /v1/tools/execute`
 
-See: `/Users/andresvlc/WebDev/nextstat.io/docs/references/server-api.md`
+See: `docs/references/server-api.md`
 
 Python usage:
 

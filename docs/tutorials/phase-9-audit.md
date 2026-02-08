@@ -10,7 +10,7 @@ local run metadata logging and reproducible run bundles.
 
 It is intentionally limited. Enterprise audit trail features (append-only logs,
 e-signatures, approvals, model registry) are out of scope for OSS and belong to
-Pro modules (see `docs/internal/legal/open-core-boundaries.md`).
+Pro modules (commercial license).
 
 ## What is implemented
 

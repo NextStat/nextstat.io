@@ -258,11 +258,12 @@ Notes:
 - For publishable stability stats, parameter/NLL aggregates are computed on **paired runs where NextStat converged**
   (the summary includes the selection counts and convergence rate).
 
-If you want a snapshot you can commit/review later, copy the report into `audit/`:
+If you want a local snapshot you can review later, copy the report into `.internal/audit/` (gitignored):
 
 ```bash
-cp tmp/pyhf_parity_audit_fit.md "audit/$(date +%F)_pyhf-parity-audit.md"
-cp tmp/pyhf_parity_audit_fit.json "audit/$(date +%F)_pyhf-parity-audit.json"
+mkdir -p .internal/audit
+cp tmp/pyhf_parity_audit_fit.md ".internal/audit/$(date +%F)_pyhf-parity-audit.md"
+cp tmp/pyhf_parity_audit_fit.json ".internal/audit/$(date +%F)_pyhf-parity-audit.json"
 ```
 
 ## HEPData (real analyses) parity harness

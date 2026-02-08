@@ -12,8 +12,8 @@
 use crate::error::{Result, RootError};
 
 std::thread_local! {
-    static ZSTD_DECODER: std::cell::RefCell<ruzstd::decoding::FrameDecoder> =
-        std::cell::RefCell::new(ruzstd::decoding::FrameDecoder::new());
+    static ZSTD_DECODER: std::cell::RefCell<ns_zstd::decoding::FrameDecoder> =
+        std::cell::RefCell::new(ns_zstd::decoding::FrameDecoder::new());
 }
 
 // Hard safety limit for untrusted ROOT inputs.
@@ -131,14 +131,14 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
         Ok(Ok(n)) => n,
         Ok(Err(e)) => {
             ZSTD_DECODER.with(|cell| {
-                *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+                *cell.borrow_mut() = ns_zstd::decoding::FrameDecoder::new();
             });
             out.truncate(0);
             return Err(RootError::Decompression(format!("zstd: {}", e)));
         }
         Err(payload) => {
             ZSTD_DECODER.with(|cell| {
-                *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+                *cell.borrow_mut() = ns_zstd::decoding::FrameDecoder::new();
             });
             out.truncate(0);
             let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
@@ -161,7 +161,7 @@ fn decompress_zstd(data: &[u8], expected: usize) -> Result<Vec<u8>> {
 
     if bytes_written != expected {
         ZSTD_DECODER.with(|cell| {
-            *cell.borrow_mut() = ruzstd::decoding::FrameDecoder::new();
+            *cell.borrow_mut() = ns_zstd::decoding::FrameDecoder::new();
         });
         return Err(RootError::Decompression(format!(
             "zstd: expected {} uncompressed bytes, got {}",
@@ -246,9 +246,9 @@ mod tests {
     #[test]
     fn zstd_round_trip() {
         let original = b"Hello ROOT ZSTD compression! Repeated data: BBBBBBBBBB";
-        let compressed = ruzstd::encoding::compress_to_vec(
+        let compressed = ns_zstd::encoding::compress_to_vec(
             &original[..],
-            ruzstd::encoding::CompressionLevel::Fastest,
+            ns_zstd::encoding::CompressionLevel::Fastest,
         );
         let block = make_root_block(b"ZS", 0x04, &compressed, original.len());
 

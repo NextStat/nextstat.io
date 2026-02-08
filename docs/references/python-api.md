@@ -379,7 +379,7 @@ print(nextstat.get_eval_mode())  # "fast" or "parity"
 - Gradient: **1e-6** atol + **1e-4** rtol (AD vs FD noise)
 - Best-fit params: **2e-4** (optimizer surface)
 
-See `docs/pyhf-parity-contract.md` for the full 7-tier tolerance hierarchy.
+See `docs/references/pyhf-parity-contract.md` for the full 7-tier tolerance hierarchy.
 
 **Measured overhead:** <5% (Kahan vs naive at same thread count).
 

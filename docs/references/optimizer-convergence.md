@@ -55,7 +55,7 @@ If L-BFGS-B finds a deeper minimum than pyhf's SLSQP, that is a correct result.
 
 NLL(params) matches between NextStat and pyhf at the same params.
 
-- Tolerance: rtol=1e-6, atol=1e-8 (see `docs/internal/plans/standards.md` §2.2)
+- Tolerance: rtol=1e-6, atol=1e-8
 - Verified by: golden tests on fixture workspaces
 - Status: **done** for all 7 fixture workspaces
 
@@ -187,7 +187,4 @@ Full analysis: `docs/references/root-histfactory-comparison.md`
 ## References
 
 - ROOT/HistFactory comparison: `docs/references/root-histfactory-comparison.md`
-- Optimizer diagnostic report: `audit/2026-02-07_pyhf-optimizer-diagnostic.md`
-- Precision standards: `docs/internal/plans/standards.md`
-- Parity modes: `docs/internal/plans/2026-02-07_pyhf-spec-parity-plan.md`
 - Diagnostic scripts: `tests/diagnose_optimizer.py`, `tests/repeat_mle_fits.py`

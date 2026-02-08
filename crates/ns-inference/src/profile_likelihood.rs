@@ -165,17 +165,43 @@ fn scan_histfactory_impl(
     let base_bounds = model.parameter_bounds();
     let mut warm_params = free.parameters.clone();
 
-    // In parity mode we do a cheap "polish" pass with tighter tolerance, starting from the
-    // best-found conditional minimum. This often recovers small NLL gaps on large exports
-    // without requiring heavy multi-start strategies.
-    let polish_mle = if multistart {
-        let mut cfg = mle.config().clone();
-        cfg.max_iter = cfg.max_iter.max(5000).min(100000);
-        cfg.tol = cfg.tol.min(1e-9);
-        Some(MaximumLikelihoodEstimator::with_config(cfg))
+    // Parity robustness knob: deterministic jittered restarts (escape warm-start basins).
+    //
+    // Defaults are conservative; override via env vars for experiments.
+    let n_restarts: usize = if multistart {
+        std::env::var("NEXTSTAT_PROFILE_SCAN_RESTARTS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(4)
     } else {
-        None
+        0
     };
+    let jitter_scale: f64 = std::env::var("NEXTSTAT_PROFILE_SCAN_JITTER_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.05);
+
+    fn lcg_next(state: &mut u64) -> u64 {
+        *state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *state
+    }
+
+    fn rand_u01(state: &mut u64) -> f64 {
+        // 53-ish bits
+        let x = lcg_next(state) >> 11;
+        (x as f64) / ((1u64 << 53) as f64)
+    }
+
+    fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64 {
+        let mut y = x;
+        if lo.is_finite() {
+            y = y.max(lo);
+        }
+        if hi.is_finite() {
+            y = y.min(hi);
+        }
+        y
+    }
 
     let mut points = Vec::with_capacity(mu_values.len());
     for &mu in mu_values {
@@ -198,12 +224,37 @@ fn scan_histfactory_impl(
             fixed_warm
         };
 
-        if let Some(ref pmle) = polish_mle {
-            if let Ok(polished) =
-                pmle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &fixed.parameters, &bounds, &mut tape)
-            {
-                if polished.fval < fixed.fval {
-                    fixed = polished;
+        if multistart && n_restarts != 0 && jitter_scale.is_finite() && jitter_scale > 0.0 {
+            let mut base = free.parameters.clone();
+            base[poi] = mu;
+            // Seed deterministically from mu and model dimension.
+            let mu_bits = mu.to_bits();
+            let seed0 = mu_bits ^ ((model.dim() as u64).wrapping_mul(0x9E3779B97F4A7C15));
+
+            for r in 0..n_restarts {
+                let mut start = base.clone();
+                let mut seed = seed0 ^ ((r as u64).wrapping_mul(0xD1B54A32D192ED03));
+                for i in 0..start.len() {
+                    if i == poi {
+                        continue;
+                    }
+                    let (lo, hi) = bounds[i];
+                    let u = 2.0 * rand_u01(&mut seed) - 1.0; // [-1, 1]
+                    let width = if lo.is_finite() && hi.is_finite() && hi > lo {
+                        hi - lo
+                    } else {
+                        start[i].abs().max(1.0)
+                    };
+                    start[i] = clamp_f64(start[i] + jitter_scale * width * u, lo, hi);
+                }
+                start[poi] = mu;
+
+                if let Ok(cand) =
+                    mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, &start, &bounds, &mut tape)
+                {
+                    if cand.fval < fixed.fval {
+                        fixed = cand;
+                    }
                 }
             }
         }

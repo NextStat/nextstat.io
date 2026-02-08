@@ -64,7 +64,7 @@ Setting `execution.determinism.threads: 1` without `parity: true` gives stable o
 | 5 | Best-fit params | 2e-4 |
 | 6 | Uncertainties | 5e-4 |
 
-Full 7-tier hierarchy: `docs/pyhf-parity-contract.md`.
+Full 7-tier hierarchy: `docs/references/pyhf-parity-contract.md`.
 
 ### Kahan overhead
 
@@ -210,8 +210,8 @@ Requirements:
 
 To enforce "identical numbers" against ROOT/TREx baselines, follow:
 - `docs/tutorials/root-trexfitter-parity.md`
-- `docs/pyhf-parity-contract.md` — 7-tier tolerance hierarchy (per-bin 1e-12 → toys 0.05)
-- `docs/references/trex_replacement_parity_contract.md` — TREx replacement parity contract
+- `docs/references/pyhf-parity-contract.md` — 7-tier tolerance hierarchy (per-bin 1e-12 → toys 0.05)
+- `docs/references/pyhf-parity-contract.md` — TREx replacement parity contract
 
 Realistic TREx export dirs (with `combination.xml` + ROOT histograms) will be used to record baselines via `tests/record_baseline.py` (tracked separately in BMCP).
 

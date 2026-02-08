@@ -107,8 +107,9 @@ target/doc/
 _build/
 .doctrees/
 
-# Internal planning docs (not published in the public repository)
-docs/plans/
+# Internal documentation (not published in the public repository)
+.internal/
+audit/
 
 # Quickstart generated outputs
 docs/quickstarts/out/

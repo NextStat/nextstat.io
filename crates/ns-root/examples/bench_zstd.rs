@@ -1,4 +1,4 @@
-//! Quick benchmark: ruzstd (our fork) decompression throughput.
+//! Quick benchmark: ns_zstd (our fork) decompression throughput.
 //! Run: cargo run -p ns-root --release --example bench_zstd
 
 fn main() {
@@ -24,10 +24,10 @@ fn main() {
     }
     let uncompressed_size = raw.len();
 
-    // Compress with ruzstd encoder
-    let compressed = ruzstd::encoding::compress_to_vec(
+    // Compress with ns_zstd encoder
+    let compressed = ns_zstd::encoding::compress_to_vec(
         raw.as_slice(),
-        ruzstd::encoding::CompressionLevel::Fastest,
+        ns_zstd::encoding::CompressionLevel::Fastest,
     );
     let ratio = uncompressed_size as f64 / compressed.len() as f64;
 
@@ -36,7 +36,7 @@ fn main() {
 
     // Verify correctness
     {
-        let mut dec = ruzstd::decoding::FrameDecoder::new();
+        let mut dec = ns_zstd::decoding::FrameDecoder::new();
         let mut out = Vec::with_capacity(uncompressed_size);
         dec.decode_all_to_vec(&compressed, &mut out).unwrap();
         assert_eq!(out.len(), uncompressed_size);
@@ -49,7 +49,7 @@ fn main() {
     // --- Benchmark 1: decode_all_to_vec (bulk, no streaming overhead) ---
     println!("\n--- decode_all_to_vec (bulk) ---");
     let mut throughputs = Vec::new();
-    let mut decoder = ruzstd::decoding::FrameDecoder::new();
+    let mut decoder = ns_zstd::decoding::FrameDecoder::new();
     for round in 0..rounds {
         for _ in 0..3 {
             let mut out = Vec::with_capacity(uncompressed_size);
@@ -78,13 +78,13 @@ fn main() {
     let mut throughputs = Vec::new();
     for round in 0..rounds {
         for _ in 0..3 {
-            let mut dec = ruzstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
+            let mut dec = ns_zstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
             let mut out = Vec::with_capacity(uncompressed_size);
             std::io::Read::read_to_end(&mut dec, &mut out).unwrap();
         }
         let start = std::time::Instant::now();
         for _ in 0..iterations {
-            let mut dec = ruzstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
+            let mut dec = ns_zstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
             let mut out = Vec::with_capacity(uncompressed_size);
             std::io::Read::read_to_end(&mut dec, &mut out).unwrap();
             std::hint::black_box(&out);

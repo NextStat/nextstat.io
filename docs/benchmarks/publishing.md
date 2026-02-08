@@ -64,6 +64,35 @@ Best practices:
 In this repo, CI uses a minimal snapshot index format (`snapshot_index.json`) with a stable schema:
 `docs/schemas/benchmarks/snapshot_index_v1.schema.json`.
 
+### Public benchmarks repo template: pin the exact NextStat wheel
+
+In the standalone public benchmarks harness (seed: `benchmarks/nextstat-public-benchmarks/`), CI templates install a
+**pinned** NextStat wheel by URL + SHA-256, and then generate a snapshot directory containing `baseline_manifest.json`
+and `snapshot_index.json`.
+
+Build a wheel from a NextStat checkout:
+
+```bash
+cd /path/to/nextstat.io/bindings/ns-py
+maturin build --release
+ls target/wheels/nextstat-*.whl
+```
+
+Compute the wheel SHA-256:
+
+```bash
+# macOS
+shasum -a 256 target/wheels/nextstat-*.whl
+
+# Linux
+sha256sum target/wheels/nextstat-*.whl
+```
+
+Then configure the public benchmarks repo CI templates:
+
+- `ci/verify.yml`: set repo variables `NEXTSTAT_WHEEL_URL` + `NEXTSTAT_WHEEL_SHA256`
+- `ci/publish.yml`: provide `nextstat_wheel_url` + `nextstat_wheel_sha256` as workflow inputs
+
 ## 3) Baselines and regression detection
 
 Benchmarks serve two roles:

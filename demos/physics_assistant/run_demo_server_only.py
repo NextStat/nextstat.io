@@ -178,6 +178,28 @@ def _window_center(bin_edges: list[float], start: int, width: int) -> float:
         return 0.5 * (lo + hi)
     return float(start) + 0.5 * float(width)
 
+def _figure_line(*, title: str, x_label: str, y_label: str, x: list[float], y: list[float], name: str) -> dict[str, Any]:
+    return {
+        "schema_version": "nextstat.figure.v1",
+        "title": title,
+        "subtitle": None,
+        "description": None,
+        "axes": {
+            "x": {"label": x_label, "scale": "linear", "unit": None},
+            "y": {"label": y_label, "scale": "linear", "unit": None},
+        },
+        "series": [
+            {
+                "kind": "line",
+                "name": name,
+                "x": [float(v) for v in x],
+                "y": [float(v) for v in y],
+                "style": {"marker": "o"},
+            }
+        ],
+        "meta": {"deterministic": True, "source": "demos/physics_assistant/run_demo_server_only.py"},
+    }
+
 
 def _read_hist_uproot(root_path: str, hist_path: str) -> dict[str, Any]:
     try:
@@ -293,6 +315,9 @@ def main() -> int:
     nominal_disc = tools.call("nextstat_discovery_asymptotic", {"workspace_json": nominal_ws_json})
     nominal_ul = tools.call("nextstat_upper_limit", {"workspace_json": nominal_ws_json, "expected": True})
     nominal_scan = tools.call("nextstat_scan", {"workspace_json": nominal_ws_json, "start": 0.0, "stop": 3.0, "points": 21})
+    nominal_scan_points = None
+    if nominal_scan.get("ok") and isinstance(nominal_scan.get("result"), dict):
+        nominal_scan_points = nominal_scan["result"].get("points") or None  # type: ignore[assignment]
 
     width = int(args.window_width_bins)
     step = int(args.window_step_bins)
@@ -336,6 +361,35 @@ def main() -> int:
     best_ul = tools.call("nextstat_upper_limit", {"workspace_json": best_ws_json, "expected": True})
     best_scan = tools.call("nextstat_scan", {"workspace_json": best_ws_json, "start": 0.0, "stop": 10.0, "points": 21})
 
+    # Plot artifacts (standard JSON schema).
+    anomaly_fig = _figure_line(
+        title="Anomaly scan (asymptotic discovery significance)",
+        x_label="window center",
+        y_label="Z0",
+        x=[float(r["center"]) for r in anomaly_rows],
+        y=[float(r["z0"]) for r in anomaly_rows],
+        name="Z0",
+    )
+    _write(out_dir / "anomaly_scan.figure.v1.json", _pretty_json(anomaly_fig))
+
+    nominal_scan_fig_path = None
+    if isinstance(nominal_scan_points, list) and nominal_scan_points:
+        try:
+            xs = [float(p.get("mu")) for p in nominal_scan_points]
+            ys = [float(p.get("nll_mu")) for p in nominal_scan_points]
+            fig = _figure_line(
+                title="Nominal profile scan",
+                x_label="mu",
+                y_label="profile NLL(mu)",
+                x=xs,
+                y=ys,
+                name="NLL(mu)",
+            )
+            nominal_scan_fig_path = "nominal_profile_scan.figure.v1.json"
+            _write(out_dir / nominal_scan_fig_path, _pretty_json(fig))
+        except Exception:
+            nominal_scan_fig_path = None
+
     tool_calls_path = out_dir / "tool_calls.json"
     _write(tool_calls_path, _pretty_json({"schema_version": "nextstat.tool_calls.v1", "calls": tools.calls}))
 
@@ -359,6 +413,8 @@ def main() -> int:
             "nominal_workspace_path": "nominal_workspace.json",
             "best_anomaly_workspace_path": "best_anomaly_workspace.json",
             "anomaly_scan_plot_data_path": "anomaly_scan_plot_data.json",
+            "anomaly_scan_figure_path": "anomaly_scan.figure.v1.json",
+            "nominal_profile_scan_figure_path": nominal_scan_fig_path,
             "anomaly_scan_png_path": None,
             "nominal_scan_png_path": None,
         },
@@ -417,4 +473,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

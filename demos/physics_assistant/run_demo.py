@@ -279,6 +279,17 @@ def _maybe_render_plots(
 
     return {"anomaly_png": str(anomaly_png), "nominal_scan_png": nominal_png_path}
 
+def _figure_line(*, title: str, x_label: str, y_label: str, x: list[float], y: list[float], name: str) -> dict[str, Any]:
+    return {
+        "schema_version": "nextstat.figure.v1",
+        "title": title,
+        "subtitle": None,
+        "description": None,
+        "axes": {"x": {"label": x_label, "scale": "linear", "unit": None}, "y": {"label": y_label, "scale": "linear", "unit": None}},
+        "series": [{"kind": "line", "name": name, "x": [float(v) for v in x], "y": [float(v) for v in y], "style": {"marker": "o"}}],
+        "meta": {"deterministic": True, "source": "demos/physics_assistant/run_demo.py"},
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -453,6 +464,34 @@ def main() -> int:
     }
     _write(out_dir / "anomaly_scan_plot_data.json", _pretty_json(anomaly_plot_data))
 
+    anomaly_fig = _figure_line(
+        title="Anomaly scan (asymptotic discovery significance)",
+        x_label="window center",
+        y_label="Z0",
+        x=[float(r["center"]) for r in anomaly_rows],
+        y=[float(r["z0"]) for r in anomaly_rows],
+        name="Z0",
+    )
+    _write(out_dir / "anomaly_scan.figure.v1.json", _pretty_json(anomaly_fig))
+
+    nominal_scan_fig_path = None
+    if isinstance(nominal_scan_points, list) and nominal_scan_points:
+        try:
+            xs = [float(p.get("mu")) for p in nominal_scan_points]
+            ys = [float(p.get("nll_mu")) for p in nominal_scan_points]
+            fig = _figure_line(
+                title="Nominal profile scan",
+                x_label="mu",
+                y_label="profile NLL(mu)",
+                x=xs,
+                y=ys,
+                name="NLL(mu)",
+            )
+            nominal_scan_fig_path = "nominal_profile_scan.figure.v1.json"
+            _write(out_dir / nominal_scan_fig_path, _pretty_json(fig))
+        except Exception:
+            nominal_scan_fig_path = None
+
     plot_paths = _maybe_render_plots(
         out_dir=out_dir,
         anomaly_rows=anomaly_rows,
@@ -483,6 +522,8 @@ def main() -> int:
             "nominal_workspace_path": "nominal_workspace.json",
             "best_anomaly_workspace_path": "best_anomaly_workspace.json",
             "anomaly_scan_plot_data_path": "anomaly_scan_plot_data.json",
+            "anomaly_scan_figure_path": "anomaly_scan.figure.v1.json",
+            "nominal_profile_scan_figure_path": nominal_scan_fig_path,
             "anomaly_scan_png_path": plot_paths["anomaly_png"] and os.path.relpath(plot_paths["anomaly_png"], out_dir),
             "nominal_scan_png_path": plot_paths["nominal_scan_png"] and os.path.relpath(plot_paths["nominal_scan_png"], out_dir),
         },
@@ -541,4 +582,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

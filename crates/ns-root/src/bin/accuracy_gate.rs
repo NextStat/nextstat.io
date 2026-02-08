@@ -3,8 +3,8 @@ use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use ruzstd::decoding::errors::{FrameDecoderError, ReadFrameHeaderError};
-use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
+use ns_zstd::decoding::errors::{FrameDecoderError, ReadFrameHeaderError};
+use ns_zstd::decoding::{BlockDecodingStrategy, FrameDecoder};
 
 const BUF_SIZE: usize = 64 * 1024;
 
@@ -123,7 +123,7 @@ impl Config {
 
 fn print_help() {
     eprintln!(
-        "Usage:\n  accuracy_gate [--zstd <path>] [--fail-fast] [--verbose] <file-or-dir>...\n\nBehavior:\n  - Recursively finds .zst/.zstd files\n  - Decompresses with reference libzstd CLI (zstd -dc) and ruzstd\n  - Compares output byte-for-byte in a streaming fashion\n\nExit status:\n  - 0 if all files match\n  - non-zero on any mismatch\n"
+        "Usage:\n  accuracy_gate [--zstd <path>] [--fail-fast] [--verbose] <file-or-dir>...\n\nBehavior:\n  - Recursively finds .zst/.zstd files\n  - Decompresses with reference libzstd CLI (zstd -dc) and ns-zstd\n  - Compares output byte-for-byte in a streaming fashion\n\nExit status:\n  - 0 if all files match\n  - non-zero on any mismatch\n"
     );
 }
 
@@ -196,7 +196,7 @@ fn compare_file(cfg: &Config, path: &Path) -> Result<Stats, io::Error> {
     let mut zstd_err = BufReader::new(zstd_stderr);
 
     let ruz_file = File::open(path)?;
-    let mut ruz_out = BufReader::new(RuzstdMultiFrameReader::new(ruz_file));
+    let mut ruz_out = BufReader::new(NsZstdMultiFrameReader::new(ruz_file));
 
     let bytes = stream_compare(cfg, &mut ruz_out, &mut zstd_out, path)?;
 
@@ -252,7 +252,7 @@ fn stream_compare(
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
-                    "output length mismatch at offset {total}: ruzstd ended early, reference has more data"
+                    "output length mismatch at offset {total}: ns-zstd ended early, reference has more data"
                 ),
             ));
         }
@@ -260,7 +260,7 @@ fn stream_compare(
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
-                    "output length mismatch at offset {total}: reference ended early, ruzstd has more data"
+                    "output length mismatch at offset {total}: reference ended early, ns-zstd has more data"
                 ),
             ));
         }
@@ -286,7 +286,7 @@ fn stream_compare(
             let b_tail = hex_preview(&b_slice[i..], 32);
 
             let msg = format!(
-                "byte mismatch at offset {off}: ruzstd=0x{:02X} ref=0x{:02X}; ruzstd_tail={a_tail} ref_tail={b_tail}",
+                "byte mismatch at offset {off}: ns-zstd=0x{:02X} ref=0x{:02X}; ns-zstd_tail={a_tail} ref_tail={b_tail}",
                 a_slice[i],
                 b_slice[i]
             );
@@ -314,13 +314,13 @@ fn hex_preview(bytes: &[u8], max: usize) -> String {
     out
 }
 
-struct RuzstdMultiFrameReader<R: Read> {
+struct NsZstdMultiFrameReader<R: Read> {
     source: R,
     decoder: FrameDecoder,
     done: bool,
 }
 
-impl<R: Read> RuzstdMultiFrameReader<R> {
+impl<R: Read> NsZstdMultiFrameReader<R> {
     fn new(source: R) -> Self {
         Self {
             source,
@@ -346,7 +346,7 @@ impl<R: Read> RuzstdMultiFrameReader<R> {
     }
 }
 
-impl<R: Read> Read for RuzstdMultiFrameReader<R> {
+impl<R: Read> Read for NsZstdMultiFrameReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         if self.done {
             return Ok(0);
@@ -369,7 +369,7 @@ impl<R: Read> Read for RuzstdMultiFrameReader<R> {
                     Err(e) => {
                         return Err(io::Error::new(
                             io::ErrorKind::Other,
-                            format!("ruzstd failed to initialize next frame: {e}"),
+                            format!("ns-zstd failed to initialize next frame: {e}"),
                         ));
                     }
                 }
@@ -379,13 +379,13 @@ impl<R: Read> Read for RuzstdMultiFrameReader<R> {
                 let need = buf.len() - self.decoder.can_collect();
                 self.decoder
                     .decode_blocks(&mut self.source, BlockDecodingStrategy::UptoBytes(need))
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ruzstd decode_blocks failed: {e}")))?;
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ns-zstd decode_blocks failed: {e}")))?;
             }
 
             let n = self
                 .decoder
                 .read(buf)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ruzstd read failed: {e}")))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ns-zstd read failed: {e}")))?;
             if n != 0 {
                 return Ok(n);
             }
@@ -396,7 +396,7 @@ impl<R: Read> Read for RuzstdMultiFrameReader<R> {
 
             self.decoder
                 .decode_blocks(&mut self.source, BlockDecodingStrategy::UptoBytes(buf.len().max(1024)))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ruzstd decode_blocks failed: {e}")))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ns-zstd decode_blocks failed: {e}")))?;
         }
     }
 }

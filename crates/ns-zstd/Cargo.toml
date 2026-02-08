@@ -1,0 +1,20 @@
+[package]
+name = "ns-zstd"
+version = "0.8.2"
+edition = "2018"
+authors = ["Moritz Borcherding <moritz.borcherding@web.de>", "NextStat Contributors"]
+description = "NextStat-optimized fork of ruzstd — pure-Rust zstd decoder"
+license = "MIT"
+repository = "https://github.com/KillingSpark/zstd-rs"
+
+[features]
+default = ["std"]
+std = []
+hash = ["dep:twox-hash"]
+
+[lib]
+name = "ns_zstd"
+path = "src/lib.rs"
+
+[dependencies]
+twox-hash = { version = "2.0", features = ["xxhash64"], optional = true, default-features = false }

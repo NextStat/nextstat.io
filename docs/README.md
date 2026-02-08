@@ -24,6 +24,7 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 
 - Tool API contract: `docs/references/tool-api.md`
 - Server API (`/v1/tools/execute`, etc.): `docs/references/server-api.md`
+- Plot artifacts (JSON): `docs/references/plot-artifacts.md`
 
 ## GPU Support
 

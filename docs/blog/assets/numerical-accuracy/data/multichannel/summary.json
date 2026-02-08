@@ -16,9 +16,9 @@
     "nextstat_profile_scan": 0.00718108331784606
   },
   "artifacts": {
-    "root_profile_scan_json": "/Users/andresvlc/WebDev/nextstat.io/tmp/pyhf_validation_runs/multichannel/run_1770472075/root_profile_scan.json",
-    "pyhf_profile_scan_json": "/Users/andresvlc/WebDev/nextstat.io/tmp/pyhf_validation_runs/multichannel/run_1770472075/pyhf_profile_scan.json",
-    "nextstat_profile_scan_json": "/Users/andresvlc/WebDev/nextstat.io/tmp/pyhf_validation_runs/multichannel/run_1770472075/nextstat_profile_scan.json"
+    "root_profile_scan_json": "tmp/pyhf_validation_runs/multichannel/run_1770472075/root_profile_scan.json",
+    "pyhf_profile_scan_json": "tmp/pyhf_validation_runs/multichannel/run_1770472075/pyhf_profile_scan.json",
+    "nextstat_profile_scan_json": "tmp/pyhf_validation_runs/multichannel/run_1770472075/nextstat_profile_scan.json"
   },
   "root": {
     "mu_hat": 0.22039791458219882,

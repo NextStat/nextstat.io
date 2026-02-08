@@ -6,7 +6,7 @@ Scope: nextstat-server endpoints + tool runtime
 
 # NextStat Server API (nextstat-server)
 
-Server crate: `/Users/andresvlc/WebDev/nextstat.io/crates/ns-server`
+Server crate: `crates/ns-server`
 
 The server is a self-hosted HTTP API for running NextStat inference centrally (CPU and optional CUDA/Metal).
 

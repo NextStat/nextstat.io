@@ -156,7 +156,7 @@ Disables Apple Accelerate only, without forcing single-thread or Kahan.
 | 6 | Uncertainties | 5e-4 | 5e-4 |
 | 7 | Toy ensemble | 0.03–0.05 | 0.03–0.05 |
 
-Full details: `docs/pyhf-parity-contract.md`.
+Full details: `docs/references/pyhf-parity-contract.md`.
 
 ### Python API equivalent
 

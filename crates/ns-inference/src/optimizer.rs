@@ -541,16 +541,8 @@ impl LbfgsbOptimizer {
             };
 
             let linesearch = MoreThuenteLineSearch::new();
-            // In parity workflows we prefer minimizing to a stationary point (small gradient)
-            // over early stopping on small cost deltas, which can leave noticeable q(mu) gaps
-            // vs ROOT on large HistFactory exports.
-            let mut tol_cost =
+            let tol_cost =
                 if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
-            if ns_compute::eval_mode() == ns_compute::EvalMode::Parity {
-                // Tighten cost tolerance in parity mode (avoid early stopping),
-                // but keep it non-zero to ensure termination on flat surfaces.
-                tol_cost = tol_cost.min(1e-12);
-            }
             let solver = LBFGS::new(linesearch, self.config.m)
                 .with_tolerance_grad(self.config.tol)
                 .map_err(|e| {
@@ -613,11 +605,8 @@ impl LbfgsbOptimizer {
         let linesearch = MoreThuenteLineSearch::new();
         // Argmin's default cost tolerance is ~EPS, which is too strict for our NLL scales and
         // can lead to unnecessary max-iter terminations on larger HistFactory models.
-        let mut tol_cost =
+        let tol_cost =
             if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
-        if ns_compute::eval_mode() == ns_compute::EvalMode::Parity {
-            tol_cost = tol_cost.min(1e-12);
-        }
         let solver = LBFGS::new(linesearch, self.config.m)
             .with_tolerance_grad(self.config.tol)
             .map_err(|e| {

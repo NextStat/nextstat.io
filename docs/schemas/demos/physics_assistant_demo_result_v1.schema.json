@@ -50,6 +50,8 @@
         "nominal_workspace_path",
         "best_anomaly_workspace_path",
         "anomaly_scan_plot_data_path",
+        "anomaly_scan_figure_path",
+        "nominal_profile_scan_figure_path",
         "anomaly_scan_png_path",
         "nominal_scan_png_path"
       ],
@@ -59,6 +61,8 @@
         "nominal_workspace_path": { "type": "string", "minLength": 1 },
         "best_anomaly_workspace_path": { "type": "string", "minLength": 1 },
         "anomaly_scan_plot_data_path": { "type": "string", "minLength": 1 },
+        "anomaly_scan_figure_path": { "type": "string", "minLength": 1 },
+        "nominal_profile_scan_figure_path": { "type": ["string", "null"] },
         "anomaly_scan_png_path": { "type": ["string", "null"] },
         "nominal_scan_png_path": { "type": ["string", "null"] }
       }
@@ -127,4 +131,3 @@
     }
   }
 }
-

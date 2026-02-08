@@ -673,6 +673,41 @@ def main() -> int:
     ns_out = run_dir / "nextstat_profile_scan.json"
     ns_out.write_text(json.dumps(ns_scan, indent=2))
 
+    # Compute q(mu) diffs early so diagnostics can focus on the scan-mismatch point.
+    root_points = list(root_result.get("points") or [])
+    ns_points = list(ns_scan.get("points") or [])
+    if len(root_points) != len(mu_values) or len(ns_points) != len(mu_values):
+        raise RuntimeError(
+            f"unexpected point count: root={len(root_points)} nextstat={len(ns_points)} expected={len(mu_values)}"
+        )
+
+    def _nearest_point(points: list[dict[str, Any]], mu: float) -> dict[str, Any]:
+        best = min(points, key=lambda p: abs(float(p.get("mu")) - float(mu)))
+        if abs(float(best.get("mu")) - float(mu)) > 1e-8:
+            raise RuntimeError(f"no matching mu point found: mu={mu} best={best.get('mu')}")
+        return best
+
+    q_diffs: List[Tuple[float, float]] = []
+    for i, mu_expected in enumerate(mu_values):
+        p_root = root_points[i]
+        p_ns = ns_points[i]
+        mu_root = float(p_root.get("mu"))
+        mu_ns = float(p_ns.get("mu"))
+
+        # Defensive: if ordering drifts for any reason, fall back to nearest matching point.
+        if abs(mu_root - float(mu_expected)) > 1e-8:
+            p_root = _nearest_point(root_points, float(mu_expected))
+        if abs(mu_ns - float(mu_expected)) > 1e-8:
+            p_ns = _nearest_point(ns_points, float(mu_expected))
+
+        q_root = float(p_root.get("q_mu"))
+        q_ns = float(p_ns.get("q_mu"))
+        q_diffs.append((float(mu_expected), q_ns - q_root))
+
+    dq_max_mu: Optional[float] = None
+    if q_diffs:
+        dq_max_mu = max(q_diffs, key=lambda t: abs(t[1]))[0]
+
     diagnostic: Dict[str, Any] = {}
     if args.dump_root_params and "parameter_names" in root_result and "params_hat" in root_result:
         try:
@@ -764,8 +799,6 @@ def main() -> int:
             # Optional: compare fitted parameters (NextStat vs ROOT) at fixed-mu points, expressed
             # in NextStat parameter order. This helps diagnose q(mu) differences caused by
             # optimizer basin selection.
-            ns_points = list(ns_scan.get("points") or [])
-            root_points = list(root_result.get("points") or [])
             if (
                 ns_points
                 and root_points
@@ -773,61 +806,47 @@ def main() -> int:
                 and len(root_points) == len(mu_values)
                 and all(isinstance(p, dict) and ("params" in p) for p in ns_points)
             ):
-                per_point: List[Tuple[float, float, float]] = []  # (mu, maxabs, l2)
-                worst: Optional[Tuple[float, float, float, int]] = None  # (mu, maxabs, l2, idx)
-                for i, mu_expected in enumerate(mu_values):
-                    p_root = root_points[i]
-                    p_ns = ns_points[i]
-                    if "params" not in p_root or "params" not in p_ns:
-                        continue
-                    root_map = dict(zip(root_names, map(float, p_root["params"])))
-                    root_ns = _ns_params_from_root_map(root_map)
-                    ns_params = list(map(float, p_ns["params"]))
-                    if len(ns_params) != len(root_ns):
-                        continue
-                    diffs = [a - b for a, b in zip(ns_params, root_ns)]
-                    maxabs = max(abs(d) for d in diffs) if diffs else 0.0
-                    l2 = float(sum(d * d for d in diffs) ** 0.5)
-                    per_point.append((float(mu_expected), float(maxabs), float(l2)))
-                    if worst is None or abs(maxabs) > abs(worst[1]):
-                        worst = (float(mu_expected), float(maxabs), float(l2), i)
+                # Focus diagnostics on the scan point with max |delta q(mu)|.
+                if dq_max_mu is not None:
+                    diagnostic["mu_at_max_abs_dq_mu"] = float(dq_max_mu)
+                    p_root = _nearest_point(root_points, float(dq_max_mu))
+                    p_ns = _nearest_point(ns_points, float(dq_max_mu))
+                    if "params" in p_root and "params" in p_ns:
+                        root_map = dict(zip(root_names, map(float, p_root["params"])))
+                        root_ns = _ns_params_from_root_map(root_map)
+                        ns_params = list(map(float, p_ns["params"]))
+                        if len(ns_params) == len(root_ns):
+                            diffs = [a - b for a, b in zip(ns_params, root_ns)]
+                            maxabs = max(abs(d) for d in diffs) if diffs else 0.0
+                            l2 = float(sum(d * d for d in diffs) ** 0.5)
+                            diagnostic["ns_vs_root_params_dqmax_max_abs"] = float(maxabs)
+                            diagnostic["ns_vs_root_params_dqmax_l2"] = float(l2)
+                            top = sorted(enumerate(diffs), key=lambda t: abs(t[1]), reverse=True)[:10]
+                            diagnostic["ns_vs_root_params_dqmax_top_abs"] = [
+                                {
+                                    "name": ns_names[j],
+                                    "delta": float(d),
+                                    "root": float(root_ns[j]),
+                                    "nextstat": float(ns_params[j]),
+                                }
+                                for j, d in top
+                            ]
 
-                if per_point and worst is not None:
-                    diagnostic["ns_vs_root_params_max_abs"] = worst[1]
-                    diagnostic["ns_vs_root_params_l2"] = worst[2]
-                    diagnostic["ns_vs_root_params_mu_at_max_abs"] = worst[0]
+                            # Compare NLL at the two conditional minima (expressed in NextStat space).
+                            nll_ns = float(ns_model.nll(ns_params))
+                            nll_root_mapped = float(ns_model.nll(root_ns))
+                            diagnostic["nll_nextstat_at_nextstat_params_dqmax_mu"] = nll_ns
+                            diagnostic["nll_nextstat_at_root_mapped_params_dqmax_mu"] = nll_root_mapped
+                            diagnostic["delta_nll_nextstat_minus_root_mapped_dqmax_mu"] = (
+                                nll_ns - nll_root_mapped
+                            )
 
-                    # Top parameter deltas at the worst mu (by abs delta).
-                    _, _, _, worst_i = worst
-                    p_root = root_points[worst_i]
-                    p_ns = ns_points[worst_i]
-                    root_map = dict(zip(root_names, map(float, p_root["params"])))
-                    root_ns = _ns_params_from_root_map(root_map)
-                    ns_params = list(map(float, p_ns["params"]))
-                    diffs = [a - b for a, b in zip(ns_params, root_ns)]
-                    top = sorted(enumerate(diffs), key=lambda t: abs(t[1]), reverse=True)[:10]
-                    diagnostic["ns_vs_root_params_top_abs"] = [
-                        {
-                            "name": ns_names[j],
-                            "delta": float(d),
-                            "root": float(root_ns[j]),
-                            "nextstat": float(ns_params[j]),
-                        }
-                        for j, d in top
-                    ]
-
-                    # Gradient sanity at the q(mu)-worst point: compare gradient norms at
-                    # NextStat's fitted params vs ROOT-mapped params.
-                    #
-                    # If ROOT-mapped params have much smaller gradient, it's a strong signal that
-                    # our optimizer is terminating early (or is stuck) rather than a likelihood bug.
-                    worst_mu = float(per_point[worst_i][0])
-                    diagnostic["worst_mu_for_param_diff"] = worst_mu
-                    try:
-                        diagnostic["grad_nextstat_at_worst_mu"] = _grad_stats(ns_params)
-                        diagnostic["grad_root_mapped_at_worst_mu"] = _grad_stats(root_ns)
-                    except Exception as e:
-                        diagnostic["grad_error"] = f"{e}"
+                            # Gradient sanity at the mismatch point (POI gradient masked out).
+                            try:
+                                diagnostic["grad_nextstat_at_dqmax_mu"] = _grad_stats(ns_params)
+                                diagnostic["grad_root_mapped_at_dqmax_mu"] = _grad_stats(root_ns)
+                            except Exception as e:
+                                diagnostic["grad_error"] = f"{e}"
         except Exception as e:
             diagnostic["error"] = f"{e}"
 
@@ -836,43 +855,9 @@ def main() -> int:
     # Do not key by float(mu): ROOT and Rust/Python can serialize the same nominal
     # grid point with slightly different binary floats (e.g. 0.3 vs 0.30000000000000004),
     # which would cause spurious KeyErrors.
-    root_points = list(root_result.get("points") or [])
-    ns_points = list(ns_scan.get("points") or [])
-    if len(root_points) != len(mu_values) or len(ns_points) != len(mu_values):
-        raise RuntimeError(
-            f"unexpected point count: root={len(root_points)} nextstat={len(ns_points)} expected={len(mu_values)}"
-        )
-
-    def _nearest_point(points: list[dict[str, Any]], mu: float) -> dict[str, Any]:
-        best = min(points, key=lambda p: abs(float(p.get("mu")) - float(mu)))
-        if abs(float(best.get("mu")) - float(mu)) > 1e-8:
-            raise RuntimeError(f"no matching mu point found: mu={mu} best={best.get('mu')}")
-        return best
-
-    diffs: List[Tuple[float, float]] = []
-    for i, mu_expected in enumerate(mu_values):
-        p_root = root_points[i]
-        p_ns = ns_points[i]
-        mu_root = float(p_root.get("mu"))
-        mu_ns = float(p_ns.get("mu"))
-
-        # Defensive: if ordering drifts for any reason, fall back to nearest matching point.
-        if abs(mu_root - float(mu_expected)) > 1e-8:
-            p_root = _nearest_point(root_points, float(mu_expected))
-            mu_root = float(p_root.get("mu"))
-        if abs(mu_ns - float(mu_expected)) > 1e-8:
-            p_ns = _nearest_point(ns_points, float(mu_expected))
-            mu_ns = float(p_ns.get("mu"))
-
-        # Compare using the expected grid coordinate (stable for reporting).
-        q_root = float(p_root.get("q_mu"))
-        q_ns = float(p_ns.get("q_mu"))
-        diffs.append((float(mu_expected), q_ns - q_root))
-
+    diffs = q_diffs
     max_abs_dq = max(abs(d) for _, d in diffs) if diffs else 0.0
-    max_abs_dq_mu = None
-    if diffs:
-        max_abs_dq_mu = max(diffs, key=lambda t: abs(t[1]))[0]
+    max_abs_dq_mu = dq_max_mu
     top_diffs = sorted(diffs, key=lambda t: abs(t[1]), reverse=True)[:10]
     mu_hat_root = float(root_result["mu_hat"])
     mu_hat_ns = float(ns_scan["mu_hat"])

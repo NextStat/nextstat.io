@@ -331,7 +331,7 @@ Kahan summation variants (in `ns_compute::simd`):
 
 **Measured overhead:** <5% (Kahan vs naive at same thread count).
 
-**Tolerance contract:** See `docs/pyhf-parity-contract.md` for 7 tolerance tiers from
+**Tolerance contract:** See `docs/references/pyhf-parity-contract.md` for 7 tolerance tiers from
 per-bin 1e-12 to toy ensemble 0.05.
 
 ### PreparedModel NLL Dispatch

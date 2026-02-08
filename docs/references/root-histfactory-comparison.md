@@ -338,7 +338,7 @@ python tests/validate_root_profile_scan.py \
 ### 6.3 CI Integration
 
 The ROOT comparison is **informational** (recorded but not gating). The hard CI gate
-is the pyhf parity contract (`docs/pyhf-parity-contract.md`), which requires:
+is the pyhf parity contract (`docs/references/pyhf-parity-contract.md`), which requires:
 
 - Per-bin expected data: atol = 1e-12
 - NLL value: atol = 1e-8
@@ -446,9 +446,9 @@ Manifest: `tmp/baselines/latest_root_manifest.json`
 
 ## References
 
-- pyhf parity contract: `docs/pyhf-parity-contract.md`
+- pyhf parity contract: `docs/references/pyhf-parity-contract.md`
 - Optimizer convergence analysis: `docs/references/optimizer-convergence.md`
-- TREx replacement contract: `docs/references/trex_replacement_parity_contract.md`
+- TREx replacement contract: `docs/references/pyhf-parity-contract.md`
 - pyhf publication: Feickert et al., JOSS 2021 (doi:10.21105/joss.02823)
 - HistFactory paper: Cranmer, Lewis, Moneta, arXiv:1007.1727
 - ATLAS pyhf endorsement: ATL-PHYS-PUB-2019-029

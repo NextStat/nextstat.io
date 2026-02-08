@@ -143,12 +143,12 @@ fn decompress_root_zs_only_legacy(src: &[u8], expected_len: usize) -> Result<Vec
         let compressed = &src[offset..end];
 
         let mut ruz_source = compressed;
-        let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
-            .map_err(|e| format!("ruzstd init failed: {e}"))?;
+        let mut ruz_dec = ns_zstd::decoding::StreamingDecoder::new(&mut ruz_source)
+            .map_err(|e| format!("ns_zstd init failed: {e}"))?;
         let mut block_out = Vec::with_capacity(u_size);
         ruz_dec
             .read_to_end(&mut block_out)
-            .map_err(|e| format!("ruzstd read failed: {e}"))?;
+            .map_err(|e| format!("ns_zstd read failed: {e}"))?;
 
         if block_out.len() != u_size {
             return Err(format!("decoded size mismatch: got {} expected {}", block_out.len(), u_size));
@@ -774,7 +774,7 @@ impl Config {
 
 fn print_help() {
     eprintln!(
-        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--iters N] [--scan] [--bench-scan] [--bench-compare] [--bench-tree] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree verify):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\n  Bench mode (--bench-scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers\n    - Decompresses using ns_root production decompressor (no reference, no byte-compare)\n    - Prints throughput stats\n\n  Bench mode (--bench-compare):\n    - Iterates tree branches/baskets and benchmarks the same baskets with:\n        (1) ns_root production decompressor (bulk)\n        (2) legacy ruzstd StreamingDecoder+read_to_end (ZSTD only)\n        (3) libzstd via zstd crate (C reference)\n    - Validates first basket output byte-for-byte then reports MiB/s and speedup\n\n  Bench mode (--bench-tree):\n    - Iterates tree branches/baskets and decompresses each basket payload using ns_root production decompressor\n    - Prints throughput stats\n\nExit status:\n  - 0 if all checked blocks match (verify modes) / no failures (bench modes)\n  - non-zero on any mismatch / decompression failure\n"
+        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--iters N] [--scan] [--bench-scan] [--bench-compare] [--bench-tree] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree verify):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ns_zstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ns_zstd vs libzstd for every validated block\n\n  Bench mode (--bench-scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers\n    - Decompresses using ns_root production decompressor (no reference, no byte-compare)\n    - Prints throughput stats\n\n  Bench mode (--bench-compare):\n    - Iterates tree branches/baskets and benchmarks the same baskets with:\n        (1) ns_root production decompressor (bulk)\n        (2) legacy ns_zstd StreamingDecoder+read_to_end (ZSTD only)\n        (3) libzstd via zstd crate (C reference)\n    - Validates first basket output byte-for-byte then reports MiB/s and speedup\n\n  Bench mode (--bench-tree):\n    - Iterates tree branches/baskets and decompresses each basket payload using ns_root production decompressor\n    - Prints throughput stats\n\nExit status:\n  - 0 if all checked blocks match (verify modes) / no failures (bench modes)\n  - non-zero on any mismatch / decompression failure\n"
     );
 }
 
@@ -968,8 +968,8 @@ fn compare_zstd_block_scan(compressed: &[u8], ctx: &ScanCtx, verbose: bool) -> R
         .map_err(|e| format!("libzstd (zstd crate) init failed: {e}"))?;
 
     let mut ruz_source = compressed;
-    let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
-        .map_err(|e| format!("ruzstd init failed: {e}"))?;
+    let mut ruz_dec = ns_zstd::decoding::StreamingDecoder::new(&mut ruz_source)
+        .map_err(|e| format!("ns_zstd init failed: {e}"))?;
 
     let bytes = stream_compare(&mut ruz_dec, &mut ref_dec).map_err(|e| {
         format!(
@@ -1241,8 +1241,8 @@ fn compare_zstd_block(
         .map_err(|e| format!("libzstd (zstd crate) init failed: {e}"))?;
 
     let mut ruz_source = compressed;
-    let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
-        .map_err(|e| format!("ruzstd init failed: {e}"))?;
+    let mut ruz_dec = ns_zstd::decoding::StreamingDecoder::new(&mut ruz_source)
+        .map_err(|e| format!("ns_zstd init failed: {e}"))?;
 
     let bytes = stream_compare(&mut ruz_dec, &mut ref_dec).map_err(|e| {
         format!(
@@ -1297,7 +1297,7 @@ fn stream_compare(a: &mut dyn Read, b: &mut dyn Read) -> Result<u64, String> {
 
     loop {
         if a_pos == a_len {
-            a_len = a.read(&mut a_buf).map_err(|e| format!("read ruzstd: {e}"))?;
+            a_len = a.read(&mut a_buf).map_err(|e| format!("read ns_zstd: {e}"))?;
             a_pos = 0;
         }
         if b_pos == b_len {
@@ -1310,12 +1310,12 @@ fn stream_compare(a: &mut dyn Read, b: &mut dyn Read) -> Result<u64, String> {
         }
         if a_len == 0 && b_len != 0 {
             return Err(format!(
-                "output length mismatch at offset {total}: ruzstd ended early, reference has more data"
+                "output length mismatch at offset {total}: ns_zstd ended early, reference has more data"
             ));
         }
         if b_len == 0 && a_len != 0 {
             return Err(format!(
-                "output length mismatch at offset {total}: reference ended early, ruzstd has more data"
+                "output length mismatch at offset {total}: reference ended early, ns_zstd has more data"
             ));
         }
 
@@ -1340,7 +1340,7 @@ fn stream_compare(a: &mut dyn Read, b: &mut dyn Read) -> Result<u64, String> {
             let b_tail = hex_preview(&b_slice[i..], 32);
 
             return Err(format!(
-                "byte mismatch at offset {off}: ruzstd=0x{:02X} ref=0x{:02X}; ruzstd_tail={a_tail} ref_tail={b_tail}",
+                "byte mismatch at offset {off}: ns_zstd=0x{:02X} ref=0x{:02X}; ns_zstd_tail={a_tail} ref_tail={b_tail}",
                 a_slice[i],
                 b_slice[i]
             ));
