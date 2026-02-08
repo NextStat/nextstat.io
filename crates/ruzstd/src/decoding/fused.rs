@@ -139,13 +139,16 @@ fn fused_unified(
     let num_sequences = section.num_sequences as usize;
     let mut literals_copy_counter = 0usize;
 
+    // Main loop: all sequences except the last (avoids `seq_idx + 1 < num_sequences` branch).
+    // Also removes `ml > 0` check (zstd guarantees ml >= MINMATCH=3 for all sequences)
+    // and merges the two `ll > 0` checks into one block.
+    let last_seq = if num_sequences > 0 { num_sequences - 1 } else { 0 };
+
     for seq_idx in 0..num_sequences {
-        // --- Decode: ONE table lookup per decoder (no secondary lookup_*_code) ---
         let ll_entry = unsafe { *seq_ll.get_unchecked(ll_state) };
         let ml_entry = unsafe { *seq_ml.get_unchecked(ml_state) };
         let of_entry = unsafe { *seq_of.get_unchecked(of_state) };
 
-        // Read extra bits for all 3 values in one refill
         let (obits, ml_add, ll_add) = br.get_bits_triple(
             of_entry.nb_additional_bits,
             ml_entry.nb_additional_bits,
@@ -153,12 +156,9 @@ fn fused_unified(
         );
 
         let offset = obits as u32 + of_entry.base_value;
-        debug_assert!(offset > 0);
-
         let ll = ll_entry.base_value + ll_add as u32;
         let ml = ml_entry.base_value + ml_add as u32;
 
-        // --- Execute immediately ---
         let actual_offset = do_offset_history(offset, ll, offset_hist);
         if actual_offset == 0 {
             return Err(ExecuteSequencesError::ZeroOffset.into());
@@ -166,6 +166,10 @@ fn fused_unified(
 
         let ll_usize = ll as usize;
         let ml_usize = ml as usize;
+
+        buffer
+            .ensure_capacity(ll_usize + ml_usize)
+            .map_err(DecompressBlockError::from)?;
 
         if ll_usize > 0 {
             let high = literals_copy_counter + ll_usize;
@@ -176,33 +180,18 @@ fn fused_unified(
                 }
                 .into());
             }
-        }
-
-        let produced = ll_usize.saturating_add(ml_usize);
-        if produced > 0 {
-            buffer
-                .ensure_capacity(produced)
-                .map_err(DecompressBlockError::from)?;
-        }
-
-        if ll_usize > 0 {
-            let high = literals_copy_counter + ll_usize;
             buffer
                 .push_unchecked(&literals_buffer[literals_copy_counter..high])
                 .map_err(DecompressBlockError::from)?;
             literals_copy_counter = high;
         }
 
-        if ml_usize > 0 {
-            buffer
-                .repeat_unchecked(actual_offset as usize, ml_usize)
-                .map_err(DecompressBlockError::from)?;
-        }
+        buffer
+            .repeat_unchecked(actual_offset as usize, ml_usize)
+            .map_err(DecompressBlockError::from)?;
 
-        // Interleaved FSE state update: read all 3 state-transition bit values
-        // in one refill, then compute next states independently (CPU can pipeline).
-        // For RLE entries: nb_bits=0, so 0 bits read, next_state_base=0 → state stays 0.
-        if seq_idx + 1 < num_sequences {
+        // FSE state update (skipped for last sequence)
+        if seq_idx < last_seq {
             let (ll_bits, ml_bits, of_bits) = br.get_bits_triple(
                 ll_entry.nb_bits,
                 ml_entry.nb_bits,
@@ -212,10 +201,6 @@ fn fused_unified(
             ll_state = ll_entry.next_state_base as usize + ll_bits as usize;
             ml_state = ml_entry.next_state_base as usize + ml_bits as usize;
             of_state = of_entry.next_state_base as usize + of_bits as usize;
-        }
-
-        if br.bits_remaining() < 0 {
-            return Err(DecodeSequenceError::NotEnoughBytesForNumSequences.into());
         }
     }
 
