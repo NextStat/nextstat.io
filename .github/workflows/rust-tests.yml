@@ -39,6 +39,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
         run: bash -n validation-pack/render_validation_pack.sh
 
+      - name: validation-pack --help smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: |
+          set -euo pipefail
+          out="$(bash validation-pack/render_validation_pack.sh --help)"
+          echo "$out" | grep -q -- "--json-only"
+          echo "$out" | grep -q -- "Examples:"
+
       - name: Run tests
         run: cargo test --workspace --all-features --verbose
 
