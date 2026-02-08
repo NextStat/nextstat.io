@@ -1,7 +1,7 @@
 //! Structures that wrap around various decoders to make decoding easier.
 
 use super::super::blocks::sequence_section::Sequence;
-use super::decode_buffer::DecodeBuffer;
+use super::flat_decode_buffer::FlatDecodeBuffer;
 use crate::decoding::dictionary::Dictionary;
 use crate::fse::FSETable;
 use crate::huff0::HuffmanTable;
@@ -18,7 +18,7 @@ pub struct DecoderScratch {
     /// The decoder used for FSE blocks.
     pub fse: FSEScratch,
 
-    pub buffer: DecodeBuffer,
+    pub buffer: FlatDecodeBuffer,
     pub offset_hist: [u32; 3],
 
     pub literals_buffer: Vec<u8>,
@@ -40,7 +40,7 @@ impl DecoderScratch {
                 match_lengths: FSETable::new(MAX_MATCH_LENGTH_CODE),
                 ml_rle: None,
             },
-            buffer: DecodeBuffer::new(window_size),
+            buffer: FlatDecodeBuffer::new(window_size),
             offset_hist: [1, 4, 8],
 
             block_content_buffer: Vec::new(),

@@ -90,7 +90,9 @@ from . import summary as summary  # noqa: E402
 from . import robust as robust  # noqa: E402
 from . import sklearn as sklearn  # noqa: E402
 from . import panel as panel  # noqa: E402
-from . import econometrics as econometrics  # noqa: E402
+from . import econometrics as econometrics
+from . import mlops as mlops  # noqa: E402
+from . import interpret as interpret  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -187,6 +189,8 @@ __all__ = [
     "upper_limit",
     "upper_limits",
     "upper_limits_root",
+    "mlops",
+    "interpret",
     "PyModel",
     "PyFitResult",
     "ExponentialSurvivalModel",

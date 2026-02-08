@@ -34,27 +34,54 @@ fn main() {
     println!("Payload: {} bytes uncompressed, {} bytes compressed (ratio {:.2}x)",
         uncompressed_size, compressed.len(), ratio);
 
-    // Warm up
-    for _ in 0..5 {
-        let mut dec = ruzstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
+    // Verify correctness
+    {
+        let mut dec = ruzstd::decoding::FrameDecoder::new();
         let mut out = Vec::with_capacity(uncompressed_size);
-        std::io::Read::read_to_end(&mut dec, &mut out).unwrap();
+        dec.decode_all_to_vec(&compressed, &mut out).unwrap();
         assert_eq!(out.len(), uncompressed_size);
+        assert_eq!(out, raw);
     }
 
-    // Benchmark: 3 rounds × N iterations, take median
     let iterations = 500;
     let rounds = 5;
-    let mut throughputs = Vec::new();
 
+    // --- Benchmark 1: decode_all_to_vec (bulk, no streaming overhead) ---
+    println!("\n--- decode_all_to_vec (bulk) ---");
+    let mut throughputs = Vec::new();
+    let mut decoder = ruzstd::decoding::FrameDecoder::new();
     for round in 0..rounds {
-        // Warm up
+        for _ in 0..3 {
+            let mut out = Vec::with_capacity(uncompressed_size);
+            decoder.decode_all_to_vec(&compressed, &mut out).unwrap();
+        }
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            let mut out = Vec::with_capacity(uncompressed_size);
+            decoder.decode_all_to_vec(&compressed, &mut out).unwrap();
+            std::hint::black_box(&out);
+        }
+        let elapsed = start.elapsed();
+        let total_bytes = uncompressed_size as f64 * iterations as f64;
+        let tp = total_bytes / elapsed.as_secs_f64() / 1e6;
+        throughputs.push(tp);
+        let per_iter_us = elapsed.as_micros() as f64 / iterations as f64;
+        println!("  Round {}: {:.0} MB/s  ({:.0} µs/iter)", round + 1, tp, per_iter_us);
+    }
+    throughputs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median_bulk = throughputs[rounds / 2];
+    let best_bulk = throughputs[rounds - 1];
+    println!("Median: {:.0} MB/s  Best: {:.0} MB/s", median_bulk, best_bulk);
+
+    // --- Benchmark 2: StreamingDecoder (read_to_end) ---
+    println!("\n--- StreamingDecoder (read_to_end) ---");
+    let mut throughputs = Vec::new();
+    for round in 0..rounds {
         for _ in 0..3 {
             let mut dec = ruzstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
             let mut out = Vec::with_capacity(uncompressed_size);
             std::io::Read::read_to_end(&mut dec, &mut out).unwrap();
         }
-
         let start = std::time::Instant::now();
         for _ in 0..iterations {
             let mut dec = ruzstd::decoding::StreamingDecoder::new(compressed.as_slice()).unwrap();
@@ -63,21 +90,19 @@ fn main() {
             std::hint::black_box(&out);
         }
         let elapsed = start.elapsed();
-
         let total_bytes = uncompressed_size as f64 * iterations as f64;
         let tp = total_bytes / elapsed.as_secs_f64() / 1e6;
         throughputs.push(tp);
         let per_iter_us = elapsed.as_micros() as f64 / iterations as f64;
         println!("  Round {}: {:.0} MB/s  ({:.0} µs/iter)", round + 1, tp, per_iter_us);
     }
-
     throughputs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let median = throughputs[rounds / 2];
-    let best = throughputs[rounds - 1];
+    let median_stream = throughputs[rounds / 2];
+    let best_stream = throughputs[rounds - 1];
+    println!("Median: {:.0} MB/s  Best: {:.0} MB/s", median_stream, best_stream);
 
-    println!();
-    println!("Median: {:.0} MB/s", median);
-    println!("Best:   {:.0} MB/s", best);
-    println!();
-    println!("Reference: C libzstd single-thread ~1500-2000 MB/s on similar data");
+    println!("\n=== Summary ===");
+    println!("Bulk:      {:.0} MB/s median, {:.0} MB/s best", median_bulk, best_bulk);
+    println!("Streaming: {:.0} MB/s median, {:.0} MB/s best", median_stream, best_stream);
+    println!("Reference: C libzstd ~1500-2000 MB/s");
 }

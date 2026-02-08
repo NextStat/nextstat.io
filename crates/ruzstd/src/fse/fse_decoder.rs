@@ -48,8 +48,16 @@ impl<'t> FSEDecoder<'t> {
         let base_line = self.state.base_line;
         let new_state = base_line + add as u32;
         self.state = self.table.decode[new_state as usize];
+    }
 
-        //println!("Update: {}, {} -> {}", base_line, add,  self.state);
+    /// Apply pre-read bits to transition to the next state.
+    /// Used by the interleaved FSE update path: caller does one refill,
+    /// reads bits for all 3 decoders via peek+consume, then calls this
+    /// on each decoder independently — enabling CPU pipeline parallelism.
+    #[inline(always)]
+    pub fn update_state_from_bits(&mut self, add: u64) {
+        let new_state = self.state.base_line + add as u32;
+        self.state = self.table.decode[new_state as usize];
     }
 }
 

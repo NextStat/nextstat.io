@@ -72,11 +72,12 @@ fn decompress_literals(
     let regen = section.regenerated_size as usize;
     let start_len = target.len();
     target.resize(start_len + regen, 0);
-    let out = &mut target[start_len..];
+    // Use raw pointer to avoid holding a mutable borrow on `target`,
+    // which would conflict with `target.truncate()` in error paths.
+    let out_ptr = target[start_len..].as_mut_ptr();
     let mut write_idx = 0;
 
     if num_streams == 4 {
-        //build jumptable
         if source.len() < 6 {
             target.truncate(start_len);
             return Err(err::MissingBytesForJumpHeader { got: source.len() });
@@ -95,48 +96,100 @@ fn decompress_literals(
             });
         }
 
-        //decode 4 streams
-        let stream1 = &source[..jump1];
-        let stream2 = &source[jump1..jump2];
-        let stream3 = &source[jump2..jump3];
-        let stream4 = &source[jump3..];
+        let streams: [&[u8]; 4] = [
+            &source[..jump1],
+            &source[jump1..jump2],
+            &source[jump2..jump3],
+            &source[jump3..],
+        ];
 
-        for stream in &[stream1, stream2, stream3, stream4] {
-            let mut decoder = HuffmanDecoder::new(&scratch.table);
-            let mut br = BitReaderReversed::new(stream);
-            //skip the 0 padding at the end of the last byte of the bit stream and throw away the first 1 found
-            let mut skipped_bits = 0;
-            loop {
-                let val = br.get_bits(1);
-                skipped_bits += 1;
-                if val == 1 || skipped_bits > 8 {
-                    break;
-                }
-            }
-            if skipped_bits > 8 {
+        // Per-stream output sizes (zstd spec: first 3 = (regen+3)/4, 4th = remainder)
+        let seg = (regen + 3) / 4;
+        let sizes = [seg, seg, seg, regen - 3 * seg];
+        let starts = [0usize, seg, 2 * seg, 3 * seg];
+
+        let threshold = -(scratch.table.max_num_bits as isize);
+
+        // Process streams in pairs for ILP: (0,1) then (2,3).
+        // Two independent Huffman state machines let the CPU pipeline
+        // table lookups from one stream while the other's load completes.
+        for pair in 0..2 {
+            let si_a = pair * 2;
+            let si_b = pair * 2 + 1;
+
+            let mut dec_a = HuffmanDecoder::new(&scratch.table);
+            let mut dec_b = HuffmanDecoder::new(&scratch.table);
+            let mut br_a = BitReaderReversed::new(streams[si_a]);
+            let mut br_b = BitReaderReversed::new(streams[si_b]);
+
+            if let Err(e) = skip_padding(&mut br_a) {
                 target.truncate(start_len);
-                return Err(DecompressLiteralsError::ExtraPadding { skipped_bits });
+                return Err(e);
             }
-            decoder.init_state(&mut br);
+            if let Err(e) = skip_padding(&mut br_b) {
+                target.truncate(start_len);
+                return Err(e);
+            }
 
-            let threshold = -(scratch.table.max_num_bits as isize);
-            while br.bits_remaining() > threshold {
-                if write_idx < regen {
-                    // SAFETY: write_idx < regen and out.len() == regen
-                    unsafe { *out.get_unchecked_mut(write_idx) = decoder.decode_symbol() };
+            dec_a.init_state(&mut br_a);
+            dec_b.init_state(&mut br_b);
+
+            let mut w_a = starts[si_a];
+            let mut w_b = starts[si_b];
+            let end_a = starts[si_a] + sizes[si_a];
+            let end_b = starts[si_b] + sizes[si_b];
+
+            // Interleaved main loop: decode one symbol from each stream per iteration.
+            // The two decode_symbol + next_state chains are independent — CPU can
+            // execute both in parallel via out-of-order execution.
+            while br_a.bits_remaining() > threshold && br_b.bits_remaining() > threshold {
+                if w_a < end_a {
+                    unsafe { *out_ptr.add(w_a) = dec_a.decode_symbol() };
                 }
-                write_idx += 1;
-                decoder.next_state(&mut br);
+                w_a += 1;
+
+                if w_b < end_b {
+                    unsafe { *out_ptr.add(w_b) = dec_b.decode_symbol() };
+                }
+                w_b += 1;
+
+                dec_a.next_state(&mut br_a);
+                dec_b.next_state(&mut br_b);
             }
-            if br.bits_remaining() != threshold {
+
+            // Drain whichever stream is longer
+            while br_a.bits_remaining() > threshold {
+                if w_a < end_a {
+                    unsafe { *out_ptr.add(w_a) = dec_a.decode_symbol() };
+                }
+                w_a += 1;
+                dec_a.next_state(&mut br_a);
+            }
+            while br_b.bits_remaining() > threshold {
+                if w_b < end_b {
+                    unsafe { *out_ptr.add(w_b) = dec_b.decode_symbol() };
+                }
+                w_b += 1;
+                dec_b.next_state(&mut br_b);
+            }
+
+            if br_a.bits_remaining() != threshold {
                 target.truncate(start_len);
                 return Err(DecompressLiteralsError::BitstreamReadMismatch {
-                    read_til: br.bits_remaining(),
+                    read_til: br_a.bits_remaining(),
+                    expected: threshold,
+                });
+            }
+            if br_b.bits_remaining() != threshold {
+                target.truncate(start_len);
+                return Err(DecompressLiteralsError::BitstreamReadMismatch {
+                    read_til: br_b.bits_remaining(),
                     expected: threshold,
                 });
             }
         }
 
+        write_idx = regen;
         bytes_read += source.len() as u32;
     } else {
         //just decode the one stream
@@ -159,7 +212,7 @@ fn decompress_literals(
         let threshold = -(scratch.table.max_num_bits as isize);
         while br.bits_remaining() > threshold {
             if write_idx < regen {
-                unsafe { *out.get_unchecked_mut(write_idx) = decoder.decode_symbol() };
+                unsafe { *out_ptr.add(write_idx) = decoder.decode_symbol() };
             }
             write_idx += 1;
             decoder.next_state(&mut br);
@@ -178,4 +231,21 @@ fn decompress_literals(
     }
 
     Ok(bytes_read)
+}
+
+/// Skip the zero-padding and sentinel 1-bit at the end of a Huffman bitstream.
+#[inline(always)]
+fn skip_padding(br: &mut BitReaderReversed<'_>) -> Result<(), DecompressLiteralsError> {
+    let mut skipped_bits = 0;
+    loop {
+        let val = br.get_bits(1);
+        skipped_bits += 1;
+        if val == 1 || skipped_bits > 8 {
+            break;
+        }
+    }
+    if skipped_bits > 8 {
+        return Err(DecompressLiteralsError::ExtraPadding { skipped_bits });
+    }
+    Ok(())
 }

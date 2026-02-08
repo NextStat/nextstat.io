@@ -8,7 +8,7 @@
 
 use crate::bit_io::BitReaderReversed;
 use crate::blocks::sequence_section::{SequencesHeader, MAX_OFFSET_CODE};
-use crate::decoding::decode_buffer::DecodeBuffer;
+use crate::decoding::flat_decode_buffer::FlatDecodeBuffer;
 use crate::decoding::errors::{
     DecodeSequenceError, DecompressBlockError, ExecuteSequencesError,
 };
@@ -28,7 +28,7 @@ pub fn decode_and_execute_sequences(
     section: &SequencesHeader,
     source: &[u8],
     fse: &mut FSEScratch,
-    buffer: &mut DecodeBuffer,
+    buffer: &mut FlatDecodeBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -61,7 +61,7 @@ fn fused_without_rle(
     section: &SequencesHeader,
     br: &mut BitReaderReversed<'_>,
     fse: &FSEScratch,
-    buffer: &mut DecodeBuffer,
+    buffer: &mut FlatDecodeBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -129,11 +129,19 @@ fn fused_without_rle(
                 .map_err(ExecuteSequencesError::DecodebufferError)?;
         }
 
-        // Update FSE state for next sequence
+        // Interleaved FSE state update: read all 3 bit values in one refill,
+        // then do 3 independent table lookups that the CPU can pipeline.
+        // Max total bits: 9 (LL) + 9 (ML) + 8 (OF) = 26, well within 56-bit refill.
         if seq_idx + 1 < num_sequences {
-            ll_dec.update_state(br);
-            ml_dec.update_state(br);
-            of_dec.update_state(br);
+            let ll_nb = ll_dec.state.num_bits;
+            let ml_nb = ml_dec.state.num_bits;
+            let of_nb = of_dec.state.num_bits;
+
+            let (ll_bits, ml_bits, of_bits) = br.get_bits_triple(ll_nb, ml_nb, of_nb);
+
+            ll_dec.update_state_from_bits(ll_bits);
+            ml_dec.update_state_from_bits(ml_bits);
+            of_dec.update_state_from_bits(of_bits);
         }
 
         if br.bits_remaining() < 0 {
@@ -160,7 +168,7 @@ fn fused_with_rle(
     section: &SequencesHeader,
     br: &mut BitReaderReversed<'_>,
     fse: &FSEScratch,
-    buffer: &mut DecodeBuffer,
+    buffer: &mut FlatDecodeBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -246,17 +254,18 @@ fn fused_with_rle(
                 .map_err(ExecuteSequencesError::DecodebufferError)?;
         }
 
-        // Update FSE state for next sequence
+        // Interleaved FSE state update for non-RLE decoders.
+        // Collect bit widths, read all bits in one batch, then do independent table lookups.
         if seq_idx + 1 < num_sequences {
-            if fse.ll_rle.is_none() {
-                ll_dec.update_state(br);
-            }
-            if fse.ml_rle.is_none() {
-                ml_dec.update_state(br);
-            }
-            if fse.of_rle.is_none() {
-                of_dec.update_state(br);
-            }
+            let ll_nb = if fse.ll_rle.is_none() { ll_dec.state.num_bits } else { 0 };
+            let ml_nb = if fse.ml_rle.is_none() { ml_dec.state.num_bits } else { 0 };
+            let of_nb = if fse.of_rle.is_none() { of_dec.state.num_bits } else { 0 };
+
+            let (ll_bits, ml_bits, of_bits) = br.get_bits_triple(ll_nb, ml_nb, of_nb);
+
+            if fse.ll_rle.is_none() { ll_dec.update_state_from_bits(ll_bits); }
+            if fse.ml_rle.is_none() { ml_dec.update_state_from_bits(ml_bits); }
+            if fse.of_rle.is_none() { of_dec.update_state_from_bits(of_bits); }
         }
 
         if br.bits_remaining() < 0 {
