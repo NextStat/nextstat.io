@@ -10,6 +10,7 @@ members = [
     "crates/ns-translate",
     "crates/ns-viz",
     "crates/ns-cli",
+    "crates/ns-server",
     "crates/ruzstd",
     "bindings/ns-py",
     "bindings/ns-wasm",
@@ -84,6 +85,10 @@ numpy = "0.27"
 
 # CLI
 clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# HTTP server (ns-server)
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # Autodiff (Phase 2B)
 # autodiff dependencies will be added later

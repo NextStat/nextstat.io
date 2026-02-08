@@ -1,0 +1,39 @@
+[package]
+name = "ns-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Self-hosted GPU inference API server for NextStat"
+
+[[bin]]
+name = "nextstat-server"
+path = "src/main.rs"
+
+[dependencies]
+ns-core.workspace = true
+ns-compute.workspace = true
+ns-inference = { workspace = true }
+ns-translate.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rayon.workspace = true
+anyhow.workspace = true
+
+[features]
+default = []
+cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
+metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
+
+[dev-dependencies]
