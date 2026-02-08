@@ -63,7 +63,23 @@
       "name": "NominalMeasurement",
       "config": {
         "poi": "mu",
-        "parameters": []
+        "parameters": [
+          {
+            "name": "mu",
+            "inits": [
+              1.0
+            ],
+            "bounds": [
+              [
+                0.0,
+                10.0
+              ]
+            ],
+            "fixed": false,
+            "auxdata": [],
+            "sigmas": []
+          }
+        ]
       }
     }
   ],

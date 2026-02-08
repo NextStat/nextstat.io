@@ -101,6 +101,7 @@ class BatchToysResult:
 
     n_toys: int
     n_converged: int
+    n_failed: int
     results: list[ToyFitItem]
     device: str
     wall_time_s: float
@@ -375,6 +376,7 @@ class NextStatClient:
         return BatchToysResult(
             n_toys=data["n_toys"],
             n_converged=data["n_converged"],
+            n_failed=data.get("n_failed", 0),
             results=items,
             device=data["device"],
             wall_time_s=data["wall_time_s"],

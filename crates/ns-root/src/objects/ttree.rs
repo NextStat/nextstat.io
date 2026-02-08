@@ -122,6 +122,16 @@ impl ClassRefTracker {
         self.classes.iter().find(|(off, _)| *off == offset).map(|(_, name)| name.as_str())
     }
 
+    fn unique_class_name(&self) -> Option<&str> {
+        let mut it = self.classes.iter();
+        let (_, first) = it.next()?;
+        if it.all(|(_, name)| name == first) {
+            Some(first.as_str())
+        } else {
+            None
+        }
+    }
+
     /// Read a single element from a TObjArray.
     /// Returns (class_name, object_end_pos) — object_end_pos is the absolute
     /// position where this element's data ends (from byte-count wrapper).
@@ -166,10 +176,15 @@ impl ClassRefTracker {
                 match self.lookup(ref_offset) {
                     Some(name) => name.to_string(),
                     None => {
-                        return Err(RootError::Deserialization(format!(
-                            "class ref offset {} not found (tag={:#010x}, known: {:?})",
-                            ref_offset, class_tag, self.classes
-                        )));
+                        if let Some(unique) = self.unique_class_name().map(|s| s.to_string()) {
+                            self.classes.push((ref_offset, unique.clone()));
+                            unique
+                        } else {
+                            return Err(RootError::Deserialization(format!(
+                                "class ref offset {} not found (tag={:#010x}, known: {:?})",
+                                ref_offset, class_tag, self.classes
+                            )));
+                        }
                     }
                 }
             } else {

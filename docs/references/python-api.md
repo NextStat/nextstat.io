@@ -23,6 +23,13 @@ Notes:
 - `nextstat.read_root_histogram(root_path, hist_path) -> dict` — read a TH1 histogram from a ROOT file. Returns `{name, title, bin_edges, bin_content, sumw2, underflow, overflow}`.
 - `nextstat.histfactory_bin_edges_by_channel(xml_path) -> dict[str, list[float]]` — extract bin edges per channel from HistFactory XML.
 
+Notes on HistFactory XML ingest (`from_histfactory` and `nextstat import histfactory`):
+- `ShapeSys` histograms are treated as **relative** per-bin uncertainties and converted to absolute `sigma_abs = rel * nominal`.
+- Channel `StatErrorConfig ConstraintType="Poisson"` maps `StatError Activate=True` to Barlow-Beeston `shapesys` (per-sample).
+- Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`, and `LumiRelErr` is surfaced via
+  measurement parameter config (`auxdata=[1]`, `sigmas=[LumiRelErr]`).
+- `NormFactor Val/Low/High` is surfaced via measurement parameter config (`inits` and `bounds`).
+
 #### HS3 (HEP Statistics Serialization Standard)
 
 - `HistFactoryModel.from_workspace(json_str) -> HistFactoryModel` — **auto-detects** pyhf vs HS3 format. If the JSON contains `"distributions"` + `"hs3_version"`, it is parsed as HS3; otherwise as pyhf.
@@ -597,13 +604,26 @@ params = nextstat.to_arrow(model, what="params")
 
 Pure-Python HTTP client for a remote `nextstat-server` instance. Zero native dependencies — only requires `httpx`.
 
+### Core
+
 - `nextstat.remote.connect(url, *, timeout=300) -> NextStatClient` — create a client.
-- `client.fit(workspace, *, gpu=True) -> FitResult` — remote MLE fit. Workspace can be a `dict` or JSON string.
-- `client.ranking(workspace, *, gpu=True) -> RankingResult` — remote nuisance-parameter ranking.
-- `client.health() -> HealthResult` — server health check (status, version, uptime, device, counters).
+- `client.fit(workspace, *, model_id=None, gpu=True) -> FitResult` — remote MLE fit. Pass `workspace` (dict or JSON string) or `model_id` from the model cache.
+- `client.ranking(workspace, *, model_id=None, gpu=True) -> RankingResult` — remote nuisance-parameter ranking.
+- `client.health() -> HealthResult` — server health check (status, version, uptime, device, counters, cached_models).
 - `client.close()` — close the connection. Also supports context manager (`with`).
 
-Result types are typed dataclasses: `FitResult`, `RankingResult`, `RankingEntry`, `HealthResult`.
+### Batch API
+
+- `client.batch_fit(workspaces, *, gpu=True) -> BatchFitResult` — fit up to 100 workspaces in one request. Returns `.results` (list of `FitResult | None`) and `.errors`.
+- `client.batch_toys(workspace, *, params=None, n_toys=1000, seed=42, gpu=True) -> BatchToysResult` — GPU-accelerated toy fitting. Returns `.results` (list of `ToyFitItem`), `.n_converged`.
+
+### Model Cache
+
+- `client.upload_model(workspace, *, name=None) -> str` — upload a workspace to the server's LRU cache. Returns a `model_id` (SHA-256 hash).
+- `client.list_models() -> list[ModelInfo]` — list cached models (id, name, params, channels, age, hits).
+- `client.delete_model(model_id) -> bool` — evict a model from the cache.
+
+Result types are typed dataclasses: `FitResult`, `RankingResult`, `RankingEntry`, `HealthResult`, `BatchFitResult`, `BatchToysResult`, `ToyFitItem`, `ModelInfo`.
 
 Raises `NextStatServerError(status_code, detail)` on non-2xx HTTP responses.
 
@@ -611,15 +631,28 @@ Raises `NextStatServerError(status_code, detail)` on non-2xx HTTP responses.
 import nextstat.remote as remote
 
 client = remote.connect("http://gpu-server:3742")
+
+# Single fit
 result = client.fit(workspace_json)
 print(result.bestfit, result.nll, result.converged)
 
+# Model cache — skip re-parsing on repeated calls
+model_id = client.upload_model(workspace_json, name="my-analysis")
+result = client.fit(model_id=model_id)  # ~4x faster
+
+# Batch fit
+batch = client.batch_fit([ws1, ws2, ws3])
+for r in batch.results:
+    print(r.nll if r else "failed")
+
+# Batch toys (GPU-accelerated)
+toys = client.batch_toys(workspace_json, n_toys=10_000, seed=42)
+print(f"{toys.n_converged}/{toys.n_toys} converged in {toys.wall_time_s:.1f}s")
+
+# Ranking
 ranking = client.ranking(workspace_json)
 for e in ranking.entries:
     print(f"{e.name}: Δμ = {e.delta_mu_up:+.3f} / {e.delta_mu_down:+.3f}")
-
-health = client.health()
-print(f"Server v{health.version}, device={health.device}, uptime={health.uptime_s:.0f}s")
 ```
 
 ## CLI parity

@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use ns_core::traits::LogDensityModel;
@@ -102,7 +103,7 @@ async fn fit_handler(
         let (fit_result, device) = match gpu_device.as_deref() {
             #[cfg(feature = "cuda")]
             Some("cuda") => {
-                let r = mle.fit_gpu(&model)
+                let r = mle.fit_gpu(&*model)
                     .map_err(|e| AppError::internal(format!("CUDA fit failed: {e}")))?;
                 (r, "cuda".to_string())
             }
@@ -116,7 +117,7 @@ async fn fit_handler(
                 ));
             }
             _ => {
-                let r = mle.fit(&model)
+                let r = mle.fit(&*model)
                     .map_err(|e| AppError::internal(format!("CPU fit failed: {e}")))?;
                 (r, "cpu".to_string())
             }
@@ -215,7 +216,7 @@ async fn ranking_handler(
         let (ranking, device) = match gpu_device.as_deref() {
             #[cfg(feature = "cuda")]
             Some("cuda") => {
-                let r = ns_inference::mle::ranking_gpu(&mle, &model)
+                let r = ns_inference::mle::ranking_gpu(&mle, &*model)
                     .map_err(|e| AppError::internal(format!("CUDA ranking failed: {e}")))?;
                 (r, "cuda".to_string())
             }
@@ -224,7 +225,7 @@ async fn ranking_handler(
                 return Err(AppError::internal("CUDA not compiled".into()));
             }
             _ => {
-                let r = mle.ranking(&model)
+                let r = mle.ranking(&*model)
                     .map_err(|e| AppError::internal(format!("CPU ranking failed: {e}")))?;
                 (r, "cpu".to_string())
             }
@@ -314,17 +315,31 @@ async fn batch_fit_handler(
         let device = gpu_device.as_deref().unwrap_or("cpu").to_string();
         let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
 
-        let items: Vec<BatchFitItem> = req
-            .workspaces
-            .iter()
-            .enumerate()
-            .map(|(i, ws)| {
-                match fit_one_workspace(ws, &mle, gpu_device.as_deref()) {
-                    Ok(resp) => BatchFitItem { index: i, result: Some(resp), error: None },
-                    Err(e) => BatchFitItem { index: i, result: None, error: Some(e.message) },
-                }
-            })
-            .collect();
+        let items: Vec<BatchFitItem> = if gpu_device.is_some() {
+            // GPU: sequential (GPU lock held, single device)
+            req.workspaces
+                .iter()
+                .enumerate()
+                .map(|(i, ws)| {
+                    match fit_one_workspace(ws, &mle, gpu_device.as_deref()) {
+                        Ok(resp) => BatchFitItem { index: i, result: Some(resp), error: None },
+                        Err(e) => BatchFitItem { index: i, result: None, error: Some(e.message) },
+                    }
+                })
+                .collect()
+        } else {
+            // CPU: parallel via Rayon
+            req.workspaces
+                .par_iter()
+                .enumerate()
+                .map(|(i, ws)| {
+                    match fit_one_workspace(ws, &mle, None) {
+                        Ok(resp) => BatchFitItem { index: i, result: Some(resp), error: None },
+                        Err(e) => BatchFitItem { index: i, result: None, error: Some(e.message) },
+                    }
+                })
+                .collect()
+        };
 
         let wall_time_s = t0.elapsed().as_secs_f64();
         Ok(BatchFitResponse { results: items, device, wall_time_s })
@@ -418,6 +433,7 @@ struct BatchToysRequest {
 struct BatchToysResponse {
     n_toys: usize,
     n_converged: usize,
+    n_failed: usize,
     results: Vec<ToyFitItem>,
     device: String,
     wall_time_s: f64,
@@ -507,6 +523,7 @@ async fn batch_toys_handler(
         let wall_time_s = t0.elapsed().as_secs_f64();
 
         let mut n_converged = 0usize;
+        let mut n_failed = 0usize;
         let results: Vec<ToyFitItem> = fit_results
             .into_iter()
             .filter_map(|r| match r {
@@ -521,13 +538,17 @@ async fn batch_toys_handler(
                         n_iter: fr.n_iter,
                     })
                 }
-                Err(_) => None,
+                Err(_) => {
+                    n_failed += 1;
+                    None
+                }
             })
             .collect();
 
         Ok(BatchToysResponse {
             n_toys: results.len(),
             n_converged,
+            n_failed,
             results,
             device,
             wall_time_s,
@@ -651,11 +672,12 @@ fn default_true() -> bool {
 }
 
 /// Resolve a model from either a workspace JSON or a cached model_id.
+/// Returns an `Arc` — cheap clone from cache, or wraps a freshly parsed model.
 fn resolve_model(
     state: &crate::state::AppState,
     workspace: Option<&serde_json::Value>,
     model_id: Option<&str>,
-) -> Result<ns_translate::pyhf::HistFactoryModel, AppError> {
+) -> Result<Arc<ns_translate::pyhf::HistFactoryModel>, AppError> {
     match (model_id, workspace) {
         (Some(id), _) => state
             .model_pool
@@ -664,7 +686,7 @@ fn resolve_model(
         (None, Some(ws)) => {
             let json_str = serde_json::to_string(ws)
                 .map_err(|e| AppError::bad_request(format!("invalid workspace JSON: {e}")))?;
-            load_model(&json_str)
+            load_model(&json_str).map(Arc::new)
         }
         (None, None) => Err(AppError::bad_request(
             "either 'workspace' or 'model_id' must be provided".into(),

@@ -4,7 +4,7 @@
 //! This avoids re-parsing the same workspace on every request.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use ns_translate::pyhf::HistFactoryModel;
@@ -15,7 +15,7 @@ const DEFAULT_MAX_MODELS: usize = 64;
 
 /// A cached model entry.
 struct CachedModel {
-    model: HistFactoryModel,
+    model: Arc<HistFactoryModel>,
     json_hash: String,
     name: String,
     n_params: usize,
@@ -73,7 +73,7 @@ impl ModelPool {
         name: Option<String>,
     ) -> String {
         let hash = Self::hash_workspace(json_str);
-        let mut pool = self.inner.lock().unwrap();
+        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
 
         if let Some(entry) = pool.models.get_mut(&hash) {
             entry.last_used = Instant::now();
@@ -102,7 +102,7 @@ impl ModelPool {
         pool.models.insert(
             hash.clone(),
             CachedModel {
-                model,
+                model: Arc::new(model),
                 json_hash: hash.clone(),
                 name: display_name,
                 n_params,
@@ -118,13 +118,13 @@ impl ModelPool {
     }
 
     /// Look up a model by id, updating last_used on hit.
-    /// Returns a clone of the model (HistFactoryModel is Clone).
-    pub fn get(&self, model_id: &str) -> Option<HistFactoryModel> {
-        let mut pool = self.inner.lock().unwrap();
+    /// Returns an `Arc` reference (cheap clone — no model data copied).
+    pub fn get(&self, model_id: &str) -> Option<Arc<HistFactoryModel>> {
+        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
         if let Some(entry) = pool.models.get_mut(model_id) {
             entry.last_used = Instant::now();
             entry.hit_count += 1;
-            Some(entry.model.clone())
+            Some(Arc::clone(&entry.model))
         } else {
             None
         }
@@ -132,13 +132,13 @@ impl ModelPool {
 
     /// Remove a model from the pool. Returns true if it existed.
     pub fn remove(&self, model_id: &str) -> bool {
-        let mut pool = self.inner.lock().unwrap();
+        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
         pool.models.remove(model_id).is_some()
     }
 
     /// List all cached models.
     pub fn list(&self) -> Vec<ModelInfo> {
-        let pool = self.inner.lock().unwrap();
+        let pool = self.inner.lock().expect("model pool mutex poisoned");
         let now = Instant::now();
         pool.models
             .values()
@@ -156,6 +156,11 @@ impl ModelPool {
 
     /// Number of models in the pool.
     pub fn len(&self) -> usize {
-        self.inner.lock().unwrap().models.len()
+        self.inner.lock().expect("model pool mutex poisoned").models.len()
+    }
+
+    /// Whether the pool is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

@@ -15,11 +15,21 @@ numerical parity testing. Two evaluation modes govern the trade-off between prec
 | **Parity** | Kahan compensated | SIMD (Accelerate disabled) | 1 (forced) | Validation vs pyhf |
 | **Fast** | Naive | SIMD / Accelerate / CUDA | Rayon (auto) | Production inference |
 
+### Interpolation Codes (NormSys / HistoSys)
+
+Numerical parity is only meaningful if all implementations evaluate the **same model**.
+For HistFactory-style workspaces, this includes the interpolation scheme for:
+- **NormSys (OverallSys)**: Code1 (exponential) vs Code4 (polynomial)
+- **HistoSys**: Code0 (piecewise-linear) vs Code4p (piecewise polynomial)
+
+This repo's parity tests configure **pyhf** to use Code4/Code4p and compare against NextStat's
+default model builder settings. If you want strict HistFactory defaults instead, use Code1/Code0.
+
 ### Activating Parity Mode
 
 **CLI:**
 ```bash
-nextstat fit --parity model.json
+nextstat fit --input workspace.json --parity
 ```
 
 **Python:**

@@ -3,6 +3,7 @@
   Keep in sync with:
     - tests/validate_root_profile_scan.py
     - tests/diagnose_optimizer.py
+    - scripts/blog/generate_numerical_accuracy_plots.py
 -->
 
 # Where ROOT Gets It Wrong: A Rigorous Numerical Comparison of HistFactory Implementations
@@ -96,6 +97,17 @@ All three implementations are configured to use the same interpolation scheme:
 
 This eliminates interpolation choice as a source of discrepancy.
 
+### 2.5 Versions and Environment
+
+Unless stated otherwise, results and figures in this post were produced with:
+
+- ROOT 6.38.00 (`hist2workspace` + RooFit/Minuit2)
+- pyhf 0.7.6 (SciPy 1.17.0, NumPy 2.4.2)
+- NextStat 0.1.0 (git `c98f36e`)
+- Host: Apple M5 (arm64), macOS 26.2
+
+The raw scan JSON used for the plots is snapshotted under `docs/blog/assets/numerical-accuracy/data/` and rendered into SVGs by `scripts/blog/generate_numerical_accuracy_plots.py`.
+
 ---
 
 ## 3. Results
@@ -112,6 +124,8 @@ The multichannel fixture with ShapeSys modifiers achieves the gold standard: all
 
 This confirms that when all three optimizers converge, the implementations produce identical physics results.
 
+![multichannel (ShapeSys): Δq(mu) residuals](./assets/numerical-accuracy/multichannel-deltaq.svg)
+
 ### 3.2 The Bad: OverallSys Models — ROOT Overestimates at High mu
 
 The xmlimport fixture reveals a systematic bias in ROOT at high signal strengths:
@@ -126,6 +140,8 @@ NextStat and pyhf agree to 1e-7. ROOT overestimates q(mu) by up to 0.051 at mu =
 
 **Diagnosis**: The NLL offset between ROOT and NextStat is constant (11.06 +/- 0.001), confirming identical model evaluation. The growing q(mu) delta is purely an optimizer effect: Minuit2's conditional minimizer converges to a slightly higher NLL at extreme mu values, inflating the profile likelihood ratio. This means ROOT would report a **tighter exclusion limit** than is warranted by the data.
 
+![xmlimport (OverallSys): ROOT bias in q(mu)](./assets/numerical-accuracy/xmlimport-deltaq.svg)
+
 ### 3.3 The Ugly: Coupled HistoSys — ROOT Fails Completely
 
 The coupled_histosys fixture produces the most dramatic divergence:
@@ -136,6 +152,8 @@ The coupled_histosys fixture produces the most dramatic divergence:
 | 1.0 | 0.991 | 0.445 | 0.445 | **+0.545** |
 | 2.0 | 15.526 | 6.543 | 6.543 | **+8.98** |
 | 3.0 | 41.566 | 19.042 | 19.042 | **+22.52** |
+
+![coupled_histosys: q(mu) profile scan](./assets/numerical-accuracy/coupled-histosys-qmu.svg)
 
 ROOT's free fit reports `status = -1` (Minuit2 could not determine a positive-definite covariance matrix), yet still produces a mu_hat close to the correct value. Despite this, the conditional fits at mu >= 1.0 diverge catastrophically.
 
@@ -150,6 +168,8 @@ If this were a pure optimizer issue, the NLL offset between ROOT and NextStat wo
 | mu = 1 | 435.250 | 14.239 | **421.01** |
 | mu = 2 | 442.517 | 17.288 | **425.23** |
 | mu = 3 | 455.537 | 23.537 | **432.00** |
+
+![coupled_histosys: NLL offset (ROOT - NextStat)](./assets/numerical-accuracy/coupled-histosys-nll-offset.svg)
 
 The offset grows from 420.74 to 432.00 — an 11.26 increase. This **rules out a pure optimizer difference** and indicates that ROOT evaluates the coupled HistoSys likelihood differently from both pyhf and NextStat at large nuisance parameter values. The most likely cause is a difference in ROOT's interpolation implementation for HistoSys at extreme alpha values.
 
@@ -216,6 +236,8 @@ Profile scan timing (31 mu points, including free fit) on the canonical fixtures
 
 NextStat's speed advantage comes from three factors: compiled Rust code (vs. Python interpreter overhead in pyhf), reverse-mode automatic differentiation (vs. finite-difference gradients in pyhf's NumPy backend), and a zero-allocation hot path with pre-compiled modifier evaluation.
 
+The CPU timings in the table above were measured on Apple M5 (arm64, macOS 26.2). The GPU toy benchmark below uses a separate NVIDIA RTX 4000 machine.
+
 For batch toy-based hypothesis testing on the tHu workspace (184 parameters, 1000 toys), GPU acceleration provides an additional 6.4x speedup over the already-fast CPU path on an NVIDIA RTX 4000.
 
 ---
@@ -273,6 +295,12 @@ Cross-evaluation and optimizer diagnostics:
 
 ```bash
 python tests/diagnose_optimizer.py workspace_tHu.json
+```
+
+Regenerate the figures in this post (reads snapshot data under `docs/blog/assets/numerical-accuracy/data/`):
+
+```bash
+python3 scripts/blog/generate_numerical_accuracy_plots.py
 ```
 
 ---

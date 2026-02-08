@@ -110,11 +110,18 @@ Minimal MLE example:
 
 ```rust
 use ns_inference::MaximumLikelihoodEstimator;
-use ns_translate::pyhf::{HistFactoryModel, Workspace};
+use ns_translate::pyhf::{HistFactoryModel, HistoSysInterpCode, NormSysInterpCode, Workspace};
 
 let json = std::fs::read_to_string("workspace.json")?;
 let ws: Workspace = serde_json::from_str(&json)?;
-let model = HistFactoryModel::from_workspace(&ws)?;
+
+// Default interpolation (NextStat "smooth" defaults): NormSys=Code4, HistoSys=Code4p.
+// For strict HistFactory/pyhf defaults, use Code1/Code0:
+let model = HistFactoryModel::from_workspace_with_settings(
+    &ws,
+    NormSysInterpCode::Code1,
+    HistoSysInterpCode::Code0,
+)?;
 
 let mle = MaximumLikelihoodEstimator::new();
 let fit = mle.fit(&model)?;

@@ -120,6 +120,11 @@ nextstat fit --input workspace.json --threads 1
 
 Same as `--parity` but without Kahan summation. Use `--parity` instead for full determinism.
 
+Interpolation note:
+- The CLI does not currently expose an interpolation-code switch for pyhf JSON workspaces.
+- Repository parity tests configure pyhf to match NextStat's defaults (Code4/Code4p). See `docs/pyhf-parity-contract.md`.
+- HS3 inputs use ROOT HistFactory defaults (Code1 for NormSys, Code0 for HistoSys).
+
 ### Environment variable
 
 ```bash
@@ -234,6 +239,20 @@ nextstat fit --input workspace-postFit_PTV.json
 When HS3 is detected, the CLI uses ROOT HistFactory default interpolation codes (Code1 for NormSys, Code0 for HistoSys) and selects the first analysis and `"default_values"` parameter point set.
 
 ## Import notes
+
+### HistFactory XML import semantics
+
+`nextstat import histfactory` parses `combination.xml` + channel XMLs and reads ROOT histograms to produce a pyhf-style `workspace.json`.
+It follows HistFactory conventions used by pyhf's `readxml` validation fixtures:
+
+- `ShapeSys` histograms (`<ShapeSys HistoName="...">`) are treated as **relative** per-bin uncertainties and converted to absolute
+  `sigma_abs = rel * nominal`.
+- `StatError` follows channel `<StatErrorConfig ConstraintType=...>`:
+  - `ConstraintType="Poisson"` => Barlow-Beeston `shapesys` (per-sample, name `staterror_<channel>_<sample>`).
+  - `ConstraintType="Gaussian"` => `staterror` (per-channel, name `staterror_<channel>`).
+- Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`.
+- `LumiRelErr` and `ParamSetting Const="True"` are surfaced via `measurements[].config.parameters` (`auxdata=[1]`, `sigmas=[LumiRelErr]`, `fixed=true`).
+- `<NormFactor Val/Low/High>` is surfaced via `measurements[].config.parameters` as `inits` and `bounds`.
 
 `nextstat import trex-config` currently supports only a small subset of TRExFitter configs:
 - `ReadFrom: NTUP` (or omitted).

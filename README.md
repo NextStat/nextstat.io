@@ -91,11 +91,18 @@ Open `http://localhost:8000/` and drag & drop a `workspace.json` (example: `play
 
 ```rust
 use ns_inference::mle::MaximumLikelihoodEstimator;
-use ns_translate::pyhf::{HistFactoryModel, Workspace};
+use ns_translate::pyhf::{HistFactoryModel, HistoSysInterpCode, NormSysInterpCode, Workspace};
 
 let json = std::fs::read_to_string("workspace.json")?;
 let workspace: Workspace = serde_json::from_str(&json)?;
-let model = HistFactoryModel::from_workspace(&workspace)?;
+
+// Default interpolation (NextStat "smooth" defaults): NormSys=Code4, HistoSys=Code4p.
+// For strict HistFactory/pyhf defaults, use Code1/Code0:
+let model = HistFactoryModel::from_workspace_with_settings(
+    &workspace,
+    NormSysInterpCode::Code1,
+    HistoSysInterpCode::Code0,
+)?;
 
 let mle = MaximumLikelihoodEstimator::new();
 let result = mle.fit(&model)?;

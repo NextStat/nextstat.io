@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nextstat-server.fullname" . }}
+  labels:
+    {{- include "nextstat-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nextstat-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nextstat-server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nextstat-server.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--host"
+            - {{ .Values.server.host | quote }}
+            - "--port"
+            - {{ .Values.server.port | quote }}
+            {{- if .Values.server.threads }}
+            - "--threads"
+            - {{ .Values.server.threads | quote }}
+            {{- end }}
+            {{- if .Values.server.gpu }}
+            - "--gpu"
+            - {{ .Values.server.gpu | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- if .Values.gpu.enabled }}
+            limits:
+              {{- range $key, $val := .Values.resources.limits }}
+              {{ $key }}: {{ $val | quote }}
+              {{- end }}
+              nvidia.com/gpu: "1"
+            requests:
+              {{- toYaml .Values.resources.requests | nindent 14 }}
+            {{- else }}
+            {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}

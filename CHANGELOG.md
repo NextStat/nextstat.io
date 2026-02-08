@@ -152,10 +152,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - Apex2 validation: NLL parity, bias/pulls regression, SBC calibration, NUTS quality gates.
 - **`nextstat-server`** — self-hosted REST API for shared GPU inference. `POST /v1/fit` (workspace → FitResult), `POST /v1/ranking` (NP impacts), `GET /v1/health`. `--gpu cuda|metal`, `--port`, `--host`, `--threads`.
 - **`nextstat.remote`** — pure-Python thin client (httpx). `client = nextstat.remote.connect("http://gpu-server:3742")`, then `client.fit(workspace)`, `client.ranking(workspace)`, `client.health()`. Typed dataclass results.
-
-### Changed
-
-- **CUDA differentiable kernel** — launch refactored for cudarc 0.14+ compatibility; GPU stream now safely shared across kernel launches.
+- **Batch API** — `POST /v1/batch/fit` fits up to 100 workspaces in one request; `POST /v1/batch/toys` runs GPU-accelerated toy fitting (CUDA/Metal/CPU). `client.batch_fit(workspaces)`, `client.batch_toys(workspace, n_toys=1000)`.
+- **Model cache** — `POST /v1/models` uploads a workspace and returns a `model_id` (SHA-256); subsequent `/v1/fit` and `/v1/ranking` calls accept `model_id=` to skip re-parsing. `GET /v1/models`, `DELETE /v1/models/:id`. LRU eviction (64 models).
+- **Docker & Helm** — multi-stage `Dockerfile` for CPU and CUDA builds, Helm chart with health probes, GPU resource requests, configurable replicas.
 
 ### Fixed
 

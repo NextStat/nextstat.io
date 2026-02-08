@@ -31,6 +31,347 @@ fn main() -> Result<(), io::Error> {
         if stats.failures == 0 {
             return Ok(());
         }
+
+#[derive(Copy, Clone, Debug, Default)]
+struct BenchCompareStats {
+    branches_checked: usize,
+    baskets_checked: usize,
+    baskets_uncompressed_skipped: usize,
+    baskets_non_zs_skipped: usize,
+    failures: usize,
+    total_out_bytes: u64,
+    new_seconds: f64,
+    old_seconds: f64,
+    new_out_mib_per_s: f64,
+    old_out_mib_per_s: f64,
+    speedup_x: f64,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct BasketJob {
+    start: usize,
+    end: usize,
+    expected_len: usize,
+}
+
+fn basket_is_zs_only(src: &[u8], expected_len: usize) -> Result<bool, String> {
+    let mut offset = 0usize;
+    let mut total_uncompressed = 0usize;
+
+    while total_uncompressed < expected_len {
+        if offset + 9 > src.len() {
+            return Err(format!(
+                "truncated ROOT compression block header at payload offset {} (need 9 bytes)",
+                offset
+            ));
+        }
+
+        let tag = &src[offset..offset + 2];
+        let c_size = read_le24(&src[offset + 3..offset + 6]);
+        let u_size = read_le24(&src[offset + 6..offset + 9]);
+        offset += 9;
+
+        let end = offset + c_size;
+        if end > src.len() {
+            return Err(format!(
+                "compressed sub-block claims {} bytes but only {} remain",
+                c_size,
+                src.len() - offset
+            ));
+        }
+
+        if tag != b"ZS" {
+            return Ok(false);
+        }
+
+        total_uncompressed += u_size;
+        offset = end;
+    }
+
+    if total_uncompressed != expected_len {
+        return Err(format!(
+            "total uncompressed bytes {} != expected {}",
+            total_uncompressed, expected_len
+        ));
+    }
+
+    Ok(true)
+}
+
+fn decompress_root_zs_only_legacy(src: &[u8], expected_len: usize) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(expected_len);
+
+    let mut offset = 0usize;
+    let mut total_uncompressed = 0usize;
+
+    while total_uncompressed < expected_len {
+        if offset + 9 > src.len() {
+            return Err(format!(
+                "truncated ROOT compression block header at payload offset {} (need 9 bytes)",
+                offset
+            ));
+        }
+
+        let tag = &src[offset..offset + 2];
+        let c_size = read_le24(&src[offset + 3..offset + 6]);
+        let u_size = read_le24(&src[offset + 6..offset + 9]);
+        offset += 9;
+
+        let end = offset + c_size;
+        if end > src.len() {
+            return Err(format!(
+                "compressed sub-block claims {} bytes but only {} remain",
+                c_size,
+                src.len() - offset
+            ));
+        }
+
+        if tag != b"ZS" {
+            return Err(format!(
+                "non-ZS sub-block encountered in legacy ZS-only decompressor: {:?}",
+                std::str::from_utf8(tag).unwrap_or("??")
+            ));
+        }
+
+        let compressed = &src[offset..end];
+
+        let mut ruz_source = compressed;
+        let mut ruz_dec = ruzstd::decoding::StreamingDecoder::new(&mut ruz_source)
+            .map_err(|e| format!("ruzstd init failed: {e}"))?;
+        let mut block_out = Vec::with_capacity(u_size);
+        ruz_dec
+            .read_to_end(&mut block_out)
+            .map_err(|e| format!("ruzstd read failed: {e}"))?;
+
+        if block_out.len() != u_size {
+            return Err(format!("decoded size mismatch: got {} expected {}", block_out.len(), u_size));
+        }
+
+        out.extend_from_slice(&block_out);
+
+        total_uncompressed += u_size;
+        offset = end;
+    }
+
+    if out.len() != expected_len {
+        return Err(format!(
+            "total decompressed length {} != expected {}",
+            out.len(),
+            expected_len
+        ));
+    }
+
+    Ok(out)
+}
+
+fn bench_compare_tree_baskets(
+    bytes: &[u8],
+    root_path: &Path,
+    tree_name: &str,
+    branches: &[ns_root::BranchInfo],
+    max_baskets_per_branch: usize,
+    fail_fast: bool,
+) -> Result<BenchCompareStats, io::Error> {
+    let mut stats = BenchCompareStats::default();
+    let mut jobs: Vec<BasketJob> = Vec::new();
+
+    for branch in branches {
+        stats.branches_checked += 1;
+        let n = branch.n_baskets.min(max_baskets_per_branch);
+        for i in 0..n {
+            let seek = branch.basket_seek[i];
+            let (obj_len, key_len, n_bytes) = read_tkey_header_fast(bytes, seek as usize)?;
+
+            let key_end = seek as usize + n_bytes;
+            let obj_start = seek as usize + key_len;
+            if key_end > bytes.len() || obj_start > key_end {
+                stats.failures += 1;
+                eprintln!(
+                    "FAIL(bench-compare) root={} tree={} branch={} basket={} seek={} : key slice out of bounds",
+                    root_path.display(),
+                    tree_name,
+                    branch.name,
+                    i,
+                    seek
+                );
+                if fail_fast {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "root_accuracy_gate bench failed",
+                    ));
+                }
+                continue;
+            }
+
+            let compressed_len = n_bytes - key_len;
+            if obj_len == compressed_len {
+                stats.baskets_uncompressed_skipped += 1;
+                continue;
+            }
+
+            let compressed_data = &bytes[obj_start..key_end];
+            match basket_is_zs_only(compressed_data, obj_len) {
+                Ok(true) => {
+                    jobs.push(BasketJob {
+                        start: obj_start,
+                        end: key_end,
+                        expected_len: obj_len,
+                    });
+                    stats.total_out_bytes += obj_len as u64;
+                }
+                Ok(false) => {
+                    stats.baskets_non_zs_skipped += 1;
+                }
+                Err(e) => {
+                    stats.failures += 1;
+                    eprintln!(
+                        "FAIL(bench-compare) root={} tree={} branch={} basket={} seek={} : {}",
+                        root_path.display(),
+                        tree_name,
+                        branch.name,
+                        i,
+                        seek,
+                        e
+                    );
+                    if fail_fast {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "root_accuracy_gate bench failed",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(first) = jobs.first() {
+        let slice = &bytes[first.start..first.end];
+        let new_out = ns_root::decompress::decompress(slice, first.expected_len).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("bench-compare new decompress failed: {e}"))
+        })?;
+        let old_out = decompress_root_zs_only_legacy(slice, first.expected_len)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("bench-compare legacy failed: {e}")))?;
+        if new_out != old_out {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "bench-compare mismatch between new and legacy outputs",
+            ));
+        }
+    }
+
+    let start_new = Instant::now();
+    for job in &jobs {
+        let slice = &bytes[job.start..job.end];
+        match ns_root::decompress::decompress(slice, job.expected_len) {
+            Ok(out) => {
+                if out.len() != job.expected_len {
+                    stats.failures += 1;
+                    if fail_fast {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "root_accuracy_gate bench failed",
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                stats.failures += 1;
+                if fail_fast {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("root_accuracy_gate bench failed: {e}"),
+                    ));
+                }
+            }
+        }
+    }
+    stats.new_seconds = start_new.elapsed().as_secs_f64();
+
+    let start_old = Instant::now();
+    for job in &jobs {
+        let slice = &bytes[job.start..job.end];
+        match decompress_root_zs_only_legacy(slice, job.expected_len) {
+            Ok(out) => {
+                if out.len() != job.expected_len {
+                    stats.failures += 1;
+                    if fail_fast {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "root_accuracy_gate bench failed",
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                stats.failures += 1;
+                if fail_fast {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("root_accuracy_gate bench failed: {e}"),
+                    ));
+                }
+            }
+        }
+    }
+    stats.old_seconds = start_old.elapsed().as_secs_f64();
+
+    stats.baskets_checked = jobs.len();
+
+    if stats.new_seconds > 0.0 {
+        stats.new_out_mib_per_s = (stats.total_out_bytes as f64 / (1024.0 * 1024.0)) / stats.new_seconds;
+    }
+    if stats.old_seconds > 0.0 {
+        stats.old_out_mib_per_s = (stats.total_out_bytes as f64 / (1024.0 * 1024.0)) / stats.old_seconds;
+    }
+    if stats.new_seconds > 0.0 {
+        stats.speedup_x = stats.old_seconds / stats.new_seconds;
+    }
+
+    Ok(stats)
+}
+        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
+    }
+
+    if cfg.bench_compare {
+        let tree_name = match cfg.tree_name {
+            Some(t) => t,
+            None => select_first_tree_name(&file)?,
+        };
+
+        let tree = file.get_tree(&tree_name).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("failed to read tree '{tree_name}': {e} (try --bench-scan)"),
+            )
+        })?;
+
+        let stats = bench_compare_tree_baskets(
+            bytes,
+            &cfg.root_path,
+            &tree.name,
+            &tree.branches,
+            cfg.max_baskets_per_branch.unwrap_or(usize::MAX),
+            cfg.fail_fast,
+        )?;
+
+        println!(
+            "Bench(compare): branches_checked={}, baskets_checked={}, baskets_uncompressed_skipped={}, baskets_non_zs_skipped={}, failures={}, out_bytes={}, new_seconds={:.6}, new_out_mib_per_s={:.3}, old_seconds={:.6}, old_out_mib_per_s={:.3}, speedup_x={:.3}",
+            stats.branches_checked,
+            stats.baskets_checked,
+            stats.baskets_uncompressed_skipped,
+            stats.baskets_non_zs_skipped,
+            stats.failures,
+            stats.total_out_bytes,
+            stats.new_seconds,
+            stats.new_out_mib_per_s,
+            stats.old_seconds,
+            stats.old_out_mib_per_s,
+            stats.speedup_x,
+        );
+
+        if stats.failures == 0 {
+            return Ok(());
+        }
         return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
     }
 
@@ -189,6 +530,7 @@ struct Config {
     verbose: bool,
     scan: bool,
     bench_scan: bool,
+    bench_compare: bool,
     bench_tree: bool,
 }
 
@@ -204,6 +546,7 @@ impl Config {
         let mut verbose = false;
         let mut scan = false;
         let mut bench_scan = false;
+        let mut bench_compare = false;
         let mut bench_tree = false;
 
         while let Some(arg) = args.next() {
@@ -239,6 +582,7 @@ impl Config {
                 "--fail-fast" => fail_fast = true,
                 "--scan" => scan = true,
                 "--bench-scan" => bench_scan = true,
+                "--bench-compare" => bench_compare = true,
                 "--bench-tree" => bench_tree = true,
                 "--verbose" | "-v" => verbose = true,
                 "--help" | "-h" => {
@@ -277,6 +621,7 @@ impl Config {
             verbose,
             scan,
             bench_scan,
+            bench_compare,
             bench_tree,
         })
     }
@@ -284,7 +629,7 @@ impl Config {
 
 fn print_help() {
     eprintln!(
-        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--scan] [--bench-scan] [--bench-tree] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree verify):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\n  Bench mode (--bench-scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers\n    - Decompresses using ns_root production decompressor (no reference, no byte-compare)\n    - Prints throughput stats\n\n  Bench mode (--bench-tree):\n    - Iterates tree branches/baskets and decompresses each basket payload using ns_root production decompressor\n    - Prints throughput stats\n\nExit status:\n  - 0 if all checked blocks match (verify modes) / no failures (bench modes)\n  - non-zero on any mismatch / decompression failure\n"
+        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--scan] [--bench-scan] [--bench-compare] [--bench-tree] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree verify):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\n  Bench mode (--bench-scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers\n    - Decompresses using ns_root production decompressor (no reference, no byte-compare)\n    - Prints throughput stats\n\n  Bench mode (--bench-compare):\n    - Iterates tree branches/baskets and benchmarks the same baskets with:\n        (1) ns_root production decompressor (bulk)\n        (2) legacy ruzstd StreamingDecoder+read_to_end (ZSTD only)\n    - Validates first basket output byte-for-byte then reports MiB/s and speedup\n\n  Bench mode (--bench-tree):\n    - Iterates tree branches/baskets and decompresses each basket payload using ns_root production decompressor\n    - Prints throughput stats\n\nExit status:\n  - 0 if all checked blocks match (verify modes) / no failures (bench modes)\n  - non-zero on any mismatch / decompression failure\n"
     );
 }
 
