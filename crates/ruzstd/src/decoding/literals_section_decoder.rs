@@ -5,8 +5,29 @@ use super::super::blocks::literals_section::{LiteralsSection, LiteralsSectionTyp
 use super::scratch::HuffmanScratch;
 use crate::bit_io::BitReaderReversed;
 use crate::decoding::errors::DecompressLiteralsError;
-use crate::huff0::HuffmanDecoder;
+use crate::huff0::{Entry, HuffmanDecoder};
 use alloc::vec::Vec;
+
+/// Peek+skip Huffman decode (matches libzstd's HUF_decodeSymbolX1):
+/// peek max_bits WITHOUT consuming → table lookup → consume only actual num_bits.
+/// Eliminates 3 ops/symbol (shift, mask, or) vs the state-based approach.
+#[inline(always)]
+fn peek_skip_decode(
+    br: &mut BitReaderReversed<'_>,
+    max_bits: u8,
+    table_ptr: *const Entry,
+    table_mask: usize,
+) -> u8 {
+    if max_bits == 0 {
+        // Degenerate Huffman table: a single symbol with 0-bit code.
+        let entry = unsafe { *table_ptr };
+        return entry.symbol;
+    }
+    let val = br.peek_bits_refill(max_bits) as usize & table_mask;
+    let entry = unsafe { *table_ptr.add(val) };
+    br.consume(entry.num_bits);
+    entry.symbol
+}
 
 /// Decode and decompress the provided literals section into `target`, returning the number of bytes read.
 pub fn decode_literals(
@@ -111,15 +132,14 @@ fn decompress_literals(
         let sizes = [seg, seg, seg, regen - 3 * seg];
         let starts = [0usize, seg, 2 * seg, 3 * seg];
 
-        let threshold = -(scratch.table.max_num_bits as isize);
+        // Peek+skip Huffman decode (matches libzstd's approach):
+        // - NO init_state (peek implicitly sees the initial bits)
+        // - Each symbol: refill if needed → peek max_num_bits → table lookup → consume num_bits
+        // - This eliminates 3 ops/symbol (shift, mask, or) from the state-based approach
+        let max_bits = scratch.table.max_num_bits;
+        let table_ptr = scratch.table.decode.as_ptr();
+        let table_mask = scratch.table.decode.len() - 1;
 
-        // Initialize all 4 streams + decoders.
-        let mut dec = [
-            HuffmanDecoder::new(&scratch.table),
-            HuffmanDecoder::new(&scratch.table),
-            HuffmanDecoder::new(&scratch.table),
-            HuffmanDecoder::new(&scratch.table),
-        ];
         let mut br = [
             BitReaderReversed::new(streams[0]),
             BitReaderReversed::new(streams[1]),
@@ -132,26 +152,23 @@ fn decompress_literals(
                 target.truncate(start_len);
                 return Err(e);
             }
-            dec[i].init_state(&mut br[i]);
         }
 
-        // Count-based termination: we know each stream produces exactly sizes[i]
-        // symbols. Loop that many times without per-iteration bits_remaining() checks
-        // (which cost ~16 arithmetic ops per iteration for 4 streams).
+        // Count-based decode: we know exactly how many symbols each stream produces.
         // The 4th stream has the fewest symbols (regen - 3*seg <= seg).
-        let min_count = sizes[3]; // 4th stream is smallest or equal
+        let min_count = sizes[3];
 
-        // Phase 1: all 4 streams active — pure decode+write, zero checks.
         let mut w0 = starts[0];
         let mut w1 = starts[1];
         let mut w2 = starts[2];
         let mut w3 = starts[3];
 
+        // Phase 1: all 4 streams active — pure peek+skip+write, zero bounds checks.
         for _ in 0..min_count {
-            let sym0 = dec[0].decode_and_advance(&mut br[0]);
-            let sym1 = dec[1].decode_and_advance(&mut br[1]);
-            let sym2 = dec[2].decode_and_advance(&mut br[2]);
-            let sym3 = dec[3].decode_and_advance(&mut br[3]);
+            let sym0 = peek_skip_decode(&mut br[0], max_bits, table_ptr, table_mask);
+            let sym1 = peek_skip_decode(&mut br[1], max_bits, table_ptr, table_mask);
+            let sym2 = peek_skip_decode(&mut br[2], max_bits, table_ptr, table_mask);
+            let sym3 = peek_skip_decode(&mut br[3], max_bits, table_ptr, table_mask);
             unsafe {
                 *out_ptr.add(w0) = sym0;
                 *out_ptr.add(w1) = sym1;
@@ -165,12 +182,11 @@ fn decompress_literals(
         }
 
         // Phase 2: drain remaining symbols for streams 0-2 (they may have more).
-        // Streams 0,1,2 all have `seg` symbols; stream 3 has `regen - 3*seg`.
-        let extra = sizes[0] - min_count; // same for streams 0,1,2
+        let extra = sizes[0] - min_count;
         for _ in 0..extra {
-            let sym0 = dec[0].decode_and_advance(&mut br[0]);
-            let sym1 = dec[1].decode_and_advance(&mut br[1]);
-            let sym2 = dec[2].decode_and_advance(&mut br[2]);
+            let sym0 = peek_skip_decode(&mut br[0], max_bits, table_ptr, table_mask);
+            let sym1 = peek_skip_decode(&mut br[1], max_bits, table_ptr, table_mask);
+            let sym2 = peek_skip_decode(&mut br[2], max_bits, table_ptr, table_mask);
             unsafe {
                 *out_ptr.add(w0) = sym0;
                 *out_ptr.add(w1) = sym1;
@@ -181,13 +197,14 @@ fn decompress_literals(
             w2 += 1;
         }
 
-        // Phase 3: verify bitstream alignment for all 4 streams.
+        // Phase 3: verify bitstream alignment — with peek+skip (no init_state),
+        // all bits should be exactly consumed at the end (bits_remaining == 0).
         for i in 0..4 {
-            if br[i].bits_remaining() != threshold {
+            if br[i].bits_remaining() != 0 {
                 target.truncate(start_len);
                 return Err(DecompressLiteralsError::BitstreamReadMismatch {
                     read_til: br[i].bits_remaining(),
-                    expected: threshold,
+                    expected: 0,
                 });
             }
         }

@@ -149,6 +149,19 @@ impl<'s> BitReaderReversed<'s> {
         debug_assert!(self.bits_consumed <= 64);
     }
 
+    /// Refill if needed, then peek `n` bits WITHOUT consuming. Caller guarantees n > 0.
+    /// This is the core primitive for peek+skip Huffman decode (matches libzstd's BIT_lookBitsFast).
+    #[inline(always)]
+    pub fn peek_bits_refill(&mut self, n: u8) -> u64 {
+        debug_assert!(n > 0);
+        if self.bits_consumed + n > 64 {
+            self.refill();
+        }
+        let mask = (1u64 << n) - 1u64;
+        let shift_by = 64 - self.bits_consumed - n;
+        (self.bit_container >> shift_by) & mask
+    }
+
     /// Same as calling get_bits three times but slightly more performant
     #[inline(always)]
     pub fn get_bits_triple(&mut self, n1: u8, n2: u8, n3: u8) -> (u64, u64, u64) {
