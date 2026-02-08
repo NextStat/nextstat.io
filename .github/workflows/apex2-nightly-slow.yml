@@ -85,6 +85,13 @@ jobs:
             --nextstat-bin target/release/nextstat \
             --deterministic
 
+      - name: Write snapshot index (artifact hashes)
+        run: |
+          python scripts/benchmarks/write_snapshot_index.py \
+            --suite apex2-nightly-slow \
+            --artifacts-dir artifacts \
+            --out artifacts/snapshot_index.json
+
       - name: Upload Apex2 artifacts
         uses: actions/upload-artifact@v4
         with:

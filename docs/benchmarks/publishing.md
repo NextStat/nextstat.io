@@ -37,7 +37,7 @@ Each published snapshot must include:
   - hardware: CPU, RAM, GPU, driver/runtime versions
   - benchmark configuration (flags, suite selection, warmup policy)
 - **Correctness gates report** (e.g., parity deltas used to validate the run)
-- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix (plus a signable `validation_pack_manifest.json`)
+- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix (plus a signable `validation_pack_manifest.json` + signature files when used)
 
 The single-command entrypoint for generating a complete validation pack is:
 
@@ -58,8 +58,11 @@ Publishing should be automated in CI with the following properties:
 Best practices:
 
 - store raw results as CI artifacts
-- store a small “index” JSON for discovery (suite → snapshot ID → artifact URLs)
+- store a small “index” JSON for discovery (suite → snapshot ID → artifact URLs and/or SHA-256 hashes)
 - keep baseline comparisons explicit (no silent moving baselines)
+
+In this repo, CI uses a minimal snapshot index format (`snapshot_index.json`) with a stable schema:
+`docs/schemas/benchmarks/snapshot_index_v1.schema.json`.
 
 ## 3) Baselines and regression detection
 
