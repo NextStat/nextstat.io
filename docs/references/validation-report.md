@@ -174,6 +174,16 @@ bash validation-pack/render_validation_pack.sh \
   --json-only
 ```
 
+To render a deterministic PDF locally from fixtures (useful for quick sanity checks):
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack_fixture \
+  --workspace tests/fixtures/simple_workspace.json \
+  --apex2-master tests/fixtures/apex2_master_min_plus.json \
+  --deterministic
+```
+
 **Outputs (in `--out-dir`):**
 
 - `apex2_master_report.json`
