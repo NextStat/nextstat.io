@@ -27,6 +27,7 @@
 | Документ | Описание | Приоритет |
 |----------|----------|-----------|
 | [Master Plan](./2026-02-05-nextstat-implementation-plan.md) | Полный план всех фаз | — |
+| [Execution Roadmap (Trust + Adoption)](./2026-02-08_execution-roadmap-trust-adoption.md) | Исполняемый план на Feb 2026: trust artifacts, tool/server contract, benchmarks, vertical wedges | P0 |
 | [Project Standards](./standards.md) | Численный контракт, determinism, precision policy | — |
 | [Version Baseline](./versions.md) | Актуальные версии toolchain/deps (validated) | — |
 | [Phase 0: Infrastructure](./phase-0-infrastructure.md) | Репозиторий, CI/CD, лицензирование | P0 |

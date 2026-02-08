@@ -110,6 +110,19 @@ pub fn scan_histfactory(
     model: &ns_translate::pyhf::HistFactoryModel,
     mu_values: &[f64],
 ) -> Result<ProfileLikelihoodScan> {
+    // In parity mode we prefer robustness over speed: run a multi-start conditional fit at each mu.
+    // This helps avoid small but systematic q(mu) mismatches vs ROOT when warm-start drifts into a
+    // slightly suboptimal nuisance minimum.
+    let multistart = ns_compute::eval_mode() == ns_compute::EvalMode::Parity;
+    scan_histfactory_impl(mle, model, mu_values, multistart)
+}
+
+fn scan_histfactory_impl(
+    mle: &MaximumLikelihoodEstimator,
+    model: &ns_translate::pyhf::HistFactoryModel,
+    mu_values: &[f64],
+    multistart: bool,
+) -> Result<ProfileLikelihoodScan> {
     let poi = model.poi_index().ok_or_else(|| Error::Validation("No POI defined".into()))?;
 
     // Free fit (unconditional MLE)
@@ -128,12 +141,27 @@ pub fn scan_histfactory(
         bounds[poi] = (mu, mu);
         warm_params[poi] = mu;
 
-        let fixed = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
+        let fixed_warm = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
             model,
             &warm_params,
             &bounds,
             &mut tape,
         )?;
+        let fixed = if multistart {
+            // Secondary start: clamp the global MLE to the tested mu. This is deterministic and
+            // often provides a better initial point than chaining warm-starts across mu.
+            let mut start2 = free.parameters.clone();
+            start2[poi] = mu;
+            let fixed2 = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
+                model,
+                &start2,
+                &bounds,
+                &mut tape,
+            )?;
+            if fixed2.fval < fixed_warm.fval { fixed2 } else { fixed_warm }
+        } else {
+            fixed_warm
+        };
 
         let llr = 2.0 * (fixed.fval - nll_hat);
         let mut q = llr.max(0.0);
@@ -173,7 +201,7 @@ mod tests {
         let mu_values: Vec<f64> = (0..11).map(|i| i as f64 * 0.2).collect();
 
         let generic = scan(&mle, &model, &mu_values).unwrap();
-        let optimized = scan_histfactory(&mle, &model, &mu_values).unwrap();
+        let optimized = scan_histfactory_impl(&mle, &model, &mu_values, false).unwrap();
 
         assert_eq!(generic.poi_index, optimized.poi_index);
         assert!(
@@ -200,6 +228,41 @@ mod tests {
                 g.q_mu,
                 o.q_mu,
                 q_rdiff
+            );
+        }
+    }
+
+    #[test]
+    fn test_scan_histfactory_multistart_is_numerically_consistent() {
+        let model = load_workspace(include_str!("../../../tests/fixtures/simple_workspace.json"));
+        let mle = MaximumLikelihoodEstimator::new();
+        let mu_values: Vec<f64> = (0..11).map(|i| i as f64 * 0.2).collect();
+
+        let a = scan_histfactory_impl(&mle, &model, &mu_values, false).unwrap();
+        let b = scan_histfactory_impl(&mle, &model, &mu_values, true).unwrap();
+
+        assert!((a.mu_hat - b.mu_hat).abs() < 1e-10, "mu_hat: a={}, b={}", a.mu_hat, b.mu_hat);
+        assert!(
+            (a.nll_hat - b.nll_hat).abs() < 1e-10,
+            "nll_hat: a={}, b={}",
+            a.nll_hat,
+            b.nll_hat
+        );
+        for (pa, pb) in a.points.iter().zip(b.points.iter()) {
+            assert!((pa.mu - pb.mu).abs() < 1e-15);
+            assert!(
+                (pa.q_mu - pb.q_mu).abs() < 1e-10,
+                "q_mu mismatch at mu={}: a={}, b={}",
+                pa.mu,
+                pa.q_mu,
+                pb.q_mu
+            );
+            assert!(
+                (pa.nll_mu - pb.nll_mu).abs() < 1e-10,
+                "nll_mu mismatch at mu={}: a={}, b={}",
+                pa.mu,
+                pa.nll_mu,
+                pb.nll_mu
             );
         }
     }

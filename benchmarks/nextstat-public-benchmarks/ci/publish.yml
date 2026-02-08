@@ -1,0 +1,47 @@
+name: Publish Benchmark Snapshot (Template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_id:
+        description: "Opaque snapshot id (immutable)"
+        required: true
+        default: "snapshot-YYYY-MM-DD"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r env/python/requirements.txt
+          echo "TODO: install a pinned NextStat wheel artifact"
+
+      - name: Run suite(s)
+        run: |
+          mkdir -p out
+          python suites/hep/run.py --deterministic --out out/hep_simple_nll.json
+
+      - name: Write baseline manifest
+        run: |
+          python scripts/write_baseline_manifest.py \
+            --snapshot-id "${{ inputs.snapshot_id }}" \
+            --deterministic \
+            --result out/hep_simple_nll.json \
+            --dataset suites/hep/datasets/simple_workspace.json \
+            --out out/baseline_manifest.json
+
+      - name: Upload snapshot artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-${{ inputs.snapshot_id }}
+          path: out/
+
