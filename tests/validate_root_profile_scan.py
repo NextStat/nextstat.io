@@ -750,8 +750,13 @@ def main() -> int:
                     - diagnostic["delta_nll_mu_ns_minus_root_min"]
                 )
 
+            poi_idx = int(ns_scan.get("poi_index") or 0)
+
             def _grad_stats(params: List[float]) -> Dict[str, float]:
                 g = list(map(float, ns_model.grad_nll(params)))
+                # For fixed-mu fits, POI is clamped and its gradient is not expected to be 0.
+                if 0 <= poi_idx < len(g):
+                    g[poi_idx] = 0.0
                 maxabs = max(abs(x) for x in g) if g else 0.0
                 l2 = float(sum(x * x for x in g) ** 0.5)
                 return {"grad_l2": l2, "grad_max_abs": float(maxabs)}

@@ -9,13 +9,13 @@ What you'll do:
 ## Install
 
 ```bash
-pip install nextstat
+python -m pip install /path/to/nextstat-*.whl
 ```
 
-Repo dev mode (no pip install):
+Repo dev mode (run from a NextStat checkout without installing):
 
 ```bash
-cd /Users/andresvlc/WebDev/nextstat.io
+cd /path/to/nextstat.io
 export PYTHONPATH=bindings/ns-py/python
 ```
 
@@ -33,4 +33,3 @@ Output:
 Next steps:
 
 - try population PK (NLME): `OneCompartmentOralPkNlmeModel(...)`
-
