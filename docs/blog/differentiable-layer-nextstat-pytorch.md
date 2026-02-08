@@ -1,3 +1,24 @@
+---
+title: "How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch"
+slug: differentiable-layer-nextstat-pytorch
+description: "A scientific deep dive into NextStat’s differentiable HistFactory layer for PyTorch: soft histogramming, a fused CUDA/Metal NLL+gradient kernel, profiled fits, and envelope-theorem gradients for Z₀ training."
+date: 2026-02-08
+author: NextStat Team
+status: draft
+keywords:
+  - differentiable HistFactory
+  - PyTorch autograd
+  - discovery significance
+  - Z0
+  - q0
+  - envelope theorem
+  - CUDA zero-copy
+  - Metal backend
+  - analytical gradients
+  - systematic uncertainties
+category: ml
+---
+
 <!--
   Blog draft (technical).
   Keep in sync with implementation in:
@@ -8,9 +29,6 @@
 -->
 
 # How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch
-
-**Last updated:** 2026-02-08  
-**Status:** Blog draft (technical)
 
 ## Abstract
 
@@ -27,7 +45,7 @@ is traditionally **non‑differentiable**: histogram binning is discrete, and th
 
 The result is a PyTorch‑native loss: you can train a network directly to **maximize $Z_0$** (or minimize $-Z_0$) with standard optimizers.
 
-If you just want the usage/API surface (and not the derivations), start with `docs/differentiable-layer.md`.
+If you just want the usage/API surface (and not the derivations), start with [Differentiable HistFactory Layer for PyTorch](/docs/differentiable-layer).
 
 ---
 
@@ -280,6 +298,57 @@ and includes gradients for:
 - auxiliary Poisson constraints (Barlow–Beeston‑style $\gamma$ parameters),
 - Gaussian constraints for constrained nuisance parameters.
 
+### 5.5 Parameter gradients (what the optimizer sees)
+
+Although the headline objective for ML is the signal-gradient `∂NLL/∂s`, the profiled layer also needs **parameter gradients** `∂NLL/∂θ` to run L‑BFGS‑B. The fused kernel computes these analytically as well.
+
+For one main bin $i$, define the standard Poisson weight:
+
+$$
+w_i \equiv \frac{\partial \mathrm{NLL}}{\partial \nu_i} = 1 - \frac{n_i}{\nu_i}.
+$$
+
+For one sample contribution $\mu_{a,i} = ( \text{nom}_{a,i} + \Delta_{a,i}(\theta) )\cdot F_{a,i}(\theta)$, common gradient identities are:
+
+- **Global multiplicative (`NormFactor`, `Lumi`)** with parameter $p$:
+  $$
+  \frac{\partial \nu_i}{\partial p} = \frac{\mu_{a,i}}{p}
+  \quad\Rightarrow\quad
+  \frac{\partial \mathrm{NLL}}{\partial p}\;{+}{=}\; w_i\frac{\mu_{a,i}}{p}.
+  $$
+- **Per-bin multiplicative (`ShapeSys`, `ShapeFactor`, `StatError`)** with parameter $\gamma_{a,i}$:
+  $$
+  \frac{\partial \nu_i}{\partial \gamma_{a,i}} = \frac{\mu_{a,i}}{\gamma_{a,i}}
+  \quad\Rightarrow\quad
+  \frac{\partial \mathrm{NLL}}{\partial \gamma_{a,i}}\;{+}{=}\; w_i\frac{\mu_{a,i}}{\gamma_{a,i}}.
+  $$
+- **`NormSys` Code4** with interpolation factor $f(\alpha)$:
+  $$
+  \frac{\partial \nu_i}{\partial \alpha} = \mu_{a,i}\cdot\frac{f'(\alpha)}{f(\alpha)}
+  \quad\Rightarrow\quad
+  \frac{\partial \mathrm{NLL}}{\partial \alpha}\;{+}{=}\; w_i\,\mu_{a,i}\frac{f'(\alpha)}{f(\alpha)}.
+  $$
+- **`HistoSys` Code4p** with additive delta $\Delta_{a,i}(\alpha)$:
+  $$
+  \frac{\partial \nu_i}{\partial \alpha} = F_{a,i}(\theta)\cdot \Delta'_{a,i}(\alpha)
+  \quad\Rightarrow\quad
+  \frac{\partial \mathrm{NLL}}{\partial \alpha}\;{+}{=}\; w_i\,F_{a,i}(\theta)\,\Delta'_{a,i}(\alpha).
+  $$
+
+Constraints add their standard closed-form gradients:
+
+- **Auxiliary Poisson** (for $\gamma$ parameters): if $\nu_\text{aux}=\gamma\tau$ and $n_\text{aux}$ is observed,
+  $$
+  \frac{\partial \mathrm{NLL}_\text{aux}}{\partial \gamma} = \tau\left(1 - \frac{n_\text{aux}}{\gamma\tau}\right).
+  $$
+- **Gaussian constraint** (center $\theta_0$, width $\sigma$):
+  $$
+  \frac{\partial}{\partial \theta}\left[\tfrac{1}{2}\left(\frac{\theta-\theta_0}{\sigma}\right)^2\right]
+  = \frac{\theta-\theta_0}{\sigma^2}.
+  $$
+
+These are exactly the update rules implemented in `crates/ns-compute/kernels/differentiable_nll_grad.cu`.
+
 ---
 
 ## 6. Layer 3 — Rust GPU sessions: keep the model on device
@@ -341,34 +410,42 @@ Both are found with **bounded L‑BFGS‑B on CPU**, where each function/gradien
 
 Warm‑starting the constrained fit from the free fit makes this practical.
 
-### 7.2 Envelope gradient for $q_0$ (proposition + proof sketch)
+### 7.2 Envelope theorem / Danskin’s theorem for $q_0$ (and $Z_0$)
 
-For an optimum value function
-
-$$
-V(s) = \min_\theta f(\theta, s),
-$$
-
-the envelope theorem states (under standard regularity/KKT conditions):
+The core difficulty in differentiating the profiled objective is the nested $\operatorname{argmin}$:
 
 $$
-\frac{dV}{ds} = \left.\frac{\partial f}{\partial s}\right|_{\theta=\hat\theta(s)}.
+\hat\theta(s)=\arg\min_{\theta\in\Theta} f(\theta,s),
 $$
 
-**Proof sketch (unconstrained case).** Let $\hat\theta(s)$ be a local minimizer and assume $f$ is continuously differentiable. Define $V(s)=f(\hat\theta(s),s)$. By the chain rule,
+where $\Theta$ is the feasible set (here, box constraints from HistFactory bounds), and $s$ is the external signal histogram.
+
+Define the optimum value function:
 
 $$
-\frac{dV}{ds}
+V(s) = \min_{\theta\in\Theta} f(\theta,s).
+$$
+
+**Proposition (envelope / Danskin-type result).** Under standard regularity conditions (e.g., $\Theta$ compact, $f$ continuous, and differentiable in $s$), $V$ is directionally differentiable and for any minimizer $\theta^\star \in \arg\min_{\theta\in\Theta} f(\theta,s)$,
+
+$$
+\frac{dV}{ds}(s) = \left.\frac{\partial f}{\partial s}\right|_{\theta=\theta^\star}.
+$$
+
+If the minimizer is unique and regular (and you are away from non-smooth boundaries), this coincides with the usual gradient.
+
+**Proof sketch (why the “implicit” term vanishes).** Let $\theta^\star(s)$ be a selection of minimizers. By the chain rule,
+
+$$
+\frac{d}{ds} f(\theta^\star(s),s)
 =
-\frac{\partial f}{\partial s}(\hat\theta(s),s)
-\underbrace{\frac{\partial f}{\partial \theta}(\hat\theta(s),s)}_{=\,0}\cdot \frac{d\hat\theta}{ds}.
+\left.\frac{\partial f}{\partial s}\right|_{\theta^\star(s)}
+\left.\frac{\partial f}{\partial \theta}\right|_{\theta^\star(s)}\cdot\frac{d\theta^\star}{ds}.
 $$
 
-At a (first-order) optimum, $\partial f/\partial\theta = 0$, so the second term vanishes and we obtain $dV/ds=\partial f/\partial s$ evaluated at the optimizer.
+At an unconstrained optimum, $\partial f/\partial\theta = 0$. Under box constraints, the KKT conditions imply the **projected gradient** is zero at the solution (with complementarity on active bounds). In both cases, the second term drops out in the envelope conclusion: we can treat fitted parameters as constants when differentiating w.r.t. the external signal.
 
-**Constrained / bounded case (L‑BFGS‑B).** With box constraints, the correct statement is in terms of KKT conditions: at the solution, the *projected* gradient is zero and complementarity holds. The same envelope conclusion holds under standard constraint qualifications; operationally, it means we can treat the fitted parameters as constants when differentiating w.r.t. the external signal histogram.
-
-Applying this to both terms in $q_0$ yields a remarkably simple exact gradient:
+Applying this to both terms in the discovery statistic yields a simple exact gradient (at convergence):
 
 $$
 \frac{\partial q_0}{\partial s}
@@ -379,6 +456,16 @@ $$
 \left.\frac{\partial \mathrm{NLL}}{\partial s}\right|_{\mu=\hat\mu,\;\theta=\hat\theta}
 \right).
 $$
+
+And for $Z_0(s)=\sqrt{q_0(s)}$ (with a small $\epsilon$ for stability),
+
+$$
+\frac{\partial Z_0}{\partial s}
+=
+\frac{1}{2\sqrt{q_0+\epsilon}}\cdot \frac{\partial q_0}{\partial s}.
+$$
+
+**Boundary behavior (one-sided discovery).** The one-sided convention clamps $q_0 = \max(0, 2(\cdots))$. At the boundary where $q_0$ transitions to zero, the function is not differentiable; NextStat returns $q_0=0$ and a **zero gradient** (a valid subgradient choice that avoids pushing into the unphysical $\hat\mu<0$ region).
 
 In code (`crates/ns-inference/src/differentiable.rs`), this is implemented by:
 
@@ -449,7 +536,7 @@ For a differentiable inference layer, the *gradient* is the product. NextStat va
 1. **Unit/integration tests** compare analytical gradients against central finite differences on GPU:
    - Fixed-parameter NLL signal gradient: `tests/python/test_torch_layer.py`
    - Profiled q₀/qμ envelope gradients: `tests/python/test_differentiable_profiled_q0.py`
-2. **Benchmark fixtures** report maximum absolute gradient error vs finite differences; for the differentiable NLL layer this is **2.07e‑9** on the benchmark workspace (`docs/benchmarks.md`).
+2. **Benchmark fixtures** report maximum absolute gradient error vs finite differences; for the differentiable NLL layer this is **2.07e‑9** on the benchmark workspace (see [Benchmarks → Differentiable Layer](/docs/benchmarks#differentiable-layer-gpu-only)).
 
 These checks are designed to catch both algebraic mistakes in the fused kernel and subtle issues such as missing stream synchronization or non-zero-initialized gradient buffers.
 

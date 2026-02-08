@@ -3243,6 +3243,23 @@ Regions: SR_AllBDT
     }
 
     #[test]
+    fn trex_import_hist_mode_filters_realistic_trex_export_dir_tttt_prod_from_config_file() {
+        // Same as `trex_import_hist_mode_filters_realistic_trex_export_dir_tttt_prod`, but
+        // verifying that a TREx-style `.config` file on disk is parsed equivalently.
+        let root = repo_root();
+        let cfg_path = root.join("tests/fixtures/trex_config/hist_tttt_prod_masking.config");
+        let cfg = std::fs::read_to_string(&cfg_path).expect("missing hist_tttt_prod_masking.config");
+
+        let ws = workspace_from_str(&cfg, &root).expect("HIST mode workspace (tttt-prod from file)");
+        assert_eq!(ws.channels.len(), 1);
+        assert_eq!(ws.channels[0].name, "SR_AllBDT");
+        let names: Vec<&str> = ws.channels[0].samples.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["tttt", "ttW"]);
+        assert_eq!(ws.observations.len(), 1);
+        assert_eq!(ws.observations[0].name, "SR_AllBDT");
+    }
+
+    #[test]
     fn trex_import_hist_mode_filters_realistic_trex_export_dir_hepdata_ewk() {
         let cfg = r#"
 ReadFrom: HIST
