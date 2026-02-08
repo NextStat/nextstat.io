@@ -10,6 +10,7 @@
 //! - `POST /v1/ranking` — workspace JSON → ranked systematics JSON
 //! - `GET  /v1/health`  — server status, version, GPU info
 
+mod pool;
 mod routes;
 mod state;
 

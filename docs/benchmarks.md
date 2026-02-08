@@ -111,6 +111,7 @@ Outputs:
 | `tests/apex2_pyhf_validation_report.py` | NLL/expected_data parity vs pyhf + speedup | `tmp/apex2_pyhf_report.json` |
 | `tests/benchmark_glm_fit_predict.py` | GLM fit/predict timing (linear/logistic/poisson/negbin) | `tmp/p6_glm_fit_predict.json` |
 | `tests/apex2_p6_glm_benchmark_report.py` | P6 GLM regression vs baseline (slowdown detection) | `tmp/apex2_p6_glm_bench_report.json` |
+| `tests/apex2_gpu_bench_report.py` | CPU vs CUDA perf (fit, profile scan, batch toys) + basic parity | `tmp/apex2_gpu_bench_report.json` |
 | `tests/apex2_sbc_report.py` | SBC posterior calibration (NUTS) | `tmp/apex2_sbc_report.json` |
 | `tests/apex2_master_report.py` | Aggregates all runners into one report | `tmp/apex2_master_report.json` |
 | `tests/compare_with_latest_baseline.py` | Compare current runs vs `tmp/baselines/latest_manifest.json` | `tmp/baseline_compare_report.json` |

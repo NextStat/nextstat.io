@@ -545,6 +545,33 @@ yields = nextstat.to_arrow(model, what="yields")
 params = nextstat.to_arrow(model, what="params")
 ```
 
+## Remote Server Client (`nextstat.remote`)
+
+Pure-Python HTTP client for a remote `nextstat-server` instance. Zero native dependencies — only requires `httpx`.
+
+- `nextstat.remote.connect(url, *, timeout=300) -> NextStatClient` — create a client.
+- `client.fit(workspace, *, gpu=True) -> FitResult` — remote MLE fit. Workspace can be a `dict` or JSON string.
+- `client.ranking(workspace, *, gpu=True) -> RankingResult` — remote nuisance-parameter ranking.
+- `client.health() -> HealthResult` — server health check (status, version, uptime, device, counters).
+- `client.close()` — close the connection. Also supports context manager (`with`).
+
+Result types are typed dataclasses: `FitResult`, `RankingResult`, `RankingEntry`, `HealthResult`.
+
+```python
+import nextstat.remote as remote
+
+client = remote.connect("http://gpu-server:3742")
+result = client.fit(workspace_json)
+print(result.bestfit, result.nll, result.converged)
+
+ranking = client.ranking(workspace_json)
+for e in ranking.entries:
+    print(f"{e.name}: Δμ = {e.delta_mu_up:+.3f} / {e.delta_mu_down:+.3f}")
+
+health = client.health()
+print(f"Server v{health.version}, device={health.device}, uptime={health.uptime_s:.0f}s")
+```
+
 ## CLI parity
 
 The CLI mirrors the core workflows for HEP (fit/hypotest/scan/limits) and time series.

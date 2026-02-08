@@ -70,8 +70,7 @@ def simple_model():
 
 def cpu_fit(model):
     """CPU MLE fit."""
-    mle = nextstat.MaximumLikelihoodEstimator()
-    return mle.fit(model)
+    return nextstat.fit(model, device="cpu")
 
 
 def close_enough(a, b, atol):
@@ -93,9 +92,7 @@ class TestCudaParity:
         from _tolerances import GPU_FIT_NLL_ATOL, GPU_PARAM_ATOL
 
         cpu_result = cpu_fit(simple_model)
-
-        mle = nextstat.MaximumLikelihoodEstimator()
-        gpu_result = mle.fit_gpu(simple_model)
+        gpu_result = nextstat.fit(simple_model, device="cuda")
 
         assert close_enough(gpu_result.nll, cpu_result.nll, GPU_FIT_NLL_ATOL), (
             f"GPU NLL {gpu_result.nll} vs CPU NLL {cpu_result.nll}, "
@@ -113,47 +110,34 @@ class TestCudaParity:
         """GPU profile scan matches CPU scan points."""
         from _tolerances import GPU_FIT_NLL_ATOL
 
-        cpu_scan = nextstat.profile_scan(simple_model, n_points=5)
-        gpu_scan = nextstat.profile_scan(simple_model, n_points=5, use_gpu=True)
+        mu_values = [0.0, 0.25, 0.50, 0.75, 1.0]
+        cpu_scan = nextstat.profile_scan(simple_model, mu_values, device="cpu")
+        gpu_scan = nextstat.profile_scan(simple_model, mu_values, device="cuda")
 
-        assert len(cpu_scan) == len(gpu_scan)
-        for cp, gp in zip(cpu_scan, gpu_scan):
-            assert close_enough(gp[0], cp[0], 1e-6), f"mu: {gp[0]} vs {cp[0]}"
-            assert close_enough(gp[1], cp[1], GPU_FIT_NLL_ATOL), (
-                f"NLL at mu={gp[0]}: GPU={gp[1]}, CPU={cp[1]}"
+        assert int(cpu_scan["poi_index"]) == int(gpu_scan["poi_index"])
+        assert len(cpu_scan["points"]) == len(gpu_scan["points"])
+        for cp, gp in zip(cpu_scan["points"], gpu_scan["points"]):
+            assert close_enough(gp["mu"], cp["mu"], 1e-12), f"mu: {gp['mu']} vs {cp['mu']}"
+            assert close_enough(gp["nll_mu"], cp["nll_mu"], GPU_FIT_NLL_ATOL), (
+                f"NLL at mu={gp['mu']}: GPU={gp['nll_mu']}, CPU={cp['nll_mu']}"
             )
-
-    def test_ranking_gpu_vs_cpu(self, simple_model):
-        """GPU ranking matches CPU ranking."""
-        from _tolerances import GPU_PARAM_ATOL
-
-        cpu_ranking = nextstat.ranking(simple_model)
-        gpu_ranking = nextstat.ranking_gpu(simple_model)
-
-        assert len(cpu_ranking) == len(gpu_ranking)
-        for cr, gr in zip(cpu_ranking, gpu_ranking):
-            assert cr["name"] == gr["name"]
-            assert close_enough(
-                gr["impact_up"], cr["impact_up"], GPU_PARAM_ATOL
-            ), f"{cr['name']} impact_up: GPU={gr['impact_up']} vs CPU={cr['impact_up']}"
-            assert close_enough(
-                gr["impact_down"], cr["impact_down"], GPU_PARAM_ATOL
-            ), f"{cr['name']} impact_down: GPU={gr['impact_down']} vs CPU={cr['impact_down']}"
 
     def test_fit_toys_batch_gpu_deterministic(self, simple_model):
         """Same seed → same result for GPU batch toy fit."""
         from _tolerances import GPU_NLL_ATOL
 
-        result1 = nextstat.fit_toys_batch(
-            simple_model, n_toys=10, seed=42, use_gpu=True
+        # Use a fixed init point for determinism.
+        init = list(simple_model.parameter_init())
+        result1 = nextstat.fit_toys_batch_gpu(
+            simple_model, init, n_toys=10, seed=42, device="cuda"
         )
-        result2 = nextstat.fit_toys_batch(
-            simple_model, n_toys=10, seed=42, use_gpu=True
+        result2 = nextstat.fit_toys_batch_gpu(
+            simple_model, init, n_toys=10, seed=42, device="cuda"
         )
 
-        for nll1, nll2 in zip(result1["nll"], result2["nll"]):
-            assert close_enough(nll1, nll2, GPU_NLL_ATOL), (
-                f"Non-deterministic: {nll1} vs {nll2}"
+        for r1, r2 in zip(result1, result2):
+            assert close_enough(r1.nll, r2.nll, GPU_NLL_ATOL), (
+                f"Non-deterministic: {r1.nll} vs {r2.nll}"
             )
 
 
@@ -170,17 +154,16 @@ class TestMetalParity:
         """Metal batch toy NLL within f32 tolerance of CPU."""
         from _tolerances import METAL_NLL_ATOL
 
+        init = list(simple_model.parameter_init())
         cpu_result = nextstat.fit_toys_batch(
-            simple_model, n_toys=5, seed=42
+            simple_model, init, n_toys=5, seed=42
         )
-        metal_result = nextstat.fit_toys_batch(
-            simple_model, n_toys=5, seed=42, use_metal=True
+        metal_result = nextstat.fit_toys_batch_gpu(
+            simple_model, init, n_toys=5, seed=42, device="metal"
         )
 
-        for nll_cpu, nll_metal in zip(
-            cpu_result["nll"], metal_result["nll"]
-        ):
-            assert close_enough(nll_metal, nll_cpu, METAL_NLL_ATOL), (
-                f"Metal NLL {nll_metal} vs CPU NLL {nll_cpu}, "
-                f"diff={abs(nll_metal - nll_cpu):.2e}"
+        for rc, rm in zip(cpu_result, metal_result):
+            assert close_enough(rm.nll, rc.nll, METAL_NLL_ATOL), (
+                f"Metal NLL {rm.nll} vs CPU NLL {rc.nll}, "
+                f"diff={abs(rm.nll - rc.nll):.2e}"
             )

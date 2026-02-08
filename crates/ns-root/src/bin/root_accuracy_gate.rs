@@ -1,5 +1,6 @@
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use ns_root::{KeyInfo, RootFile};
 
@@ -13,6 +14,66 @@ fn main() -> Result<(), io::Error> {
 
     let bytes = file.file_data();
     let _is_large = file.is_large();
+
+    if cfg.bench_scan {
+        let stats = bench_scan_root_for_zs_blocks(bytes, cfg.verbose, cfg.fail_fast)?;
+        println!(
+            "Bench(scan): zs_blocks_decompressed={}, candidates_skipped={}, failures={}, in_bytes={}, out_bytes={}, seconds={:.6}, blocks_per_s={:.3}, out_mib_per_s={:.3}",
+            stats.zs_blocks_decompressed,
+            stats.candidates_skipped,
+            stats.failures,
+            stats.total_in_bytes,
+            stats.total_out_bytes,
+            stats.seconds,
+            stats.blocks_per_s,
+            stats.out_mib_per_s,
+        );
+        if stats.failures == 0 {
+            return Ok(());
+        }
+        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
+    }
+
+    if cfg.bench_tree {
+        let tree_name = match cfg.tree_name {
+            Some(t) => t,
+            None => select_first_tree_name(&file)?,
+        };
+
+        let tree = file.get_tree(&tree_name).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("failed to read tree '{tree_name}': {e} (try --bench-scan)"),
+            )
+        })?;
+
+        let stats = bench_tree_baskets(
+            bytes,
+            &cfg.root_path,
+            &tree.name,
+            &tree.branches,
+            cfg.max_baskets_per_branch.unwrap_or(usize::MAX),
+            cfg.fail_fast,
+        )?;
+
+        println!(
+            "Bench(tree): branches_checked={}, baskets_checked={}, baskets_uncompressed_skipped={}, failures={}, in_bytes={}, out_bytes={}, seconds={:.6}, baskets_per_s={:.3}, out_mib_per_s={:.3}",
+            stats.branches_checked,
+            stats.baskets_checked,
+            stats.baskets_uncompressed_skipped,
+            stats.failures,
+            stats.total_in_bytes,
+            stats.total_out_bytes,
+            stats.seconds,
+            stats.baskets_per_s,
+            stats.out_mib_per_s,
+        );
+
+        if stats.failures == 0 {
+            return Ok(());
+        }
+        return Err(io::Error::new(io::ErrorKind::Other, "root_accuracy_gate bench failed"));
+    }
 
     if cfg.scan {
         let stats = scan_root_for_zs_blocks(bytes, cfg.verbose, cfg.fail_fast)?;
@@ -127,6 +188,8 @@ struct Config {
     fail_fast: bool,
     verbose: bool,
     scan: bool,
+    bench_scan: bool,
+    bench_tree: bool,
 }
 
 impl Config {
@@ -140,6 +203,8 @@ impl Config {
         let mut fail_fast = false;
         let mut verbose = false;
         let mut scan = false;
+        let mut bench_scan = false;
+        let mut bench_tree = false;
 
         while let Some(arg) = args.next() {
             match arg.to_string_lossy().as_ref() {
@@ -173,6 +238,8 @@ impl Config {
                 }
                 "--fail-fast" => fail_fast = true,
                 "--scan" => scan = true,
+                "--bench-scan" => bench_scan = true,
+                "--bench-tree" => bench_tree = true,
                 "--verbose" | "-v" => verbose = true,
                 "--help" | "-h" => {
                     print_help();
@@ -209,13 +276,15 @@ impl Config {
             fail_fast,
             verbose,
             scan,
+            bench_scan,
+            bench_tree,
         })
     }
 }
 
 fn print_help() {
     eprintln!(
-        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--scan] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\nExit status:\n  - 0 if all checked blocks match\n  - non-zero on any mismatch\n"
+        "Usage:\n  root_accuracy_gate --root <file.root> [--tree <tree>] [--max-baskets-per-branch N] [--scan] [--bench-scan] [--bench-tree] [--fail-fast] [--verbose]\n\nBehavior:\n  Default mode (tree verify):\n    - Iterates all branches in the tree (default: first TTree in top-level keys)\n    - Iterates up to N baskets per branch (default: 32; N=0 means all)\n    - For each ROOT compression sub-block tagged 'ZS': decompress with ruzstd and reference libzstd (zstd crate)\n    - Compare output byte-for-byte\n\n  Scan mode (--scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers and validates by successful libzstd decompression\n    - Compares ruzstd vs libzstd for every validated block\n\n  Bench mode (--bench-scan):\n    - Scans raw file bytes for plausible ROOT 'ZS' sub-block headers\n    - Decompresses using ns_root production decompressor (no reference, no byte-compare)\n    - Prints throughput stats\n\n  Bench mode (--bench-tree):\n    - Iterates tree branches/baskets and decompresses each basket payload using ns_root production decompressor\n    - Prints throughput stats\n\nExit status:\n  - 0 if all checked blocks match (verify modes) / no failures (bench modes)\n  - non-zero on any mismatch / decompression failure\n"
     );
 }
 
@@ -224,6 +293,18 @@ struct ScanStats {
     zs_blocks_checked: usize,
     candidates_skipped: usize,
     failures: usize,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct BenchScanStats {
+    zs_blocks_decompressed: usize,
+    candidates_skipped: usize,
+    failures: usize,
+    total_in_bytes: u64,
+    total_out_bytes: u64,
+    seconds: f64,
+    blocks_per_s: f64,
+    out_mib_per_s: f64,
 }
 
 fn scan_root_for_zs_blocks(
@@ -290,6 +371,99 @@ fn scan_root_for_zs_blocks(
     Ok(stats)
 }
 
+fn bench_scan_root_for_zs_blocks(
+    bytes: &[u8],
+    verbose: bool,
+    fail_fast: bool,
+) -> Result<BenchScanStats, io::Error> {
+    const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+    let start = Instant::now();
+    let mut stats = BenchScanStats::default();
+
+    let mut pos = 0usize;
+    while pos + 9 <= bytes.len() {
+        if &bytes[pos..pos + 2] != b"ZS" {
+            pos += 1;
+            continue;
+        }
+
+        let c_size = read_le24(&bytes[pos + 3..pos + 6]);
+        let u_size = read_le24(&bytes[pos + 6..pos + 9]);
+        if c_size == 0 || u_size == 0 {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        let payload = pos + 9;
+        let end = payload.saturating_add(c_size);
+        if end > bytes.len() {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        if payload + 4 > bytes.len() || bytes[payload..payload + 4] != ZSTD_MAGIC {
+            stats.candidates_skipped += 1;
+            pos += 2;
+            continue;
+        }
+
+        let root_block = &bytes[pos..end];
+        match ns_root::decompress::decompress(root_block, u_size) {
+            Ok(out) => {
+                if out.len() != u_size {
+                    stats.failures += 1;
+                    if verbose {
+                        eprintln!(
+                            "FAIL(bench-scan) file_off={} : output size mismatch got {} expected {}",
+                            pos,
+                            out.len(),
+                            u_size
+                        );
+                    }
+                    if fail_fast {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "root_accuracy_gate bench failed",
+                        ));
+                    }
+                    pos += 2;
+                    continue;
+                }
+
+                stats.zs_blocks_decompressed += 1;
+                stats.total_in_bytes += c_size as u64;
+                stats.total_out_bytes += u_size as u64;
+                pos = end;
+            }
+            Err(e) => {
+                if fail_fast {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("root_accuracy_gate bench failed: {e}"),
+                    ));
+                }
+                stats.candidates_skipped += 1;
+                if verbose {
+                    eprintln!("SKIP(bench-scan) file_off={} : {}", pos, e);
+                }
+                pos += 2;
+            }
+        }
+    }
+
+    let seconds = start.elapsed().as_secs_f64();
+    stats.seconds = seconds;
+    if seconds > 0.0 {
+        stats.blocks_per_s = stats.zs_blocks_decompressed as f64 / seconds;
+        stats.out_mib_per_s = (stats.total_out_bytes as f64 / (1024.0 * 1024.0)) / seconds;
+    }
+
+    Ok(stats)
+}
+
 #[derive(Copy, Clone)]
 struct ScanCtx {
     file_offset: usize,
@@ -345,6 +519,124 @@ fn select_first_tree_name(file: &RootFile) -> Result<String, io::Error> {
         io::ErrorKind::InvalidInput,
         "no TTree found in top-level keys; pass --tree <name>",
     ))
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct BenchTreeStats {
+    branches_checked: usize,
+    baskets_checked: usize,
+    baskets_uncompressed_skipped: usize,
+    failures: usize,
+    total_in_bytes: u64,
+    total_out_bytes: u64,
+    seconds: f64,
+    baskets_per_s: f64,
+    out_mib_per_s: f64,
+}
+
+fn bench_tree_baskets(
+    bytes: &[u8],
+    root_path: &Path,
+    tree_name: &str,
+    branches: &[ns_root::BranchInfo],
+    max_baskets_per_branch: usize,
+    fail_fast: bool,
+) -> Result<BenchTreeStats, io::Error> {
+    let start = Instant::now();
+    let mut stats = BenchTreeStats::default();
+
+    for branch in branches {
+        stats.branches_checked += 1;
+        let n = branch.n_baskets.min(max_baskets_per_branch);
+        for i in 0..n {
+            let seek = branch.basket_seek[i];
+            let (obj_len, key_len, n_bytes) = read_tkey_header_fast(bytes, seek as usize)?;
+
+            let key_end = seek as usize + n_bytes;
+            let obj_start = seek as usize + key_len;
+            if key_end > bytes.len() || obj_start > key_end {
+                stats.failures += 1;
+                eprintln!(
+                    "FAIL(bench-tree) root={} tree={} branch={} basket={} seek={} : key slice out of bounds",
+                    root_path.display(),
+                    tree_name,
+                    branch.name,
+                    i,
+                    seek
+                );
+                if fail_fast {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "root_accuracy_gate bench failed",
+                    ));
+                }
+                continue;
+            }
+
+            let compressed_data = &bytes[obj_start..key_end];
+            let compressed_len = n_bytes - key_len;
+            if obj_len == compressed_len {
+                stats.baskets_uncompressed_skipped += 1;
+                continue;
+            }
+
+            match ns_root::decompress::decompress(compressed_data, obj_len) {
+                Ok(out) => {
+                    if out.len() != obj_len {
+                        stats.failures += 1;
+                        eprintln!(
+                            "FAIL(bench-tree) root={} tree={} branch={} basket={} seek={} : output size mismatch got {} expected {}",
+                            root_path.display(),
+                            tree_name,
+                            branch.name,
+                            i,
+                            seek,
+                            out.len(),
+                            obj_len
+                        );
+                        if fail_fast {
+                            return Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                "root_accuracy_gate bench failed",
+                            ));
+                        }
+                        continue;
+                    }
+
+                    stats.baskets_checked += 1;
+                    stats.total_in_bytes += compressed_data.len() as u64;
+                    stats.total_out_bytes += obj_len as u64;
+                }
+                Err(e) => {
+                    stats.failures += 1;
+                    eprintln!(
+                        "FAIL(bench-tree) root={} tree={} branch={} basket={} seek={} : {}",
+                        root_path.display(),
+                        tree_name,
+                        branch.name,
+                        i,
+                        seek,
+                        e
+                    );
+                    if fail_fast {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "root_accuracy_gate bench failed",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let seconds = start.elapsed().as_secs_f64();
+    stats.seconds = seconds;
+    if seconds > 0.0 {
+        stats.baskets_per_s = stats.baskets_checked as f64 / seconds;
+        stats.out_mib_per_s = (stats.total_out_bytes as f64 / (1024.0 * 1024.0)) / seconds;
+    }
+
+    Ok(stats)
 }
 
 #[derive(Copy, Clone)]

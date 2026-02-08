@@ -109,6 +109,7 @@ from . import mlops as mlops  # noqa: E402
 from . import interpret as interpret  # noqa: E402
 from . import tools as tools  # noqa: E402
 from . import distill as distill  # noqa: E402
+from . import remote as remote  # noqa: E402
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
@@ -281,6 +282,7 @@ __all__ = [
     "interpret",
     "tools",
     "distill",
+    "remote",
     "PyModel",
     "PyFitResult",
 ]

@@ -150,6 +150,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `fit()` supports `init_pars=` for warm-start MLE.
 - CI: pyhf parity gate on push/PR, TREx baseline refresh (nightly), HEPData workspace tests.
 - Apex2 validation: NLL parity, bias/pulls regression, SBC calibration, NUTS quality gates.
+- **`nextstat-server`** — self-hosted REST API for shared GPU inference. `POST /v1/fit` (workspace → FitResult), `POST /v1/ranking` (NP impacts), `GET /v1/health`. `--gpu cuda|metal`, `--port`, `--host`, `--threads`.
+- **`nextstat.remote`** — pure-Python thin client (httpx). `client = nextstat.remote.connect("http://gpu-server:3742")`, then `client.fit(workspace)`, `client.ranking(workspace)`, `client.health()`. Typed dataclass results.
 
 ### Changed
 

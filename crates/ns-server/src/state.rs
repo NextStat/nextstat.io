@@ -5,6 +5,8 @@ use std::time::Instant;
 
 use tokio::sync::Mutex;
 
+use crate::pool::ModelPool;
+
 /// Shared state available to all request handlers.
 pub struct AppState {
     /// GPU device name ("cuda", "metal") or `None` for CPU-only.
@@ -22,6 +24,9 @@ pub struct AppState {
 
     /// Total requests served (for /health).
     pub total_requests: std::sync::atomic::AtomicU64,
+
+    /// LRU model cache.
+    pub model_pool: ModelPool,
 }
 
 impl AppState {
@@ -32,6 +37,7 @@ impl AppState {
             gpu_lock: Mutex::new(()),
             inflight: std::sync::atomic::AtomicU64::new(0),
             total_requests: std::sync::atomic::AtomicU64::new(0),
+            model_pool: ModelPool::new(None),
         }
     }
 
