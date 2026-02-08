@@ -264,6 +264,14 @@ pub fn cmd_validation_report(
         Value::String(chrono::Utc::now().to_rfc3339())
     };
 
+    let git_commit = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     let rust_toolchain = if deterministic {
         None
     } else {
@@ -305,7 +313,7 @@ pub fn cmd_validation_report(
         },
         "environment": {
             "nextstat_version": ns_core::VERSION,
-            "nextstat_git_commit": Value::Null,
+            "nextstat_git_commit": git_commit,
             "python_version": python_version,
             "platform": platform,
             "rust_toolchain": rust_toolchain,

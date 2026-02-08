@@ -43,7 +43,7 @@ HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat viz corr --input workspace.json --fit fit.json`
 - `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json]`
 - `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render]`
-- `nextstat validation-report --apex2 master_report.json --workspace workspace.json --out validation_report.json [--pdf validation_report.pdf] [--deterministic]` *(planned)*
+- `nextstat validation-report --apex2 master_report.json --workspace workspace.json --out validation_report.json [--pdf validation_report.pdf] [--deterministic]`
 - `nextstat version`
 
 Time series (Phase 8):

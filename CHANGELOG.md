@@ -94,6 +94,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - Python rendering: multi-page PDF + per-plot SVGs via matplotlib.
 - `--blind` flag masks observed data for unblinded regions.
 - `--deterministic` for stable JSON key ordering.
+- **`nextstat validation-report`** — unified validation artifact combining Apex2 results with workspace fingerprints. Outputs `validation_report.json` (schema `validation_report_v1`) with dataset SHA-256, model spec, environment, and per-suite pass/fail summary. Optional `--pdf` renders a 4-page audit-ready PDF via matplotlib.
 
 #### Survival Analysis
 
