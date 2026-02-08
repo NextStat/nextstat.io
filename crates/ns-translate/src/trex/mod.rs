@@ -3004,6 +3004,35 @@ Selection: x +
     }
 
     #[test]
+    fn trex_import_supports_dynamic_indexing_with_jagged_columns() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: jet_pt[idx]
+Binning: [0, 15, 25, 35, 45, 55, 65]
+
+Sample: s
+File: tests/fixtures/vector_tree_idx.root
+Weight: 1
+"#;
+
+        let ws = workspace_from_str(cfg, &repo_root()).expect("workspace_from_str");
+        assert_eq!(ws.channels.len(), 1);
+        assert_eq!(ws.channels[0].name, "SR");
+        assert_eq!(ws.channels[0].samples.len(), 1);
+        assert_eq!(ws.channels[0].samples[0].name, "s");
+
+        // For the fixture:
+        // jet_pt: [[10,11],[20],[],[30,31,32],[40],[],[50,51],[60]]
+        // idx:    [0,0,0,1,1,1,1,0]
+        // jet_pt[idx] => [10,20,0,31,0,0,51,60]
+        // bins [0,15,25,35,45,55,65] => [4,1,1,0,1,1]
+        assert_eq!(ws.channels[0].samples[0].data, vec![4.0, 1.0, 1.0, 0.0, 1.0, 1.0]);
+    }
+
+    #[test]
     fn trex_parser_strips_percent_comments() {
         let cfg = r#"
 Job: foo

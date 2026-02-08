@@ -356,6 +356,57 @@ def create_vector_tree():
         json.dump(expected, f, indent=2)
     print(f"Created {expected_path}")
 
+def create_vector_tree_with_dynamic_index():
+    """Create a ROOT file with a TTree containing a jagged array branch + scalar index column.
+
+    This fixture is used to validate dynamic indexing expressions like `jet_pt[idx]`.
+    """
+    path = os.path.join(FIXTURES_DIR, "vector_tree_idx.root")
+
+    jet_pt = ak.Array([
+        [10.0, 11.0],
+        [20.0],
+        [],
+        [30.0, 31.0, 32.0],
+        [40.0],
+        [],
+        [50.0, 51.0],
+        [60.0],
+    ])
+    idx = np.array([0, 0, 0, 1, 1, 1, 1, 0], dtype=np.int32)
+    njet = np.array([len(x) for x in jet_pt.to_list()], dtype=np.int32)
+
+    with uproot.recreate(path) as f:
+        f.mktree(
+            "events",
+            {
+                "jet_pt": "var * float32",
+                "idx": np.int32,
+                "njet": np.int32,
+            },
+        )
+        f["events"].extend(
+            {
+                "jet_pt": ak.values_astype(jet_pt, np.float32),
+                "idx": idx,
+                "njet": njet,
+            }
+        )
+
+    print(f"Created {path}")
+
+    expected = {
+        "n_entries": int(len(jet_pt)),
+        "idx": idx.tolist(),
+        "njet": njet.tolist(),
+        # Expected values for the dynamic-index expression `jet_pt[idx]`.
+        "jet_pt_idx": [10.0, 20.0, 0.0, 31.0, 0.0, 0.0, 51.0, 60.0],
+    }
+    expected_path = os.path.join(FIXTURES_DIR, "vector_tree_idx_expected.json")
+    with open(expected_path, "w") as f:
+        json.dump(expected, f, indent=2)
+    print(f"Created {expected_path}")
+
 def create_fixed_array_tree():
     """Create a ROOT file with a TTree containing a fixed-length array branch.
 
@@ -439,6 +490,7 @@ def create_bench_zstd_tree(
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--bench-zstd-tree", default=None)
+    p.add_argument("--vector-tree-idx", action="store_true", help="Create vector_tree_idx.root only")
     p.add_argument("--branches", type=int, default=16)
     p.add_argument("--chunk-rows", type=int, default=8192)
     p.add_argument("--chunks", type=int, default=512)
@@ -455,10 +507,13 @@ if __name__ == "__main__":
             seed=args.seed,
             zstd_level=args.zstd_level,
         )
+    elif args.vector_tree_idx:
+        create_vector_tree_with_dynamic_index()
     else:
         create_simple_root()
         create_histfactory_fixtures()
         create_simple_tree()
         create_vector_tree()
+        create_vector_tree_with_dynamic_index()
         create_fixed_array_tree()
         print("\nAll fixtures created successfully.")

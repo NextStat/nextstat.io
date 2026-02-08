@@ -9,6 +9,14 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 - deterministic parity mode (`--threads 1`)
 - JSON in / JSON out contracts for reproducible workflows
 
+## Global flags
+
+- `--interp-defaults {root|pyhf}` (pyhf JSON only)
+  - `root` (default): NormSys=Code4, HistoSys=Code4p (smooth, TREx/ROOT-style)
+  - `pyhf`: NormSys=Code1, HistoSys=Code0 (strict pyhf defaults)
+  - Note: GPU backends currently support only `root` interpolation defaults.
+    HS3 inputs always use ROOT defaults (Code1/Code0) and are not GPU-accelerated yet.
+
 ## Commands (high level)
 
 For the configuration file format, see `docs/references/analysis-config.md`.
@@ -54,7 +62,7 @@ Survival analysis (Phase 9):
 The `--gpu <device>` flag enables GPU acceleration, where `<device>` is one of:
 
 - **`cuda`** — NVIDIA GPU (f64 precision). Requires `cuda` feature and an NVIDIA GPU at runtime.
-- **`metal`** — Apple Silicon GPU (f32 precision). Requires `metal` feature and Apple Silicon (M1+) at runtime. Currently supported only for `hypotest-toys` (batch toy fitting).
+- **`metal`** — Apple Silicon GPU (f32 precision). Requires `metal` feature and Apple Silicon (M1+) at runtime.
 
 Without `--gpu`, the standard CPU (SIMD/Rayon + Accelerate) path is used. If the requested GPU is not available at runtime, the command exits with an error.
 
@@ -73,16 +81,18 @@ cargo build -p ns-cli --features "cuda,metal" --release
 
 ### Supported commands
 
-**`fit --gpu cuda`** — Single-model MLE fit on CUDA GPU. Uses `GpuSession` for fused NLL+gradient (1 kernel launch per L-BFGS iteration). Hessian computed via finite differences of GPU gradient at the end. Metal is not supported for single-model fit (use CPU).
+**`fit --gpu cuda|metal`** — Single-model MLE fit on GPU. Uses `GpuSession` for fused NLL+gradient (1 kernel launch per L-BFGS iteration). Hessian computed via finite differences of GPU gradient at the end.
 
 ```bash
 nextstat fit --input workspace.json --gpu cuda
+nextstat fit --input workspace.json --gpu metal
 ```
 
-**`scan --gpu cuda`** — GPU-accelerated profile likelihood scan. A single `GpuSession` is shared across all scan points with warm-start between mu values. Metal is not supported for scan (use CPU).
+**`scan --gpu cuda|metal`** — GPU-accelerated profile likelihood scan. A single `GpuSession` is shared across all scan points with warm-start between mu values.
 
 ```bash
 nextstat scan --input workspace.json --start 0 --stop 5 --points 21 --gpu cuda
+nextstat scan --input workspace.json --start 0 --stop 5 --points 21 --gpu metal
 ```
 
 **`hypotest-toys --gpu cuda|metal`** — Batch toy fitting on GPU. The lockstep GPU batch optimizer computes NLL + analytical gradient for all toys in a single kernel launch per iteration. Both CUDA (f64) and Metal (f32) backends are supported.
@@ -121,9 +131,9 @@ nextstat fit --input workspace.json --threads 1
 Same as `--parity` but without Kahan summation. Use `--parity` instead for full determinism.
 
 Interpolation note:
-- The CLI does not currently expose an interpolation-code switch for pyhf JSON workspaces.
-- Repository parity tests configure pyhf to match NextStat's defaults (Code4/Code4p). See `docs/pyhf-parity-contract.md`.
-- HS3 inputs use ROOT HistFactory defaults (Code1 for NormSys, Code0 for HistoSys).
+- Use `--interp-defaults {root|pyhf}` to choose interpolation defaults for pyhf JSON inputs.
+- GPU backends currently require `--interp-defaults root` (Code4/Code4p).
+- HS3 inputs use ROOT HistFactory defaults (Code1 for NormSys, Code0 for HistoSys) and are CPU-only for now.
 
 ### Environment variable
 

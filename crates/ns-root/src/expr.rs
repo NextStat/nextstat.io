@@ -705,8 +705,21 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 }
                 Instr::DynLoad(id) => {
                     let idx_f = stack.pop().unwrap();
-                    let idx = idx_f.max(0.0) as usize;
-                    stack.push(jagged.get(id).map_or(f64::NAN, |j| j.get(row, idx, 0.0)));
+                    let Some(j) = jagged.get(id) else {
+                        // Missing jagged context (caller bug): keep NaN as a sentinel.
+                        stack.push(f64::NAN);
+                        continue;
+                    };
+
+                    // ROOT/TTreeFormula convention: out-of-range numeric access yields 0.0.
+                    //
+                    // For dynamic indices, treat negative and non-finite as out-of-range.
+                    if !idx_f.is_finite() || idx_f < 0.0 {
+                        stack.push(0.0);
+                    } else {
+                        let idx = idx_f as usize; // truncates toward zero for finite values
+                        stack.push(j.get(row, idx, 0.0));
+                    }
                 }
             }
             ip += 1;
@@ -2845,7 +2858,7 @@ mod tests {
             offsets: vec![0, 2],
         };
 
-        // Negative index → clamped to 0 by max(0.0) → gets first element
+        // Negative index should behave like out-of-range (ROOT/TTreeFormula numeric convention).
         let idx_col = vec![-1.0];
         let cols: Vec<&[f64]> = expr
             .required_branches
@@ -2859,8 +2872,34 @@ mod tests {
             .collect();
 
         let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
-        // -1.0.max(0.0) = 0.0 as usize = 0 → x[0] = 100.0
-        assert_eq!(result, vec![100.0]);
+        assert_eq!(result, vec![0.0]);
+    }
+
+    #[test]
+    fn dynamic_index_nan_to_oor() {
+        use crate::branch_reader::JaggedCol;
+
+        let expr = CompiledExpr::compile("x[idx]").unwrap();
+
+        let jagged = JaggedCol {
+            flat: vec![100.0, 200.0],
+            offsets: vec![0, 2],
+        };
+
+        let idx_col = vec![f64::NAN];
+        let cols: Vec<&[f64]> = expr
+            .required_branches
+            .iter()
+            .map(|_| idx_col.as_slice())
+            .collect();
+        let jagged_refs: Vec<&JaggedCol> = expr
+            .required_jagged_branches
+            .iter()
+            .map(|_| &jagged)
+            .collect();
+
+        let result = expr.eval_bulk_with_jagged(&cols, &jagged_refs);
+        assert_eq!(result, vec![0.0]);
     }
 
     #[test]

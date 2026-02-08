@@ -3266,8 +3266,15 @@ impl HistFactoryModel {
                             param_idx,
                             hi_factor,
                             lo_factor,
-                            interp_code: _,
+                            interp_code,
                         } => {
+                            if *interp_code != NormSysInterpCode::Code4 {
+                                return Err(ns_core::Error::Validation(format!(
+                                    "GPU serialization requires NormSys interpolation Code4 (smooth); got {:?}. \
+                                     Use NextStat smooth defaults or rebuild the model with NormSys=Code4 (e.g. CLI: --interp-defaults root).",
+                                    interp_code
+                                )));
+                            }
                             // GPU kernel currently only supports code4 polynomial coefficients.
                             let data_off = modifier_data.len() as u32;
                             let hi = *hi_factor;
@@ -3297,7 +3304,19 @@ impl HistFactoryModel {
                                 n_bins: 0,
                             });
                         }
-                        ModelModifier::HistoSys { param_idx, hi_template, lo_template, .. } => {
+                        ModelModifier::HistoSys {
+                            param_idx,
+                            hi_template,
+                            lo_template,
+                            interp_code,
+                        } => {
+                            if *interp_code != HistoSysInterpCode::Code4p {
+                                return Err(ns_core::Error::Validation(format!(
+                                    "GPU serialization requires HistoSys interpolation Code4p (smooth); got {:?}. \
+                                     Use NextStat smooth defaults or rebuild the model with HistoSys=Code4p (e.g. CLI: --interp-defaults root).",
+                                    interp_code
+                                )));
+                            }
                             let data_off = modifier_data.len() as u32;
                             // Store (delta_up, delta_dn) per bin
                             for bin_idx in 0..s_n_bins {

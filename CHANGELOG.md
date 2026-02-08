@@ -82,7 +82,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **HS3 v0.2 ingestion** — load HS3 JSON workspaces (ROOT 6.37+) natively. Auto-detects format (pyhf vs HS3) at load time.
 - **HS3 roundtrip export** — export `HistFactoryModel` back to HS3 JSON with bestfit parameter points.
 - Python: `HistFactoryModel.from_workspace()` (auto-detect), `HistFactoryModel.from_hs3(json_str)`. CLI: auto-detection in `nextstat fit`, `nextstat scan`.
-- HistoSys interpolation Code 0 (piecewise linear) — now default, matching pyhf.
+- HS3 inputs use ROOT HistFactory defaults (NormSys Code1, HistoSys Code0). For pyhf JSON inputs, NextStat defaults to smooth interpolation (NormSys Code4, HistoSys Code4p); use `--interp-defaults pyhf` (CLI) or `from_workspace_with_settings(Code1, Code0)` (Rust) for strict pyhf defaults.
 - HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
 - **Arrow / Polars ingestion** — `nextstat.from_arrow(table)` creates a HistFactoryModel from PyArrow Table, RecordBatch, or any Arrow-compatible source (Polars, DuckDB, Spark). `nextstat.from_parquet(path)` reads Parquet directly.
 - **Arrow export** — `nextstat.to_arrow(model, what="yields"|"params")` exports expected yields or parameter metadata as a PyArrow Table. Uses Arrow IPC bridge (zero pyo3 version conflicts).

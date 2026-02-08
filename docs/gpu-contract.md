@@ -13,7 +13,13 @@ GPU-accelerated paths must produce results within specified tolerance of the CPU
 
 ## Interpolation
 
-GPU kernels always use Code4 (NormSys) and Code4p (HistoSys) interpolation, matching the CPU default.
+GPU kernels currently support only smooth interpolation:
+
+- NormSys: Code4
+- HistoSys: Code4p
+
+This matches the NextStat default for pyhf JSON inputs. If you select strict pyhf defaults
+(Code1/Code0) via `--interp-defaults pyhf`, GPU commands will fail-fast.
 
 ## CUDA f64
 
@@ -98,13 +104,7 @@ cargo test -p ns-inference --features cuda -- --nocapture
 cargo test -p ns-inference --features metal -- --nocapture
 ```
 
-Tests in `crates/ns-inference/src/gpu_single.rs`:
-- `test_gpu_nll_matches_cpu`
-- `test_gpu_grad_matches_cpu`
-- `test_gpu_fit_matches_cpu`
-- `test_gpu_session_reuse`
-- `test_gpu_complex_workspace`
-- `test_gpu_nll_and_grad_at_multiple_points`
+Rust-side GPU regression tests live alongside the GPU session implementation in `crates/ns-inference/src/gpu_session.rs`.
 
 ### Python parity tests
 
@@ -115,4 +115,4 @@ pytest tests/python/test_gpu_parity.py -v
 ### Tolerance source of truth
 
 `tests/python/_tolerances.py` — all GPU/Metal tolerances defined here.
-`crates/ns-inference/src/gpu_single.rs` — Rust-side constants for integration tests.
+`crates/ns-inference/src/gpu_session.rs` — Rust-side CUDA regression tests (skip automatically if CUDA not available).

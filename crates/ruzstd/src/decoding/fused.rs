@@ -19,6 +19,25 @@ use crate::decoding::sequence_section_decoder::{
 };
 use crate::fse::FSEDecoder;
 
+pub trait FusedOutputBuffer {
+    fn push(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError>;
+    fn repeat(&mut self, offset: usize, match_length: usize) -> Result<(), ExecuteSequencesError>;
+}
+
+impl FusedOutputBuffer for FlatDecodeBuffer {
+    #[inline(always)]
+    fn push(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError> {
+        self.push(data);
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn repeat(&mut self, offset: usize, match_length: usize) -> Result<(), ExecuteSequencesError> {
+        self.repeat(offset, match_length)
+            .map_err(ExecuteSequencesError::DecodebufferError)
+    }
+}
+
 /// Fused decode + execute: decodes sequences from the bitstream and immediately
 /// executes them (copy literals + match copy) without buffering into `Vec<Sequence>`.
 ///
@@ -29,6 +48,17 @@ pub fn decode_and_execute_sequences(
     source: &[u8],
     fse: &mut FSEScratch,
     buffer: &mut FlatDecodeBuffer,
+    offset_hist: &mut [u32; 3],
+    literals_buffer: &[u8],
+) -> Result<(), DecompressBlockError> {
+    decode_and_execute_sequences_impl(section, source, fse, buffer, offset_hist, literals_buffer)
+}
+
+fn decode_and_execute_sequences_impl(
+    section: &SequencesHeader,
+    source: &[u8],
+    fse: &mut FSEScratch,
+    buffer: &mut impl FusedOutputBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -61,7 +91,7 @@ fn fused_without_rle(
     section: &SequencesHeader,
     br: &mut BitReaderReversed<'_>,
     fse: &FSEScratch,
-    buffer: &mut FlatDecodeBuffer,
+    buffer: &mut impl FusedOutputBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -114,7 +144,9 @@ fn fused_without_rle(
                 }
                 .into());
             }
-            buffer.push(&literals_buffer[literals_copy_counter..high]);
+            buffer
+                .push(&literals_buffer[literals_copy_counter..high])
+                .map_err(DecompressBlockError::from)?;
             literals_copy_counter += ll as usize;
         }
 
@@ -126,7 +158,7 @@ fn fused_without_rle(
         if ml > 0 {
             buffer
                 .repeat(actual_offset as usize, ml as usize)
-                .map_err(ExecuteSequencesError::DecodebufferError)?;
+                .map_err(DecompressBlockError::from)?;
         }
 
         // Interleaved FSE state update: read all 3 bit values in one refill,
@@ -151,7 +183,9 @@ fn fused_without_rle(
 
     // Copy remaining literals after last sequence
     if literals_copy_counter < literals_buffer.len() {
-        buffer.push(&literals_buffer[literals_copy_counter..]);
+        buffer
+            .push(&literals_buffer[literals_copy_counter..])
+            .map_err(DecompressBlockError::from)?;
     }
 
     if br.bits_remaining() > 0 {
@@ -168,7 +202,7 @@ fn fused_with_rle(
     section: &SequencesHeader,
     br: &mut BitReaderReversed<'_>,
     fse: &FSEScratch,
-    buffer: &mut FlatDecodeBuffer,
+    buffer: &mut impl FusedOutputBuffer,
     offset_hist: &mut [u32; 3],
     literals_buffer: &[u8],
 ) -> Result<(), DecompressBlockError> {
@@ -239,7 +273,9 @@ fn fused_with_rle(
                 }
                 .into());
             }
-            buffer.push(&literals_buffer[literals_copy_counter..high]);
+            buffer
+                .push(&literals_buffer[literals_copy_counter..high])
+                .map_err(DecompressBlockError::from)?;
             literals_copy_counter += ll as usize;
         }
 
@@ -251,7 +287,7 @@ fn fused_with_rle(
         if ml > 0 {
             buffer
                 .repeat(actual_offset as usize, ml as usize)
-                .map_err(ExecuteSequencesError::DecodebufferError)?;
+                .map_err(DecompressBlockError::from)?;
         }
 
         // Interleaved FSE state update for non-RLE decoders.
@@ -275,7 +311,9 @@ fn fused_with_rle(
 
     // Copy remaining literals after last sequence
     if literals_copy_counter < literals_buffer.len() {
-        buffer.push(&literals_buffer[literals_copy_counter..]);
+        buffer
+            .push(&literals_buffer[literals_copy_counter..])
+            .map_err(DecompressBlockError::from)?;
     }
 
     if br.bits_remaining() > 0 {

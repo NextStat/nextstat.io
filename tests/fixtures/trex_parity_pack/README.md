@@ -19,6 +19,12 @@ They are meant to be **minimal but representative** and to work without any exte
 - `cases_realistic_fourtop.json`
   - Single realistic case (`tttt-prod_workspace.json`) intended to be “always runnable” on dev machines.
 
+## TREx export dirs (HistFactory export directories)
+
+- `cases_trex_exports.json`
+  - Uses committed HistFactory export directories under `tests/fixtures/trex_exports/` that include `combination.xml` + `data.root` + channel XMLs.
+  - These are intended to cover “real export dir” path semantics beyond `pyhf.writexml` fixtures.
+
 ## How to run (requires ROOT)
 
 From the repo root (in an environment with `root` + `hist2workspace` and Python deps):
@@ -38,6 +44,16 @@ PYTHONPATH=bindings/ns-py/python python3 tests/apex2_root_suite_report.py \
   --cases tests/fixtures/trex_parity_pack/cases_realistic_fourtop.json \
   --deterministic \
   --out tmp/apex2_root_suite_realistic_fourtop.json
+```
+
+TREx export dirs:
+
+```sh
+PYTHONPATH=bindings/ns-py/python python3 tests/apex2_root_suite_report.py \
+  --cases tests/fixtures/trex_parity_pack/cases_trex_exports.json \
+  --keep-going \
+  --deterministic \
+  --out tmp/apex2_root_suite_trex_exports.json
 ```
 
 To record a baseline manifest (cluster / ROOT env):

@@ -241,6 +241,7 @@ let expr = ns_root::CompiledExpr::compile("pt > 25.0 && abs(eta) < 2.5")?;
 
 ```bash
 nextstat fit --input workspace.json
+nextstat --interp-defaults pyhf fit --input workspace.json   # NormSys=Code1, HistoSys=Code0
 nextstat hypotest --input workspace.json --mu 1.0 --expected-set
 nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --seed 42 --threads 0
 nextstat hypotest-toys --input workspace.json --mu 1.0 --n-toys 10000 --gpu cuda   # NVIDIA GPU (f64)
