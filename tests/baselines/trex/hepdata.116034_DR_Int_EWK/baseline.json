@@ -11,18 +11,18 @@
       "nextstat": "0.1.0"
     },
     "inputs": {
-      "export_dir": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK",
-      "combination_xml": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/combination.xml",
-      "rootdir": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK",
+      "export_dir": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK",
+      "combination_xml": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/combination.xml",
+      "rootdir": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK",
       "hashes": [
         {
-          "path": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/combination.xml",
+          "path": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/combination.xml",
           "rel": "combination.xml",
           "bytes": 499,
           "sha256": "ac4f0c4b3470222074cc345bad7cee727c7db6a48fc7935dd94113c5a1f520ad"
         },
         {
-          "path": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/data.root",
+          "path": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/data.root",
           "rel": "data.root",
           "bytes": 661834,
           "sha256": "64803a82e71bc95e700d3a8629c22450d75533872d1db92f2b96eba6586ab876"

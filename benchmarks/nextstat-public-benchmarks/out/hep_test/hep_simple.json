@@ -1,8 +1,8 @@
 {
   "case": "simple_workspace_nll",
   "dataset": {
-    "id": "/Users/andresvlc/WebDev/nextstat.io/benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
-    "path": "/Users/andresvlc/WebDev/nextstat.io/benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
+    "id": "benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
+    "path": "benchmarks/nextstat-public-benchmarks/suites/hep/datasets/simple_workspace.json",
     "sha256": "4568b9f815cf9b405aa1c1ad462b3737753a0995f5fc020c1f1eb85afd5bc641"
   },
   "deterministic": true,

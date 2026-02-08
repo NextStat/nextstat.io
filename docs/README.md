@@ -9,6 +9,7 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 - Python reference: `docs/references/python-api.md`
 - CLI reference: `docs/references/cli.md`
 - Rust reference: `docs/references/rust-api.md`
+- Terminology and style guide: `docs/references/terminology.md`
 
 ## Demos
 

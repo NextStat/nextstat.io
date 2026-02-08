@@ -1,24 +1,24 @@
 <!DOCTYPE Channel SYSTEM '../HistFactorySchema.dtd'>
 
-<Channel Name="CRZZ_cuts" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root">
-  <Data HistoName="histCRZZ_cuts_data" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" />
-  <Sample Name="FNP" HistoName="histCRZZ_cuts_FNP" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+<Channel Name="CRZZ_cuts" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root">
+  <Data HistoName="histCRZZ_cuts_data" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" />
+  <Sample Name="FNP" HistoName="histCRZZ_cuts_FNP" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRZZ_cuts_FNP_staterror_CRZZ_cuts" />
     <HistoSys Name="fake_wgt" HistoNameLow="histCRZZ_cuts_FNP_fake_wgtLow" HistoNameHigh="histCRZZ_cuts_FNP_fake_wgtHigh" />
     </Sample>
-  <Sample Name="higgs" HistoName="histCRZZ_cuts_higgs" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="higgs" HistoName="histCRZZ_cuts_higgs" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRZZ_cuts_higgs_staterror_CRZZ_cuts" />
     <OverallSys Name="higgs_xs" High="1.1" Low="0.9" />
     </Sample>
-  <Sample Name="triboson" HistoName="histCRZZ_cuts_triboson" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="triboson" HistoName="histCRZZ_cuts_triboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRZZ_cuts_triboson_staterror_CRZZ_cuts" />
     <OverallSys Name="triboson_xs" High="1.32" Low="0.68" />
     </Sample>
-  <Sample Name="diboson" HistoName="histCRZZ_cuts_diboson" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="diboson" HistoName="histCRZZ_cuts_diboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histCRZZ_cuts_diboson_staterror_CRZZ_cuts" />
     <NormFactor Name="mu_diboson" Val="1.0" Low="0.0" High="5.0" />
     </Sample>
-  <Sample Name="Zjets" HistoName="histCRZZ_cuts_Zjets" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="Zjets" HistoName="histCRZZ_cuts_Zjets" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histCRZZ_cuts_Zjets_staterror_CRZZ_cuts" />
     <NormFactor Name="mu_Zjets" Val="1.0" Low="0.0" High="5.0" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRZZ_cuts_Zjets_el_chargeid_statLow" HistoNameHigh="histCRZZ_cuts_Zjets_el_chargeid_statHigh" />
@@ -69,7 +69,7 @@
     <HistoSys Name="Zjets_ckkw" HistoNameLow="histCRZZ_cuts_Zjets_Zjets_ckkwLow" HistoNameHigh="histCRZZ_cuts_Zjets_Zjets_ckkwHigh" />
     <HistoSys Name="Zjets_muR_SUSY" HistoNameLow="histCRZZ_cuts_Zjets_Zjets_muR_SUSYLow" HistoNameHigh="histCRZZ_cuts_Zjets_Zjets_muR_SUSYHigh" />
     </Sample>
-  <Sample Name="topOther" HistoName="histCRZZ_cuts_topOther" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="topOther" HistoName="histCRZZ_cuts_topOther" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRZZ_cuts_topOther_staterror_CRZZ_cuts" />
     <OverallSys Name="topOther_xs" High="1.13" Low="0.87" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRZZ_cuts_topOther_el_chargeid_statLow" HistoNameHigh="histCRZZ_cuts_topOther_el_chargeid_statHigh" />
@@ -104,7 +104,7 @@
     <HistoSys Name="topOther_pdf_q84_q16" HistoNameLow="histCRZZ_cuts_topOther_topOther_pdf_q84_q16Low" HistoNameHigh="histCRZZ_cuts_topOther_topOther_pdf_q84_q16High" />
     <HistoSys Name="topOther_ps" HistoNameLow="histCRZZ_cuts_topOther_topOther_psLow" HistoNameHigh="histCRZZ_cuts_topOther_topOther_psHigh" />
     </Sample>
-  <Sample Name="singleTop" HistoName="histCRZZ_cuts_singleTop" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="singleTop" HistoName="histCRZZ_cuts_singleTop" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRZZ_cuts_singleTop_staterror_CRZZ_cuts" />
     <OverallSys Name="singleTop_xs" High="1.06" Low="0.94" />
     <HistoSys Name="jet_jvteff" HistoNameLow="histCRZZ_cuts_singleTop_jet_jvteffLow" HistoNameHigh="histCRZZ_cuts_singleTop_jet_jvteffHigh" />
@@ -125,7 +125,7 @@
     <HistoSys Name="muon_id" HistoNameLow="histCRZZ_cuts_singleTop_muon_idLow" HistoNameHigh="histCRZZ_cuts_singleTop_muon_idHigh" />
     <HistoSys Name="muon_sagitta_rho" HistoNameLow="histCRZZ_cuts_singleTop_muon_sagitta_rhoLow" HistoNameHigh="histCRZZ_cuts_singleTop_muon_sagitta_rhoHigh" />
     </Sample>
-  <Sample Name="ttbar" HistoName="histCRZZ_cuts_ttbar" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="ttbar" HistoName="histCRZZ_cuts_ttbar" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histCRZZ_cuts_ttbar_staterror_CRZZ_cuts" />
     <NormFactor Name="mu_ttbar" Val="1.0" Low="0.0" High="5.0" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRZZ_cuts_ttbar_el_chargeid_statLow" HistoNameHigh="histCRZZ_cuts_ttbar_el_chargeid_statHigh" />

@@ -52,6 +52,9 @@ env/
 .vscode/
 *.code-workspace
 
+# Claude local settings
+.claude/settings.local.json
+
 # IntelliJ
 *.iml
 .idea/

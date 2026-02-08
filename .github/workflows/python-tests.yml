@@ -10,6 +10,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  docs-lint:
+    name: Docs terminology lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Terminology lint (public docs)
+        run: python3 scripts/docs/terminology_lint.py --check
+
   test:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -60,7 +75,7 @@ jobs:
   validation-pack:
     name: Validation Pack (JSON/PDF determinism)
     runs-on: ubuntu-latest
-    needs: test
+    needs: [docs-lint, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

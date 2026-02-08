@@ -11,18 +11,18 @@
       "nextstat": "0.1.0"
     },
     "inputs": {
-      "export_dir": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/tttt-prod",
-      "combination_xml": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/tttt-prod/combination.xml",
-      "rootdir": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/tttt-prod",
+      "export_dir": "tests/fixtures/trex_exports/tttt-prod",
+      "combination_xml": "tests/fixtures/trex_exports/tttt-prod/combination.xml",
+      "rootdir": "tests/fixtures/trex_exports/tttt-prod",
       "hashes": [
         {
-          "path": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/tttt-prod/combination.xml",
+          "path": "tests/fixtures/trex_exports/tttt-prod/combination.xml",
           "rel": "combination.xml",
           "bytes": 549,
           "sha256": "4f8533db5b792b40341e5aca1fe5a69cff8342c63b6460f4301947a9939ff3ea"
         },
         {
-          "path": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/trex_exports/tttt-prod/data.root",
+          "path": "tests/fixtures/trex_exports/tttt-prod/data.root",
           "rel": "data.root",
           "bytes": 541790,
           "sha256": "b1e498edb02f70043aff1df58324ff3e6cbdaa1cf11a1854a1f0bb478eb87a1a"

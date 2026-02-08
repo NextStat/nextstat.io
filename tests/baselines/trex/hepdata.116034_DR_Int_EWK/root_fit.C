@@ -78,8 +78,8 @@ void root_fit() {
   gSystem->Load("libRooFit");
   gSystem->Load("libRooStats");
 
-  const char* root_path = "/Users/andresvlc/WebDev/nextstat.io/tests/baselines/trex/hepdata.116034_DR_Int_EWK/histfactory_stage/channels/results_combined_NormalMeasurement_model.root";
-  const char* out_path = "/Users/andresvlc/WebDev/nextstat.io/tests/baselines/trex/hepdata.116034_DR_Int_EWK/root_fit.json";
+  const char* root_path = "tests/baselines/trex/hepdata.116034_DR_Int_EWK/histfactory_stage/channels/results_combined_NormalMeasurement_model.root";
+  const char* out_path = "tests/baselines/trex/hepdata.116034_DR_Int_EWK/root_fit.json";
 
   TFile f(root_path, "READ");
   if (f.IsZombie()) {

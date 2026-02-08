@@ -1,20 +1,20 @@
 <!DOCTYPE Channel SYSTEM '../HistFactorySchema.dtd'>
 
-<Channel Name="DRInt_cuts" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root">
-  <Data HistoName="histDRInt_cuts_data" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" />
-  <Sample Name="FNP" HistoName="histDRInt_cuts_FNP" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+<Channel Name="DRInt_cuts" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root">
+  <Data HistoName="histDRInt_cuts_data" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" />
+  <Sample Name="FNP" HistoName="histDRInt_cuts_FNP" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histDRInt_cuts_FNP_staterror_DRInt_cuts" />
     <HistoSys Name="fake_wgt" HistoNameLow="histDRInt_cuts_FNP_fake_wgtLow" HistoNameHigh="histDRInt_cuts_FNP_fake_wgtHigh" />
     </Sample>
-  <Sample Name="higgs" HistoName="histDRInt_cuts_higgs" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="higgs" HistoName="histDRInt_cuts_higgs" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histDRInt_cuts_higgs_staterror_DRInt_cuts" />
     <OverallSys Name="higgs_xs" High="1.1" Low="0.9" />
     </Sample>
-  <Sample Name="triboson" HistoName="histDRInt_cuts_triboson" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="triboson" HistoName="histDRInt_cuts_triboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histDRInt_cuts_triboson_staterror_DRInt_cuts" />
     <OverallSys Name="triboson_xs" High="1.32" Low="0.68" />
     </Sample>
-  <Sample Name="diboson" HistoName="histDRInt_cuts_diboson" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="diboson" HistoName="histDRInt_cuts_diboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histDRInt_cuts_diboson_staterror_DRInt_cuts" />
     <NormFactor Name="mu_diboson" Val="1.0" Low="0.0" High="5.0" />
     <HistoSys Name="el_chargeid_systotal" HistoNameLow="histDRInt_cuts_diboson_el_chargeid_systotalLow" HistoNameHigh="histDRInt_cuts_diboson_el_chargeid_systotalHigh" />
@@ -32,7 +32,7 @@
     <HistoSys Name="jet_pu_rhotopology" HistoNameLow="histDRInt_cuts_diboson_jet_pu_rhotopologyLow" HistoNameHigh="histDRInt_cuts_diboson_jet_pu_rhotopologyHigh" />
     <HistoSys Name="diboson_muR_SUSY" HistoNameLow="histDRInt_cuts_diboson_diboson_muR_SUSYLow" HistoNameHigh="histDRInt_cuts_diboson_diboson_muR_SUSYHigh" />
     </Sample>
-  <Sample Name="Zjets" HistoName="histDRInt_cuts_Zjets" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="Zjets" HistoName="histDRInt_cuts_Zjets" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histDRInt_cuts_Zjets_staterror_DRInt_cuts" />
     <NormFactor Name="mu_Zjets" Val="1.0" Low="0.0" High="5.0" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histDRInt_cuts_Zjets_el_chargeid_statLow" HistoNameHigh="histDRInt_cuts_Zjets_el_chargeid_statHigh" />
@@ -80,7 +80,7 @@
     <HistoSys Name="Zjets_muR_SUSY" HistoNameLow="histDRInt_cuts_Zjets_Zjets_muR_SUSYLow" HistoNameHigh="histDRInt_cuts_Zjets_Zjets_muR_SUSYHigh" />
     <HistoSys Name="Zjets_muRmuF_SUSY" HistoNameLow="histDRInt_cuts_Zjets_Zjets_muRmuF_SUSYLow" HistoNameHigh="histDRInt_cuts_Zjets_Zjets_muRmuF_SUSYHigh" />
     </Sample>
-  <Sample Name="topOther" HistoName="histDRInt_cuts_topOther" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="topOther" HistoName="histDRInt_cuts_topOther" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histDRInt_cuts_topOther_staterror_DRInt_cuts" />
     <OverallSys Name="topOther_xs" High="1.13" Low="0.87" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histDRInt_cuts_topOther_el_chargeid_statLow" HistoNameHigh="histDRInt_cuts_topOther_el_chargeid_statHigh" />
@@ -132,7 +132,7 @@
     <HistoSys Name="topOther_pdf_q84_q16" HistoNameLow="histDRInt_cuts_topOther_topOther_pdf_q84_q16Low" HistoNameHigh="histDRInt_cuts_topOther_topOther_pdf_q84_q16High" />
     <HistoSys Name="topOther_ps" HistoNameLow="histDRInt_cuts_topOther_topOther_psLow" HistoNameHigh="histDRInt_cuts_topOther_topOther_psHigh" />
     </Sample>
-  <Sample Name="singleTop" HistoName="histDRInt_cuts_singleTop" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="singleTop" HistoName="histDRInt_cuts_singleTop" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histDRInt_cuts_singleTop_staterror_DRInt_cuts" />
     <OverallSys Name="singleTop_xs" High="1.06" Low="0.94" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histDRInt_cuts_singleTop_el_chargeid_statLow" HistoNameHigh="histDRInt_cuts_singleTop_el_chargeid_statHigh" />
@@ -153,7 +153,7 @@
     <HistoSys Name="jet_single_highpt" HistoNameLow="histDRInt_cuts_singleTop_jet_single_highptLow" HistoNameHigh="histDRInt_cuts_singleTop_jet_single_highptHigh" />
     <HistoSys Name="muon_sagitta_rho" HistoNameLow="histDRInt_cuts_singleTop_muon_sagitta_rhoLow" HistoNameHigh="histDRInt_cuts_singleTop_muon_sagitta_rhoHigh" />
     </Sample>
-  <Sample Name="ttbar" HistoName="histDRInt_cuts_ttbar" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="ttbar" HistoName="histDRInt_cuts_ttbar" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <StatError Activate="True" HistoName="histDRInt_cuts_ttbar_staterror_DRInt_cuts" />
     <NormFactor Name="mu_ttbar" Val="1.0" Low="0.0" High="5.0" />
     <HistoSys Name="el_chargeid_stat" HistoNameLow="histDRInt_cuts_ttbar_el_chargeid_statLow" HistoNameHigh="histDRInt_cuts_ttbar_el_chargeid_statHigh" />
@@ -195,7 +195,7 @@
     <HistoSys Name="ttbar_muRmuF_SUSY" HistoNameLow="histDRInt_cuts_ttbar_ttbar_muRmuF_SUSYLow" HistoNameHigh="histDRInt_cuts_ttbar_ttbar_muRmuF_SUSYHigh" />
     <HistoSys Name="ttbar_muF_SUSY" HistoNameLow="histDRInt_cuts_ttbar_ttbar_muF_SUSYLow" HistoNameHigh="histDRInt_cuts_ttbar_ttbar_muF_SUSYHigh" />
     </Sample>
-  <Sample Name="DiscoveryMode_Discovery" HistoName="histDRInt_cuts_DiscoveryMode_Discovery" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="DiscoveryMode_Discovery" HistoName="histDRInt_cuts_DiscoveryMode_Discovery" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
     <NormFactor Name="mu_Discovery" Val="1.0" Low="0.0" High="1e+30" />
     </Sample>
   </Channel>

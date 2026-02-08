@@ -76,7 +76,7 @@ void fit() {{
   gSystem->Load("libRooFit");
   gSystem->Load("libRooStats");
 
-  const char* root_path = "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/histfactory/results_combined_NominalMeasurement_model.root";
+  const char* root_path = "tests/fixtures/histfactory/results_combined_NominalMeasurement_model.root";
   const char* out_path = "tests/baselines/trex/fixture_minimal/root_fit.json";
 
   TFile f(root_path, "READ");

@@ -1,8 +1,8 @@
 <!DOCTYPE Channel SYSTEM '../HistFactorySchema.dtd'>
 
-<Channel Name="CRttW2l" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root">
-  <Data HistoName="histCRttW2l_data" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" />
-  <Sample Name="tttt" HistoName="histCRttW2l_tttt" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+<Channel Name="CRttW2l" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root">
+  <Data HistoName="histCRttW2l_data" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" />
+  <Sample Name="tttt" HistoName="histCRttW2l_tttt" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="pileup_reweighting" High="0.993487" Low="1.00651" />
     <OverallSys Name="tttt_PDF" High="1.01" Low="0.99" />
@@ -40,7 +40,7 @@
     <HistoSys Name="ATLAS_MET_SoftResPerp" HistoNameLow="histCRttW2l_tttt_ATLAS_MET_SoftResPerpLow" HistoNameHigh="histCRttW2l_tttt_ATLAS_MET_SoftResPerpHigh" />
     <HistoSys Name="ATLAS_MET_SoftResPara" HistoNameLow="histCRttW2l_tttt_ATLAS_MET_SoftResParaLow" HistoNameHigh="histCRttW2l_tttt_ATLAS_MET_SoftResParaHigh" />
     </Sample>
-  <Sample Name="ttW" HistoName="histCRttW2l_ttW" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttW" HistoName="histCRttW2l_ttW" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttW_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttW_varRF" High="1.0031" Low="0.97212" />
@@ -80,7 +80,7 @@
     <HistoSys Name="ATLAS_JER_EffectiveNP_6" HistoNameLow="histCRttW2l_ttW_ATLAS_JER_EffectiveNP_6Low" HistoNameHigh="histCRttW2l_ttW_ATLAS_JER_EffectiveNP_6High" />
     <HistoSys Name="ATLAS_JER_EffectiveNP_7restTerm" HistoNameLow="histCRttW2l_ttW_ATLAS_JER_EffectiveNP_7restTermLow" HistoNameHigh="histCRttW2l_ttW_ATLAS_JER_EffectiveNP_7restTermHigh" />
     </Sample>
-  <Sample Name="ttZ" HistoName="histCRttW2l_ttZ" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttZ" HistoName="histCRttW2l_ttZ" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttZ_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttZ_PDF" High="1.01" Low="0.99" />
@@ -101,7 +101,7 @@
     <HistoSys Name="ATLAS_JES_Flavor_Composition" HistoNameLow="histCRttW2l_ttZ_ATLAS_JES_Flavor_CompositionLow" HistoNameHigh="histCRttW2l_ttZ_ATLAS_JES_Flavor_CompositionHigh" />
     <HistoSys Name="ATLAS_JER_EffectiveNP_7restTerm" HistoNameLow="histCRttW2l_ttZ_ATLAS_JER_EffectiveNP_7restTermLow" HistoNameHigh="histCRttW2l_ttZ_ATLAS_JER_EffectiveNP_7restTermHigh" />
     </Sample>
-  <Sample Name="ttH" HistoName="histCRttW2l_ttH" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttH" HistoName="histCRttW2l_ttH" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttH_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttH_Xsec" High="1.2" Low="0.8" />
@@ -121,12 +121,12 @@
     <HistoSys Name="ATLAS_JES_Flavor_Composition" HistoNameLow="histCRttW2l_ttH_ATLAS_JES_Flavor_CompositionLow" HistoNameHigh="histCRttW2l_ttH_ATLAS_JES_Flavor_CompositionHigh" />
     <HistoSys Name="ATLAS_EM_SCALE" HistoNameLow="histCRttW2l_ttH_ATLAS_EM_SCALELow" HistoNameHigh="histCRttW2l_ttH_ATLAS_EM_SCALEHigh" />
     </Sample>
-  <Sample Name="ttbar_QmisID_CRttW" HistoName="histCRttW2l_ttbar_QmisID_CRttW" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="False">
+  <Sample Name="ttbar_QmisID_CRttW" HistoName="histCRttW2l_ttbar_QmisID_CRttW" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="False">
     <OverallSys Name="QMisID_Sys" High="1.14193" Low="0.858068" />
     <HistoSys Name="QMisID_Sys" HistoNameLow="histCRttW2l_ttbar_QmisID_CRttW_QMisID_SysLow" HistoNameHigh="histCRttW2l_ttbar_QmisID_CRttW_QMisID_SysHigh" />
     <ShapeSys Name="shape_stat_ttbar_QmisID_CRttW_CRttW2l" ConstraintType="Poisson" HistoName="histCRttW2l_ttbar_QmisID_CRttW_shape_stat_ttbar_QmisID_CRttW_CRttW2l" />
     </Sample>
-  <Sample Name="ttbar_CO" HistoName="histCRttW2l_ttbar_CO" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_CO" HistoName="histCRttW2l_ttbar_CO" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_CO_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttbar_Xsec_3b" High="1.01522" Low="0.984782" />
@@ -159,7 +159,7 @@
     <NormFactor Name="NF_ttbar_CO" Val="1.0" Low="0.2" High="5.0" />
     <HistoSys Name="ttbar_Xsec_3b" HistoNameLow="histCRttW2l_ttbar_CO_ttbar_Xsec_3bLow" HistoNameHigh="histCRttW2l_ttbar_CO_ttbar_Xsec_3bHigh" />
     </Sample>
-  <Sample Name="ttbar_HFe" HistoName="histCRttW2l_ttbar_HFe" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_HFe" HistoName="histCRttW2l_ttbar_HFe" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_HFe_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="pileup_reweighting" High="0.991712" Low="1.00829" />
@@ -196,7 +196,7 @@
     <HistoSys Name="ttbar_Xsec_4b" HistoNameLow="histCRttW2l_ttbar_HFe_ttbar_Xsec_4bLow" HistoNameHigh="histCRttW2l_ttbar_HFe_ttbar_Xsec_4bHigh" />
     <HistoSys Name="HFe_ShapeSyst" HistoNameLow="histCRttW2l_ttbar_HFe_HFe_ShapeSystLow" HistoNameHigh="histCRttW2l_ttbar_HFe_HFe_ShapeSystHigh" />
     </Sample>
-  <Sample Name="ttbar_gstr" HistoName="histCRttW2l_ttbar_gstr" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_gstr" HistoName="histCRttW2l_ttbar_gstr" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_gstr_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="pileup_reweighting" High="1.01842" Low="0.981578" />
@@ -230,7 +230,7 @@
     <NormFactor Name="NF_ttbar_gstr" Val="1.0" Low="0.2" High="5.0" />
     <HistoSys Name="ttbar_Xsec_3b" HistoNameLow="histCRttW2l_ttbar_gstr_ttbar_Xsec_3bLow" HistoNameHigh="histCRttW2l_ttbar_gstr_ttbar_Xsec_3bHigh" />
     </Sample>
-  <Sample Name="ttbar_HFm" HistoName="histCRttW2l_ttbar_HFm" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_HFm" HistoName="histCRttW2l_ttbar_HFm" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_HFm_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="pileup_reweighting" High="1.0086" Low="0.991397" />
@@ -260,7 +260,7 @@
     <HistoSys Name="ttbar_Xsec_4b" HistoNameLow="histCRttW2l_ttbar_HFm_ttbar_Xsec_4bLow" HistoNameHigh="histCRttW2l_ttbar_HFm_ttbar_Xsec_4bHigh" />
     <HistoSys Name="HFm_ShapeSyst" HistoNameLow="histCRttW2l_ttbar_HFm_HFm_ShapeSystLow" HistoNameHigh="histCRttW2l_ttbar_HFm_HFm_ShapeSystHigh" />
     </Sample>
-  <Sample Name="ttbar_light" HistoName="histCRttW2l_ttbar_light" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_light" HistoName="histCRttW2l_ttbar_light" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_light_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttbar_Xsec_light" High="1.99" Low="0.00999999" />
@@ -298,7 +298,7 @@
     <OverallSys Name="ATLAS_MET_SoftResPara" High="0.987311" Low="1.01269" />
     <HistoSys Name="ttbar_Xsec_3b" HistoNameLow="histCRttW2l_ttbar_light_ttbar_Xsec_3bLow" HistoNameHigh="histCRttW2l_ttbar_light_ttbar_Xsec_3bHigh" />
     </Sample>
-  <Sample Name="ttbar_other" HistoName="histCRttW2l_ttbar_other" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttbar_other" HistoName="histCRttW2l_ttbar_other" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttbar_other_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttbar_Xsec_other" High="1.3" Low="0.7" />
@@ -327,7 +327,7 @@
     <OverallSys Name="ATLAS_MET_SoftResPara" High="0.986843" Low="1.01316" />
     <HistoSys Name="ttbar_Xsec_3b" HistoNameLow="histCRttW2l_ttbar_other_ttbar_Xsec_3bLow" HistoNameHigh="histCRttW2l_ttbar_other_ttbar_Xsec_3bHigh" />
     </Sample>
-  <Sample Name="singleTop" HistoName="histCRttW2l_singleTop" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="singleTop" HistoName="histCRttW2l_singleTop" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_singleTop_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="singleTop_Xsec" High="1.3" Low="0.7" />
@@ -358,7 +358,7 @@
     <HistoSys Name="ATLAS_JER_EffectiveNP_7restTerm" HistoNameLow="histCRttW2l_singleTop_ATLAS_JER_EffectiveNP_7restTermLow" HistoNameHigh="histCRttW2l_singleTop_ATLAS_JER_EffectiveNP_7restTermHigh" />
     <HistoSys Name="ATLAS_FTAG_MV2c10_Light0" HistoNameLow="histCRttW2l_singleTop_ATLAS_FTAG_MV2c10_Light0Low" HistoNameHigh="histCRttW2l_singleTop_ATLAS_FTAG_MV2c10_Light0High" />
     </Sample>
-  <Sample Name="ttWW" HistoName="histCRttW2l_ttWW" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttWW" HistoName="histCRttW2l_ttWW" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttWW_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttWW_Xsec" High="1.5" Low="0.5" />
@@ -391,7 +391,7 @@
     <HistoSys Name="ATLAS_FTAG_MV2c10_Light0" HistoNameLow="histCRttW2l_ttWW_ATLAS_FTAG_MV2c10_Light0Low" HistoNameHigh="histCRttW2l_ttWW_ATLAS_FTAG_MV2c10_Light0High" />
     <HistoSys Name="ATLAS_FTAG_MV2c10_C0" HistoNameLow="histCRttW2l_ttWW_ATLAS_FTAG_MV2c10_C0Low" HistoNameHigh="histCRttW2l_ttWW_ATLAS_FTAG_MV2c10_C0High" />
     </Sample>
-  <Sample Name="Diboson" HistoName="histCRttW2l_Diboson" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="Diboson" HistoName="histCRttW2l_Diboson" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_Diboson_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="pileup_reweighting" High="1.00605" Low="0.993955" />
@@ -435,7 +435,7 @@
     <HistoSys Name="ATLAS_MET_SoftResPerp" HistoNameLow="histCRttW2l_Diboson_ATLAS_MET_SoftResPerpLow" HistoNameHigh="histCRttW2l_Diboson_ATLAS_MET_SoftResPerpHigh" />
     <HistoSys Name="ATLAS_MET_SoftResPara" HistoNameLow="histCRttW2l_Diboson_ATLAS_MET_SoftResParaLow" HistoNameHigh="histCRttW2l_Diboson_ATLAS_MET_SoftResParaHigh" />
     </Sample>
-  <Sample Name="others" HistoName="histCRttW2l_others" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="others" HistoName="histCRttW2l_others" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_others_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="others_Xsec" High="1.5" Low="0.5" />
@@ -466,7 +466,7 @@
     <OverallSys Name="ATLAS_FTAG_MV2c10_B18" High="1.00585" Low="0.994147" />
     <OverallSys Name="ATLAS_EL_SF_ID" High="1.00909" Low="0.990907" />
     </Sample>
-  <Sample Name="rarettVV" HistoName="histCRttW2l_rarettVV" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="rarettVV" HistoName="histCRttW2l_rarettVV" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_rarettVV_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="others_Xsec" High="1.5" Low="0.5" />
@@ -498,7 +498,7 @@
     <HistoSys Name="ATLAS_JER_EffectiveNP_7restTerm" HistoNameLow="histCRttW2l_rarettVV_ATLAS_JER_EffectiveNP_7restTermLow" HistoNameHigh="histCRttW2l_rarettVV_ATLAS_JER_EffectiveNP_7restTermHigh" />
     <HistoSys Name="ATLAS_MU_MS" HistoNameLow="histCRttW2l_rarettVV_ATLAS_MU_MSLow" HistoNameHigh="histCRttW2l_rarettVV_ATLAS_MU_MSHigh" />
     </Sample>
-  <Sample Name="ttt" HistoName="histCRttW2l_ttt" InputFile="/Users/andresvlc/WebDev/nextstat.io/tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
+  <Sample Name="ttt" HistoName="histCRttW2l_ttt" InputFile="tmp/trex_exports/tttt-prod_20260207_141225/data.root" NormalizeByTheory="True">
     <StatError Activate="True" HistoName="histCRttW2l_ttt_staterror_CRttW2l" />
     <OverallSys Name="luminosity" High="1.017" Low="0.983" />
     <OverallSys Name="ttt_Xsec" High="1.99" Low="0.00999999" />

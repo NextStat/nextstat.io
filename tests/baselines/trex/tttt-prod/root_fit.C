@@ -78,8 +78,8 @@ void root_fit() {
   gSystem->Load("libRooFit");
   gSystem->Load("libRooStats");
 
-  const char* root_path = "/Users/andresvlc/WebDev/nextstat.io/tests/baselines/trex/tttt-prod/histfactory_stage/channels/results_combined_FourTop_model.root";
-  const char* out_path = "/Users/andresvlc/WebDev/nextstat.io/tests/baselines/trex/tttt-prod/root_fit.json";
+  const char* root_path = "tests/baselines/trex/tttt-prod/histfactory_stage/channels/results_combined_FourTop_model.root";
+  const char* out_path = "tests/baselines/trex/tttt-prod/root_fit.json";
 
   TFile f(root_path, "READ");
   if (f.IsZombie()) {
