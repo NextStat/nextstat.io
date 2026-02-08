@@ -23,7 +23,10 @@ If you want the narrative version (why we're doing this and what it changes), se
 
 - [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks)
 - [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks)
+- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
+- [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness)
+- [Numerical Accuracy](/blog/numerical-accuracy)
 
 ## Scope
 

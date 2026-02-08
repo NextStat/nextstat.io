@@ -151,7 +151,8 @@ def main() -> int:
 
     n_main_bins = sum(len(obs["data"]) for obs in workspace.get("observations", []))
 
-    dataset_id = str(args.dataset_id).strip() or str(args.workspace)
+    dataset_id_in = str(args.dataset_id).strip()
+    dataset_id = dataset_id_in or str(args.workspace)
     dataset_sha = str(args.dataset_sha256).strip() or sha256_file(ws_path)
 
     doc: dict[str, Any] = {
@@ -167,7 +168,7 @@ def main() -> int:
         },
         "dataset": {
             "id": dataset_id,
-            "path": str(args.workspace),
+            **({} if dataset_id_in else {"path": str(args.workspace)}),
             "sha256": dataset_sha,
         },
         "model": {"n_main_bins": int(n_main_bins), "n_params": int(ns_model.n_params())},
