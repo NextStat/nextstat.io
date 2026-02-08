@@ -654,12 +654,27 @@ pub fn sample_nuts<M: LogDensityModel>(
             last_good_grad.clone_from(&state.grad_potential);
         }
 
+        // `state.q` should be finite due to the guard above, but keep this code path robust:
+        // if any non-finite slips through (or `last_good_q` is accidentally non-finite),
+        // do not hard-fail the entire sampler.
+        let constrained = match posterior.to_constrained(&state.q) {
+            Ok(theta) => theta,
+            Err(ns_core::Error::Validation(msg)) if msg.contains("must contain only finite values") => {
+                // Treat as divergence and keep the last known-good state.
+                divergent = true;
+                accept_prob = 0.0;
+                state.q = last_good_q.clone();
+                state.potential = last_good_potential;
+                state.grad_potential = last_good_grad.clone();
+                posterior.to_constrained(&state.q).unwrap_or_else(|_| vec![f64::NAN; posterior.dim()])
+            }
+            Err(e) => {
+                return Err(ns_core::Error::Validation(format!("NUTS to_constrained failed: {e}")));
+            }
+        };
+
         draws_unconstrained.push(state.q.clone());
-        draws_constrained.push(
-            posterior.to_constrained(&state.q).map_err(|e| {
-                ns_core::Error::Validation(format!("NUTS to_constrained failed: {e}"))
-            })?,
-        );
+        draws_constrained.push(constrained);
         divergences.push(divergent);
         tree_depths.push(depth);
         accept_probs.push(accept_prob);
