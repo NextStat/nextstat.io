@@ -17,11 +17,28 @@ Options:
   --python PATH            Python interpreter to run Apex2 + PDF renderer (default: .venv/bin/python or python3)
   --nextstat-bin PATH      nextstat CLI binary (default: target/release/nextstat, target/debug/nextstat, or nextstat in PATH)
   --json-only              Generate validation_report.json only (skip PDF rendering and matplotlib requirement)
+  --sign-gpg               Produce a detached ASCII-armored signature for validation_pack_manifest.json (requires gpg)
+  --gpg-key KEYID          Optional: key id/email/fingerprint to use with --sign-gpg (default: gpg default)
+  --gpg-home DIR           Optional: GNUPGHOME to use with --sign-gpg (default: --out-dir/.gnupg)
   --deterministic          Deterministic JSON/PDF output (default)
   --non-deterministic      Allow timestamps/timings in outputs
   --nuts-quality           Also run NUTS quality report (can be slower)
   --root-search-dir PATH   Auto-discover ROOT cases by scanning for combination.xml under PATH
   -h, --help               Show this help
+
+Examples:
+  # Full pack (JSON + PDF):
+  bash validation-pack/render_validation_pack.sh --out-dir tmp/validation_pack --deterministic
+
+  # JSON only (no PDF / no matplotlib):
+  bash validation-pack/render_validation_pack.sh --out-dir tmp/validation_pack --deterministic --json-only
+
+  # Fast, fixture-driven pack (use existing Apex2 master input):
+  bash validation-pack/render_validation_pack.sh \
+    --out-dir tmp/validation_pack_fixture \
+    --workspace tests/fixtures/simple_workspace.json \
+    --apex2-master tests/fixtures/apex2_master_min_plus.json \
+    --deterministic
 EOF
 }
 
@@ -34,6 +51,9 @@ py=""
 nextstat_bin=""
 deterministic=1
 render_pdf=1
+sign_gpg=0
+gpg_key=""
+gpg_home=""
 run_nuts_quality=0
 root_search_dir=""
 
@@ -62,6 +82,18 @@ while [[ $# -gt 0 ]]; do
     --json-only)
       render_pdf=0
       shift 1
+      ;;
+    --sign-gpg)
+      sign_gpg=1
+      shift 1
+      ;;
+    --gpg-key)
+      gpg_key="$2"
+      shift 2
+      ;;
+    --gpg-home)
+      gpg_home="$2"
+      shift 2
       ;;
     --deterministic)
       deterministic=1
@@ -266,6 +298,24 @@ json.dump(doc, sys.stdout, indent=2, sort_keys=True)
 sys.stdout.write("\n")
 PY
 
+manifest_sig="$manifest_json.asc"
+if [[ "$sign_gpg" == "1" ]]; then
+  if ! command -v gpg >/dev/null 2>&1; then
+    echo "Missing dependency: gpg (required for --sign-gpg)." >&2
+    exit 2
+  fi
+  if [[ -z "$gpg_home" ]]; then
+    gpg_home="$out_dir/.gnupg"
+  fi
+  mkdir -p "$gpg_home"
+  chmod 700 "$gpg_home" || true
+  gpg_args=(--batch --yes --pinentry-mode loopback --armor --detach-sign --output "$manifest_sig")
+  if [[ -n "$gpg_key" ]]; then
+    gpg_args+=(--local-user "$gpg_key")
+  fi
+  GNUPGHOME="$gpg_home" gpg "${gpg_args[@]}" "$manifest_json"
+fi
+
 echo "Wrote:" >&2
 echo "  $apex2_master" >&2
 echo "  $validation_json" >&2
@@ -273,6 +323,9 @@ if [[ "$render_pdf" == "1" ]]; then
   echo "  $validation_pdf" >&2
 fi
 echo "  $manifest_json" >&2
+if [[ "$sign_gpg" == "1" ]]; then
+  echo "  $manifest_sig" >&2
+fi
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   echo "  $out_dir/validation_report_v1.schema.json" >&2
 fi

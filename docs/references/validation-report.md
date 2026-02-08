@@ -129,6 +129,14 @@ nextstat validation-report \
   [--deterministic]
 ```
 
+### Deterministic Output
+
+When `--deterministic` is enabled:
+
+- `generated_at` is set to `null` (timestamps are omitted).
+- JSON is written with stable key ordering and stable ordering for set-like arrays.
+- Arrays that are intentionally index-aligned (e.g. `channels` with `n_bins_per_channel`) preserve their original order.
+
 Schema is available via:
 
 ```bash
@@ -203,6 +211,18 @@ Notes:
 - PDF rendering requires `matplotlib` (install via `pip install 'nextstat[viz]'`).
 - To override the Python interpreter used by the validation pack script, pass `--python /path/to/python3` to `validation-pack/render_validation_pack.sh`.
 - `--nuts-quality` enables the (potentially slower) NUTS quality report for richer diagnostics.
+
+### Troubleshooting
+
+- `Missing dependency: matplotlib`:
+  - Run with `--json-only` (JSON pack only), or install PDF deps: `pip install 'nextstat[viz]'` (or `pip install matplotlib`).
+- `nextstat: command not found`:
+  - Build a local CLI and pass it explicitly: `bash validation-pack/render_validation_pack.sh --nextstat-bin target/debug/nextstat ...`
+  - Alternatively, the script will fall back to `cargo run -p ns-cli -- ...` when `nextstat` is not in `PATH`.
+- Wrong Python interpreter / missing packages:
+  - Pass `--python /path/to/python3` (the script auto-prefers `./.venv/bin/python` when present).
+- Want to avoid re-running Apex2:
+  - Pass an existing master report with `--apex2-master path/to/apex2_master_report.json`.
 
 ### Schema (`validation_report.json`)
 

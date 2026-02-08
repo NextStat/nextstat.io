@@ -2440,6 +2440,23 @@ fn load_workspace_and_model(
 }
 
 fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::Value {
+    fn stable_sort_by_key(
+        arr: &mut Vec<serde_json::Value>,
+        mut key: impl FnMut(&serde_json::Value) -> Option<&str>,
+    ) {
+        if arr.len() <= 1 {
+            return;
+        }
+        // Stable deterministic sort: preserve original order for ties and missing keys.
+        let mut tmp: Vec<(usize, serde_json::Value)> = arr.drain(..).enumerate().collect();
+        tmp.sort_by(|(ia, a), (ib, b)| {
+            let ka = key(a).unwrap_or("");
+            let kb = key(b).unwrap_or("");
+            ka.cmp(kb).then_with(|| ia.cmp(ib))
+        });
+        arr.extend(tmp.into_iter().map(|(_, v)| v));
+    }
+
     fn norm(v: &mut serde_json::Value) {
         match v {
             serde_json::Value::Object(map) => {
@@ -2461,42 +2478,44 @@ fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::V
 
                 // Stable ordering for common "set-like" arrays in report artifacts.
                 // NOTE: this is only used behind `--deterministic`.
+                let has_aligned_bins = map.contains_key("n_bins_per_channel");
                 for (k, vv) in map.iter_mut() {
                     let Some(arr) = vv.as_array_mut() else { continue };
                     match k.as_str() {
                         "channels" => {
-                            arr.sort_by(|a, b| {
-                                let ak = a
-                                    .get("channel_name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or_default();
-                                let bk = b
-                                    .get("channel_name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or_default();
-                                ak.cmp(bk)
+                            // Most report artifacts use `channels: [{channel_name, ...}, ...]`.
+                            // Avoid reordering string arrays that are aligned with other arrays
+                            // (e.g. `channels: [..]` + `n_bins_per_channel: [..]`).
+                            stable_sort_by_key(arr, |x| {
+                                if let Some(s) = x.as_str() {
+                                    if has_aligned_bins {
+                                        None
+                                    } else {
+                                        Some(s)
+                                    }
+                                } else {
+                                    x.get("channel_name").and_then(|v| v.as_str())
+                                }
                             });
                         }
                         "samples" => {
-                            arr.sort_by(|a, b| {
-                                let ak = a
-                                    .get("name")
-                                    .or_else(|| a.get("sample_name"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or_default();
-                                let bk = b
-                                    .get("name")
-                                    .or_else(|| b.get("sample_name"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or_default();
-                                ak.cmp(bk)
+                            stable_sort_by_key(arr, |x| {
+                                if let Some(s) = x.as_str() {
+                                    Some(s)
+                                } else {
+                                    x.get("name")
+                                        .or_else(|| x.get("sample_name"))
+                                        .and_then(|v| v.as_str())
+                                }
                             });
                         }
                         "entries" | "groups" | "observations" => {
-                            arr.sort_by(|a, b| {
-                                let ak = a.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-                                let bk = b.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-                                ak.cmp(bk)
+                            stable_sort_by_key(arr, |x| {
+                                if let Some(s) = x.as_str() {
+                                    Some(s)
+                                } else {
+                                    x.get("name").and_then(|v| v.as_str())
+                                }
                             });
                         }
                         _ => {}
@@ -2538,6 +2557,23 @@ mod deterministic_json_tests {
         assert_eq!(samples_a[1].get("name").unwrap().as_str().unwrap(), "b");
         let meta_created = out.get("meta").unwrap().get("created_unix_ms").unwrap().as_u64().unwrap();
         assert_eq!(meta_created, 0);
+    }
+
+    #[test]
+    fn normalize_does_not_reorder_aligned_channel_arrays() {
+        // Some artifacts keep multiple arrays aligned by index (e.g. channels + n_bins_per_channel).
+        // Normalization must not reorder `channels` in that case.
+        let v = serde_json::json!({
+            "dataset_fingerprint": {
+                "channels": ["b", "a"],
+                "n_bins_per_channel": [2, 1],
+            }
+        });
+        let out = normalize_json_for_determinism(v);
+        let fp = out.get("dataset_fingerprint").unwrap();
+        let channels = fp.get("channels").unwrap().as_array().unwrap();
+        assert_eq!(channels[0].as_str().unwrap(), "b");
+        assert_eq!(channels[1].as_str().unwrap(), "a");
     }
 }
 

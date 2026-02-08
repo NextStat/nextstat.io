@@ -5,6 +5,7 @@ The compiled extension is exposed as `nextstat._core` (built via PyO3/maturin).
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 try:
@@ -87,30 +88,39 @@ from_parquet = _get("from_parquet")
 to_arrow_yields_ipc = _get("to_arrow_yields_ipc")
 to_arrow_params_ipc = _get("to_arrow_params_ipc")
 
-# Optional convenience wrappers (use optional deps like arviz).
-from . import bayes as bayes  # noqa: E402
-from . import viz as viz  # noqa: E402
-from . import data as data  # noqa: E402
-from . import glm as glm  # noqa: E402
-from . import timeseries as timeseries  # noqa: E402
-from . import hier as hier  # noqa: E402
-from . import ppc as ppc  # noqa: E402
-from . import survival as survival  # noqa: E402
-from . import ordinal as ordinal  # noqa: E402
-from . import causal as causal  # noqa: E402
-from . import missing as missing  # noqa: E402
-from . import ode as ode  # noqa: E402
-from . import formula as formula  # noqa: E402
-from . import summary as summary  # noqa: E402
-from . import robust as robust  # noqa: E402
-from . import sklearn as sklearn  # noqa: E402
-from . import panel as panel  # noqa: E402
-from . import econometrics as econometrics
-from . import mlops as mlops  # noqa: E402
-from . import interpret as interpret  # noqa: E402
-from . import tools as tools  # noqa: E402
-from . import distill as distill  # noqa: E402
-from . import remote as remote  # noqa: E402
+_LAZY_SUBMODULES = {
+    # Optional convenience wrappers (may require optional deps like numpy/arviz/matplotlib).
+    "bayes",
+    "viz",
+    "data",
+    "glm",
+    "timeseries",
+    "hier",
+    "ppc",
+    "survival",
+    "ordinal",
+    "causal",
+    "missing",
+    "ode",
+    "formula",
+    "summary",
+    "robust",
+    "sklearn",
+    "panel",
+    "econometrics",
+    "mlops",
+    "interpret",
+    "tools",
+    "distill",
+    "remote",
+}
+
+
+def __getattr__(name: str):
+    # Keep `import nextstat` lightweight: submodules are importable but loaded on demand.
+    if name in _LAZY_SUBMODULES:
+        return importlib.import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample

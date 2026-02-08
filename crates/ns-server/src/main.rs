@@ -17,6 +17,7 @@ mod state;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::Router;
 use clap::Parser;
 use tower_http::cors::CorsLayer;
@@ -44,6 +45,12 @@ struct Cli {
     /// Maximum number of CPU threads for non-GPU workloads (0 = auto).
     #[arg(long, default_value = "0")]
     threads: usize,
+
+    /// Maximum request body size in MiB (applies to all endpoints).
+    ///
+    /// Protects the server from accidental or malicious oversized JSON payloads.
+    #[arg(long, default_value = "64")]
+    max_body_mb: usize,
 }
 
 #[tokio::main]
@@ -70,8 +77,11 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState::new(cli.gpu.clone()));
 
+    let max_body_bytes = mb_to_bytes(cli.max_body_mb);
+
     let app = Router::new()
         .merge(routes::router())
+        .layer(DefaultBodyLimit::max(max_body_bytes))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -88,6 +98,11 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+fn mb_to_bytes(mb: usize) -> usize {
+    // Clamp overflow to usize::MAX to avoid panics in debug builds.
+    mb.saturating_mul(1024).saturating_mul(1024)
 }
 
 fn validate_gpu(gpu: Option<&str>) -> anyhow::Result<()> {

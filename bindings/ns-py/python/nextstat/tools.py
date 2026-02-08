@@ -420,6 +420,7 @@ def _apply_execution(nextstat, tool_name: str, arguments: dict[str, Any]) -> dic
     return {
         "tool_name": tool_name,
         "deterministic": deterministic,
+        "eval_mode_effective": eval_mode if eval_mode in ("fast", "parity") else None,
         "eval_mode_prev": prev_eval_mode,
         "threads_requested": requested_threads,
         "threads_applied": threads_applied,
@@ -436,141 +437,144 @@ def _restore_execution(nextstat, meta: dict[str, Any]) -> None:
             pass
 
 
+def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Implementation body for tools, assuming execution controls are already applied."""
+    if name == "nextstat_fit":
+        model = _load_model(arguments["workspace_json"])
+        result = nextstat.fit(model)
+        params = result.parameters
+        names = model.parameter_names()
+        poi_idx = model.poi_index()
+        return {
+            "nll": result.nll,
+            "converged": result.converged,
+            "n_iter": result.n_iter,
+            "poi_index": poi_idx,
+            "poi_value": params[poi_idx] if poi_idx is not None else None,
+            "poi_error": result.uncertainties[poi_idx] if poi_idx is not None else None,
+            "parameters": {
+                n: {"value": v, "error": e}
+                for n, v, e in zip(names, params, result.uncertainties)
+            },
+        }
+
+    if name == "nextstat_hypotest":
+        model = _load_model(arguments["workspace_json"])
+        mu = float(arguments["mu"])
+        cls_val, tails = nextstat.hypotest(mu, model, return_tail_probs=True)
+        clsb, clb = tails
+        return {"mu": mu, "cls": float(cls_val), "clsb": float(clsb), "clb": float(clb)}
+
+    if name == "nextstat_hypotest_toys":
+        model = _load_model(arguments["workspace_json"])
+        mu = float(arguments["mu"])
+        n_toys = int(arguments.get("n_toys", 1000))
+        seed = int(arguments.get("seed", 42))
+        expected_set = bool(arguments.get("expected_set", False))
+        return_meta = bool(arguments.get("return_meta", False))
+        r = nextstat.hypotest_toys(
+            mu,
+            model,
+            n_toys=n_toys,
+            seed=seed,
+            expected_set=expected_set,
+            return_tail_probs=True,
+            return_meta=return_meta,
+        )
+        # Return shape depends on expected_set/return_meta; keep it explicit and lossless.
+        return {
+            "mu": mu,
+            "n_toys": n_toys,
+            "seed": seed,
+            "expected_set": expected_set,
+            "raw": r,
+        }
+
+    if name == "nextstat_upper_limit":
+        model = _load_model(arguments["workspace_json"])
+        expected = bool(arguments.get("expected", False))
+        alpha = float(arguments.get("alpha", 0.05))
+        lo = float(arguments.get("lo", 0.0))
+        hi = arguments.get("hi", None)
+        hi_val = None if hi is None else float(hi)
+        rtol = float(arguments.get("rtol", 1e-4))
+        max_iter = int(arguments.get("max_iter", 80))
+        if expected:
+            obs, exp = nextstat.upper_limits_root(
+                model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
+            )
+            return {
+                "alpha": alpha,
+                "obs_limit": float(obs),
+                "exp_limits": [float(x) for x in exp],
+            }
+        obs = nextstat.upper_limit(model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter)
+        return {"alpha": alpha, "obs_limit": float(obs)}
+
+    if name == "nextstat_ranking":
+        model = _load_model(arguments["workspace_json"])
+        from nextstat.interpret import rank_impact
+
+        top_n = arguments.get("top_n")
+        table = rank_impact(model, top_n=top_n)
+        return {"ranking": table}
+
+    if name == "nextstat_discovery_asymptotic":
+        model = _load_model(arguments["workspace_json"])
+        fit_res = nextstat.fit(model)
+        poi_idx = model.poi_index()
+        mu_hat = None
+        if poi_idx is not None:
+            try:
+                mu_hat = float(fit_res.parameters[poi_idx])
+            except Exception:
+                mu_hat = None
+        scan = nextstat.profile_scan(model, [0.0])
+        pts = scan.get("points") or []
+        if not pts:
+            raise RuntimeError("profile_scan returned no points for mu=0")
+        nll0 = float(pts[0].get("nll_mu"))
+        nll_hat = float(fit_res.nll)
+        q0_raw = 2.0 * (nll0 - nll_hat)
+        q0 = max(0.0, q0_raw)
+        if mu_hat is not None and mu_hat <= 0.0:
+            q0 = 0.0
+        z0 = math.sqrt(q0)
+        p0 = _normal_sf(z0)
+        return {
+            "mu_hat": mu_hat,
+            "nll_hat": nll_hat,
+            "nll_mu0": nll0,
+            "q0": q0,
+            "z0": z0,
+            "p0": p0,
+        }
+
+    if name == "nextstat_scan":
+        model = _load_model(arguments["workspace_json"])
+        start = float(arguments.get("start", 0.0))
+        stop = float(arguments.get("stop", 5.0))
+        points = int(arguments.get("points", 21))
+        step = (stop - start) / max(points - 1, 1)
+        mu_values = [start + i * step for i in range(points)]
+        artifact = nextstat.profile_scan(model, mu_values)
+        return dict(artifact)
+
+    if name == "nextstat_workspace_audit":
+        ws_json = arguments["workspace_json"]
+        result = nextstat.workspace_audit(ws_json)
+        return dict(result)
+
+    raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")
+
+
 def execute_tool_raw(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute a NextStat tool by name, returning the raw tool result (no envelope)."""
     import nextstat
 
     meta = _apply_execution(nextstat, name, arguments)
     try:
-        if name == "nextstat_fit":
-            model = _load_model(arguments["workspace_json"])
-            result = nextstat.fit(model)
-            params = result.parameters
-            names = model.parameter_names()
-            poi_idx = model.poi_index()
-            return {
-                "nll": result.nll,
-                "converged": result.converged,
-                "n_iter": result.n_iter,
-                "poi_index": poi_idx,
-                "poi_value": params[poi_idx] if poi_idx is not None else None,
-                "poi_error": result.uncertainties[poi_idx] if poi_idx is not None else None,
-                "parameters": {
-                    n: {"value": v, "error": e}
-                    for n, v, e in zip(names, params, result.uncertainties)
-                },
-            }
-
-        if name == "nextstat_hypotest":
-            model = _load_model(arguments["workspace_json"])
-            mu = float(arguments["mu"])
-            cls_val, tails = nextstat.hypotest(mu, model, return_tail_probs=True)
-            clsb, clb = tails
-            return {"mu": mu, "cls": float(cls_val), "clsb": float(clsb), "clb": float(clb)}
-
-        if name == "nextstat_hypotest_toys":
-            model = _load_model(arguments["workspace_json"])
-            mu = float(arguments["mu"])
-            n_toys = int(arguments.get("n_toys", 1000))
-            seed = int(arguments.get("seed", 42))
-            expected_set = bool(arguments.get("expected_set", False))
-            return_meta = bool(arguments.get("return_meta", False))
-            r = nextstat.hypotest_toys(
-                mu,
-                model,
-                n_toys=n_toys,
-                seed=seed,
-                expected_set=expected_set,
-                return_tail_probs=True,
-                return_meta=return_meta,
-            )
-            # Return shape depends on expected_set/return_meta; keep it explicit and lossless.
-            return {
-                "mu": mu,
-                "n_toys": n_toys,
-                "seed": seed,
-                "expected_set": expected_set,
-                "raw": r,
-            }
-
-        if name == "nextstat_upper_limit":
-            model = _load_model(arguments["workspace_json"])
-            expected = bool(arguments.get("expected", False))
-            alpha = float(arguments.get("alpha", 0.05))
-            lo = float(arguments.get("lo", 0.0))
-            hi = arguments.get("hi", None)
-            hi_val = None if hi is None else float(hi)
-            rtol = float(arguments.get("rtol", 1e-4))
-            max_iter = int(arguments.get("max_iter", 80))
-            if expected:
-                obs, exp = nextstat.upper_limits_root(
-                    model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
-                )
-                return {
-                    "alpha": alpha,
-                    "obs_limit": float(obs),
-                    "exp_limits": [float(x) for x in exp],
-                }
-            obs = nextstat.upper_limit(
-                model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
-            )
-            return {"alpha": alpha, "obs_limit": float(obs)}
-
-        if name == "nextstat_ranking":
-            model = _load_model(arguments["workspace_json"])
-            from nextstat.interpret import rank_impact
-
-            top_n = arguments.get("top_n")
-            table = rank_impact(model, top_n=top_n)
-            return {"ranking": table}
-
-        if name == "nextstat_discovery_asymptotic":
-            model = _load_model(arguments["workspace_json"])
-            fit_res = nextstat.fit(model)
-            poi_idx = model.poi_index()
-            mu_hat = None
-            if poi_idx is not None:
-                try:
-                    mu_hat = float(fit_res.parameters[poi_idx])
-                except Exception:
-                    mu_hat = None
-            scan = nextstat.profile_scan(model, [0.0])
-            pts = scan.get("points") or []
-            if not pts:
-                raise RuntimeError("profile_scan returned no points for mu=0")
-            nll0 = float(pts[0].get("nll_mu"))
-            nll_hat = float(fit_res.nll)
-            q0_raw = 2.0 * (nll0 - nll_hat)
-            q0 = max(0.0, q0_raw)
-            if mu_hat is not None and mu_hat <= 0.0:
-                q0 = 0.0
-            z0 = math.sqrt(q0)
-            p0 = _normal_sf(z0)
-            return {
-                "mu_hat": mu_hat,
-                "nll_hat": nll_hat,
-                "nll_mu0": nll0,
-                "q0": q0,
-                "z0": z0,
-                "p0": p0,
-            }
-
-        if name == "nextstat_scan":
-            model = _load_model(arguments["workspace_json"])
-            start = float(arguments.get("start", 0.0))
-            stop = float(arguments.get("stop", 5.0))
-            points = int(arguments.get("points", 21))
-            step = (stop - start) / max(points - 1, 1)
-            mu_values = [start + i * step for i in range(points)]
-            artifact = nextstat.profile_scan(model, mu_values)
-            return dict(artifact)
-
-        if name == "nextstat_workspace_audit":
-            ws_json = arguments["workspace_json"]
-            result = nextstat.workspace_audit(ws_json)
-            return dict(result)
-
-        raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")
+        return _execute_tool_impl(nextstat, name, arguments)
     finally:
         _restore_execution(nextstat, meta)
 
@@ -590,20 +594,22 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    exec_meta: dict[str, Any] | None = None
     try:
-        envelope["result"] = execute_tool_raw(name, arguments)
+        exec_meta = _apply_execution(nextstat, name, arguments)
+        envelope["result"] = _execute_tool_impl(nextstat, name, arguments)
         envelope["ok"] = True
     except Exception as e:
         envelope["error"] = {"type": e.__class__.__name__, "message": str(e)}
+    finally:
+        if exec_meta is not None:
+            _restore_execution(nextstat, exec_meta)
 
-    try:
-        exec_cfg = arguments.get("execution") or {}
-        deterministic = bool(exec_cfg.get("deterministic", True))
-        envelope["meta"]["deterministic"] = deterministic
-        envelope["meta"]["eval_mode"] = nextstat.get_eval_mode()
-        envelope["meta"]["threads_requested"] = exec_cfg.get("threads", 1 if deterministic else None)
-    except Exception:
-        pass
+    if exec_meta is not None:
+        envelope["meta"]["deterministic"] = exec_meta.get("deterministic")
+        envelope["meta"]["eval_mode"] = exec_meta.get("eval_mode_effective")
+        envelope["meta"]["threads_requested"] = exec_meta.get("threads_requested")
+        envelope["meta"]["threads_applied"] = exec_meta.get("threads_applied")
 
     return envelope
 

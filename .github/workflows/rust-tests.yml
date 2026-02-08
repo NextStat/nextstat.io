@@ -35,6 +35,10 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Shellcheck (bash -n) validation pack script
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: bash -n validation-pack/render_validation_pack.sh
+
       - name: Run tests
         run: cargo test --workspace --all-features --verbose
 

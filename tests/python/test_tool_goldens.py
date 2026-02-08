@@ -52,6 +52,19 @@ def _normalize_envelope(x: dict[str, Any]) -> dict[str, Any]:
     meta = x.get("meta", {})
     if isinstance(meta, dict):
         meta.pop("nextstat_version", None)
+    # Optimizer iteration counts are not a stable contract and can change with
+    # benign improvements to stopping rules or line-search behavior.
+    def _drop_n_iter(v: Any) -> Any:
+        if isinstance(v, dict):
+            if "n_iter" in v:
+                v = dict(v)
+                v.pop("n_iter", None)
+            return {k: _drop_n_iter(vv) for k, vv in v.items()}
+        if isinstance(v, list):
+            return [_drop_n_iter(vv) for vv in v]
+        return v
+
+    x = _drop_n_iter(x)
     return x
 
 
@@ -108,4 +121,3 @@ def test_tool_goldens_simple_workspace_deterministic():
             atol=atol,
             path=f"tool:{name}",
         )
-

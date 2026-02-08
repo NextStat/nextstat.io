@@ -1,5 +1,3 @@
-use core::convert::TryInto;
-
 /// Zstandard encodes some types of data in a way that the data must be read
 /// back to front to decode it properly. `BitReaderReversed` provides a
 /// convenient interface to do that.
@@ -52,12 +50,17 @@ impl<'s> BitReaderReversed<'s> {
             self.index -= bytes_consumed;
             // Some bits of the `bits_container` might have been consumed already because we read the window byte aligned
             self.bits_consumed &= 7;
-            self.bit_container =
-                u64::from_le_bytes((&self.source[self.index..][..8]).try_into().unwrap());
+            unsafe {
+                let ptr = self.source.as_ptr().add(self.index) as *const u64;
+                self.bit_container = u64::from_le(ptr.read_unaligned());
+            }
         } else if self.index > 0 {
             // Read the last portion of source into the `bit_container`
             if self.source.len() >= 8 {
-                self.bit_container = u64::from_le_bytes((&self.source[..8]).try_into().unwrap());
+                unsafe {
+                    let ptr = self.source.as_ptr() as *const u64;
+                    self.bit_container = u64::from_le(ptr.read_unaligned());
+                }
             } else {
                 let mut value = [0; 8];
                 value[..self.source.len()].copy_from_slice(self.source);
@@ -150,8 +153,13 @@ impl<'s> BitReaderReversed<'s> {
     #[inline(always)]
     pub fn get_bits_triple(&mut self, n1: u8, n2: u8, n3: u8) -> (u64, u64, u64) {
         let sum = n1 + n2 + n3;
+        if sum == 0 {
+            return (0, 0, 0);
+        }
         if sum <= 56 {
-            self.refill();
+            if self.bits_consumed + sum > 64 {
+                self.refill();
+            }
 
             let triple = self.peek_bits_triple(sum, n1, n2, n3);
             self.consume(sum);
