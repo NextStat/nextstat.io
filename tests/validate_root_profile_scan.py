@@ -64,14 +64,14 @@ def _parse_histfactory_to_pyhf_workspace(combination_xml: Path, rootdir: Path) -
             "pyhf is required for HistFactory XML import. Install `pyhf[xmlio]` (needs uproot)."
         )
     try:
-        import pyhf.readxml  # noqa: F401
+        # NOTE: avoid `import pyhf.readxml` here because it binds a local `pyhf` name
+        # and can trigger UnboundLocalError when we also reference the module-global `pyhf`.
+        from pyhf import readxml as readxml  # type: ignore
     except ModuleNotFoundError as e:
         raise RuntimeError(
             "pyhf.readxml requires `uproot`. Install it (e.g. `pip install uproot`) "
             "or install the project extras that include it."
         ) from e
-
-    import pyhf.readxml as readxml
 
     return readxml.parse(str(combination_xml), rootdir=str(rootdir), track_progress=False)
 
@@ -82,14 +82,14 @@ def _export_pyhf_to_histfactory(ws: Dict[str, Any], out_dir: Path, *, prefix: st
             "pyhf is required for pyhf->HistFactory export. Install `pyhf[xmlio]` (needs uproot)."
         )
     try:
-        import pyhf.writexml  # noqa: F401
+        # NOTE: avoid `import pyhf.writexml` here because it binds a local `pyhf` name
+        # and can trigger UnboundLocalError when we also reference the module-global `pyhf`.
+        from pyhf import writexml as writexml  # type: ignore
     except ModuleNotFoundError as e:
         raise RuntimeError(
             "pyhf.writexml requires `uproot`. Install it (e.g. `pip install uproot`) "
             "or install the project extras that include it."
         ) from e
-
-    import pyhf.writexml as writexml
 
     out_dir.mkdir(parents=True, exist_ok=True)
     spec_dir = out_dir / "spec"
