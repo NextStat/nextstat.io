@@ -69,6 +69,7 @@ Implemented in `/Users/andresvlc/WebDev/nextstat.io/bindings/ns-py/python/nextst
 - `nextstat_scan` (profile scan artifact passthrough)
 - `nextstat_discovery_asymptotic` (q0/Z0/p0 at mu=0 from a profiled scan)
 - `nextstat_workspace_audit`
+- `nextstat_read_root_histogram` (ROOT TH1 ingest for agent demos)
 
 ## Response Envelope (v1)
 
@@ -94,4 +95,3 @@ Schema: `/Users/andresvlc/WebDev/nextstat.io/docs/schemas/tools/nextstat_tool_re
 1. Add per-tool output schemas (not just the envelope), and validate tool outputs in CI.
 2. Replace `nextstat_hypotest_toys` result from `"raw"` to a stable structured output once the upstream binding return-shape is frozen.
 3. Add a dedicated discovery API in Rust/Python (avoid relying on `profile_scan` shape).
-

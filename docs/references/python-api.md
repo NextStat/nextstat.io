@@ -25,7 +25,7 @@ Notes:
 
 Notes on HistFactory XML ingest (`from_histfactory` and `nextstat import histfactory`):
 - `ShapeSys` histograms are treated as **relative** per-bin uncertainties and converted to absolute `sigma_abs = rel * nominal`.
-- `StatError` histograms are treated as **absolute** per-bin uncertainties (`sigma_abs`).
+- `StatError` histograms are treated as **relative** per-bin uncertainties and converted to absolute `sigma_abs = rel * nominal`.
 - `StatError` follows channel `<StatErrorConfig ConstraintType=...>`:
   - `ConstraintType="Poisson"` => Barlow-Beeston `shapesys` (per-sample, name `staterror_<channel>_<sample>`).
   - `ConstraintType="Gaussian"` => `staterror` (per-channel, name `staterror_<channel>`).

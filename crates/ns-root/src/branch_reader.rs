@@ -291,86 +291,13 @@ fn decode_indexed_from_payload(
     out_of_range_value: f64,
     out: &mut Vec<f64>,
 ) -> Result<()> {
-    // ROOT stores an entry-offset table at the end of the basket payload for jagged
-    // (variable-length) branches. In TBranch, `fEntryOffsetLen` is typically the
-    // number of *bits* per offset entry (e.g. 16/32/64). We store it as-is.
     if entry_offset_len == 0 {
         return Err(RootError::TypeMismatch(
             "indexed decoding requested without entry-offset table".into(),
         ));
     }
-    if !entry_offset_len.is_multiple_of(8) {
-        return Err(RootError::TypeMismatch(format!(
-            "unsupported fEntryOffsetLen={} (expected multiple of 8)",
-            entry_offset_len
-        )));
-    }
-
-    let bytes_per_offset = entry_offset_len / 8;
-    if !matches!(bytes_per_offset, 2 | 4 | 8) {
-        return Err(RootError::TypeMismatch(format!(
-            "unsupported offset width: {} bytes (from fEntryOffsetLen={})",
-            bytes_per_offset, entry_offset_len
-        )));
-    }
-
-    // Observed ROOT basket layout for jagged branches:
-    //   [data bytes...][count: u32][offset_0..offset_n]
-    // Offsets are absolute to the full TBasket buffer (i.e. they include the
-    // TKey header length). When `payload` comes from `read_basket_data`, it
-    // starts at `key_len`, so subtracting `offset_0` yields indices into
-    // `data`.
-    let n_offsets = n_entries + 1;
-    let tail_bytes = (4usize)
-        .checked_add(
-            n_offsets
-                .checked_mul(bytes_per_offset)
-                .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?,
-        )
-        .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?;
-    if payload.len() < tail_bytes {
-        return Err(RootError::Deserialization(format!(
-            "basket payload too small for offset table: have {} need {}",
-            payload.len(),
-            tail_bytes
-        )));
-    }
-
-    let data_end = payload.len() - tail_bytes;
-    let data = &payload[..data_end];
-    let tail = &payload[data_end..];
-
-    let read_word_be = |b: &[u8]| -> usize {
-        match bytes_per_offset {
-            2 => u16::from_be_bytes(b.try_into().unwrap()) as usize,
-            4 => u32::from_be_bytes(b.try_into().unwrap()) as usize,
-            8 => u64::from_be_bytes(b.try_into().unwrap()) as usize,
-            _ => unreachable!(),
-        }
-    };
-
-    let count = u32::from_be_bytes(tail[..4].try_into().unwrap()) as usize;
-    if count != n_offsets {
-        return Err(RootError::Deserialization(format!(
-            "unexpected entry-offset count word: got {} want {}",
-            count,
-            n_offsets
-        )));
-    }
-
-    let mut offsets: Vec<usize> = Vec::with_capacity(n_offsets);
-    for i in 0..n_offsets {
-        let start = 4 + bytes_per_offset * i;
-        let end = start + bytes_per_offset;
-        offsets.push(read_word_be(&tail[start..end]));
-    }
-
+    let (data, offsets) = split_basket_payload_and_offsets(payload, n_entries, entry_offset_len)?;
     let base = offsets[0];
-    if offsets[n_offsets - 1] == 0 {
-        offsets[n_offsets - 1] = base
-            .checked_add(data.len())
-            .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
-    }
     let elem_size = leaf_type.byte_size();
 
     let mut assume_root_streamed_vector = false;
@@ -438,6 +365,153 @@ fn decode_indexed_from_payload(
     Ok(())
 }
 
+/// Split a decompressed ROOT basket payload into the data section and a synthesized
+/// offset array of length `n_entries + 1`.
+///
+/// ROOT uses two observed encodings for the trailing entry-offset information:
+///
+/// 1) Counted table (common for jagged leaflist branches):
+///    `[data...][count: u32][offset_0..offset_{count-1}]`
+///    where the offset *width* is usually 16/32/64 bits, but for streamed vectors
+///    `fEntryOffsetLen` is often stored as a *byte length* (typically `n_entries * 4`)
+///    and the width must be inferred from `fEntryOffsetLen / n_entries`.
+///
+/// 2) Raw offsets array (no count word, rare):
+///    `[data...][offset_0..offset_{n_entries-1}]`
+///    where `fEntryOffsetLen` is the *byte length* of the offsets array.
+///
+/// Offsets may be absolute to the full TBasket buffer (including the key header).
+/// In both formats we treat offsets as absolute and normalize by subtracting `offset_0`.
+fn split_basket_payload_and_offsets<'a>(
+    payload: &'a [u8],
+    n_entries: usize,
+    entry_offset_len: usize,
+) -> Result<(&'a [u8], Vec<usize>)> {
+    if n_entries == 0 {
+        return Ok((payload, vec![0]));
+    }
+
+    // Try counted format first. The tricky bit is how to infer the offset width:
+    // - For many branches, fEntryOffsetLen acts like a bit width (16/32/64).
+    // - For streamed vectors, fEntryOffsetLen is commonly `n_entries * bytes_per_offset`.
+    let mut counted_bytes_per_offset: Vec<usize> = Vec::new();
+    if entry_offset_len.is_multiple_of(8) {
+        let b = entry_offset_len / 8;
+        if matches!(b, 2 | 4 | 8) {
+            counted_bytes_per_offset.push(b);
+        }
+    }
+    if entry_offset_len % n_entries == 0 {
+        let b = entry_offset_len / n_entries;
+        if matches!(b, 2 | 4 | 8) && !counted_bytes_per_offset.contains(&b) {
+            counted_bytes_per_offset.push(b);
+        }
+    }
+
+    for &bytes_per_offset in &counted_bytes_per_offset {
+        for count_expected in [n_entries + 1, n_entries] {
+            let tail_bytes = (4usize)
+                .checked_add(
+                    count_expected.checked_mul(bytes_per_offset).ok_or_else(|| {
+                        RootError::Deserialization("offset table size overflow".into())
+                    })?,
+                )
+                .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?;
+            if payload.len() < tail_bytes {
+                continue;
+            }
+
+            let data_end = payload.len() - tail_bytes;
+            let data = &payload[..data_end];
+            let tail = &payload[data_end..];
+
+            let count = u32::from_be_bytes(tail[..4].try_into().unwrap()) as usize;
+            if count != count_expected {
+                continue;
+            }
+
+            let read_word_be = |b: &[u8]| -> usize {
+                match bytes_per_offset {
+                    2 => u16::from_be_bytes(b.try_into().unwrap()) as usize,
+                    4 => u32::from_be_bytes(b.try_into().unwrap()) as usize,
+                    8 => u64::from_be_bytes(b.try_into().unwrap()) as usize,
+                    _ => unreachable!(),
+                }
+            };
+
+            let mut offsets: Vec<usize> = Vec::with_capacity(n_entries + 1);
+            for i in 0..count {
+                let start = 4 + bytes_per_offset * i;
+                let end = start + bytes_per_offset;
+                offsets.push(read_word_be(&tail[start..end]));
+            }
+
+            let base = *offsets
+                .first()
+                .ok_or_else(|| RootError::Deserialization("missing offset_0".into()))?;
+            let end = base
+                .checked_add(data.len())
+                .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
+
+            if count == n_entries {
+                offsets.push(end);
+            } else {
+                // `count == n_entries + 1` (preferred)
+                if let Some(last) = offsets.last_mut() {
+                    if *last == 0 {
+                        *last = end;
+                    }
+                }
+            }
+
+            if offsets.len() == n_entries + 1 {
+                return Ok((data, offsets));
+            }
+        }
+    }
+
+    // Raw offsets array format: fEntryOffsetLen is the byte size of the offsets array.
+    if entry_offset_len > 0 && entry_offset_len <= payload.len() && entry_offset_len % n_entries == 0 {
+        let bytes_per_offset = entry_offset_len / n_entries;
+        if matches!(bytes_per_offset, 2 | 4 | 8) {
+            let data_end = payload.len() - entry_offset_len;
+            let data = &payload[..data_end];
+            let tail = &payload[data_end..];
+
+            let read_word_be = |b: &[u8]| -> usize {
+                match bytes_per_offset {
+                    2 => u16::from_be_bytes(b.try_into().unwrap()) as usize,
+                    4 => u32::from_be_bytes(b.try_into().unwrap()) as usize,
+                    8 => u64::from_be_bytes(b.try_into().unwrap()) as usize,
+                    _ => unreachable!(),
+                }
+            };
+
+            let mut offsets: Vec<usize> = Vec::with_capacity(n_entries + 1);
+            for i in 0..n_entries {
+                let start = bytes_per_offset * i;
+                let end = start + bytes_per_offset;
+                offsets.push(read_word_be(&tail[start..end]));
+            }
+
+            let base = *offsets
+                .first()
+                .ok_or_else(|| RootError::Deserialization("missing offset_0".into()))?;
+            let end = base
+                .checked_add(data.len())
+                .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
+            offsets.push(end);
+
+            return Ok((data, offsets));
+        }
+    }
+
+    Err(RootError::TypeMismatch(format!(
+        "unsupported fEntryOffsetLen={} for n_entries={}",
+        entry_offset_len, n_entries
+    )))
+}
+
 /// Decode all elements of each entry into flat + offsets for jagged columns.
 fn decode_jagged_from_payload(
     payload: &[u8],
@@ -452,72 +526,8 @@ fn decode_jagged_from_payload(
             "jagged decoding requested without entry-offset table".into(),
         ));
     }
-    if !entry_offset_len.is_multiple_of(8) {
-        return Err(RootError::TypeMismatch(format!(
-            "unsupported fEntryOffsetLen={} (expected multiple of 8)",
-            entry_offset_len
-        )));
-    }
-
-    let bytes_per_offset = entry_offset_len / 8;
-    if !matches!(bytes_per_offset, 2 | 4 | 8) {
-        return Err(RootError::TypeMismatch(format!(
-            "unsupported offset width: {} bytes (from fEntryOffsetLen={})",
-            bytes_per_offset, entry_offset_len
-        )));
-    }
-
-    let n_offsets = n_entries + 1;
-    let tail_bytes = (4usize)
-        .checked_add(
-            n_offsets
-                .checked_mul(bytes_per_offset)
-                .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?,
-        )
-        .ok_or_else(|| RootError::Deserialization("offset table size overflow".into()))?;
-    if payload.len() < tail_bytes {
-        return Err(RootError::Deserialization(format!(
-            "basket payload too small for offset table: have {} need {}",
-            payload.len(),
-            tail_bytes
-        )));
-    }
-
-    let data_end = payload.len() - tail_bytes;
-    let data = &payload[..data_end];
-    let tail = &payload[data_end..];
-
-    let read_word_be = |b: &[u8]| -> usize {
-        match bytes_per_offset {
-            2 => u16::from_be_bytes(b.try_into().unwrap()) as usize,
-            4 => u32::from_be_bytes(b.try_into().unwrap()) as usize,
-            8 => u64::from_be_bytes(b.try_into().unwrap()) as usize,
-            _ => unreachable!(),
-        }
-    };
-
-    let count = u32::from_be_bytes(tail[..4].try_into().unwrap()) as usize;
-    if count != n_offsets {
-        return Err(RootError::Deserialization(format!(
-            "unexpected entry-offset count word: got {} want {}",
-            count,
-            n_offsets
-        )));
-    }
-
-    let mut entry_offsets: Vec<usize> = Vec::with_capacity(n_offsets);
-    for i in 0..n_offsets {
-        let start = 4 + bytes_per_offset * i;
-        let end = start + bytes_per_offset;
-        entry_offsets.push(read_word_be(&tail[start..end]));
-    }
-
+    let (data, entry_offsets) = split_basket_payload_and_offsets(payload, n_entries, entry_offset_len)?;
     let base = entry_offsets[0];
-    if entry_offsets[n_offsets - 1] == 0 {
-        entry_offsets[n_offsets - 1] = base
-            .checked_add(data.len())
-            .ok_or_else(|| RootError::Deserialization("basket data end overflow".into()))?;
-    }
     let elem_size = leaf_type.byte_size();
 
     let mut assume_root_streamed_vector = false;
@@ -581,25 +591,39 @@ fn decode_jagged_from_payload(
 }
 
 fn try_parse_root_stl_vector_chunk(chunk: &[u8], elem_size: usize) -> Option<(usize, usize)> {
-    if chunk.len() < 10 {
+    if chunk.len() < 4 {
         return None;
     }
     let raw = u32::from_be_bytes(chunk[0..4].try_into().ok()?);
-    if raw & 0x4000_0000 == 0 {
+
+    // ROOT streamer layout:
+    //   [bytecount+0x4000_0000][u16 ver][u32 len][len elems]
+    if raw & 0x4000_0000 != 0 {
+        if chunk.len() < 10 {
+            return None;
+        }
+        let byte_count = (raw & !0x4000_0000) as usize;
+        if byte_count != chunk.len().checked_sub(4)? {
+            return None;
+        }
+        let _ver = u16::from_be_bytes(chunk[4..6].try_into().ok()?);
+        let n = u32::from_be_bytes(chunk[6..10].try_into().ok()?) as usize;
+        let payload_bytes = chunk.len().checked_sub(10)?;
+        let expect = n.checked_mul(elem_size)?;
+        if payload_bytes != expect {
+            return None;
+        }
+        return Some((n, 10));
+    }
+
+    // Plain (non-streamer) layout:
+    //   [u32 len][len elems]
+    let n = raw as usize;
+    let expect = 4usize.checked_add(n.checked_mul(elem_size)?)?;
+    if chunk.len() != expect {
         return None;
     }
-    let byte_count = (raw & !0x4000_0000) as usize;
-    if byte_count != chunk.len().checked_sub(4)? {
-        return None;
-    }
-    let _ver = u16::from_be_bytes(chunk[4..6].try_into().ok()?);
-    let n = u32::from_be_bytes(chunk[6..10].try_into().ok()?) as usize;
-    let payload_bytes = chunk.len().checked_sub(10)?;
-    let expect = n.checked_mul(elem_size)?;
-    if payload_bytes != expect {
-        return None;
-    }
-    Some((n, 10))
+    Some((n, 4))
 }
 
 // ── Best-effort decoding: unsplit std::vector<T> (TBranchElement) ──────────────

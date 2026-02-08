@@ -15,4 +15,6 @@ def test_validation_pack_script_help_mentions_json_only() -> None:
         text=True,
     ).stdout
     assert "--json-only" in out
-
+    # Signing flags are part of the validation-pack contract (manifest distribution workflow).
+    assert "--sign-gpg" in out
+    assert "--sign-openssl-key" in out

@@ -76,6 +76,7 @@ Current status:
 - Implemented for unsplit `TBranchElement` / STL `std::vector<T>` branches in the common ROOT-written layout (ROOT streamer):
   - per entry: `[bytecount+version][u32 len][len elements]` (big-endian),
   - entry boundaries come from the per-basket entry-offset table (`fEntryOffsetLen > 0`),
+  - note: for streamed vectors, ROOT commonly stores `fEntryOffsetLen` as a *byte length* (e.g. `n_entries_in_basket * 4`), so values like `12` or `400` are normal (it is not always 16/32/64 bits),
   - ROOT’s on-disk convention `entry_offsets[last] == 0` is treated as a sentinel for “end at fLast”.
 - Best-effort fallback for non-streamer numeric layout (seen in some writers):
   - per entry: `u32 len` (big-endian) followed by `len` elements,

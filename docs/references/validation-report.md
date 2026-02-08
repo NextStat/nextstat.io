@@ -159,7 +159,10 @@ CI also exercises the end-to-end `validation-pack/render_validation_pack.sh` flo
 
 - Schema validation for `validation_report.json`
 - A deterministic re-render check (JSON+PDF hashes match across two runs)
+- Deterministic manifest check (`validation_pack_manifest.json` hashes match across runs)
 - A `--json-only` smoke run (no PDF / no matplotlib dependency path)
+
+The CI job uploads `validation_pack_manifest.json` alongside `validation_report.json`/`.pdf` as a convenient “index” for replication and (optional) signing.
 
 ### Single Entrypoint (Local + CI)
 

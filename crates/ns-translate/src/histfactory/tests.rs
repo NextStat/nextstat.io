@@ -257,13 +257,21 @@ fn histfactory_pyhf_xmlimport_staterrorconfig_poisson_maps_to_shapesys_and_lumi(
         })
         .expect("ShapeSys staterror_channel1_background1");
 
-    // StatError histogram stores ABSOLUTE uncertainties.
+    // StatError histogram stores RELATIVE uncertainties; convert to absolute.
     let rf = RootFile::open(&basedir.join("data/example.root")).expect("open example.root");
-    let sigma_abs = rf
+    let nominal = rf.get_histogram("background1").expect("nominal background1");
+    let rel = rf
         .get_histogram("background1_statUncert")
-        .expect("sigma_abs background1_statUncert");
+        .expect("rel background1_statUncert");
+    assert_eq!(nominal.bin_content.len(), rel.bin_content.len());
+    let expected_abs: Vec<f64> = rel
+        .bin_content
+        .iter()
+        .zip(nominal.bin_content.iter())
+        .map(|(r, n)| r * n)
+        .collect();
 
-    assert_eq!(shapesys, sigma_abs.bin_content);
+    assert_eq!(shapesys, expected_abs);
 
     // The POI normfactor should carry bounds/inits from the XML.
     let meas = ws

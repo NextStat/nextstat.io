@@ -261,7 +261,8 @@ It follows HistFactory conventions used by pyhf's `readxml` validation fixtures:
 - `StatError` follows channel `<StatErrorConfig ConstraintType=...>`:
   - `ConstraintType="Poisson"` => Barlow-Beeston `shapesys` (per-sample, name `staterror_<channel>_<sample>`).
   - `ConstraintType="Gaussian"` => `staterror` (per-channel, name `staterror_<channel>`).
-- `StatError` histograms (`<StatError Activate="True" HistoName="...">`) are treated as **absolute** per-bin uncertainties (`sigma_abs`).
+- `StatError` histograms (`<StatError Activate="True" HistoName="...">`) are treated as **relative** per-bin uncertainties and converted to
+  absolute `sigma_abs = rel * nominal`.
 - If `<StatErrorConfig>` is omitted, NextStat matches ROOT/HistFactory default behavior by importing `staterror` and attaching per-bin
   `Gamma` constraint metadata to `measurements[].config.parameters[]` entries named `staterror_<channel>[i]` (non-standard extension).
 - Samples with `NormalizeByTheory="True"` receive a `lumi` modifier named `Lumi`.

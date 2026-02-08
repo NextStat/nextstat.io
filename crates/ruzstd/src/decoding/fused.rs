@@ -22,6 +22,25 @@ use crate::fse::FSEDecoder;
 pub trait FusedOutputBuffer {
     fn push(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError>;
     fn repeat(&mut self, offset: usize, match_length: usize) -> Result<(), ExecuteSequencesError>;
+
+    #[inline(always)]
+    fn ensure_capacity(&mut self, _extra: usize) -> Result<(), ExecuteSequencesError> {
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn push_unchecked(&mut self, data: &[u8]) -> Result<(), ExecuteSequencesError> {
+        self.push(data)
+    }
+
+    #[inline(always)]
+    fn repeat_unchecked(
+        &mut self,
+        offset: usize,
+        match_length: usize,
+    ) -> Result<(), ExecuteSequencesError> {
+        self.repeat(offset, match_length)
+    }
 }
 
 impl FusedOutputBuffer for FlatDecodeBuffer {
@@ -144,10 +163,16 @@ fn fused_without_rle(
         let ml = ml_value + ml_add as u32;
 
         // --- Execute immediately ---
+        let actual_offset = do_offset_history(offset, ll, offset_hist);
+        if actual_offset == 0 {
+            return Err(ExecuteSequencesError::ZeroOffset.into());
+        }
 
-        // 1. Copy literals
-        if ll > 0 {
-            let high = literals_copy_counter + ll as usize;
+        let ll_usize = ll as usize;
+        let ml_usize = ml as usize;
+
+        if ll_usize > 0 {
+            let high = literals_copy_counter + ll_usize;
             if high > literals_buffer.len() {
                 return Err(ExecuteSequencesError::NotEnoughBytesForSequence {
                     wanted: high,
@@ -155,20 +180,26 @@ fn fused_without_rle(
                 }
                 .into());
             }
-            buffer
-                .push(&literals_buffer[literals_copy_counter..high])
-                .map_err(DecompressBlockError::from)?;
-            literals_copy_counter += ll as usize;
         }
 
-        // 2. Match copy
-        let actual_offset = do_offset_history(offset, ll, offset_hist);
-        if actual_offset == 0 {
-            return Err(ExecuteSequencesError::ZeroOffset.into());
-        }
-        if ml > 0 {
+        let produced = ll_usize.saturating_add(ml_usize);
+        if produced > 0 {
             buffer
-                .repeat(actual_offset as usize, ml as usize)
+                .ensure_capacity(produced)
+                .map_err(DecompressBlockError::from)?;
+        }
+
+        if ll_usize > 0 {
+            let high = literals_copy_counter + ll_usize;
+            buffer
+                .push_unchecked(&literals_buffer[literals_copy_counter..high])
+                .map_err(DecompressBlockError::from)?;
+            literals_copy_counter = high;
+        }
+
+        if ml_usize > 0 {
+            buffer
+                .repeat_unchecked(actual_offset as usize, ml_usize)
                 .map_err(DecompressBlockError::from)?;
         }
 
@@ -194,8 +225,12 @@ fn fused_without_rle(
 
     // Copy remaining literals after last sequence
     if literals_copy_counter < literals_buffer.len() {
+        let remaining = literals_buffer.len() - literals_copy_counter;
         buffer
-            .push(&literals_buffer[literals_copy_counter..])
+            .ensure_capacity(remaining)
+            .map_err(DecompressBlockError::from)?;
+        buffer
+            .push_unchecked(&literals_buffer[literals_copy_counter..])
             .map_err(DecompressBlockError::from)?;
     }
 
@@ -273,10 +308,16 @@ fn fused_with_rle(
         let ml = ml_value + ml_add as u32;
 
         // --- Execute immediately ---
+        let actual_offset = do_offset_history(offset, ll, offset_hist);
+        if actual_offset == 0 {
+            return Err(ExecuteSequencesError::ZeroOffset.into());
+        }
 
-        // 1. Copy literals
-        if ll > 0 {
-            let high = literals_copy_counter + ll as usize;
+        let ll_usize = ll as usize;
+        let ml_usize = ml as usize;
+
+        if ll_usize > 0 {
+            let high = literals_copy_counter + ll_usize;
             if high > literals_buffer.len() {
                 return Err(ExecuteSequencesError::NotEnoughBytesForSequence {
                     wanted: high,
@@ -284,20 +325,26 @@ fn fused_with_rle(
                 }
                 .into());
             }
-            buffer
-                .push(&literals_buffer[literals_copy_counter..high])
-                .map_err(DecompressBlockError::from)?;
-            literals_copy_counter += ll as usize;
         }
 
-        // 2. Match copy
-        let actual_offset = do_offset_history(offset, ll, offset_hist);
-        if actual_offset == 0 {
-            return Err(ExecuteSequencesError::ZeroOffset.into());
-        }
-        if ml > 0 {
+        let produced = ll_usize.saturating_add(ml_usize);
+        if produced > 0 {
             buffer
-                .repeat(actual_offset as usize, ml as usize)
+                .ensure_capacity(produced)
+                .map_err(DecompressBlockError::from)?;
+        }
+
+        if ll_usize > 0 {
+            let high = literals_copy_counter + ll_usize;
+            buffer
+                .push_unchecked(&literals_buffer[literals_copy_counter..high])
+                .map_err(DecompressBlockError::from)?;
+            literals_copy_counter = high;
+        }
+
+        if ml_usize > 0 {
+            buffer
+                .repeat_unchecked(actual_offset as usize, ml_usize)
                 .map_err(DecompressBlockError::from)?;
         }
 
@@ -322,8 +369,12 @@ fn fused_with_rle(
 
     // Copy remaining literals after last sequence
     if literals_copy_counter < literals_buffer.len() {
+        let remaining = literals_buffer.len() - literals_copy_counter;
         buffer
-            .push(&literals_buffer[literals_copy_counter..])
+            .ensure_capacity(remaining)
+            .map_err(DecompressBlockError::from)?;
+        buffer
+            .push_unchecked(&literals_buffer[literals_copy_counter..])
             .map_err(DecompressBlockError::from)?;
     }
 

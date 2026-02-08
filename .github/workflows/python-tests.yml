@@ -135,8 +135,10 @@ jobs:
             --deterministic
           sha256sum artifacts/validation_report.json artifacts2/validation_report.json
           sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
+          sha256sum artifacts/validation_pack_manifest.json artifacts2/validation_pack_manifest.json
           test "$(sha256sum artifacts/validation_report.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.json | awk '{print $1}')"
           test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_pack_manifest.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_pack_manifest.json | awk '{print $1}')"
 
           # Snapshot index: stable list of artifact hashes for discovery/replication.
           python scripts/benchmarks/write_snapshot_index.py \
@@ -157,6 +159,7 @@ jobs:
           path: |
             artifacts/validation_report.json
             artifacts/validation_report.pdf
+            artifacts/validation_pack_manifest.json
             artifacts/snapshot_index.json
 
       - name: Upload validation pack determinism artifacts (debug)
@@ -167,7 +170,9 @@ jobs:
           path: |
             artifacts2/validation_report.json
             artifacts2/validation_report.pdf
+            artifacts2/validation_pack_manifest.json
             artifacts_jsononly/validation_report.json
+            artifacts_jsononly/validation_pack_manifest.json
 
   lint:
     name: Python Linting
