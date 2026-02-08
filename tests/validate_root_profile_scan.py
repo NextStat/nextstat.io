@@ -189,6 +189,8 @@ def _write_root_macro_profile_scan(
 
 #include <RooStats/ModelConfig.h>
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <string>
@@ -309,6 +311,13 @@ void profile_scan() {{
 
   // Free fit
   poi->setConstant(false);
+  // Tighten POI range around the scan grid to avoid unbounded runaway in some exports.
+  // Keep this symmetric and padded so the unconditional minimum can still be found.
+  double mu_lo = *std::min_element(mu_values.begin(), mu_values.end());
+  double mu_hi = *std::max_element(mu_values.begin(), mu_values.end());
+  double mu_pad = (mu_hi - mu_lo) * 10.0 + 1.0;
+  poi->setRange(mu_lo - mu_pad, mu_hi + mu_pad);
+  poi->setVal(0.5 * (mu_lo + mu_hi));
   TStopwatch sw_free;
   sw_free.Start();
   int status_free = minimize_nll(*nll);
@@ -318,10 +327,8 @@ void profile_scan() {{
 
   // Fixed-POI scan
   std::vector<double> nll_mu;
-  std::vector<double> q_mu;
   std::vector<int> status_mu;
   nll_mu.reserve(mu_values.size());
-  q_mu.reserve(mu_values.size());
   status_mu.reserve(mu_values.size());
 
   for (double mu : mu_values) {{
@@ -336,19 +343,37 @@ void profile_scan() {{
     ));
     int st = minimize_nll(*nll_fixed);
     double v = nll_fixed->getVal();
-    // Match NextStat `profile_scan` semantics: one-sided q(mu).
-    // If the unconditional best-fit POI exceeds the tested mu, q(mu)=0.
-    // Otherwise q(mu)=2*(nll_mu - nll_hat), clamped at 0 for numerical jitter.
+    nll_mu.push_back(v);
+    status_mu.push_back(st);
+  }}
+  poi->setConstant(false);
+
+  // If unconditional fit failed, fall back to scan minimum for mu_hat/nll_hat
+  // (requires the scan grid to cover the minimum reasonably well).
+  bool free_fit_ok = (status_free == 0) && std::isfinite(mu_hat) && std::isfinite(nll_hat);
+  const char* mu_hat_source = free_fit_ok ? "free_fit" : "scan_min";
+  if (!free_fit_ok) {{
+    size_t imin = 0;
+    for (size_t i = 1; i < nll_mu.size(); ++i) {{
+      if (nll_mu[i] < nll_mu[imin]) imin = i;
+    }}
+    mu_hat = mu_values[imin];
+    nll_hat = nll_mu[imin];
+  }}
+
+  // Match NextStat `profile_scan` semantics: one-sided q(mu).
+  std::vector<double> q_mu;
+  q_mu.reserve(mu_values.size());
+  for (size_t i = 0; i < mu_values.size(); ++i) {{
+    double mu = mu_values[i];
+    double v = nll_mu[i];
     double q = 0.0;
     if (mu >= mu_hat) {{
       q = 2.0 * (v - nll_hat);
       if (q < 0.0) q = 0.0;
     }}
-    nll_mu.push_back(v);
     q_mu.push_back(q);
-    status_mu.push_back(st);
   }}
-  poi->setConstant(false);
 
   sw_total.Stop();
 
@@ -360,6 +385,7 @@ void profile_scan() {{
   out << "  \\"mu_hat\\": " << mu_hat << ",\\n";
   out << "  \\"nll_hat\\": " << nll_hat << ",\\n";
   out << "  \\"status_free\\": " << status_free << ",\\n";
+  out << "  \\"mu_hat_source\\": \\"" << mu_hat_source << "\\",\\n";
   out << "  \\"timing_s\\": {{\\"total\\": " << sw_total.RealTime() << ", \\"free_fit\\": " << sw_free.RealTime() << "}},\\n";
   out << "  \\"points\\": [\\n";
   for (size_t i = 0; i < mu_values.size(); ++i) {{

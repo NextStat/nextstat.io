@@ -7,8 +7,11 @@
 use super::frame;
 use crate::decoding;
 use crate::decoding::dictionary::Dictionary;
-use crate::decoding::errors::FrameDecoderError;
+use crate::decoding::errors::{
+    DecodeBlockContentError, DecompressBlockError, ExecuteSequencesError, FrameDecoderError,
+};
 use crate::decoding::scratch::DecoderScratch;
+use crate::decoding::slice_output_buffer::SliceOutputBuffer;
 use crate::io::{Error, Read, Write};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -528,18 +531,63 @@ impl FrameDecoder {
                 Err(e) => return Err(e),
             };
 
-            while !self.is_finished() {
-                self.decode_blocks(&mut input, BlockDecodingStrategy::All)?;
-            }
+            {
+                let state = self
+                    .state
+                    .as_mut()
+                    .expect("state must exist after init");
 
-            let bytes_written = self
-                .read(output)
-                .map_err(FrameDecoderError::FailedToDrainDecodebuffer)?;
-            output = &mut output[bytes_written..];
-            total_bytes_written += bytes_written;
+                let dict = state.decoder_scratch.buffer.dict_content.as_slice();
+                let mut out = SliceOutputBuffer::new(output, dict);
+                let mut block_dec = decoding::block_decoder::new();
 
-            if self.can_collect() != 0 {
-                return Err(FrameDecoderError::TargetTooSmall);
+                loop {
+                    let (block_header, block_header_size) = block_dec
+                        .read_block_header(&mut input)
+                        .map_err(FrameDecoderError::FailedToReadBlockHeader)?;
+                    state.bytes_read_counter += u64::from(block_header_size);
+
+                    let bytes_read_in_block_body = match block_dec.decode_block_content_to(
+                        &block_header,
+                        &mut state.decoder_scratch,
+                        &mut out,
+                        &mut input,
+                    ) {
+                        Ok(n) => n,
+                        Err(DecodeBlockContentError::DecompressBlockError(
+                            DecompressBlockError::ExecuteSequencesError(
+                                ExecuteSequencesError::NotEnoughBytesForSequence { .. },
+                            ),
+                        )) => {
+                            return Err(FrameDecoderError::TargetTooSmall);
+                        }
+                        Err(e) => return Err(FrameDecoderError::FailedToReadBlockBody(e)),
+                    };
+
+                    state.bytes_read_counter += bytes_read_in_block_body;
+                    state.block_counter += 1;
+
+                    if block_header.last_block {
+                        state.frame_finished = true;
+                        if state.frame_header.descriptor.content_checksum_flag() {
+                            let mut chksum = [0u8; 4];
+                            input
+                                .read_exact(&mut chksum)
+                                .map_err(FrameDecoderError::FailedToReadChecksum)?;
+                            state.bytes_read_counter += 4;
+                            let chksum = u32::from_le_bytes(chksum);
+                            state.check_sum = Some(chksum);
+                        }
+                        break;
+                    }
+                }
+
+                let bytes_written = out.bytes_written();
+                if bytes_written > output.len() {
+                    return Err(FrameDecoderError::TargetTooSmall);
+                }
+                output = &mut output[bytes_written..];
+                total_bytes_written += bytes_written;
             }
         }
 
