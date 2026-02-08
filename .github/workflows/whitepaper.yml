@@ -38,7 +38,7 @@ jobs:
           python3 scripts/build_whitepaper.py --version "${{ inputs.version }}"
 
       - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: whitepaper
           path: dist/whitepaper/*

@@ -47,7 +47,7 @@ jobs:
 
       - name: Upload wheel artifact (for validation-pack job)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nextstat-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
           path: bindings/ns-py/target/wheels/*.whl
@@ -147,13 +147,13 @@ jobs:
             --out artifacts/snapshot_index.json
 
       - name: Upload Apex2 report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: apex2-report-ubuntu-py3.13
           path: artifacts/*.json
 
       - name: Upload unified validation report artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: validation-report-ubuntu-py3.13
           path: |
@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload validation pack determinism artifacts (debug)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: validation-report-determinism-ubuntu-py3.13
           path: |

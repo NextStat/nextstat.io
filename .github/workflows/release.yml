@@ -124,7 +124,7 @@ jobs:
           args: --release --out dist
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-${{ matrix.target }}
           path: bindings/ns-py/dist/*.whl
@@ -146,7 +146,7 @@ jobs:
           args: --out dist
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sdist
           path: bindings/ns-py/dist/*.tar.gz
@@ -186,7 +186,7 @@ jobs:
           cp target/release/nextstat dist/nextstat-${{ matrix.target }}
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cli-${{ matrix.target }}
           path: dist/nextstat-*
@@ -212,7 +212,7 @@ jobs:
           fi
 
       - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: whitepaper
           path: dist/whitepaper/*
@@ -337,7 +337,7 @@ jobs:
             --out artifacts/snapshot_index.json
 
       - name: Upload validation pack
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: validation-pack
           path: artifacts/*
