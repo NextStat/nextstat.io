@@ -44,7 +44,26 @@ Runbook/spec:
 
 ---
 
-## 1. Two regimes, two metrics
+## Abstract
+
+In scientific ML pipelines, a large fraction of wall-time is often **latency**, not FLOPs:
+
+- import and runtime initialization,
+- tracing / graph building,
+- compilation,
+- kernel loading / caching,
+- and the first real execution on real-shaped inputs.
+
+So the benchmark we actually need is not “examples/sec at steady state”. It is a *two-regime* measurement:
+
+1. **Time-to-first-result (TTFR)** in a fresh process (cold start).
+2. **Warm throughput** once compilation and caches are populated.
+
+To make that publishable, we treat each run as a snapshot with raw distributions, a pinned environment, and an explicit cache policy.
+
+---
+
+## 1) Two regimes, two metrics
 
 ### Regime A: cold-start / time-to-first-result
 
@@ -71,7 +90,20 @@ Publishing one number without specifying the regime is not meaningful.
 
 ---
 
-## 2. Benchmark protocol (what must be specified)
+## 2) Definitions: what we time
+
+For publishable runs we report *component* timings, not just a single aggregate:
+
+- `t_import`: importing the runtime stack (best-effort proxy for “startup cost”)
+- `t_first_call`: first call that triggers tracing + compilation + first execution
+- `t_second_call`: second call on the same shapes (warm execution proxy)
+- `t_steady_state`: distribution over repeated warm calls (with a declared sync policy)
+
+For GPU-backed runtimes, the benchmark must explicitly synchronize (or “block until ready”) to avoid timing only CPU dispatch.
+
+---
+
+## 3) Benchmark protocol (what must be specified)
 
 To make the result interpretable, the harness must specify:
 
@@ -84,7 +116,21 @@ For cold-start benchmarks, the only honest baseline is a fresh process with a de
 
 ---
 
-## 3. What we will publish
+## 4) Cache policy: “cold” has multiple meanings
+
+Compile-latency results are extremely sensitive to caching.
+
+So instead of pretending there is one “cold start”, we publish explicit modes:
+
+- **cold process, warm cache**: new Python process, but persistent compilation cache allowed
+- **cold process, cold cache**: new Python process, and compilation cache directory is empty (when feasible)
+- **warm process**: same long-lived process (typical for interactive analysis)
+
+If we can’t reliably clear a cache (because the runtime stores it outside our control), we treat that as a constraint and publish the limitation.
+
+---
+
+## 5) What we publish (artifacts)
 
 For each snapshot:
 
@@ -97,7 +143,7 @@ Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
 
 ---
 
-## 4. Why this is part of the NextStat benchmark program
+## 6) Why this is part of the NextStat benchmark program
 
 NextStat’s core value proposition is not “wins a microbenchmark”.
 

@@ -35,7 +35,7 @@ Two fitters can both return “a result” while measuring fundamentally differe
 - different parameterizations (log vs linear),
 - different handling of censoring / LLOQ.
 
-This post defines what we will benchmark in NextStat’s PK/NLME baselines and how we plan to make the numbers reproducible and meaningful.
+This post defines what we benchmark in NextStat’s PK/NLME baselines and how we make the numbers reproducible, comparable, and auditable.
 
 Runbook/spec:
 
@@ -43,7 +43,37 @@ Runbook/spec:
 
 ---
 
-## 1. What we benchmark
+## Abstract
+
+We treat performance as evidence, not a screenshot. For PK/NLME that means:
+
+- defining the objective precisely (likelihood, constraints, censoring policy),
+- defining the fit protocol (stopping rule, bounds, initialization),
+- publishing correctness gates (analytic checks + recovery on synthetic data),
+- publishing raw measurements + manifests so outsiders can rerun.
+
+The goal is not “a fast fit”. The goal is **a reproducible experiment**.
+
+---
+
+## 1) Threat model: how pharma benchmarks lie
+
+Pharma benchmarks go wrong for the same reason HEP benchmarks go wrong: small modeling differences can produce plausible-looking outputs with incomparable compute cost.
+
+Common failure modes:
+
+- **Objective mismatch**: MAP vs marginal likelihood vs FOCE/Laplace approximations.
+- **Solver mismatch**: different ODE solvers, tolerances, or step controls (the “same” model is not the same computation).
+- **Parameterization mismatch**: log-space vs linear, constrained vs unconstrained transforms.
+- **Censoring policy mismatch**: LLOQ, censored likelihood vs imputation vs drop rules.
+- **Convergence mismatch**: “converged” means different tolerances, different line search rules, different max-iter caps.
+- **Dataset handling mismatch**: preprocessing drift, unit conventions, time grids.
+
+If we can’t align these, we don’t call it a benchmark comparison — we call it two different experiments.
+
+---
+
+## 2) What we benchmark
 
 We benchmark workflows users actually run:
 
@@ -58,7 +88,31 @@ We publish both micro-level metrics (time per eval) and end-to-end metrics (fit 
 
 ---
 
-## 2. The core pitfall: “time to convergence” is not a well-defined metric
+## 3) Correctness gates: analytic checks + recovery before timing
+
+We publish performance numbers only alongside correctness evidence.
+
+### 3.1 Apex2 pharma reference suite (shipped)
+
+The Apex2 pharma reference runner produces deterministic, machine-readable evidence for:
+
+- PK analytic correctness (closed-form 1-compartment oral dosing vs `predict()`),
+- PK fit recovery on deterministic synthetic data,
+- NLME smoke sanity (finite NLL/grad + fit improves NLL on synthetic multi-subject data).
+
+Run:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pharma_reference_report.py \
+  --deterministic \
+  --out tmp/apex2_pharma_reference_report.json
+```
+
+This report is included in the Apex2 master report and therefore in the validation pack produced by `make validation-pack`.
+
+---
+
+## 4) The core pitfall: “time to convergence” is not a well-defined metric
 
 Optimization time depends on:
 
@@ -82,7 +136,7 @@ and always publish:
 
 ---
 
-## 3. Baseline models in NextStat (what “PK/NLME” means here)
+## 5) Baseline models in NextStat (what “PK/NLME” means here)
 
 NextStat’s baseline models are intentionally minimal and explicit:
 
@@ -96,7 +150,7 @@ This matters because “NLME” can mean many different approximations in produc
 
 ---
 
-## 4. Dataset plan: synthetic first, open datasets when licensing permits
+## 6) Dataset plan: synthetic first, open datasets when licensing permits
 
 We will benchmark on two tiers:
 
@@ -112,7 +166,35 @@ Every published run must include:
 
 ---
 
-## 5. Metrics we will publish
+## 7) Seed harness (public benchmarks skeleton)
+
+For public snapshots we ship a minimal rerunnable seed harness under:
+
+- `benchmarks/nextstat-public-benchmarks/suites/pharma/`
+
+It starts with portable synthetic dataset generation so outsiders can rerun without licensing friction.
+
+Single-case run:
+
+```bash
+python benchmarks/nextstat-public-benchmarks/suites/pharma/run.py \
+  --deterministic \
+  --out benchmarks/nextstat-public-benchmarks/out/pharma_pk_1c_oral.json
+```
+
+Suite runner (multiple generated cases, writes per-case JSON + a suite index):
+
+```bash
+python benchmarks/nextstat-public-benchmarks/suites/pharma/suite.py \
+  --deterministic \
+  --out-dir benchmarks/nextstat-public-benchmarks/out/pharma
+```
+
+Each generated dataset carries a stable dataset ID (encoding key parameters) and a SHA‑256 hash of the dataset spec.
+
+---
+
+## 8) Metrics we will publish
 
 At minimum:
 
@@ -129,7 +211,7 @@ And for sanity:
 
 ---
 
-## 6. Why this belongs in the public benchmark program
+## 9) Why this belongs in the public benchmark program
 
 PK/NLME is exactly the kind of domain where:
 
