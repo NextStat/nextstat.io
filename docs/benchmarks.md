@@ -1,6 +1,8 @@
 # Benchmarks
 
-For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: `docs/benchmarks/public-benchmarks.md`.
+For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
+
+Suite runbooks: [HEP](/docs/benchmarks/suites/hep) · [Pharma](/docs/benchmarks/suites/pharma) · [Bayesian](/docs/benchmarks/suites/bayesian) · [ML](/docs/benchmarks/suites/ml) · [Time Series](/docs/benchmarks/suites/timeseries) · [Econometrics](/docs/benchmarks/suites/econometrics)
 
 NextStat has two benchmark layers:
 
