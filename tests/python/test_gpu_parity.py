@@ -127,7 +127,7 @@ class TestCudaParity:
         from _tolerances import GPU_NLL_ATOL
 
         # Use a fixed init point for determinism.
-        init = list(simple_model.parameter_init())
+        init = list(simple_model.suggested_init())
         result1 = nextstat.fit_toys_batch_gpu(
             simple_model, init, n_toys=10, seed=42, device="cuda"
         )
@@ -154,7 +154,7 @@ class TestMetalParity:
         """Metal batch toy NLL within f32 tolerance of CPU."""
         from _tolerances import METAL_NLL_ATOL
 
-        init = list(simple_model.parameter_init())
+        init = list(simple_model.suggested_init())
         cpu_result = nextstat.fit_toys_batch(
             simple_model, init, n_toys=5, seed=42
         )

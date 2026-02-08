@@ -161,6 +161,37 @@ Scan mode is useful for:
 
 The CLI outputs pretty JSON to stdout by default, or to `--output`.
 
+### Survival (Phase 9): Cox PH (`survival cox-ph-fit`)
+
+Input JSON:
+
+```json
+{
+  "times": [2.0, 1.0, 1.0, 0.5, 0.5, 0.2],
+  "events": [true, true, false, true, false, false],
+  "x": [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, -1.0], [0.0, -1.0], [0.5, 0.5]],
+  "groups": [1, 1, 2, 2, 3, 3]
+}
+```
+
+Command:
+
+```bash
+nextstat survival cox-ph-fit --input cox.json --ties efron
+```
+
+Notes:
+- `groups` is optional. If present, robust SE are **cluster-robust** by default (`robust_kind="cluster"`).
+- Robust SE are enabled by default; disable with `--no-robust`.
+- Cluster small-sample correction is enabled by default; disable with `--no-cluster-correction`.
+- Baseline cumulative hazard output is enabled by default; disable with `--no-baseline`.
+
+Output JSON keys (subset):
+- `coef`: fitted beta coefficients (no intercept)
+- `se`, `cov`: observed-information SE/covariance
+- `robust_se`, `robust_cov`, `robust_kind`, `robust_meta`: sandwich SE/covariance (HC0 or cluster)
+- `baseline_times`, `baseline_cumhaz`: baseline cumulative hazard estimate at event times
+
 `nextstat validate --config ...` validates either:
 - legacy `nextstat run` config (`run.yaml`/`run.json`), or
 - analysis spec v0 (`schema_version: trex_analysis_spec_v0`)
