@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use ns_core::{Error, Result};
 use ns_root::{
-    CompiledExpr, FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, RootFile,
-    fill_histograms,
+    CompiledExpr, FilledHistogram, FlowPolicy, HistogramSpec, JaggedCol, NegativeWeightPolicy,
+    RootFile, fill_histograms, fill_histograms_with_jagged,
 };
 
 use crate::pyhf::schema::{
@@ -344,10 +344,16 @@ impl NtupleWorkspaceBuilder {
 
         // Collect all required branches
         let mut all_branches: Vec<String> = var_expr.required_branches.clone();
+        let mut all_jagged_branches: Vec<String> = var_expr.required_jagged_branches.clone();
         if let Some(ref we) = weight_expr {
             for b in &we.required_branches {
                 if !all_branches.contains(b) {
                     all_branches.push(b.clone());
+                }
+            }
+            for b in &we.required_jagged_branches {
+                if !all_jagged_branches.contains(b) {
+                    all_jagged_branches.push(b.clone());
                 }
             }
         }
@@ -355,6 +361,11 @@ impl NtupleWorkspaceBuilder {
             for b in &se.required_branches {
                 if !all_branches.contains(b) {
                     all_branches.push(b.clone());
+                }
+            }
+            for b in &se.required_jagged_branches {
+                if !all_jagged_branches.contains(b) {
+                    all_jagged_branches.push(b.clone());
                 }
             }
         }
@@ -373,6 +384,20 @@ impl NtupleWorkspaceBuilder {
             columns.insert(branch_name.clone(), data);
         }
 
+        // Read jagged columns for dynamic indexing (branch[expr]).
+        let mut jagged_columns: HashMap<String, JaggedCol> = HashMap::new();
+        for branch_name in &all_jagged_branches {
+            let data = rf.branch_data_jagged(&tree, branch_name).map_err(|e| {
+                Error::RootFile(format!(
+                    "reading jagged branch '{}' from {}: {}",
+                    branch_name,
+                    root_path.display(),
+                    e
+                ))
+            })?;
+            jagged_columns.insert(branch_name.clone(), data);
+        }
+
         // Fill histogram
         let spec = HistogramSpec {
             name: "nominal".into(),
@@ -384,8 +409,12 @@ impl NtupleWorkspaceBuilder {
             negative_weight_policy: NegativeWeightPolicy::Allow,
         };
 
-        let mut results = fill_histograms(&[spec], &columns)
-            .map_err(|e| Error::RootFile(format!("filling histogram: {}", e)))?;
+        let mut results = if jagged_columns.is_empty() {
+            fill_histograms(&[spec], &columns)
+        } else {
+            fill_histograms_with_jagged(&[spec], &columns, &jagged_columns)
+        }
+        .map_err(|e| Error::RootFile(format!("filling histogram: {}", e)))?;
 
         results.pop().ok_or_else(|| Error::RootFile("fill_histograms returned empty".into()))
     }

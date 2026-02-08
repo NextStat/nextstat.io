@@ -8,8 +8,11 @@
 //! v1 additions:
 //! - Ternary operator: `cond ? a : b` (right-associative).
 //! - Span-aware errors with line/col.
-//! - Parsed bracket indexing `x[0]` (currently rejected with a clear error;
-//!   vector branches are not supported by the ROOT reader yet).
+//! - Bracket indexing:
+//!   - Static: `branch[0]` is rewritten into a required scalar virtual branch name `branch[0]`
+//!     (materialized by the ROOT reader as needed).
+//!   - Dynamic: `branch[expr]` compiles to a jagged-load instruction and requires jagged
+//!     branch data at evaluation time.
 
 use crate::branch_reader::JaggedCol;
 use crate::error::{Result, RootError};

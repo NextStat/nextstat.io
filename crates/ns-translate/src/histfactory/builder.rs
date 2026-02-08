@@ -123,12 +123,44 @@ pub fn from_xml_with_basedir(
 
     let ws_measurements = build_measurements(&config, &normfactor_settings)?;
 
-    Ok(Workspace {
+    let mut ws = Workspace {
         channels: ws_channels,
         observations: ws_observations,
         measurements: ws_measurements,
         version: Some("1.0.0".into()),
-    })
+    };
+    canonicalize_workspace_in_place(&mut ws);
+    Ok(ws)
+}
+
+fn canonicalize_workspace_in_place(ws: &mut Workspace) {
+    // HistFactory exports can include a large number of channels/samples/modifiers, and
+    // parts of the import path naturally use HashMaps for aggregation. Ensure the final
+    // Workspace has a deterministic ordering independent of HashMap iteration.
+    ws.channels.sort_by(|a, b| a.name.cmp(&b.name));
+    for ch in &mut ws.channels {
+        for s in &mut ch.samples {
+            s.modifiers.sort_by(|a, b| modifier_sort_key(a).cmp(&modifier_sort_key(b)));
+        }
+    }
+
+    ws.observations.sort_by(|a, b| a.name.cmp(&b.name));
+    ws.measurements.sort_by(|a, b| a.name.cmp(&b.name));
+    for m in &mut ws.measurements {
+        m.config.parameters.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+}
+
+fn modifier_sort_key(m: &Modifier) -> (&'static str, &str) {
+    match m {
+        Modifier::NormFactor { name, .. } => ("normfactor", name.as_str()),
+        Modifier::StatError { name, .. } => ("staterror", name.as_str()),
+        Modifier::HistoSys { name, .. } => ("histosys", name.as_str()),
+        Modifier::NormSys { name, .. } => ("normsys", name.as_str()),
+        Modifier::ShapeSys { name, .. } => ("shapesys", name.as_str()),
+        Modifier::ShapeFactor { name, .. } => ("shapefactor", name.as_str()),
+        Modifier::Lumi { name, .. } => ("lumi", name.as_str()),
+    }
 }
 
 /// Build a Channel + Observation from a parsed channel XML.

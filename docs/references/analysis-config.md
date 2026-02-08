@@ -314,6 +314,8 @@ Variable, Selection, and Weight fields use an expression language supporting:
 | Dynamic index | `branch[expr]` | `jet_pt[njet - 1]` |
 | Branch names | identifiers, dots | `jet_pt`, `el.pt` |
 
+**Indexing semantics:** numeric out-of-range, negative, or non-finite indices yield `0.0` (ROOT/TTreeFormula convention).
+
 ---
 
 ## Block Nesting

@@ -110,16 +110,39 @@ const K_CLASS_MASK: u32 = 0x8000_0000;
 struct ClassRefTracker {
     /// Maps byte offset → class name for the ROOT reference system.
     classes: Vec<(usize, String)>,
+    /// Best-effort intervals that cover where a class tag/name was observed.
+    ///
+    /// Some ROOT writers appear to reference offsets that fall within the element's
+    /// byte-count wrapper but don't match the exact positions we register in `classes`.
+    /// When an exact lookup fails, we fall back to resolving by interval containment.
+    intervals: Vec<(usize, usize, String)>,
 }
 
 impl ClassRefTracker {
     fn new() -> Self {
-        Self { classes: Vec::new() }
+        Self { classes: Vec::new(), intervals: Vec::new() }
     }
 
     /// Look up a class by its byte offset tag.
     fn lookup(&self, offset: usize) -> Option<&str> {
         self.classes.iter().find(|(off, _)| *off == offset).map(|(_, name)| name.as_str())
+    }
+
+    fn lookup_by_interval(&self, offset: usize) -> Option<&str> {
+        // Choose the smallest interval that contains the offset (most specific).
+        let mut best: Option<(usize, &str)> = None;
+        for (start, end, name) in &self.intervals {
+            if offset < *start || offset > *end {
+                continue;
+            }
+            let len = end.saturating_sub(*start);
+            match best {
+                None => best = Some((len, name.as_str())),
+                Some((best_len, _)) if len < best_len => best = Some((len, name.as_str())),
+                _ => {}
+            }
+        }
+        best.map(|(_, n)| n)
     }
 
     fn unique_class_name(&self) -> Option<&str> {
@@ -169,6 +192,8 @@ impl ClassRefTracker {
                 // These two offsets are added defensively.
                 self.classes.push((obj_end.saturating_sub(4), name.clone()));
                 self.classes.push((obj_end, name.clone()));
+                // Interval fallback: cover the full element wrapper for this class.
+                self.intervals.push((obj_start, obj_end, name.clone()));
                 name
             } else if class_tag & K_CLASS_MASK != 0 {
                 // Reference to existing class by offset
@@ -176,6 +201,11 @@ impl ClassRefTracker {
                 match self.lookup(ref_offset) {
                     Some(name) => name.to_string(),
                     None => {
+                        if let Some(name) = self.lookup_by_interval(ref_offset) {
+                            let name = name.to_string();
+                            self.classes.push((ref_offset, name.clone()));
+                            name
+                        } else
                         if let Some(unique) = self.unique_class_name().map(|s| s.to_string()) {
                             self.classes.push((ref_offset, unique.clone()));
                             unique

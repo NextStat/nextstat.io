@@ -51,7 +51,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 #### Native ROOT I/O
 
 - **TTree reader** — mmap file access, native binary deserialization, basket decompression (zlib/LZ4/ZSTD) with rayon-parallel extraction. 9 leaf types + jagged branches.
-- **Expression engine** — bytecode-compiled, vectorized. Full grammar: arithmetic, comparisons, boolean logic, ternary, builtins. Python wrapper: `nextstat.analysis.expr_eval`.
+- **Expression engine** — bytecode-compiled, vectorized. Full grammar: arithmetic, comparisons, boolean logic, ternary, builtins. Dynamic jagged indexing (`jet_pt[idx]`) follows ROOT/TTreeFormula convention. Python wrapper: `nextstat.analysis.expr_eval`.
 - **Histogram filler** — single-pass with selection cuts, weights, variable binning.
 - **Unsplit vector branch decoding** — best-effort decoding for `std::vector<T>` branches without offset tables.
 - **~8.5× faster** than uproot+numpy on the full pipeline.
@@ -86,6 +86,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
 - **Arrow / Polars ingestion** — `nextstat.from_arrow(table)` creates a HistFactoryModel from PyArrow Table, RecordBatch, or any Arrow-compatible source (Polars, DuckDB, Spark). `nextstat.from_parquet(path)` reads Parquet directly.
 - **Arrow export** — `nextstat.to_arrow(model, what="yields"|"params")` exports expected yields or parameter metadata as a PyArrow Table. Uses Arrow IPC bridge (zero pyo3 version conflicts).
+- **ConstraintTerm semantics** — LogNormal alpha-transform (`normsys_alpha_effective`), Gamma constraint for ShapeSys, Uniform and NoConstraint handling. Parsed from `<ConstraintTerm>` metadata in HistFactory XML.
 
 #### Report System
 
@@ -165,6 +166,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - StatError: incorrect `sqrt(sumw2)` propagation with zero nominal counts.
 - Metal GPU: scratch buffer reuse (~40% less allocation overhead).
 - HistFactory XML: strip `<!DOCTYPE>` declarations before parsing.
+- CUDA/Metal signal gradient race condition: incorrect accumulation when multiple samples contribute to the same bin.
 - 10 missing Python re-exports in `__init__.py`: `has_metal`, `read_root_histogram`, `workspace_audit`, `cls_curve`, `profile_curve`, `kalman_filter/smooth/em/forecast/simulate`.
 
 ---

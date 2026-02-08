@@ -2804,12 +2804,59 @@ ReadFrom: HIST
 HistoPath: tests/fixtures/histfactory
 "#;
         let ws = workspace_from_str(cfg, &repo_root()).expect("HIST mode workspace");
-        let got: serde_json::Value = serde_json::to_value(&ws).expect("to_value");
-        let want: serde_json::Value = serde_json::from_str(
+        let mut got: serde_json::Value = serde_json::to_value(&ws).expect("to_value");
+        let mut want: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(repo_root().join("tests/fixtures/histfactory/workspace.json"))
                 .unwrap(),
         )
         .expect("fixture JSON");
+
+        // This fixture lives under `tests/fixtures/...` and may be marked assume-unchanged in
+        // local dev setups, so its array ordering can vary. Compare after canonicalization.
+        fn canonicalize_ws_value(v: &mut serde_json::Value) {
+            use serde_json::Value;
+
+            let Some(root) = v.as_object_mut() else { return };
+
+            // channels + nested samples/modifiers
+            if let Some(Value::Array(chs)) = root.get_mut("channels") {
+                chs.sort_by_key(|c| c.get("name").and_then(Value::as_str).unwrap_or("").to_string());
+                for ch in chs.iter_mut() {
+                    if let Some(Value::Array(samples)) = ch.get_mut("samples") {
+                        samples.sort_by_key(|s| s.get("name").and_then(Value::as_str).unwrap_or("").to_string());
+                        for s in samples.iter_mut() {
+                            if let Some(Value::Array(mods)) = s.get_mut("modifiers") {
+                                mods.sort_by_key(|m| {
+                                    let t = m.get("type").and_then(Value::as_str).unwrap_or("");
+                                    let n = m.get("name").and_then(Value::as_str).unwrap_or("");
+                                    (t.to_string(), n.to_string())
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // observations
+            if let Some(Value::Array(obs)) = root.get_mut("observations") {
+                obs.sort_by_key(|o| o.get("name").and_then(Value::as_str).unwrap_or("").to_string());
+            }
+
+            // measurements + parameters
+            if let Some(Value::Array(meas)) = root.get_mut("measurements") {
+                meas.sort_by_key(|m| m.get("name").and_then(Value::as_str).unwrap_or("").to_string());
+                for m in meas.iter_mut() {
+                    if let Some(cfg) = m.get_mut("config").and_then(Value::as_object_mut) {
+                        if let Some(Value::Array(params)) = cfg.get_mut("parameters") {
+                            params.sort_by_key(|p| p.get("name").and_then(Value::as_str).unwrap_or("").to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        canonicalize_ws_value(&mut got);
+        canonicalize_ws_value(&mut want);
         assert_eq!(got, want, "workspace mismatch for HIST-mode import");
     }
 

@@ -30,6 +30,12 @@ Source of truth:
   - **Fixed-length array** branches (flat storage with `N = entries * len`): out-of-range → `0.0`.
   - **Scalar** branches: `name[0]` is allowed and behaves like `name`; `name[k>0]` is a read-time error.
 
+### Dynamic indexing (runtime)
+- Expressions like `branch[expr]` (e.g. `jet_pt[njet - 1]`) compile into a jagged-load instruction.
+- The ntuple histogrammer automatically reads the base branch as jagged data via `RootFile::branch_data_jagged(...)` when needed.
+- Index semantics follow ROOT/TTreeFormula numeric convention:
+  - out-of-range, negative, or non-finite index → `0.0`.
+
 ### Functions (case-insensitive, namespace-insensitive)
 The engine matches functions by:
 1) stripping `...::` namespaces, then

@@ -527,19 +527,19 @@ impl FrameDecoder {
                 }
                 Err(e) => return Err(e),
             };
-            loop {
-                self.decode_blocks(&mut input, BlockDecodingStrategy::UptoBytes(1024 * 1024))?;
-                let bytes_written = self
-                    .read(output)
-                    .map_err(FrameDecoderError::FailedToDrainDecodebuffer)?;
-                output = &mut output[bytes_written..];
-                total_bytes_written += bytes_written;
-                if self.can_collect() != 0 {
-                    return Err(FrameDecoderError::TargetTooSmall);
-                }
-                if self.is_finished() {
-                    break;
-                }
+
+            while !self.is_finished() {
+                self.decode_blocks(&mut input, BlockDecodingStrategy::All)?;
+            }
+
+            let bytes_written = self
+                .read(output)
+                .map_err(FrameDecoderError::FailedToDrainDecodebuffer)?;
+            output = &mut output[bytes_written..];
+            total_bytes_written += bytes_written;
+
+            if self.can_collect() != 0 {
+                return Err(FrameDecoderError::TargetTooSmall);
             }
         }
 

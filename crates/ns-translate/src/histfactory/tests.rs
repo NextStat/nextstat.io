@@ -23,6 +23,13 @@ fn fixture_pyhf_multichannel() -> (PathBuf, PathBuf) {
     (root.join("config/example.xml"), root)
 }
 
+fn fixture_trex_export_dir(name: &str) -> (PathBuf, PathBuf) {
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/trex_exports");
+    let case_dir = root.join(name);
+    (case_dir.join("combination.xml"), case_dir)
+}
+
 #[test]
 fn histfactory_from_xml_is_deterministic() {
     let xml = fixture_combination_xml();
@@ -58,6 +65,26 @@ fn histfactory_from_xml_is_fast_enough_smoke() {
     let _ = from_xml(&xml).expect("from_xml");
     let elapsed = t0.elapsed();
     assert!(elapsed < Duration::from_secs(10), "HistFactory ingest too slow: {:?}", elapsed);
+}
+
+#[test]
+fn histfactory_trex_export_dirs_ingest_is_deterministic_smoke() {
+    // These are HistFactory export directories (combination.xml + data.root + channels/*.xml).
+    // They intentionally exercise “real export dir” path semantics beyond the small unit fixtures.
+    for name in ["hepdata.116034_DR_Int_EWK", "tttt-prod"] {
+        let (xml, basedir) = fixture_trex_export_dir(name);
+
+        let ws1 = from_xml_with_basedir(&xml, Some(&basedir)).expect("from_xml_with_basedir(ws1)");
+        let ws2 = from_xml_with_basedir(&xml, Some(&basedir)).expect("from_xml_with_basedir(ws2)");
+
+        assert!(!ws1.channels.is_empty(), "expected channels for fixture: {name}");
+        assert!(!ws1.observations.is_empty(), "expected observations for fixture: {name}");
+
+        // Compare as JSON values so map key ordering cannot cause spurious diffs.
+        let v1: Value = serde_json::to_value(ws1).expect("to_value(ws1)");
+        let v2: Value = serde_json::to_value(ws2).expect("to_value(ws2)");
+        assert_eq!(v1, v2, "workspace not deterministic for fixture: {name}");
+    }
 }
 
 #[test]

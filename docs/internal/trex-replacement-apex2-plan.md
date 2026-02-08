@@ -1,7 +1,7 @@
 # TRExFitter Full Replacement — Apex2 Plan (v2)
 
 Created: 2026-02-07  
-Updated: 2026-02-07  
+Updated: 2026-02-08  
 Status: active
 
 Цель: **полная замена TRExFitter** с:
@@ -14,6 +14,7 @@ Status: active
 ## 0) Что уже есть (по коду)
 
 - ROOT-native чтение (TH1 + TTree) и детерминированное заполнение гистограмм: `crates/ns-root`.
+- NTUP expressions: ROOT/TMath алиасы + static/dynamic indexing (`jet_pt[0]`, `jet_pt[idx]`) end-to-end.
 - HistFactory XML + ROOT hists → pyhf workspace: `nextstat import histfactory`.
 - TREx config importer:
   - `ReadFrom: NTUP` + region/sample overrides (selection/weight composition): `crates/ns-translate/src/trex/mod.rs`.
@@ -68,4 +69,3 @@ Status: active
 ### Verification
 - ROOT-suite parity на реалистичных export dirs проходит по фиксированным surface-контрактам.
 - 90%+ выражений из корпуса компилируются/исполняются без ручного rewrite; для остального есть coverage report со span + подсказкой.
-

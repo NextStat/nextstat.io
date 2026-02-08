@@ -46,11 +46,13 @@ Completed (importer semantics + tests):
 - NormFactor `Val/Low/High` surfaced via `measurements[].config.parameters` as init + bounds.
 - CLI: `--parity` enforces deterministic execution (threads=1, stable reductions, Accelerate disabled). Interpolation
   defaults are selected by the ingest path/settings and are documented in `docs/pyhf-parity-contract.md`.
+- HistFactory `ConstraintTerm` support in `combination.xml` (Gamma/LogNormal/Gaussian) with ROOT semantics.
+- TREx ReadFrom=HIST masking semantics (config-as-filter without variable/binning requirements).
 
 Remaining (next focus):
-1. HistFactory `ConstraintTerm` support in `combination.xml` (Gamma/LogNormal/Gaussian).
-2. TREx ReadFrom=HIST full masking semantics (config-as-filter without variable/binning requirements).
-3. Full TREx systematic coverage roadmap (HISTO/SHAPE details, pruning/smoothing semantics, reporting).
+1. Collect 1-3 realistic TREx export dirs (each contains `combination.xml` + ROOT hists) and record baselines.
+2. Full TREx systematic coverage roadmap (smoothing/symmetrize/prune policies, reporting parity).
+3. Expand expression-compat corpus coverage based on real configs (only add constructs we observe).
 
 ## BMCP Tracking
 
