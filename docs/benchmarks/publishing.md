@@ -121,6 +121,7 @@ The `validation_report.json` includes SHA-256 hashes for both the workspace and 
 
 ## Related reading
 
+- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts) — why snapshots are artifact sets (not screenshots).
 - [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec for suite structure and protocols.
 - [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
 - [Third-Party Replication Runbook](/docs/benchmarks/replication) — step-by-step rerun + signed report template.

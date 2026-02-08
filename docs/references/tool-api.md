@@ -107,3 +107,11 @@ Use `nextstat_read_root_histogram` to fetch TH1 content for downstream analysis.
 - Golden outputs: `/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/tool_goldens/simple_workspace_deterministic.v1.json`
 - Generator: `/Users/andresvlc/WebDev/nextstat.io/scripts/generate_tool_goldens.py`
 - Smoke runner: `/Users/andresvlc/WebDev/nextstat.io/scripts/tool_call_smoke.py`
+
+## Server Mode (nextstat-server)
+
+If you run `nextstat-server`, you can also fetch tools and execute them over HTTP:
+- Tool registry: `GET /v1/tools/schema`
+- Tool execution: `POST /v1/tools/execute`
+
+See: `/Users/andresvlc/WebDev/nextstat.io/docs/references/server-api.md`

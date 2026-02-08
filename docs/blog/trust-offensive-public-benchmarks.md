@@ -37,6 +37,19 @@ If you prefer the spec (what we measure, how we publish, what gets pinned), star
 
 ---
 
+## Series (recommended reading order)
+
+1. **Trust Offensive: Public Benchmarks** (this post) — the why + the trust model.
+2. [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — why “rerunnable evidence” changes how scientific software is built.
+3. [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts) — CI artifacts, manifests, and baselines.
+4. [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — external reruns as the strongest trust signal.
+5. [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness) — methodology for HistFactory benchmarking.
+6. [Numerical Accuracy](/blog/numerical-accuracy) — ROOT vs pyhf vs NextStat, with reproducible evidence.
+7. [Differentiable HistFactory in PyTorch](/blog/differentiable-layer-nextstat-pytorch) — training NNs directly on $Z_0$.
+8. [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec) — how we make sampler comparisons meaningful.
+9. [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme) — protocols for regulated-grade benchmarks.
+10. [JAX Compile vs Execution](/blog/jax-compile-vs-execution) — the latency benchmark that matters in short loops.
+
 ## 1) What we’re benchmarking (and what we’re not)
 
 We benchmark **end-to-end workflows** that real users run, not only micro-kernels:
