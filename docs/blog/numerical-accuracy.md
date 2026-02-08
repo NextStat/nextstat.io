@@ -153,7 +153,7 @@ The xmlimport fixture reveals a systematic bias in ROOT at high signal strengths
 
 NextStat and pyhf agree to 1e-7. ROOT overestimates q(mu) by up to 0.051 at mu = 3.0 (0.6% relative), with the discrepancy growing linearly with distance from mu_hat.
 
-**Diagnosis**: The NLL offset between ROOT and NextStat is constant (11.06 +/- 0.001), confirming identical model evaluation. The growing q(mu) delta is purely an optimizer effect: Minuit2's conditional minimizer converges to a slightly higher NLL at extreme mu values, inflating the profile likelihood ratio. This means ROOT would report a **tighter exclusion limit** than is warranted by the data.
+**Diagnosis**: The NLL offset between ROOT and NextStat is approximately constant across the scan (≈11.06, varying by <0.04), consistent with a constant-term convention difference rather than a model mismatch. The growing q(mu) delta is therefore attributed to optimizer convergence: Minuit2's conditional minimizer converges to a slightly higher NLL at extreme mu values, inflating the profile likelihood ratio. This means ROOT would report a **tighter exclusion limit** than is warranted by the data.
 
 ![xmlimport (OverallSys): ROOT bias in q(mu)](./assets/numerical-accuracy/xmlimport-deltaq.svg)
 

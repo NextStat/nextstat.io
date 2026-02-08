@@ -132,45 +132,103 @@ fn scan_histfactory_impl(
     let nll_hat = free.fval;
 
     let base_bounds = model.parameter_bounds();
-    let mut warm_params = free.parameters.clone();
+    let free_params = free.parameters.clone();
+
+    fn pick_best(a: Option<crate::optimizer::OptimizationResult>, b: crate::optimizer::OptimizationResult) -> crate::optimizer::OptimizationResult {
+        match a {
+            None => b,
+            Some(prev) => {
+                if b.fval < prev.fval { b } else { prev }
+            }
+        }
+    }
+
+    let mut init_params = model.parameter_init();
+
+    let mut run_pass = |mus: &[f64]| -> Result<Vec<crate::optimizer::OptimizationResult>> {
+        let mut tape = ns_ad::tape::Tape::new();
+        // Warm-start state for this pass.
+        let mut warm_params = free_params.clone();
+
+        let mut out: Vec<crate::optimizer::OptimizationResult> = Vec::with_capacity(mus.len());
+        for &mu in mus {
+            // Fix POI via bounds clamping — no model clone
+            let mut bounds = base_bounds.clone();
+            bounds[poi] = (mu, mu);
+            warm_params[poi] = mu;
+            init_params[poi] = mu;
+
+            // Build deterministic candidate starts. In parity mode, more starts are worth it.
+            let mut best: Option<crate::optimizer::OptimizationResult> = None;
+            let mut last_err: Option<Error> = None;
+
+            let mut try_start = |start: &[f64]| {
+                match mle.fit_minimum_histfactory_from_with_bounds_with_tape(model, start, &bounds, &mut tape) {
+                    Ok(r) => best = Some(pick_best(best.take(), r)),
+                    Err(e) => {
+                        last_err = Some(e);
+                    }
+                }
+            };
+
+            // 1) Warm-start from previous mu point.
+            try_start(&warm_params);
+
+            if multistart {
+                // 2) Clamp the global MLE to this mu (often a strong start).
+                let mut start2 = free_params.clone();
+                start2[poi] = mu;
+                try_start(&start2);
+
+                // 3) Clamp parameter_init (can help escape warm-start basins on large exports).
+                try_start(&init_params);
+            }
+
+            let fixed = match best {
+                Some(r) => r,
+                None => {
+                    return Err(last_err.unwrap_or_else(|| {
+                        Error::Validation("profile scan: all candidate starts failed".to_string())
+                    }))
+                }
+            };
+
+            // Carry forward for warm-start within this pass.
+            warm_params = fixed.parameters.clone();
+            out.push(fixed);
+        }
+        Ok(out)
+    };
+
+    let forward = run_pass(mu_values)?;
+
+    // In parity mode, also run the scan in reverse order and take the best conditional minimum
+    // per mu. This is deterministic and helps avoid warm-start path dependence on large exports.
+    let reverse: Option<Vec<crate::optimizer::OptimizationResult>> = if multistart {
+        let mut mus_rev = mu_values.to_vec();
+        mus_rev.reverse();
+        Some(run_pass(&mus_rev)?)
+    } else {
+        None
+    };
 
     let mut points = Vec::with_capacity(mu_values.len());
-    for &mu in mu_values {
-        // Fix POI via bounds clamping — no model clone
-        let mut bounds = base_bounds.clone();
-        bounds[poi] = (mu, mu);
-        warm_params[poi] = mu;
-
-        let fixed_warm = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
-            model,
-            &warm_params,
-            &bounds,
-            &mut tape,
-        )?;
-        let fixed = if multistart {
-            // Secondary start: clamp the global MLE to the tested mu. This is deterministic and
-            // often provides a better initial point than chaining warm-starts across mu.
-            let mut start2 = free.parameters.clone();
-            start2[poi] = mu;
-            let fixed2 = mle.fit_minimum_histfactory_from_with_bounds_with_tape(
-                model,
-                &start2,
-                &bounds,
-                &mut tape,
-            )?;
-            if fixed2.fval < fixed_warm.fval { fixed2 } else { fixed_warm }
-        } else {
-            fixed_warm
-        };
+    for (i, &mu) in mu_values.iter().enumerate() {
+        let mut fixed = &forward[i];
+        if let Some(ref rev) = reverse {
+            // rev is in reversed mu order.
+            let j = mu_values.len() - 1 - i;
+            let cand = &rev[j];
+            if cand.fval < fixed.fval {
+                fixed = cand;
+            }
+        }
 
         let llr = 2.0 * (fixed.fval - nll_hat);
         let mut q = llr.max(0.0);
         if mu_hat > mu {
             q = 0.0;
         }
-
-        // Carry forward for warm-start
-        warm_params = fixed.parameters.clone();
 
         points.push(ProfilePoint {
             mu,

@@ -214,7 +214,7 @@ conditional minimizer converges to a slightly higher local NLL, inflating q(mu).
 This is the same mechanism documented in `docs/references/optimizer-convergence.md`
 for SLSQP vs L-BFGS-B.
 
-**Evidence:** The NLL offset is constant (11.062 ± 0.001) across all mu values,
+**Evidence:** The NLL offset is approximately constant (≈11.06 with <0.04 drift) across all mu values,
 confirming identical model evaluation:
 
 | Point | ROOT NLL | NS NLL | Offset |
