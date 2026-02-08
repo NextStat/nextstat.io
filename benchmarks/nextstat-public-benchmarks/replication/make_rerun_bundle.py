@@ -35,7 +35,8 @@ def main() -> int:
     published_dir = Path(args.published).resolve()
     published_manifest = load_json(published_dir / "baseline_manifest.json")
 
-    bundle_root = (repo_root / args.out_root).resolve()
+    out_root_in = Path(args.out_root)
+    bundle_root = (out_root_in if out_root_in.is_absolute() else (repo_root / out_root_in)).resolve()
     bundle_root.mkdir(parents=True, exist_ok=True)
     bundle_dir = bundle_root / f"replication-{args.rerun_id}"
     bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -107,4 +108,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
