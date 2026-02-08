@@ -112,14 +112,16 @@ pub fn from_xml_with_basedir(
     // Build Workspace
     let mut ws_channels = Vec::new();
     let mut ws_observations = Vec::new();
+    let mut normfactor_settings: HashMap<String, (f64, f64, f64)> = HashMap::new();
 
     for ch_xml in &channels_xml {
-        let (channel, observation) = build_channel(ch_xml, base_dir, &config, &mut root_cache)?;
+        let (channel, observation) =
+            build_channel(ch_xml, base_dir, &config, &mut root_cache, &mut normfactor_settings)?;
         ws_channels.push(channel);
         ws_observations.push(observation);
     }
 
-    let ws_measurements = build_measurements(&config)?;
+    let ws_measurements = build_measurements(&config, &normfactor_settings)?;
 
     Ok(Workspace {
         channels: ws_channels,
@@ -135,6 +137,7 @@ fn build_channel(
     base_dir: &Path,
     config: &CombinationConfig,
     root_cache: &mut HashMap<PathBuf, RootFile>,
+    normfactor_settings: &mut HashMap<String, (f64, f64, f64)>,
 ) -> Result<(Channel, Observation)> {
     // Read observed data
     let obs_hist = resolve_and_read_histogram(
@@ -150,7 +153,7 @@ fn build_channel(
     // Build samples
     let mut samples = Vec::new();
     for s in &ch.samples {
-        let sample = build_sample(s, ch, base_dir, config, root_cache)?;
+        let sample = build_sample(s, ch, base_dir, config, root_cache, normfactor_settings)?;
         samples.push(sample);
     }
 
@@ -164,8 +167,9 @@ fn build_sample(
     s: &channel::SampleXml,
     ch: &ChannelXml,
     base_dir: &Path,
-    _config: &CombinationConfig,
+    config: &CombinationConfig,
     root_cache: &mut HashMap<PathBuf, RootFile>,
+    normfactor_settings: &mut HashMap<String, (f64, f64, f64)>,
 ) -> Result<Sample> {
     // Resolve input file: sample > channel defaults
     let input_file = s.input_file.as_deref().or(ch.input_file.as_deref());
@@ -177,9 +181,46 @@ fn build_sample(
 
     // Build modifiers
     let mut modifiers = Vec::new();
+
+    // Record NormFactor constraints (Val/Low/High) so they can be surfaced via MeasurementConfig.
+    for m in &s.modifiers {
+        if let ModifierXml::NormFactor { name, val, low, high } = m {
+            match normfactor_settings.get(name) {
+                None => {
+                    normfactor_settings.insert(name.clone(), (*val, *low, *high));
+                }
+                Some((v0, lo0, hi0)) => {
+                    if (*v0 - *val).abs() > 1e-12 || (*lo0 - *low).abs() > 1e-12 || (*hi0 - *high).abs() > 1e-12
+                    {
+                        return Err(Error::Validation(format!(
+                            "NormFactor '{}' has inconsistent settings across channels/samples (existing val/lo/hi = {}/{}/{}; new = {}/{}/{})",
+                            name, v0, lo0, hi0, val, low, high
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    // HistFactory lumi: apply a `lumi` modifier to samples normalized by theory.
+    // The parameter name is conventionally "Lumi" (as used in ParamSetting in fixtures).
+    if s.normalize_by_theory && config.measurements.iter().any(|m| m.lumi_rel_err > 0.0) {
+        modifiers.push(Modifier::Lumi { name: "Lumi".to_string(), data: None });
+    }
+
     for m in &s.modifiers {
         let mods =
-            build_modifier(m, histo_path, input_file, base_dir, root_cache, &nominal, &ch.name)?;
+            build_modifier(
+                m,
+                histo_path,
+                input_file,
+                base_dir,
+                root_cache,
+                &nominal,
+                &ch.name,
+                &s.name,
+                ch.stat_error_config.as_ref().map(|c| c.constraint_type.as_str()),
+            )?;
         modifiers.extend(mods);
     }
 
@@ -195,6 +236,8 @@ fn build_modifier(
     root_cache: &mut HashMap<PathBuf, RootFile>,
     nominal: &Histogram,
     channel_name: &str,
+    sample_name: &str,
+    staterror_constraint_type: Option<&str>,
 ) -> Result<Vec<Modifier>> {
     match m {
         ModifierXml::NormFactor { name, .. } => {
@@ -232,9 +275,23 @@ fn build_modifier(
             let data = if let Some(hn) = histo_name {
                 let hp = histo_path.as_deref().or(default_histo_path);
                 let ifn = input_file.as_deref().or(default_input_file);
-                resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content
+                let rel = resolve_and_read_histogram(hn, hp, ifn, base_dir, root_cache)?.bin_content;
+                if rel.len() != nominal.bin_content.len() {
+                    return Err(Error::Xml(format!(
+                        "ShapeSys histogram '{}' bin count mismatch: got={} expected={} (channel={})",
+                        hn,
+                        rel.len(),
+                        nominal.bin_content.len(),
+                        channel_name,
+                    )));
+                }
+                // HistFactory convention: ShapeSys histogram stores RELATIVE uncertainties.
+                rel.iter()
+                    .zip(nominal.bin_content.iter())
+                    .map(|(r, n)| r * n)
+                    .collect()
             } else {
-                // If no histogram specified, use relative uncertainties from nominal
+                // If no histogram specified, fall back to Poisson-ish absolute uncertainties.
                 nominal.bin_content.iter().map(|v| v.sqrt()).collect()
             };
 
@@ -275,20 +332,29 @@ fn build_modifier(
             };
 
             // StatError name follows pyhf convention: "staterror_{channel_name}"
-            let stat_name = format!("staterror_{}", channel_name);
-
-            Ok(vec![Modifier::StatError { name: stat_name, data }])
+            let constraint_type = staterror_constraint_type.unwrap_or("Gaussian");
+            if constraint_type.eq_ignore_ascii_case("poisson") {
+                // Poisson constraint implies Barlow–Beeston: use shapesys (per-sample).
+                let name = format!("staterror_{}_{}", channel_name, sample_name);
+                Ok(vec![Modifier::ShapeSys { name, data }])
+            } else {
+                let stat_name = format!("staterror_{}", channel_name);
+                Ok(vec![Modifier::StatError { name: stat_name, data }])
+            }
         }
     }
 }
 
 /// Build Measurement configs from combination.
-fn build_measurements(config: &CombinationConfig) -> Result<Vec<Measurement>> {
+fn build_measurements(
+    config: &CombinationConfig,
+    normfactor_settings: &HashMap<String, (f64, f64, f64)>,
+) -> Result<Vec<Measurement>> {
     config
         .measurements
         .iter()
         .map(|m| {
-            let parameters: Vec<ParameterConfig> = m
+            let mut parameters: Vec<ParameterConfig> = m
                 .param_settings
                 .iter()
                 .flat_map(|ps| {
@@ -296,12 +362,55 @@ fn build_measurements(config: &CombinationConfig) -> Result<Vec<Measurement>> {
                         name: name.clone(),
                         inits: ps.val.map(|v| vec![v]).unwrap_or_default(),
                         bounds: Vec::new(),
-                        fixed: false,
+                        fixed: ps.is_const,
                         auxdata: Vec::new(),
                         sigmas: Vec::new(),
                     })
                 })
                 .collect();
+
+            // Add/augment lumi constraint if configured.
+            if m.lumi_rel_err > 0.0 {
+                let idx = parameters.iter().position(|p| p.name == "Lumi");
+                if let Some(i) = idx {
+                    if parameters[i].auxdata.is_empty() {
+                        parameters[i].auxdata = vec![1.0];
+                    }
+                    if parameters[i].sigmas.is_empty() {
+                        parameters[i].sigmas = vec![m.lumi_rel_err];
+                    }
+                    if parameters[i].inits.is_empty() {
+                        parameters[i].inits = vec![1.0];
+                    }
+                } else {
+                    parameters.push(ParameterConfig {
+                        name: "Lumi".to_string(),
+                        inits: vec![1.0],
+                        bounds: Vec::new(),
+                        fixed: false,
+                        auxdata: vec![1.0],
+                        sigmas: vec![m.lumi_rel_err],
+                    });
+                }
+            }
+
+            // Surface NormFactor Val/Low/High as parameter inits/bounds (used by the model).
+            for (name, (val, low, high)) in normfactor_settings {
+                let idx = parameters.iter().position(|p| p.name == *name);
+                if let Some(i) = idx {
+                    parameters[i].inits = vec![*val];
+                    parameters[i].bounds = vec![[*low, *high]];
+                } else {
+                    parameters.push(ParameterConfig {
+                        name: name.clone(),
+                        inits: vec![*val],
+                        bounds: vec![[*low, *high]],
+                        fixed: false,
+                        auxdata: Vec::new(),
+                        sigmas: Vec::new(),
+                    });
+                }
+            }
 
             Ok(Measurement {
                 name: m.name.clone(),

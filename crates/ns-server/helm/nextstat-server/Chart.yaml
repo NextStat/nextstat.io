@@ -1,0 +1,14 @@
+apiVersion: v2
+name: nextstat-server
+description: NextStat inference server — self-hosted GPU statistical fits over HTTP
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - nextstat
+  - hep
+  - statistics
+  - gpu
+  - inference
+maintainers:
+  - name: NextStat Team

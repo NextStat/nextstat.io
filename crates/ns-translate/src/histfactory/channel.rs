@@ -12,10 +12,21 @@ pub struct ChannelXml {
     pub input_file: Option<String>,
     /// Default histogram path prefix.
     pub histo_path: Option<String>,
+    /// Optional channel-level StatError configuration.
+    pub stat_error_config: Option<StatErrorConfig>,
     /// Observed data histogram reference.
     pub data: DataRef,
     /// Samples in this channel.
     pub samples: Vec<SampleXml>,
+}
+
+/// Channel-level StatError configuration.
+#[derive(Debug, Clone)]
+pub struct StatErrorConfig {
+    /// HistFactory: relative error threshold for pruning small stat errors.
+    pub rel_error_threshold: Option<f64>,
+    /// Constraint type, typically "Poisson" or "Gaussian".
+    pub constraint_type: String,
 }
 
 /// Reference to observed data histogram.
@@ -40,6 +51,8 @@ pub struct SampleXml {
     pub input_file: Option<String>,
     /// Histogram path (overrides channel default).
     pub histo_path: Option<String>,
+    /// Whether this sample should be scaled by luminosity (HistFactory NormalizeByTheory).
+    pub normalize_by_theory: bool,
     /// Modifiers on this sample.
     pub modifiers: Vec<ModifierXml>,
 }
@@ -101,6 +114,13 @@ pub fn parse_channel(path: &Path) -> Result<ChannelXml> {
     let input_file = root.attribute("InputFile").map(String::from);
     let histo_path = root.attribute("HistoPath").map(String::from);
 
+    // <StatErrorConfig> element (optional)
+    let stat_error_config = root.children().find(|n| n.has_tag_name("StatErrorConfig")).map(|n| {
+        let constraint_type = n.attribute("ConstraintType").unwrap_or("Poisson").to_string();
+        let rel_error_threshold = n.attribute("RelErrorThreshold").and_then(|v| v.parse().ok());
+        StatErrorConfig { rel_error_threshold, constraint_type }
+    });
+
     // <Data> element
     let data_node = root
         .children()
@@ -123,7 +143,7 @@ pub fn parse_channel(path: &Path) -> Result<ChannelXml> {
         .map(parse_sample)
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(ChannelXml { name, input_file, histo_path, data, samples })
+    Ok(ChannelXml { name, input_file, histo_path, stat_error_config, data, samples })
 }
 
 fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
@@ -139,6 +159,10 @@ fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
 
     let input_file = node.attribute("InputFile").map(String::from);
     let histo_path = node.attribute("HistoPath").map(String::from);
+    let normalize_by_theory = node
+        .attribute("NormalizeByTheory")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     let mut modifiers = Vec::new();
 
@@ -150,7 +174,7 @@ fn parse_sample(node: roxmltree::Node) -> Result<SampleXml> {
         }
     }
 
-    Ok(SampleXml { name, histo_name, input_file, histo_path, modifiers })
+    Ok(SampleXml { name, histo_name, input_file, histo_path, normalize_by_theory, modifiers })
 }
 
 fn parse_modifier(node: roxmltree::Node) -> Result<Option<ModifierXml>> {
