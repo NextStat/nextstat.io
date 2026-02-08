@@ -38,7 +38,8 @@ def main() -> int:
 
     repo_root = Path(__file__).resolve().parents[1]
     snap_dir = Path(args.snapshot_dir).resolve()
-    out_dir = (repo_root / args.out_dir).resolve()
+    out_dir_in = Path(args.out_dir)
+    out_dir = (out_dir_in if out_dir_in.is_absolute() else (repo_root / out_dir_in)).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest_path = snap_dir / "baseline_manifest.json"
@@ -62,7 +63,8 @@ def main() -> int:
     digest = sha256_file(archive_path)
     (out_dir / f"{archive_name}.sha256").write_text(f"{digest}  {archive_name}\n")
 
-    template_path = (repo_root / args.template).resolve()
+    template_in = Path(args.template)
+    template_path = (template_in if template_in.is_absolute() else (repo_root / template_in)).resolve()
     meta = load_json(template_path) if template_path.exists() else {}
     desc = meta.get("description", "")
     desc2 = (
@@ -82,4 +84,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

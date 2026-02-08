@@ -168,7 +168,15 @@ def main() -> int:
     number, times = bench_time_per_call_raw(f_nll, target_s=float(args.target_s), repeat=int(args.repeat))
     t = min(times)
 
-    dataset_id = f"generated:{spec['kind']}:seed{int(args.seed)}"
+    # Dataset id must be stable and *disambiguate* distinct generated datasets.
+    # This id is included in baseline manifests and is used for third-party replication.
+    if spec["kind"] == "nlme_pk_1c_oral":
+        dataset_id = (
+            f"generated:{spec['kind']}:n_sub{int(spec['n_subjects'])}:"
+            f"n_obs{int(spec['n_obs_per_subject'])}:seed{int(args.seed)}"
+        )
+    else:
+        dataset_id = f"generated:{spec['kind']}:n_obs{int(args.n_obs)}:seed{int(args.seed)}"
     dataset_sha = sha256_json_obj(spec)
 
     doc: dict[str, Any] = {
