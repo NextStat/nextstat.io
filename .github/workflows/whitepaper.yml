@@ -1,0 +1,45 @@
+name: Whitepaper
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version (default: Cargo.toml workspace version)"
+        required: false
+        type: string
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/WHITEPAPER.md"
+      - "docs/papers/**"
+      - "scripts/build_whitepaper.py"
+      - ".github/workflows/whitepaper.yml"
+
+jobs:
+  build:
+    name: Build PDF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build whitepaper PDF (default version)
+        if: github.event_name != 'workflow_dispatch' || inputs.version == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/build_whitepaper.py
+
+      - name: Build whitepaper PDF (override version)
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/build_whitepaper.py --version "${{ inputs.version }}"
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whitepaper
+          path: dist/whitepaper/*
+

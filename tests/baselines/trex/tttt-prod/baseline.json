@@ -1,0 +1,1863 @@
+{
+  "schema_version": "trex_baseline_v0",
+  "meta": {
+    "created_at": "2026-02-08T17:45:40Z",
+    "deterministic": true,
+    "threads": 1,
+    "seed": null,
+    "tool_versions": {
+      "root": "6.38.00",
+      "trexfitter": null,
+      "nextstat": "0.1.0"
+    },
+    "inputs": {
+      "export_dir": "tests/fixtures/trex_exports/tttt-prod",
+      "combination_xml": "tests/fixtures/trex_exports/tttt-prod/combination.xml",
+      "rootdir": "tests/fixtures/trex_exports/tttt-prod",
+      "hashes": [
+        {
+          "path": "tests/fixtures/trex_exports/tttt-prod/combination.xml",
+          "rel": "combination.xml",
+          "bytes": 549,
+          "sha256": "4f8533db5b792b40341e5aca1fe5a69cff8342c63b6460f4301947a9939ff3ea"
+        },
+        {
+          "path": "tests/fixtures/trex_exports/tttt-prod/data.root",
+          "rel": "data.root",
+          "bytes": 541790,
+          "sha256": "b1e498edb02f70043aff1df58324ff3e6cbdaa1cf11a1854a1f0bb478eb87a1a"
+        }
+      ]
+    },
+    "baseline_env": {
+      "timestamp": 1770572737,
+      "datetime_utc": "2026-02-08T17:45:37Z",
+      "hostname": "MacBook-Pro.local",
+      "python": "3.14.2",
+      "python_full": "3.14.2 (main, Dec  5 2025, 16:49:16) [Clang 17.0.0 (clang-1700.4.4.1)]",
+      "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+      "machine": "arm64",
+      "system": "Darwin",
+      "cpu": "Apple M5",
+      "git": {
+        "commit": "e8ea58ee16c71cfe064e3759a46761d8e3a8a13d",
+        "commit_short": "e8ea58ee",
+        "branch": "main",
+        "dirty": true
+      },
+      "root_version": "6.38.00",
+      "trexfitter_version": null
+    },
+    "reference": {
+      "mode": "histfactory_export"
+    },
+    "root_fit": {
+      "status": 0,
+      "nll_hat": 2153.275898689578,
+      "missing_params": [
+        "alpha_ATLAS_EL_SF_ChargeMisID_Stat",
+        "alpha_ATLAS_EL_SF_ID",
+        "alpha_ATLAS_EL_SF_ISO",
+        "alpha_ATLAS_EL_SF_RECO",
+        "alpha_ATLAS_EL_SF_TRIGGER",
+        "alpha_ATLAS_EM_RES",
+        "alpha_ATLAS_EM_SCALE",
+        "alpha_ATLAS_FTAG_MV2c10_B0",
+        "alpha_ATLAS_FTAG_MV2c10_B1",
+        "alpha_ATLAS_FTAG_MV2c10_B10",
+        "alpha_ATLAS_FTAG_MV2c10_B11",
+        "alpha_ATLAS_FTAG_MV2c10_B12",
+        "alpha_ATLAS_FTAG_MV2c10_B13",
+        "alpha_ATLAS_FTAG_MV2c10_B14",
+        "alpha_ATLAS_FTAG_MV2c10_B15",
+        "alpha_ATLAS_FTAG_MV2c10_B16",
+        "alpha_ATLAS_FTAG_MV2c10_B17",
+        "alpha_ATLAS_FTAG_MV2c10_B18",
+        "alpha_ATLAS_FTAG_MV2c10_B19",
+        "alpha_ATLAS_FTAG_MV2c10_B2",
+        "alpha_ATLAS_FTAG_MV2c10_B20",
+        "alpha_ATLAS_FTAG_MV2c10_B21",
+        "alpha_ATLAS_FTAG_MV2c10_B22",
+        "alpha_ATLAS_FTAG_MV2c10_B23",
+        "alpha_ATLAS_FTAG_MV2c10_B24",
+        "alpha_ATLAS_FTAG_MV2c10_B25",
+        "alpha_ATLAS_FTAG_MV2c10_B26",
+        "alpha_ATLAS_FTAG_MV2c10_B27",
+        "alpha_ATLAS_FTAG_MV2c10_B28",
+        "alpha_ATLAS_FTAG_MV2c10_B29",
+        "alpha_ATLAS_FTAG_MV2c10_B3",
+        "alpha_ATLAS_FTAG_MV2c10_B30",
+        "alpha_ATLAS_FTAG_MV2c10_B31",
+        "alpha_ATLAS_FTAG_MV2c10_B32",
+        "alpha_ATLAS_FTAG_MV2c10_B33",
+        "alpha_ATLAS_FTAG_MV2c10_B34",
+        "alpha_ATLAS_FTAG_MV2c10_B35",
+        "alpha_ATLAS_FTAG_MV2c10_B36",
+        "alpha_ATLAS_FTAG_MV2c10_B37",
+        "alpha_ATLAS_FTAG_MV2c10_B38",
+        "alpha_ATLAS_FTAG_MV2c10_B39",
+        "alpha_ATLAS_FTAG_MV2c10_B4",
+        "alpha_ATLAS_FTAG_MV2c10_B40",
+        "alpha_ATLAS_FTAG_MV2c10_B41",
+        "alpha_ATLAS_FTAG_MV2c10_B42",
+        "alpha_ATLAS_FTAG_MV2c10_B43",
+        "alpha_ATLAS_FTAG_MV2c10_B44",
+        "alpha_ATLAS_FTAG_MV2c10_B5",
+        "alpha_ATLAS_FTAG_MV2c10_B6",
+        "alpha_ATLAS_FTAG_MV2c10_B7",
+        "alpha_ATLAS_FTAG_MV2c10_B8",
+        "alpha_ATLAS_FTAG_MV2c10_B9",
+        "alpha_ATLAS_FTAG_MV2c10_C0",
+        "alpha_ATLAS_FTAG_MV2c10_C1",
+        "alpha_ATLAS_FTAG_MV2c10_C10",
+        "alpha_ATLAS_FTAG_MV2c10_C11",
+        "alpha_ATLAS_FTAG_MV2c10_C12",
+        "alpha_ATLAS_FTAG_MV2c10_C13",
+        "alpha_ATLAS_FTAG_MV2c10_C14",
+        "alpha_ATLAS_FTAG_MV2c10_C15",
+        "alpha_ATLAS_FTAG_MV2c10_C16",
+        "alpha_ATLAS_FTAG_MV2c10_C17",
+        "alpha_ATLAS_FTAG_MV2c10_C18",
+        "alpha_ATLAS_FTAG_MV2c10_C19",
+        "alpha_ATLAS_FTAG_MV2c10_C2",
+        "alpha_ATLAS_FTAG_MV2c10_C3",
+        "alpha_ATLAS_FTAG_MV2c10_C4",
+        "alpha_ATLAS_FTAG_MV2c10_C5",
+        "alpha_ATLAS_FTAG_MV2c10_C6",
+        "alpha_ATLAS_FTAG_MV2c10_C7",
+        "alpha_ATLAS_FTAG_MV2c10_C8",
+        "alpha_ATLAS_FTAG_MV2c10_C9",
+        "alpha_ATLAS_FTAG_MV2c10_Light0",
+        "alpha_ATLAS_FTAG_MV2c10_Light1",
+        "alpha_ATLAS_FTAG_MV2c10_Light10",
+        "alpha_ATLAS_FTAG_MV2c10_Light11",
+        "alpha_ATLAS_FTAG_MV2c10_Light12",
+        "alpha_ATLAS_FTAG_MV2c10_Light13",
+        "alpha_ATLAS_FTAG_MV2c10_Light14",
+        "alpha_ATLAS_FTAG_MV2c10_Light15",
+        "alpha_ATLAS_FTAG_MV2c10_Light16",
+        "alpha_ATLAS_FTAG_MV2c10_Light17",
+        "alpha_ATLAS_FTAG_MV2c10_Light18",
+        "alpha_ATLAS_FTAG_MV2c10_Light19",
+        "alpha_ATLAS_FTAG_MV2c10_Light2",
+        "alpha_ATLAS_FTAG_MV2c10_Light3",
+        "alpha_ATLAS_FTAG_MV2c10_Light4",
+        "alpha_ATLAS_FTAG_MV2c10_Light5",
+        "alpha_ATLAS_FTAG_MV2c10_Light6",
+        "alpha_ATLAS_FTAG_MV2c10_Light7",
+        "alpha_ATLAS_FTAG_MV2c10_Light8",
+        "alpha_ATLAS_FTAG_MV2c10_Light9",
+        "alpha_ATLAS_JER_DataVsMC",
+        "alpha_ATLAS_JER_DataVsMC_AFII",
+        "alpha_ATLAS_JER_EffectiveNP_1",
+        "alpha_ATLAS_JER_EffectiveNP_2",
+        "alpha_ATLAS_JER_EffectiveNP_3",
+        "alpha_ATLAS_JER_EffectiveNP_4",
+        "alpha_ATLAS_JER_EffectiveNP_5",
+        "alpha_ATLAS_JER_EffectiveNP_6",
+        "alpha_ATLAS_JER_EffectiveNP_7restTerm",
+        "alpha_ATLAS_JES_BJES_Response",
+        "alpha_ATLAS_JES_EffectiveNP_Detector1",
+        "alpha_ATLAS_JES_EffectiveNP_Mixed1",
+        "alpha_ATLAS_JES_EffectiveNP_Mixed2",
+        "alpha_ATLAS_JES_EffectiveNP_Mixed3",
+        "alpha_ATLAS_JES_EffectiveNP_Modelling1",
+        "alpha_ATLAS_JES_EffectiveNP_Modelling2",
+        "alpha_ATLAS_JES_EffectiveNP_Modelling3",
+        "alpha_ATLAS_JES_EffectiveNP_Modelling4",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical1",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical2",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical3",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical4",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical5",
+        "alpha_ATLAS_JES_EffectiveNP_Statistical6",
+        "alpha_ATLAS_JES_EtaIntercalibration_Modelling",
+        "alpha_ATLAS_JES_EtaIntercalibration_TotalStat",
+        "alpha_ATLAS_JES_Flavor_Composition",
+        "alpha_ATLAS_JES_Flavor_Composition_Sig",
+        "alpha_ATLAS_JES_Flavor_Response",
+        "alpha_ATLAS_JES_Pileup_OffsetMu",
+        "alpha_ATLAS_JES_Pileup_OffsetNPV",
+        "alpha_ATLAS_JES_Pileup_RhoTopology",
+        "alpha_ATLAS_JES_RelativeNonClosure_MC16_AFII",
+        "alpha_ATLAS_JES_SingleParticle_HighPt",
+        "alpha_ATLAS_MET_SoftResPara",
+        "alpha_ATLAS_MET_SoftResPerp",
+        "alpha_ATLAS_MET_SoftScale",
+        "alpha_ATLAS_MU_ID",
+        "alpha_ATLAS_MU_MS",
+        "alpha_ATLAS_MU_SAGITTA_RESBIAS",
+        "alpha_ATLAS_MU_SCALE",
+        "alpha_ATLAS_MU_SF_ID_Stat",
+        "alpha_ATLAS_MU_SF_ID_Syst",
+        "alpha_ATLAS_MU_SF_ISO_Stat",
+        "alpha_ATLAS_MU_SF_ISO_Syst",
+        "alpha_ATLAS_MU_SF_TRIG_Stat",
+        "alpha_ATLAS_MU_SF_TRIG_Syst",
+        "alpha_ATLAS_MU_SF_TTVA_Stat",
+        "alpha_ATLAS_MU_SF_TTVA_Syst",
+        "alpha_CO_ShapeSyst_simple",
+        "alpha_Gstr_ShapeSyst_simple",
+        "alpha_HFe_ShapeSyst",
+        "alpha_HFm_ShapeSyst",
+        "alpha_Other_truthgbb_3b",
+        "alpha_Other_truthgbb_4b",
+        "alpha_QMisID_Sys",
+        "alpha_VV_Xsec",
+        "alpha_jet_vertex_tagger",
+        "alpha_luminosity",
+        "alpha_others_Xsec",
+        "alpha_pileup_reweighting",
+        "alpha_singleTop_Xsec",
+        "alpha_ttH_Gen",
+        "alpha_ttH_PDF",
+        "alpha_ttH_Xsec",
+        "alpha_ttH_truthgbb_3b",
+        "alpha_ttH_truthgbb_4b",
+        "alpha_ttH_varRF",
+        "alpha_ttWW_Xsec",
+        "alpha_ttW_Gen",
+        "alpha_ttW_Syst_Ext_2b7j",
+        "alpha_ttW_Syst_Ext_2b8j",
+        "alpha_ttW_truthgbb_3b",
+        "alpha_ttW_truthgbb_4b",
+        "alpha_ttW_varRF",
+        "alpha_ttZ_Gen",
+        "alpha_ttZ_PDF",
+        "alpha_ttZ_Xsec",
+        "alpha_ttZ_truthgbb_3b",
+        "alpha_ttZ_truthgbb_4b",
+        "alpha_ttZ_varRF",
+        "alpha_ttbar_Xsec_3b",
+        "alpha_ttbar_Xsec_4b",
+        "alpha_ttbar_Xsec_light",
+        "alpha_ttbar_Xsec_other",
+        "alpha_ttt_Xsec",
+        "alpha_ttt_truthgbb_4b",
+        "alpha_tttt_PDF",
+        "alpha_tttt_syst_PS",
+        "alpha_tttt_syst_varRF",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_0",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_1",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_2",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_3",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_4",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_5",
+        "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_6",
+        "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_0",
+        "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_1",
+        "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_2",
+        "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_3",
+        "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_4",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_0",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_1",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_10",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_11",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_12",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_13",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_14",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_15",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_16",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_2",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_3",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_4",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_5",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_6",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_7",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_8",
+        "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_9",
+        "gamma_stat_CR1b3le_1bin_bin_0",
+        "gamma_stat_CR1b3lm_1bin_bin_0",
+        "gamma_stat_CRttbarCO2l_MeePVCO_bin_0",
+        "gamma_stat_CRttbarCO2l_MeePVCO_bin_1",
+        "gamma_stat_CRttbarCO2l_MeePVCO_bin_2",
+        "gamma_stat_CRttbarCO2l_MeePVCO_bin_3",
+        "gamma_stat_CRttbarCO2l_MeePVCO_bin_4",
+        "gamma_stat_SR_AllBDT_bin_10",
+        "gamma_stat_SR_AllBDT_bin_11",
+        "gamma_stat_SR_AllBDT_bin_12",
+        "gamma_stat_SR_AllBDT_bin_13",
+        "gamma_stat_SR_AllBDT_bin_14",
+        "gamma_stat_SR_AllBDT_bin_15",
+        "gamma_stat_SR_AllBDT_bin_16",
+        "gamma_stat_SR_AllBDT_bin_9"
+      ]
+    }
+  },
+  "fit": {
+    "twice_nll": 4306.551797379157,
+    "parameters": [
+      {
+        "name": "NF_ttW",
+        "value": 1.560674186686395,
+        "uncertainty": 0.2833608561234741
+      },
+      {
+        "name": "NF_ttbar_CO",
+        "value": 1.610029645473181,
+        "uncertainty": 0.4364146905596608
+      },
+      {
+        "name": "NF_ttbar_HFe",
+        "value": 0.8542368993749645,
+        "uncertainty": 0.4061479189602902
+      },
+      {
+        "name": "NF_ttbar_HFm",
+        "value": 1.076461881312917,
+        "uncertainty": 0.3427580942539066
+      },
+      {
+        "name": "NF_ttbar_gstr",
+        "value": 0.9349066322772436,
+        "uncertainty": 0.3822120188648293
+      },
+      {
+        "name": "alpha_ATLAS_EL_SF_ChargeMisID_Stat",
+        "value": 0.004210667700612625,
+        "uncertainty": 0.9933179155783184
+      },
+      {
+        "name": "alpha_ATLAS_EL_SF_ID",
+        "value": -0.06448673659872839,
+        "uncertainty": 0.9922860164480766
+      },
+      {
+        "name": "alpha_ATLAS_EL_SF_ISO",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_EL_SF_RECO",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_EL_SF_TRIGGER",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_EM_RES",
+        "value": -0.0190218459394681,
+        "uncertainty": 0.9931143839531938
+      },
+      {
+        "name": "alpha_ATLAS_EM_SCALE",
+        "value": 0.001636184441456967,
+        "uncertainty": 0.9932569481522737
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B0",
+        "value": -0.0008011908518806843,
+        "uncertainty": 0.9932164407803645
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B1",
+        "value": 0.008012964411346912,
+        "uncertainty": 0.9932012587493949
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B10",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B11",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B12",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B13",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B14",
+        "value": -0.0003467207186946819,
+        "uncertainty": 0.9933496884963353
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B15",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B16",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B17",
+        "value": 0.0001860301768275008,
+        "uncertainty": 0.9933471186763607
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B18",
+        "value": 0.0007529890971480491,
+        "uncertainty": 0.9933421148106023
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B19",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B2",
+        "value": 0.01655252247141026,
+        "uncertainty": 0.9931289552761182
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B20",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B21",
+        "value": 0.004523145753276836,
+        "uncertainty": 0.9933043953697313
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B22",
+        "value": -0.0003789963313893807,
+        "uncertainty": 0.9933462358282517
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B23",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B24",
+        "value": -0.0008696542323505252,
+        "uncertainty": 0.9933426973372211
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B25",
+        "value": -7.82241474656109e-05,
+        "uncertainty": 0.9933427139794615
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B26",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B27",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B28",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B29",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B3",
+        "value": -0.004093392760258774,
+        "uncertainty": 0.9933132362657632
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B30",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B31",
+        "value": -0.001849485584555222,
+        "uncertainty": 0.9933520834717526
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B32",
+        "value": 9.614702700666555e-08,
+        "uncertainty": 0.9933476089851351
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B33",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B34",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B35",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B36",
+        "value": 0.0004067999952606094,
+        "uncertainty": 0.9933464066812034
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B37",
+        "value": 0.0002463382731532349,
+        "uncertainty": 0.993347085085762
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B38",
+        "value": -8.716905850469914e-06,
+        "uncertainty": 0.9933476380609724
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B39",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B4",
+        "value": -0.001345884013243537,
+        "uncertainty": 0.993371056287137
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B40",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B41",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B42",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B43",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B44",
+        "value": 5.025368052802293e-06,
+        "uncertainty": 0.9933476147155484
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B5",
+        "value": 0.004180234702950703,
+        "uncertainty": 0.9931648993604161
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B6",
+        "value": -0.003790998061061757,
+        "uncertainty": 0.9933534931505084
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B7",
+        "value": 0.0003022663861074193,
+        "uncertainty": 0.9933498729299441
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B8",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_B9",
+        "value": -0.001582304836600379,
+        "uncertainty": 0.9933294644608739
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C0",
+        "value": 0.04304743907594277,
+        "uncertainty": 0.990120253538985
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C1",
+        "value": -0.02020283662974798,
+        "uncertainty": 0.9930293949723062
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C10",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C11",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C12",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C13",
+        "value": -2.399847620626616e-07,
+        "uncertainty": 0.9933476079935666
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C14",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C15",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C16",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C17",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C18",
+        "value": 0.005346057745841959,
+        "uncertainty": 0.9933322091462321
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C19",
+        "value": 7.214187891513291e-06,
+        "uncertainty": 0.9933476281262454
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C2",
+        "value": -0.001402657625641512,
+        "uncertainty": 0.9933469140792767
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C3",
+        "value": 9.324504184338167e-06,
+        "uncertainty": 0.993346616973812
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C4",
+        "value": 0.0008470323605080932,
+        "uncertainty": 0.9933427192062096
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C5",
+        "value": -0.001088427263293279,
+        "uncertainty": 0.9933484656974245
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C6",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C7",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C8",
+        "value": -0.001369543474286083,
+        "uncertainty": 0.9933496476482084
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_C9",
+        "value": -2.408409649490295e-07,
+        "uncertainty": 0.9933476076939812
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light0",
+        "value": 0.03333658561550434,
+        "uncertainty": 0.9849948582464663
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light1",
+        "value": -0.01728064533245977,
+        "uncertainty": 0.9925257278598976
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light10",
+        "value": -3.83167811418561e-05,
+        "uncertainty": 0.9933497600952303
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light11",
+        "value": 0.0008248110906694528,
+        "uncertainty": 0.9933429394642614
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light12",
+        "value": 0.0006319305361945915,
+        "uncertainty": 0.9933449963916439
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light13",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light14",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light15",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light16",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light17",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light18",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light19",
+        "value": 0,
+        "uncertainty": 0.9933476086494022
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light2",
+        "value": 0.0006224418975686596,
+        "uncertainty": 0.9933624399241342
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light3",
+        "value": -0.0009319860417145165,
+        "uncertainty": 0.9933462068440996
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light4",
+        "value": -0.0008211816208630873,
+        "uncertainty": 0.9933750369859023
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light5",
+        "value": 0.0004484426033224409,
+        "uncertainty": 0.9933568573694845
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light6",
+        "value": -0.0007113420555832084,
+        "uncertainty": 0.9933441209751235
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light7",
+        "value": -0.0002033493345970916,
+        "uncertainty": 0.9933477284296952
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light8",
+        "value": 0.001014221001182092,
+        "uncertainty": 0.9933606631038799
+      },
+      {
+        "name": "alpha_ATLAS_FTAG_MV2c10_Light9",
+        "value": -0.0003267426064107459,
+        "uncertainty": 0.9933485408480597
+      },
+      {
+        "name": "alpha_ATLAS_JER_DataVsMC",
+        "value": 0.1638311243830115,
+        "uncertainty": 0.9961942700160007
+      },
+      {
+        "name": "alpha_ATLAS_JER_DataVsMC_AFII",
+        "value": -0.000173032987019206,
+        "uncertainty": 0.9933460774833919
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_1",
+        "value": 0.2916660373285551,
+        "uncertainty": 0.984454916297758
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_2",
+        "value": 0.3121361489022412,
+        "uncertainty": 0.9799618218724979
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_3",
+        "value": 0.2538806579082686,
+        "uncertainty": 0.9845556517632059
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_4",
+        "value": 0.2175772746371518,
+        "uncertainty": 0.9898823672778062
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_5",
+        "value": 0.11501346299848,
+        "uncertainty": 0.9938470630916413
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_6",
+        "value": 0.06735953694613883,
+        "uncertainty": 0.9954890890437862
+      },
+      {
+        "name": "alpha_ATLAS_JER_EffectiveNP_7restTerm",
+        "value": 0.1552787522446275,
+        "uncertainty": 0.9895655617200847
+      },
+      {
+        "name": "alpha_ATLAS_JES_BJES_Response",
+        "value": -0.03093061512522532,
+        "uncertainty": 0.9929205728810101
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Detector1",
+        "value": 0.001534122159631002,
+        "uncertainty": 0.9933360521621104
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Mixed1",
+        "value": -0.002984118675952163,
+        "uncertainty": 0.9933304792409414
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Mixed2",
+        "value": 0.002190534414447942,
+        "uncertainty": 0.9933457780398194
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Mixed3",
+        "value": -0.0001784409844030055,
+        "uncertainty": 0.9933469609445968
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Modelling1",
+        "value": -0.01717694657978552,
+        "uncertainty": 0.9778584917409994
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Modelling2",
+        "value": -0.004491715726578915,
+        "uncertainty": 0.9933713785102832
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Modelling3",
+        "value": 0.001890210235321321,
+        "uncertainty": 0.993335525670884
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Modelling4",
+        "value": -0.0001784409844030055,
+        "uncertainty": 0.9933469609445968
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical1",
+        "value": 0.001348657771115258,
+        "uncertainty": 0.993336949492559
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical2",
+        "value": -0.002313346645486103,
+        "uncertainty": 0.9933908127547325
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical3",
+        "value": 0.0001784409844030055,
+        "uncertainty": 0.9933469609262596
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical4",
+        "value": -0.001890210235321321,
+        "uncertainty": 0.993335535662096
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical5",
+        "value": 0.0001784409844030055,
+        "uncertainty": 0.9933469609262596
+      },
+      {
+        "name": "alpha_ATLAS_JES_EffectiveNP_Statistical6",
+        "value": -0.0001784409844030055,
+        "uncertainty": 0.9933469609445968
+      },
+      {
+        "name": "alpha_ATLAS_JES_EtaIntercalibration_Modelling",
+        "value": 0.0478340682464673,
+        "uncertainty": 0.9936216353185192
+      },
+      {
+        "name": "alpha_ATLAS_JES_EtaIntercalibration_TotalStat",
+        "value": -0.00138814753777694,
+        "uncertainty": 0.993358009865018
+      },
+      {
+        "name": "alpha_ATLAS_JES_Flavor_Composition",
+        "value": -0.05642001641229188,
+        "uncertainty": 0.953801690904796
+      },
+      {
+        "name": "alpha_ATLAS_JES_Flavor_Composition_Sig",
+        "value": 0.001669283592327098,
+        "uncertainty": 0.9931473583905615
+      },
+      {
+        "name": "alpha_ATLAS_JES_Flavor_Response",
+        "value": -0.009183507279786896,
+        "uncertainty": 0.9847008036541677
+      },
+      {
+        "name": "alpha_ATLAS_JES_Pileup_OffsetMu",
+        "value": -0.02616357525707991,
+        "uncertainty": 0.9924824863936166
+      },
+      {
+        "name": "alpha_ATLAS_JES_Pileup_OffsetNPV",
+        "value": -0.05763956121468572,
+        "uncertainty": 0.9905853067723125
+      },
+      {
+        "name": "alpha_ATLAS_JES_Pileup_RhoTopology",
+        "value": 0.02660174107922297,
+        "uncertainty": 0.9775235741715499
+      },
+      {
+        "name": "alpha_ATLAS_JES_RelativeNonClosure_MC16_AFII",
+        "value": -0.0007546333906793823,
+        "uncertainty": 0.9933449575410591
+      },
+      {
+        "name": "alpha_ATLAS_JES_SingleParticle_HighPt",
+        "value": 0.004055500779349686,
+        "uncertainty": 0.9941626193812105
+      },
+      {
+        "name": "alpha_ATLAS_MET_SoftResPara",
+        "value": 0.1164676628144312,
+        "uncertainty": 0.9998868707749096
+      },
+      {
+        "name": "alpha_ATLAS_MET_SoftResPerp",
+        "value": 0.1217176347640703,
+        "uncertainty": 0.9999082259049791
+      },
+      {
+        "name": "alpha_ATLAS_MET_SoftScale",
+        "value": -0.001100375341246407,
+        "uncertainty": 0.9933456708943927
+      },
+      {
+        "name": "alpha_ATLAS_MU_ID",
+        "value": -0.004873268116965535,
+        "uncertainty": 0.9933508635544839
+      },
+      {
+        "name": "alpha_ATLAS_MU_MS",
+        "value": 0.005106423105775137,
+        "uncertainty": 0.993387879451349
+      },
+      {
+        "name": "alpha_ATLAS_MU_SAGITTA_RESBIAS",
+        "value": -0.003977038669540911,
+        "uncertainty": 0.9933302167071423
+      },
+      {
+        "name": "alpha_ATLAS_MU_SCALE",
+        "value": 0.0005675747792210917,
+        "uncertainty": 0.9933513895907703
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_ID_Stat",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_ID_Syst",
+        "value": -0.005719510231811387,
+        "uncertainty": 0.99314518042452
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_ISO_Stat",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_ISO_Syst",
+        "value": -0.002067506647496775,
+        "uncertainty": 0.9932805309862494
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_TRIG_Stat",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_TRIG_Syst",
+        "value": -0.01785324774858266,
+        "uncertainty": 0.9945052867630377
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_TTVA_Stat",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_ATLAS_MU_SF_TTVA_Syst",
+        "value": 0,
+        "uncertainty": 0.9933476086494029
+      },
+      {
+        "name": "alpha_CO_ShapeSyst_simple",
+        "value": -0.05986452185809954,
+        "uncertainty": 0.9929700216312218
+      },
+      {
+        "name": "alpha_Gstr_ShapeSyst_simple",
+        "value": -0.03257320649198481,
+        "uncertainty": 0.9922527928713023
+      },
+      {
+        "name": "alpha_HFe_ShapeSyst",
+        "value": -0.1034010818883357,
+        "uncertainty": 0.9984255455391383
+      },
+      {
+        "name": "alpha_HFm_ShapeSyst",
+        "value": 0.1601989749484578,
+        "uncertainty": 0.9601752862528614
+      },
+      {
+        "name": "alpha_Other_truthgbb_3b",
+        "value": 0.007177600466699019,
+        "uncertainty": 0.9925937106117397
+      },
+      {
+        "name": "alpha_Other_truthgbb_4b",
+        "value": 0.0004547105275520824,
+        "uncertainty": 0.9933419426867102
+      },
+      {
+        "name": "alpha_QMisID_Sys",
+        "value": 0.07934110135831007,
+        "uncertainty": 0.9573990804983906
+      },
+      {
+        "name": "alpha_VV_Xsec",
+        "value": -0.1544012505132997,
+        "uncertainty": 1.002939456607613
+      },
+      {
+        "name": "alpha_jet_vertex_tagger",
+        "value": -0.0192028861813498,
+        "uncertainty": 0.9925735724795981
+      },
+      {
+        "name": "alpha_luminosity",
+        "value": -0.0249084264560806,
+        "uncertainty": 0.9934293358661317
+      },
+      {
+        "name": "alpha_others_Xsec",
+        "value": -0.008907541424145737,
+        "uncertainty": 0.9951075056132691
+      },
+      {
+        "name": "alpha_pileup_reweighting",
+        "value": -0.02448601886454571,
+        "uncertainty": 0.9938521674785911
+      },
+      {
+        "name": "alpha_singleTop_Xsec",
+        "value": -0.04334751014100968,
+        "uncertainty": 0.9976835646855244
+      },
+      {
+        "name": "alpha_ttH_Gen",
+        "value": 0.1086445274297054,
+        "uncertainty": 0.9929163479527012
+      },
+      {
+        "name": "alpha_ttH_PDF",
+        "value": -0.002682372657101251,
+        "uncertainty": 0.9933298655968026
+      },
+      {
+        "name": "alpha_ttH_Xsec",
+        "value": -0.05508632246767786,
+        "uncertainty": 0.9845321091715418
+      },
+      {
+        "name": "alpha_ttH_truthgbb_3b",
+        "value": 0.01719350568459288,
+        "uncertainty": 0.9926475523826739
+      },
+      {
+        "name": "alpha_ttH_truthgbb_4b",
+        "value": 0.001826673682101543,
+        "uncertainty": 0.9933198179598113
+      },
+      {
+        "name": "alpha_ttH_varRF",
+        "value": 0.02655845276013258,
+        "uncertainty": 0.9840866854551023
+      },
+      {
+        "name": "alpha_ttWW_Xsec",
+        "value": -0.0262293480826542,
+        "uncertainty": 0.9969855459196469
+      },
+      {
+        "name": "alpha_ttW_Gen",
+        "value": 0.388294133688909,
+        "uncertainty": 0.8772842952508384
+      },
+      {
+        "name": "alpha_ttW_Syst_Ext_2b7j",
+        "value": 0.1796404641857807,
+        "uncertainty": 0.6453591938740597
+      },
+      {
+        "name": "alpha_ttW_Syst_Ext_2b8j",
+        "value": 0.2177240154429327,
+        "uncertainty": 0.4767377689848226
+      },
+      {
+        "name": "alpha_ttW_truthgbb_3b",
+        "value": 0.0624895332016151,
+        "uncertainty": 0.9891753017848135
+      },
+      {
+        "name": "alpha_ttW_truthgbb_4b",
+        "value": 0.006601757746326209,
+        "uncertainty": 0.9932247098861824
+      },
+      {
+        "name": "alpha_ttW_varRF",
+        "value": 0.09841964058316277,
+        "uncertainty": 0.9479246043445098
+      },
+      {
+        "name": "alpha_ttZ_Gen",
+        "value": 0.1841359332619641,
+        "uncertainty": 0.9872250889424796
+      },
+      {
+        "name": "alpha_ttZ_PDF",
+        "value": -0.007361065971455139,
+        "uncertainty": 0.9933656085296427
+      },
+      {
+        "name": "alpha_ttZ_Xsec",
+        "value": -0.1143250223905867,
+        "uncertainty": 0.9957419172528872
+      },
+      {
+        "name": "alpha_ttZ_truthgbb_3b",
+        "value": 0.01325913621045838,
+        "uncertainty": 0.992209461019255
+      },
+      {
+        "name": "alpha_ttZ_truthgbb_4b",
+        "value": 0.01153011195042963,
+        "uncertainty": 0.9932325381219433
+      },
+      {
+        "name": "alpha_ttZ_varRF",
+        "value": 0.00840985414038986,
+        "uncertainty": 0.9940242488189127
+      },
+      {
+        "name": "alpha_ttbar_Xsec_3b",
+        "value": 0.06822351270428295,
+        "uncertainty": 0.9822335109420466
+      },
+      {
+        "name": "alpha_ttbar_Xsec_4b",
+        "value": 0.0228080025049926,
+        "uncertainty": 0.9929513665206263
+      },
+      {
+        "name": "alpha_ttbar_Xsec_light",
+        "value": -0.2946541004998404,
+        "uncertainty": 0.8850841098275103
+      },
+      {
+        "name": "alpha_ttbar_Xsec_other",
+        "value": 0.05284872657312145,
+        "uncertainty": 0.9820446059088259
+      },
+      {
+        "name": "alpha_ttt_Xsec",
+        "value": 0.02299992238248727,
+        "uncertainty": 0.9798186180119972
+      },
+      {
+        "name": "alpha_ttt_truthgbb_4b",
+        "value": -0.007055581006734091,
+        "uncertainty": 0.9936062051904643
+      },
+      {
+        "name": "alpha_tttt_PDF",
+        "value": -3.20417165022846e-07,
+        "uncertainty": 0.9933503650386379
+      },
+      {
+        "name": "alpha_tttt_syst_PS",
+        "value": 0.0015880710189764,
+        "uncertainty": 0.9931188005592245
+      },
+      {
+        "name": "alpha_tttt_syst_varRF",
+        "value": -0.02042382041765045,
+        "uncertainty": 1.007072986341986
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_0",
+        "value": 1.000005821318912,
+        "uncertainty": 0.01854956959595133
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_1",
+        "value": 0.9999986799822536,
+        "uncertainty": 0.01823564982200887
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_2",
+        "value": 0.9999957629233167,
+        "uncertainty": 0.02064712571394234
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_3",
+        "value": 1.000033375214138,
+        "uncertainty": 0.02158399891833884
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_4",
+        "value": 0.9997093764065348,
+        "uncertainty": 0.02909271009454312
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_5",
+        "value": 1.000282580744313,
+        "uncertainty": 0.02088714965719951
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttW_CRttW2l_bin_6",
+        "value": 0.9998885231487238,
+        "uncertainty": 0.02208325290363822
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_0",
+        "value": 1.000359455794433,
+        "uncertainty": 0.1544511472704532
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_1",
+        "value": 1.001991494835274,
+        "uncertainty": 0.08279602721861695
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_2",
+        "value": 0.9988016124143009,
+        "uncertainty": 0.04838249802510952
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_3",
+        "value": 1.001354249655105,
+        "uncertainty": 0.05965206276325541
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_CRttbarCO2l_CRttbarCO2l_MeePVCO_bin_4",
+        "value": 1.000449306328611,
+        "uncertainty": 0.03588727808390046
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_0",
+        "value": 0.9990755062983572,
+        "uncertainty": 0.04067507098616885
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_1",
+        "value": 0.9991875768255457,
+        "uncertainty": 0.05543698916597145
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_10",
+        "value": 0.9970704522165947,
+        "uncertainty": 0.1569923120847003
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_11",
+        "value": 1.000563171200957,
+        "uncertainty": 0.1761576893765452
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_12",
+        "value": 1.001438978894656,
+        "uncertainty": 0.183003434669066
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_13",
+        "value": 0.9994870398500417,
+        "uncertainty": 0.1638082598853
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_14",
+        "value": 1.002182459500635,
+        "uncertainty": 0.1840040325769403
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_15",
+        "value": 1.000868261747564,
+        "uncertainty": 0.1452604845891163
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_16",
+        "value": 0.9994282455173324,
+        "uncertainty": 0.1487681709679715
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_2",
+        "value": 0.9993462376341831,
+        "uncertainty": 0.06648108600139419
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_3",
+        "value": 1.000039406581938,
+        "uncertainty": 0.07955235452353077
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_4",
+        "value": 1.003224535886857,
+        "uncertainty": 0.09183419995907555
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_5",
+        "value": 1.001330956623937,
+        "uncertainty": 0.1095142947664819
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_6",
+        "value": 0.9982460708780411,
+        "uncertainty": 0.1218964049217384
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_7",
+        "value": 0.9971559999159326,
+        "uncertainty": 0.1357471956124666
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_8",
+        "value": 1.001896019266751,
+        "uncertainty": 0.1345459269223975
+      },
+      {
+        "name": "gamma_shape_stat_ttbar_QmisID_Other_SR_AllBDT_bin_9",
+        "value": 0.999998274368135,
+        "uncertainty": 0.1579266640633387
+      },
+      {
+        "name": "gamma_stat_CR1b3le_1bin_bin_0",
+        "value": 0.9940904228675885,
+        "uncertainty": 0.05701868883855865
+      },
+      {
+        "name": "gamma_stat_CR1b3lm_1bin_bin_0",
+        "value": 0.9985126960141381,
+        "uncertainty": 0.05291524352287086
+      },
+      {
+        "name": "gamma_stat_CRttbarCO2l_MeePVCO_bin_0",
+        "value": 1.001583552121257,
+        "uncertainty": 0.0818797325611752
+      },
+      {
+        "name": "gamma_stat_CRttbarCO2l_MeePVCO_bin_1",
+        "value": 1.008579848553567,
+        "uncertainty": 0.07729263842861228
+      },
+      {
+        "name": "gamma_stat_CRttbarCO2l_MeePVCO_bin_2",
+        "value": 0.9935993225302969,
+        "uncertainty": 0.06794359796418614
+      },
+      {
+        "name": "gamma_stat_CRttbarCO2l_MeePVCO_bin_3",
+        "value": 1.014935412021254,
+        "uncertainty": 0.09699602951563197
+      },
+      {
+        "name": "gamma_stat_CRttbarCO2l_MeePVCO_bin_4",
+        "value": 1.00416887856415,
+        "uncertainty": 0.05594499748993609
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_10",
+        "value": 0.9905384945856943,
+        "uncertainty": 0.05693700390776896
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_11",
+        "value": 1.001139092405553,
+        "uncertainty": 0.05838376785606636
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_12",
+        "value": 1.002970088312756,
+        "uncertainty": 0.05757361324880456
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_13",
+        "value": 0.9988306048761059,
+        "uncertainty": 0.05605441588258875
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_14",
+        "value": 1.010812399024039,
+        "uncertainty": 0.09520081673807518
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_15",
+        "value": 1.004642275203985,
+        "uncertainty": 0.07575452672036498
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_16",
+        "value": 0.997831147720489,
+        "uncertainty": 0.06409121408593205
+      },
+      {
+        "name": "gamma_stat_SR_AllBDT_bin_9",
+        "value": 0.9999914676149393,
+        "uncertainty": 0.05187221589034313
+      },
+      {
+        "name": "mu_signal",
+        "value": 2.020053097720791,
+        "uncertainty": 0.5652735352906315
+      }
+    ],
+    "covariance": null
+  },
+  "expected_data": {
+    "pyhf_main": [
+      48.7819257553553,
+      79.5289817103352,
+      118.58934087970336,
+      72.7821665157473,
+      63.8858238986992,
+      49.47446087131255,
+      38.81338964399242,
+      68.97431823946,
+      62.72013982028903,
+      24.950768616786384,
+      35.68094426987221,
+      41.90712428515496,
+      20.060000882947108,
+      37.811958297372314,
+      75.99822241831774,
+      40.32072537281302,
+      34.93351688276056,
+      26.17491346530566,
+      21.349845745725307,
+      17.097404872899084,
+      14.59527637299937,
+      12.346316553090404,
+      10.630870337841298,
+      10.500951646294476,
+      9.554025538528629,
+      9.221869575677372,
+      8.270127297713614,
+      8.334103015933346,
+      10.45671097588166,
+      11.756890054618026,
+      21.13146464385074
+    ],
+    "pyhf_with_aux": [
+      48.7819257553553,
+      79.5289817103352,
+      118.58934087970336,
+      72.7821665157473,
+      63.8858238986992,
+      49.47446087131255,
+      38.81338964399242,
+      68.97431823946,
+      62.72013982028903,
+      24.950768616786384,
+      35.68094426987221,
+      41.90712428515496,
+      20.060000882947108,
+      37.811958297372314,
+      75.99822241831774,
+      40.32072537281302,
+      34.93351688276056,
+      26.17491346530566,
+      21.349845745725307,
+      17.097404872899084,
+      14.59527637299937,
+      12.346316553090404,
+      10.630870337841298,
+      10.500951646294476,
+      9.554025538528629,
+      9.221869575677372,
+      8.270127297713614,
+      8.334103015933346,
+      10.45671097588166,
+      11.756890054618026,
+      21.13146464385074,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      2902.6848617144105,
+      3003.496407085977,
+      2342.47619752337,
+      2143.543115933619,
+      1178.45376767194,
+      2289.804054127984,
+      2046.6951016442863,
+      41.51609625508931,
+      145.3287793113916,
+      422.76537798499623,
+      279.95327140273173,
+      774.5402706967097,
+      601.4168240473329,
+      323.53935056991975,
+      224.87932900526386,
+      157.134050769972,
+      118.5562976654362,
+      82.95754521224022,
+      66.50420454419411,
+      53.45901686824752,
+      54.935808952333964,
+      39.66363160386407,
+      39.91011948189057,
+      31.869554580668517,
+      29.571187523045612,
+      36.816162206602556,
+      29.291097989740894,
+      47.00857360379312,
+      44.6832624648092,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: HistFactory Fixture Baseline (Canonical)
+  description: Canonical TREx analysis-spec used for baseline record/compare and pre-release gating.
+  tags: ["trex", "analysis-spec", "baseline", "canonical", "fixture"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: ../../../../tests/fixtures/histfactory
+    combination_xml: ../../../../tests/fixtures/histfactory/combination.xml
+    measurement: NominalMeasurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: ../../../../tmp/trex_canonical/workspace.json
+
+  fit:
+    enabled: true
+    output_json: ../../../../tmp/trex_canonical/fit.json
+
+  profile_scan:
+    enabled: true
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: ../../../../tmp/trex_canonical/scan.json
+
+  report:
+    enabled: true
+    out_dir: ../../../../tmp/trex_canonical/report
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: ../../../../tests/fixtures/histfactory/combination.xml
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: true
+    baseline_dir: ../../../../tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.5
+

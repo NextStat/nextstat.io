@@ -1,0 +1,50 @@
+# HTCondor submission file: TRExFitter over many bootstrap replicas (example)
+#
+# This is an anonymized/adapted example of a production-style submit file:
+# - file transfer enabled (job runs in worker scratch)
+# - output remaps back to a results directory on the submit side
+# - max_materialize used to limit concurrent I/O pressure
+#
+# Usage:
+#   mkdir -p condor/logs condor/results/{summary,condor_logs,condor_tars}
+#   export TREX_INPUT_DIR=/path/to/workspace/bootstrap_root   # visible from worker nodes
+#   cd condor
+#   condor_submit trex_hwfsdp.sub
+
+universe = vanilla
+
+executable = run_trex_hwfsdp.sh
+arguments  = $(Process)
+
+output = logs/trex_$(Cluster)_$(Process).out
+error  = logs/trex_$(Cluster)_$(Process).err
+log    = logs/trex_$(Cluster).log
+
+# Resources (adjust to your analysis needs)
+request_cpus   = 4
+request_memory = 8GB
+request_disk   = 20GB
+
+# Pass submit-node environment variables to the job.
+# Required:
+#   - TREX_INPUT_DIR: path to workspace/bootstrap_root visible from worker nodes
+getenv = True
+
+# Enable file transfer to avoid FileSystemDomain matching requirement.
+should_transfer_files = YES
+transfer_executable = True
+when_to_transfer_output = ON_EXIT
+transfer_input_files = trex_hwfsdp_single.py, ../config/trexfitter_config_2poi.txt
+
+# Outputs (fixed filenames created by run_trex_hwfsdp.sh)
+transfer_output_files = fit_summary.json, replica_log.txt, replica_output.tgz
+transfer_output_remaps = "fit_summary.json = results/summary/fit_summary_$(Process).json; replica_log.txt = results/condor_logs/replica_$(Process).log; replica_output.tgz = results/condor_tars/replica_$(Process).tgz"
+
+requirements = (TARGET.Arch == "X86_64") && (TARGET.OpSys == "LINUX")
+max_retries = 2
+
+# Limit how many jobs are materialized at once to reduce I/O pressure on shared FS
+max_materialize = 100
+
+# Number of replicas
+queue 2000

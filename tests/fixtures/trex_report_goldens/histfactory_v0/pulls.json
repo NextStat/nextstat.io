@@ -1,0 +1,62 @@
+{
+  "entries": [
+    {
+      "constraint": 1.0,
+      "kind": "nuisance",
+      "name": "bkg_norm",
+      "postfit_center": 0.0,
+      "postfit_sigma": 1.0,
+      "prefit_center": 0.0,
+      "prefit_sigma": 1.0,
+      "pull": 0.0
+    },
+    {
+      "constraint": 1.0,
+      "group": "poi",
+      "kind": "poi",
+      "name": "mu",
+      "postfit_center": 1.0,
+      "postfit_sigma": 1.0,
+      "pull": 0.0
+    },
+    {
+      "constraint": 1.0,
+      "kind": "nuisance",
+      "name": "staterror_SR[0]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.31622776601683794,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.31622776601683794,
+      "pull": 0.0
+    },
+    {
+      "constraint": 1.0,
+      "kind": "nuisance",
+      "name": "staterror_SR[1]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.2357022603955158,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.2357022603955158,
+      "pull": 0.0
+    },
+    {
+      "constraint": 1.0,
+      "kind": "nuisance",
+      "name": "staterror_SR[2]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.3333333333333333,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.3333333333333333,
+      "pull": 0.0
+    }
+  ],
+  "meta": {
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat"
+  },
+  "ordering_policy": "name_lex",
+  "schema_version": "trex_report_pulls_v0"
+}

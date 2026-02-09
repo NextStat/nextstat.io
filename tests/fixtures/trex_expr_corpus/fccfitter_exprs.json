@@ -1,0 +1,510 @@
+{
+  "schema_version": "trex_expr_corpus_v0",
+  "sources": [
+    {
+      "name": "FCCFitter",
+      "repo": "clementhelsens/FCCFitter",
+      "ref": "master",
+      "raw_base": "https://raw.githubusercontent.com/clementhelsens/FCCFitter/master/",
+      "files": [
+        "config/ttHbbLjetBase.config",
+        "config/ttH2015.config",
+        "config/ttHbbNTupleEx.config"
+      ]
+    }
+  ],
+  "expressions": [
+    "(1+0.24*(jet_n-4))",
+    "(1-0.24*(jet_n-4))*((1-0.24*(jet_n-4))>0) + 1e-6*((1-0.24*(jet_n-4))<=0)",
+    "(ejets || mujets)",
+    "FinalWeight*weight_leptonSF*weight_bTagSF",
+    "FinalWeight*weight_leptonSF*weight_bTagSF_77",
+    "HhadT_jets/1e3",
+    "Ht/1e3",
+    "NN_5jex4bin",
+    "NN_6jin3bex",
+    "NN_6jin4bin",
+    "eventWeight",
+    "trigger>0 && (e_jets || mu_jets)",
+    "weight_bTagSF_77_eigenvars_B_down[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_down[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_down[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_down[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_down[4]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_down[5]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[4]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_B_up[5]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_down[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_down[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_down[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_down[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_up[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_up[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_up[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_C_up[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[10]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[11]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[4]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[5]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[6]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[7]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[8]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_down[9]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[0]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[10]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[11]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[1]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[2]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[3]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[4]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[5]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[6]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[7]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[8]/weight_bTagSF_77",
+    "weight_bTagSF_77_eigenvars_Light_up[9]/weight_bTagSF_77",
+    "weight_bTagSF_77_extrapolation_down/weight_bTagSF_77",
+    "weight_bTagSF_77_extrapolation_from_charm_down/weight_bTagSF_77",
+    "weight_bTagSF_eigenvars_B_down[0]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_down[1]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_down[2]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_down[3]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_down[4]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_down[5]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[0]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[1]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[2]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[3]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[4]/weight_bTagSF",
+    "weight_bTagSF_eigenvars_B_up[5]/weight_bTagSF"
+  ],
+  "examples": [
+    {
+      "expr": "FinalWeight*weight_leptonSF*weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 13,
+      "key": "MCweight"
+    },
+    {
+      "expr": "(ejets || mujets)",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 16,
+      "key": "Selection"
+    },
+    {
+      "expr": "HhadT_jets/1e3",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 56,
+      "key": "Variable"
+    },
+    {
+      "expr": "NN_5jex4bin",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 98,
+      "key": "Variable"
+    },
+    {
+      "expr": "NN_6jin3bex",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 98,
+      "key": "Variable"
+    },
+    {
+      "expr": "NN_6jin4bin",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 98,
+      "key": "Variable"
+    },
+    {
+      "expr": "(1+0.24*(jet_n-4))",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 209,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "(1-0.24*(jet_n-4))*((1-0.24*(jet_n-4))>0) + 1e-6*((1-0.24*(jet_n-4))<=0)",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 210,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[4]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_up[5]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 218,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[4]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_B_down[5]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 219,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_up[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 228,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_up[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 228,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_up[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 228,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_up[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 228,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_down[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 229,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_down[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 229,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_down[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 229,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_C_down[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 229,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[4]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[5]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[6]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[7]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[8]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[9]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[10]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_up[11]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 238,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[0]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[1]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[2]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[3]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[4]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[5]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[6]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[7]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[8]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[9]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[10]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_eigenvars_Light_down[11]/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 239,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_extrapolation_down/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 248,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_77_extrapolation_from_charm_down/weight_bTagSF_77",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbLjetBase.config",
+      "line": 248,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "FinalWeight*weight_leptonSF*weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 12,
+      "key": "MCweight"
+    },
+    {
+      "expr": "trigger>0 && (e_jets || mu_jets)",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 15,
+      "key": "Selection"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[0]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[1]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[2]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[3]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[4]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_up[5]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 275,
+      "key": "WeightSufUp"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[0]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[1]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[2]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[3]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[4]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "weight_bTagSF_eigenvars_B_down[5]/weight_bTagSF",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttH2015.config",
+      "line": 276,
+      "key": "WeightSufDown"
+    },
+    {
+      "expr": "eventWeight",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbNTupleEx.config",
+      "line": 18,
+      "key": "MCweight"
+    },
+    {
+      "expr": "Ht/1e3",
+      "source": "tmp/trex_expr_corpus_download/FCCFitter_config_ttHbbNTupleEx.config",
+      "line": 48,
+      "key": "Variable"
+    }
+  ]
+}

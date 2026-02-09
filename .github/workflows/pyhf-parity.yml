@@ -1,0 +1,60 @@
+name: pyhf Parity Gate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  parity:
+    name: pyhf Parity Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package + test deps
+        run: |
+          pip install bindings/ns-py/target/wheels/*.whl
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6"
+
+      - name: Run pyhf parity tests
+        env:
+          NEXTSTAT_GOLDEN_REPORT_DIR: golden-reports
+        run: |
+          pytest -v \
+            tests/python/test_pyhf_validation.py \
+            tests/python/test_expected_data_parity.py \
+            tests/python/test_eval_mode.py \
+            tests/python/test_batch_toy_fitting.py
+
+      - name: Upload golden reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyhf-parity-golden-reports
+          path: golden-reports/
+          if-no-files-found: ignore

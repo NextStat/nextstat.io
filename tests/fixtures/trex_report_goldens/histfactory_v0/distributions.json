@@ -1,0 +1,95 @@
+{
+  "channels": [
+    {
+      "bin_edges": [
+        0.0,
+        1.0,
+        2.0,
+        3.0
+      ],
+      "channel_name": "SR",
+      "data_error_model": "garwood_poisson_68",
+      "data_y": [
+        15.0,
+        25.0,
+        12.0
+      ],
+      "data_yerr_hi": [
+        4.958743298921426,
+        6.066595199705773,
+        4.559823506005234
+      ],
+      "data_yerr_lo": [
+        3.829383435771746,
+        4.966339192878799,
+        3.415268899524861
+      ],
+      "ratio_policy": {
+        "denominator": "mc_total_postfit",
+        "numerator": "data",
+        "zero_policy": "nan"
+      },
+      "ratio_y": [
+        1.0,
+        0.8928571428571429,
+        1.0
+      ],
+      "ratio_yerr_hi": [
+        0.33058288659476176,
+        0.21666411427520615,
+        0.3799852921671028
+      ],
+      "ratio_yerr_lo": [
+        0.2552922290514497,
+        0.17736925688852853,
+        0.28460574162707175
+      ],
+      "samples": [
+        {
+          "name": "signal",
+          "postfit_y": [
+            5.0,
+            10.0,
+            3.0
+          ],
+          "prefit_y": [
+            5.0,
+            10.0,
+            3.0
+          ]
+        },
+        {
+          "name": "background",
+          "postfit_y": [
+            10.0,
+            18.0,
+            9.0
+          ],
+          "prefit_y": [
+            10.0,
+            18.0,
+            9.0
+          ]
+        }
+      ],
+      "total_postfit_y": [
+        15.0,
+        28.0,
+        12.0
+      ],
+      "total_prefit_y": [
+        15.0,
+        28.0,
+        12.0
+      ]
+    }
+  ],
+  "meta": {
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat"
+  },
+  "schema_version": "trex_report_distributions_v0"
+}

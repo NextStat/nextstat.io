@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nextstat:trex_baseline_v0",
+  "title": "TREx replacement baseline (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "fit", "expected_data"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_baseline_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["created_at", "deterministic", "threads"],
+      "properties": {
+        "created_at": { "type": "string" },
+        "deterministic": { "type": "boolean" },
+        "threads": { "type": "integer", "minimum": 1 },
+        "seed": { "type": ["integer", "null"] },
+        "tool_versions": { "type": "object" },
+        "inputs": { "type": "object" }
+      }
+    },
+    "fit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["twice_nll", "parameters"],
+      "properties": {
+        "twice_nll": { "type": "number" },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value", "uncertainty"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "number" },
+              "uncertainty": { "type": "number" }
+            }
+          }
+        },
+        "covariance": {
+          "type": ["array", "null"],
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "expected_data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pyhf_main", "pyhf_with_aux"],
+      "properties": {
+        "pyhf_main": { "type": "array", "items": { "type": "number" } },
+        "pyhf_with_aux": { "type": "array", "items": { "type": "number" } }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,24 @@
+[package]
+name = "ns-viz"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Visualization utilities for NextStat"
+
+[dependencies]
+ns-core.workspace = true
+ns-inference = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+statrs.workspace = true
+
+[dev-dependencies]
+approx.workspace = true

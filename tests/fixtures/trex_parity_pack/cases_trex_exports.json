@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "name": "trex_export_hepdata.116034_DR_Int_EWK",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK/combination.xml",
+      "rootdir": "tests/fixtures/trex_exports/hepdata.116034_DR_Int_EWK",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 11 }
+    },
+    {
+      "name": "trex_export_tttt-prod",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/trex_exports/tttt-prod/combination.xml",
+      "rootdir": "tests/fixtures/trex_exports/tttt-prod",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 11 }
+    }
+  ]
+}

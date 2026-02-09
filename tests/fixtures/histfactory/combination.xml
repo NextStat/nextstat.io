@@ -1,0 +1,7 @@
+<!DOCTYPE Combination SYSTEM "HistFactorySchema.dtd">
+<Combination OutputFilePrefix="results">
+  <Input>channel_SR.xml</Input>
+  <Measurement Name="NominalMeasurement" Lumi="1.0" LumiRelErr="0.0" ExportOnly="True">
+    <POI>mu</POI>
+  </Measurement>
+</Combination>

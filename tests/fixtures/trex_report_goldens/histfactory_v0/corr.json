@@ -1,0 +1,54 @@
+{
+  "corr": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "meta": {
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat"
+  },
+  "parameter_names": [
+    "mu",
+    "bkg_norm",
+    "staterror_SR[0]",
+    "staterror_SR[1]",
+    "staterror_SR[2]"
+  ],
+  "schema_version": "trex_report_corr_v0"
+}

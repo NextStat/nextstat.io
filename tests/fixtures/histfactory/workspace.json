@@ -1,0 +1,109 @@
+{
+  "channels": [
+    {
+      "name": "SR",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [
+            5.0,
+            10.0,
+            3.0
+          ],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            }
+          ]
+        },
+        {
+          "name": "background",
+          "data": [
+            10.0,
+            18.0,
+            9.0
+          ],
+          "modifiers": [
+            {
+              "name": "bkg_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.1,
+                "lo": 0.9
+              }
+            },
+            {
+              "name": "staterror_SR",
+              "type": "staterror",
+              "data": [
+                3.1622776601683795,
+                4.242640687119285,
+                3.0
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "SR",
+      "data": [
+        15.0,
+        25.0,
+        12.0
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "name": "NominalMeasurement",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "mu",
+            "inits": [
+              1.0
+            ],
+            "bounds": [
+              [
+                0.0,
+                10.0
+              ]
+            ],
+            "fixed": false
+          },
+          {
+            "name": "staterror_SR[0]",
+            "fixed": false,
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.31622776601683794
+            }
+          },
+          {
+            "name": "staterror_SR[1]",
+            "fixed": false,
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.2357022603955158
+            }
+          },
+          {
+            "name": "staterror_SR[2]",
+            "fixed": false,
+            "constraint": {
+              "type": "Gamma",
+              "rel_uncertainty": 0.3333333333333333
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

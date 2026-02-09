@@ -1,0 +1,94 @@
+{
+  "case": "simple_workspace_nll",
+  "dataset": {
+    "id": "suites/hep/datasets/simple_workspace.json",
+    "sha256": "4568b9f815cf9b405aa1c1ad462b3737753a0995f5fc020c1f1eb85afd5bc641"
+  },
+  "deterministic": true,
+  "fit": {
+    "meta": {
+      "nextstat_converged": true,
+      "nextstat_n_evaluations": 10,
+      "nextstat_n_iter": 10,
+      "nextstat_success": true,
+      "nextstat_termination_reason": "Solver converged",
+      "nll_nextstat": 12.35899689714072,
+      "nll_pyhf": 12.358996943924382,
+      "poi_hat_nextstat": 0.5245205740436321,
+      "poi_hat_pyhf": 0.5243610152344057,
+      "poi_name": "mu"
+    },
+    "parity": {
+      "abs_diff_nll_at_nextstat_bestfit": 4.334310688136611e-13,
+      "abs_diff_nll_at_pyhf_bestfit": 4.263256414560601e-13
+    },
+    "raw": {
+      "per_fit_s": {
+        "nextstat": [
+          0.0010703750886023045
+        ],
+        "pyhf": [
+          0.0064219580963253975
+        ]
+      },
+      "policy": "min",
+      "repeat": 1
+    },
+    "speedup_pyhf_over_nextstat": 5.999726791765295,
+    "status": "ok",
+    "time_s": {
+      "nextstat": 0.0010703750886023045,
+      "pyhf": 0.0064219580963253975
+    }
+  },
+  "meta": {
+    "nextstat_version": "0.1.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "pyhf_version": "0.7.6",
+    "python": "3.13.11"
+  },
+  "model": {
+    "n_main_bins": 2,
+    "n_params": 3
+  },
+  "parity": {
+    "abs_diff": 4.547473508864641e-13,
+    "atol": 1e-08,
+    "nll_nextstat": 12.57757933214748,
+    "nll_pyhf": 12.577579332147025,
+    "ok": true,
+    "rel_diff": 3.615539515812548e-14,
+    "rtol": 1e-12
+  },
+  "schema_version": "nextstat.benchmark_result.v1",
+  "suite": "hep",
+  "timing": {
+    "nll_time_s_per_call": {
+      "nextstat": 1.0115436552382562e-05,
+      "pyhf": 9.25762940369168e-05
+    },
+    "raw": {
+      "number": 32768,
+      "per_call_s": {
+        "nextstat": [
+          1.5077520998829641e-05,
+          2.1102568325659377e-05,
+          1.1563144681758786e-05,
+          1.5004548401975626e-05,
+          1.0115436552382562e-05
+        ],
+        "pyhf": [
+          0.00010641255687460216,
+          0.0002514181416017891,
+          0.00012915911861455243,
+          0.00014358857220031496,
+          9.25762940369168e-05
+        ]
+      },
+      "policy": "min",
+      "repeat": 5,
+      "target_s": 0.25
+    },
+    "speedup_pyhf_over_nextstat": 9.151982077838415
+  }
+}

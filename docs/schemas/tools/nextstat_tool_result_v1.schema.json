@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_result_v1.schema.json",
+  "title": "NextStat Tool Result Envelope v1",
+  "type": "object",
+  "required": ["schema_version", "ok", "result", "error", "meta"],
+  "properties": {
+    "schema_version": { "const": "nextstat.tool_result.v1" },
+    "ok": { "type": "boolean" },
+    "result": {},
+    "error": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["type", "message"],
+          "properties": {
+            "type": { "type": "string" },
+            "message": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "required": ["tool_name", "nextstat_version"],
+      "properties": {
+        "tool_name": { "type": "string" },
+        "nextstat_version": { "type": ["string", "null"] },
+        "deterministic": { "type": "boolean" },
+        "eval_mode": { "type": "string" },
+        "threads_requested": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": { "properties": { "error": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": { "properties": { "error": { "type": "object" } } }
+    }
+  ]
+}
+

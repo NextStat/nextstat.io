@@ -1,0 +1,25 @@
+[package]
+name = "ns-unbinned"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Unbinned (event-level) likelihood models for NextStat"
+
+[dependencies]
+ns-core.workspace = true
+ns-root.workspace = true
+rayon.workspace = true
+statrs.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+ns-inference.workspace = true
+

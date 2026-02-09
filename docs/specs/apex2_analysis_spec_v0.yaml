@@ -1,0 +1,95 @@
+{
+  "schema_version": "apex2_analysis_spec_v0",
+  "meta": {
+    "name": "Apex2 Validation Analysis",
+    "purpose": "Drive baseline recording and comparisons for pre-release gating and cluster ROOT parity."
+  },
+  "local": {
+    "python": "./.venv/bin/python",
+    "pythonpath": "bindings/ns-py/python",
+    "baseline_dir": "tmp/baselines",
+    "workdir": "tmp/baseline_compare",
+    "outputs": {
+      "baseline_compare_report": "tmp/baseline_compare_report.json"
+    }
+  },
+  "gates": {
+    "pre_release": {
+      "record_baseline": {
+        "enabled": false,
+        "script": "tests/record_baseline.py",
+        "args": {
+          "out_dir": "tmp/baselines"
+        }
+      },
+      "compare_latest": {
+        "enabled": true,
+        "script": "tests/compare_with_latest_baseline.py",
+        "args": {
+          "manifest": "tmp/baselines/latest_manifest.json",
+          "require_same_host": true,
+          "pyhf_max_slowdown": 1.3,
+          "pyhf_min_baseline_s": 1e-5,
+          "p6_max_slowdown": 1.3,
+          "p6_attempts": 2,
+          "p6_min_baseline_fit_s": 1e-2,
+          "p6_min_baseline_predict_s": 1e-2,
+          "root_max_slowdown": 1.3,
+          "root_min_baseline_s": 0.0
+        }
+      }
+    }
+  },
+  "cluster_root": {
+    "enabled": false,
+    "cases": {
+      "search_dir": null,
+      "glob": "**/combination.xml",
+      "include_fixtures": true,
+      "absolute_paths": true,
+      "out": "tmp/apex2_root_cases.json"
+    },
+    "condor": {
+      "mode": "array",
+      "template_sub": "scripts/condor/apex2_root_suite_array.sub",
+      "single_sub": "scripts/condor/apex2_root_suite_single.sub",
+      "results_dir_env": "APEX2_RESULTS_DIR",
+      "cases_json_env": "APEX2_ROOT_CASES_JSON",
+      "python_env": "APEX2_PYTHON",
+      "root_setup_env": "APEX2_ROOT_SETUP",
+      "tuning_env": {
+        "dq_atol": "APEX2_ROOT_DQ_ATOL",
+        "mu_hat_atol": "APEX2_ROOT_MU_HAT_ATOL",
+        "keep_going": "APEX2_ROOT_KEEP_GOING"
+      }
+    },
+    "aggregate": {
+      "script": "tests/aggregate_apex2_root_suite_reports.py",
+      "glob": "apex2_root_case_*.json",
+      "out": "tmp/apex2_root_suite_aggregate.json"
+    },
+    "baseline": {
+      "register_existing": {
+        "enabled": true,
+        "script": "tests/record_baseline.py",
+        "args": {
+          "only": "root",
+          "out_dir": "tmp/baselines",
+          "root_suite_existing": "tmp/apex2_root_suite_aggregate.json",
+          "root_cases_existing": "tmp/apex2_root_cases.json"
+        }
+      },
+      "compare_latest": {
+        "enabled": true,
+        "script": "tests/compare_apex2_root_suite_to_latest_baseline.py",
+        "args": {
+          "manifest": "tmp/baselines/latest_root_manifest.json",
+          "current": "tmp/apex2_root_suite_aggregate.json",
+          "max_slowdown": 1.3,
+          "min_baseline_s": 0.0,
+          "allow_skipped": false
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+[package]
+name = "ns-translate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Format translators (pyhf JSON, HistFactory XML, ROOT) for NextStat"
+
+[dependencies]
+ns-core.workspace = true
+ns-ad.workspace = true
+ns-compute.workspace = true
+ns-root = { workspace = true, optional = true }
+roxmltree = "0.21"
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+log.workspace = true
+rayon.workspace = true
+statrs.workspace = true
+json-patch.workspace = true
+arrow = { workspace = true, optional = true }
+# Note: avoid enabling Parquet's `zstd` feature by default.
+# When enabled, this workspace patches `zstd` to a pure-Rust shim backed by `ns-zstd`,
+# so it is compatible with wasm32-unknown-unknown as well.
+parquet = { version = "57.3", default-features = false, features = ["arrow", "snap"], optional = true }
+bytes = { version = "1", optional = true }
+
+[features]
+default = ["root-io"]
+arrow-io = ["dep:arrow", "dep:parquet", "dep:bytes"]
+arrow-io-zstd = ["arrow-io", "parquet/zstd"]
+root-io = ["dep:ns-root"]
+accelerate = ["ns-compute/accelerate"]
+cuda = ["ns-compute/cuda"]
+metal = ["ns-compute/metal"]
+
+[dev-dependencies]
+approx.workspace = true
+criterion.workspace = true
+proptest.workspace = true
+
+[[bench]]
+name = "nll_benchmark"
+harness = false
+
+[[bench]]
+name = "model_benchmark"
+harness = false

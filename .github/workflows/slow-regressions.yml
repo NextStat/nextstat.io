@@ -1,0 +1,206 @@
+name: Slow Regressions
+
+on:
+  workflow_dispatch:
+    inputs:
+      toys:
+        description: "Number of toys (slow tests)"
+        required: false
+        default: "50"
+      scan_points:
+        description: "Scan points for coverage test"
+        required: false
+        default: "81"
+      rust_very_slow:
+        description: "Run very slow Rust test (release pull distribution)"
+        required: false
+        default: "false"
+  schedule:
+    # Weekly (Monday 02:00 UTC)
+    - cron: "0 2 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust_slow:
+    name: Rust ignored slow tests (ns-inference)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run ignored Rust slow tests
+        env:
+          RUST_BACKTRACE: 1
+        run: make rust-slow-tests
+
+  rust_very_slow:
+    name: Rust very slow test (release pull distribution)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.rust_very_slow == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run very slow test (release)
+        env:
+          RUST_BACKTRACE: 1
+        run: make rust-very-slow-tests
+
+  slow:
+    name: Slow regressions (ubuntu, py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package
+        working-directory: bindings/ns-py
+        run: pip install target/wheels/*.whl
+
+      - name: Run slow tests
+        env:
+          NS_RUN_SLOW: "1"
+          NS_TOYS: ${{ inputs.toys || '50' }}
+          NS_SEED: "0"
+          NS_SCAN_POINTS: ${{ inputs.scan_points || '81' }}
+        run: |
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0"
+          pytest -q -m slow tests/python
+
+      - name: Write snapshot index (artifact hashes)
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 scripts/benchmarks/write_snapshot_index.py \
+            --suite slow-regressions \
+            --artifacts-dir artifacts \
+            --out artifacts/snapshot_index.json
+
+      - name: Find baseline (previous successful run artifact)
+        if: always()
+        id: baseline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflow_id = 'slow-regressions.yml';
+            const artifact_name = 'slow-regressions';
+            const ref = context.ref || '';
+            const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
+
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              status: 'success',
+              ...(branch ? { branch } : {}),
+              per_page: 1,
+            });
+
+            if (!runs.data.workflow_runs.length) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const run_id = runs.data.workflow_runs[0].id;
+            if (run_id === context.runId) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const arts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id,
+              per_page: 100,
+            });
+
+            const a = arts.data.artifacts.find(x => x.name === artifact_name && !x.expired);
+            if (!a) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            core.setOutput('found', 'true');
+            core.setOutput('run_id', String(run_id));
+            core.setOutput('artifact_id', String(a.id));
+
+      - name: Download baseline artifact
+        if: steps.baseline.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const artifact_id = Number('${{ steps.baseline.outputs.artifact_id }}');
+            const download = await github.rest.actions.downloadArtifact({
+              owner,
+              repo,
+              artifact_id,
+              archive_format: 'zip',
+            });
+            fs.writeFileSync('baseline_artifact.zip', Buffer.from(download.data));
+
+      - name: Build replication report vs baseline
+        if: steps.baseline.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p baseline
+          unzip -q baseline_artifact.zip -d baseline
+          if [[ ! -f baseline/snapshot_index.json ]]; then
+            echo "Baseline artifact does not contain snapshot_index.json (older baseline). Skipping drift report." >&2
+            exit 0
+          fi
+
+          bash scripts/benchmarks/make_replication_bundle.sh \
+            --original-index baseline/snapshot_index.json \
+            --artifacts-dir artifacts \
+            --suite slow-regressions \
+            --notes "baseline_run_id=${{ steps.baseline.outputs.run_id }}"
+          echo "Drift bundle generated under artifacts/.replication (informational; not a CI gate)."
+
+      - name: Upload slow-regressions artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slow-regressions
+          path: |
+            artifacts/snapshot_index.json
+            artifacts/.replication/*

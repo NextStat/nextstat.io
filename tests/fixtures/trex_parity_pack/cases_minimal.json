@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "simple_fixture",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/simple_workspace.json",
+      "measurement": "GaussExample",
+      "mu_grid": { "start": 0.0, "stop": 5.0, "points": 51 }
+    },
+    {
+      "name": "histfactory_fixture",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/histfactory/combination.xml",
+      "rootdir": "tests/fixtures/histfactory",
+      "mu_grid": { "start": 0.0, "stop": 5.0, "points": 51 }
+    },
+    {
+      "name": "pyhf_xmlimport",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/pyhf_xmlimport/config/example.xml",
+      "rootdir": "tests/fixtures/pyhf_xmlimport",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 31 }
+    },
+    {
+      "name": "pyhf_multichannel",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/pyhf_multichannel/config/example.xml",
+      "rootdir": "tests/fixtures/pyhf_multichannel",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 31 }
+    },
+    {
+      "name": "pyhf_coupled_histosys",
+      "mode": "histfactory-xml",
+      "histfactory_xml": "tests/fixtures/pyhf_coupled_histosys/config/example.xml",
+      "rootdir": "tests/fixtures/pyhf_coupled_histosys",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 31 }
+    }
+  ]
+}
+

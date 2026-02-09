@@ -1,0 +1,57 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: Example HEP Fit
+  description: TREx-style analysis spec for one-command deterministic workflows.
+  tags: ["example", "histfactory", "trex", "analysis-spec"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: /abs/path/to/trex/output
+    # If null, NextStat should auto-discover combination.xml under export_dir.
+    combination_xml: null
+    # Measurement name inside the workspace/model (reserved; informational in v0).
+    measurement: measurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: tmp/trex_workspace.json
+
+  fit:
+    enabled: false
+    output_json: tmp/trex_fit.json
+
+  profile_scan:
+    enabled: true
+    start: 0.0
+    stop: 5.0
+    points: 51
+    output_json: tmp/trex_scan.json
+
+  report:
+    enabled: true
+    out_dir: tmp/trex_report
+    overwrite: true
+    include_covariance: false
+    # If null and mode=histfactory_xml, use inputs.histfactory.combination_xml (or its auto-discovered value).
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3

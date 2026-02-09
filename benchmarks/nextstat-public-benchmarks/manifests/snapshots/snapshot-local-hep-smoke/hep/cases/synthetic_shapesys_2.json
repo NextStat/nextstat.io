@@ -1,0 +1,94 @@
+{
+  "case": "synthetic_shapesys_2",
+  "dataset": {
+    "id": "generated:synthetic_shapesys_2",
+    "sha256": "75adaf58b37ac361082b3567afd47477cbd92a7d8bd4344f6fa4a2cbb2034d3a"
+  },
+  "deterministic": true,
+  "fit": {
+    "meta": {
+      "nextstat_converged": true,
+      "nextstat_n_evaluations": 9,
+      "nextstat_n_iter": 9,
+      "nextstat_success": true,
+      "nextstat_termination_reason": "Solver converged",
+      "nll_nextstat": 12.256027510256686,
+      "nll_pyhf": 12.256034459202567,
+      "poi_hat_nextstat": 0.5999967600663214,
+      "poi_hat_pyhf": 0.6028689982761425,
+      "poi_name": "mu"
+    },
+    "parity": {
+      "abs_diff_nll_at_nextstat_bestfit": 5.826450433232822e-13,
+      "abs_diff_nll_at_pyhf_bestfit": 5.684341886080801e-13
+    },
+    "raw": {
+      "per_fit_s": {
+        "nextstat": [
+          0.001067290548235178
+        ],
+        "pyhf": [
+          0.0026484159752726555
+        ]
+      },
+      "policy": "min",
+      "repeat": 1
+    },
+    "speedup_pyhf_over_nextstat": 2.4814386107437687,
+    "status": "ok",
+    "time_s": {
+      "nextstat": 0.001067290548235178,
+      "pyhf": 0.0026484159752726555
+    }
+  },
+  "meta": {
+    "nextstat_version": "0.1.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "pyhf_version": "0.7.6",
+    "python": "3.13.11"
+  },
+  "model": {
+    "n_main_bins": 2,
+    "n_params": 3
+  },
+  "parity": {
+    "abs_diff": 5.684341886080801e-13,
+    "atol": 1e-08,
+    "nll_nextstat": 12.329652712129132,
+    "nll_pyhf": 12.329652712128564,
+    "ok": true,
+    "rel_diff": 4.6103017001354026e-14,
+    "rtol": 1e-12
+  },
+  "schema_version": "nextstat.benchmark_result.v1",
+  "suite": "hep",
+  "timing": {
+    "nll_time_s_per_call": {
+      "nextstat": 4.81324958911955e-06,
+      "pyhf": 4.388101194763294e-05
+    },
+    "raw": {
+      "number": 65536,
+      "per_call_s": {
+        "nextstat": [
+          4.81324958911955e-06,
+          6.639355348170284e-06,
+          6.104722977795518e-06,
+          7.398008349923657e-06,
+          6.387854263323334e-06
+        ],
+        "pyhf": [
+          7.62457275413908e-05,
+          8.082308966095297e-05,
+          0.00010449869773765386,
+          5.666593438036216e-05,
+          4.388101194763294e-05
+        ]
+      },
+      "policy": "min",
+      "repeat": 5,
+      "target_s": 0.25
+    },
+    "speedup_pyhf_over_nextstat": 9.116712344779891
+  }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "zstd"
+version = "0.13.3"
+edition = "2024"
+license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+description = "Pure-Rust shim for the zstd crate, backed by ns-zstd (used to enable Parquet Zstd on wasm32)."
+
+[features]
+default = []
+
+[dependencies]
+ns-zstd = { path = "../ns-zstd" }
+

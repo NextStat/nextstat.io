@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "timestamp": 0,
+    "python": "3.13.11",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "wall_s": 0.0
+  },
+  "pyhf": {
+    "status": "ok",
+    "report": {
+      "meta": {
+        "pyhf_version": "0.7.6"
+      },
+      "cases": [
+        {
+          "name": "fixture_simple",
+          "parity": { "max_abs_delta_nll": 1e-12 }
+        }
+      ]
+    }
+  },
+  "regression_golden": {
+    "status": "ok",
+    "cases": [
+      { "name": "ols_small", "ok": true },
+      { "name": "logistic_small", "ok": true }
+    ]
+  },
+  "timeseries": {
+    "status": "ok",
+    "report": {
+      "cases": [
+        { "name": "kalman_smoke", "ok": true },
+        { "name": "forecast_smoke", "ok": true }
+      ]
+    }
+  },
+  "pharma": {
+    "status": "ok",
+    "cases": [
+      { "name": "pk_predict_smoke", "ok": true }
+    ]
+  },
+  "pharma_reference": {
+    "status": "ok",
+    "report": {
+      "cases": [
+        { "name": "pk_predict_analytic", "ok": true },
+        { "name": "pk_fit_recovery", "ok": true },
+        { "name": "nlme_fit_smoke", "ok": true }
+      ]
+    }
+  },
+  "root": {
+    "status": "skipped",
+    "reason": "missing_root"
+  }
+}
+

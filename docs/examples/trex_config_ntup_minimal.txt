@@ -1,0 +1,41 @@
+# TRExFitter-style config (minimal) for NextStat import (ReadFrom=NTUP).
+#
+# This is NOT a full TRExFitter config; it is a compatible subset that the
+# `nextstat import trex-config` importer understands today.
+#
+# Run:
+#   nextstat import trex-config --config docs/examples/trex_config_ntup_minimal.txt --base-dir . --output workspace.json
+#
+# Then:
+#   nextstat fit --input workspace.json
+#
+
+ReadFrom: NTUP
+TreeName: events
+Measurement: meas
+POI: mu
+
+Region: SR
+Variable: mbb
+Binning: 0, 50, 100, 150, 200, 300
+Selection: njet >= 4
+
+Sample: signal
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Weight: weight_mc
+Regions: SR
+NormFactor: mu
+StatError: true
+
+Systematic: jes
+Type: weight
+Samples: signal
+Regions: SR
+WeightUp: weight_jes_up
+WeightDown: weight_jes_down
+
+# Alternative (weight-suffix expansion):
+# WeightBase: weight_jes
+# WeightUpSuffix: _up
+# WeightDownSuffix: _down

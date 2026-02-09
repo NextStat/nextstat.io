@@ -1,0 +1,57 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: TREx Config (YAML) HIST wrapper
+  description: "Use a TREx-like YAML input in ReadFrom=HIST mode to import an existing HistFactory export (combination.xml)."
+  tags: ["trex-config", "yaml", "hist", "import"]
+
+inputs:
+  mode: trex_config_yaml
+  trex_config_yaml:
+    base_dir: ../../../../
+    read_from: HIST
+    histo_path: tests/fixtures/histfactory
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: ../../../../tmp/trex_hist_workspace.json
+
+  fit:
+    enabled: false
+    output_json: ../../../../tmp/trex_hist_fit.json
+    fit_regions: []
+    validation_regions: []
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: ../../../../tmp/trex_hist_scan.json
+
+  report:
+    enabled: false
+    out_dir: ../../../../tmp/trex_hist_report
+    overwrite: false
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+    blind_regions: []
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: ../../../../tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3

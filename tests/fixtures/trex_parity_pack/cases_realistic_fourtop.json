@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "name": "fourtop_prod",
+      "mode": "pyhf-json",
+      "pyhf_json": "tests/fixtures/tttt-prod_workspace.json",
+      "measurement": "FourTop",
+      "mu_grid": { "start": 0.0, "stop": 3.0, "points": 11 }
+    }
+  ]
+}

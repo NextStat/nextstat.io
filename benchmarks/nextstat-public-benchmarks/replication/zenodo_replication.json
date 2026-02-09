@@ -1,0 +1,19 @@
+{
+  "title": "NextStat Replication Bundle (Template)",
+  "upload_type": "dataset",
+  "description": "Replication bundle for a published NextStat public benchmark snapshot. Includes rerun artifacts, snapshot_comparison.json, and a (draft) signed report template.",
+  "creators": [
+    {
+      "name": "NextStat Contributors"
+    }
+  ],
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "benchmarks",
+    "reproducibility",
+    "replication",
+    "validation"
+  ],
+  "notes": "Fill in the published snapshot DOI/URL and include sha256 of the replication bundle archive."
+}
+

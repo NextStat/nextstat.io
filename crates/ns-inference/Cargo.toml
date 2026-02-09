@@ -1,0 +1,78 @@
+[package]
+name = "ns-inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Statistical inference (MLE, NUTS, profile likelihood) for NextStat"
+
+[dependencies]
+ns-core.workspace = true
+ns-ad.workspace = true
+ns-compute.workspace = true
+ns-prob.workspace = true
+ns-translate = { workspace = true, default-features = false }
+thiserror.workspace = true
+log.workspace = true
+nalgebra.workspace = true
+argmin.workspace = true
+argmin-math.workspace = true
+ndarray.workspace = true
+rayon.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+statrs.workspace = true
+
+[features]
+default = ["root-io"]
+root-io = ["ns-translate/root-io"]
+accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
+cuda = ["ns-translate/cuda", "ns-compute/cuda"]
+metal = ["ns-translate/metal", "ns-compute/metal"]
+
+[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[dev-dependencies]
+approx.workspace = true
+criterion.workspace = true
+env_logger.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "mle_benchmark"
+harness = false
+
+[[bench]]
+name = "hypotest_benchmark"
+harness = false
+
+[[bench]]
+name = "regression_benchmark"
+harness = false
+
+[[bench]]
+name = "nuts_benchmark"
+harness = false
+
+[[bench]]
+name = "glm_fit_predict_benchmark"
+harness = false
+
+[[bench]]
+name = "kalman_benchmark"
+harness = false
+
+[[bench]]
+name = "hier_benchmark"
+harness = false
+
+[[bench]]
+name = "em_benchmark"
+harness = false

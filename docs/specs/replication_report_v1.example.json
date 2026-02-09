@@ -1,0 +1,38 @@
+{
+  "schema_version": "nextstat.replication_report.v1",
+  "generated_at": "2026-02-08T20:00:00Z",
+  "original": {
+    "snapshot_id": "gha-1234567890-1-deadbeefcafe",
+    "suite": "apex2-nightly-slow",
+    "snapshot_index_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "replica": {
+    "snapshot_id": "external-2026-02-08-my-lab",
+    "suite": "apex2-nightly-slow",
+    "snapshot_index_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "comparison": {
+    "overlap_paths": 12,
+    "mismatches": [
+      {
+        "path": "validation_report.json",
+        "original_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "replica_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "original_bytes": 6122,
+        "replica_bytes": 6122
+      }
+    ],
+    "ok": false
+  },
+  "notes": "Rerun on AMD EPYC 7742, Ubuntu 24.04, Rust 1.85.0. CPU-only, deterministic.",
+  "replica_snapshot_index": {
+    "schema_version": "nextstat.snapshot_index.v1",
+    "generated_at": "2026-02-08T20:00:00Z",
+    "snapshot_id": "external-2026-02-08-my-lab",
+    "suite": "apex2-nightly-slow",
+    "git": { "sha": "", "ref": "", "repository": "" },
+    "workflow": {},
+    "artifacts": []
+  }
+}
+

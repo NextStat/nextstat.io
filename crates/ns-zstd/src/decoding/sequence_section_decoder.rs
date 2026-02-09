@@ -1,0 +1,631 @@
+use super::super::blocks::sequence_section::ModeType;
+use super::super::blocks::sequence_section::Sequence;
+use super::super::blocks::sequence_section::SequencesHeader;
+use super::scratch::FSEScratch;
+use crate::bit_io::BitReaderReversed;
+use crate::blocks::sequence_section::{
+    MAX_LITERAL_LENGTH_CODE, MAX_MATCH_LENGTH_CODE, MAX_OFFSET_CODE,
+};
+use crate::decoding::errors::DecodeSequenceError;
+use crate::fse::FSEDecoder;
+use alloc::vec::Vec;
+
+/// Decode the provided source as a series of sequences into the supplied `target`.
+#[allow(dead_code)]
+pub fn decode_sequences(
+    section: &SequencesHeader,
+    source: &[u8],
+    scratch: &mut FSEScratch,
+    target: &mut Vec<Sequence>,
+) -> Result<(), DecodeSequenceError> {
+    let bytes_read = maybe_update_fse_tables(section, source, scratch)?;
+
+    vprintln!("Updating tables used {} bytes", bytes_read);
+
+    let bit_stream = &source[bytes_read..];
+
+    let mut br = BitReaderReversed::new(bit_stream);
+
+    //skip the 0 padding at the end of the last byte of the bit stream and throw away the first 1 found
+    let mut skipped_bits = 0;
+    loop {
+        let val = br.get_bits(1);
+        skipped_bits += 1;
+        if val == 1 || skipped_bits > 8 {
+            break;
+        }
+    }
+    if skipped_bits > 8 {
+        //if more than 7 bits are 0, this is not the correct end of the bitstream. Either a bug or corrupted data
+        return Err(DecodeSequenceError::ExtraPadding { skipped_bits });
+    }
+
+    if scratch.ll_rle.is_some() || scratch.ml_rle.is_some() || scratch.of_rle.is_some() {
+        decode_sequences_with_rle(section, &mut br, scratch, target)
+    } else {
+        decode_sequences_without_rle(section, &mut br, scratch, target)
+    }
+}
+
+fn decode_sequences_with_rle(
+    section: &SequencesHeader,
+    br: &mut BitReaderReversed<'_>,
+    scratch: &FSEScratch,
+    target: &mut Vec<Sequence>,
+) -> Result<(), DecodeSequenceError> {
+    let mut ll_dec = FSEDecoder::new(&scratch.literal_lengths);
+    let mut ml_dec = FSEDecoder::new(&scratch.match_lengths);
+    let mut of_dec = FSEDecoder::new(&scratch.offsets);
+
+    if scratch.ll_rle.is_none() {
+        ll_dec.init_state(br)?;
+    }
+    if scratch.of_rle.is_none() {
+        of_dec.init_state(br)?;
+    }
+    if scratch.ml_rle.is_none() {
+        ml_dec.init_state(br)?;
+    }
+
+    target.clear();
+    target.reserve(section.num_sequences as usize);
+
+    for _seq_idx in 0..section.num_sequences {
+        //get the codes from either the RLE byte or from the decoder
+        let ll_code = if let Some(code) = scratch.ll_rle { code } else { ll_dec.decode_symbol() };
+        let ml_code = if let Some(code) = scratch.ml_rle { code } else { ml_dec.decode_symbol() };
+        let of_code = if let Some(code) = scratch.of_rle { code } else { of_dec.decode_symbol() };
+
+        let (ll_value, ll_num_bits) = lookup_ll_code(ll_code);
+        let (ml_value, ml_num_bits) = lookup_ml_code(ml_code);
+
+        //println!("Sequence: {}", i);
+        //println!("of stat: {}", of_dec.state);
+        //println!("of Code: {}", of_code);
+        //println!("ll stat: {}", ll_dec.state);
+        //println!("ll bits: {}", ll_num_bits);
+        //println!("ll Code: {}", ll_value);
+        //println!("ml stat: {}", ml_dec.state);
+        //println!("ml bits: {}", ml_num_bits);
+        //println!("ml Code: {}", ml_value);
+        //println!("");
+
+        if of_code > MAX_OFFSET_CODE {
+            return Err(DecodeSequenceError::UnsupportedOffset { offset_code: of_code });
+        }
+
+        let (obits, ml_add, ll_add) = br.get_bits_triple(of_code, ml_num_bits, ll_num_bits);
+        let offset = obits as u32 + (1u32 << of_code);
+
+        if offset == 0 {
+            return Err(DecodeSequenceError::ZeroOffset);
+        }
+
+        target.push(Sequence {
+            ll: ll_value + ll_add as u32,
+            ml: ml_value + ml_add as u32,
+            of: offset,
+        });
+
+        if target.len() < section.num_sequences as usize {
+            //println!(
+            //    "Bits left: {} ({} bytes)",
+            //    br.bits_remaining(),
+            //    br.bits_remaining() / 8,
+            //);
+            if scratch.ll_rle.is_none() {
+                ll_dec.update_state(br);
+            }
+            if scratch.ml_rle.is_none() {
+                ml_dec.update_state(br);
+            }
+            if scratch.of_rle.is_none() {
+                of_dec.update_state(br);
+            }
+        }
+
+        if br.bits_remaining() < 0 {
+            return Err(DecodeSequenceError::NotEnoughBytesForNumSequences);
+        }
+    }
+
+    if br.bits_remaining() > 0 {
+        Err(DecodeSequenceError::ExtraBits { bits_remaining: br.bits_remaining() })
+    } else {
+        Ok(())
+    }
+}
+
+fn decode_sequences_without_rle(
+    section: &SequencesHeader,
+    br: &mut BitReaderReversed<'_>,
+    scratch: &FSEScratch,
+    target: &mut Vec<Sequence>,
+) -> Result<(), DecodeSequenceError> {
+    let mut ll_dec = FSEDecoder::new(&scratch.literal_lengths);
+    let mut ml_dec = FSEDecoder::new(&scratch.match_lengths);
+    let mut of_dec = FSEDecoder::new(&scratch.offsets);
+
+    ll_dec.init_state(br)?;
+    of_dec.init_state(br)?;
+    ml_dec.init_state(br)?;
+
+    target.clear();
+    target.reserve(section.num_sequences as usize);
+
+    for _seq_idx in 0..section.num_sequences {
+        let ll_code = ll_dec.decode_symbol();
+        let ml_code = ml_dec.decode_symbol();
+        let of_code = of_dec.decode_symbol();
+
+        let (ll_value, ll_num_bits) = lookup_ll_code(ll_code);
+        let (ml_value, ml_num_bits) = lookup_ml_code(ml_code);
+
+        if of_code > MAX_OFFSET_CODE {
+            return Err(DecodeSequenceError::UnsupportedOffset { offset_code: of_code });
+        }
+
+        let (obits, ml_add, ll_add) = br.get_bits_triple(of_code, ml_num_bits, ll_num_bits);
+        let offset = obits as u32 + (1u32 << of_code);
+
+        if offset == 0 {
+            return Err(DecodeSequenceError::ZeroOffset);
+        }
+
+        target.push(Sequence {
+            ll: ll_value + ll_add as u32,
+            ml: ml_value + ml_add as u32,
+            of: offset,
+        });
+
+        if target.len() < section.num_sequences as usize {
+            //println!(
+            //    "Bits left: {} ({} bytes)",
+            //    br.bits_remaining(),
+            //    br.bits_remaining() / 8,
+            //);
+            ll_dec.update_state(br);
+            ml_dec.update_state(br);
+            of_dec.update_state(br);
+        }
+
+        if br.bits_remaining() < 0 {
+            return Err(DecodeSequenceError::NotEnoughBytesForNumSequences);
+        }
+    }
+
+    if br.bits_remaining() > 0 {
+        Err(DecodeSequenceError::ExtraBits { bits_remaining: br.bits_remaining() })
+    } else {
+        Ok(())
+    }
+}
+
+/// Static lookup table for literal length codes (value, num_extra_bits).
+/// Codes 0..=15 map to (code, 0). Codes 16..=35 have extra bits.
+///
+/// <https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#appendix-a---decoding-tables-for-predefined-codes>
+static LL_CODE_TABLE: [(u32, u8); 36] = [
+    (0, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (4, 0),
+    (5, 0),
+    (6, 0),
+    (7, 0),
+    (8, 0),
+    (9, 0),
+    (10, 0),
+    (11, 0),
+    (12, 0),
+    (13, 0),
+    (14, 0),
+    (15, 0),
+    (16, 1),
+    (18, 1),
+    (20, 1),
+    (22, 1),
+    (24, 2),
+    (28, 2),
+    (32, 3),
+    (40, 3),
+    (48, 4),
+    (64, 6),
+    (128, 7),
+    (256, 8),
+    (512, 9),
+    (1024, 10),
+    (2048, 11),
+    (4096, 12),
+    (8192, 13),
+    (16384, 14),
+    (32768, 15),
+    (65536, 16),
+];
+
+#[inline(always)]
+pub(crate) fn lookup_ll_code(code: u8) -> (u32, u8) {
+    debug_assert!((code as usize) < LL_CODE_TABLE.len());
+    // SAFETY: code is validated to be <= MAX_LITERAL_LENGTH_CODE (35) by FSE table
+    unsafe { *LL_CODE_TABLE.get_unchecked(code as usize) }
+}
+
+/// Static lookup table for match length codes (value, num_extra_bits).
+/// Codes 0..=31 map to (code+3, 0). Codes 32..=52 have extra bits.
+///
+/// <https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#appendix-a---decoding-tables-for-predefined-codes>
+static ML_CODE_TABLE: [(u32, u8); 53] = [
+    (3, 0),
+    (4, 0),
+    (5, 0),
+    (6, 0),
+    (7, 0),
+    (8, 0),
+    (9, 0),
+    (10, 0),
+    (11, 0),
+    (12, 0),
+    (13, 0),
+    (14, 0),
+    (15, 0),
+    (16, 0),
+    (17, 0),
+    (18, 0),
+    (19, 0),
+    (20, 0),
+    (21, 0),
+    (22, 0),
+    (23, 0),
+    (24, 0),
+    (25, 0),
+    (26, 0),
+    (27, 0),
+    (28, 0),
+    (29, 0),
+    (30, 0),
+    (31, 0),
+    (32, 0),
+    (33, 0),
+    (34, 0),
+    (35, 1),
+    (37, 1),
+    (39, 1),
+    (41, 1),
+    (43, 2),
+    (47, 2),
+    (51, 3),
+    (59, 3),
+    (67, 4),
+    (83, 4),
+    (99, 5),
+    (131, 7),
+    (259, 8),
+    (515, 9),
+    (1027, 10),
+    (2051, 11),
+    (4099, 12),
+    (8195, 13),
+    (16387, 14),
+    (32771, 15),
+    (65539, 16),
+];
+
+#[inline(always)]
+pub(crate) fn lookup_ml_code(code: u8) -> (u32, u8) {
+    debug_assert!((code as usize) < ML_CODE_TABLE.len());
+    // SAFETY: code is validated to be <= MAX_MATCH_LENGTH_CODE (52) by FSE table
+    unsafe { *ML_CODE_TABLE.get_unchecked(code as usize) }
+}
+
+// This info is buried in the symbol compression mode table
+/// "The maximum allowed accuracy log for literals length and match length tables is 9"
+pub const LL_MAX_LOG: u8 = 9;
+/// "The maximum allowed accuracy log for literals length and match length tables is 9"
+pub const ML_MAX_LOG: u8 = 9;
+/// "The maximum accuracy log for the offset table is 8."
+pub const OF_MAX_LOG: u8 = 8;
+
+pub(crate) fn maybe_update_fse_tables(
+    section: &SequencesHeader,
+    source: &[u8],
+    scratch: &mut FSEScratch,
+) -> Result<usize, DecodeSequenceError> {
+    let modes = section.modes.ok_or(DecodeSequenceError::MissingCompressionMode)?;
+
+    let mut bytes_read = 0;
+
+    match modes.ll_mode() {
+        ModeType::FSECompressed => {
+            let bytes = scratch.literal_lengths.build_decoder(source, LL_MAX_LOG)?;
+            bytes_read += bytes;
+
+            vprintln!("Updating ll table");
+            vprintln!("Used bytes: {}", bytes);
+            scratch.ll_rle = None;
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::RLE => {
+            vprintln!("Use RLE ll table");
+            if source.is_empty() {
+                return Err(DecodeSequenceError::MissingByteForRleLlTable);
+            }
+            bytes_read += 1;
+            if source[0] > MAX_LITERAL_LENGTH_CODE {
+                return Err(DecodeSequenceError::MissingByteForRleMlTable);
+            }
+            scratch.ll_rle = Some(source[0]);
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::Predefined => {
+            vprintln!("Use predefined ll table");
+            if scratch.literal_lengths.accuracy_log != LL_DEFAULT_ACC_LOG
+                || scratch.literal_lengths.symbol_probabilities.as_slice()
+                    != LITERALS_LENGTH_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch.literal_lengths.build_from_probabilities(
+                    LL_DEFAULT_ACC_LOG,
+                    &LITERALS_LENGTH_DEFAULT_DISTRIBUTION,
+                )?;
+                scratch.seq_tables_valid = false;
+            }
+            scratch.ll_rle = None;
+        }
+        ModeType::Repeat => {
+            vprintln!("Repeat ll table");
+            /* Nothing to do */
+        }
+    };
+
+    let of_source = &source[bytes_read..];
+
+    match modes.of_mode() {
+        ModeType::FSECompressed => {
+            let bytes = scratch.offsets.build_decoder(of_source, OF_MAX_LOG)?;
+            vprintln!("Updating of table");
+            vprintln!("Used bytes: {}", bytes);
+            bytes_read += bytes;
+            scratch.of_rle = None;
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::RLE => {
+            vprintln!("Use RLE of table");
+            if of_source.is_empty() {
+                return Err(DecodeSequenceError::MissingByteForRleOfTable);
+            }
+            bytes_read += 1;
+            if of_source[0] > MAX_OFFSET_CODE {
+                return Err(DecodeSequenceError::MissingByteForRleMlTable);
+            }
+            scratch.of_rle = Some(of_source[0]);
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::Predefined => {
+            vprintln!("Use predefined of table");
+            if scratch.offsets.accuracy_log != OF_DEFAULT_ACC_LOG
+                || scratch.offsets.symbol_probabilities.as_slice()
+                    != OFFSET_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch
+                    .offsets
+                    .build_from_probabilities(OF_DEFAULT_ACC_LOG, &OFFSET_DEFAULT_DISTRIBUTION)?;
+                scratch.seq_tables_valid = false;
+            }
+            scratch.of_rle = None;
+        }
+        ModeType::Repeat => {
+            vprintln!("Repeat of table");
+            /* Nothing to do */
+        }
+    };
+
+    let ml_source = &source[bytes_read..];
+
+    match modes.ml_mode() {
+        ModeType::FSECompressed => {
+            let bytes = scratch.match_lengths.build_decoder(ml_source, ML_MAX_LOG)?;
+            bytes_read += bytes;
+            vprintln!("Updating ml table");
+            vprintln!("Used bytes: {}", bytes);
+            scratch.ml_rle = None;
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::RLE => {
+            vprintln!("Use RLE ml table");
+            if ml_source.is_empty() {
+                return Err(DecodeSequenceError::MissingByteForRleMlTable);
+            }
+            bytes_read += 1;
+            if ml_source[0] > MAX_MATCH_LENGTH_CODE {
+                return Err(DecodeSequenceError::MissingByteForRleMlTable);
+            }
+            scratch.ml_rle = Some(ml_source[0]);
+            scratch.seq_tables_valid = false;
+        }
+        ModeType::Predefined => {
+            vprintln!("Use predefined ml table");
+            if scratch.match_lengths.accuracy_log != ML_DEFAULT_ACC_LOG
+                || scratch.match_lengths.symbol_probabilities.as_slice()
+                    != MATCH_LENGTH_DEFAULT_DISTRIBUTION.as_slice()
+            {
+                scratch.match_lengths.build_from_probabilities(
+                    ML_DEFAULT_ACC_LOG,
+                    &MATCH_LENGTH_DEFAULT_DISTRIBUTION,
+                )?;
+                scratch.seq_tables_valid = false;
+            }
+            scratch.ml_rle = None;
+        }
+        ModeType::Repeat => {
+            vprintln!("Repeat ml table");
+            /* Nothing to do */
+        }
+    };
+
+    Ok(bytes_read)
+}
+
+/// Build merged SeqSymbol tables from the raw FSE tables and RLE state.
+/// Must be called after `maybe_update_fse_tables`.
+/// For RLE modes, creates a single-entry table with nb_bits=0 (state stays at 0).
+pub(crate) fn build_seq_symbols(fse: &mut FSEScratch) {
+    if fse.seq_tables_valid {
+        return;
+    }
+    use crate::decoding::scratch::SeqSymbol;
+
+    // --- Literal Lengths ---
+    if let Some(rle_code) = fse.ll_rle {
+        let (base_value, nb_additional_bits) = lookup_ll_code(rle_code);
+        fse.seq_ll.clear();
+        fse.seq_ll.push(SeqSymbol {
+            base_value,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits,
+        });
+        fse.seq_ll_log = 0;
+    } else {
+        let table = &fse.literal_lengths.decode;
+        fse.seq_ll.clear();
+        fse.seq_ll.reserve(table.len());
+        for entry in table {
+            let (base_value, nb_additional_bits) = lookup_ll_code(entry.symbol);
+            fse.seq_ll.push(SeqSymbol {
+                base_value,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits,
+            });
+        }
+        fse.seq_ll_log = fse.literal_lengths.accuracy_log;
+    }
+
+    // --- Match Lengths ---
+    if let Some(rle_code) = fse.ml_rle {
+        let (base_value, nb_additional_bits) = lookup_ml_code(rle_code);
+        fse.seq_ml.clear();
+        fse.seq_ml.push(SeqSymbol {
+            base_value,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits,
+        });
+        fse.seq_ml_log = 0;
+    } else {
+        let table = &fse.match_lengths.decode;
+        fse.seq_ml.clear();
+        fse.seq_ml.reserve(table.len());
+        for entry in table {
+            let (base_value, nb_additional_bits) = lookup_ml_code(entry.symbol);
+            fse.seq_ml.push(SeqSymbol {
+                base_value,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits,
+            });
+        }
+        fse.seq_ml_log = fse.match_lengths.accuracy_log;
+    }
+
+    // --- Offsets ---
+    if let Some(rle_code) = fse.of_rle {
+        fse.seq_of.clear();
+        fse.seq_of.push(SeqSymbol {
+            base_value: 1u32 << rle_code,
+            next_state_base: 0,
+            nb_bits: 0,
+            nb_additional_bits: rle_code,
+        });
+        fse.seq_of_log = 0;
+    } else {
+        let table = &fse.offsets.decode;
+        fse.seq_of.clear();
+        fse.seq_of.reserve(table.len());
+        for entry in table {
+            let of_code = entry.symbol;
+            fse.seq_of.push(SeqSymbol {
+                base_value: 1u32 << of_code,
+                next_state_base: entry.base_line as u16,
+                nb_bits: entry.num_bits,
+                nb_additional_bits: of_code,
+            });
+        }
+        fse.seq_of_log = fse.offsets.accuracy_log;
+    }
+
+    fse.seq_tables_valid = true;
+}
+
+// The default Literal Length decoding table uses an accuracy logarithm of 6 bits.
+const LL_DEFAULT_ACC_LOG: u8 = 6;
+/// If [ModeType::Predefined] is selected for a symbol type, its FSE decoding
+/// table is generated using a predefined distribution table.
+///
+/// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#literals-length
+const LITERALS_LENGTH_DEFAULT_DISTRIBUTION: [i32; 36] = [
+    4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
+    -1, -1, -1, -1,
+];
+
+// The default Match Length decoding table uses an accuracy logarithm of 6 bits.
+const ML_DEFAULT_ACC_LOG: u8 = 6;
+/// If [ModeType::Predefined] is selected for a symbol type, its FSE decoding
+/// table is generated using a predefined distribution table.
+///
+/// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#match-length
+const MATCH_LENGTH_DEFAULT_DISTRIBUTION: [i32; 53] = [
+    1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1,
+];
+
+// The default Match Length decoding table uses an accuracy logarithm of 5 bits.
+const OF_DEFAULT_ACC_LOG: u8 = 5;
+/// If [ModeType::Predefined] is selected for a symbol type, its FSE decoding
+/// table is generated using a predefined distribution table.
+///
+/// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#match-length
+const OFFSET_DEFAULT_DISTRIBUTION: [i32; 29] =
+    [1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1];
+
+#[test]
+fn test_ll_default() {
+    let mut table = crate::fse::FSETable::new(MAX_LITERAL_LENGTH_CODE);
+    table
+        .build_from_probabilities(LL_DEFAULT_ACC_LOG, &LITERALS_LENGTH_DEFAULT_DISTRIBUTION)
+        .unwrap();
+
+    #[cfg(feature = "std")]
+    for idx in 0..table.decode.len() {
+        std::println!(
+            "{:3}: {:3} {:3} {:3}",
+            idx,
+            table.decode[idx].symbol,
+            table.decode[idx].num_bits,
+            table.decode[idx].base_line
+        );
+    }
+
+    assert!(table.decode.len() == 64);
+
+    //just test a few values. TODO test all values
+    assert!(table.decode[0].symbol == 0);
+    assert!(table.decode[0].num_bits == 4);
+    assert!(table.decode[0].base_line == 0);
+
+    assert!(table.decode[19].symbol == 27);
+    assert!(table.decode[19].num_bits == 6);
+    assert!(table.decode[19].base_line == 0);
+
+    assert!(table.decode[39].symbol == 25);
+    assert!(table.decode[39].num_bits == 4);
+    assert!(table.decode[39].base_line == 16);
+
+    assert!(table.decode[60].symbol == 35);
+    assert!(table.decode[60].num_bits == 6);
+    assert!(table.decode[60].base_line == 0);
+
+    assert!(table.decode[59].symbol == 24);
+    assert!(table.decode[59].num_bits == 5);
+    assert!(table.decode[59].base_line == 32);
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": "nextstat.snapshot_index.v1",
+  "generated_at": "2026-02-08T20:00:00Z",
+  "snapshot_id": "gha-1234567890-1-deadbeefcafe",
+  "suite": "apex2-nightly-slow",
+  "git": {
+    "sha": "deadbeefcafebabefeedface0123456789abcdef0123456789abcdef01234567",
+    "ref": "refs/heads/main",
+    "repository": "NextStat/nextstat.io"
+  },
+  "workflow": {
+    "GITHUB_WORKFLOW": "Apex2 Nightly Slow Validations",
+    "GITHUB_RUN_ID": "1234567890",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "RUNNER_OS": "Linux",
+    "RUNNER_ARCH": "X64"
+  },
+  "artifacts": [
+    {
+      "path": "validation_pack_manifest.json",
+      "bytes": 579,
+      "sha256": "d23dd60ae80698cc140f2c1c4318eac9028042446a2ebe081befbb52aad3f9c6"
+    },
+    {
+      "path": "validation_report.json",
+      "bytes": 6122,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
+

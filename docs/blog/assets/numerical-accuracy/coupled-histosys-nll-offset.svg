@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560">
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}.title{font-size:18px;font-weight:600;fill:#111827;}.label{font-size:13px;fill:#111827;}.tick{font-size:12px;fill:#374151;}.grid{stroke:#e5e7eb;stroke-width:1;}.axis{stroke:#111827;stroke-width:1.2;}</style>
+<rect x="0" y="0" width="960" height="560" fill="#ffffff" />
+<text x="92" y="34" class="title">coupled_histosys: NLL offset (ROOT - NextStat)</text>
+<line x1="92" y1="617.807" x2="932" y2="617.807" class="grid" />
+<text x="80" y="621.807" text-anchor="end" class="tick">415</text>
+<line x1="92" y1="463.736" x2="932" y2="463.736" class="grid" />
+<text x="80" y="467.736" text-anchor="end" class="tick">420</text>
+<line x1="92" y1="309.665" x2="932" y2="309.665" class="grid" />
+<text x="80" y="313.665" text-anchor="end" class="tick">425</text>
+<line x1="92" y1="155.594" x2="932" y2="155.594" class="grid" />
+<text x="80" y="159.594" text-anchor="end" class="tick">430</text>
+<line x1="92" y1="1.522" x2="932" y2="1.522" class="grid" />
+<text x="80" y="5.522" text-anchor="end" class="tick">435</text>
+<line x1="92.000" y1="72" x2="92.000" y2="482" class="grid" />
+<text x="92.000" y="504" text-anchor="middle" class="tick">0</text>
+<line x1="232.000" y1="72" x2="232.000" y2="482" class="grid" />
+<text x="232.000" y="504" text-anchor="middle" class="tick">0.5</text>
+<line x1="372.000" y1="72" x2="372.000" y2="482" class="grid" />
+<text x="372.000" y="504" text-anchor="middle" class="tick">1</text>
+<line x1="512.000" y1="72" x2="512.000" y2="482" class="grid" />
+<text x="512.000" y="504" text-anchor="middle" class="tick">1.5</text>
+<line x1="652.000" y1="72" x2="652.000" y2="482" class="grid" />
+<text x="652.000" y="504" text-anchor="middle" class="tick">2</text>
+<line x1="792.000" y1="72" x2="792.000" y2="482" class="grid" />
+<text x="792.000" y="504" text-anchor="middle" class="tick">2.5</text>
+<line x1="932.000" y1="72" x2="932.000" y2="482" class="grid" />
+<text x="932.000" y="504" text-anchor="middle" class="tick">3</text>
+<line x1="92" y1="72" x2="92" y2="482" class="axis" />
+<line x1="92" y1="482" x2="932" y2="482" class="axis" />
+<text x="512.000" y="542" text-anchor="middle" class="label">mu</text>
+<text x="22" y="277.000" text-anchor="middle" class="label" transform="rotate(-90 22 277.000)">NLL offset</text>
+<polyline fill="none" stroke="#111827" stroke-width="2.5" points="92.000,441.004 120.000,441.004 148.000,441.004 176.000,441.004 204.000,441.004 232.000,441.004 260.000,460.036 288.000,454.856 316.000,448.460 344.000,441.009 372.000,432.604 400.000,423.312 428.000,413.175 456.000,402.219 484.000,390.453 512.000,377.880 540.000,364.493 568.000,350.282 596.000,335.237 624.000,319.346 652.000,302.606 680.000,285.016 708.000,266.588 736.000,247.344 764.000,227.331 792.000,206.636 820.000,185.306 848.000,163.352 876.000,140.797 904.000,117.661 932.000,93.964" />
+<rect x="712" y="34" width="212" height="28" fill="#ffffff" stroke="#e5e7eb" />
+<line x1="724" y1="56" x2="750" y2="56" stroke="#111827" stroke-width="2.5" />
+<text x="760" y="60" class="tick">offset</text>
+</svg>

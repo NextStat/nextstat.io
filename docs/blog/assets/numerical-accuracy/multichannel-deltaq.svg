@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560">
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}.title{font-size:18px;font-weight:600;fill:#111827;}.label{font-size:13px;fill:#111827;}.tick{font-size:12px;fill:#374151;}.grid{stroke:#e5e7eb;stroke-width:1;}.axis{stroke:#111827;stroke-width:1.2;}</style>
+<rect x="0" y="0" width="960" height="560" fill="#ffffff" />
+<text x="92" y="34" class="title">multichannel (ShapeSys): Δq(mu) residuals</text>
+<line x1="92" y1="523.769" x2="932" y2="523.769" class="grid" />
+<text x="80" y="527.769" text-anchor="end" class="tick">-6.00e-07</text>
+<line x1="92" y1="441.513" x2="932" y2="441.513" class="grid" />
+<text x="80" y="445.513" text-anchor="end" class="tick">-4.00e-07</text>
+<line x1="92" y1="359.256" x2="932" y2="359.256" class="grid" />
+<text x="80" y="363.256" text-anchor="end" class="tick">-2.00e-07</text>
+<line x1="92" y1="277.000" x2="932" y2="277.000" class="grid" />
+<text x="80" y="281.000" text-anchor="end" class="tick">0</text>
+<line x1="92" y1="194.744" x2="932" y2="194.744" class="grid" />
+<text x="80" y="198.744" text-anchor="end" class="tick">2.00e-07</text>
+<line x1="92" y1="112.487" x2="932" y2="112.487" class="grid" />
+<text x="80" y="116.487" text-anchor="end" class="tick">4.00e-07</text>
+<line x1="92" y1="30.231" x2="932" y2="30.231" class="grid" />
+<text x="80" y="34.231" text-anchor="end" class="tick">6.00e-07</text>
+<line x1="92.000" y1="72" x2="92.000" y2="482" class="grid" />
+<text x="92.000" y="504" text-anchor="middle" class="tick">0</text>
+<line x1="232.000" y1="72" x2="232.000" y2="482" class="grid" />
+<text x="232.000" y="504" text-anchor="middle" class="tick">0.5</text>
+<line x1="372.000" y1="72" x2="372.000" y2="482" class="grid" />
+<text x="372.000" y="504" text-anchor="middle" class="tick">1</text>
+<line x1="512.000" y1="72" x2="512.000" y2="482" class="grid" />
+<text x="512.000" y="504" text-anchor="middle" class="tick">1.5</text>
+<line x1="652.000" y1="72" x2="652.000" y2="482" class="grid" />
+<text x="652.000" y="504" text-anchor="middle" class="tick">2</text>
+<line x1="792.000" y1="72" x2="792.000" y2="482" class="grid" />
+<text x="792.000" y="504" text-anchor="middle" class="tick">2.5</text>
+<line x1="932.000" y1="72" x2="932.000" y2="482" class="grid" />
+<text x="932.000" y="504" text-anchor="middle" class="tick">3</text>
+<line x1="92" y1="72" x2="92" y2="482" class="axis" />
+<line x1="92" y1="482" x2="932" y2="482" class="axis" />
+<line x1="92" y1="277.000" x2="932" y2="277.000" stroke="#9ca3af" stroke-width="1.2" />
+<text x="512.000" y="542" text-anchor="middle" class="label">mu</text>
+<text x="22" y="277.000" text-anchor="middle" class="label" transform="rotate(-90 22 277.000)">Δq(mu)</text>
+<polyline fill="none" stroke="#d62728" stroke-width="2.5" points="92.000,277.000 120.000,277.000 148.000,277.000 176.000,263.053 204.000,263.058 232.000,263.060 260.000,263.063 288.000,263.068 316.000,263.073 344.000,263.089 372.000,263.077 400.000,263.498 428.000,263.264 456.000,263.091 484.000,263.147 512.000,263.088 540.000,263.088 568.000,263.089 596.000,264.463 624.000,263.280 652.000,262.947 680.000,262.983 708.000,262.985 736.000,262.998 764.000,263.009 792.000,263.209 820.000,263.028 848.000,263.035 876.000,263.043 904.000,263.088 932.000,263.051" />
+<polyline fill="none" stroke="#6f42c1" stroke-width="2.5" points="92.000,277.000 120.000,277.000 148.000,277.000 176.000,293.785 204.000,314.216 232.000,346.480 260.000,341.924 288.000,298.597 316.000,310.402 344.000,454.752 372.000,308.736 400.000,297.465 428.000,304.315 456.000,296.502 484.000,295.940 512.000,460.036 540.000,296.004 568.000,295.078 596.000,293.169 624.000,294.075 652.000,293.931 680.000,293.739 708.000,293.643 736.000,293.616 764.000,295.382 792.000,293.470 820.000,309.219 848.000,399.603 876.000,299.542 904.000,294.205 932.000,293.888" />
+<rect x="712" y="34" width="212" height="46" fill="#ffffff" stroke="#e5e7eb" />
+<line x1="724" y1="56" x2="750" y2="56" stroke="#d62728" stroke-width="2.5" />
+<text x="760" y="60" class="tick">ROOT - NextStat</text>
+<line x1="724" y1="74" x2="750" y2="74" stroke="#6f42c1" stroke-width="2.5" />
+<text x="760" y="78" class="tick">NextStat - pyhf</text>
+</svg>

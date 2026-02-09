@@ -1,0 +1,45 @@
+[package]
+name = "ns-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Command-line interface for NextStat"
+
+[[bin]]
+name = "nextstat"
+path = "src/main.rs"
+
+[dependencies]
+ns-core.workspace = true
+ns-compute.workspace = true
+ns-inference = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io"] }
+ns-viz.workspace = true
+ns-unbinned.workspace = true
+ns-root.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rayon.workspace = true
+nalgebra.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+statrs.workspace = true
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[features]
+default = []
+accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
+cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
+metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
+
+[dev-dependencies]

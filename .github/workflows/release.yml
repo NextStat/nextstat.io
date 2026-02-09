@@ -1,0 +1,443 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Gate: test, lint, version check ──────────────────────────
+  test:
+    name: Pre-release validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          CARGO_VER=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ "$TAG" != "$CARGO_VER" ]; then
+            echo "::error::Tag v$TAG does not match Cargo.toml version $CARGO_VER"
+            exit 1
+          fi
+          echo "Version $CARGO_VER matches tag v$TAG"
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  # ── crates.io publish (optional, needs CARGO_REGISTRY_TOKEN secret) ────────
+  crates-io-publish:
+    name: Publish to crates.io
+    needs: [test]
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish workspace crates (dependency order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "Not a tag push; skipping crates.io publish."
+            exit 0
+          fi
+          if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+            echo "Missing CARGO_REGISTRY_TOKEN secret; skipping crates.io publish."
+            exit 0
+          fi
+          publish() {
+            local crate="$1"
+            echo "Publishing ${crate}…"
+            cargo publish -p "${crate}"
+            # Allow crates.io index propagation for downstream crates.
+            sleep 20
+          }
+
+          publish ns-core
+          publish ns-compute
+          publish ns-ad
+          publish ns-prob
+          publish ns-translate
+          publish ns-inference
+          publish ns-viz
+          publish ns-cli
+
+  # ── Python wheels (multi-arch) ───────────────────────────────
+  wheels:
+    name: Wheel (${{ matrix.target }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            maturin_extra_args: --find-interpreter
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/ns-py
+          target: ${{ matrix.target }}
+          command: build
+          args: --release --out dist ${{ matrix.maturin_extra_args || '' }}
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: bindings/ns-py/dist/*.whl
+
+  # ── Source distribution ──────────────────────────────────────
+  sdist:
+    name: Source distribution
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/ns-py
+          command: sdist
+          args: --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: bindings/ns-py/dist/*.tar.gz
+
+  # ── CLI binaries ─────────────────────────────────────────────
+  cli:
+    name: CLI (${{ matrix.target }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI binary
+        run: cargo build --release -p ns-cli
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/release/nextstat dist/nextstat-${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/nextstat-*
+
+  # ── Whitepaper PDF ───────────────────────────────────────────
+  whitepaper:
+    name: Whitepaper PDF
+    needs: [test]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF#refs/tags/v}"
+            python3 scripts/build_whitepaper.py --version "$VER"
+          else
+            python3 scripts/build_whitepaper.py
+          fi
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whitepaper
+          path: dist/whitepaper/*
+
+  # ── Validation Pack (Apex2 + workspace fingerprint) ──────────
+  validation-pack:
+    name: Validation Pack
+    needs: [wheels, cli]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download wheel (linux x86_64)
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels-x86_64-unknown-linux-gnu
+          path: dist
+
+      - name: Download CLI (linux x86_64)
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-x86_64-unknown-linux-gnu
+          path: dist
+
+      - name: Install Python package + deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          WHEEL="$(find dist -name '*.whl' | head -n 1)"
+          if [[ -z "${WHEEL}" ]]; then
+            echo "::error::No .whl found under dist/"
+            exit 1
+          fi
+          pip install "${WHEEL}"
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9" "jsonschema>=4.0"
+
+      - name: Render validation pack (JSON + PDF)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f ! -name '*.whl' | head -n 1)"
+          if [[ -z "${NEXTSTAT_BIN}" ]]; then
+            echo "::error::No nextstat CLI found under dist/"
+            exit 1
+          fi
+          chmod +x "${NEXTSTAT_BIN}"
+          set +e
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
+            VALIDATION_PACK_ARGS="--python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
+          MAKE_RC=$?
+          set -e
+          if [[ ! -f "artifacts/validation_report.json" ]]; then
+            echo "::error::Validation report not generated (make rc=$MAKE_RC)"
+            exit 1
+          fi
+          if [[ "$MAKE_RC" != "0" ]]; then
+            echo "::warning::make validation-pack exited rc=$MAKE_RC but all outputs generated"
+          fi
+
+      - name: Validate validation report schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+
+          schema = json.loads(Path("docs/schemas/validation/validation_report_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts/validation_report.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("validation_report_v1: schema ok")
+          PY
+
+      - name: Compare validation pack determinism (Apex2 master input)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts2
+          NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f ! -name '*.whl' | head -n 1)"
+          chmod +x "${NEXTSTAT_BIN}"
+
+          # Re-render using the exact Apex2 master JSON output and ensure JSON+PDF+manifest are bit-identical.
+          set +e
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts2 \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
+            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
+          MAKE_RC=$?
+          set -e
+          if [[ ! -f "artifacts2/validation_report.json" ]]; then
+            echo "::error::Determinism re-render failed (make rc=$MAKE_RC)"
+            exit 1
+          fi
+          if [[ "$MAKE_RC" != "0" ]]; then
+            echo "::warning::make validation-pack (determinism) exited rc=$MAKE_RC but outputs generated"
+          fi
+
+          sha256sum artifacts/validation_report.json artifacts2/validation_report.json
+          sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
+          sha256sum artifacts/validation_pack_manifest.json artifacts2/validation_pack_manifest.json
+
+          test "$(sha256sum artifacts/validation_report.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.json | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
+          test "$(sha256sum artifacts/validation_pack_manifest.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_pack_manifest.json | awk '{print $1}')"
+
+      - name: Write snapshot index (artifact hashes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Digest the manifest itself (stdlib-only). This is useful for audit trails even without signatures.
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          inp = Path("artifacts/validation_pack_manifest.json")
+          h = hashlib.sha256(inp.read_bytes()).hexdigest()
+          Path("artifacts/validation_pack_manifest.sha256").write_text(h + "\n", encoding="utf-8")
+          Path("artifacts/validation_pack_manifest.sha256.bin").write_bytes(bytes.fromhex(h))
+          print("validation_pack_manifest: sha256 ok")
+          PY
+
+          python3 scripts/benchmarks/write_snapshot_index.py \
+            --suite release-validation-pack \
+            --artifacts-dir artifacts \
+            --out artifacts/snapshot_index.json
+
+      - name: Upload validation pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-pack
+          path: artifacts/*
+
+  # ── GitHub Release ───────────────────────────────────────────
+  github-release:
+    name: GitHub Release
+    needs: [wheels, cli, sdist, whitepaper, validation-pack]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Extract CHANGELOG section
+        id: changelog
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          # Extract the section for this version, or fall back to Unreleased
+          BODY=$(awk -v ver="$TAG" '
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "[" ver "]") || index($0, "[Unreleased]")) found=1
+              next
+            }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="Release v${TAG}"
+          fi
+          # Write to file to preserve newlines
+          echo "$BODY" > /tmp/release_notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release_notes.md
+          files: |
+            dist/**/*.whl
+            dist/**/*.tar.gz
+            dist/cli-*/nextstat-*
+            dist/**/nextstat-whitepaper-*.pdf
+            dist/**/nextstat-whitepaper-*.pdf.sha256
+            dist/**/apex2_master_report.json
+            dist/**/validation_report.json
+            dist/**/validation_report.pdf
+            dist/**/validation_report_v1.schema.json
+            dist/**/validation_pack_manifest.json
+            dist/**/validation_pack_manifest.sha256
+            dist/**/validation_pack_manifest.sha256.bin
+            dist/**/snapshot_index.json
+
+  # ── PyPI publish (Trusted Publisher — no token needed) ───────
+  pypi-publish:
+    name: Publish to PyPI
+    needs: [github-release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Download sdist
+        uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Publish to PyPI (Trusted Publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

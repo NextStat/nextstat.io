@@ -1,0 +1,1141 @@
+---
+title: "ROOT/TRExFitter Parity (HistFactory) — NextStat Validation"
+status: draft
+---
+
+# ROOT/TRExFitter Parity (HistFactory) — NextStat Validation
+
+Goal: run the same HistFactory models through **ROOT/HistFactory** (a common reference in the HEP ecosystem) and through **NextStat**, compare differences, and measure performance.
+
+In practice, TRExFitter is usually a *generator* of HistFactory XML + ROOT histograms and/or RooWorkspace, while the "engine" math lives in ROOT/RooFit/RooStats. So the minimal "reference loop" is ROOT `hist2workspace` + RooFit profiling.
+
+## HistFactory StatErrorConfig pruning (why channel-level matters)
+
+ROOT/HistFactory prunes small per-bin statistical uncertainties via `StatErrorConfig::RelErrorThreshold` (default: `0.05`) and applies this decision at the **channel level**:
+- each channel has a shared per-bin staterror nuisance parameter (conceptually `gamma_stat_<channel>_bin_<i>`)
+- the pruning decision uses the **combined** nominal yield and **combined** statistical uncertainty in that bin, summed over all samples that participate in the channel's `staterror_<channel>` modifier
+- if the combined relative error is below the threshold, the corresponding per-bin nuisance parameter is effectively fixed at `1.0`
+
+This matters because applying the threshold per-sample (before combining) can keep bins "slightly alive" in NextStat while ROOT has already pruned them, which leads to visible `q(mu)` mismatches on realistic TREx export directories.
+
+Reference: ROOT defaults are defined in `RooStats/HistFactory/Systematics.h` (`StatErrorConfig() : fRelErrorThreshold(.05), fConstraintType(Poisson)`).
+
+## Prerequisites
+
+1) ROOT (with HistFactory/RooStats) is available in PATH:
+
+```bash
+command -v root
+command -v hist2workspace
+```
+
+2) NextStat Python bindings are built/installed (or a release wheel is installed):
+
+```bash
+cd bindings/ns-py
+maturin develop --release
+```
+
+3) To convert HistFactory XML ↔ pyhf JSON you need `uproot`:
+
+```bash
+pip install -e "bindings/ns-py[validation]"
+```
+
+## Cluster notes (CERN lxplus + HTCondor)
+
+These runs are easiest where ROOT and TRExFitter are already available. At CERN this usually means:
+- log in to `lxplus` (or another submit host)
+- run on batch via HTCondor
+
+Environment and submit-file docs: [HTCondor usage (ABP Computing @ CERN)](https://abpcomputing.web.cern.ch/computing_resources/cernbatch/).
+
+Two practical execution templates:
+
+1) **One job = one suite** (runs all cases sequentially; easier to debug, worse parallelism).
+2) **Job-array: one job = one case** (maximum parallelism; aggregate JSON afterward).
+
+Note on institute-style submit files (with `should_transfer_files = YES`):
+- Those are great for workflows where the job runs in worker scratch and only a small script + inputs are transferred.
+- For Apex2 ROOT parity, we intentionally execute from the repo checkout (`tests/*.py`, `bindings/ns-py/python`),
+  so the simplest operational mode is a shared filesystem checkout (set `initialdir`) and a shared results dir.
+
+See the Cookbook section below for copy-paste examples for both.
+
+Repo templates (recommended starting point):
+- `scripts/condor/apex2_root_suite_single.sub` + `scripts/condor/run_apex2_root_suite_single.sh`
+- `scripts/condor/apex2_root_suite_array.sub` + `scripts/condor/run_apex2_root_suite_case.sh`
+
+HTCondor template quickstart:
+
+```bash
+mkdir -p scripts/condor/logs
+
+export APEX2_ROOT_CASES_JSON=/abs/path/to/apex2_root_cases.json
+export APEX2_RESULTS_DIR=/abs/path/to/results
+
+# Optional: source ROOT setup on worker nodes
+# export APEX2_ROOT_SETUP='source /cvmfs/sft.cern.ch/lcg/views/LCG_*/x86_64-el9-gcc*/setup.sh'
+
+# Optional: choose a python (venv/conda)
+# export APEX2_PYTHON=/abs/path/to/python3
+```
+
+Submit (single job):
+
+```bash
+condor_submit scripts/condor/apex2_root_suite_single.sub
+```
+
+Submit (job array): set `queue <N>` in `scripts/condor/apex2_root_suite_array.sub`, where `<N>` is the number of
+cases in your JSON (0-based `--case-index` uses `$(Process)`).
+
+Optional helper to render a `.sub` with the correct `queue N`:
+
+```bash
+python3 scripts/condor/render_apex2_root_suite_array_sub.py \
+  --cases "${APEX2_ROOT_CASES_JSON}" \
+  --initialdir /abs/path/to/nextstat.io \
+  --out apex2_root_suite_array.sub
+condor_submit apex2_root_suite_array.sub
+```
+
+Optional Makefile wrapper (renders `queue N` automatically):
+
+```bash
+make apex2-condor-render-root-array-sub ROOT_CASES_JSON="${APEX2_ROOT_CASES_JSON}" ROOT_CONDOR_INITIALDIR=/abs/path/to/nextstat.io ROOT_CONDOR_SUB_OUT=apex2_root_suite_array.sub
+condor_submit apex2_root_suite_array.sub
+```
+
+After the array finishes, aggregate:
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir "${APEX2_RESULTS_DIR}" \
+  --glob "apex2_root_case_*.json" \
+  --out "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --exit-nonzero-on-fail
+```
+
+Optional Makefile wrapper (when running from the repo checkout):
+
+```bash
+make apex2-root-aggregate ROOT_RESULTS_DIR="${APEX2_RESULTS_DIR}" ROOT_AGG_ARGS="--exit-nonzero-on-fail"
+```
+
+Record a ROOT baseline (cluster environment):
+
+- Small suites: run sequentially (single process) on the submit host:
+
+```bash
+make apex2-root-baseline-record ROOT_SEARCH_DIR=/abs/path/to/trex/output ROOT_BASELINE_ARGS="--root-include-fixtures --root-cases-absolute-paths"
+```
+
+- Large suites (recommended): register an already-aggregated HTCondor array result as the baseline:
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_baseline.py \
+  --only root \
+  --out-dir tmp/baselines \
+  --root-suite-existing "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --root-cases-existing "${APEX2_ROOT_CASES_JSON}"
+```
+
+Optional perf compare vs recorded baseline (JSON-only, does not require ROOT):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/compare_apex2_root_suite_to_baseline.py \
+  --baseline /abs/path/to/root_suite_baseline.json \
+  --current "${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json" \
+  --out "${APEX2_RESULTS_DIR}/apex2_root_suite_perf_compare.json"
+```
+
+Optional compare vs the latest recorded ROOT baseline manifest:
+
+```bash
+make apex2-root-suite-compare-latest ROOT_CURRENT_SUITE="${APEX2_RESULTS_DIR}/apex2_root_suite_aggregate.json"
+```
+
+## TREx replacement baseline recorder (external)
+
+In addition to the ROOT-suite parity baseline (profile-scan report), we also support recording a compact
+**TREx replacement baseline** (`trex_baseline_v0`) from a real TRExFitter/HistFactory export directory.
+
+This is meant to run only in environments where ROOT/HistFactory are available; it is **not** part of PR CI.
+
+Prereq check (prints JSON and exits `0/3`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_trex_baseline.py \
+  --export-dir /abs/path/to/trex/export \
+  --prereq-only
+```
+
+Record a baseline starting from an existing export dir (contains `combination.xml`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/record_trex_baseline.py \
+  --export-dir /abs/path/to/trex/export \
+  --case mycase
+```
+
+Output (per case):
+- `tests/baselines/trex/<case>/baseline.json` (schema: `docs/schemas/trex/baseline_v0.schema.json`)
+
+Optional: compare two baselines (numbers-only; no ROOT needed for the compare step):
+
+```bash
+PYTHONPATH=bindings/ns-py/python python3 tests/compare_trex_baseline_files.py \
+  --baseline /abs/path/to/old/baseline.json \
+  --candidate tests/baselines/trex/mycase/baseline.json
+```
+
+### Public "golden" exports from HEPData (download + ROOT reference)
+
+If you do not have access to a TRExFitter export directory, you can use **public HEPData likelihood bundles**
+as external fixtures. This is useful for repeatable parity checks on real-world models.
+
+1) Download and materialize pyhf JSON workspaces (opt-in; writes to `tmp/`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/hepdata/fetch_workspaces.py \
+  --out tmp/external_hepdata/workspaces \
+  --cache tmp/external_hepdata/_cache \
+  --lock tmp/external_hepdata/workspaces.lock.json
+```
+
+2) Convert one workspace to a staged HistFactory export and run a ROOT-vs-NextStat profile-scan check
+(this also creates a self-contained export dir with `combination.xml` + `data.root` under `tmp/`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
+  --pyhf-json tmp/external_hepdata/workspaces/hepdata.116034.v1.r34/patched__DR_Int_EWK.json \
+  --measurement NormalMeasurement \
+  --start 0.0 --stop 1.0 --points 5 \
+  --workdir tmp/root_parity_external \
+  --keep
+```
+
+3) Record a compact ROOT reference baseline from the generated export directory:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_trex_baseline.py \
+  --export-dir tmp/root_parity_external/run_<stamp> \
+  --case hepdata.116034.v1.r34_DR_Int_EWK \
+  --out-root tmp/external_baselines/trex
+```
+
+### GitHub Actions (self-hosted) refresh
+
+If you have a self-hosted GitHub Actions runner with ROOT/HistFactory available, you can use:
+- workflow: `.github/workflows/trex-baseline-refresh.yml` (`TREx Baseline Refresh (External)`)
+- runner labels: `self-hosted, trex`
+
+Two ways to run:
+
+1) Manual (`workflow_dispatch`):
+- Provide `export_dir` (path to an export dir with `combination.xml`) and a `case` name.
+- The workflow uploads artifacts under `trex-baseline-<case>`.
+
+2) Nightly schedule:
+- Set GitHub repo variables (on the repo settings page):
+  - `TREX_EXPORT_DIR` (required): export dir path visible on the runner
+  - `TREX_CASE` (optional): case name (default: `trex_case`)
+  - `TREX_ROOTDIR`, `TREX_COMPARE_TO` (optional)
+- If `TREX_EXPORT_DIR` is not set, the scheduled run skips without failing.
+
+## Apex2 workflow (Planning → Exploration → Execution → Verification)
+
+Below is the most reproducible path, convenient to run on a cluster (where ROOT and TRExFitter exist).
+
+### Why scripts/artifacts are named `apex2_*`
+
+`Apex2` is the validation methodology we follow. In this repository we prefix the validation runners
+and their machine-readable JSON outputs with `apex2_` to make it explicit that:
+- these are validation/profiling tools (not production code paths), and
+- their outputs are designed to be archived and compared across environments (laptop vs cluster, release vs head).
+
+### Planning (environment and dependencies)
+
+Minimum requirements:
+- `root` + `hist2workspace` in `PATH`
+- Python 3 + validation dependencies (`pyhf`, `uproot`, and the NextStat Python bindings)
+
+Recommended prereq check (fast, without running the suite):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
+```
+
+Makefile shortcut (writes `tmp/apex2_root_prereq.json`):
+
+```bash
+make apex2-root-prereq
+```
+
+If the cluster does not have `.venv`, use any equivalent Python (conda/venv/module), but make sure:
+- `PYTHONPATH=bindings/ns-py/python`
+- `pip install -e "bindings/ns-py[validation]"` has been run in this env
+
+### Exploration (find test models)
+
+Test models for ROOT/TRExFitter in this loop are HistFactory exports that contain `combination.xml`.
+
+#### Built-in "model zoo" fixtures (works without TRExFitter/ROOT)
+
+Even before you have TRExFitter exports (and even on machines without ROOT), you can validate
+NextStat end-to-end using the built-in fixtures under `tests/fixtures/`:
+
+- HistFactory (pyhf JSON):
+  - `tests/fixtures/simple_workspace.json`
+  - `tests/fixtures/complex_workspace.json`
+  - plus synthetic workspaces generated by `tests/apex2_pyhf_validation_report.py` (shapesys, multichannel, etc.)
+- Minimal committed ROOT parity pack (cases JSON only; still requires ROOT to execute):
+  - `tests/fixtures/trex_parity_pack/cases_minimal.json`
+- Regression golden fixtures:
+  - `tests/fixtures/regression/*.json` (OLS/logistic/poisson/negbin)
+- Timeseries fixtures:
+  - `tests/fixtures/kalman_*.json` (Kalman filter/EM edge cases; includes partial missing observations)
+
+This is the recommended path for "no cluster yet" development: it gives you parity checks and
+profiling numbers without requiring ROOT.
+
+#### Committed TREx export fixture: `tttt-prod` (ROOT required)
+
+If you have ROOT locally, you can run a direct ROOT-vs-NextStat profile-scan check on the committed
+TREx/HistFactory export directory fixture:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
+  --histfactory-xml tests/fixtures/trex_exports/tttt-prod/combination.xml \
+  --measurement FourTop \
+  --start 0 --stop 5 --points 11 \
+  --keep --dump-root-params
+```
+
+This case is particularly sensitive to `StatErrorConfig` pruning semantics (ROOT default `RelErrorThreshold=0.05` applied at the channel level).
+
+If you have a directory with TRExFitter exports (or any HistFactory exports), you can:
+
+1) Generate a cases JSON (most controlled; convenient for CI/archive):
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/apex2_root_cases.json \
+  --include-fixtures \
+  --absolute-paths
+```
+
+`--include-fixtures` prepends built-in smoke cases (currently: `simple_fixture` and `histfactory_fixture`) so you can
+validate the pipeline even if the scanned directory contains no exports.
+
+Each case `name` is generated as the export directory path relative to `--search-dir` to avoid collisions (large datasets often reuse the same subfolder names).
+
+Optional Makefile wrapper (same thing, more ergonomic):
+
+```bash
+make apex2-root-cases ROOT_SEARCH_DIR=/abs/path/to/trex/output ROOT_CASES_ARGS="--include-fixtures --absolute-paths"
+```
+
+2) Or skip manual generation and pass the directory directly to the master runner (see Execution).
+
+### Execution (runs)
+
+#### Option A: single master report (pyhf + ROOT suite)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+```
+
+Artifact:
+- `tmp/apex2_master_report.json`
+
+Contains:
+- `pyhf.status` (`ok`/`fail`)
+- `root.status` (`ok`/`fail`/`skipped`)
+- links to `tmp/apex2_pyhf_report.json` and `tmp/apex2_root_suite_report.json`
+
+#### Option B: ROOT suite only (if you want to focus)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --keep-going \
+  --out tmp/apex2_root_suite_report.json
+```
+
+To run a single case (useful for HTCondor job arrays):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --case-index 0 \
+  --out tmp/apex2_root_suite_case_0.json
+```
+
+#### Option C: pyhf parity + speed only (no ROOT)
+
+This run does not require ROOT/TRExFitter and is useful as a fast "reference" on any environment:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
+  --out tmp/apex2_pyhf_report.json
+```
+
+Default suite parameters (explicit flags):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
+  --out tmp/apex2_pyhf_report.json \
+  --sizes 2,16,64,256 \
+  --n-random 8 \
+  --seed 0
+```
+
+If you also need to run the fit (slower):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_pyhf_validation_report.py \
+  --out tmp/apex2_pyhf_report.json \
+  --fit
+```
+
+### Verification (interpretation and "why")
+
+1) First-pass "green/red" signal:
+- `pyhf.status == ok` means NLL/expected_data match the `pyhf` reference
+- `root.status == ok` means the q(mu) profile matched ROOT within the configured tolerances
+- `root.status == skipped` means prereqs were missing (e.g. no `hist2workspace` or `uproot`)
+
+2) If the pyhf runner returns `fail`, run an explanation pass at a concrete point:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/explain_pyhf_vs_nextstat_diff.py \
+  --pyhf-json tests/fixtures/complex_workspace.json \
+  --measurement measurement \
+  --out tmp/pyhf_vs_nextstat_diff.json
+```
+
+3) If the ROOT suite returns `fail`, `tmp/apex2_root_suite_report.json` contains (per case):
+- `run_dir` (folder containing artifacts for a single run)
+- `summary_path`
+- `diff.max_abs_dq_mu` and `diff.d_mu_hat`
+
+4) To analyze differences for a specific `run_dir` (without ROOT), use:
+
+```bash
+./.venv/bin/python tests/explain_root_vs_nextstat_profile_diff.py \
+  --run-dir /abs/path/to/tmp/root_parity_suite/<case>/run_<timestamp>
+```
+
+5) For performance profiling:
+- for pyhf speedups see `tmp/apex2_pyhf_report.json` (and in `tmp/apex2_master_report.json` under `pyhf.stdout_tail`/`pyhf.report`)
+- for ROOT suite speedups see `tmp/apex2_root_suite_report.json` under `cases[*].perf.speedup_nextstat_vs_root_scan` (this is `root_profile_scan_wall / nextstat_profile_scan`)
+Baseline artifacts to archive and compare across environments:
+- **Recommended:** use `tests/record_baseline.py` to record both pyhf + P6 baselines with environment fingerprint into `tmp/baselines/`
+- pyhf parity: `tmp/baselines/pyhf_baseline_<host>_<date>.json` (includes NLL timings and optional fit timings)
+- P6 GLM: `tmp/baselines/p6_glm_baseline_<host>_<date>.json` (compare with `tests/apex2_p6_glm_benchmark_report.py`)
+- Manifest: `tmp/baselines/latest_manifest.json` (links to both + full env fingerprint)
+- One-command compare (current vs latest baseline): `tests/compare_with_latest_baseline.py` (writes `tmp/baseline_compare_report.json`)
+- ROOT/TRExFitter: `tmp/apex2_root_suite_report.json` (and optionally per-case `tmp/root_parity_suite/*/run_*/summary.json`)
+
+### Cookbook: examples for all options
+
+Below is a set of "copy-paste" commands for cluster/local runs.
+
+1) Fast prereq check for ROOT suite only (no runs):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py --prereq-only
+```
+
+2) Master report, but ROOT part is prereq-only (pyhf runs fully):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py --root-prereq-only
+```
+
+3) Master report with auto-discovery of `combination.xml` (TRExFitter export dir):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+```
+
+4) Master report with a custom glob (if `combination.xml` is located differently):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-glob "**/*/combination.xml" \
+  --root-cases-absolute-paths
+```
+
+5) Master report with a custom mu grid (affects auto-generated cases):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-mu-start 0.0 \
+  --root-mu-stop 10.0 \
+  --root-mu-points 101
+```
+
+6) Master report using a pre-generated cases JSON:
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/apex2_root_cases.json \
+  --include-fixtures \
+  --absolute-paths
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --root-cases tmp/apex2_root_cases.json \
+  --root-out tmp/apex2_root_suite_report.json \
+  --out tmp/apex2_master_report.json
+```
+
+7) ROOT suite only with custom thresholds and workdir:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --cases tmp/apex2_root_cases.json \
+  --dq-atol 1e-3 \
+  --mu-hat-atol 1e-3 \
+  --workdir tmp/root_parity_suite \
+  --keep-going \
+  --out tmp/apex2_root_suite_report.json
+```
+
+8) Single ROOT case "fail-fast" via the Apex2 wrapper (handy for debugging):
+
+Starting from `pyhf` JSON:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_report.py \
+  --pyhf-json tests/fixtures/simple_workspace.json \
+  --measurement GaussExample \
+  --out tmp/apex2_root_profile_report.json
+```
+
+Starting from HistFactory XML (TRExFitter export):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_profile_report.py \
+  --histfactory-xml /abs/path/to/combination.xml \
+  --rootdir /abs/path/to \
+  --out tmp/apex2_root_profile_report.json
+```
+
+9) Generate a cases JSON with a custom glob and mu grid (and keep paths relative):
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --glob "**/combination.xml" \
+  --out tmp/apex2_root_cases.json \
+  --start 0.0 --stop 5.0 --points 51
+```
+
+10) ROOT suite without `--cases` (built-in smoke fixture only):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py \
+  --out tmp/apex2_root_suite_report.json
+```
+
+11) Low-level run of a single case (writes full `summary.json` + artifacts to workdir):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
+  --histfactory-xml /abs/path/to/combination.xml \
+  --rootdir /abs/path/to \
+  --start 0.0 --stop 5.0 --points 51 \
+  --workdir /abs/path/to/scratch/root_parity \
+  --keep
+```
+
+12) HTCondor: one job for the whole suite (simple template)
+
+Preferred: start from the repo templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_single.sub`
+- `scripts/condor/run_apex2_root_suite_single.sh`
+
+Create a submit file `root_suite.sub` next to the repository (or in a separate directory):
+
+```ini
+executable              = /bin/bash
+arguments               = -lc "cd /path/to/nextstat.io && PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_root_suite_report.py --cases /path/to/apex2_root_cases.json --keep-going --out /path/to/out/apex2_root_suite_report.json"
+output                  = /path/to/logs/root_suite.$(ClusterId).out
+error                   = /path/to/logs/root_suite.$(ClusterId).err
+log                     = /path/to/logs/root_suite.$(ClusterId).log
+
+request_cpus            = 2
+request_memory          = 4GB
++MaxRunTime             = 14400
+
+queue
+```
+
+Submit:
+
+```bash
+condor_submit root_suite.sub
+```
+
+Notes:
+- If ROOT/`hist2workspace` are available only after `source .../setup.sh`, add that into `arguments` before the Python command.
+- For "big memory" on CERN HTCondor people often use `RequestCpus = 24` and `+BigMemJob = True` (see the link above).
+- If jobs sit in the queue for a long time due to priorities, it can help to explicitly set the accounting group in the `.sub`, e.g. `+AccountingGroup = "group_u_BE.ABP.NORMAL"` (see the link above).
+
+13) HTCondor: job array (one case per job)
+
+Preferred: use the suite runner's per-case mode (`--case-index`) with the templates under `scripts/condor/`:
+- `scripts/condor/apex2_root_suite_array.sub`
+- `scripts/condor/run_apex2_root_suite_case.sh`
+
+This keeps the report format identical to the single-job suite (just `n_cases=1` per job), which makes
+post-aggregation straightforward.
+
+Aggregation (preferred array mode):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/aggregate_apex2_root_suite_reports.py \
+  --in-dir /path/to/results \
+  --glob "apex2_root_case_*.json" \
+  --out /path/to/results/apex2_root_suite_aggregate.json \
+  --exit-nonzero-on-fail
+```
+
+Optional: compare aggregated perf vs a recorded ROOT baseline suite report:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_apex2_root_suite_to_baseline.py \
+  --baseline tmp/baselines/root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json \
+  --current /path/to/results/apex2_root_suite_aggregate.json \
+  --out /path/to/results/apex2_root_suite_perf_compare.json
+```
+
+Alternative: if you want full control and/or do not want to depend on `--case-index`, you can run the low-level
+engine (`tests/validate_root_profile_scan.py`) in an array keyed by case name (example below).
+
+Minimal path without a custom split script:
+1) Generate cases (this also gives you the list of `name` values in JSON):
+
+```bash
+./.venv/bin/python tests/generate_apex2_root_cases.py \
+  --search-dir /abs/path/to/trex/output \
+  --out tmp/apex2_root_cases.json \
+  --absolute-paths
+```
+
+2) Manually prepare `cases.list` (one `name` per line). Typically these are relative paths of subfolders that contain `combination.xml`.
+
+Convenient auto-generator for `cases.list` from `tmp/apex2_root_cases.json`:
+
+```bash
+./.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+
+cases_json = Path("tmp/apex2_root_cases.json")
+out = Path("cases.list")
+
+data = json.loads(cases_json.read_text())
+names = []
+for c in data.get("cases", []):
+    if c.get("mode") == "histfactory-xml" and c.get("name"):
+        names.append(str(c["name"]))
+
+out.write_text("\n".join(names) + ("\n" if names else ""))
+print(f"Wrote {len(names)} case name(s) to: {out}")
+PY
+```
+
+3) Submit file `root_case_array.sub`:
+
+```ini
+executable              = /bin/bash
+arguments               = -lc "cd /path/to/nextstat.io && PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py --histfactory-xml /abs/path/to/trex/output/$(CaseName)/combination.xml --rootdir /abs/path/to/trex/output/$(CaseName) --start 0.0 --stop 5.0 --points 51 --workdir /path/to/out/workdir/$(CaseName) --keep"
+output                  = /path/to/logs/root_case.$(ClusterId).$(ProcId).out
+error                   = /path/to/logs/root_case.$(ClusterId).$(ProcId).err
+log                     = /path/to/logs/root_case.$(ClusterId).log
+
+request_cpus            = 2
+request_memory          = 4GB
++MaxRunTime             = 14400
+
+queue CaseName from cases.list
+```
+
+Submit:
+
+```bash
+condor_submit root_case_array.sub
+```
+
+After completion, you can aggregate results by collecting `summary.json` across `workdir` (manually) or using a small script (example below).
+
+Practical minimal aggregator (picks the latest `run_*` in each case directory):
+
+```bash
+./.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+
+workdir = Path("/path/to/out/workdir").resolve()
+out = Path("/path/to/out/apex2_root_array_aggregate.json").resolve()
+
+cases = []
+for case_dir in sorted([p for p in workdir.iterdir() if p.is_dir()]):
+    runs = sorted(case_dir.glob("run_*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not runs:
+        continue
+    summary_path = runs[0] / "summary.json"
+    if not summary_path.exists():
+        continue
+    summary = json.loads(summary_path.read_text())
+    diff = summary.get("diff", {}) or {}
+    timing_s = summary.get("timing_s", {}) or {}
+    cases.append(
+        {
+            "name": case_dir.name,
+            "status": "ok",
+            "run_dir": str(runs[0]),
+            "summary_path": str(summary_path),
+            "diff": {
+                "max_abs_dq_mu": float(diff.get("max_abs_dq_mu", float("nan"))),
+                "d_mu_hat": float(diff.get("mu_hat", float("nan"))),
+            },
+            "timing_s": timing_s,
+        }
+    )
+
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps({"cases": cases}, indent=2))
+print(f"Wrote: {out}")
+PY
+```
+
+If you need full "pass/fail" by tolerances and speedup computation like the suite, it is easier to run `tests/apex2_root_suite_report.py` (single job) or extend this aggregator to your report format.
+
+14) HTCondor: institute example (TRExFitter bootstrap, file transfer + remaps)
+
+This pattern is useful when:
+- you want to run many independent replicas (e.g. bootstrap),
+- workers do not have shared/fast access to your filesystem,
+- you need strict control over what is returned to the submit side and where it lands.
+
+Key points in the submit file:
+- `should_transfer_files = YES` + `transfer_input_files = ...` so the job runs from worker scratch
+- `transfer_output_remaps = ...` to remap outputs into a convenient results folder structure
+- `max_materialize = ...` to avoid overloading shared FS (especially with `queue 2000`)
+- `getenv = True` to pass `TREX_INPUT_DIR` (inputs must be visible from worker nodes)
+
+An adapted example lives at: `docs/examples/htcondor/trex_hwfsdp.sub`.
+
+How this ties into NextStat parity:
+1) the job array generates/runs TRExFitter replicas and produces HistFactory exports (one `combination.xml` per replica)
+2) then you run the parity suite (`tests/apex2_root_suite_report.py` or the master report) on the export directory via `--root-search-dir ...`
+
+## P6 benchmarks: end-to-end fit/predict baselines (GLM)
+
+What already exists in the codebase:
+- Baseline recorder: `tests/record_baseline.py` (records both pyhf + P6 GLM baselines with full environment fingerprint).
+- Python end-to-end benchmark: `tests/benchmark_glm_fit_predict.py` (linear/logistic/poisson/negbin; fit + predict; writes JSON via `--out`).
+- Apex2 P6 report wrapper: `tests/apex2_p6_glm_benchmark_report.py` (compares against a baseline JSON).
+- Integrated into the master report: `tests/apex2_master_report.py --p6-glm-bench ...`.
+- Rust Criterion bench: `cargo bench -p ns-inference --bench glm_fit_predict_benchmark`.
+
+### Recording baselines (recommended)
+
+Use the unified baseline recorder to capture both pyhf and P6 GLM baselines with a complete environment fingerprint (Python/pyhf/nextstat/numpy versions, git commit, CPU, hostname, timestamp):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py
+```
+
+If ROOT is available (cluster) you can also record a ROOT/HistFactory parity baseline by pointing the recorder at a directory containing TRExFitter exports (or any HistFactory exports with `combination.xml`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py \
+  --only root \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+```
+
+Output (in `tmp/baselines/`):
+
+```
+pyhf_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
+p6_glm_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json
+root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json            # only if ROOT prereqs satisfied
+root_cases_<hostname>_<YYYYMMDD_HHMMSS>.json                     # cases used by the suite (from --root-search-dir)
+root_prereq_<hostname>_<YYYYMMDD_HHMMSS>.json                    # prereq check snapshot (always recorded if root mode is requested)
+baseline_manifest_<hostname>_<YYYYMMDD_HHMMSS>.json   # links both + env fingerprint
+latest_manifest.json                                    # points to the most recent full baseline set (not overwritten by `--only ...` if it already exists)
+latest_pyhf_manifest.json                               # last pyhf-only pointer
+latest_p6_glm_manifest.json                             # last P6-only pointer
+latest_root_manifest.json                               # last ROOT-only pointer (cluster)
+```
+
+Options:
+
+```bash
+# Record only pyhf baseline
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only pyhf
+
+# Record only P6 GLM baseline
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only p6
+
+# Custom sizes / features
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --sizes 200,2000,20000 --p 20 --nb-alpha 0.5
+```
+
+### Comparing against the latest baseline (recommended)
+
+After recording baselines once on a reference machine, compare current HEAD against the
+latest baseline manifest:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --manifest tmp/baselines/latest_manifest.json \
+  --out tmp/baseline_compare_report.json
+```
+
+If you recorded only ROOT baselines on a cluster, use:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --manifest tmp/baselines/latest_root_manifest.json
+```
+
+Exit codes:
+- `0`: OK (pyhf parity OK and perf within thresholds; P6 within thresholds)
+- `2`: FAIL (parity failure or slowdown threshold exceeded)
+- `4`: ERROR (runner error)
+
+If the selected manifest is missing some baseline keys (for example because it was recorded with `--only root`),
+`tests/compare_with_latest_baseline.py` will try to recover missing entries by scanning newer `baseline_manifest_*.json`
+in the same `tmp/baselines/` directory.
+
+Performance noise notes (local dev machines):
+- `tests/compare_with_latest_baseline.py` skips pyhf perf comparisons when the baseline per-call NLL time is below `1e-6` seconds by default (`--pyhf-min-baseline-s`).
+- `tests/benchmark_glm_fit_predict.py` uses median timings to reduce false regressions when CPU load/frequency changes.
+- `tests/apex2_p6_glm_benchmark_report.py` skips predict comparisons when baseline `predict_s < 1e-3` seconds by default (`--min-baseline-predict-s`), mirroring `--min-baseline-fit-s`.
+
+For performance gating, use the same machine as the baseline and enable:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/compare_with_latest_baseline.py \
+  --require-same-host
+```
+
+### Manual baseline generation (alternative)
+
+1) Generate a baseline JSON (once on a reference machine):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/benchmark_glm_fit_predict.py \
+  --sizes 200,2000,20000 --p 20 --out tmp/p6_glm_fit_predict_baseline.json
+```
+
+### Comparing against baselines
+
+2) Run a current benchmark and compare to the baseline:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_p6_glm_benchmark_report.py \
+  --baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
+  --bench-out tmp/p6_glm_fit_predict_current.json \
+  --out tmp/apex2_p6_glm_bench_report.json
+```
+
+3) Via the master report (in one run: pyhf parity + ROOT suite (if prereqs exist) + P6):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --p6-glm-bench \
+  --p6-glm-bench-baseline tmp/baselines/p6_glm_baseline_<host>_<date>.json \
+  --p6-glm-bench-out tmp/p6_glm_fit_predict_current.json
+```
+
+4) Master report with custom artifact paths (convenient on clusters using `$SCRATCH`):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py \
+  --out /abs/path/to/scratch/apex2_master_report.json \
+  --pyhf-out /abs/path/to/scratch/apex2_pyhf_report.json \
+  --root-out /abs/path/to/scratch/apex2_root_suite_report.json \
+  --root-search-dir /abs/path/to/trex/output \
+  --root-cases-out /abs/path/to/scratch/apex2_root_cases.json
+```
+
+### Cluster job templates (SLURM / PBS / HTCondor)
+
+Below are job script templates. They assume a shared filesystem (the repository is visible on compute nodes) and that the Python environment already contains dependencies (`pyhf`, `uproot`) and an installed/built NextStat Python binding.
+
+If you use environment modules on your cluster, replace the `module load ...` lines with your actual module names/versions.
+
+#### SLURM (`sbatch`)
+
+File `apex2_root_parity.slurm`:
+
+```bash
+#!/usr/bin/env bash
+#SBATCH --job-name=apex2-root-parity
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
+#SBATCH --time=02:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+
+set -euo pipefail
+
+# Optional: load env
+# module purge
+# module load python
+# module load root
+
+REPO="${SLURM_SUBMIT_DIR}"
+TREX_EXPORT_DIR="/abs/path/to/trex/output"
+
+OUTDIR="${SCRATCH:-/tmp}/apex2_nextstat/${SLURM_JOB_ID}"
+mkdir -p "${OUTDIR}"
+
+cd "${REPO}"
+export PYTHONPATH="${REPO}/bindings/ns-py/python${PYTHONPATH:+:${PYTHONPATH}}"
+
+python3 -V
+command -v root || true
+command -v hist2workspace || true
+
+# Fast prereq check (records skipped if missing)
+python3 tests/apex2_master_report.py \
+  --out "${OUTDIR}/apex2_master_report.json" \
+  --pyhf-out "${OUTDIR}/apex2_pyhf_report.json" \
+  --root-out "${OUTDIR}/apex2_root_suite_report.json" \
+  --root-cases-out "${OUTDIR}/apex2_root_cases.json" \
+  --root-search-dir "${TREX_EXPORT_DIR}" \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+
+echo "Artifacts written to: ${OUTDIR}"
+```
+
+Run:
+
+```bash
+sbatch apex2_root_parity.slurm
+```
+
+#### PBS/Torque (`qsub`)
+
+File `apex2_root_parity.pbs`:
+
+```bash
+#!/usr/bin/env bash
+#PBS -N apex2-root-parity
+#PBS -l walltime=02:00:00
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -j oe
+
+set -euo pipefail
+
+# Optional: load env
+# module purge
+# module load python
+# module load root
+
+REPO="${PBS_O_WORKDIR}"
+TREX_EXPORT_DIR="/abs/path/to/trex/output"
+
+OUTDIR="${SCRATCH:-/tmp}/apex2_nextstat/${PBS_JOBID}"
+mkdir -p "${OUTDIR}"
+
+cd "${REPO}"
+export PYTHONPATH="${REPO}/bindings/ns-py/python${PYTHONPATH:+:${PYTHONPATH}}"
+
+python3 -V
+command -v root || true
+command -v hist2workspace || true
+
+python3 tests/apex2_master_report.py \
+  --out "${OUTDIR}/apex2_master_report.json" \
+  --pyhf-out "${OUTDIR}/apex2_pyhf_report.json" \
+  --root-out "${OUTDIR}/apex2_root_suite_report.json" \
+  --root-cases-out "${OUTDIR}/apex2_root_cases.json" \
+  --root-search-dir "${TREX_EXPORT_DIR}" \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+
+echo "Artifacts written to: ${OUTDIR}"
+```
+
+Run:
+
+```bash
+qsub apex2_root_parity.pbs
+```
+
+#### HTCondor
+
+HTCondor typically requires a `.sub` file and an executable script. Below is a shared-filesystem variant (the repo is already available on the worker node).
+
+File `apex2_root_parity.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="/abs/path/to/nextstat.io"
+TREX_EXPORT_DIR="/abs/path/to/trex/output"
+
+OUTBASE="${_CONDOR_SCRATCH_DIR:-${TMPDIR:-${SCRATCH:-/tmp}}}"
+OUTDIR="${OUTBASE}/apex2_nextstat/${CLUSTER:-condor}.${PROCESS:-0}"
+mkdir -p "${OUTDIR}"
+
+cd "${REPO}"
+export PYTHONPATH="${REPO}/bindings/ns-py/python${PYTHONPATH:+:${PYTHONPATH}}"
+
+python3 tests/apex2_master_report.py \
+  --out "${OUTDIR}/apex2_master_report.json" \
+  --pyhf-out "${OUTDIR}/apex2_pyhf_report.json" \
+  --root-out "${OUTDIR}/apex2_root_suite_report.json" \
+  --root-cases-out "${OUTDIR}/apex2_root_cases.json" \
+  --root-search-dir "${TREX_EXPORT_DIR}" \
+  --root-include-fixtures \
+  --root-cases-absolute-paths
+
+echo "Artifacts written to: ${OUTDIR}"
+```
+
+File `apex2_root_parity.sub`:
+
+```ini
+universe = vanilla
+executable = apex2_root_parity.sh
+output = condor.$(Cluster).$(Process).out
+error = condor.$(Cluster).$(Process).err
+log = condor.$(Cluster).log
+request_cpus = 4
+request_memory = 8GB
+
+queue 1
+```
+
+Run:
+
+```bash
+chmod +x apex2_root_parity.sh
+condor_submit apex2_root_parity.sub
+```
+
+##### CERN lxbatch / HTCondor notes (batchdocs-style example)
+
+On CERN batch (lxbatch) it is still `condor_submit`, but it is often useful to:
+- set `+MaxRunTime` (seconds)
+- pin `+AccountingGroup` when needed (if you have a high-priority group)
+- if the scheduler is "not responding", explicitly select a `schedd` (via env vars or `-name`)
+
+Example `.sub` (shared filesystem, repo visible on workers via AFS/EOS):
+
+```ini
+universe = vanilla
+executable  = apex2_root_parity.sh
+arguments   =
+output      = htcondor.out
+error       = htcondor.err
+log         = htcondor.log
+
+request_CPUs   = 4
+request_memory = 8GB
++MaxRunTime    = 7200
+
+# Optional (if your e-group has access):
+# +AccountingGroup = "group_u_BE.ABP.NORMAL"
+
+queue
+```
+
+If the repo is not available on worker nodes, you can use `transfer_input_files`, but this is usually expensive for a large repository. Minimal option: package only what you need (e.g. `tests/`, `bindings/ns-py/python/`, and built artifacts), or keep the repo on AFS/EOS.
+
+If the scheduler is not responding, on lxplus you can temporarily switch schedd (example):
+
+```bash
+export _condor_SCHEDD_HOST="bigbird02.cern.ch"
+export _condor_CREDD_HOST="bigbird02.cern.ch"
+condor_q
+```
+
+Or address commands directly:
+
+```bash
+condor_q -name bigbird15.cern.ch
+condor_submit -name bigbird15.cern.ch apex2_root_parity.sub
+```
+
+## 1) q(mu) profiling parity vs ROOT
+
+### Option A: start from pyhf JSON (fixtures)
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
+  --pyhf-json tests/fixtures/simple_workspace.json \
+  --measurement GaussExample \
+  --start 0.0 --stop 5.0 --points 51
+```
+
+Script behavior:
+- exports the workspace to HistFactory XML + `data.root` via `pyhf.writexml`
+- builds a RooWorkspace via `hist2workspace`
+- runs a free fit and fixed-POI fits in ROOT → q(mu)
+- runs `nextstat.infer.profile_scan` on the same mu grid
+- prints a JSON summary and writes artifacts under `tmp/root_parity/...`
+
+### Option B: start from HistFactory Combination XML (e.g. TRExFitter export)
+
+If you have a `combination.xml` that references channel XML files and ROOT histograms (often `data.root`), you can run:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/validate_root_profile_scan.py \
+  --histfactory-xml /abs/path/to/combination.xml \
+  --start 0.0 --stop 5.0 --points 51
+```
+
+The `--rootdir` option is needed only if relative paths in XML should be resolved from a directory other than where `combination.xml` lives.
+
+## 2) What counts as a "match"
+
+**Important:** All NextStat parity runs should use `--parity` mode (or `nextstat.set_eval_mode("parity")`) to enable Kahan compensated summation, disable Accelerate, and force single-threaded execution. This ensures bit-exact reproducibility. Full 7-tier tolerance hierarchy: `tests/python/_tolerances.py`.
+
+Expected sources of differences between ROOT vs pyhf/NextStat:
+- different minimizers/strategies and stopping criteria
+- different default constraints/parameterizations (especially near boundaries)
+- subtle differences in constant terms in the NLL (offsets/normalization)
+
+Recommended first-pass metrics:
+- `mu_hat` (best fit POI)
+- `max_abs_dq_mu` over the mu grid (q(mu) difference)
+- minimizer status stability (ROOT status codes)
+
+## 3) Performance / profiling
+
+`tests/validate_root_profile_scan.py` prints wall time for:
+- `hist2workspace` (build RooWorkspace)
+- ROOT profile scan
+- NextStat profile scan
+
+For fair "engine" profiling people typically compare separately:
+- *model build* time (parsing/initialization)
+- *single NLL eval* time
+- *single fit* time and *a scan of N fixed fits*
+
+Next step: add dedicated benchmarks for "NLL eval in ROOT vs NextStat" and "fit time", but first it is important to lock down math parity for q(mu).

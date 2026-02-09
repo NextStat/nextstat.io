@@ -1,0 +1,15 @@
+# TRExFitter-style config (minimal) for NextStat import (ReadFrom=HIST).
+#
+# This is a thin wrapper over an existing HistFactory export directory that contains:
+# - combination.xml
+# - referenced ROOT histograms (often data.root + channels/)
+#
+# Run (from repo root):
+#   nextstat import trex-config --config docs/examples/trex_config_hist_minimal.txt --base-dir . --output workspace.json
+#
+
+ReadFrom: HIST
+
+# Path to a HistFactory export dir (or any directory tree containing exactly one combination.xml).
+HistoPath: tests/fixtures/histfactory
+

@@ -1,0 +1,133 @@
+<!DOCTYPE Channel SYSTEM '../HistFactorySchema.dtd'>
+
+<Channel Name="CRtt_cuts" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root">
+  <Data HistoName="histCRtt_cuts_data" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" />
+  <Sample Name="FNP" HistoName="histCRtt_cuts_FNP" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+    <StatError Activate="True" HistoName="histCRtt_cuts_FNP_staterror_CRtt_cuts" />
+    <HistoSys Name="fake_wgt" HistoNameLow="histCRtt_cuts_FNP_fake_wgtLow" HistoNameHigh="histCRtt_cuts_FNP_fake_wgtHigh" />
+    </Sample>
+  <Sample Name="higgs" HistoName="histCRtt_cuts_higgs" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+    <StatError Activate="True" HistoName="histCRtt_cuts_higgs_staterror_CRtt_cuts" />
+    <OverallSys Name="higgs_xs" High="1.1" Low="0.9" />
+    </Sample>
+  <Sample Name="triboson" HistoName="histCRtt_cuts_triboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+    <StatError Activate="True" HistoName="histCRtt_cuts_triboson_staterror_CRtt_cuts" />
+    <OverallSys Name="triboson_xs" High="1.32" Low="0.68" />
+    </Sample>
+  <Sample Name="diboson" HistoName="histCRtt_cuts_diboson" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+    <StatError Activate="True" HistoName="histCRtt_cuts_diboson_staterror_CRtt_cuts" />
+    <NormFactor Name="mu_diboson" Val="1.0" Low="0.0" High="5.0" />
+    <HistoSys Name="ft_eff_c" HistoNameLow="histCRtt_cuts_diboson_ft_eff_cLow" HistoNameHigh="histCRtt_cuts_diboson_ft_eff_cHigh" />
+    <HistoSys Name="ft_eff_extrap_from_charm" HistoNameLow="histCRtt_cuts_diboson_ft_eff_extrap_from_charmLow" HistoNameHigh="histCRtt_cuts_diboson_ft_eff_extrap_from_charmHigh" />
+    <HistoSys Name="ft_eff_light" HistoNameLow="histCRtt_cuts_diboson_ft_eff_lightLow" HistoNameHigh="histCRtt_cuts_diboson_ft_eff_lightHigh" />
+    <HistoSys Name="jer_1" HistoNameLow="histCRtt_cuts_diboson_jer_1Low" HistoNameHigh="histCRtt_cuts_diboson_jer_1High" />
+    <HistoSys Name="jer_2" HistoNameLow="histCRtt_cuts_diboson_jer_2Low" HistoNameHigh="histCRtt_cuts_diboson_jer_2High" />
+    <HistoSys Name="jer_3" HistoNameLow="histCRtt_cuts_diboson_jer_3Low" HistoNameHigh="histCRtt_cuts_diboson_jer_3High" />
+    <HistoSys Name="jer_5" HistoNameLow="histCRtt_cuts_diboson_jer_5Low" HistoNameHigh="histCRtt_cuts_diboson_jer_5High" />
+    <HistoSys Name="jer_7restterm" HistoNameLow="histCRtt_cuts_diboson_jer_7resttermLow" HistoNameHigh="histCRtt_cuts_diboson_jer_7resttermHigh" />
+    <HistoSys Name="jer_datavsmc_mc16" HistoNameLow="histCRtt_cuts_diboson_jer_datavsmc_mc16Low" HistoNameHigh="histCRtt_cuts_diboson_jer_datavsmc_mc16High" />
+    <HistoSys Name="jet_flav_composition" HistoNameLow="histCRtt_cuts_diboson_jet_flav_compositionLow" HistoNameHigh="histCRtt_cuts_diboson_jet_flav_compositionHigh" />
+    <HistoSys Name="diboson_muRmuF_SUSY" HistoNameLow="histCRtt_cuts_diboson_diboson_muRmuF_SUSYLow" HistoNameHigh="histCRtt_cuts_diboson_diboson_muRmuF_SUSYHigh" />
+    </Sample>
+  <Sample Name="Zjets" HistoName="histCRtt_cuts_Zjets" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+    <StatError Activate="True" HistoName="histCRtt_cuts_Zjets_staterror_CRtt_cuts" />
+    <NormFactor Name="mu_Zjets" Val="1.0" Low="0.0" High="5.0" />
+    <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRtt_cuts_Zjets_el_chargeid_statLow" HistoNameHigh="histCRtt_cuts_Zjets_el_chargeid_statHigh" />
+    <HistoSys Name="el_chargeid_systotal" HistoNameLow="histCRtt_cuts_Zjets_el_chargeid_systotalLow" HistoNameHigh="histCRtt_cuts_Zjets_el_chargeid_systotalHigh" />
+    <HistoSys Name="el_eff_iso_total" HistoNameLow="histCRtt_cuts_Zjets_el_eff_iso_totalLow" HistoNameHigh="histCRtt_cuts_Zjets_el_eff_iso_totalHigh" />
+    <HistoSys Name="ft_eff_b" HistoNameLow="histCRtt_cuts_Zjets_ft_eff_bLow" HistoNameHigh="histCRtt_cuts_Zjets_ft_eff_bHigh" />
+    <HistoSys Name="ft_eff_light" HistoNameLow="histCRtt_cuts_Zjets_ft_eff_lightLow" HistoNameHigh="histCRtt_cuts_Zjets_ft_eff_lightHigh" />
+    <HistoSys Name="pileup_wgt" HistoNameLow="histCRtt_cuts_Zjets_pileup_wgtLow" HistoNameHigh="histCRtt_cuts_Zjets_pileup_wgtHigh" />
+    <HistoSys Name="eg_resolution_all" HistoNameLow="histCRtt_cuts_Zjets_eg_resolution_allLow" HistoNameHigh="histCRtt_cuts_Zjets_eg_resolution_allHigh" />
+    <HistoSys Name="eg_scale_all" HistoNameLow="histCRtt_cuts_Zjets_eg_scale_allLow" HistoNameHigh="histCRtt_cuts_Zjets_eg_scale_allHigh" />
+    <HistoSys Name="jer_1" HistoNameLow="histCRtt_cuts_Zjets_jer_1Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_1High" />
+    <HistoSys Name="jer_2" HistoNameLow="histCRtt_cuts_Zjets_jer_2Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_2High" />
+    <HistoSys Name="jer_3" HistoNameLow="histCRtt_cuts_Zjets_jer_3Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_3High" />
+    <HistoSys Name="jer_4" HistoNameLow="histCRtt_cuts_Zjets_jer_4Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_4High" />
+    <HistoSys Name="jer_5" HistoNameLow="histCRtt_cuts_Zjets_jer_5Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_5High" />
+    <HistoSys Name="jer_6" HistoNameLow="histCRtt_cuts_Zjets_jer_6Low" HistoNameHigh="histCRtt_cuts_Zjets_jer_6High" />
+    <HistoSys Name="jer_7restterm" HistoNameLow="histCRtt_cuts_Zjets_jer_7resttermLow" HistoNameHigh="histCRtt_cuts_Zjets_jer_7resttermHigh" />
+    <HistoSys Name="jes_detector2" HistoNameLow="histCRtt_cuts_Zjets_jes_detector2Low" HistoNameHigh="histCRtt_cuts_Zjets_jes_detector2High" />
+    <HistoSys Name="jes_mixed2" HistoNameLow="histCRtt_cuts_Zjets_jes_mixed2Low" HistoNameHigh="histCRtt_cuts_Zjets_jes_mixed2High" />
+    <HistoSys Name="jes_modelling1" HistoNameLow="histCRtt_cuts_Zjets_jes_modelling1Low" HistoNameHigh="histCRtt_cuts_Zjets_jes_modelling1High" />
+    <HistoSys Name="jet_eta_modelling" HistoNameLow="histCRtt_cuts_Zjets_jet_eta_modellingLow" HistoNameHigh="histCRtt_cuts_Zjets_jet_eta_modellingHigh" />
+    <HistoSys Name="jet_flav_composition" HistoNameLow="histCRtt_cuts_Zjets_jet_flav_compositionLow" HistoNameHigh="histCRtt_cuts_Zjets_jet_flav_compositionHigh" />
+    <HistoSys Name="jet_flav_response" HistoNameLow="histCRtt_cuts_Zjets_jet_flav_responseLow" HistoNameHigh="histCRtt_cuts_Zjets_jet_flav_responseHigh" />
+    <HistoSys Name="jet_pu_offsetnpv" HistoNameLow="histCRtt_cuts_Zjets_jet_pu_offsetnpvLow" HistoNameHigh="histCRtt_cuts_Zjets_jet_pu_offsetnpvHigh" />
+    <HistoSys Name="jet_pu_rhotopology" HistoNameLow="histCRtt_cuts_Zjets_jet_pu_rhotopologyLow" HistoNameHigh="histCRtt_cuts_Zjets_jet_pu_rhotopologyHigh" />
+    <HistoSys Name="met_softtrk_resopara" HistoNameLow="histCRtt_cuts_Zjets_met_softtrk_resoparaLow" HistoNameHigh="histCRtt_cuts_Zjets_met_softtrk_resoparaHigh" />
+    <HistoSys Name="met_softtrk_resoperp" HistoNameLow="histCRtt_cuts_Zjets_met_softtrk_resoperpLow" HistoNameHigh="histCRtt_cuts_Zjets_met_softtrk_resoperpHigh" />
+    <HistoSys Name="met_softtrk_scale" HistoNameLow="histCRtt_cuts_Zjets_met_softtrk_scaleLow" HistoNameHigh="histCRtt_cuts_Zjets_met_softtrk_scaleHigh" />
+    <HistoSys Name="muon_id" HistoNameLow="histCRtt_cuts_Zjets_muon_idLow" HistoNameHigh="histCRtt_cuts_Zjets_muon_idHigh" />
+    <HistoSys Name="Zjets_bextrap" HistoNameLow="histCRtt_cuts_Zjets_Zjets_bextrapLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_bextrapHigh" />
+    <HistoSys Name="Zjets_pdf_q84_q16" HistoNameLow="histCRtt_cuts_Zjets_Zjets_pdf_q84_q16Low" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_pdf_q84_q16High" />
+    <HistoSys Name="Zjets_muF_SUSY" HistoNameLow="histCRtt_cuts_Zjets_Zjets_muF_SUSYLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_muF_SUSYHigh" />
+    <HistoSys Name="Zjets_qsf" HistoNameLow="histCRtt_cuts_Zjets_Zjets_qsfLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_qsfHigh" />
+    <HistoSys Name="Zjets_alt" HistoNameLow="histCRtt_cuts_Zjets_Zjets_altLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_altHigh" />
+    <HistoSys Name="Zjets_ckkw" HistoNameLow="histCRtt_cuts_Zjets_Zjets_ckkwLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_ckkwHigh" />
+    <HistoSys Name="Zjets_muR_SUSY" HistoNameLow="histCRtt_cuts_Zjets_Zjets_muR_SUSYLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_muR_SUSYHigh" />
+    <HistoSys Name="Zjets_muRmuF_SUSY" HistoNameLow="histCRtt_cuts_Zjets_Zjets_muRmuF_SUSYLow" HistoNameHigh="histCRtt_cuts_Zjets_Zjets_muRmuF_SUSYHigh" />
+    </Sample>
+  <Sample Name="topOther" HistoName="histCRtt_cuts_topOther" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+    <StatError Activate="True" HistoName="histCRtt_cuts_topOther_staterror_CRtt_cuts" />
+    <OverallSys Name="topOther_xs" High="1.13" Low="0.87" />
+    <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRtt_cuts_topOther_el_chargeid_statLow" HistoNameHigh="histCRtt_cuts_topOther_el_chargeid_statHigh" />
+    <HistoSys Name="el_chargeid_systotal" HistoNameLow="histCRtt_cuts_topOther_el_chargeid_systotalLow" HistoNameHigh="histCRtt_cuts_topOther_el_chargeid_systotalHigh" />
+    <HistoSys Name="ft_eff_b" HistoNameLow="histCRtt_cuts_topOther_ft_eff_bLow" HistoNameHigh="histCRtt_cuts_topOther_ft_eff_bHigh" />
+    <HistoSys Name="jer_1" HistoNameLow="histCRtt_cuts_topOther_jer_1Low" HistoNameHigh="histCRtt_cuts_topOther_jer_1High" />
+    <HistoSys Name="jer_2" HistoNameLow="histCRtt_cuts_topOther_jer_2Low" HistoNameHigh="histCRtt_cuts_topOther_jer_2High" />
+    <HistoSys Name="jer_3" HistoNameLow="histCRtt_cuts_topOther_jer_3Low" HistoNameHigh="histCRtt_cuts_topOther_jer_3High" />
+    <HistoSys Name="jer_4" HistoNameLow="histCRtt_cuts_topOther_jer_4Low" HistoNameHigh="histCRtt_cuts_topOther_jer_4High" />
+    <HistoSys Name="jer_5" HistoNameLow="histCRtt_cuts_topOther_jer_5Low" HistoNameHigh="histCRtt_cuts_topOther_jer_5High" />
+    <HistoSys Name="jer_6" HistoNameLow="histCRtt_cuts_topOther_jer_6Low" HistoNameHigh="histCRtt_cuts_topOther_jer_6High" />
+    <HistoSys Name="jer_7restterm" HistoNameLow="histCRtt_cuts_topOther_jer_7resttermLow" HistoNameHigh="histCRtt_cuts_topOther_jer_7resttermHigh" />
+    <HistoSys Name="jer_datavsmc_mc16" HistoNameLow="histCRtt_cuts_topOther_jer_datavsmc_mc16Low" HistoNameHigh="histCRtt_cuts_topOther_jer_datavsmc_mc16High" />
+    <HistoSys Name="jet_bjes_response" HistoNameLow="histCRtt_cuts_topOther_jet_bjes_responseLow" HistoNameHigh="histCRtt_cuts_topOther_jet_bjes_responseHigh" />
+    <HistoSys Name="jet_flav_composition" HistoNameLow="histCRtt_cuts_topOther_jet_flav_compositionLow" HistoNameHigh="histCRtt_cuts_topOther_jet_flav_compositionHigh" />
+    <HistoSys Name="jet_single_highpt" HistoNameLow="histCRtt_cuts_topOther_jet_single_highptLow" HistoNameHigh="histCRtt_cuts_topOther_jet_single_highptHigh" />
+    <HistoSys Name="muon_sagitta_rho" HistoNameLow="histCRtt_cuts_topOther_muon_sagitta_rhoLow" HistoNameHigh="histCRtt_cuts_topOther_muon_sagitta_rhoHigh" />
+    <HistoSys Name="topOther_hs" HistoNameLow="histCRtt_cuts_topOther_topOther_hsLow" HistoNameHigh="histCRtt_cuts_topOther_topOther_hsHigh" />
+    <HistoSys Name="topOther_pdf_q84_q16" HistoNameLow="histCRtt_cuts_topOther_topOther_pdf_q84_q16Low" HistoNameHigh="histCRtt_cuts_topOther_topOther_pdf_q84_q16High" />
+    <HistoSys Name="topOther_ps" HistoNameLow="histCRtt_cuts_topOther_topOther_psLow" HistoNameHigh="histCRtt_cuts_topOther_topOther_psHigh" />
+    </Sample>
+  <Sample Name="singleTop" HistoName="histCRtt_cuts_singleTop" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="True">
+    <StatError Activate="True" HistoName="histCRtt_cuts_singleTop_staterror_CRtt_cuts" />
+    <OverallSys Name="singleTop_xs" High="1.06" Low="0.94" />
+    <HistoSys Name="el_chargeid_stat" HistoNameLow="histCRtt_cuts_singleTop_el_chargeid_statLow" HistoNameHigh="histCRtt_cuts_singleTop_el_chargeid_statHigh" />
+    <HistoSys Name="el_chargeid_systotal" HistoNameLow="histCRtt_cuts_singleTop_el_chargeid_systotalLow" HistoNameHigh="histCRtt_cuts_singleTop_el_chargeid_systotalHigh" />
+    <HistoSys Name="muon_eff_iso_sys" HistoNameLow="histCRtt_cuts_singleTop_muon_eff_iso_sysLow" HistoNameHigh="histCRtt_cuts_singleTop_muon_eff_iso_sysHigh" />
+    <HistoSys Name="muon_eff_trigsys" HistoNameLow="histCRtt_cuts_singleTop_muon_eff_trigsysLow" HistoNameHigh="histCRtt_cuts_singleTop_muon_eff_trigsysHigh" />
+    <HistoSys Name="pileup_wgt" HistoNameLow="histCRtt_cuts_singleTop_pileup_wgtLow" HistoNameHigh="histCRtt_cuts_singleTop_pileup_wgtHigh" />
+    <HistoSys Name="eg_resolution_all" HistoNameLow="histCRtt_cuts_singleTop_eg_resolution_allLow" HistoNameHigh="histCRtt_cuts_singleTop_eg_resolution_allHigh" />
+    <HistoSys Name="eg_scale_all" HistoNameLow="histCRtt_cuts_singleTop_eg_scale_allLow" HistoNameHigh="histCRtt_cuts_singleTop_eg_scale_allHigh" />
+    <HistoSys Name="jer_1" HistoNameLow="histCRtt_cuts_singleTop_jer_1Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_1High" />
+    <HistoSys Name="jer_2" HistoNameLow="histCRtt_cuts_singleTop_jer_2Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_2High" />
+    <HistoSys Name="jer_3" HistoNameLow="histCRtt_cuts_singleTop_jer_3Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_3High" />
+    <HistoSys Name="jer_4" HistoNameLow="histCRtt_cuts_singleTop_jer_4Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_4High" />
+    <HistoSys Name="jer_5" HistoNameLow="histCRtt_cuts_singleTop_jer_5Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_5High" />
+    <HistoSys Name="jer_6" HistoNameLow="histCRtt_cuts_singleTop_jer_6Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_6High" />
+    <HistoSys Name="jer_7restterm" HistoNameLow="histCRtt_cuts_singleTop_jer_7resttermLow" HistoNameHigh="histCRtt_cuts_singleTop_jer_7resttermHigh" />
+    <HistoSys Name="jer_datavsmc_mc16" HistoNameLow="histCRtt_cuts_singleTop_jer_datavsmc_mc16Low" HistoNameHigh="histCRtt_cuts_singleTop_jer_datavsmc_mc16High" />
+    <HistoSys Name="jes_mixed1" HistoNameLow="histCRtt_cuts_singleTop_jes_mixed1Low" HistoNameHigh="histCRtt_cuts_singleTop_jes_mixed1High" />
+    <HistoSys Name="jes_mixed2" HistoNameLow="histCRtt_cuts_singleTop_jes_mixed2Low" HistoNameHigh="histCRtt_cuts_singleTop_jes_mixed2High" />
+    <HistoSys Name="jes_modelling1" HistoNameLow="histCRtt_cuts_singleTop_jes_modelling1Low" HistoNameHigh="histCRtt_cuts_singleTop_jes_modelling1High" />
+    <HistoSys Name="jet_bjes_response" HistoNameLow="histCRtt_cuts_singleTop_jet_bjes_responseLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_bjes_responseHigh" />
+    <HistoSys Name="jet_eta_modelling" HistoNameLow="histCRtt_cuts_singleTop_jet_eta_modellingLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_eta_modellingHigh" />
+    <HistoSys Name="jet_eta_totalstat" HistoNameLow="histCRtt_cuts_singleTop_jet_eta_totalstatLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_eta_totalstatHigh" />
+    <HistoSys Name="jet_flav_composition" HistoNameLow="histCRtt_cuts_singleTop_jet_flav_compositionLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_flav_compositionHigh" />
+    <HistoSys Name="jet_flav_response" HistoNameLow="histCRtt_cuts_singleTop_jet_flav_responseLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_flav_responseHigh" />
+    <HistoSys Name="jet_pu_offsetmu" HistoNameLow="histCRtt_cuts_singleTop_jet_pu_offsetmuLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_pu_offsetmuHigh" />
+    <HistoSys Name="jet_pu_offsetnpv" HistoNameLow="histCRtt_cuts_singleTop_jet_pu_offsetnpvLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_pu_offsetnpvHigh" />
+    <HistoSys Name="jet_pu_rhotopology" HistoNameLow="histCRtt_cuts_singleTop_jet_pu_rhotopologyLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_pu_rhotopologyHigh" />
+    <HistoSys Name="jet_single_highpt" HistoNameLow="histCRtt_cuts_singleTop_jet_single_highptLow" HistoNameHigh="histCRtt_cuts_singleTop_jet_single_highptHigh" />
+    <HistoSys Name="met_softtrk_resopara" HistoNameLow="histCRtt_cuts_singleTop_met_softtrk_resoparaLow" HistoNameHigh="histCRtt_cuts_singleTop_met_softtrk_resoparaHigh" />
+    <HistoSys Name="met_softtrk_resoperp" HistoNameLow="histCRtt_cuts_singleTop_met_softtrk_resoperpLow" HistoNameHigh="histCRtt_cuts_singleTop_met_softtrk_resoperpHigh" />
+    <HistoSys Name="met_softtrk_scale" HistoNameLow="histCRtt_cuts_singleTop_met_softtrk_scaleLow" HistoNameHigh="histCRtt_cuts_singleTop_met_softtrk_scaleHigh" />
+    <HistoSys Name="muon_ms" HistoNameLow="histCRtt_cuts_singleTop_muon_msLow" HistoNameHigh="histCRtt_cuts_singleTop_muon_msHigh" />
+    <HistoSys Name="muon_sagitta_rho" HistoNameLow="histCRtt_cuts_singleTop_muon_sagitta_rhoLow" HistoNameHigh="histCRtt_cuts_singleTop_muon_sagitta_rhoHigh" />
+    </Sample>
+  <Sample Name="ttbar" HistoName="histCRtt_cuts_ttbar" InputFile="tmp/trex_exports/hepdata.116034_DR_Int_EWK_20260207_141225/data.root" NormalizeByTheory="False">
+    <StatError Activate="True" HistoName="histCRtt_cuts_ttbar_staterror_CRtt_cuts" />
+    <NormFactor Name="mu_ttbar" Val="1.0" Low="0.0" High="5.0" />
+    </Sample>
+  </Channel>

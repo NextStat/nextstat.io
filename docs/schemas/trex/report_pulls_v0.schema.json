@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/report_pulls_v0.schema.json",
+  "title": "NextStat TREx Replacement — Pulls/Constraints Report Artifact (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "entries"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_report_pulls_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version", "created_unix_ms", "parity_mode"],
+      "properties": {
+        "tool": { "type": "string", "const": "nextstat" },
+        "tool_version": { "type": "string" },
+        "created_unix_ms": { "type": "integer", "minimum": 0 },
+        "parity_mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads", "stable_ordering"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1 },
+            "stable_ordering": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "ordering_policy": {
+      "type": "string",
+      "description": "How entries are ordered (must be explicit for reproducibility).",
+      "enum": ["input", "name_lex"]
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "pull", "constraint"],
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["poi", "nuisance"] },
+        "group": { "type": "string" },
+        "prefit_center": { "type": "number" },
+        "prefit_sigma": { "type": "number", "exclusiveMinimum": 0.0 },
+        "postfit_center": { "type": "number" },
+        "postfit_sigma": { "type": "number", "exclusiveMinimum": 0.0 },
+        "pull": { "type": "number" },
+        "constraint": { "type": "number" }
+      }
+    }
+  }
+}
+

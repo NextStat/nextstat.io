@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/report_uncertainty_v0.schema.json",
+  "title": "NextStat TREx Replacement — Uncertainty Breakdown Artifact (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "grouping_policy", "groups", "total"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "trex_report_uncertainty_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "tool_version", "created_unix_ms", "parity_mode"],
+      "properties": {
+        "tool": { "type": "string", "const": "nextstat" },
+        "tool_version": { "type": "string" },
+        "created_unix_ms": { "type": "integer", "minimum": 0 },
+        "parity_mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads", "stable_ordering"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1 },
+            "stable_ordering": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "grouping_policy": { "type": "string" },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" }
+    },
+    "total": { "type": "number", "minimum": 0 }
+  },
+  "$defs": {
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "impact", "n_parameters"],
+      "properties": {
+        "name": { "type": "string" },
+        "impact": { "type": "number", "minimum": 0 },
+        "n_parameters": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
+
