@@ -1,0 +1,101 @@
+# Release Gates (Apex2, no cluster)
+
+This document describes the minimal **pre-release gate** based on the Apex2 baseline workflow.
+
+## What it checks
+
+- **pyhf parity** vs the pyhf reference implementation
+- **P6 GLM** end-to-end fit/predict stability vs a recorded baseline
+- **Performance regressions** vs the latest baseline manifest on the same machine
+- **ROOT suite** (optional): runs the recorded ROOT/HistFactory parity case pack and gates on *regressions vs the recorded baseline* (baseline failures are treated as expected)
+
+Artifacts:
+- baselines: `tmp/baselines/`
+- compare report: `tmp/baseline_compare_report.json`
+
+## Step-by-step (recommended)
+
+1) Record baselines once on a reference machine:
+
+```bash
+make apex2-baseline-record
+```
+
+2) Before cutting a release, run the pre-release gate:
+
+```bash
+make apex2-baseline-compare COMPARE_ARGS="--require-same-host --p6-attempts 2"
+```
+
+or:
+
+```bash
+make apex2-pre-release-gate
+```
+
+This runs:
+- `cargo build --workspace --release`
+- `cargo test --workspace`
+- `maturin develop --release` (Python bindings)
+- `pytest -m "not slow" tests/python`
+- `tests/compare_with_latest_baseline.py --require-same-host --p6-attempts 2` (P6 retried up to N times; whole compare retried once if it fails with `rc=2`)
+- If `tmp/baselines/latest_root_manifest.json` exists: the gate also runs the ROOT suite case pack recorded there and compares it to the baseline (expected ROOT divergences recorded as baseline failures do not gate).
+
+Optional (pytest timing breakdown):
+- CLI flag: `pytest -m "not slow" tests/python --ns-test-timings`
+- Env var: `NS_TEST_TIMINGS=1 pytest -m "not slow" tests/python`
+- JSON output: `--ns-test-timings-json tmp/pytest_timings.json` (or `NS_TEST_TIMINGS_JSON=...`)
+
+Optional (GPU backends):
+- CUDA (requires `nvcc`): `APEX2_CARGO_TEST_ARGS="--workspace --all-features" make apex2-pre-release-gate`
+
+Optional (TREx analysis spec):
+- Record once: `make trex-spec-baseline-record TREX_SPEC=...`
+- Compare before release: `make trex-spec-baseline-compare TREX_COMPARE_ARGS="--require-same-host"`
+- If `tmp/baselines/latest_trex_analysis_spec_manifest.json` exists, `make apex2-pre-release-gate` also runs this compare.
+- Set `APEX2_SKIP_TREX_SPEC=1` to skip, or override args with `APEX2_TREX_COMPARE_ARGS="..."`.
+
+Notes:
+
+- `maturin develop` installs the compiled extension into the active venv. The built binary is **not** committed to git.
+
+Exit codes:
+- `0`: OK (parity OK and within slowdown thresholds)
+- `2`: FAIL (parity failure or slowdown threshold exceeded)
+- `3`: baseline manifest missing/invalid
+- `4`: runner error (missing deps, crash, etc.)
+- `5`: git working tree dirty (set `APEX2_ALLOW_DIRTY=1` to override)
+
+## If it fails
+
+- Open `tmp/baseline_compare_report.json` and check:
+  - `pyhf.compare.cases[*].ok` for perf regressions
+  - `p6_glm.attempts[*].status` to see retry outcomes
+  - `p6_glm.compare.compare.cases[*].ok` for fit/predict regressions (selected attempt)
+- Note: by default, very small baseline timings are **not** gated (to avoid timer noise):
+  - pyhf: `--pyhf-min-baseline-s` (default `1e-5`)
+  - P6: `--p6-min-baseline-fit-s` and `--p6-min-baseline-predict-s` (default `1e-2`)
+  Override via `COMPARE_ARGS="..."` if you want stricter gating on a dedicated benchmark host.
+- If the baseline is stale (e.g. after a known perf improvement), record a new baseline and re-run the gate.
+
+## Cluster notes (ROOT/TRExFitter)
+
+ROOT/HistFactory parity baselines are recorded separately on a cluster environment (e.g. lxplus) via:
+- `tests/record_baseline.py --only root ...`
+
+TREx replacement baselines (numbers-only: fit + expected_data surfaces) can also be recorded from a TRExFitter/HistFactory export dir via:
+- `tests/record_trex_baseline.py --export-dir ...`
+
+Typical cluster gate workflow:
+- Record a ROOT baseline once (on the cluster machine where ROOT/TRExFitter are available).
+- Run the ROOT suite via HTCondor (single job or array), then aggregate JSON outputs.
+- Optionally compare perf vs the recorded baseline (JSON-only, no ROOT needed for the compare step).
+
+Notes:
+- For large suites, it can be faster to record the baseline via HTCondor array + aggregation, then register it with:
+  `tests/record_baseline.py --only root --root-suite-existing ... --root-cases-existing ...`.
+
+See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, baseline registration, aggregation, and perf compare.
+
+Manual refresh (GitHub Actions, external runner):
+- Workflow: `.github/workflows/trex-baseline-refresh.yml` (workflow_dispatch only; requires a self-hosted runner with label `trex` and ROOT installed).

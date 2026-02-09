@@ -1,0 +1,30 @@
+{
+  "channels": [
+    {
+      "channel_name": "SR",
+      "data": 52.0,
+      "samples": [
+        {
+          "name": "signal",
+          "postfit": 18.0,
+          "prefit": 18.0
+        },
+        {
+          "name": "background",
+          "postfit": 37.0,
+          "prefit": 37.0
+        }
+      ],
+      "total_postfit": 55.0,
+      "total_prefit": 55.0
+    }
+  ],
+  "meta": {
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat"
+  },
+  "schema_version": "trex_report_yields_v0"
+}

@@ -1,0 +1,125 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ns-core",
+    "crates/ns-compute",
+    "crates/ns-ad",
+    "crates/ns-prob",
+    "crates/ns-root",
+    "crates/ns-inference",
+    "crates/ns-translate",
+    "crates/ns-unbinned",
+    "crates/ns-viz",
+    "crates/ns-cli",
+    "crates/ns-server",
+    "crates/ns-zstd",
+    "crates/zstd-shim",
+    "bindings/ns-py",
+    "bindings/ns-wasm",
+]
+
+[patch.crates-io]
+zstd = { path = "crates/zstd-shim" }
+
+[workspace.package]
+version = "0.9.0"
+edition = "2024"
+rust-version = "1.93"
+authors = ["NextStat Contributors"]
+license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+repository = "https://github.com/NextStat/nextstat.io"
+homepage = "https://nextstat.io"
+keywords = ["statistics", "physics", "hep", "fitting", "likelihood"]
+categories = ["science", "mathematics"]
+
+[workspace.dependencies]
+# Internal workspace crates (for publishable versioned deps).
+ns-core = { path = "crates/ns-core", version = "0.9.0" }
+ns-compute = { path = "crates/ns-compute", version = "0.9.0" }
+ns-ad = { path = "crates/ns-ad", version = "0.9.0" }
+ns-prob = { path = "crates/ns-prob", version = "0.9.0" }
+ns-root = { path = "crates/ns-root", version = "0.9.0" }
+ns-translate = { path = "crates/ns-translate", version = "0.9.0", default-features = false }
+ns-inference = { path = "crates/ns-inference", version = "0.9.0", default-features = false }
+ns-viz = { path = "crates/ns-viz", version = "0.9.0" }
+ns-cli = { path = "crates/ns-cli", version = "0.9.0" }
+ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.0" }
+
+# Core dependencies
+thiserror = "2.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml_ng = "0.10"
+log = "0.4"
+env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1.0", features = ["full"] }
+
+# Numerical computing
+ndarray = { version = "0.17", features = ["serde"] }
+nalgebra = "0.34"
+num-traits = "0.2"
+statrs = { version = "0.18", default-features = false }
+argmin = { version = "0.11", default-features = false }
+argmin-math = { version = "0.5", default-features = false, features = ["vec"] }
+
+# SIMD (CPU - Priority P0)
+wide = "1.1"
+
+# Parallelism (CPU - Priority P0)
+rayon = "1.11"
+
+# Testing
+approx = "0.5"
+proptest = "1.10"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# MCMC / sampling (Phase 3, optional)
+rand = "0.9"
+rand_distr = "0.5"
+json-patch = "4.1.0"
+
+# Arrow / Parquet
+arrow = { version = "57.3", default-features = false, features = ["ffi", "ipc"] }
+parquet = { version = "57.3", default-features = false, features = ["arrow", "zstd", "snap"] }
+
+# Python bindings
+pyo3 = { version = "0.28", features = ["extension-module"] }
+numpy = "0.27"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# HTTP server (ns-server)
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Autodiff (Phase 2B)
+# autodiff dependencies will be added later
+
+# GPU backends (Phase 2C - Optional)
+cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "std", "dynamic-loading", "cuda-version-from-build-system", "fallback-latest"] }
+metal = "0.30"
+objc = "0.2"
+block = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = false  # Keep symbols for debugging
+
+[profile.bench]
+inherits = "release"
+lto = "fat"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+# Cargo configuration
+[workspace.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

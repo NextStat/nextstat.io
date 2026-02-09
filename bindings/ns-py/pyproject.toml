@@ -1,0 +1,89 @@
+[build-system]
+requires = ["maturin>=1.11,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "nextstat"
+version = "0.9.0"
+description = "High-performance statistical inference engine — MLE, Bayesian, survival, GLM, time series. Rust core with Python bindings."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later OR LicenseRef-Commercial" }
+authors = [
+    { name = "NextStat Contributors" }
+]
+keywords = ["statistics", "physics", "hep", "fitting", "likelihood", "bayesian", "survival", "glm", "inference", "gpu"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.19",
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.15",
+]
+remote = [
+    # Used by `nextstat.remote` (pure Python client for nextstat-server).
+    "httpx>=0.27",
+]
+io = [
+    # Arrow/Parquet authoring on the Python side (NextStat can read Parquet without PyArrow).
+    "pyarrow>=16.0",
+]
+validation = [
+    "numpy>=2.0",
+    "pyhf>=0.7.6",
+    # Needed for HistFactory XML/ROOT IO used by pyhf.readxml/pyhf.writexml.
+    "uproot>=5.0",
+    "tqdm>=4.0",
+]
+bayes = [
+    "arviz>=0.23.4",
+    "numpy>=2.0",
+    "emcee>=3.1.6",
+]
+viz = [
+    "matplotlib>=3.9",
+    "numpy>=2.0",
+]
+agent = [
+    # Convenience extra for running agent/demo scripts that ingest ROOT and call nextstat-server.
+    "httpx>=0.27",
+    "jsonschema>=4.0",
+    "numpy>=2.0",
+    "uproot>=5.0",
+]
+torch = [
+    "torch>=2.2",
+    "numpy>=2.0",
+]
+langchain = [
+    "langchain-core>=0.3",
+]
+
+[project.urls]
+Homepage = "https://nextstat.io"
+Repository = "https://github.com/NextStat/nextstat.io"
+Documentation = "https://nextstat.io/docs"
+Changelog = "https://github.com/NextStat/nextstat.io/blob/main/CHANGELOG.md"
+Issues = "https://github.com/NextStat/nextstat.io/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "nextstat._core"

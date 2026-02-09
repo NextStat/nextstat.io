@@ -1,0 +1,20 @@
+[package]
+name = "nextstat-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+# Fuzz targets exercise NextStat crates via path deps.
+ns-root = { path = "../crates/ns-root" }
+
+[[bin]]
+name = "ns_root_decompress"
+path = "fuzz_targets/ns_root_decompress.rs"
+test = false
+doc = false

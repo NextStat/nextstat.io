@@ -1,0 +1,148 @@
+name: TREx Baseline Refresh (External)
+
+on:
+  workflow_dispatch:
+    inputs:
+      export_dir:
+        description: "Absolute path to a TREx/HistFactory export dir containing combination.xml (must be visible on the runner)"
+        required: true
+      case:
+        description: "Case name (used for output folder naming)"
+        required: true
+        default: "trex_case"
+      rootdir:
+        description: "Optional rootdir for pyhf.readxml (defaults to export_dir)"
+        required: false
+        default: ""
+      trex_config:
+        description: "Optional TRExFitter config to run first (advanced; requires trex-fitter on runner)"
+        required: false
+        default: ""
+      trex_cmd:
+        description: "TRExFitter executable (only used if trex_config is set)"
+        required: false
+        default: "trex-fitter"
+      trex_args:
+        description: "Extra TRExFitter args (space-separated; only used if trex_config is set)"
+        required: false
+        default: ""
+      compare_to:
+        description: "Optional path to an existing baseline.json to compare against (must be visible on runner)"
+        required: false
+        default: ""
+  schedule:
+    # Nightly refresh (requires a self-hosted runner with ROOT/HistFactory available).
+    # Configure repo variables on GitHub:
+    # - TREX_EXPORT_DIR (required)
+    # - TREX_CASE, TREX_ROOTDIR, TREX_COMPARE_TO (optional)
+    - cron: "0 3 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  refresh:
+    # Requires ROOT + HistFactory + TRExFitter (optional) on the runner.
+    runs-on: [self-hosted, trex]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Resolve inputs (dispatch vs nightly)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            export_dir="${{ inputs.export_dir }}"
+            case_name="${{ inputs.case }}"
+            rootdir="${{ inputs.rootdir }}"
+            trex_config="${{ inputs.trex_config }}"
+            trex_cmd="${{ inputs.trex_cmd }}"
+            trex_args="${{ inputs.trex_args }}"
+            compare_to="${{ inputs.compare_to }}"
+          else
+            export_dir="${{ vars.TREX_EXPORT_DIR }}"
+            case_name="${{ vars.TREX_CASE }}"
+            rootdir="${{ vars.TREX_ROOTDIR }}"
+            trex_config="${{ vars.TREX_CONFIG }}"
+            trex_cmd="${{ vars.TREX_CMD }}"
+            trex_args="${{ vars.TREX_ARGS }}"
+            compare_to="${{ vars.TREX_COMPARE_TO }}"
+          fi
+
+          # Reasonable defaults when not set.
+          case_name="${case_name:-trex_case}"
+          trex_cmd="${trex_cmd:-trex-fitter}"
+
+          if [[ -z "${export_dir}" ]]; then
+            echo "TREX export_dir is not set; skipping baseline refresh."
+            echo "Set repo variable TREX_EXPORT_DIR (absolute path on the runner) to enable nightly."
+            exit 0
+          fi
+
+          {
+            echo "NS_TREX_EXPORT_DIR=${export_dir}"
+            echo "NS_TREX_CASE=${case_name}"
+            echo "NS_TREX_ROOTDIR=${rootdir}"
+            echo "NS_TREX_CONFIG=${trex_config}"
+            echo "NS_TREX_CMD=${trex_cmd}"
+            echo "NS_TREX_ARGS=${trex_args}"
+            echo "NS_TREX_COMPARE_TO=${compare_to}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Python build + validation deps
+        run: |
+          pip install "maturin>=1.11,<2.0"
+          pip install "pyhf>=0.7.6" "uproot>=5.0" "jsonschema>=4.0"
+
+      - name: Build + install NextStat Python bindings (editable)
+        working-directory: bindings/ns-py
+        run: maturin develop --release
+
+      - name: Prereq check (ROOT/TREx)
+        run: |
+          PYTHONPATH=bindings/ns-py/python python tests/record_trex_baseline.py \
+            --export-dir "${NS_TREX_EXPORT_DIR}" \
+            --prereq-only
+
+      - name: Record baseline
+        run: |
+          mkdir -p artifacts/trex_baselines
+          extra=()
+          if [[ -n "${NS_TREX_ROOTDIR}" ]]; then extra+=(--rootdir "${NS_TREX_ROOTDIR}"); fi
+          if [[ -n "${NS_TREX_CONFIG}" ]]; then
+            extra+=(--trex-config "${NS_TREX_CONFIG}")
+            extra+=(--trex-cmd "${NS_TREX_CMD}")
+            extra+=(--trex-args "${NS_TREX_ARGS}")
+          fi
+          PYTHONPATH=bindings/ns-py/python python tests/record_trex_baseline.py \
+            --export-dir "${NS_TREX_EXPORT_DIR}" \
+            --case "${NS_TREX_CASE}" \
+            --out-root artifacts/trex_baselines \
+            "${extra[@]}"
+
+      - name: Compare to existing baseline (optional)
+        if: ${{ env.NS_TREX_COMPARE_TO != '' }}
+        run: |
+          PYTHONPATH=bindings/ns-py/python python tests/compare_trex_baseline_files.py \
+            --baseline "${NS_TREX_COMPARE_TO}" \
+            --candidate "artifacts/trex_baselines/${NS_TREX_CASE}/baseline.json" \
+            --out "artifacts/trex_baselines/${NS_TREX_CASE}/compare_report.json"
+
+      - name: Upload baseline artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trex-baseline-${{ env.NS_TREX_CASE }}
+          path: artifacts/trex_baselines/${{ env.NS_TREX_CASE }}

@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/apex2/analysis_spec_v0.schema.json",
+  "title": "Apex2 Analysis Spec v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "local", "gates", "cluster_root"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "apex2_analysis_spec_v0"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "purpose"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "purpose": { "type": "string", "minLength": 1 }
+      }
+    },
+    "local": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "pythonpath", "baseline_dir", "workdir", "outputs"],
+      "properties": {
+        "python": { "type": "string", "minLength": 1 },
+        "pythonpath": { "type": "string", "minLength": 1 },
+        "baseline_dir": { "type": "string", "minLength": 1 },
+        "workdir": { "type": "string", "minLength": 1 },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseline_compare_report"],
+          "properties": {
+            "baseline_compare_report": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pre_release"],
+      "properties": {
+        "pre_release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["record_baseline", "compare_latest"],
+          "properties": {
+            "record_baseline": { "$ref": "#/$defs/job" },
+            "compare_latest": { "$ref": "#/$defs/job" }
+          }
+        }
+      }
+    },
+    "cluster_root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "cases", "condor", "aggregate", "baseline"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cases": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["search_dir", "glob", "include_fixtures", "absolute_paths", "out"],
+          "properties": {
+            "search_dir": { "type": ["string", "null"] },
+            "glob": { "type": "string", "minLength": 1 },
+            "include_fixtures": { "type": "boolean" },
+            "absolute_paths": { "type": "boolean" },
+            "out": { "type": "string", "minLength": 1 }
+          }
+        },
+        "condor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "template_sub",
+            "single_sub",
+            "results_dir_env",
+            "cases_json_env",
+            "python_env",
+            "root_setup_env",
+            "tuning_env"
+          ],
+          "properties": {
+            "mode": { "type": "string", "enum": ["array", "single"] },
+            "template_sub": { "type": "string", "minLength": 1 },
+            "single_sub": { "type": "string", "minLength": 1 },
+            "results_dir_env": { "type": "string", "minLength": 1 },
+            "cases_json_env": { "type": "string", "minLength": 1 },
+            "python_env": { "type": "string", "minLength": 1 },
+            "root_setup_env": { "type": "string", "minLength": 1 },
+            "tuning_env": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["dq_atol", "mu_hat_atol", "keep_going"],
+              "properties": {
+                "dq_atol": { "type": "string", "minLength": 1 },
+                "mu_hat_atol": { "type": "string", "minLength": 1 },
+                "keep_going": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "aggregate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["script", "glob", "out"],
+          "properties": {
+            "script": { "type": "string", "minLength": 1 },
+            "glob": { "type": "string", "minLength": 1 },
+            "out": { "type": "string", "minLength": 1 }
+          }
+        },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["register_existing", "compare_latest"],
+          "properties": {
+            "register_existing": { "$ref": "#/$defs/job" },
+            "compare_latest": { "$ref": "#/$defs/job" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "script", "args"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "script": { "type": "string", "minLength": 1 },
+        "args": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/arg_value" }
+        }
+      }
+    },
+    "arg_value": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "type": "null" },
+        { "type": "array", "items": { "type": ["string", "number", "integer", "boolean", "null"] } },
+        { "type": "object" }
+      ]
+    }
+  }
+}
+

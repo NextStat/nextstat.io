@@ -1,0 +1,56 @@
+{
+  "channels": [
+    {
+      "name": "SR",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [10.0],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "VR",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [10.0],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "SR",
+      "data": [10.0]
+    },
+    {
+      "name": "VR",
+      "data": [100.0]
+    }
+  ],
+  "measurements": [
+    {
+      "name": "TwoChannelExample",
+      "config": {
+        "poi": "mu",
+        "parameters": []
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

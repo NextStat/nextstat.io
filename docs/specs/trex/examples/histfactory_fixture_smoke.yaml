@@ -1,0 +1,54 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: HistFactory Fixture Smoke
+  description: Repo fixture spec that runs import + fit + scan + report locally (no cluster required).
+  tags: ["fixture", "histfactory", "smoke"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: ../../../../tests/fixtures/histfactory
+    combination_xml: ../../../../tests/fixtures/histfactory/combination.xml
+    measurement: measurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: ../../../../tmp/trex_fixture/workspace.json
+
+  fit:
+    enabled: true
+    output_json: ../../../../tmp/trex_fixture/fit.json
+
+  profile_scan:
+    enabled: true
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: ../../../../tmp/trex_fixture/scan.json
+
+  report:
+    enabled: true
+    out_dir: ../../../../tmp/trex_fixture/report
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: ../../../../tests/fixtures/histfactory/combination.xml
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: false
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: true
+    baseline_dir: ../../../../tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.5

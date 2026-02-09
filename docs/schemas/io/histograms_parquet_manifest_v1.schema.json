@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/io/histograms_parquet_manifest_v1.schema.json",
+  "title": "NextStat Histogram Parquet Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "created_at_utc",
+    "poi",
+    "parquet_path",
+    "parquet_sha256",
+    "parquet_compression",
+    "table_schema",
+    "stats",
+    "observations_path"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.histograms_parquet_manifest.v1"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "description": "UTC timestamp when the manifest was created (RFC3339-like)."
+    },
+    "poi": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Parameter of interest name used by ingestion (default: mu)."
+    },
+    "parquet_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parquet_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "parquet_compression": {
+      "type": "string",
+      "description": "Compression codec used when writing the Parquet file (e.g. zstd, snappy)."
+    },
+    "table_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "columns",
+        "arrow_schema_str",
+        "arrow_schema_sha256"
+      ],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "required"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "required": { "type": "boolean" }
+            }
+          }
+        },
+        "arrow_schema_str": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arrow_schema_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_rows", "has_stat_error", "channels"],
+      "properties": {
+        "n_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "has_stat_error": {
+          "type": "boolean"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "n_bins"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "n_bins": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "observations_path": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ],
+      "description": "Optional path to a JSON file {channel: [obs_counts]} used at ingest time; null means Asimov is used."
+    }
+  }
+}
+

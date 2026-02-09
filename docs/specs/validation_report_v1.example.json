@@ -1,0 +1,141 @@
+{
+  "schema_version": "validation_report_v1",
+  "generated_at": null,
+  "deterministic": true,
+  "dataset_fingerprint": {
+    "workspace_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "workspace_bytes": 12345,
+    "channels": ["SR", "CR1", "CR2"],
+    "n_channels": 3,
+    "n_bins_per_channel": [10, 5, 5],
+    "n_samples_total": 12,
+    "n_parameters": 47,
+    "observation_summary": {
+      "total_observed": 1234.0,
+      "min_bin": 0.0,
+      "max_bin": 312.0
+    }
+  },
+  "model_spec": {
+    "poi": "mu",
+    "parameters": [
+      { "name": "mu", "init": 1.0, "bounds": [0.0, 10.0], "constraint": "none" },
+      { "name": "alpha_JES", "init": 0.0, "bounds": [-5.0, 5.0], "constraint": "normal" }
+    ],
+    "interpolation": { "normsys": "code4", "histosys": "code4p" },
+    "objective": "poisson_nll_with_constraints",
+    "optimizer": "lbfgsb",
+    "eval_mode": "fast"
+  },
+  "environment": {
+    "nextstat_version": "0.1.0",
+    "nextstat_git_commit": null,
+    "python_version": "3.13.11",
+    "platform": "macOS-26.2-arm64-arm-64bit",
+    "rust_toolchain": null,
+    "pyhf_version": "0.7.6",
+    "determinism_settings": { "eval_mode": "fast", "threads": 1 }
+  },
+  "apex2_summary": {
+    "master_report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "suites": {
+      "pyhf": {
+        "status": "ok",
+        "n_cases": 9,
+        "worst_delta_nll": 1.2e-10,
+        "worst_delta_expected_full": 0.0,
+        "highlights": [
+          "worst |dNLL| = 1.200e-10",
+          "worst |d expected(full)| = 0.000e+00"
+        ],
+        "worst_cases": [
+          {
+            "case": "synthetic_shapesys_256",
+            "metric": "max_abs_delta_nll",
+            "value": 1.2e-10,
+            "notes": "allowed=2.238e-02"
+          },
+          {
+            "case": "fixture_complex",
+            "metric": "max_abs_delta_expected_full",
+            "value": 0.0
+          }
+        ]
+      },
+      "regression_golden": { "status": "ok", "n_cases": 8, "n_ok": 8 },
+      "nuts_quality": {
+        "status": "ok",
+        "highlights": [
+          "quality status: ok",
+          "smoke diagnostics: div=0.000, treedepth=0.000, r_hat=1.010, ess_bulk=500.0, ess_tail=450.0, ebfmi=0.800"
+        ],
+        "worst_cases": [
+          { "case": "nuts_quality_smoke", "metric": "divergence_rate", "value": 0.0 },
+          { "case": "nuts_quality_smoke", "metric": "max_treedepth_rate", "value": 0.0 },
+          { "case": "nuts_quality_smoke", "metric": "max_r_hat", "value": 1.01 },
+          { "case": "nuts_quality_smoke", "metric": "min_ess_bulk", "value": 500.0 },
+          { "case": "nuts_quality_smoke", "metric": "min_ess_tail", "value": 450.0 },
+          { "case": "nuts_quality_smoke", "metric": "min_ebfmi", "value": 0.8 }
+        ]
+      },
+      "root": {
+        "status": "ok",
+        "n_cases": 3,
+        "n_ok": 3,
+        "highlights": [
+          "cases ok: 3/3",
+          "worst max_abs_dq_mu = 1.900e-02 (trexfitter_export)",
+          "worst abs d_mu_hat = 3.000e-02 (trexfitter_export)"
+        ],
+        "worst_cases": [
+          {
+            "case": "trexfitter_export",
+            "metric": "max_abs_dq_mu",
+            "value": 1.9e-2,
+            "notes": "allowed=2.000e-02"
+          },
+          {
+            "case": "trexfitter_export",
+            "metric": "abs_d_mu_hat",
+            "value": 3.0e-2,
+            "notes": "signed=-3.000e-02 allowed=5.000e-02"
+          }
+        ]
+      }
+    },
+    "overall": "pass"
+  },
+  "regulated_review": {
+    "contains_raw_data": false,
+    "intended_use": "Provide audit-friendly, reproducible validation evidence for NextStat outputs on a specific workspace and Apex2 master report.",
+    "scope": "This report summarizes deterministic fingerprints, environment metadata, and Apex2 suite outcomes. It is not a substitute for full IQ/OQ/PQ documentation; it is an evidence artifact to support risk-based review workflows (e.g., GxP/CSA/SR 11-7).",
+    "limitations": [
+      "This report does not include raw input data; only hashes, sizes, and summary statistics are included.",
+      "Validation results are only as complete as the Apex2 suites executed on the producing environment.",
+      "A 'pass' indicates suite-level parity/tolerance checks passed; it does not guarantee fitness for all intended uses."
+    ],
+    "data_handling": {
+      "notes": [
+        "No raw workspace JSON is embedded in this report; only SHA-256 and byte size are recorded.",
+        "Observed data are summarized (min/max/total) without per-bin disclosure."
+      ]
+    },
+    "risk_based_assurance": [
+      {
+        "risk": "Numerical mismatch versus reference implementation (pyhf) for NLL and expected_data.",
+        "mitigation": "Apex2 pyhf parity suite with worst-case numeric deltas recorded.",
+        "evidence": ["apex2:suite:pyhf"]
+      },
+      {
+        "risk": "Regression in golden-workspace behavior across versions.",
+        "mitigation": "Apex2 regression_golden suite summarizes case counts and pass/fail.",
+        "evidence": ["apex2:suite:regression_golden"]
+      },
+      {
+        "risk": "Loss of traceability and reproducibility across runs.",
+        "mitigation": "Deterministic mode omits timestamps/timings and uses stable ordering; inputs are fingerprinted by SHA-256.",
+        "evidence": ["deterministic", "dataset_fingerprint:workspace_sha256", "apex2_summary:master_report_sha256"]
+      }
+    ]
+  }
+}

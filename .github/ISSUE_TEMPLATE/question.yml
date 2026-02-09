@@ -1,0 +1,50 @@
+name: Question
+description: Ask a question about NextStat
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? Ask away!
+
+        Before opening a new question:
+        - Check the [documentation](https://docs.nextstat.io)
+        - Search [existing issues](https://github.com/nextstat/nextstat/issues)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What is your question about?
+      options:
+        - Installation / Setup
+        - Usage / API
+        - Performance
+        - Compatibility (pyhf, ROOT, etc.)
+        - Architecture / Design
+        - Contributing
+        - Other
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any additional context that might help us answer your question
+      placeholder: I'm trying to... My use case is...
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried?
+      description: Have you tried anything to solve this yourself?
+      placeholder: I've looked at... I've tried...

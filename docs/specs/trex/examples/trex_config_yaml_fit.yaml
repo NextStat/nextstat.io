@@ -1,0 +1,78 @@
+$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: TREx Config (YAML) + Fit
+  description: Same as trex_config_txt_fit, but with IDE-friendly YAML instead of line-based config.
+  tags: ["trex-config", "yaml", "ntuple", "fit"]
+
+inputs:
+  mode: trex_config_yaml
+  trex_config_yaml:
+    base_dir: ../../../../
+    read_from: NTUP
+    tree_name: events
+    measurement: meas
+    poi: mu
+    regions:
+      - name: SR
+        variable: mbb
+        binning_edges: [0, 50, 100, 150, 200, 300]
+        selection: "njet >= 4"
+    samples:
+      - name: signal
+        kind: mc
+        file: tests/fixtures/simple_tree.root
+        tree_name: null
+        weight: weight_mc
+        regions: ["SR"]
+        norm_factors: ["mu"]
+        norm_sys: []
+        stat_error: true
+    systematics:
+      - name: jes
+        type: weight
+        samples: ["signal"]
+        regions: ["SR"]
+        weight_up: weight_jes_up
+        weight_down: weight_jes_down
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: ../../../../tmp/trex_yaml_workspace.json
+
+  fit:
+    enabled: true
+    output_json: ../../../../tmp/trex_yaml_fit.json
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: ../../../../tmp/trex_yaml_scan.json
+
+  report:
+    enabled: false
+    out_dir: ../../../../tmp/trex_yaml_report
+    overwrite: false
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: ../../../../tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3

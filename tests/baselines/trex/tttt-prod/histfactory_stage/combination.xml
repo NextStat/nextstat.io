@@ -1,0 +1,13 @@
+<!DOCTYPE Combination  SYSTEM 'HistFactorySchema.dtd'>
+
+<Combination OutputFilePrefix="channels/results">
+  <Input>channels/results_CRttbarCO2l_MeePVCO.xml</Input>
+  <Input>channels/results_CR1b3lm_1bin.xml</Input>
+  <Input>channels/results_CR1b3le_1bin.xml</Input>
+  <Input>channels/results_CRttW2l.xml</Input>
+  <Input>channels/results_SR_AllBDT.xml</Input>
+  <Measurement Name="FourTop" Lumi="1.0" LumiRelErr="0.1" ExportOnly="True">
+    <POI>mu_signal</POI>
+    <ParamSetting Const="True">Lumi</ParamSetting>
+    </Measurement>
+  </Combination>

@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/unbinned/unbinned_spec_v0.schema.json",
+  "title": "NextStat Unbinned Spec v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "model", "channels"],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Filesystem path (absolute or relative to the spec file directory)."
+    },
+    "bounds_1d": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" },
+      "description": "Support bounds [low, high] in the selected region Ω."
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional schema URI for IDE integration."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_unbinned_spec_v0"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameters"],
+      "properties": {
+        "poi": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional parameter-of-interest name."
+        },
+        "parameters": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "init", "bounds"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "init": { "type": "number" },
+              "bounds": { "$ref": "#/$defs/bounds_1d" },
+              "constraint": {
+                "description": "Optional constraint term (nuisance prior). Phase 1 supports gaussian only.",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "mean", "sigma"],
+                    "properties": {
+                      "type": { "type": "string", "const": "gaussian" },
+                      "mean": { "type": "number" },
+                      "sigma": { "type": "number", "exclusiveMinimum": 0.0 }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "data", "observables", "processes"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "include_in_fit": { "type": "boolean", "default": true },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "tree"],
+            "properties": {
+              "file": { "$ref": "#/$defs/path" },
+              "tree": { "type": "string", "minLength": 1 },
+              "selection": { "type": "string", "minLength": 1 },
+              "weight": { "type": "string", "minLength": 1 }
+            }
+          },
+          "observables": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "bounds"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "expr": { "type": "string", "minLength": 1 },
+                "bounds": { "$ref": "#/$defs/bounds_1d" }
+              }
+            }
+          },
+          "processes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "pdf", "yield"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "pdf": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "gaussian" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [mu, sigma]."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "crystal_ball" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 4,
+                          "maxItems": 4,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [mu, sigma, alpha, n]."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "double_crystal_ball" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 6,
+                          "maxItems": 6,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [mu, sigma, alpha_l, n_l, alpha_r, n_r]."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "exponential" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 1,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [lambda]."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "chebyshev" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Chebyshev coefficients: [c_1, c_2, ..., c_order]. Order is params.length."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "bin_edges", "bin_content"],
+                      "properties": {
+                        "type": { "type": "string", "const": "histogram" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "bin_edges": {
+                          "type": "array",
+                          "minItems": 2,
+                          "items": { "type": "number" },
+                          "description": "Histogram bin edges (length = n_bins + 1), strictly increasing."
+                        },
+                        "bin_content": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": { "type": "number", "minimum": 0.0 },
+                          "description": "Non-negative bin contents (length = n_bins)."
+                        },
+                        "pseudo_count": {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "description": "Optional pseudo-count added to every bin before normalization (avoid hard zeros)."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "bin_edges", "source"],
+                      "properties": {
+                        "type": { "type": "string", "const": "histogram_from_tree" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "bin_edges": {
+                          "type": "array",
+                          "minItems": 2,
+                          "items": { "type": "number" },
+                          "description": "Histogram bin edges (length = n_bins + 1), strictly increasing. Must match observable bounds [low, high]."
+                        },
+                        "pseudo_count": {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "description": "Optional pseudo-count added to every bin before normalization (avoid hard zeros)."
+                        },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["file", "tree"],
+                          "properties": {
+                            "file": { "$ref": "#/$defs/path" },
+                            "tree": { "type": "string", "minLength": 1 },
+                            "selection": { "type": "string", "minLength": 1 },
+                            "weight": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        "max_events": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Optional cap on the number of training events (deterministically keeps the first N after selection)."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "bandwidth", "centers"],
+                      "properties": {
+                        "type": { "type": "string", "const": "kde" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "bandwidth": { "type": "number", "exclusiveMinimum": 0.0 },
+                        "centers": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": { "type": "number" },
+                          "description": "Kernel centers (must lie within observable bounds)."
+                        },
+                        "weights": {
+                          "type": "array",
+                          "items": { "type": "number", "minimum": 0.0 },
+                          "description": "Optional non-negative weight per center (length must match centers)."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "bandwidth", "source"],
+                      "properties": {
+                        "type": { "type": "string", "const": "kde_from_tree" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "bandwidth": { "type": "number", "exclusiveMinimum": 0.0 },
+                        "source": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["file", "tree"],
+                          "properties": {
+                            "file": { "$ref": "#/$defs/path" },
+                            "tree": { "type": "string", "minLength": 1 },
+                            "selection": { "type": "string", "minLength": 1 },
+                            "weight": { "type": "string", "minLength": 1 }
+                          }
+                        },
+                        "max_events": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Optional cap on the number of training events (deterministically keeps the first N after selection)."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "yield": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "value"],
+                      "properties": {
+                        "type": { "type": "string", "const": "fixed" },
+                        "value": { "type": "number", "minimum": 0.0 },
+                        "modifiers": {
+                          "type": "array",
+                          "description": "Optional rate modifiers applied multiplicatively to the yield.",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "normsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "name"],
+                      "properties": {
+                        "type": { "type": "string", "const": "parameter" },
+                        "name": { "type": "string", "minLength": 1 },
+                        "modifiers": {
+                          "type": "array",
+                          "description": "Optional rate modifiers applied multiplicatively to the yield.",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "normsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "base_yield", "scale"],
+                      "properties": {
+                        "type": { "type": "string", "const": "scaled" },
+                        "base_yield": { "type": "number", "minimum": 0.0 },
+                        "scale": { "type": "string", "minLength": 1 },
+                        "modifiers": {
+                          "type": "array",
+                          "description": "Optional rate modifiers applied multiplicatively to the yield.",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "normsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

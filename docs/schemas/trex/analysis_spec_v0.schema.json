@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json",
+  "title": "TREx Analysis Spec v0 (NextStat)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "analysis", "inputs", "execution", "gates"],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Filesystem path (absolute or relative to the analysis spec file directory)."
+    },
+    "nullable_path": {
+      "type": ["string", "null"],
+      "description": "Filesystem path (or null)."
+    },
+    "nullable_string": {
+      "type": ["string", "null"]
+    },
+    "string_list": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional schema URI for IDE integration."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "trex_analysis_spec_v0"
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "tags"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["histfactory_xml", "trex_config_txt", "trex_config_yaml", "workspace_json"],
+          "description": "Input mode for building/loading the workspace."
+        },
+        "histfactory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["export_dir", "combination_xml", "measurement"],
+          "properties": {
+            "export_dir": {
+              "$ref": "#/$defs/path",
+              "description": "Directory containing HistFactory exports (e.g. TRExFitter output)."
+            },
+            "combination_xml": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Optional explicit path to combination.xml. If null, auto-discover under export_dir."
+            },
+            "measurement": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Measurement name inside the HistFactory workspace (reserved; informational in v0)."
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "combination_xml": { "type": "null" } }, "required": ["combination_xml"] },
+              "then": { "required": ["export_dir"] }
+            }
+          ]
+        },
+        "trex_config_txt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["config_path", "base_dir"],
+          "properties": {
+            "config_path": {
+              "$ref": "#/$defs/path",
+              "description": "Path to TRExFitter-style config text (subset supported by `nextstat import trex-config`)."
+            },
+            "base_dir": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Base directory for resolving relative ROOT file paths (defaults to config parent when null)."
+            }
+          }
+        },
+        "trex_config_yaml": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["read_from"],
+          "properties": {
+            "base_dir": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Base directory for resolving relative ROOT file paths (optional)."
+            },
+            "read_from": {
+              "type": "string",
+              "enum": ["NTUP", "HIST"],
+              "description": "TREx ReadFrom mode. v0 supports NTUP and a HIST wrapper over HistFactory exports."
+            },
+            "histo_path": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "HIST mode: HistFactory export dir (containing combination.xml) or a directory to scan for it."
+            },
+            "combination_xml": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "HIST mode: explicit path to combination.xml (alternative to histo_path)."
+            },
+            "tree_name": { "type": "string", "minLength": 1, "description": "Default TTree name (NTUP mode)." },
+            "measurement": { "type": "string", "minLength": 1, "description": "Measurement name (NTUP mode; optional in HIST wrapper)." },
+            "poi": { "type": "string", "minLength": 1, "description": "Parameter of interest name (NTUP mode; optional in HIST wrapper)." },
+            "regions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "variable", "binning_edges"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "variable": { "type": "string", "minLength": 1 },
+                  "binning_edges": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": { "type": "number" },
+                    "description": "Explicit bin edges (length >= 2)."
+                  },
+                  "selection": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional selection/cut expression.",
+                    "default": null
+                  },
+                  "data_file": {
+                    "$ref": "#/$defs/path",
+                    "description": "Optional explicit data ROOT file path for this region."
+                  },
+                  "data_tree_name": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional explicit data TTree override for this region.",
+                    "default": null
+                  }
+                }
+              }
+            },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "kind", "file"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "kind": { "type": "string", "enum": ["data", "mc"] },
+                  "file": { "$ref": "#/$defs/path", "description": "ROOT file path." },
+                  "tree_name": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional per-sample TTree override.",
+                    "default": null
+                  },
+                  "weight": {
+                    "$ref": "#/$defs/nullable_string",
+                    "description": "Optional weight expression.",
+                    "default": null
+                  },
+                  "regions": {
+                    "$ref": "#/$defs/string_list",
+                    "description": "Optional region filter list.",
+                    "default": null
+                  },
+                  "norm_factors": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "default": []
+                  },
+                  "norm_sys": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["name", "lo", "hi"],
+                      "properties": {
+                        "name": { "type": "string", "minLength": 1 },
+                        "lo": { "type": "number" },
+                        "hi": { "type": "number" }
+                      }
+                    }
+                  },
+                  "stat_error": { "type": "boolean", "default": false }
+                }
+              }
+            },
+            "systematics": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "type", "samples"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "type": { "type": "string", "enum": ["norm", "weight", "tree"] },
+                  "samples": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+                  "regions": { "$ref": "#/$defs/string_list", "default": null },
+                  "lo": { "type": "number" },
+                  "hi": { "type": "number" },
+                  "weight_up": { "type": "string", "minLength": 1 },
+                  "weight_down": { "type": "string", "minLength": 1 },
+                  "file_up": { "$ref": "#/$defs/path" },
+                  "file_down": { "$ref": "#/$defs/path" },
+                  "tree_name": { "$ref": "#/$defs/nullable_string", "default": null }
+                },
+                "allOf": [
+                  {
+                    "if": { "properties": { "type": { "const": "norm" } }, "required": ["type"] },
+                    "then": { "required": ["lo", "hi"] }
+                  },
+                  {
+                    "if": { "properties": { "type": { "const": "weight" } }, "required": ["type"] },
+                    "then": { "required": ["weight_up", "weight_down"] }
+                  },
+                  {
+                    "if": { "properties": { "type": { "const": "tree" } }, "required": ["type"] },
+                    "then": { "required": ["file_up", "file_down"] }
+                  }
+                ]
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "read_from": { "const": "NTUP" } }, "required": ["read_from"] },
+              "then": {
+                "required": ["tree_name", "measurement", "poi", "regions", "samples"],
+                "properties": {
+                  "regions": { "minItems": 1 },
+                  "samples": { "minItems": 1 }
+                }
+              }
+            },
+            {
+              "if": { "properties": { "read_from": { "const": "HIST" } }, "required": ["read_from"] },
+              "then": {
+                "anyOf": [{ "required": ["histo_path"] }, { "required": ["combination_xml"] }]
+              }
+            }
+          ]
+        },
+        "workspace_json": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": { "$ref": "#/$defs/path", "description": "Path to an existing pyhf JSON workspace." }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "histfactory_xml" } }, "required": ["mode"] },
+          "then": { "required": ["histfactory"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "trex_config_txt" } }, "required": ["mode"] },
+          "then": { "required": ["trex_config_txt"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "trex_config_yaml" } }, "required": ["mode"] },
+          "then": { "required": ["trex_config_yaml"] }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "workspace_json" } }, "required": ["mode"] },
+          "then": { "required": ["workspace_json"] }
+        }
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["determinism", "import", "fit", "profile_scan", "report"],
+      "properties": {
+        "determinism": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threads"],
+          "properties": {
+            "threads": { "type": "integer", "minimum": 1, "description": "Use threads=1 for parity mode." }
+          }
+        },
+        "import": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "$ref": "#/$defs/path", "description": "Workspace output path for import step." }
+          }
+        },
+        "preprocessing": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional systematics preprocessing (smooth, prune, symmetrize, hygiene). Runs after import, before fit.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "steps": {
+              "type": "array",
+              "description": "Ordered list of preprocessing steps. If omitted, the default TREx-standard pipeline is used.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["negative_bins_hygiene", "symmetrize_histosys", "smooth_histosys", "prune_systematics"]
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "Step-specific parameters (method, threshold, etc.)."
+                  }
+                }
+              }
+            },
+            "provenance_json": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Optional path to save preprocessing provenance JSON (SHA256 hashes, step records)."
+            }
+          }
+        },
+        "fit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "output_json": { "$ref": "#/$defs/path", "description": "Fit result output path (JSON)." },
+            "fit_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels included in the fit likelihood. If non-empty, only these regions contribute to the main Poisson likelihood."
+            },
+            "validation_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels excluded from the fit likelihood (validation regions)."
+            }
+          }
+        },
+        "profile_scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "start", "stop", "points", "output_json"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "start": { "type": "number" },
+            "stop": { "type": "number" },
+            "points": { "type": "integer", "minimum": 2 },
+            "output_json": { "$ref": "#/$defs/path", "description": "Profile scan output path (JSON)." }
+          }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "out_dir",
+            "overwrite",
+            "include_covariance",
+            "histfactory_xml",
+            "render",
+            "skip_uncertainty",
+            "uncertainty_grouping"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "out_dir": { "$ref": "#/$defs/path", "description": "Output directory for report artifacts." },
+            "overwrite": { "type": "boolean", "default": false },
+            "include_covariance": { "type": "boolean", "default": false },
+            "histfactory_xml": {
+              "$ref": "#/$defs/nullable_path",
+              "description": "Explicit combination.xml path. If null and inputs.mode=histfactory_xml, reuse inputs.histfactory."
+            },
+            "render": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled", "pdf", "svg_dir", "python"],
+              "properties": {
+                "enabled": { "type": "boolean", "default": false },
+                "pdf": { "$ref": "#/$defs/nullable_path" },
+                "svg_dir": { "$ref": "#/$defs/nullable_path" },
+                "python": { "$ref": "#/$defs/nullable_path" }
+              }
+            },
+            "skip_uncertainty": { "type": "boolean", "default": false },
+            "uncertainty_grouping": { "type": "string", "enum": ["prefix_1", "category_v1"], "default": "prefix_1" },
+            "blind_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "default": [],
+              "description": "Optional list of regions/channels for which observed data should be suppressed in report artifacts (blinding)."
+            }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_compare"],
+      "properties": {
+        "baseline_compare": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "baseline_dir", "require_same_host", "max_slowdown"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "baseline_dir": { "$ref": "#/$defs/path" },
+            "require_same_host": { "type": "boolean" },
+            "max_slowdown": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "inputs": { "properties": { "mode": { "const": "workspace_json" } } } } },
+      "then": {
+        "properties": {
+          "execution": { "properties": { "import": { "properties": { "enabled": { "const": false } } } } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": { "properties": { "report": { "properties": { "enabled": { "const": true } } } } },
+          "inputs": { "properties": { "mode": { "enum": ["trex_config_txt", "trex_config_yaml", "workspace_json"] } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "execution": { "properties": { "report": { "properties": { "histfactory_xml": { "type": "string", "minLength": 1 } } } } }
+        }
+      }
+    }
+  ]
+}

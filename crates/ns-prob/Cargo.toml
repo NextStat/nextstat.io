@@ -1,0 +1,25 @@
+[package]
+name = "ns-prob"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Probability distributions and math utilities for NextStat"
+
+[dependencies]
+ns-core.workspace = true
+statrs.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "distributions_benchmark"
+harness = false

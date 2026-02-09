@@ -1,0 +1,11 @@
+<!DOCTYPE Channel SYSTEM "HistFactorySchema.dtd">
+<Channel Name="SR" InputFile="data.root" HistoPath="SR">
+  <Data HistoName="data_obs" />
+  <Sample Name="signal" HistoName="signal_nominal" NormalizeByTheory="True">
+    <NormFactor Name="mu" Val="1.0" Low="0.0" High="10.0" />
+  </Sample>
+  <Sample Name="background" HistoName="bkg_nominal" NormalizeByTheory="True">
+    <OverallSys Name="bkg_norm" Low="0.9" High="1.1" />
+    <StatError Activate="True" />
+  </Sample>
+</Channel>

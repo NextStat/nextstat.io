@@ -1,0 +1,43 @@
+[package]
+name = "ns-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Python bindings for NextStat"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+# This crate is meant to be loaded by Python (maturin/PyO3).
+# Disable Rust test/bench harness binaries for this cdylib to avoid
+# linking against libpython when running `cargo bench --workspace`.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+nalgebra = { workspace = true }
+ns-core.workspace = true
+ns-compute.workspace = true
+ns-inference = { workspace = true, features = ["root-io"] }
+ns-ad.workspace = true
+ns-root.workspace = true
+ns-translate = { workspace = true, features = ["root-io", "arrow-io"] }
+ns-viz.workspace = true
+pyo3 = { workspace = true, features = ["extension-module"] }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
+cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
+metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
+
+[dev-dependencies]

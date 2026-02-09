@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "abs_diff": 4.547473508864641e-13,
+      "case": "simple_workspace_nll",
+      "parity_ok": true,
+      "path": "cases/simple_workspace_nll.json",
+      "sha256": "d7e0eb76148e63a3530f78497ea23768c63e6e71f77eb4cae51e7c836ce706b6",
+      "speedup_pyhf_over_nextstat": 8.054822998582914
+    },
+    {
+      "abs_diff": 5.684341886080801e-13,
+      "case": "synthetic_shapesys_2",
+      "parity_ok": true,
+      "path": "cases/synthetic_shapesys_2.json",
+      "sha256": "36e5dbb28107ef431914b5a6852571cd2e0fa7b56bc19886902569c3fa05cb72",
+      "speedup_pyhf_over_nextstat": 14.395547743413179
+    },
+    {
+      "abs_diff": 4.547473508864641e-12,
+      "case": "synthetic_shapesys_16",
+      "parity_ok": true,
+      "path": "cases/synthetic_shapesys_16.json",
+      "sha256": "eb4072e36428a7e8bcda29b09fe1be94306f218f6ed1d562095b9bc0d33646fd",
+      "speedup_pyhf_over_nextstat": 2.9986702718820717
+    }
+  ],
+  "deterministic": true,
+  "meta": {
+    "nextstat_version": "0.1.0",
+    "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+    "pyhf_version": "0.7.6",
+    "python": "3.13.11"
+  },
+  "schema_version": "nextstat.benchmark_suite_result.v1",
+  "suite": "hep",
+  "summary": {
+    "n_cases": 3,
+    "n_ok": 3,
+    "worst_abs_diff": 4.547473508864641e-12,
+    "worst_case": "synthetic_shapesys_16"
+  }
+}

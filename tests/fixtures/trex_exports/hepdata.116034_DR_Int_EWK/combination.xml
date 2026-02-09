@@ -1,0 +1,12 @@
+<!DOCTYPE Combination  SYSTEM 'HistFactorySchema.dtd'>
+
+<Combination OutputFilePrefix="channels/results">
+  <Input>channels/results_CRZZ_cuts.xml</Input>
+  <Input>channels/results_CRtt_cuts.xml</Input>
+  <Input>channels/results_CRZ_cuts.xml</Input>
+  <Input>channels/results_CRDY_cuts.xml</Input>
+  <Input>channels/results_DRInt_cuts.xml</Input>
+  <Measurement Name="NormalMeasurement" Lumi="1.0" LumiRelErr="0.017" ExportOnly="True">
+    <POI>mu_Discovery</POI>
+    </Measurement>
+  </Combination>

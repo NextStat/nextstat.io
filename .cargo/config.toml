@@ -1,0 +1,6 @@
+[build]
+# Don't set `target-cpu` globally: it breaks cross builds (e.g. wasm32) with a warning spam like
+# "'apple-m4' is not a recognized processor for this target".
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]

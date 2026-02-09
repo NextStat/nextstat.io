@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/demos/physics_assistant_demo_result_v1.schema.json",
+  "title": "NextStat Physics Assistant Demo Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "deterministic",
+    "analysis_transport",
+    "server_url",
+    "input",
+    "artifacts",
+    "nominal",
+    "anomaly_scan"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.physics_assistant_demo_result.v1" },
+    "deterministic": { "type": "boolean" },
+    "analysis_transport": { "type": "string", "enum": ["local", "server"] },
+    "server_url": { "type": ["string", "null"] },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_path",
+        "root_sha256",
+        "channel",
+        "data_hist",
+        "signal_hist",
+        "background_hists",
+        "n_bins"
+      ],
+      "properties": {
+        "root_path": { "type": "string", "minLength": 1 },
+        "root_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "channel": { "type": "string", "minLength": 1 },
+        "data_hist": { "type": "string", "minLength": 1 },
+        "signal_hist": { "type": "string", "minLength": 1 },
+        "background_hists": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "n_bins": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_calls_path",
+        "ingest_path",
+        "nominal_workspace_path",
+        "best_anomaly_workspace_path",
+        "anomaly_scan_plot_data_path",
+        "anomaly_scan_figure_path",
+        "nominal_profile_scan_figure_path",
+        "anomaly_scan_png_path",
+        "nominal_scan_png_path"
+      ],
+      "properties": {
+        "tool_calls_path": { "type": "string", "minLength": 1 },
+        "ingest_path": { "type": "string", "minLength": 1 },
+        "nominal_workspace_path": { "type": "string", "minLength": 1 },
+        "best_anomaly_workspace_path": { "type": "string", "minLength": 1 },
+        "anomaly_scan_plot_data_path": { "type": "string", "minLength": 1 },
+        "anomaly_scan_figure_path": { "type": "string", "minLength": 1 },
+        "nominal_profile_scan_figure_path": { "type": ["string", "null"] },
+        "anomaly_scan_png_path": { "type": ["string", "null"] },
+        "nominal_scan_png_path": { "type": ["string", "null"] }
+      }
+    },
+    "nominal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace_sha256",
+        "workspace_audit",
+        "discovery",
+        "upper_limit",
+        "profile_scan"
+      ],
+      "properties": {
+        "workspace_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "workspace_audit": { "type": "object" },
+        "discovery": { "type": "object" },
+        "upper_limit": { "type": "object" },
+        "profile_scan": { "type": "object" }
+      }
+    },
+    "anomaly_scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "window_width_bins",
+        "window_step_bins",
+        "top_k",
+        "windows",
+        "best_window"
+      ],
+      "properties": {
+        "window_width_bins": { "type": "integer", "minimum": 1 },
+        "window_step_bins": { "type": "integer", "minimum": 1 },
+        "top_k": { "type": "integer", "minimum": 1 },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_bin", "width_bins", "center", "mu_hat", "z0", "p0"],
+            "properties": {
+              "start_bin": { "type": "integer", "minimum": 0 },
+              "width_bins": { "type": "integer", "minimum": 1 },
+              "center": { "type": "number" },
+              "mu_hat": {},
+              "z0": { "type": "number", "minimum": 0 },
+              "p0": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "best_window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_bin", "width_bins", "center", "upper_limit", "profile_scan"],
+          "properties": {
+            "start_bin": { "type": "integer", "minimum": 0 },
+            "width_bins": { "type": "integer", "minimum": 1 },
+            "center": { "type": "number" },
+            "upper_limit": { "type": "object" },
+            "profile_scan": { "type": "object" }
+          }
+        }
+      }
+    }
+  }
+}
