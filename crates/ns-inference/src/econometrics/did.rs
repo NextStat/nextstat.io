@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
+use super::hdfe::FixedEffectsSolver;
 use super::panel::cluster_robust_se;
 
 /// Result of a canonical (2×2) DiD estimator.
@@ -145,8 +146,8 @@ pub fn did_canonical(
     let sigma2 = if dof > 0.0 { rss / dof } else { f64::NAN };
     let se = (sigma2 * xtx_inv[(3, 3)]).sqrt();
 
-    // Cluster-robust SE
-    let se_cluster_vec = cluster_robust_se(&x_mat, &resid, &xtx_inv, cluster_ids)?;
+    // Cluster-robust SE (no absorbed FE in canonical DiD OLS)
+    let se_cluster_vec = cluster_robust_se(&x_mat, &resid, &xtx_inv, cluster_ids, 0)?;
     let se_cluster = se_cluster_vec[3];
 
     let t_stat = if se_cluster > 0.0 { att / se_cluster } else { f64::NAN };
@@ -226,88 +227,57 @@ pub fn event_study(
         return Err(Error::Validation("reference_period must be within [min_lag, max_lag]".into()));
     }
 
-    // Build entity and time FE dummies via demeaning
-    // Step 1: entity demean
-    let mut entity_map: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (i, &eid) in entity_ids.iter().enumerate() {
-        entity_map.entry(eid).or_default().push(i);
+    // Map u64 IDs to dense 0-based indices for HDFE solver.
+    let mut entity_id_map: HashMap<u64, usize> = HashMap::new();
+    let mut entity_dense = Vec::with_capacity(n);
+    for &eid in entity_ids {
+        let len = entity_id_map.len();
+        let idx = *entity_id_map.entry(eid).or_insert(len);
+        entity_dense.push(idx);
     }
 
-    let mut time_map: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (i, &tid) in time_ids.iter().enumerate() {
-        time_map.entry(tid).or_default().push(i);
+    let mut time_id_map: HashMap<u64, usize> = HashMap::new();
+    let mut time_dense = Vec::with_capacity(n);
+    for &tid in time_ids {
+        let len = time_id_map.len();
+        let idx = *time_id_map.entry(tid).or_insert(len);
+        time_dense.push(idx);
     }
+
+    // Build HDFE solver (two-way: entity + time).
+    let hdfe = FixedEffectsSolver::new(vec![entity_dense, time_dense])?;
 
     // Build lead/lag indicator columns
     let mut rel_times: Vec<i64> = (min_lag..=max_lag).filter(|&k| k != reference_period).collect();
     rel_times.sort();
     let n_lags = rel_times.len();
 
-    // Design matrix: entity dummies + time dummies + lead/lag dummies
-    // Use demeaning approach: demean by entity, then include time dummies + lag dummies
-    // Simpler approach for robustness: build full OLS with entity FE absorbed via demeaning
-
-    // Demean y and lag indicators by entity
-    let mut y_dm = vec![0.0_f64; n];
-    let mut lag_indicators = vec![0.0_f64; n * n_lags]; // row-major
-
-    // First, fill lag indicators
+    let mut lag_cols: Vec<Vec<f64>> = vec![vec![0.0; n]; n_lags];
     for i in 0..n {
         let rt = relative_time[i];
         if let Ok(pos) = rel_times.binary_search(&rt) {
-            lag_indicators[i * n_lags + pos] = 1.0;
+            lag_cols[pos][i] = 1.0;
         }
     }
 
-    // Demean y and lag indicators by entity
-    for indices in entity_map.values() {
-        let ni = indices.len() as f64;
-        let mut y_mean = 0.0;
-        let mut lag_means = vec![0.0; n_lags];
-        for &i in indices {
-            y_mean += y[i];
-            for j in 0..n_lags {
-                lag_means[j] += lag_indicators[i * n_lags + j];
-            }
-        }
-        y_mean /= ni;
-        for j in 0..n_lags {
-            lag_means[j] /= ni;
-        }
-        for &i in indices {
-            y_dm[i] = y[i] - y_mean;
-            for j in 0..n_lags {
-                lag_indicators[i * n_lags + j] -= lag_means[j];
-            }
+    // Partial out entity + time FE from y and each lag indicator column
+    // via convergent MAP algorithm (exact for both balanced and unbalanced panels).
+    let y_dm = hdfe.partial_out(y)?;
+    let mut lag_dm: Vec<Vec<f64>> = Vec::with_capacity(n_lags);
+    for col in &lag_cols {
+        lag_dm.push(hdfe.partial_out(col)?);
+    }
+
+    // Reconstruct demeaned X as row-major flat for nalgebra.
+    let mut x_flat = vec![0.0_f64; n * n_lags];
+    for j in 0..n_lags {
+        for i in 0..n {
+            x_flat[i * n_lags + j] = lag_dm[j][i];
         }
     }
 
-    // Also demean by time (two-way FE via iterative demeaning — one pass is
-    // sufficient for the typical case where time FE are not collinear with lags)
-    for indices in time_map.values() {
-        let ni = indices.len() as f64;
-        let mut y_mean = 0.0;
-        let mut lag_means = vec![0.0; n_lags];
-        for &i in indices {
-            y_mean += y_dm[i];
-            for j in 0..n_lags {
-                lag_means[j] += lag_indicators[i * n_lags + j];
-            }
-        }
-        y_mean /= ni;
-        for j in 0..n_lags {
-            lag_means[j] /= ni;
-        }
-        for &i in indices {
-            y_dm[i] -= y_mean;
-            for j in 0..n_lags {
-                lag_indicators[i * n_lags + j] -= lag_means[j];
-            }
-        }
-    }
-
-    // OLS on demeaned data
-    let x_mat = DMatrix::from_row_slice(n, n_lags, &lag_indicators);
+    // OLS on demeaned data: β = (X'X)⁻¹ X'y
+    let x_mat = DMatrix::from_row_slice(n, n_lags, &x_flat);
     let y_vec = DVector::from_column_slice(&y_dm);
 
     let xtx = x_mat.transpose() * &x_mat;
@@ -322,8 +292,10 @@ pub fn event_study(
     let y_hat = &x_mat * &beta;
     let resid = &y_vec - &y_hat;
 
-    // Cluster-robust SE
-    let se_cluster_vec = cluster_robust_se(&x_mat, &resid, &xtx_inv, cluster_ids)?;
+    // Cluster-robust SE with FE-adjusted degrees of freedom.
+    // K = n_lags + df_absorbed (entity + time FE consumed by HDFE).
+    let df_absorbed = hdfe.degrees_of_freedom_absorbed();
+    let se_cluster_vec = cluster_robust_se(&x_mat, &resid, &xtx_inv, cluster_ids, df_absorbed)?;
 
     let ci_lower: Vec<f64> =
         coefficients.iter().zip(&se_cluster_vec).map(|(b, s)| b - 1.96 * s).collect();
@@ -405,5 +377,110 @@ mod tests {
         // Should have lags: -2, 0, 1, 2 (reference -1 omitted)
         assert_eq!(res.relative_times, vec![-2, 0, 1, 2]);
         assert_eq!(res.coefficients.len(), 4);
+    }
+
+    #[test]
+    fn test_event_study_unbalanced_panel() {
+        // Unbalanced panel: entity 1 observed t=1..5, entity 2 observed t=1..4,
+        // entity 3 observed t=2..5, entity 4 observed t=1..5.
+        // Treatment at t=3 for entities 3,4. Effect = 7.0.
+        let mut y = Vec::new();
+        let mut entity_ids = Vec::new();
+        let mut time_ids = Vec::new();
+        let mut relative_time = Vec::new();
+        let mut cluster_ids = Vec::new();
+
+        let obs_ranges: &[(u64, std::ops::RangeInclusive<u64>)] =
+            &[(1, 1..=5), (2, 1..=4), (3, 2..=5), (4, 1..=5)];
+
+        for &(eid, ref trange) in obs_ranges {
+            let treated = eid >= 3;
+            for t in trange.clone() {
+                entity_ids.push(eid);
+                time_ids.push(t);
+                cluster_ids.push(eid);
+                let rt = if treated { t as i64 - 3 } else { 9999 };
+                relative_time.push(rt);
+                let entity_fe = eid as f64 * 3.0;
+                let time_fe = t as f64 * 0.5;
+                let effect = if treated && t >= 3 { 7.0 } else { 0.0 };
+                y.push(entity_fe + time_fe + effect);
+            }
+        }
+
+        let n = y.len();
+        // 5 + 4 + 4 + 5 = 18 (unbalanced)
+        assert_eq!(n, 18);
+
+        let res = event_study(&y, &entity_ids, &time_ids, &relative_time, -1, 2, -1, &cluster_ids)
+            .unwrap();
+
+        // Reference period -1 omitted, so lags: 0, 1, 2
+        assert_eq!(res.relative_times, vec![0, 1, 2]);
+
+        // Post-treatment coefficients (0, 1, 2) should all be ~7.0 relative to
+        // the omitted pre-treatment period -1 (which has effect 0).
+        for (i, &coef) in res.coefficients.iter().enumerate() {
+            assert!(
+                (coef - 7.0).abs() < 1.0,
+                "coef[{}] (rel_time={}) = {}, expected ~7.0",
+                i,
+                res.relative_times[i],
+                coef
+            );
+        }
+    }
+
+    #[test]
+    fn test_event_study_recovers_exact_effect() {
+        // Balanced panel with known exact DGP: effect appears at t≥3.
+        // Pre-trend coefficients should be ~0, post-treatment ~5.
+        let mut y = Vec::new();
+        let mut entity_ids = Vec::new();
+        let mut time_ids = Vec::new();
+        let mut relative_time = Vec::new();
+        let mut cluster_ids = Vec::new();
+
+        for eid in 1..=6u64 {
+            let treated = eid >= 4;
+            for t in 1..=6u64 {
+                entity_ids.push(eid);
+                time_ids.push(t);
+                cluster_ids.push(eid);
+                let rt = if treated { t as i64 - 4 } else { 9999 };
+                relative_time.push(rt);
+                let entity_fe = eid as f64 * 10.0;
+                let time_fe = t as f64 * 2.0;
+                let effect = if treated && t >= 4 { 5.0 } else { 0.0 };
+                y.push(entity_fe + time_fe + effect);
+            }
+        }
+
+        let res = event_study(&y, &entity_ids, &time_ids, &relative_time, -3, 2, -1, &cluster_ids)
+            .unwrap();
+
+        // Relative times: -3, -2, 0, 1, 2 (reference -1 omitted)
+        assert_eq!(res.relative_times, vec![-3, -2, 0, 1, 2]);
+
+        // Pre-trend coefficients (-3, -2) should be ~0
+        for i in 0..2 {
+            assert!(
+                res.coefficients[i].abs() < 0.5,
+                "pre-trend coef[{}] (rt={}) = {}, expected ~0",
+                i,
+                res.relative_times[i],
+                res.coefficients[i]
+            );
+        }
+        // Post-treatment coefficients (0, 1, 2) should be ~5
+        for i in 2..5 {
+            assert!(
+                (res.coefficients[i] - 5.0).abs() < 0.5,
+                "post coef[{}] (rt={}) = {}, expected ~5",
+                i,
+                res.relative_times[i],
+                res.coefficients[i]
+            );
+        }
     }
 }

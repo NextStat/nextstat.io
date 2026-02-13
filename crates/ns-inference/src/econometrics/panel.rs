@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use nalgebra::{DMatrix, DVector};
 use ns_core::{Error, Result};
 
+use super::hdfe::FixedEffectsSolver;
+
 /// Result of a panel fixed-effects regression.
 #[derive(Debug, Clone)]
 pub struct PanelFEResult {
@@ -29,26 +31,38 @@ pub struct PanelFEResult {
     pub n_obs: usize,
     /// Number of entities (groups).
     pub n_entities: usize,
+    /// Number of time periods (0 if 1-way entity FE only).
+    pub n_time_periods: usize,
     /// Number of regressors (excluding absorbed FE).
     pub n_regressors: usize,
+    /// Degrees of freedom absorbed by FE.
+    pub df_absorbed: usize,
     /// Residual sum of squares.
     pub rss: f64,
 }
 
 /// Fit a panel fixed-effects ("within") regression.
 ///
+/// Supports **one-way** (entity only) and **two-way** (entity + time) fixed
+/// effects. Two-way FE uses the HDFE solver (convergent MAP with Aitken
+/// acceleration), exact for both balanced and unbalanced panels.
+///
 /// # Arguments
 ///
 /// - `entity_ids` — group identifier for each observation (length n).
+/// - `time_ids` — optional time-period identifier (length n). When `Some`,
+///   two-way (entity + time) FE are absorbed via HDFE. When `None`, only
+///   entity FE are absorbed (backward-compatible behavior).
 /// - `x` — design matrix, row-major, shape (n, p). No intercept column needed.
 /// - `y` — dependent variable (length n).
 /// - `cluster_ids` — optional clustering variable for robust SE. If `None`,
 ///   entities are used as clusters.
 ///
-/// The estimator demeans X and y by entity means, then runs OLS on the
-/// demeaned data. This absorbs all entity-level fixed effects.
+/// The estimator demeans X and y by the specified FE dimensions, then runs
+/// OLS on the demeaned data.
 pub fn panel_fe_fit(
     entity_ids: &[u64],
+    time_ids: Option<&[u64]>,
     x: &[f64],
     y: &[f64],
     p: usize,
@@ -71,43 +85,70 @@ pub fn panel_fe_fit(
     if p == 0 {
         return Err(Error::Validation("p must be >= 1".into()));
     }
-
-    // Build entity index: entity_id -> list of row indices
-    let mut entity_map: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (i, &eid) in entity_ids.iter().enumerate() {
-        entity_map.entry(eid).or_default().push(i);
+    if let Some(tids) = time_ids
+        && tids.len() != n
+    {
+        return Err(Error::Validation(format!("time_ids length ({}) != n ({})", tids.len(), n)));
     }
-    let n_entities = entity_map.len();
 
-    // Demean X and y by entity
-    let mut x_dm = vec![0.0_f64; n * p];
-    let mut y_dm = vec![0.0_f64; n];
+    // Map u64 IDs to dense 0-based indices.
+    let mut entity_id_map: HashMap<u64, usize> = HashMap::new();
+    let mut entity_dense = Vec::with_capacity(n);
+    for &eid in entity_ids {
+        let len = entity_id_map.len();
+        let idx = *entity_id_map.entry(eid).or_insert(len);
+        entity_dense.push(idx);
+    }
+    let n_entities = entity_id_map.len();
 
-    for indices in entity_map.values() {
-        let ni = indices.len() as f64;
-        // Compute entity means
-        let mut y_mean = 0.0;
-        let mut x_mean = vec![0.0; p];
-        for &i in indices {
-            y_mean += y[i];
-            for j in 0..p {
-                x_mean[j] += x[i * p + j];
-            }
+    let (n_time_periods, df_fe, y_dm, x_dm) = if let Some(tids) = time_ids {
+        // Two-way FE via HDFE solver.
+        let mut time_id_map: HashMap<u64, usize> = HashMap::new();
+        let mut time_dense = Vec::with_capacity(n);
+        for &tid in tids {
+            let len = time_id_map.len();
+            let idx = *time_id_map.entry(tid).or_insert(len);
+            time_dense.push(idx);
         }
-        y_mean /= ni;
+        let n_tp = time_id_map.len();
+
+        let hdfe = FixedEffectsSolver::new(vec![entity_dense, time_dense])?;
+        let df = hdfe.degrees_of_freedom_absorbed();
+
+        // Partial out y
+        let yd = hdfe.partial_out(y)?;
+
+        // Partial out each column of X
+        let mut xd = vec![0.0_f64; n * p];
         for j in 0..p {
-            x_mean[j] /= ni;
-        }
-        // Subtract means
-        for &i in indices {
-            y_dm[i] = y[i] - y_mean;
-            for j in 0..p {
-                x_dm[i * p + j] = x[i * p + j] - x_mean[j];
+            let col: Vec<f64> = (0..n).map(|i| x[i * p + j]).collect();
+            let col_dm = hdfe.partial_out(&col)?;
+            for i in 0..n {
+                xd[i * p + j] = col_dm[i];
             }
         }
-    }
 
-    // OLS on demeaned data: beta = (X'X)^{-1} X'y
+        (n_tp, df, yd, xd)
+    } else {
+        // One-way entity FE: single-pass demeaning (exact).
+        let hdfe = FixedEffectsSolver::new(vec![entity_dense])?;
+        let df = hdfe.degrees_of_freedom_absorbed();
+
+        let yd = hdfe.partial_out(y)?;
+
+        let mut xd = vec![0.0_f64; n * p];
+        for j in 0..p {
+            let col: Vec<f64> = (0..n).map(|i| x[i * p + j]).collect();
+            let col_dm = hdfe.partial_out(&col)?;
+            for i in 0..n {
+                xd[i * p + j] = col_dm[i];
+            }
+        }
+
+        (0, df, yd, xd)
+    };
+
+    // OLS on demeaned data: β = (X'X)⁻¹ X'y
     let x_mat = DMatrix::from_row_slice(n, p, &x_dm);
     let y_vec = DVector::from_column_slice(&y_dm);
 
@@ -131,8 +172,8 @@ pub fn panel_fe_fit(
     let tss: f64 = y_dm.iter().map(|v| v * v).sum();
     let r_squared_within = if tss > 0.0 { 1.0 - rss / tss } else { 0.0 };
 
-    // OLS SE: sigma² = RSS / (n - n_entities - p)
-    let dof = n as f64 - n_entities as f64 - p as f64;
+    // OLS SE: σ² = RSS / (n − df_absorbed − p)
+    let dof = n as f64 - df_fe as f64 - p as f64;
     let sigma2 = if dof > 0.0 { rss / dof } else { f64::NAN };
     let se_ols: Vec<f64> = (0..p).map(|j| (sigma2 * xtx_inv[(j, j)]).sqrt()).collect();
 
@@ -146,7 +187,7 @@ pub fn panel_fe_fit(
         )));
     }
 
-    let se_cluster = Some(cluster_robust_se(&x_mat, &resid, &xtx_inv, clust)?);
+    let se_cluster = Some(cluster_robust_se(&x_mat, &resid, &xtx_inv, clust, df_fe)?);
 
     Ok(PanelFEResult {
         coefficients,
@@ -155,7 +196,9 @@ pub fn panel_fe_fit(
         r_squared_within,
         n_obs: n,
         n_entities,
+        n_time_periods,
         n_regressors: p,
+        df_absorbed: df_fe,
         rss,
     })
 }
@@ -163,11 +206,19 @@ pub fn panel_fe_fit(
 /// Compute Liang–Zeger cluster-robust (HC0 sandwich) standard errors.
 ///
 /// `V_CR = (X'X)^{-1} B (X'X)^{-1}` where `B = Σ_g X_g' e_g e_g' X_g`.
+///
+/// # Arguments
+///
+/// - `df_absorbed` — degrees of freedom consumed by absorbed fixed effects
+///   (e.g. from [`FixedEffectsSolver::degrees_of_freedom_absorbed`]). Pass 0
+///   when no FE have been absorbed. This enters the small-sample correction
+///   factor: `G/(G-1) · (N-1)/(N - p - df_absorbed)`.
 pub fn cluster_robust_se(
     x: &DMatrix<f64>,
     residuals: &DVector<f64>,
     xtx_inv: &DMatrix<f64>,
     cluster_ids: &[u64],
+    df_absorbed: usize,
 ) -> Result<Vec<f64>> {
     let n = x.nrows();
     let p = x.ncols();
@@ -200,10 +251,11 @@ pub fn cluster_robust_se(
     }
 
     // Small-sample correction: G/(G-1) * (N-1)/(N-K)
+    // K = p (explicit regressors) + df_absorbed (FE degrees of freedom).
     let n_f = n as f64;
-    let p_f = p as f64;
+    let k_f = p as f64 + df_absorbed as f64;
     let correction =
-        if g > 1.0 && n_f > p_f { (g / (g - 1.0)) * ((n_f - 1.0) / (n_f - p_f)) } else { 1.0 };
+        if g > 1.0 && n_f > k_f { (g / (g - 1.0)) * ((n_f - 1.0) / (n_f - k_f)) } else { 1.0 };
 
     let vcr = (xtx_inv * &meat) * xtx_inv * correction;
 
@@ -224,7 +276,7 @@ mod tests {
         let x = vec![1.0, 2.0, 3.0, 10.0, 20.0, 30.0];
         let y = vec![2.0, 4.0, 6.0, 20.0, 40.0, 60.0];
 
-        let res = panel_fe_fit(&entity_ids, &x, &y, 1, None).unwrap();
+        let res = panel_fe_fit(&entity_ids, None, &x, &y, 1, None).unwrap();
         assert_eq!(res.n_obs, 6);
         assert_eq!(res.n_entities, 2);
         assert_eq!(res.n_regressors, 1);
@@ -244,7 +296,7 @@ mod tests {
             13.0, 16.1, 18.9, 22.0, // entity 2: ~10 + 3x
         ];
 
-        let res = panel_fe_fit(&entity_ids, &x, &y, 1, None).unwrap();
+        let res = panel_fe_fit(&entity_ids, None, &x, &y, 1, None).unwrap();
         assert!(
             (res.coefficients[0] - 3.0).abs() < 0.2,
             "beta={}, expected ~3",
@@ -261,7 +313,7 @@ mod tests {
         let x: Vec<f64> = (0..12).map(|i| i as f64).collect();
         let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
 
-        let res = panel_fe_fit(&entity_ids, &x, &y, 1, None).unwrap();
+        let res = panel_fe_fit(&entity_ids, None, &x, &y, 1, None).unwrap();
         assert!(res.se_cluster.is_some());
         // Both should be non-NaN
         assert!(res.se_ols[0].is_finite());
@@ -269,8 +321,86 @@ mod tests {
     }
 
     #[test]
+    fn test_panel_fe_two_way() {
+        // 3 entities × 4 time periods
+        // x = entity * time (interaction — not collinear with entity + time main effects)
+        // y = 10*entity + 2*time + 3*x + 0
+        // Two-way FE should recover beta = 3.
+        let mut entity_ids = Vec::new();
+        let mut time_ids = Vec::new();
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+
+        for eid in 1..=3u64 {
+            for t in 1..=4u64 {
+                entity_ids.push(eid);
+                time_ids.push(t);
+                let xi = eid as f64 * t as f64;
+                x.push(xi);
+                y.push(10.0 * eid as f64 + 2.0 * t as f64 + 3.0 * xi);
+            }
+        }
+
+        let res = panel_fe_fit(&entity_ids, Some(&time_ids), &x, &y, 1, None).unwrap();
+
+        assert_eq!(res.n_obs, 12);
+        assert_eq!(res.n_entities, 3);
+        assert_eq!(res.n_time_periods, 4);
+        // df_absorbed = 3 + 4 - 1 = 6 (fully connected)
+        assert_eq!(res.df_absorbed, 6);
+        assert!(
+            (res.coefficients[0] - 3.0).abs() < 1e-8,
+            "beta={}, expected 3.0",
+            res.coefficients[0]
+        );
+        assert!(res.r_squared_within > 0.99);
+    }
+
+    #[test]
+    fn test_panel_fe_two_way_unbalanced() {
+        // Unbalanced: entity 1 has t={1,2,3,4,5}, entity 2 has t={2,3,4,5,6},
+        // entity 3 has t={1,3,4,5,6}. 15 obs, 3 entities, 6 times.
+        // df_absorbed = 3+6-1 = 8, residual df = 15-8-1 = 6. Enough for estimation.
+        // x values are arbitrary (no entity/time structure), y = 5*eid + 1.5*t + 2*x
+        let ranges: &[(u64, &[u64])] =
+            &[(1, &[1, 2, 3, 4, 5]), (2, &[2, 3, 4, 5, 6]), (3, &[1, 3, 4, 5, 6])];
+        // Pseudo-random x values with no entity/time pattern
+        let x_vals: &[f64] = &[
+            0.3, 1.7, 0.8, 2.5, 1.1, // entity 1
+            3.2, 0.6, 1.9, 2.8, 0.4, // entity 2
+            1.5, 2.1, 0.9, 3.0, 1.3, // entity 3
+        ];
+        let mut entity_ids = Vec::new();
+        let mut time_ids = Vec::new();
+        let mut x = Vec::new();
+        let mut y = Vec::new();
+
+        let mut k = 0;
+        for &(eid, times) in ranges {
+            for &t in times {
+                entity_ids.push(eid);
+                time_ids.push(t);
+                let xi = x_vals[k];
+                x.push(xi);
+                y.push(5.0 * eid as f64 + 1.5 * t as f64 + 2.0 * xi);
+                k += 1;
+            }
+        }
+
+        let res = panel_fe_fit(&entity_ids, Some(&time_ids), &x, &y, 1, None).unwrap();
+
+        assert_eq!(res.n_entities, 3);
+        assert_eq!(res.n_time_periods, 6);
+        assert!(
+            (res.coefficients[0] - 2.0).abs() < 0.01,
+            "beta={}, expected ~2.0",
+            res.coefficients[0]
+        );
+    }
+
+    #[test]
     fn test_panel_fe_validation() {
-        assert!(panel_fe_fit(&[], &[], &[], 1, None).is_err());
-        assert!(panel_fe_fit(&[1], &[1.0], &[1.0, 2.0], 1, None).is_err());
+        assert!(panel_fe_fit(&[], None, &[], &[], 1, None).is_err());
+        assert!(panel_fe_fit(&[1], None, &[1.0], &[1.0, 2.0], 1, None).is_err());
     }
 }

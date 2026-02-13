@@ -336,16 +336,27 @@ than H100 due to RTX 4090 FP64 = 1.3 TFLOPS (1:64 ratio of FP32).
 
 - **Metal (Apple Silicon)**: ideal for single-fit acceleration at N≥10k.
   Unified memory eliminates PCIe roundtrip. **7–9× speedup at 100k**.
-- **CUDA (discrete GPU, current branch snapshot)**: analytical toy path on
-  GEX44 routes to `cuda_gpu_native` and now outperforms CPU in measured
-  Gauss+Exp toy benchmarks.
+- **CUDA (discrete GPU, current branch snapshot)**: route is topology/flag
+  dependent (`host` vs `cuda_gpu_native`), and CUDA now outperforms CPU in
+  measured Gauss+Exp / CB / DCB toy benchmarks on GEX44.
 - **CUDA multi-GPU**: dispatch is **numerically correct** (results match
   CPU to 15 digits), both GPUs reach 99–100% utilization, but wall-time
   scaling is ~1.03–1.32× due to lockstep synchronization.
 - **GEX44 recovery matrix (2026-02-13)**:
   - 10k-event spec, 1000 toys: CPU 7.36 s vs CUDA 1.16-1.26 s (**5.8-6.3× faster**)
   - 10k-event spec, 10000 toys: CPU 73.98 s vs CUDA 14.61-14.68 s (**~5.0× faster**)
+  - 10k-event spec, 50000 toys: CPU 382.29 s vs CUDA 82.26 s (**~4.6× faster**)
   - ~2M-events/toy stress, 50 toys: CPU 22.66 s vs CUDA 7.80 s (**~2.9× faster**)
+  - CB 10k-event spec:
+    - 1000 toys: CPU 38.38 s vs CUDA 2.26 s (**~17.0× faster**)
+    - 10000 toys: CPU 384.51 s vs CUDA 24.99 s (**~15.4× faster**)
+  - DCB 10k-event spec:
+    - default CUDA path (`pipeline=host`):
+      - 1000 toys: CPU 89.82 s vs CUDA 2.74 s (**~32.7× faster**)
+      - 10000 toys: CPU 886.32 s vs CUDA 31.25 s (**~28.4× faster**)
+    - explicit native path (`--gpu-native`, `pipeline=cuda_gpu_native`):
+      - 1000 toys: 2.44 s (**~1.12× faster than DCB CUDA host path**)
+      - 10000 toys: 20.08 s (**~1.56× faster than DCB CUDA host path**)
   - all listed runs converged 100% with zero fit errors
 
 ## 4. Cross-Framework Comparison (same data, same hardware)

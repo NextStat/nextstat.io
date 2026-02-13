@@ -70,6 +70,8 @@ pub mod laplace;
 pub(crate) mod lbfgs;
 /// Linear mixed models (marginal likelihood baseline).
 pub mod lmm;
+/// Metropolis-Adjusted Microcanonical Sampler (MAMS).
+pub mod mams;
 /// Meta-analysis: fixed-effects and random-effects pooling.
 pub mod meta_analysis;
 /// Maximum-likelihood estimation via L-BFGS-B.
@@ -185,9 +187,9 @@ pub use diagnostics::{DiagnosticsResult, QualityGates, compute_diagnostics, qual
 pub use differentiable::{DifferentiableSession, ProfiledDifferentiableSession};
 pub use dosing::{DoseEvent, DoseRoute, DosingRegimen};
 pub use econometrics::{
-    AipwResult, DidResult, EventStudyResult, FirstStageResult, IvResult, PanelFEResult,
-    RosenbaumResult, aipw_ate, cluster_robust_se, did_canonical, event_study, iv_2sls,
-    panel_fe_fit, rosenbaum_bounds,
+    AipwResult, DidResult, EventStudyResult, FirstStageResult, FixedEffectsSolver, IvResult,
+    PanelFEResult, RosenbaumResult, aipw_ate, cluster_robust_se, did_canonical, event_study,
+    iv_2sls, panel_fe_fit, rosenbaum_bounds,
 };
 pub use eight_schools::EightSchoolsModel;
 pub use evt::{GevModel, GpdModel};
@@ -202,6 +204,7 @@ pub use hybrid::{HybridLikelihood, SharedParameterMap};
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
+pub use mams::{MamsConfig, sample_mams, sample_mams_multichain};
 pub use meta_analysis::{
     ForestRow, Heterogeneity, MetaAnalysisResult, StudyEffect, meta_fixed, meta_random,
 };

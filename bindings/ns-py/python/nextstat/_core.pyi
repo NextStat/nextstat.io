@@ -1137,6 +1137,80 @@ def sample(
 ) -> Dict[str, Any]: ...
 
 
+@overload
+def sample_mams(
+    model: HistFactoryModel,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    target_accept: float = ...,
+    init_strategy: str = ...,
+    metric: str = ...,
+    init_step_size: float = ...,
+    init_l: float = ...,
+    max_leapfrog: int = ...,
+    diagonal_precond: bool = ...,
+    data: Optional[List[float]] = ...,
+) -> Dict[str, Any]: ...
+@overload
+def sample_mams(
+    model: Posterior,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    target_accept: float = ...,
+    init_strategy: str = ...,
+    metric: str = ...,
+    init_step_size: float = ...,
+    init_l: float = ...,
+    max_leapfrog: int = ...,
+    diagonal_precond: bool = ...,
+    data: Literal[None] = ...,
+) -> Dict[str, Any]: ...
+@overload
+def sample_mams(
+    model: Union[
+        GaussianMeanModel,
+        LinearRegressionModel,
+        LogisticRegressionModel,
+        OrderedLogitModel,
+        OrderedProbitModel,
+        PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
+        GammaRegressionModel,
+        TweedieRegressionModel,
+        ComposedGlmModel,
+        LmmMarginalModel,
+        ExponentialSurvivalModel,
+        WeibullSurvivalModel,
+        LogNormalAftModel,
+        CoxPhModel,
+        OneCompartmentOralPkModel,
+        OneCompartmentOralPkNlmeModel,
+        GevModel,
+        GpdModel,
+        EightSchoolsModel,
+    ],
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    target_accept: float = ...,
+    init_strategy: str = ...,
+    metric: str = ...,
+    init_step_size: float = ...,
+    init_l: float = ...,
+    max_leapfrog: int = ...,
+    diagonal_precond: bool = ...,
+    data: Literal[None] = ...,
+) -> Dict[str, Any]: ...
+
+
 def cls_curve(
     model: HistFactoryModel,
     scan: List[float],

@@ -439,6 +439,7 @@ Latest rerun on GEX44 after CUDA optimizer stabilization and branch-level routin
   - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_20260213T091253Z/summary_200.json`
   - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_scale.json`
   - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_2m_50.json`
+  - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_cb_dcb_scale.json`
 
 10k-event spec (Gauss+Exp):
 
@@ -450,20 +451,43 @@ Latest rerun on GEX44 after CUDA optimizer stabilization and branch-level routin
 | CPU | 10k | `cpu_batch` | 73.98 | 10000/10000 | 135.17 |
 | CUDA (default flags) | 10k | `cuda_gpu_native` | 14.68 | 10000/10000 | 681.20 |
 | CUDA (`--gpu-native`) | 10k | `cuda_gpu_native` | 14.61 | 10000/10000 | 684.63 |
+| CPU | 50k | `cpu_batch` | 382.29 | 50000/50000 | 130.79 |
+| CUDA | 50k | `cuda_gpu_native` | 82.26 | 50000/50000 | 607.85 |
 
 Large-event stress spec (~2M events/toy, Gauss+Exp):
+
+- spec: `benchmarks/unbinned/specs/pf31_gauss_exp_2m.json`
 
 | Case | Toys | Pipeline | Wall (s) | Converged | Throughput (toys/s) |
 |---|---:|---|---:|---:|---:|
 | CPU | 50 | `cpu_batch` | 22.66 | 50/50 | 2.21 |
 | CUDA | 50 | `cuda_gpu_native` | 7.80 | 50/50 | 6.41 |
 
+10k-event CrystalBall / DoubleCrystalBall scale slice:
+
+| Case | Toys | Pipeline | Wall (s) | Converged | Throughput (toys/s) |
+|---|---:|---|---:|---:|---:|
+| CB CPU | 1k | `cpu_batch` | 38.38 | 1000/1000 | 26.05 |
+| CB CUDA | 1k | `cuda_gpu_native` | 2.26 | 1000/1000 | 442.90 |
+| CB CPU | 10k | `cpu_batch` | 384.51 | 10000/10000 | 26.01 |
+| CB CUDA | 10k | `cuda_gpu_native` | 24.99 | 10000/10000 | 400.11 |
+| DCB CPU | 1k | `cpu_batch` | 89.82 | 1000/1000 | 11.13 |
+| DCB CUDA (default) | 1k | `host` | 2.74 | 1000/1000 | 364.45 |
+| DCB CUDA (`--gpu-native`) | 1k | `cuda_gpu_native` | 2.44 | 1000/1000 | 409.34 |
+| DCB CPU | 10k | `cpu_batch` | 886.32 | 10000/10000 | 11.28 |
+| DCB CUDA (default) | 10k | `host` | 31.25 | 10000/10000 | 320.04 |
+| DCB CUDA (`--gpu-native`) | 10k | `cuda_gpu_native` | 20.08 | 10000/10000 | 498.05 |
+
 Observed on this stand:
 
-- CUDA now outperforms CPU in this toy pipeline by ~5.0-6.3x on the 10k-event spec.
+- CUDA now outperforms CPU in this toy pipeline by ~4.6-6.3x on the 10k-event spec (1k/10k/50k toys).
 - On a much heavier ~2M-events/toy stress case, CUDA still wins (~2.9x).
+- On CB/DCB 10k-event workloads, CUDA is significantly faster than CPU in all listed runs:
+  - CB: ~15-17x vs CPU.
+  - DCB (default host CUDA path): ~28-33x vs CPU.
+  - DCB `--gpu-native`: additional gain over DCB host CUDA path (~1.12x at 1k toys, ~1.56x at 10k toys).
 - Convergence is 100% in these runs (no fit errors).
-- In this branch snapshot, `--gpu cuda` analytical toy path routes to `cuda_gpu_native` in metrics output.
+- Route behavior in this branch snapshot is topology-dependent: Gauss/CB runs in this matrix report `cuda_gpu_native` with current flags, while DCB default `--gpu cuda` reports `pipeline=host` and switches to `cuda_gpu_native` only with explicit `--gpu-native`.
 
 ### 8.12 CUDA optimizer stabilization (pass 1, 2026-02-13)
 

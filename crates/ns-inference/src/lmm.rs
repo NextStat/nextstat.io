@@ -42,6 +42,36 @@ fn row_dot(x_row: &[f64], beta: &[f64]) -> f64 {
     x_row.iter().zip(beta).map(|(&x, &b)| x * b).sum()
 }
 
+/// Cholesky log-determinant of a symmetric positive-definite matrix (row-major flat).
+/// Returns `Err` if the matrix is not positive definite.
+fn cholesky_logdet(a: &[f64], n: usize) -> Result<f64> {
+    let mut l = vec![0.0; n * n];
+    for i in 0..n {
+        for j in 0..=i {
+            let mut s = 0.0;
+            for k in 0..j {
+                s += l[i * n + k] * l[j * n + k];
+            }
+            if i == j {
+                let diag = a[i * n + i] - s;
+                if diag <= 1e-300 {
+                    return Err(Error::Computation(
+                        "REML: X^T V^{-1} X is not positive definite".to_string(),
+                    ));
+                }
+                l[i * n + j] = diag.sqrt();
+            } else {
+                l[i * n + j] = (a[i * n + j] - s) / l[j * n + j];
+            }
+        }
+    }
+    let mut logdet = 0.0;
+    for i in 0..n {
+        logdet += 2.0 * l[i * n + i].ln();
+    }
+    Ok(logdet)
+}
+
 /// Dense row-major design matrix.
 #[derive(Debug, Clone)]
 struct DenseX {
@@ -122,6 +152,7 @@ pub struct LmmMarginalModel {
     n_groups: usize,
     re: RandomEffects,
     groups: Vec<GroupData>,
+    use_reml: bool,
 }
 
 impl LmmMarginalModel {
@@ -190,7 +221,25 @@ impl LmmMarginalModel {
             }
         }
 
-        Ok(Self { x, y, include_intercept, n_groups, re, groups })
+        Ok(Self { x, y, include_intercept, n_groups, re, groups, use_reml: false })
+    }
+
+    /// Enable or disable REML (Restricted Maximum Likelihood) estimation.
+    ///
+    /// When `reml = true`, the marginal likelihood is corrected by
+    /// `+0.5 * log|X^T V^{-1} X|`, which accounts for the loss of degrees of
+    /// freedom from estimating the fixed effects β. This produces unbiased
+    /// variance component estimates, especially important for small samples.
+    ///
+    /// Default is `false` (standard ML).
+    pub fn with_reml(mut self, reml: bool) -> Self {
+        self.use_reml = reml;
+        self
+    }
+
+    /// Returns `true` if REML estimation is enabled.
+    pub fn is_reml(&self) -> bool {
+        self.use_reml
     }
 
     #[inline]
@@ -250,6 +299,9 @@ impl LmmMarginalModel {
         let log_a = (sigma_y * sigma_y).ln();
         let log_c =
             (tau_alpha * tau_alpha).ln() + if let Some(tu) = tau_u { (tu * tu).ln() } else { 0.0 };
+
+        let nb = self.n_beta();
+        let mut xtvinvx = if self.use_reml { vec![0.0; nb * nb] } else { vec![] };
 
         let mut nll = 0.0;
         for g in 0..self.n_groups {
@@ -319,6 +371,92 @@ impl LmmMarginalModel {
             let quad = inv_a * sum_r2 - quad_correction;
 
             nll += 0.5 * (log_det_v + quad);
+
+            // REML: accumulate X_g^T V_g^{-1} X_g via Woodbury identity.
+            if self.use_reml {
+                let p = self.x.p;
+                let mut xtx = vec![0.0; nb * nb];
+                let mut xtz0 = vec![0.0; nb];
+                let mut xtz1 = vec![0.0; nb];
+
+                for &i in &gd.indices {
+                    let row = self.x.row(i);
+                    if self.include_intercept {
+                        xtx[0] += 1.0;
+                        xtz0[0] += 1.0;
+                        for c in 0..p {
+                            xtx[c + 1] += row[c];
+                            xtx[(c + 1) * nb] += row[c];
+                            xtz0[c + 1] += row[c];
+                        }
+                        for j in 0..p {
+                            for c in 0..p {
+                                xtx[(j + 1) * nb + (c + 1)] += row[j] * row[c];
+                            }
+                        }
+                    } else {
+                        for j in 0..p {
+                            xtz0[j] += row[j];
+                            for c in 0..p {
+                                xtx[j * nb + c] += row[j] * row[c];
+                            }
+                        }
+                    }
+                    if let RandomEffects::InterceptSlope { feature_idx } = self.re {
+                        let xk = row[feature_idx];
+                        if self.include_intercept {
+                            xtz1[0] += xk;
+                            for c in 0..p {
+                                xtz1[c + 1] += row[c] * xk;
+                            }
+                        } else {
+                            for c in 0..p {
+                                xtz1[c] += row[c] * xk;
+                            }
+                        }
+                    }
+                }
+
+                for idx in 0..nb * nb {
+                    xtvinvx[idx] += inv_a * xtx[idx];
+                }
+
+                match (self.re, tau_u) {
+                    (RandomEffects::Intercept, _) => {
+                        let inv_tau2 = 1.0 / (tau_alpha * tau_alpha);
+                        let m_val = inv_tau2 + inv_a * gd.s00;
+                        let coeff = inv_a * inv_a / m_val;
+                        for j in 0..nb {
+                            for k in 0..nb {
+                                xtvinvx[j * nb + k] -= coeff * xtz0[j] * xtz0[k];
+                            }
+                        }
+                    }
+                    (RandomEffects::InterceptSlope { .. }, Some(tu)) => {
+                        let inv_tau_a2 = 1.0 / (tau_alpha * tau_alpha);
+                        let inv_tau_u2 = 1.0 / (tu * tu);
+                        let a00 = inv_tau_a2 + inv_a * gd.s00;
+                        let a01 = inv_a * gd.s01;
+                        let a11 = inv_tau_u2 + inv_a * gd.s11;
+                        let det = a00 * a11 - a01 * a01;
+                        let coeff = inv_a * inv_a / det;
+                        for j in 0..nb {
+                            for k in 0..nb {
+                                xtvinvx[j * nb + k] -= coeff
+                                    * (a11 * xtz0[j] * xtz0[k]
+                                        - a01 * (xtz0[j] * xtz1[k] + xtz1[j] * xtz0[k])
+                                        + a00 * xtz1[j] * xtz1[k]);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if self.use_reml {
+            let logdet = cholesky_logdet(&xtvinvx, nb)?;
+            nll += 0.5 * logdet;
         }
 
         Ok(nll)
@@ -782,5 +920,212 @@ mod tests {
         }
 
         assert!((nll - nll_dense).abs() < 1e-10);
+    }
+
+    // ---- REML tests ----
+
+    /// Dense (nalgebra) REML NLL reference: ML NLL + 0.5*log|X^T V^{-1} X|.
+    fn dense_reml_correction(
+        model: &LmmMarginalModel,
+        _params: &[f64],
+        sigma_y: f64,
+        tau_alpha: f64,
+        tau_u_val: Option<f64>,
+    ) -> f64 {
+        let n = model.x.n;
+        let nb = model.n_beta();
+
+        // Build full X (n × nb) with intercept column if needed
+        let mut x_full = DMatrix::zeros(n, nb);
+        for i in 0..n {
+            let row = model.x.row(i);
+            if model.include_intercept {
+                x_full[(i, 0)] = 1.0;
+                for j in 0..model.x.p {
+                    x_full[(i, j + 1)] = row[j];
+                }
+            } else {
+                for j in 0..model.x.p {
+                    x_full[(i, j)] = row[j];
+                }
+            }
+        }
+
+        // Build block-diagonal V (n × n)
+        let sigma2 = sigma_y * sigma_y;
+        let tau_a2 = tau_alpha * tau_alpha;
+        let mut v_mat = DMatrix::zeros(n, n);
+        for gd in &model.groups {
+            for &i in &gd.indices {
+                for &j in &gd.indices {
+                    let mut val = tau_a2;
+                    if let (RandomEffects::InterceptSlope { feature_idx }, Some(tu)) =
+                        (model.re, tau_u_val)
+                    {
+                        val +=
+                            (tu * tu) * model.x.row(i)[feature_idx] * model.x.row(j)[feature_idx];
+                    }
+                    if i == j {
+                        val += sigma2;
+                    }
+                    v_mat[(i, j)] = val;
+                }
+            }
+        }
+
+        // V^{-1}
+        let chol_v = nalgebra::linalg::Cholesky::new(v_mat.clone()).unwrap();
+        // X^T V^{-1} X
+        let vinv_x = chol_v.solve(&x_full);
+        let xtvinvx = x_full.transpose() * vinv_x;
+        let chol_xtvinvx = nalgebra::linalg::Cholesky::new(xtvinvx).unwrap();
+        let l = chol_xtvinvx.l();
+        let mut logdet = 0.0;
+        for i in 0..nb {
+            logdet += 2.0 * l[(i, i)].ln();
+        }
+        0.5 * logdet
+    }
+
+    #[test]
+    fn lmm_reml_nll_matches_dense_intercept() {
+        let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
+        let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+
+        let m_ml = LmmMarginalModel::new(
+            x.clone(),
+            y.clone(),
+            false,
+            group_idx.clone(),
+            2,
+            RandomEffects::Intercept,
+        )
+        .unwrap();
+        let m_reml = LmmMarginalModel::new(x, y, false, group_idx, 2, RandomEffects::Intercept)
+            .unwrap()
+            .with_reml(true);
+
+        let params = vec![0.2, (0.5f64).ln(), (1.2f64).ln()];
+        let nll_ml = m_ml.nll(&params).unwrap();
+        let nll_reml = m_reml.nll(&params).unwrap();
+
+        let sigma_y = params[1].exp();
+        let tau_alpha = params[2].exp();
+        let correction = dense_reml_correction(&m_ml, &params, sigma_y, tau_alpha, None);
+
+        // REML NLL = ML NLL + correction
+        assert!(
+            (nll_reml - (nll_ml + correction)).abs() < 1e-10,
+            "REML mismatch: reml={}, ml+corr={}",
+            nll_reml,
+            nll_ml + correction
+        );
+        // REML NLL should be strictly larger than ML NLL
+        assert!(nll_reml > nll_ml);
+    }
+
+    #[test]
+    fn lmm_reml_nll_matches_dense_intercept_slope() {
+        // Use non-collinear covariates (no column of ones — intercept is added automatically).
+        let x = vec![
+            vec![0.5, 0.1],
+            vec![1.2, 0.2],
+            vec![0.8, 0.3],
+            vec![1.5, 0.1],
+            vec![0.3, 0.2],
+            vec![0.9, 0.3],
+        ];
+        let y = vec![1.0, 1.1, 0.9, 1.4, 1.6, 1.3];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+
+        let m_ml = LmmMarginalModel::new(
+            x.clone(),
+            y.clone(),
+            true,
+            group_idx.clone(),
+            2,
+            RandomEffects::InterceptSlope { feature_idx: 1 },
+        )
+        .unwrap();
+        let m_reml = LmmMarginalModel::new(
+            x,
+            y,
+            true,
+            group_idx,
+            2,
+            RandomEffects::InterceptSlope { feature_idx: 1 },
+        )
+        .unwrap()
+        .with_reml(true);
+
+        let params = vec![0.2, 0.1, -0.3, (0.7f64).ln(), (1.1f64).ln(), (0.6f64).ln()];
+        let nll_ml = m_ml.nll(&params).unwrap();
+        let nll_reml = m_reml.nll(&params).unwrap();
+
+        let sigma_y = params[3].exp();
+        let tau_alpha = params[4].exp();
+        let tau_u = params[5].exp();
+        let correction = dense_reml_correction(&m_ml, &params, sigma_y, tau_alpha, Some(tau_u));
+
+        assert!(
+            (nll_reml - (nll_ml + correction)).abs() < 1e-10,
+            "REML mismatch: reml={}, ml+corr={}",
+            nll_reml,
+            nll_ml + correction
+        );
+        // REML NLL differs from ML NLL (correction can be positive or negative)
+        assert!((nll_reml - nll_ml).abs() > 1e-15);
+    }
+
+    #[test]
+    fn lmm_reml_grad_matches_finite_diff() {
+        let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
+        let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+        let m = LmmMarginalModel::new(x, y, false, group_idx, 2, RandomEffects::Intercept)
+            .unwrap()
+            .with_reml(true);
+
+        let p = vec![0.1, 0.0, 0.0];
+        let g = m.grad_nll(&p).unwrap();
+        let g_fd = finite_diff_grad(&m, &p, 1e-6);
+        for i in 0..p.len() {
+            assert!(
+                (g[i] - g_fd[i]).abs() < 5e-4,
+                "REML grad[{}]: analytic={}, fd={}",
+                i,
+                g[i],
+                g_fd[i]
+            );
+        }
+    }
+
+    #[test]
+    fn lmm_reml_with_reml_false_equals_ml() {
+        let x = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0], vec![1.5], vec![2.5]];
+        let y = vec![1.0, 2.1, 2.9, 4.2, 1.4, 2.7];
+        let group_idx = vec![0usize, 0, 0, 1, 1, 1];
+
+        let m_ml = LmmMarginalModel::new(
+            x.clone(),
+            y.clone(),
+            false,
+            group_idx.clone(),
+            2,
+            RandomEffects::Intercept,
+        )
+        .unwrap();
+        let m_reml_off = LmmMarginalModel::new(x, y, false, group_idx, 2, RandomEffects::Intercept)
+            .unwrap()
+            .with_reml(false);
+
+        let params = vec![0.2, (0.5f64).ln(), (1.2f64).ln()];
+        let nll_ml = m_ml.nll(&params).unwrap();
+        let nll_off = m_reml_off.nll(&params).unwrap();
+
+        assert!((nll_ml - nll_off).abs() < 1e-15, "with_reml(false) should equal ML");
+        assert!(!m_ml.is_reml());
+        assert!(!m_reml_off.is_reml());
     }
 }

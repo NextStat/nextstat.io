@@ -135,7 +135,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Chain ladder: `chain_ladder_fit`, `mack_chain_ladder`, `bootstrap_reserves`, `ChainLadderResult`, `MackResult`
 - Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `cohort_retention_matrix`, and 15+ types
 - Econometrics: `panel_fe_fit`, `did_canonical`, `event_study`, `iv_2sls`, `aipw_ate`, `rosenbaum_bounds`, `cluster_robust_se`
-- PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel`
+- PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel` (analytical gradients)
 - PD: `EmaxModel`, `SigmoidEmaxModel`, `IndirectResponseModel`, `PkPdLink`
 - Dosing: `DoseEvent`, `DoseRoute`, `DosingRegimen`
 - FOCE: `FoceConfig`, `FoceEstimator`, `FoceResult`, `OmegaMatrix`

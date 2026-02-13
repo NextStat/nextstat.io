@@ -34,11 +34,12 @@ use ns_inference::hybrid::{HybridLikelihood, SharedParameterMap};
 use ns_inference::lmm::{
     LmmMarginalModel as RustLmmMarginalModel, RandomEffects as RustLmmRandomEffects,
 };
+use ns_inference::mams::{MamsConfig, sample_mams_multichain};
 use ns_inference::meta_analysis::{
     StudyEffect as RustStudyEffect, meta_fixed as rust_meta_fixed, meta_random as rust_meta_random,
 };
 use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
-use ns_inference::nuts::{InitStrategy, NutsConfig, sample_nuts};
+use ns_inference::nuts::{InitStrategy, MetricType, NutsConfig, sample_nuts};
 use ns_inference::optimizer::OptimizationResult as RustOptimizationResult;
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
 use ns_inference::timeseries::em::{
@@ -645,6 +646,168 @@ impl PosteriorModel {
             }
             PosteriorModel::EightSchools(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+        }
+    }
+
+    fn sample_mams_mc(
+        &self,
+        n_chains: usize,
+        seed: u64,
+        config: MamsConfig,
+    ) -> NsResult<RustSamplerResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::Unbinned(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::Hybrid(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::GaussianMean(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::Funnel(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::StdNormal(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::LinearRegression(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::OrderedLogit(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::OrderedProbit(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::PoissonRegression(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::ComposedGlm(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::LmmMarginal(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::ExponentialSurvival(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::WeibullSurvival(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::LogNormalAft(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::CoxPh(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::OneCompartmentOralPk(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::OneCompartmentOralPkNlme(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::GammaRegression(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::TweedieRegression(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::Gev(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::Gpd(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::EightSchools(m) => sample_mams_multichain(m, n_chains, seed, config),
+        }
+    }
+
+    fn sample_mams_mc_map(
+        &self,
+        n_chains: usize,
+        seed: u64,
+        config: MamsConfig,
+        priors: Vec<Prior>,
+    ) -> NsResult<RustSamplerResult> {
+        match self {
+            PosteriorModel::HistFactory(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::Unbinned(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::Hybrid(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::GaussianMean(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: *m, priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::StdNormal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::LinearRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::OrderedLogit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::OrderedProbit(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ComposedGlm(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::LmmMarginal(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ExponentialSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::WeibullSurvival(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::LogNormalAft(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::CoxPh(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::OneCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::OneCompartmentOralPkNlme(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::GammaRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::TweedieRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::Gev(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::Gpd(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::EightSchools(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
             }
         }
     }
@@ -2324,17 +2487,19 @@ fn sv_logchi2_fit(
 // ---------------------------------------------------------------------------
 
 #[pyfunction]
-#[pyo3(signature = (entity_ids, x, y, p, *, cluster_ids=None))]
+#[pyo3(signature = (entity_ids, x, y, p, *, time_ids=None, cluster_ids=None))]
 fn panel_fe(
     py: Python<'_>,
     entity_ids: Vec<u64>,
     x: Vec<f64>,
     y: Vec<f64>,
     p: usize,
+    time_ids: Option<Vec<u64>>,
     cluster_ids: Option<Vec<u64>>,
 ) -> PyResult<Py<PyAny>> {
     let res = ns_inference::econometrics::panel::panel_fe_fit(
         &entity_ids,
+        time_ids.as_deref(),
         &x,
         &y,
         p,
@@ -2349,7 +2514,9 @@ fn panel_fe(
     out.set_item("r_squared_within", res.r_squared_within)?;
     out.set_item("n_obs", res.n_obs)?;
     out.set_item("n_entities", res.n_entities)?;
+    out.set_item("n_time_periods", res.n_time_periods)?;
     out.set_item("n_regressors", res.n_regressors)?;
+    out.set_item("df_absorbed", res.df_absorbed)?;
     out.set_item("rss", res.rss)?;
     Ok(out.into_any().unbind())
 }
@@ -4883,7 +5050,7 @@ struct PyLmmMarginalModel {
 #[pymethods]
 impl PyLmmMarginalModel {
     #[new]
-    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx, n_groups=None, random_slope_feature_idx=None))]
+    #[pyo3(signature = (x, y, *, include_intercept=true, group_idx, n_groups=None, random_slope_feature_idx=None, use_reml=false))]
     fn new(
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
@@ -4891,6 +5058,7 @@ impl PyLmmMarginalModel {
         group_idx: Vec<usize>,
         n_groups: Option<usize>,
         random_slope_feature_idx: Option<usize>,
+        use_reml: bool,
     ) -> PyResult<Self> {
         let ng = n_groups.unwrap_or_else(|| group_idx.iter().copied().max().unwrap_or(0) + 1);
         let re = if let Some(k) = random_slope_feature_idx {
@@ -4899,8 +5067,14 @@ impl PyLmmMarginalModel {
             RustLmmRandomEffects::Intercept
         };
         let inner = RustLmmMarginalModel::new(x, y, include_intercept, group_idx, ng, re)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .with_reml(use_reml);
         Ok(Self { inner })
+    }
+
+    /// Returns `true` if REML estimation is enabled.
+    fn is_reml(&self) -> bool {
+        self.inner.is_reml()
     }
 
     fn n_params(&self) -> usize {
@@ -7181,6 +7355,96 @@ fn sample<'py>(
     sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
 }
 
+/// MAMS (Metropolis-Adjusted Microcanonical Sampler) with ArviZ-compatible output.
+///
+/// Uses microcanonical dynamics (Sundman leapfrog, norm-preserving partial refresh)
+/// for improved ESS/gradient on funnel and multiscale geometries.
+#[pyfunction]
+#[pyo3(name = "sample_mams", signature = (
+    model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42,
+    target_accept=0.9, init_strategy="random", metric="diagonal",
+    init_step_size=0.0, init_l=0.0, max_leapfrog=1024,
+    diagonal_precond=true, data=None
+))]
+fn sample_mams_py<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+    seed: u64,
+    target_accept: f64,
+    init_strategy: &str,
+    metric: &str,
+    init_step_size: f64,
+    init_l: f64,
+    max_leapfrog: usize,
+    diagonal_precond: bool,
+    data: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    // Validate
+    if n_chains == 0 {
+        return Err(PyValueError::new_err("n_chains must be >= 1"));
+    }
+    if n_samples == 0 {
+        return Err(PyValueError::new_err("n_samples must be >= 1"));
+    }
+    if !(target_accept.is_finite() && 0.0 < target_accept && target_accept < 1.0) {
+        return Err(PyValueError::new_err("target_accept must be finite and in (0,1)"));
+    }
+
+    let init_strategy = match init_strategy {
+        "random" => InitStrategy::Random,
+        "mle" => InitStrategy::Mle,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "init_strategy must be 'random' or 'mle', got '{other}'"
+            )));
+        }
+    };
+
+    let metric_type = match metric {
+        "diagonal" | "diag" | "diag_e" => MetricType::Diagonal,
+        "dense" | "dense_e" => MetricType::Dense,
+        "auto" => MetricType::Auto,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "metric must be 'diagonal', 'dense', or 'auto', got '{other}'"
+            )));
+        }
+    };
+
+    let config = MamsConfig {
+        n_warmup,
+        n_samples,
+        target_accept,
+        init_step_size,
+        init_l,
+        max_leapfrog,
+        diagonal_precond,
+        init_strategy,
+        metric_type,
+    };
+
+    let result = if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data= is not supported when sampling a Posterior; build the Posterior from the desired model/data",
+            ));
+        }
+        let priors = post.priors.clone();
+        let m = post.model.clone();
+        py.detach(move || m.sample_mams_mc_map(n_chains, seed, config, priors))
+            .map_err(|e| PyValueError::new_err(format!("MAMS sampling failed: {}", e)))?
+    } else {
+        let sample_model = extract_posterior_model_with_data(model, data)?;
+        py.detach(move || sample_model.sample_mams_mc(n_chains, seed, config))
+            .map_err(|e| PyValueError::new_err(format!("MAMS sampling failed: {}", e)))?
+    };
+
+    sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
+}
+
 /// Plot-friendly CLs curve + Brazil band artifact over a scan grid.
 #[pyfunction]
 #[pyo3(signature = (model, scan, *, alpha=0.05, data=None))]
@@ -7719,6 +7983,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits_root, m)?)?;
     m.add_function(wrap_pyfunction!(sample, m)?)?;
+    m.add_function(wrap_pyfunction!(sample_mams_py, m)?)?;
     m.add_function(wrap_pyfunction!(cls_curve, m)?)?;
     m.add_function(wrap_pyfunction!(profile_curve, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
