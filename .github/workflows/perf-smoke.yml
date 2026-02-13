@@ -23,8 +23,8 @@ jobs:
       - name: Run benches (quick, non-blocking)
         continue-on-error: true
         run: |
-          cargo bench -p ns-translate --all-features --bench nll_benchmark -- --quick
-          cargo bench -p ns-inference --all-features --bench mle_benchmark -- --quick
+          cargo bench -p ns-translate --bench nll_benchmark -- --quick
+          cargo bench -p ns-inference --bench mle_benchmark -- --quick
 
       - name: Write snapshot index (artifact hashes)
         if: always()

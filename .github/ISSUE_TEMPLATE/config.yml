@@ -4,7 +4,7 @@ contact_links:
     url: https://docs.nextstat.io
     about: Check the documentation for guides and API reference
   - name: Discussions
-    url: https://github.com/nextstat/nextstat/discussions
+    url: https://github.com/NextStat/nextstat.io/discussions
     about: Ask questions and discuss ideas with the community
   - name: Security Issue
     url: mailto:security@nextstat.io

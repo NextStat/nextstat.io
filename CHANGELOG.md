@@ -5,7 +5,195 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-02-13
+
 ### Added
+
+#### Native ROOT I/O
+
+- **LRU basket cache** — decompressed TTree basket payloads are cached per-`RootFile` with byte-bounded LRU eviction (default 256 MiB). Eliminates redundant decompression on repeated branch reads (e.g. multi-branch formula evaluation). `RootFile::basket_cache()` for stats, `RootFile::set_cache_config()` to tune capacity or disable.
+- **Lazy branch reader** — `RootFile::lazy_branch_reader()` returns a `LazyBranchReader` that decompresses only the baskets needed for the requested entries. `read_f64_at(entry)` touches one basket; `read_f64_range(start, end)` touches only overlapping baskets. Backed by the LRU cache for repeated access.
+- **ChainedSlice** — zero-copy concatenation of multiple decompressed basket payloads via `Arc` sharing. Presents non-contiguous segments as a single logical byte slice with O(log n) random access and cross-segment reads. `LazyBranchReader::load_all_chained()` returns a `ChainedSlice` for custom decode pipelines.
+- **ROOT leaflist parsing** — `ns-root` now parses compound leaf-list branches (multiple scalars packed per entry).
+
+#### ns-zstd Performance
+
+- **Encoder hot-path optimizations** — 20+ targeted improvements to the pure-Rust Zstd encoder: faster FSE state transitions, packed sequence bit writes, hash-chain collision reduction via head tags and u64 reject, common-prefix u128 comparison, fast-path depth-1 search, lazy/history check reduction, no-match skip heuristic, and match-length encoding fast-path.
+- **Compression Level 3 (Default) complete** — hash-chain match finder (depth-2, packed u64 heads, tag rejection), lazy matching at P+1, offset history rep-codes (1/2/3), 256KiB window, FSE `RepeatOrBuild` strategy. Ratio within 5% of C zstd level 3 on ROOT-like data. All Parquet/WASM use cases now fully supported via pure Rust.
+- **`zstd-shim`** — transparent backend selection crate: uses native `libzstd` (via `zstd-safe`) on desktop for maximum throughput, falls back to pure-Rust `ns-zstd` on WASM and embedded targets.
+
+#### CPU Farm Orchestration
+
+- **CPU farm tooling for unbinned toys (HEP cluster prep)** — added `scripts/farm/preflight_cluster.py`, `scripts/farm/run_unbinned_fit_toys_cluster.py`, and `scripts/farm/merge_unbinned_toys_results.py` for CPU-only multi-host toy sharding, deterministic seed/toy_start scheduling, and merged output reconstruction.
+
+#### GPU Acceleration
+
+- **Multi-channel GPU batch toys (Metal + CUDA)** — `ns-inference` batch toy fitter now handles workspaces with multiple channels on both Metal and CUDA backends.
+- **Unbinned CUDA multi-GPU batch toys (`--gpu-devices`)** — `nextstat unbinned-fit-toys` and `nextstat unbinned-hypotest-toys` can shard host-sampled toys across multiple CUDA devices (manual stream/context-per-device orchestration, merged in toy order). Device-resident `--gpu-sample-toys` remains single-GPU for now.
+- **Unbinned CUDA device-resident shard orchestration (`--gpu-shards`)** — `nextstat unbinned-fit-toys` and `nextstat unbinned-hypotest-toys` now support sharded `--gpu-sample-toys` execution. Shards are mapped to `--gpu-devices` round-robin and can be used for single-GPU emulation (`--gpu cuda --gpu-sample-toys --gpu-shards N`) before validating on 2+ GPU hardware.
+- **Unbinned CUDA host-toy shard orchestration (`--gpu-shards` without `--gpu-sample-toys`)** — CUDA toy workflows now also support sharded host-toy execution (`pipeline: cuda_host_sharded`) for `unbinned-fit-toys` and `unbinned-hypotest-toys`, with shard plan exposed in metrics.
+- **Unbinned CUDA sharded toy-path metrics/tests** — added CUDA integration coverage for `--gpu-sample-toys --gpu-shards` in both `unbinned-fit-toys` and `unbinned-hypotest-toys`, including metrics contract checks for `pipeline: cuda_device_sharded` and `device_shard_plan`.
+- **PF3.1-OPT2: Parallel device-resident multi-GPU** — the `cuda_device_sharded` pipeline now runs each shard (sample → build → fit) on its own thread with its own CUDA context via `std::thread::scope`, enabling true multi-GPU concurrency. Previously, shards were processed sequentially in a `for` loop (zero overlap, flat scaling). Fixed in 3 locations: `cmd_unbinned_fit_toys`, `count_q_ge_ensemble_cuda_device_sharded`, `generate_q_ensemble_cuda_device_sharded`. Per-device timing (`shard_detail`) emitted in metrics JSON. Validated on 4× A40: 2 GPU = 1.97× (near-linear), 3 GPU = 2.9×. Before fix: flat 1.00×.
+- **PF3.1 multi-GPU health-check note** — added an explicit infrastructure gate for 2+ GPU benchmark stands: verify CUDA Driver API initialization (`cuInit`) before running sharded toy matrices. Some virtualized H100 nodes can show GPUs in `nvidia-smi` while failing runtime init (`cuInit=802`), which makes `--gpu cuda` unavailable despite visible hardware.
+- **PF3.1 2x H100 benchmark matrix snapshot** — completed and archived a full unbinned toy matrix (10k/50k/100k) for CPU, 1-GPU/2-GPU host-toy, and 1-GPU/2-GPU device-resident sharded paths (`benchmarks/unbinned/artifacts/2026-02-11/pf31_matrix_20260211T182402Z`). On this stand, host-toy multi-GPU scales close to 2x (e.g. 1345s -> 701s at 100k), while device-resident sharded path is near-flat (1318s -> 1316s).
+- **PF3.1 single-GPU runtime snapshot (Gex44, RTX 4000 Ada)** — added 10k/20k validation artifacts for worker-per-device orchestration (`benchmarks/unbinned/artifacts/2026-02-12/pf31_opt2_valid_20260212T024003Z`, `benchmarks/unbinned/artifacts/2026-02-12/pf31_opt2_focus_20260212T031632Z`). For this workload, single-GPU toy pipelines remain much slower than CPU fused path, while `--gpu-sample-toys` still reduces sampling time versus host-toy.
+- **CUDA `--gpu-native` routing policy hardening** — `unbinned-fit-toys --gpu cuda` no longer auto-enables `--gpu-native`; persistent on-device L-BFGS is now explicit opt-in only. Added CUDA CLI integration coverage to assert default pipeline stays non-native unless `--gpu-native` is passed.
+- **CUDA toy-fit warm-start + iteration budget parity (phase 1)** — analytical `unbinned-fit-toys --gpu cuda` now warm-starts from observed-data MLE `θ̂` when available (fallback to spec init), and uses `max_iter=5000` for both lockstep and native batch fit calls (previously 1000).
+- **GEX44 post-rebuild CUDA snapshot (2026-02-13)** — archived fresh single-GPU artifacts at `benchmarks/unbinned/artifacts/2026-02-13/gex44_pf33_rebuild_20260212T234615Z/summary.json`. On RTX 4000 Ada, both `cuda_device` and `cuda_gpu_native` toy paths remain drastically slower than CPU fused path for Gauss+Exp/CrystalBall toy workloads, with near-identical CUDA wall-time between default and native routes. Follow-up optimization tasks were opened in BMCP.
+- **CUDA toy-fit optimizer stabilization (pass 1)** — added relative objective-decrease stopping and non-finite fail-fast in the GPU-native unbinned L-BFGS kernel (`unbinned_batch_lbfgs_fit`), and mirrored relative objective early-stop in lockstep `LbfgsState` to reduce max-iter tails on toy workloads. Includes new unit tests for relative-objective stop behavior.
+- **GEX44 CUDA recovery snapshot (2026-02-13)** — archived new single-GPU artifacts at `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_20260213T091253Z` and `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z`. On this branch snapshot, analytical toy fits route to `cuda_gpu_native` and outperform CPU for Gauss+Exp: ~6.3x at 1k toys, ~5.0x at 10k toys, and ~2.9x on a ~2M-events/toy stress case (50 toys), with 100% convergence in listed runs.
+- **PF3.1-OPT4 sharding estimation fix** — auto-shard VRAM estimation for Poisson toys now uses the expected yield at the toy generation point (sum of yield expressions) rather than the observed dataset size, preventing under-sharding on large-yield studies (e.g. O(2M) events/toy with O(10k) toys). Added `YieldExpr::value()` public helper for tooling.
+- **Metal `--gpu-sample-toys`** — device-resident toy sampling on Apple Silicon (previously CUDA-only).
+- **Parquet observed data for unbinned `--gpu`** — unbinned GPU path can now ingest observed data directly from Parquet files.
+- **TensorRT execution provider for neural PDFs** — `--features neural-tensorrt` enables TensorRT EP with FP16 inference, engine caching (`~/.cache/nextstat/tensorrt/`), and dynamic batch-size optimization profiles. Automatic fallback chain: TensorRT → CUDA EP → CPU. `FlowGpuConfig` for custom TRT settings; `FlowPdf::from_manifest_with_config()` constructor; `FlowPdf::gpu_ep_kind()` for runtime introspection.
+- **Analytical Jacobian gradients for flow PDFs (G3)** — when the manifest includes a `log_prob_grad` ONNX model, `FlowPdf::log_prob_grad_batch()` computes exact `∂ log p / ∂ context` in a single forward pass instead of `2 × n_context` finite-difference evaluations. CUDA kernel `flow_nll_grad_reduce_f32` computes NLL + gradient intermediates in one launch; `GpuFlowSession::nll_grad_analytical_device_f32()` assembles the full gradient from device-resident f32 buffers. `FlowPdf::log_prob_grad_batch_cuda()` runs the grad ONNX model on CUDA EP with I/O binding, returning `FlowCudaLogProbGrad` (two device-resident tensors: log_prob + Jacobian). Verified on RTX 4000 SFF Ada: NLL parity f32↔f64 = 4.43e-10, gradient parity at machine precision.
+- **Multi-GPU batch toy fitting for flow PDFs** — `fit_flow_toys_batch_cuda()` runs lockstep L-BFGS-B across thousands of toys using the `flow_batch_nll_reduce` kernel (1 block = 1 toy). `shard_flow_toys()` partitions toys evenly across devices; `fit_flow_toys_batch_multi_gpu()` drives all GPUs and merges results. Finite-difference gradients via `2 × n_params + 1` batch NLL launches.
+- **CLI `--gpu cuda` for flow PDFs in toy pipeline (G2-R1)** — `nextstat unbinned-fit-toys --gpu cuda` now supports flow/conditional_flow/dcr_surrogate PDFs. CPU toy sampling → CPU logp evaluation → CUDA NLL reduction via `flow_batch_nll_reduce` kernel → lockstep L-BFGS-B. `spec_has_flow_pdfs()` auto-detects neural PDFs and routes to the flow batch path; `build_flow_batch_config()` maps yield specs to `FlowBatchProcessDesc`. Supports Gaussian constraints. Limitations: single included channel, no rate modifiers, no `--gpu-sample-toys`/`--gpu-native` (CPU sampling only, lockstep only).
+- **Normalization grid cache for all dimensionalities** — `QuadratureGrid::auto()` selects the optimal strategy per dimension count: Gauss-Legendre (1-3D), low-order tensor product N16/N8 (4-5D), Halton quasi-Monte Carlo (6D+). `NormalizationCache` avoids recomputation when parameters haven't changed. `FlowPdf` now normalizes at all dimensionalities (previously skipped 4D+).
+- **CUDA EP f32 zero-copy NLL reduction** — `GpuFlowSession::nll_device_ptr_f32()` accepts a raw CUDA device pointer to float log-probs from ONNX Runtime CUDA EP, eliminating the host-to-device memcpy. Up to 57× faster than the f64 host-upload path at typical event counts (1K). Python binding: `GpuFlowSession.nll_device_ptr_f32(ptr, params)`.
+
+#### Hybrid Likelihood (Phase 4)
+
+- **`HybridLikelihood<A, B>`** — generic combined likelihood that sums NLLs from two `LogDensityModel` implementations with shared parameters. Implements `LogDensityModel`, `PoiModel`, and `FixedParamModel` so it works with all existing MLE, profile scans, CLs, and toy infrastructure.
+- **`SharedParameterMap`** — merges parameter vectors from two models by name. Shared parameters get intersected bounds; model-specific parameters are appended. `extract_a()` / `extract_b()` for parameter slicing, `scatter_grad_a()` / `scatter_grad_b()` for gradient accumulation. `with_poi_from_a()` / `with_poi_from_b()` for POI resolution across models.
+- **CLI `nextstat hybrid-fit`** — `--binned` (pyhf/HS3 JSON) + `--unbinned` (YAML/JSON spec). Prints summary of shared/total parameters, runs MLE via `HybridLikelihood`, outputs JSON with `hybrid: true`, `n_shared`, bestfit, uncertainties, covariance.
+- **`WeightSummary` diagnostics** — `EventStore::weight_summary()` returns `WeightSummary` with ESS `(Σw)²/Σw²`, sum/min/max/mean weights, n_zero. `EventStore::sum_weights()` and `effective_sample_size()` accessors. `UnbinnedModel::channel_weight_summaries()` for per-channel reporting.
+- **HS3 unbinned extension** — `Hs3UnbinnedDist` (`"nextstat_unbinned_dist"` type tag) extends the HS3 v0.2 schema with event-level channels. Other HS3 consumers see it as `Unknown` and skip gracefully. `export_unbinned_hs3()` serializes `UnbinnedSpecV0` + `UnbinnedModel` to HS3 JSON. `export_hybrid_hs3()` merges binned `HistFactoryModel` + unbinned into a single workspace with shared parameters.
+- **Fused single-pass CPU NLL kernel** — `fused_kernel::fused_gauss_exp_nll` computes `log(Σ νp · fp(x))` per event inline for the Gaussian+Exponential topology, eliminating intermediate `Vec<f64>` allocations and multi-pass memory traffic. Topology detection via `UnbinnedPdf::pdf_tag()` string matching; unsupported topologies fall back to the generic multi-pass path. Adaptive parallelism: sequential for N < 8k, rayon `par_chunks(1024)` for N ≥ 8k.
+- **Unbinned CPU toy parallelism heuristic** — batch toy fitting now avoids nested Rayon parallelism (toys-parallel outer loop plus events-parallel inner loop). For small `n_toys` the batch loop runs sequentially and uses event-level Rayon inside NLL; for large `n_toys` it parallelises across toys and runs the per-event loop sequentially on each worker for better cache locality and lower scheduling overhead.
+- **SIMD-vectorized fused kernel (`wide::f64x4`)** — the fused event loop processes 4 events per iteration using `wide::f64x4` (AVX2 on x86, NEON on ARM). Vectorises `exp()`, `ln()`, `max()`, and FMA operations for both NLL and gradient accumulation. Scalar remainder loop for `n_events % 4`. **4–12× speedup** over generic path on x86 AVX2; **2–5×** on ARM NEON. ~770 M events/s NLL throughput at 100k events on Hetzner x86 (i5-13500).
+- **Unbinned benchmark suite** — Criterion benchmarks in `ns-unbinned/benches/unbinned_nll.rs`: NLL eval, gradient, and full MLE fit for Gaussian+Exponential and Crystal Ball models at 1k/10k/100k events. ~770 M events/s NLL throughput on x86 (fused+SIMD); full 5-param fit in 637 µs at 10k events. Reference comparison doc at `docs/benchmarks/unbinned-benchmark-suite.md`.
+- **Fused CrystalBall+Exponential kernel** — `fused_kernel::fused_cb_exp_nll` extends the fused single-pass path to the CB+Exp topology (second most common in HEP unbinned analyses). Scalar event loop with rayon adaptive parallelism; handles the piecewise tail/core junction with analytical gradients for all 5 shape parameters (mu, sigma, alpha, n, lambda). Topology detection via `CrystalBallPdf::pdf_tag() == "crystal_ball"`. **2.7–5.8× speedup** over generic multi-pass on Apple M5; 3.5× at 100k NLL+grad (478 µs vs 1.66 ms).
+- **Unbinned fused-vs-generic benchmark mode** — `UnbinnedModel::nll_generic()` / `UnbinnedModel::grad_nll_generic()` force the generic multi-pass path for apples-to-apples CPU comparison against the default fused path. Criterion now emits paired entries (`sig_bkg_gaussian_exp` vs `sig_bkg_gaussian_exp_generic`) for both NLL and NLL+grad.
+
+#### Cross-Vertical Statistical Features (ns-inference)
+
+- **Gamma GLM** (`GammaRegressionModel`) — Gamma distribution with log link, shared shape parameter α. Analytical NLL and gradient. For insurance claim amounts, hospital costs, strictly positive continuous responses.
+- **Tweedie GLM** (`TweedieRegressionModel`) — compound Poisson-Gamma with power `p ∈ (1, 2)`, log link. Saddle-point NLL approximation (Dunn & Smyth 2005). Handles exact zeros. For insurance aggregate claims, rainfall, zero-inflated positive continuous data.
+- **GEV distribution** (`GevModel`) — Generalized Extreme Value for block maxima (Fréchet ξ>0, Gumbel ξ≈0, Weibull ξ<0). MLE via L-BFGS-B with analytical gradient. `return_level(T)` for T-block return levels (e.g. 100-year flood). For reinsurance, hydrology, climate extremes.
+- **GPD distribution** (`GpdModel`) — Generalized Pareto for peaks-over-threshold. MLE with analytical gradient. `quantile(p)` for excess quantiles (VaR/ES). For tail risk in finance, reinsurance pricing.
+- **Meta-analysis** (`meta_fixed`, `meta_random`) — fixed-effects (inverse-variance) and random-effects (DerSimonian–Laird) pooling. Heterogeneity: Cochran's Q, I², H², τ². Forest plot data with per-study weights and CIs. For pharma (clinical trial pooling), epidemiology, social science.
+- **Competing risks** (`competing_risks`) — Aalen–Johansen cumulative incidence function (CIF) estimator with delta-method SE and confidence bands. Gray's K-sample test for comparing CIF across groups (competing-risks analogue of log-rank). Fine–Gray subdistribution hazard regression via Newton–Raphson with IPCW weights, standard errors, z-statistics, p-values. For pharma (death from disease vs other causes), insurance (lapse vs death vs disability), epidemiology.
+- **EGARCH(1,1)** (`egarch11_fit`) — Nelson (1991) exponential GARCH with log-variance formulation guaranteeing h_t > 0 without parameter constraints. Magnitude + sign (leverage) decomposition. MLE via L-BFGS-B. For finance (asymmetric volatility), risk management.
+- **GJR-GARCH(1,1)** (`gjr_garch11_fit`) — Glosten–Jagannathan–Runkle (1993) threshold GARCH with indicator-based leverage term (γ·ε²·I(ε<0)). Stationarity guard (α + β + γ/2 < 1). MLE via L-BFGS-B. For finance (bad-news volatility amplification), VaR/ES.
+- **Group sequential testing** (`sequential`) — O'Brien–Fleming and Pocock classical boundaries via bisection. Lan–DeMets alpha-spending with OF-like, Pocock-like, and Hwang–Shih–DeCani(γ) spending functions. `sequential_test()` evaluates observed z-statistics against a design with adjusted p-values. For clinical trials (interim DSMB analyses), A/B testing (valid early stopping).
+- **Chain Ladder + Mack** (`chain_ladder`) — deterministic Chain Ladder with volume-weighted development factors, cumulative factors, and projected triangle. Mack (1993) distribution-free stochastic model: per-origin and total prediction SE, coefficient of variation, normal-approximation prediction intervals, correlated total variance. Bootstrap IBNR via Pearson residual resampling with percentile CIs. For insurance/reinsurance (IBNR reserves), Solvency II / IFRS 17 compliance.
+
+#### WASM Playground
+
+- **Slim 454 KB binary** — stripped Arrow/Parquet from WASM build (`ns-translate` without `arrow-io`), custom `[profile.release-wasm]` with `opt-level = "z"`, `lto = "fat"`, `strip = true`, plus `wasm-opt -Oz`. Down from 5.7 MB to 454 KB.
+- **UI polish** — standard site header with logo, compact single-screen layout, loading spinner on Run button, `⌘+Enter` keyboard shortcut, auto-load simple example on first visit, converged/failed badges in MLE Fit results, subtle fade-in animations on tab switch.
+- **Guided examples** — 4 HistFactory examples (simple counting, shape analysis, multi-channel, discovery) and 3 GLM examples (linear, logistic, Poisson regression) with contextual descriptions. Dropdown filtered by active operation tab — only compatible examples shown.
+- **Auto-run on tab switch** — switching between workspace operations (Brazil Band ↔ Profile Scan ↔ MLE Fit ↔ Hypo Test) auto-runs the new operation on the loaded workspace. GLM ↔ workspace transitions clear the editor to prevent format mismatches.
+- **GLM Regression tab** — new `run_glm()` WASM endpoint exposing linear, logistic, and Poisson regression via L-BFGS-B optimizer. Model/intercept selectors in the UI, parameter table in results. Backed by `ns-inference` `LogDensityModel` trait.
+- **Mass Scan (Type B Brazil Band)** — ATLAS/CMS-style exclusion plot: 95% CL upper limit on μ vs signal peak position with ±1σ/±2σ expected bands. Auto-generates mass hypotheses by redistributing signal across bins via Gaussian kernel, runs full asymptotic CLs at each point. Enable via "Mass Scan (Type B)" checkbox in Brazil Band mode.
+
+#### Inference Server (ns-server)
+
+- **API key authentication** — `--api-keys <file>` or `NS_API_KEYS` env var. Bearer token validation on all endpoints except `GET /v1/health`. Open mode when unconfigured (dev-friendly).
+- **Per-IP rate limiting** — `--rate-limit <N>` (requests/second/IP). Token-bucket with lazy prune. Health endpoint always exempt.
+- **`POST /v1/unbinned/fit`** — unbinned MLE fit endpoint. Accepts `nextstat_unbinned_spec_v0` JSON + `data_root` path, compiles model via `ns-unbinned`, runs L-BFGS fit, returns bestfit/uncertainties/NLL/covariance.
+- **`POST /v1/nlme/fit`** — NLME / PK population fit endpoint. Supports `pk_1cpt` (individual 1-compartment oral PK) and `nlme_1cpt` (population NLME with log-normal random effects, per-subject eta parameters). LLOQ policies: ignore, replace_half, censored.
+- **Async job system** — `POST /v1/jobs/submit` (submit long-running task → `job_id`), `GET /v1/jobs/{id}` (poll status), `DELETE /v1/jobs/{id}` (cancel), `GET /v1/jobs` (list). In-memory store with TTL pruning, cancellation tokens. Currently supports `batch_toys` task type.
+- **`GET /v1/openapi.json`** — OpenAPI 3.1 specification covering all 16 endpoints with schemas, security definitions, and tags. Zero extra dependencies.
+
+#### Survival Analysis (Non-parametric)
+
+- **Kaplan-Meier estimator** — `nextstat.kaplan_meier(times, events, conf_level=0.95)`: non-parametric survival curve with Greenwood variance, log-log transformed confidence intervals, median survival, and number-at-risk table. Validated against R `survival::survfit`.
+- **Log-rank test** — `nextstat.log_rank_test(times, events, groups)`: Mantel-Cox chi-squared test comparing survival distributions of 2+ groups with hypergeometric variance. Validated against R `survival::survdiff`.
+- **CLI: `nextstat survival km`** — Kaplan-Meier from JSON input, `--conf-level` option.
+- **CLI: `nextstat survival log-rank-test`** — Log-rank test from JSON input with per-group observed/expected output.
+
+#### Subscription / Churn Vertical
+
+- **Synthetic SaaS churn dataset** — `nextstat.churn_generate_data()`: deterministic, seeded cohort data with right-censored churn times, plan/region/usage covariates, and treatment assignment. Exponential proportional hazards DGP.
+- **Cohort retention analysis** — `nextstat.churn_retention()`: stratified Kaplan-Meier curves per group + log-rank comparison in a single call.
+- **Churn risk model** — `nextstat.churn_risk_model()`: Cox PH workflow returning hazard ratios with CIs.
+- **Causal uplift** — `nextstat.churn_uplift()`: AIPW-based intervention impact estimation on churn with Rosenbaum sensitivity.
+- **CLI: `nextstat churn generate-data`** — synthetic data generator with `--n-customers`, `--seed`, etc.
+- **CLI: `nextstat churn retention`** — cohort retention analysis from JSON.
+- **CLI: `nextstat churn risk-model`** — Cox PH hazard ratios from JSON.
+- **CLI: `nextstat churn uplift`** — causal uplift from JSON with `--horizon`.
+
+#### CLI
+
+- **`nextstat mass-scan`** — batch asymptotic CLs upper limits across multiple workspaces (Type B Brazil Band). Reads a directory of workspace JSONs (one per mass/signal hypothesis), computes observed + expected (±1σ/±2σ) limits for each, outputs a single JSON with all mass points. `--labels` for custom X-axis labels. Comparable to TRExFitter `Limit` action.
+- **`nextstat significance`** — discovery significance (p₀ and Z-value). Tests the background-only hypothesis (μ=0), reports observed Z, expected Z from Asimov, p₀, and q₀. Comparable to TRExFitter `GetSignificance`.
+- **`nextstat goodness-of-fit`** — saturated-model goodness-of-fit test. Fits the model, computes Poisson deviance χ² between best-fit expected and observed yields, reports χ²/ndof and p-value. Comparable to TRExFitter saturated GoF.
+- **`nextstat combine`** — merge multiple pyhf JSON workspaces into a single combined workspace. Channels are unioned, systematics with the same name are automatically correlated (shared NPs), measurement parameter configs are merged. `--prefix-channels` for auto-prefixing channel names on conflict. Comparable to TRExFitter `MultiFit` combination and `pyhf combine`.
+- **`nextstat fit --asimov`** — blind fit on Asimov (expected) data. Generates expected yields at nominal parameters and replaces observed data before fitting. Comparable to TRExFitter `FitBlind`.
+- **`nextstat viz gammas`** — gammas (staterror / Barlow-Beeston) artifact. Shows postfit γ parameter values with prefit/postfit uncertainties, channel and bin labels. Comparable to TRExFitter gammas plot.
+- **`nextstat viz summary`** — multi-fit μ summary artifact. Takes multiple fit result JSONs and produces POI central values + uncertainties for each. `--labels` for custom labels. Comparable to TRExFitter summary plot in combination papers.
+- **`nextstat viz pie`** — sample composition pie chart artifact per channel. Shows fraction of total expected yield per process. Works at prefit or postfit parameters. Comparable to TRExFitter pie chart.
+- **`nextstat viz separation`** — signal vs background shape comparison per channel. Normalises signal and background to unit area, computes separation metric ∈ [0,1]. Auto-detects signal samples from POI normfactor, or `--signal-samples` for explicit control. Optional `--histfactory-xml` for bin edges. Comparable to TRExFitter separation plot.
+- **`nextstat preprocess smooth`** — native Rust 353QH,twice smoothing for HistoSys templates. Smooths deltas (variation − nominal) preserving nominal shape, optional `--max-variation` cap. No Python dependency. Comparable to ROOT `TH1::Smooth`.
+- **`nextstat preprocess prune`** — native Rust pruning of negligible systematics. Removes HistoSys/NormSys modifiers with max |δ/nominal| below `--threshold` (default 0.5%). No Python dependency. Comparable to TRExFitter pruning.
+
+#### pyhf Feature Parity
+
+- **`Workspace::prune()`** — remove channels, samples, modifiers, or measurement POIs by name. Mirrors `pyhf.Workspace.prune()`.
+- **`Workspace::rename()`** — rename channels, samples, modifiers, or measurement POIs. Mirrors `pyhf.Workspace.rename()`.
+- **`Workspace::sorted()`** — return a workspace with channels, samples, and modifiers sorted by name. Mirrors `pyhf.Workspace.sorted()`.
+- **`Workspace::digest()`** — SHA-256 content digest of the canonicalised workspace JSON. Mirrors `pyhf.Workspace.digest()`.
+- **`Workspace::combine()`** — merge two workspaces with configurable channel join semantics (`None`, `Outer`, `LeftOuter`, `RightOuter`). Mirrors `pyhf.Workspace.combine()`.
+- **`pyhf::simplemodels::uncorrelated_background()`** — quick workspace builder for signal + background with uncorrelated (shapesys) uncertainties. Mirrors `pyhf.simplemodels.uncorrelated_background()`.
+- **`pyhf::simplemodels::correlated_background()`** — quick workspace builder for signal + background with correlated (histosys) uncertainties. Mirrors `pyhf.simplemodels.correlated_background()`.
+- **`pyhf::xml_export::workspace_to_xml()`** — export a pyhf workspace to HistFactory XML format (structural; ROOT histogram file writing is a future enhancement). Mirrors `pyhf json2xml`.
+- **HistoSys interpolation code2** — quadratic interpolation with linear extrapolation for HistoSys modifiers. Scalar, SIMD (`histosys_code2_delta_accumulate`), and tape-based AD paths. Completes code0/code2/code4p coverage.
+- **Test statistics `t_μ` and `t̃_μ`** — `TestStatistic::TMu` (Eq. 8, arXiv:1007.1727) and `TestStatistic::TMuTilde` (Eq. 11) added alongside existing `q_μ` / `q̃_μ`.
+- **`OptimizerStrategy` presets** — `Default` (scipy-like), `MinuitLike` (smooth logistic bounds, higher precision), `HighPrecision` (tightest tolerances). `OptimizerConfig::from_strategy()` constructor.
+- **`docs/pyhf-parity.md`** — comprehensive feature matrix documenting NextStat vs pyhf parity status across all workspace operations, modifier types, interpolation codes, test statistics, optimizer backends, and beyond-pyhf capabilities.
+
+#### Econometrics & Causal Inference (Phase 12)
+
+- **Panel fixed-effects regression** — entity-demeaned ("within") OLS with Liang–Zeger cluster-robust (HC0 sandwich) standard errors. Small-sample correction `G/(G-1) × (N-1)/(N-K)`. `panel_fe_fit()` in Rust, `nextstat.panel_fe()` in Python.
+- **Difference-in-Differences (DiD)** — canonical 2×2 estimator (`did_canonical`) and multi-period event-study specification with leads/lags (`event_study`). Two-way FE demeaning, cluster-robust SE, 95% CI. Python: `nextstat.did()`, `nextstat.event_study()`.
+- **Instrumental Variables / 2SLS** — standard two-stage least squares with first-stage F-statistic, partial R², and Stock–Yogo 10% weak-instrument test. Supports cluster-robust SE. Python: `nextstat.iv_2sls()`.
+- **AIPW (Doubly Robust)** — Augmented Inverse Probability Weighting estimator for ATE. Influence-function SE, propensity score trimming. Python: `nextstat.aipw_ate()`.
+- **Rosenbaum sensitivity analysis** — Wilcoxon signed-rank bounds for matched-pair sensitivity to unobserved confounding. Reports critical Γ at which significance is lost. Python: `nextstat.rosenbaum_bounds()`.
+- **`docs/references/econometrics.md`** — reference documentation with code examples, assumptions table, and limitations.
+
+#### API Stabilization
+
+- **ns-core re-exports** — `LogDensityModel`, `PoiModel`, `FixedParamModel`, `PreparedNll`, `PreparedModelRef` now re-exported from crate root (`ns_core::LogDensityModel` works without `ns_core::traits::*`).
+- **Deprecated `Model` trait** — superseded by `LogDensityModel`. Zero external users; will be removed in 1.0.
+- **Deprecated `FitResult::n_evaluations()`** — use the `n_iter` field directly. Zero callers.
+- **ns-inference re-exports** — added `scan`, `scan_metal`, `NegativeBinomialRegressionModel`, `QualityGates`, `compute_diagnostics`, `quality_summary` to crate root.
+- **`nextstat.unbinned.UnbinnedAnalysis`** — high-level workflow wrapper over `UnbinnedModel`. `UnbinnedAnalysis.from_config(path)` compiles the model; `.fit()`, `.scan(mu_values)`, `.hypotest(mu_test)`, `.hypotest_toys(poi_test)`, `.ranking()`, `.summary()` delegate to the underlying inference functions. `.with_fixed_param()` and `.parameter_index()` for parameter manipulation.
+- **Python `__all__` completeness** — added `volatility`, `UnbinnedModel`, `HybridModel`, `unbinned_hypotest`, `unbinned_hypotest_toys`, `unbinned_profile_scan`, `unbinned_ranking`, `set_threads`, `from_parquet_with_modifiers` to `nextstat.__all__`.
+
+### Fixed
+
+- **L-BFGS steepest-descent fallback** — optimizer now correctly falls back to steepest descent when the L-BFGS update produces a non-descent direction, preventing convergence failures on ill-conditioned problems.
+
+## [0.9.0] — 2026-02-09
+
+### Added
+
+#### Neural Density Estimation
+
+- **Flow PDF** — ONNX-backed normalizing flow as an unbinned PDF. Loads pre-trained flows from `flow_manifest.json` + ONNX models. Supports unconditional and conditional flows with nuisance parameters as context. Spec YAML: `type: flow` / `type: conditional_flow`. Feature-gated: `--features neural`.
+- **DCR Surrogate** — neural Direct Classifier Ratio surrogate replacing binned template morphing. Drop-in replacement for morphing histograms — smooth, continuous, bin-free systematic morphing trained via FAIR-HUC protocol. Spec YAML: `type: dcr_surrogate`.
+- Unbinned spec YAML supports `flow`, `conditional_flow`, and `dcr_surrogate` PDF types with automatic feature gating.
+- **Normalization verification** — Gauss-Legendre quadrature (orders 32–128) for normalization verification and correction of neural PDFs.
+- **Training helpers** — Python scripts for flow training (zuko NSF + ONNX export), DCR distillation from HistFactory templates, and validation (normalization, PIT/KS, closure checks).
+- **Python bindings for FlowPdf / DcrSurrogate** — `nextstat.FlowPdf` and `nextstat.DcrSurrogate` classes exposed in `ns-py` behind `--features neural`. Standalone ONNX flow evaluation from Python: `from_manifest()`, `log_prob_batch()`, `update_normalization()`, `validate_nominal_normalization()`.
+
+#### TRExFitter Importer
+
+- **Full config surface** — `ns-translate` TRExFitter importer now parses the complete config surface:
+  - New block types: `Fit` (FitType/FitRegion/FitBlind/NumCPU/POIAsimov/UseMinos), `Limit` (LimitType/LimitBlind/ConfidenceLevel), `Significance` (SignificanceBlind).
+  - Job-level: `Lumi`, `LumiRelErr`, `MCstatThreshold`, `SystPruningShape`, `SystPruningNorm`, `DebugLevel`, `BlindingType`/`BlindingThreshold`.
+  - Region: `Type` (SIGNAL/CONTROL/VALIDATION), `Label`, `ShortLabel`, `TexLabel`, `LogScale`, `Rebin`, `MCweight`, `AutomaticDropBins`.
+  - Sample: `Title`, `Group`, `NormalizedByTheory`, `LumiScale`, `Exclude`, `IgnoreSelection`, `FillColor`/`LineColor`, `SeparateGammas`, `UseSystematic`.
+  - Systematic: `NuisanceParameter` (custom NP name), `Symmetrisation`, `IsFreeParameter`, `Decorrelate`, `Exclude`/`ExcludeRegion`, `Category`/`SubCategory`, `ReferenceSample`, `ScaleUp`/`ScaleDown`, `PreSmoothing`, `SmoothingOption`.
+  - NormFactor: `Regions` (region-scoped), `Nominal`/`Min`/`Max`, `Constant`, `Expression`, `Category`.
+- **Workspace building** — `NuisanceParameter` wires custom NP names into modifiers; `Exclude`/`ExcludeRegion` on Systematic and `Exclude` on Sample are respected during workspace construction.
+- **Coverage report** — expanded `known_global` and `known_in_block` recognize 150+ TREx config keys including cosmetic/presentation attributes, eliminating false-positive unknown-attr warnings on real-world configs.
+
+#### Documentation
+
+- **Unbinned spec reference** — `docs/references/unbinned-spec.md`: dedicated human-readable reference for `nextstat_unbinned_spec_v0` covering all PDF types, yield expressions, rate modifiers (NormSys + WeightSys), per-event systematics, neural PDFs, and GPU acceleration constraints.
 
 #### GPU Acceleration
 
@@ -14,8 +202,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **Metal (Apple Silicon, f32)** — same fused kernel in MSL. Zero-copy unified memory. NLL parity vs CPU f64: 1.27e-6 relative diff.
   - `nextstat.fit_toys_batch_gpu(model, ..., device="metal")`, `--gpu metal` CLI flag
 - **Apple Accelerate** — vDSP/vForce vectorized NLL on macOS. <5% overhead vs naive summation.
+- **GPU-resident toy pipeline (CUDA)** — `--gpu-sample-toys` now keeps sampled events on the GPU device, eliminating the D2H+H2D round-trip of the large `obs_flat` buffer between sampler and batch fitter.
+- **Flow CUDA EP + zero-copy reduction (CUDA)** — Flow `log_prob` can run on ONNX Runtime CUDA EP with I/O binding so the `float` output stays device-resident and is consumed directly by the GPU NLL reducer (`flow_nll_reduce_f32`, `CudaFlowNllAccelerator::nll_device_ptr_f32`).
+- **Unbinned GPU WeightSys** — `weightsys` rate modifier now lowered to CUDA/Metal kernels (code0/code4p interpolation). Spec YAML: `type: weightsys`, `param`, `lo`, `hi`, optional `interp_code`.
+- **Unbinned observed-data weights (CPU/GPU)** — `channels[].data.weight` can provide finite, non-negative per-event frequency weights (multiply each event’s `-log L` contribution) for both CPU and CUDA/Metal `--gpu` paths.
 - **CPU batch toys** — Rayon-parallel toy fitting with per-thread tape reuse, seed-based reproducibility.
-- Reverse-mode tape optimization: faster gradient computation with reduced memory allocation.
+- **Reverse-mode tape** — faster gradient computation with reduced memory allocation.
 
 #### Differentiable Analysis (PyTorch)
 
@@ -31,7 +223,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `as_tensor()` — DLPack array-API bridge: JAX, CuPy, Arrow, NumPy → `torch.Tensor`.
 - `nextstat.mlops` — fit metrics extraction for W&B / MLflow / Neptune: `metrics_dict(result)`, `significance_metrics(z0)`, `StepTimer`.
 - `nextstat.interpret` — systematic-impact ranking as Feature Importance: `rank_impact(model)`, `rank_impact_df()`, `plot_rank_impact()`.
-- **`nextstat.tools`** — LLM tool definitions (OpenAI function calling, LangChain, MCP) for 7 operations: fit, hypotest, upper_limit, ranking, significance, scan, workspace_audit. `get_toolkit()` returns JSON Schema; `execute_tool(name, args)` bridges agent calls to NextStat.
+- **`nextstat.tools`** — LLM tool definitions (OpenAI function calling, LangChain, MCP) for 9 operations: fit, hypotest, hypotest_toys, upper_limit, ranking, discovery_asymptotic, scan, workspace_audit, read_root_histogram. `get_toolkit()` returns JSON Schema; `execute_tool(name, args)` bridges agent calls to NextStat.
 - **`nextstat.distill`** — surrogate training dataset generator. `generate_dataset(model, n_samples=100k, method="sobol")` produces `(params, NLL, gradient)` tuples. Export to PyTorch `TensorDataset`, `.npz`, or Parquet. Built-in `train_mlp_surrogate()` with Sobolev loss.
 - Fit convergence check: returns error if GPU profile fit fails to converge.
 
@@ -86,7 +278,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - HEPData patchset support: `nextstat import patchset`, Python `nextstat.apply_patchset()`.
 - **Arrow / Polars ingestion** — `nextstat.from_arrow(table)` creates a HistFactoryModel from PyArrow Table, RecordBatch, or any Arrow-compatible source (Polars, DuckDB, Spark). `nextstat.from_parquet(path)` reads Parquet directly.
 - **Arrow export** — `nextstat.to_arrow(model, what="yields"|"params")` exports expected yields or parameter metadata as a PyArrow Table. Uses Arrow IPC bridge (zero pyo3 version conflicts).
+- **`nextstat convert`** — ROOT TTree → Parquet CLI. Observable bounds (`--observable mass:100:180`), selection expressions, per-event weights, and `--max-events` truncation. Writes `nextstat_unbinned_events_v1` schema with Zstd compression.
+- **Modifier table schema (v2)** — binned Parquet now round-trips full HistFactory workspaces: yields table + modifiers table. All 7 modifier types (normfactor, normsys, histosys, shapesys, shapefactor, staterror, lumi). `workspace_to_parquet()` / `from_parquet_with_modifiers()`.
+- **Fit results → Parquet** — `toy_results_to_parquet()` and `scan_points_to_parquet()` export batch toy fits and profile scan points as compact Parquet files queryable via DuckDB/Polars.
+- **EventStore Parquet I/O** — `EventStore::from_parquet(path)` / `EventStore::to_parquet(path)` for unbinned event data with observable metadata preserved in Parquet footer key-value pairs.
+- **High-performance Parquet reads** — `memmap2`-backed zero-copy reader (`read_parquet_mmap`), row group predicate pushdown via min/max statistics (`ColumnBound` + `read_parquet_mmap_filtered`), and parallel row group decode with rayon (`read_parquet_mmap_parallel`). Criterion benchmark suite in `benches/parquet_read.rs`.
+- **Direct-to-GPU Parquet** — `read_parquet_events_soa()` produces GPU-ready SoA f64 layout combining mmap + pushdown + parallel decode. `cuda_parquet::upload_events_to_cuda()` uploads SoA directly to `CudaSlice<f64>`. `metal_parquet::upload_events_to_metal()` converts f64→f32 and uploads to `MTLBuffer`. Both support per-event weights and observable bounds.
 - **ConstraintTerm semantics** — LogNormal alpha-transform (`normsys_alpha_effective`), Gamma constraint for ShapeSys, Uniform and NoConstraint handling. Parsed from `<ConstraintTerm>` metadata in HistFactory XML.
+
+#### Unbinned Likelihood
+
+- **Product PDF** — joint likelihood over independent observables: `log p(x,y) = log p₁(x) + log p₂(y)`. Enables multi-observable unbinned fits without manual factorization.
+- **Spline PDF** — monotonic cubic Hermite (Fritsch–Carlson) interpolation from user-specified knot positions and density values. Analytically normalized, inverse-CDF sampling for toys.
+- **Multi-dimensional KDE** — 2-D/3-D Gaussian kernel density estimator with Silverman bandwidth, truncated on bounded observable support.
+- **ARGUS PDF** — ARGUS background shape for B-meson spectroscopy. Gauss-Legendre normalization on bounded support.
+- **Voigtian PDF** — pseudo-Voigt (Thompson–Cox–Hastings) resonance line shape. Gaussian ⊗ Breit-Wigner convolution for resonance + detector resolution modeling.
+- Normalization integrals are cached across optimizer iterations, avoiding redundant quadrature when parameters haven't changed.
+- **Flow PDF integration tests** — ONNX-backed normalizing flow verified against analytical standard normal: log-prob, sampling, normalization, and per-event baseline comparison with parametric Gaussian.
+- **GPU flow NLL reduction** — CUDA kernel for extended unbinned likelihood from externally-computed log-prob values (flow PDFs). Supports multi-process logsumexp reduction, Gaussian constraints, and both host-upload and device-resident (ONNX CUDA EP) input paths.
+- **GPU flow session** — orchestrates flow PDF evaluation (CPU or CUDA EP) with GPU NLL reduction. Central finite-difference gradient, yield computation from parameter vector, and Gaussian constraint handling.
 
 #### Report System
 
@@ -119,13 +329,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **Panel FE** with 1-way cluster SE.
 - **DiD TWFE** + event-study helpers.
 - **IV / 2SLS** with weak-IV diagnostics (first-stage F, partial R²).
-- **AIPW** for ATE/ATT + E-value helper. Propensity scores, IPW weights, overlap diagnostics.
+- **AIPW** for ATE/ATT + E-value helper. Propensity scores, IPW weights, overlap diagnostics. Python: `nextstat.causal.aipw()`, `nextstat.causal.propensity_scores()`.
+- **GARCH / Stochastic Volatility** — GARCH(1,1) and stochastic volatility models for financial time series. CLI: `nextstat volatility fit`, `nextstat volatility forecast`. Python: `nextstat.volatility.garch()`, `nextstat.volatility.sv()`.
 
 #### Pharmacometrics
 
 - RK4 integrator for linear ODE systems.
 - One-compartment oral PK model with LLOQ censoring.
 - NLME extension with per-subject random effects.
+- **Error model enum** — `ErrorModel::Additive`, `Proportional`, `Combined(σ_add, σ_prop)` with variance, NLL, and gradient helpers. All PK models now accept an error model instead of a fixed σ. Backward-compatible constructors preserved.
+- **2-compartment PK models** — `TwoCompartmentIvPkModel` (IV bolus, 4 params: CL, V1, V2, Q) and `TwoCompartmentOralPkModel` (oral first-order absorption, 5 params: CL, V1, V2, Q, Ka). Analytical bi/tri-exponential solutions with eigenvalue decomposition. LLOQ handling and all three error models supported.
+- **Dosing regimen** — `DosingRegimen` struct supporting IV bolus, oral, and IV infusion dose events. Single-dose, repeated-dose, and mixed-route schedules. Concentration-time profiles via superposition for 1-compartment and 2-compartment models. Closed-form infusion solutions (during + post-infusion phases).
+- **NONMEM dataset reader** — `NonmemDataset::from_csv()` parses standard NONMEM-format CSV files (ID, TIME, DV, AMT, EVID, MDV, CMT, RATE columns). Auto-infers EVID/MDV when omitted. Converts dosing records to `DosingRegimen` per subject (CMT=1 → oral, CMT=2 → IV bolus/infusion). Extracts observation data for model fitting.
+- **FOCE/FOCEI estimation** — `FoceEstimator` implements First-Order Conditional Estimation for population PK. Two-level optimization: per-subject ETA optimization (damped Newton-Raphson) + population parameter updates (EM-like alternation with analytical Ω update). Laplace approximation with ridge-regularized Hessian. `FoceEstimator::focei()` / `FoceEstimator::foce()` constructors.
+- **Correlated random effects** — `OmegaMatrix` stores the full Ω variance–covariance matrix via Cholesky factor L (Ω = L·Lᵀ, always positive-definite). Constructors: `from_diagonal()`, `from_correlation()`, `from_covariance()`, `from_cholesky()`. Efficient `inv_quadratic()` and `log_det()` via forward-substitution. `FoceEstimator::fit_1cpt_oral_correlated()` fits with full Ω; `FoceResult` now includes `omega_matrix` and `correlation` fields.
+- **Stepwise Covariate Modeling (SCM)** — `ScmEstimator` implements forward selection + backward elimination of covariate–parameter relationships using ΔOFV (χ²(1) likelihood ratio test). Power, proportional, and exponential covariate relationships on CL/V/Ka. Configurable α thresholds (default: forward 0.05, backward 0.01). Returns full audit trace with per-step ΔOFV, p-values, and coefficients.
+- **VPC and GOF diagnostics** — `vpc_1cpt_oral()` runs Visual Predictive Checks: simulates N replicates from fitted model, bins by time, computes observed vs simulated quantile prediction intervals. `gof_1cpt_oral()` computes PRED, IPRED, IWRES, and CWRES per observation. Configurable quantiles, bin count, and PI level.
+- **Pharma benchmark suite** — synthetic datasets mimicking Warfarin (32 subjects, rich sampling), Theophylline (12 subjects, sparse), and Phenobarbital (40 neonates). Parameter recovery validation with FOCE fit, GOF diagnostics, and VPC for each. Includes correlated-Ω Warfarin variant (CL–V correlation). `cargo test --test pharma_benchmark`.
+- **NLME artifact schema (v2.0.0)** — `NlmeArtifact` wraps all estimation results (fixed effects, random effects covariance + correlation, SCM trace, VPC/GOF) into a single JSON-serializable structure. CSV exports for fixed effects, random effects, GOF records, VPC bins, and SCM trace. Optional sections omitted when unused.
+- **Run bundle (provenance)** — `RunBundle` captures NextStat version, git revision, Rust toolchain, OS/CPU, random seeds, dataset provenance (label + hash + counts), and reference tool versions. Attached to `NlmeArtifact` for reproducible benchmark runs.
+- **SAEM algorithm** — `SaemEstimator` implements Stochastic Approximation EM for NLME (Monolix-class). Metropolis-Hastings E-step with adaptive proposal variance, stochastic approximation with configurable burn-in/estimation phases, closed-form M-step for θ and Ω. Returns `FoceResult`-compatible output plus `SaemDiagnostics` (acceptance rates, OFV trace). Supports diagonal and correlated Ω.
+- **PD models** — `EmaxModel` (direct effect), `SigmoidEmaxModel` (Hill equation with configurable γ), and `IndirectResponseModel` (Types I–IV: inhibit/stimulate production/loss). ODE-based IDR models use the adaptive RK45 solver. `PkPdLink` interpolates PK concentration profiles for PD integration. All models include `predict()`, `gradient()`, and `nll()` methods.
+- **Adaptive ODE solvers** — `rk45()` (Dormand–Prince 4(5) with PI step-size control) for non-stiff PK/PD systems and `esdirk4()` (L-stable SDIRK2 with Newton iteration) for stiff systems (transit compartments with ktr > 100). Generic `OdeSystem` trait for user-defined RHS. `solve_at_times()` convenience for output interpolation.
 
 #### Applied Statistics API
 
@@ -146,6 +371,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - `nextstat viz distributions`, `viz pulls`, `viz corr`, `viz ranking` subcommands.
 - Kalman: `plot_kalman_states()`, `plot_forecast_bands()`.
 
+#### Pure-Rust Zstd Codec (`ns-zstd`)
+
+- **`ns-zstd` crate** — pure-Rust Zstd decompressor and compressor for ROOT file I/O. Zero C dependency — enables WASM and embedded targets. Supports compression levels 1–19 with FSE (Finite State Entropy) and Huffman entropy coding. Decode output matches `libzstd` byte-for-byte (verified via fixture tests). Hash-chain match finder with configurable search depth.
+
+#### R Bindings
+
+- **`nextstat` R package** — native R interface via `extendr` (`bindings/ns-r/`). 11 exported functions: `nextstat_fit()`, `nextstat_hypotest()`, `nextstat_upper_limit()` (HistFactory), `nextstat_glm_logistic()`, `nextstat_glm_poisson()`, `nextstat_glm_negbin()` (GLM), `nextstat_kalman()`, `nextstat_garch()`, `nextstat_sv()` (time series), `ns_normal_logpdf()`, `ns_ols_fit()` (core).
+- **CRAN preparation** — roxygen2 documentation for all 11 functions, testthat test suite (48 assertions), `configure` script (Rust ≥ 1.85 detection), getting-started vignette, NEWS.md, CRAN-compliant LICENSE and DESCRIPTION.
+
 #### CLI & Infrastructure
 
 - Structured logging (`--log-level`), reproducible run bundles (`--bundle`).
@@ -160,6 +394,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ### Fixed
 
+- End-to-end discovery script (`e2e_discovery.py`): fixed `--no-deterministic` flag handling. Script now correctly writes `summary.json` and `summary.md`.
 - CUDA batch toys (`--gpu cuda`) crash when some toys converge before others.
 - GPU profiled session (`ProfiledDifferentiableSession`) convergence failure near parameter bounds.
 - Optimizer early-stop with negative NLL (`target_cost(0.0)` removed).

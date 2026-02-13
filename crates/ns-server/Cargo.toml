@@ -20,6 +20,7 @@ ns-core.workspace = true
 ns-compute.workspace = true
 ns-inference = { workspace = true }
 ns-translate.workspace = true
+ns-unbinned.workspace = true
 axum.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
@@ -39,3 +40,5 @@ cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
 
 [dev-dependencies]
+tower = "0.5"
+http-body-util = "0.1"

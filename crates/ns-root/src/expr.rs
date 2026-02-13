@@ -544,11 +544,11 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 stack.push(vars[i]);
             }
             Instr::Neg => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(-a);
             }
             Instr::Not => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 // ROOT/TTreeFormula truthiness: non-zero is true (including negative and NaN).
                 stack.push(if a != 0.0 { 0.0 } else { 1.0 });
             }
@@ -567,31 +567,31 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
             Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
             Instr::Abs => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.abs());
             }
             Instr::Sqrt => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.sqrt());
             }
             Instr::Log => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.ln());
             }
             Instr::Log10 => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.log10());
             }
             Instr::Exp => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.exp());
             }
             Instr::Sin => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.sin());
             }
             Instr::Cos => {
-                let a = stack.pop().unwrap();
+                let a = stack.pop().unwrap_or(f64::NAN);
                 stack.push(a.cos());
             }
             Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
@@ -599,7 +599,7 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
             Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
             Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
             Instr::AndSc { rhs_len } => {
-                let lhs = stack.pop().unwrap();
+                let lhs = stack.pop().unwrap_or(f64::NAN);
                 // ROOT/TTreeFormula truthiness: non-zero is true (including NaN).
                 if lhs == 0.0 {
                     stack.push(0.0);
@@ -613,7 +613,7 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 continue;
             }
             Instr::OrSc { rhs_len } => {
-                let lhs = stack.pop().unwrap();
+                let lhs = stack.pop().unwrap_or(f64::NAN);
                 if lhs != 0.0 {
                     stack.push(1.0);
                 } else {
@@ -626,19 +626,19 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
                 continue;
             }
             Instr::Select => {
-                let else_val = stack.pop().unwrap();
-                let then_val = stack.pop().unwrap();
-                let mask = stack.pop().unwrap();
+                let else_val = stack.pop().unwrap_or(f64::NAN);
+                let then_val = stack.pop().unwrap_or(f64::NAN);
+                let mask = stack.pop().unwrap_or(f64::NAN);
                 stack.push(if mask != 0.0 { then_val } else { else_val });
             }
             Instr::DynLoad(_) => {
                 // DynLoad requires jagged data context — not available in plain row eval.
                 // Pop the index and push NaN as a sentinel.
-                let _idx = stack.pop().unwrap();
+                let _idx = stack.pop().unwrap_or(f64::NAN);
                 stack.push(f64::NAN);
             }
             Instr::Jz(target) => {
-                let c = stack.pop().unwrap();
+                let c = stack.pop().unwrap_or(f64::NAN);
                 // Jump if condition is falsey (zero). NaN is truthy in ROOT/TTreeFormula.
                 if c == 0.0 {
                     ip = target;
@@ -656,8 +656,8 @@ fn eval_bytecode_row(code: &[Instr], vars: &[f64]) -> f64 {
 }
 
 fn bin2(stack: &mut Vec<f64>, f: impl FnOnce(f64, f64) -> f64) {
-    let b = stack.pop().unwrap();
-    let a = stack.pop().unwrap();
+    let b = stack.pop().unwrap_or(f64::NAN);
+    let a = stack.pop().unwrap_or(f64::NAN);
     stack.push(f(a, b));
 }
 
@@ -697,11 +697,11 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 Instr::Const(v) => stack.push(v),
                 Instr::Load(i) => stack.push(cols[i][row]),
                 Instr::Neg => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(-a);
                 }
                 Instr::Not => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(if a != 0.0 { 0.0 } else { 1.0 });
                 }
                 Instr::Add => bin2(&mut stack, |a, b| a + b),
@@ -719,31 +719,31 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 Instr::Gt => bin2(&mut stack, |a, b| if a > b { 1.0 } else { 0.0 }),
                 Instr::Ge => bin2(&mut stack, |a, b| if a >= b { 1.0 } else { 0.0 }),
                 Instr::Abs => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.abs());
                 }
                 Instr::Sqrt => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.sqrt());
                 }
                 Instr::Log => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.ln());
                 }
                 Instr::Log10 => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.log10());
                 }
                 Instr::Exp => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.exp());
                 }
                 Instr::Sin => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.sin());
                 }
                 Instr::Cos => {
-                    let a = stack.pop().unwrap();
+                    let a = stack.pop().unwrap_or(f64::NAN);
                     stack.push(a.cos());
                 }
                 Instr::Pow => bin2(&mut stack, |a, b| a.powf(b)),
@@ -751,7 +751,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                 Instr::Min => bin2(&mut stack, |a, b| a.min(b)),
                 Instr::Max => bin2(&mut stack, |a, b| a.max(b)),
                 Instr::AndSc { rhs_len } => {
-                    let lhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap_or(f64::NAN);
                     if lhs == 0.0 {
                         stack.push(0.0);
                     } else {
@@ -774,7 +774,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                     continue;
                 }
                 Instr::OrSc { rhs_len } => {
-                    let lhs = stack.pop().unwrap();
+                    let lhs = stack.pop().unwrap_or(f64::NAN);
                     if lhs != 0.0 {
                         stack.push(1.0);
                     } else {
@@ -795,13 +795,13 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                     continue;
                 }
                 Instr::Select => {
-                    let else_val = stack.pop().unwrap();
-                    let then_val = stack.pop().unwrap();
-                    let mask = stack.pop().unwrap();
+                    let else_val = stack.pop().unwrap_or(f64::NAN);
+                    let then_val = stack.pop().unwrap_or(f64::NAN);
+                    let mask = stack.pop().unwrap_or(f64::NAN);
                     stack.push(if mask != 0.0 { then_val } else { else_val });
                 }
                 Instr::Jz(target) => {
-                    let c = stack.pop().unwrap();
+                    let c = stack.pop().unwrap_or(f64::NAN);
                     if c == 0.0 {
                         ip = target;
                         continue;
@@ -812,7 +812,7 @@ fn eval_bytecode_bulk_rowwise(code: &[Instr], cols: &[&[f64]], jagged: &[&Jagged
                     continue;
                 }
                 Instr::DynLoad(id) => {
-                    let idx_f = stack.pop().unwrap();
+                    let idx_f = stack.pop().unwrap_or(f64::NAN);
                     let Some(j) = jagged.get(id) else {
                         // Missing jagged context (caller bug): keep NaN as a sentinel.
                         stack.push(f64::NAN);
@@ -863,6 +863,14 @@ struct BulkEvalState<'a> {
 // ── SIMD helpers (optional) ─────────────────────────────────────
 
 #[cfg(target_arch = "aarch64")]
+/// NEON SIMD helpers for vectorised element-wise arithmetic on `f64` slices.
+///
+/// # Safety
+///
+/// All public `unsafe fn` in this module require:
+/// - `lhs` and `rhs` (when present) must be valid, non-overlapping slices.
+/// - For two-operand functions, `lhs.len() == rhs.len()`.
+/// - The target must support NEON (guaranteed on aarch64).
 mod simd_arm {
     use std::arch::aarch64::*;
 
@@ -1645,7 +1653,10 @@ impl<'a> BulkEvalState<'a> {
     }
 
     fn pop(&mut self) -> Slot<'a> {
-        let idx = self.stack.pop().unwrap();
+        let idx = match self.stack.pop() {
+            Some(i) => i,
+            None => return Slot::Scalar(f64::NAN),
+        };
         self.slots[idx]
     }
 

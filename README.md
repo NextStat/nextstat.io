@@ -12,9 +12,9 @@ NextStat is a high-performance statistical fitting toolkit for High Energy Physi
 - **Task:** CLs via toy-based q~_mu
 - **Load:** 10,000 toys (b-only) + 10,000 toys (s+b)
 - **Machine:** Apple M5 (arm64), macOS-26.2-arm64-arm-64bit-Mach-O
-- **Versions:** nextstat 0.1.0, pyhf 0.7.6, Python 3.13.11
+- **Versions:** nextstat 0.9.0, pyhf 0.7.6, Python 3.13.11
 - **Recorded:** 2026-02-07 (UTC)
-- **Commit:** 88d57856
+- **Commit:** 88d57856 (benchmark snapshot)
 
 | Tool | Wall time | Speedup |
 |---|---:|---:|
@@ -65,8 +65,8 @@ pip install nextstat
 ### Build From Source
 
 ```bash
-git clone https://github.com/nextstat/nextstat.git
-cd nextstat
+git clone https://github.com/NextStat/nextstat.io.git
+cd nextstat.io
 
 # Rust workspace
 cargo build --release
@@ -262,6 +262,7 @@ nextstat version
 - Tutorial index: `docs/tutorials/README.md`
 - Python API reference: `docs/references/python-api.md`
 - Rust API reference: `docs/references/rust-api.md`
+- R Bindings reference: `docs/references/r-bindings.md`
 - CLI reference: `docs/references/cli.md`
 - Playground (browser/WASM): `docs/references/playground.md` (and `playground/README.md`)
 
@@ -296,13 +297,19 @@ nextstat/
 │   ├── ns-core/         # Core types, traits, error handling
 │   ├── ns-compute/      # SIMD kernels, Apple Accelerate, CUDA/Metal batch NLL+grad
 │   ├── ns-ad/           # Automatic differentiation (dual/tape)
+│   ├── ns-prob/         # Probability distributions and math (logpdf, cdf, transforms)
 │   ├── ns-root/         # Native ROOT file reader (TH1, TTree, expressions, filler)
 │   ├── ns-translate/    # Format translators (pyhf, HS3, HistFactory XML, ntuple builder)
+│   ├── ns-unbinned/     # Unbinned (event-level) likelihood models and PDFs
 │   ├── ns-inference/    # MLE, NUTS, CLs, GLM, time series, PK/NLME
 │   ├── ns-viz/          # Visualization artifacts
+│   ├── ns-server/       # Self-hosted GPU inference API (axum, REST)
+│   ├── ns-zstd/         # High-performance pure-Rust Zstd decoder (fork of ruzstd)
 │   └── ns-cli/          # CLI binary
 ├── bindings/
-│   └── ns-py/           # Python bindings (PyO3/maturin)
+│   ├── ns-py/           # Python bindings (PyO3/maturin)
+│   ├── ns-wasm/         # WASM bindings (browser playground)
+│   └── ns-r/            # R bindings (experimental)
 ├── docs/
 │   ├── legal/
 │   ├── plans/
@@ -317,6 +324,7 @@ nextstat/
 - Rust 1.93+ (edition 2024)
 - Python 3.11+ (for bindings)
 - maturin (for Python bindings)
+- R 4.1+ (optional, for `bindings/ns-r`)
 
 ### Build and Test
 
@@ -413,4 +421,4 @@ NextStat uses a dual-licensing model:
 ## Contact
 
 - Website: https://nextstat.io
-- GitHub: https://github.com/nextstat/nextstat
+- GitHub: https://github.com/NextStat/nextstat.io

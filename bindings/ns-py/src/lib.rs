@@ -20,16 +20,25 @@ use std::collections::HashMap;
 
 // Re-export types from core crates
 use ns_ad::tape::Tape as AdTape;
-use ns_core::traits::{LogDensityModel, PreparedNll};
+use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel, PreparedNll};
 use ns_core::{Error as NsError, Result as NsResult};
 use ns_inference::OptimizerConfig;
 use ns_inference::chain::{Chain as RustChain, SamplerResult as RustSamplerResult};
+use ns_inference::chain_ladder::{
+    ClaimsTriangle, chain_ladder as rust_chain_ladder, mack_chain_ladder as rust_mack_chain_ladder,
+};
 use ns_inference::diagnostics::{QualityGates, compute_diagnostics, quality_summary};
+use ns_inference::eight_schools::EightSchoolsModel as RustEightSchoolsModel;
+use ns_inference::evt::{GevModel as RustGevModel, GpdModel as RustGpdModel};
+use ns_inference::hybrid::{HybridLikelihood, SharedParameterMap};
 use ns_inference::lmm::{
     LmmMarginalModel as RustLmmMarginalModel, RandomEffects as RustLmmRandomEffects,
 };
+use ns_inference::meta_analysis::{
+    StudyEffect as RustStudyEffect, meta_fixed as rust_meta_fixed, meta_random as rust_meta_random,
+};
 use ns_inference::mle::{MaximumLikelihoodEstimator as RustMLE, RankingEntry};
-use ns_inference::nuts::{NutsConfig, sample_nuts};
+use ns_inference::nuts::{InitStrategy, NutsConfig, sample_nuts};
 use ns_inference::optimizer::OptimizationResult as RustOptimizationResult;
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
 use ns_inference::timeseries::em::{
@@ -47,7 +56,15 @@ use ns_inference::timeseries::simulate::{
     kalman_simulate as rust_kalman_simulate,
     kalman_simulate_with_x0 as rust_kalman_simulate_with_x0,
 };
+use ns_inference::timeseries::volatility::{
+    Garch11Config as RustGarch11Config, SvLogChi2Config as RustSvLogChi2Config,
+    garch11_fit as rust_garch11_fit, sv_logchi2_fit as rust_sv_logchi2_fit,
+};
 use ns_inference::transforms::ParameterTransform;
+use ns_inference::tweedie::{
+    GammaRegressionModel as RustGammaRegressionModel,
+    TweedieRegressionModel as RustTweedieRegressionModel,
+};
 use ns_inference::{
     ComposedGlmModel as RustComposedGlmModel, CoxPhModel as RustCoxPhModel, CoxTies as RustCoxTies,
     ExponentialSurvivalModel as RustExponentialSurvivalModel,
@@ -67,6 +84,10 @@ use ns_translate::pyhf::{
     ExpectedChannelSampleYields, ExpectedSampleYields, HistFactoryModel as RustModel,
     ObservedChannelData, Workspace as RustWorkspace,
 };
+use ns_unbinned::UnbinnedModel as RustUnbinnedModel;
+use ns_unbinned::spec as unbinned_spec;
+
+type RustHybridModel = HybridLikelihood<RustModel, RustUnbinnedModel>;
 use ns_viz::{ClsCurveArtifact, ProfileCurveArtifact};
 
 fn extract_f64_vec(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
@@ -96,11 +117,12 @@ fn sample_nuts_multichain_with_seeds(
     seeds: &[u64],
     config: NutsConfig,
 ) -> NsResult<RustSamplerResult> {
-    let mut chains: Vec<RustChain> = Vec::with_capacity(seeds.len());
-    for &seed in seeds {
-        let chain = sample_nuts(model, n_warmup, n_samples, seed, config.clone())?;
-        chains.push(chain);
-    }
+    use rayon::prelude::*;
+    let chains: Vec<NsResult<RustChain>> = seeds
+        .par_iter()
+        .map(|&seed| sample_nuts(model, n_warmup, n_samples, seed, config.clone()))
+        .collect();
+    let chains: Vec<RustChain> = chains.into_iter().collect::<NsResult<Vec<_>>>()?;
     Ok(RustSamplerResult {
         chains,
         param_names: model.parameter_names(),
@@ -135,11 +157,13 @@ fn sampler_result_to_py<'py>(
     let accept_prob: Vec<Vec<f64>> = result.chains.iter().map(|c| c.accept_probs.clone()).collect();
     let energy: Vec<Vec<f64>> = result.chains.iter().map(|c| c.energies.clone()).collect();
     let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
+    let n_leapfrog: Vec<Vec<usize>> = result.chains.iter().map(|c| c.n_leapfrog.clone()).collect();
     sample_stats.set_item("diverging", diverging)?;
     sample_stats.set_item("tree_depth", tree_depth)?;
     sample_stats.set_item("accept_prob", accept_prob)?;
     sample_stats.set_item("energy", energy)?;
     sample_stats.set_item("step_size", step_sizes)?;
+    sample_stats.set_item("n_leapfrog", n_leapfrog)?;
 
     // Build "diagnostics" dict
     let diagnostics_dict = PyDict::new(py);
@@ -266,9 +290,11 @@ fn dmatrix_to_nested(m: &DMatrix<f64>) -> Vec<Vec<f64>> {
 // Bayesian posterior surface (Phase 3/5 standards: explicit Posterior API).
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum PosteriorModel {
     HistFactory(RustModel),
+    Unbinned(RustUnbinnedModel),
+    Hybrid(RustHybridModel),
     GaussianMean(GaussianMeanModel),
     Funnel(FunnelModel),
     StdNormal(StdNormalModel),
@@ -286,12 +312,19 @@ enum PosteriorModel {
     CoxPh(RustCoxPhModel),
     OneCompartmentOralPk(RustOneCompartmentOralPkModel),
     OneCompartmentOralPkNlme(RustOneCompartmentOralPkNlmeModel),
+    GammaRegression(RustGammaRegressionModel),
+    TweedieRegression(RustTweedieRegressionModel),
+    Gev(RustGevModel),
+    Gpd(RustGpdModel),
+    EightSchools(RustEightSchoolsModel),
 }
 
 impl PosteriorModel {
     fn dim(&self) -> usize {
         match self {
             PosteriorModel::HistFactory(m) => m.dim(),
+            PosteriorModel::Unbinned(m) => m.dim(),
+            PosteriorModel::Hybrid(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
             PosteriorModel::Funnel(m) => m.dim(),
             PosteriorModel::StdNormal(m) => m.dim(),
@@ -309,12 +342,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.dim(),
             PosteriorModel::OneCompartmentOralPk(m) => m.dim(),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.dim(),
+            PosteriorModel::GammaRegression(m) => m.dim(),
+            PosteriorModel::TweedieRegression(m) => m.dim(),
+            PosteriorModel::Gev(m) => m.dim(),
+            PosteriorModel::Gpd(m) => m.dim(),
+            PosteriorModel::EightSchools(m) => m.dim(),
         }
     }
 
     fn parameter_names(&self) -> Vec<String> {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_names(),
+            PosteriorModel::Unbinned(m) => m.parameter_names(),
+            PosteriorModel::Hybrid(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
             PosteriorModel::Funnel(m) => m.parameter_names(),
             PosteriorModel::StdNormal(m) => m.parameter_names(),
@@ -332,12 +372,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.parameter_names(),
             PosteriorModel::OneCompartmentOralPk(m) => m.parameter_names(),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_names(),
+            PosteriorModel::GammaRegression(m) => m.parameter_names(),
+            PosteriorModel::TweedieRegression(m) => m.parameter_names(),
+            PosteriorModel::Gev(m) => m.parameter_names(),
+            PosteriorModel::Gpd(m) => m.parameter_names(),
+            PosteriorModel::EightSchools(m) => m.parameter_names(),
         }
     }
 
     fn parameter_bounds(&self) -> Vec<(f64, f64)> {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_bounds(),
+            PosteriorModel::Unbinned(m) => m.parameter_bounds(),
+            PosteriorModel::Hybrid(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
             PosteriorModel::Funnel(m) => m.parameter_bounds(),
             PosteriorModel::StdNormal(m) => m.parameter_bounds(),
@@ -355,12 +402,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.parameter_bounds(),
             PosteriorModel::OneCompartmentOralPk(m) => m.parameter_bounds(),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_bounds(),
+            PosteriorModel::GammaRegression(m) => m.parameter_bounds(),
+            PosteriorModel::TweedieRegression(m) => m.parameter_bounds(),
+            PosteriorModel::Gev(m) => m.parameter_bounds(),
+            PosteriorModel::Gpd(m) => m.parameter_bounds(),
+            PosteriorModel::EightSchools(m) => m.parameter_bounds(),
         }
     }
 
     fn parameter_init(&self) -> Vec<f64> {
         match self {
             PosteriorModel::HistFactory(m) => m.parameter_init(),
+            PosteriorModel::Unbinned(m) => m.parameter_init(),
+            PosteriorModel::Hybrid(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
             PosteriorModel::Funnel(m) => m.parameter_init(),
             PosteriorModel::StdNormal(m) => m.parameter_init(),
@@ -378,12 +432,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.parameter_init(),
             PosteriorModel::OneCompartmentOralPk(m) => m.parameter_init(),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_init(),
+            PosteriorModel::GammaRegression(m) => m.parameter_init(),
+            PosteriorModel::TweedieRegression(m) => m.parameter_init(),
+            PosteriorModel::Gev(m) => m.parameter_init(),
+            PosteriorModel::Gpd(m) => m.parameter_init(),
+            PosteriorModel::EightSchools(m) => m.parameter_init(),
         }
     }
 
     fn nll(&self, params: &[f64]) -> NsResult<f64> {
         match self {
             PosteriorModel::HistFactory(m) => m.nll(params),
+            PosteriorModel::Unbinned(m) => m.nll(params),
+            PosteriorModel::Hybrid(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
             PosteriorModel::Funnel(m) => m.nll(params),
             PosteriorModel::StdNormal(m) => m.nll(params),
@@ -401,12 +462,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.nll(params),
             PosteriorModel::OneCompartmentOralPk(m) => m.nll(params),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.nll(params),
+            PosteriorModel::GammaRegression(m) => m.nll(params),
+            PosteriorModel::TweedieRegression(m) => m.nll(params),
+            PosteriorModel::Gev(m) => m.nll(params),
+            PosteriorModel::Gpd(m) => m.nll(params),
+            PosteriorModel::EightSchools(m) => m.nll(params),
         }
     }
 
     fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
         match self {
             PosteriorModel::HistFactory(m) => m.grad_nll(params),
+            PosteriorModel::Unbinned(m) => m.grad_nll(params),
+            PosteriorModel::Hybrid(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
             PosteriorModel::Funnel(m) => m.grad_nll(params),
             PosteriorModel::StdNormal(m) => m.grad_nll(params),
@@ -424,12 +492,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => m.grad_nll(params),
             PosteriorModel::OneCompartmentOralPk(m) => m.grad_nll(params),
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.grad_nll(params),
+            PosteriorModel::GammaRegression(m) => m.grad_nll(params),
+            PosteriorModel::TweedieRegression(m) => m.grad_nll(params),
+            PosteriorModel::Gev(m) => m.grad_nll(params),
+            PosteriorModel::Gpd(m) => m.grad_nll(params),
+            PosteriorModel::EightSchools(m) => m.grad_nll(params),
         }
     }
 
     fn fit_mle(&self, mle: &RustMLE) -> NsResult<ns_core::FitResult> {
         match self {
             PosteriorModel::HistFactory(m) => mle.fit(m),
+            PosteriorModel::Unbinned(m) => mle.fit(m),
+            PosteriorModel::Hybrid(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
             PosteriorModel::Funnel(m) => mle.fit(m),
             PosteriorModel::StdNormal(m) => mle.fit(m),
@@ -447,12 +522,19 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => mle.fit(m),
             PosteriorModel::OneCompartmentOralPk(m) => mle.fit(m),
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit(m),
+            PosteriorModel::GammaRegression(m) => mle.fit(m),
+            PosteriorModel::TweedieRegression(m) => mle.fit(m),
+            PosteriorModel::Gev(m) => mle.fit(m),
+            PosteriorModel::Gpd(m) => mle.fit(m),
+            PosteriorModel::EightSchools(m) => mle.fit(m),
         }
     }
 
     fn fit_mle_from(&self, mle: &RustMLE, init_pars: &[f64]) -> NsResult<ns_core::FitResult> {
         match self {
             PosteriorModel::HistFactory(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::Unbinned(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::Hybrid(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GaussianMean(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Funnel(m) => mle.fit_from(m, init_pars),
             PosteriorModel::StdNormal(m) => mle.fit_from(m, init_pars),
@@ -470,6 +552,11 @@ impl PosteriorModel {
             PosteriorModel::CoxPh(m) => mle.fit_from(m, init_pars),
             PosteriorModel::OneCompartmentOralPk(m) => mle.fit_from(m, init_pars),
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::GammaRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::TweedieRegression(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::Gev(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::Gpd(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::EightSchools(m) => mle.fit_from(m, init_pars),
         }
     }
 
@@ -485,6 +572,12 @@ impl PosteriorModel {
             (0..n_chains).map(|chain_id| seed.wrapping_add(chain_id as u64)).collect();
         match self {
             PosteriorModel::HistFactory(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Unbinned(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Hybrid(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::GaussianMean(m) => {
@@ -538,12 +631,35 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::GammaRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::TweedieRegression(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Gev(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Gpd(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::EightSchools(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
         }
     }
 
     fn fit_map(&self, mle: &RustMLE, priors: Vec<Prior>) -> NsResult<ns_core::FitResult> {
         match self {
             PosteriorModel::HistFactory(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::Unbinned(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::Hybrid(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -612,6 +728,26 @@ impl PosteriorModel {
                 mle.fit(&w)
             }
             PosteriorModel::OneCompartmentOralPkNlme(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::GammaRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::TweedieRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::Gev(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::Gpd(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::EightSchools(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -634,6 +770,14 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::Unbinned(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Hybrid(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
             PosteriorModel::GaussianMean(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
@@ -702,6 +846,26 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::GammaRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::TweedieRegression(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Gev(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::Gpd(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::EightSchools(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
         }
     }
 }
@@ -709,6 +873,10 @@ impl PosteriorModel {
 fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel> {
     if let Ok(hf) = model.extract::<PyRef<'_, PyHistFactoryModel>>() {
         Ok(PosteriorModel::HistFactory(hf.inner.clone()))
+    } else if let Ok(ub) = model.extract::<PyRef<'_, PyUnbinnedModel>>() {
+        Ok(PosteriorModel::Unbinned(ub.inner.clone()))
+    } else if let Ok(hm) = model.extract::<PyRef<'_, PyHybridModel>>() {
+        Ok(PosteriorModel::Hybrid(hm.inner.clone()))
     } else if let Ok(gm) = model.extract::<PyRef<'_, PyGaussianMeanModel>>() {
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
     } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
@@ -743,9 +911,19 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::OneCompartmentOralPk(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyOneCompartmentOralPkNlmeModel>>() {
         Ok(PosteriorModel::OneCompartmentOralPkNlme(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyGammaRegressionModel>>() {
+        Ok(PosteriorModel::GammaRegression(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyTweedieRegressionModel>>() {
+        Ok(PosteriorModel::TweedieRegression(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyGevModel>>() {
+        Ok(PosteriorModel::Gev(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyGpdModel>>() {
+        Ok(PosteriorModel::Gpd(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyEightSchoolsModel>>() {
+        Ok(PosteriorModel::EightSchools(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, or a PK model.",
+            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
         ))
     }
 }
@@ -1397,6 +1575,426 @@ impl PyHistFactoryModel {
 }
 
 // ---------------------------------------------------------------------------
+// HEP / Unbinned (event-level) models (Phase 1+).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ns-unbinned::UnbinnedModel` (event-level likelihood).
+#[pyclass(name = "UnbinnedModel")]
+struct PyUnbinnedModel {
+    inner: RustUnbinnedModel,
+    schema_version: String,
+}
+
+#[pymethods]
+impl PyUnbinnedModel {
+    /// Compile an UnbinnedModel from a JSON/YAML spec file (`unbinned_spec_v0`).
+    #[staticmethod]
+    fn from_config(path: &str) -> PyResult<Self> {
+        let path = std::path::Path::new(path);
+        let spec = unbinned_spec::read_unbinned_spec(path)
+            .map_err(|e| PyValueError::new_err(format!("Failed to read unbinned spec: {e}")))?;
+        let model = unbinned_spec::compile_unbinned_model(&spec, path)
+            .map_err(|e| PyValueError::new_err(format!("Failed to compile unbinned model: {e}")))?;
+        Ok(Self { inner: model, schema_version: spec.schema_version })
+    }
+
+    /// Number of parameters.
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    /// Alias: `dim()` matches the universal `LogDensityModel` naming.
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    /// Spec `schema_version` used to construct this model.
+    fn schema_version(&self) -> &str {
+        &self.schema_version
+    }
+
+    /// Compute negative log-likelihood.
+    fn nll(&self, params: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {e}")))
+    }
+
+    /// Gradient of negative log-likelihood.
+    fn grad_nll(&self, params: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {e}")))
+    }
+
+    /// Get parameter names in NextStat order.
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    /// Get suggested initial values in NextStat order.
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    /// Get suggested bounds in NextStat order.
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+
+    /// Get POI index in NextStat order (if defined in the spec).
+    fn poi_index(&self) -> Option<usize> {
+        self.inner.poi_index()
+    }
+
+    /// Return a copy of the model with a fixed parameter (bounds clamped to `(value, value)`).
+    fn with_fixed_param(&self, param_idx: usize, value: f64) -> Self {
+        Self {
+            inner: self.inner.with_fixed_param(param_idx, value),
+            schema_version: self.schema_version.clone(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hybrid (binned+unbinned) likelihood (Phase 4).
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `HybridLikelihood<HistFactoryModel, UnbinnedModel>`.
+///
+/// Combines a binned (HistFactory) and an unbinned (event-level) model into a
+/// single likelihood with shared parameters matched by name.
+#[pyclass(name = "HybridModel")]
+struct PyHybridModel {
+    inner: RustHybridModel,
+}
+
+#[pymethods]
+impl PyHybridModel {
+    /// Build a hybrid model from a binned workspace and an unbinned spec.
+    ///
+    /// Args:
+    ///     binned: `HistFactoryModel` (binned component).
+    ///     unbinned: `UnbinnedModel` (unbinned component).
+    ///     poi_from: Which model provides the POI: `"binned"` (default) or `"unbinned"`.
+    #[staticmethod]
+    #[pyo3(signature = (binned, unbinned, poi_from = "binned"))]
+    fn from_models(
+        binned: &PyHistFactoryModel,
+        unbinned: &PyUnbinnedModel,
+        poi_from: &str,
+    ) -> PyResult<Self> {
+        let map = SharedParameterMap::build(&binned.inner, &unbinned.inner)
+            .map_err(|e| PyValueError::new_err(format!("SharedParameterMap build failed: {e}")))?;
+
+        let map = match poi_from {
+            "binned" => {
+                if let Some(poi) = binned.inner.poi_index() {
+                    map.with_poi_from_a(poi)
+                } else {
+                    map
+                }
+            }
+            "unbinned" => {
+                if let Some(poi) = unbinned.inner.poi_index() {
+                    map.with_poi_from_b(poi)
+                } else {
+                    map
+                }
+            }
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "poi_from must be 'binned' or 'unbinned', got '{other}'"
+                )));
+            }
+        };
+
+        let hybrid = HybridLikelihood::new(binned.inner.clone(), unbinned.inner.clone(), map);
+        Ok(Self { inner: hybrid })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: &Bound<'_, PyAny>) -> PyResult<f64> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {e}")))
+    }
+
+    fn grad_nll(&self, params: &Bound<'_, PyAny>) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {e}")))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+
+    fn poi_index(&self) -> Option<usize> {
+        self.inner.poi_index()
+    }
+
+    /// Number of shared parameters between binned and unbinned components.
+    fn n_shared(&self) -> usize {
+        self.inner.parameter_map().n_shared()
+    }
+
+    fn with_fixed_param(&self, param_idx: usize, value: f64) -> Self {
+        Self { inner: self.inner.with_fixed_param(param_idx, value) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Neural PDFs (Phase 3): FlowPdf + DcrSurrogate (feature-gated).
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "neural")]
+use ns_unbinned::DcrSurrogate as RustDcrSurrogate;
+#[cfg(feature = "neural")]
+use ns_unbinned::FlowPdf as RustFlowPdf;
+#[cfg(feature = "neural")]
+use ns_unbinned::{EventStore, ObservableSpec};
+
+/// Python wrapper for `ns-unbinned::FlowPdf` (ONNX normalizing flow).
+///
+/// Requires the `neural` feature.
+#[cfg(feature = "neural")]
+#[pyclass(name = "FlowPdf")]
+struct PyFlowPdf {
+    inner: RustFlowPdf,
+}
+
+#[cfg(feature = "neural")]
+#[pymethods]
+impl PyFlowPdf {
+    /// Load a flow PDF from a manifest file.
+    ///
+    /// Args:
+    ///     manifest_path: Path to `flow_manifest.json`.
+    ///     context_param_indices: Maps each context feature to a global parameter index.
+    ///         For unconditional flows, pass an empty list.
+    #[staticmethod]
+    fn from_manifest(manifest_path: &str, context_param_indices: Vec<usize>) -> PyResult<Self> {
+        let path = std::path::Path::new(manifest_path);
+        let flow = RustFlowPdf::from_manifest(path, &context_param_indices)
+            .map_err(|e| PyValueError::new_err(format!("Failed to load FlowPdf: {e}")))?;
+        Ok(Self { inner: flow })
+    }
+
+    /// Number of context (shape) parameters.
+    fn n_context(&self) -> usize {
+        ns_unbinned::UnbinnedPdf::n_params(&self.inner)
+    }
+
+    /// Observable names (length = features).
+    fn observable_names(&self) -> Vec<String> {
+        ns_unbinned::UnbinnedPdf::observables(&self.inner).to_vec()
+    }
+
+    /// Current log-normalization correction (approx 0 for well-trained flows).
+    fn log_norm_correction(&self) -> f64 {
+        self.inner.log_norm_correction()
+    }
+
+    /// Recompute the normalization correction for given parameters.
+    fn update_normalization(&mut self, params: &Bound<'_, PyAny>) -> PyResult<()> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .update_normalization(&params)
+            .map_err(|e| PyValueError::new_err(format!("update_normalization failed: {e}")))
+    }
+
+    /// Compute log-probabilities for a batch of events.
+    ///
+    /// Args:
+    ///     events: dict mapping observable name -> list/array of float values.
+    ///     bounds: dict mapping observable name -> (lo, hi) support bounds.
+    ///     params: parameter vector (global model parameters).
+    ///
+    /// Returns:
+    ///     List of log-probabilities (one per event).
+    fn log_prob_batch(
+        &self,
+        events: &Bound<'_, PyDict>,
+        bounds: &Bound<'_, PyDict>,
+        params: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
+
+        let mut obs_specs = Vec::new();
+        let mut columns = Vec::new();
+
+        for (key, val) in events.iter() {
+            let name: String = key.extract()?;
+            let col: Vec<f64> = val.extract()?;
+
+            let b: (f64, f64) = bounds
+                .get_item(&name)?
+                .ok_or_else(|| {
+                    PyValueError::new_err(format!("missing bounds for observable '{name}'"))
+                })?
+                .extract()?;
+
+            obs_specs.push(ObservableSpec::branch(name.clone(), b));
+            columns.push((name, col));
+        }
+
+        let store = EventStore::from_columns(obs_specs, columns, None)
+            .map_err(|e| PyValueError::new_err(format!("EventStore construction failed: {e}")))?;
+
+        let n = store.n_events();
+        let mut out = vec![0.0f64; n];
+
+        ns_unbinned::UnbinnedPdf::log_prob_batch(&self.inner, &store, &params, &mut out)
+            .map_err(|e| PyValueError::new_err(format!("log_prob_batch failed: {e}")))?;
+
+        Ok(out)
+    }
+}
+
+/// Python wrapper for `ns-unbinned::DcrSurrogate` (neural DCR surrogate).
+///
+/// Requires the `neural` feature.
+#[cfg(feature = "neural")]
+#[pyclass(name = "DcrSurrogate")]
+struct PyDcrSurrogate {
+    inner: RustDcrSurrogate,
+}
+
+#[cfg(feature = "neural")]
+#[pymethods]
+impl PyDcrSurrogate {
+    /// Load a DCR surrogate from a flow manifest.
+    ///
+    /// Args:
+    ///     manifest_path: Path to `flow_manifest.json`.
+    ///     systematic_param_indices: Maps each systematic nuisance parameter to
+    ///         its global parameter index.
+    ///     systematic_names: Names of the systematic parameters.
+    ///     process_name: Name of the process this surrogate replaces.
+    #[staticmethod]
+    fn from_manifest(
+        manifest_path: &str,
+        systematic_param_indices: Vec<usize>,
+        systematic_names: Vec<String>,
+        process_name: String,
+    ) -> PyResult<Self> {
+        let path = std::path::Path::new(manifest_path);
+        let dcr = RustDcrSurrogate::from_manifest(
+            path,
+            &systematic_param_indices,
+            systematic_names,
+            process_name,
+        )
+        .map_err(|e| PyValueError::new_err(format!("Failed to load DcrSurrogate: {e}")))?;
+        Ok(Self { inner: dcr })
+    }
+
+    /// Name of the process this surrogate replaces.
+    fn process_name(&self) -> &str {
+        self.inner.process_name()
+    }
+
+    /// Names of the systematic nuisance parameters.
+    fn systematic_names(&self) -> Vec<String> {
+        self.inner.systematic_names().to_vec()
+    }
+
+    /// Normalization tolerance.
+    fn norm_tolerance(&self) -> f64 {
+        self.inner.norm_tolerance()
+    }
+
+    /// Recompute normalization correction for current nuisance parameter values.
+    fn update_normalization(&mut self, params: &Bound<'_, PyAny>) -> PyResult<()> {
+        let params = extract_f64_vec(params)?;
+        self.inner
+            .update_normalization(&params)
+            .map_err(|e| PyValueError::new_err(format!("update_normalization failed: {e}")))
+    }
+
+    /// Validate normalization at the nominal point (all systematics = 0).
+    ///
+    /// Returns:
+    ///     Tuple (integral, deviation_from_1).
+    fn validate_nominal_normalization(
+        &mut self,
+        params: &Bound<'_, PyAny>,
+    ) -> PyResult<(f64, f64)> {
+        let params = extract_f64_vec(params)?;
+        self.inner.validate_nominal_normalization(&params).map_err(|e| {
+            PyValueError::new_err(format!("validate_nominal_normalization failed: {e}"))
+        })
+    }
+
+    /// Compute log-probabilities for a batch of events.
+    ///
+    /// Args:
+    ///     events: dict mapping observable name -> list/array of float values.
+    ///     bounds: dict mapping observable name -> (lo, hi) support bounds.
+    ///     params: parameter vector (global model parameters).
+    ///
+    /// Returns:
+    ///     List of log-probabilities (one per event).
+    fn log_prob_batch(
+        &self,
+        events: &Bound<'_, PyDict>,
+        bounds: &Bound<'_, PyDict>,
+        params: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<f64>> {
+        let params = extract_f64_vec(params)?;
+
+        let mut obs_specs = Vec::new();
+        let mut columns = Vec::new();
+
+        for (key, val) in events.iter() {
+            let name: String = key.extract()?;
+            let col: Vec<f64> = val.extract()?;
+
+            let b: (f64, f64) = bounds
+                .get_item(&name)?
+                .ok_or_else(|| {
+                    PyValueError::new_err(format!("missing bounds for observable '{name}'"))
+                })?
+                .extract()?;
+
+            obs_specs.push(ObservableSpec::branch(name.clone(), b));
+            columns.push((name, col));
+        }
+
+        let store = EventStore::from_columns(obs_specs, columns, None)
+            .map_err(|e| PyValueError::new_err(format!("EventStore construction failed: {e}")))?;
+
+        let n = store.n_events();
+        let mut out = vec![0.0f64; n];
+
+        ns_unbinned::UnbinnedPdf::log_prob_batch(&self.inner, &store, &params, &mut out)
+            .map_err(|e| PyValueError::new_err(format!("log_prob_batch failed: {e}")))?;
+
+        Ok(out)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Time series (Phase 8): Kalman filter / RTS smoother.
 // ---------------------------------------------------------------------------
 
@@ -1632,6 +2230,851 @@ fn kalman_simulate(
     let out = PyDict::new(py);
     out.set_item("xs", sim.xs.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
     out.set_item("ys", sim.ys.iter().map(dvector_to_vec).collect::<Vec<_>>())?;
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Volatility (Econometrics): GARCH(1,1) + approximate SV (log-chi2 + Kalman).
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (ys, *, max_iter=1000, tol=1e-6, alpha_beta_max=0.999, min_var=1e-18))]
+fn garch11_fit(
+    py: Python<'_>,
+    ys: Vec<f64>,
+    max_iter: u64,
+    tol: f64,
+    alpha_beta_max: f64,
+    min_var: f64,
+) -> PyResult<Py<PyAny>> {
+    let cfg = RustGarch11Config {
+        alpha_beta_max,
+        min_var,
+        optimizer: ns_inference::optimizer::OptimizerConfig { max_iter, tol, ..Default::default() },
+        ..Default::default()
+    };
+
+    let fit = rust_garch11_fit(&ys, cfg)
+        .map_err(|e| PyValueError::new_err(format!("garch11_fit failed: {e}")))?;
+
+    let params = PyDict::new(py);
+    params.set_item("mu", fit.params.mu)?;
+    params.set_item("omega", fit.params.omega)?;
+    params.set_item("alpha", fit.params.alpha)?;
+    params.set_item("beta", fit.params.beta)?;
+
+    let out = PyDict::new(py);
+    out.set_item("params", params)?;
+    out.set_item("log_likelihood", fit.log_likelihood)?;
+    out.set_item("conditional_variance", fit.conditional_variance.clone())?;
+    out.set_item(
+        "conditional_sigma",
+        fit.conditional_variance.iter().map(|v| v.max(0.0).sqrt()).collect::<Vec<_>>(),
+    )?;
+    out.set_item("converged", fit.optimization.converged)?;
+    out.set_item("n_iter", fit.optimization.n_iter)?;
+    out.set_item("n_fev", fit.optimization.n_fev)?;
+    out.set_item("n_gev", fit.optimization.n_gev)?;
+    out.set_item("fval", fit.optimization.fval)?;
+    out.set_item("message", fit.optimization.message)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (ys, *, max_iter=1000, tol=1e-6, log_eps=1e-12))]
+fn sv_logchi2_fit(
+    py: Python<'_>,
+    ys: Vec<f64>,
+    max_iter: u64,
+    tol: f64,
+    log_eps: f64,
+) -> PyResult<Py<PyAny>> {
+    let cfg = RustSvLogChi2Config {
+        log_eps,
+        optimizer: ns_inference::optimizer::OptimizerConfig { max_iter, tol, ..Default::default() },
+        ..Default::default()
+    };
+
+    let fit = rust_sv_logchi2_fit(&ys, cfg)
+        .map_err(|e| PyValueError::new_err(format!("sv_logchi2_fit failed: {e}")))?;
+
+    let params = PyDict::new(py);
+    params.set_item("mu", fit.params.mu)?;
+    params.set_item("phi", fit.params.phi)?;
+    params.set_item("sigma", fit.params.sigma)?;
+
+    let out = PyDict::new(py);
+    out.set_item("params", params)?;
+    out.set_item("log_likelihood", fit.log_likelihood)?;
+    out.set_item("smoothed_h", fit.smoothed_h)?;
+    out.set_item("smoothed_sigma", fit.smoothed_sigma)?;
+    out.set_item("converged", fit.optimization.converged)?;
+    out.set_item("n_iter", fit.optimization.n_iter)?;
+    out.set_item("n_fev", fit.optimization.n_fev)?;
+    out.set_item("n_gev", fit.optimization.n_gev)?;
+    out.set_item("fval", fit.optimization.fval)?;
+    out.set_item("message", fit.optimization.message)?;
+
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Econometrics & Causal Inference (Phase 12).
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (entity_ids, x, y, p, *, cluster_ids=None))]
+fn panel_fe(
+    py: Python<'_>,
+    entity_ids: Vec<u64>,
+    x: Vec<f64>,
+    y: Vec<f64>,
+    p: usize,
+    cluster_ids: Option<Vec<u64>>,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::econometrics::panel::panel_fe_fit(
+        &entity_ids,
+        &x,
+        &y,
+        p,
+        cluster_ids.as_deref(),
+    )
+    .map_err(|e| PyValueError::new_err(format!("panel_fe failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("coefficients", res.coefficients)?;
+    out.set_item("se_ols", res.se_ols)?;
+    out.set_item("se_cluster", res.se_cluster)?;
+    out.set_item("r_squared_within", res.r_squared_within)?;
+    out.set_item("n_obs", res.n_obs)?;
+    out.set_item("n_entities", res.n_entities)?;
+    out.set_item("n_regressors", res.n_regressors)?;
+    out.set_item("rss", res.rss)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (y, treat, post, cluster_ids))]
+fn did(
+    py: Python<'_>,
+    y: Vec<f64>,
+    treat: Vec<u8>,
+    post: Vec<u8>,
+    cluster_ids: Vec<u64>,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::econometrics::did::did_canonical(&y, &treat, &post, &cluster_ids)
+        .map_err(|e| PyValueError::new_err(format!("did failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("att", res.att)?;
+    out.set_item("se", res.se)?;
+    out.set_item("se_cluster", res.se_cluster)?;
+    out.set_item("t_stat", res.t_stat)?;
+    out.set_item("mean_treated_post", res.mean_treated_post)?;
+    out.set_item("mean_treated_pre", res.mean_treated_pre)?;
+    out.set_item("mean_control_post", res.mean_control_post)?;
+    out.set_item("mean_control_pre", res.mean_control_pre)?;
+    out.set_item("n_obs", res.n_obs)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (y, entity_ids, time_ids, relative_time, min_lag, max_lag, reference_period, cluster_ids))]
+fn event_study(
+    py: Python<'_>,
+    y: Vec<f64>,
+    entity_ids: Vec<u64>,
+    time_ids: Vec<u64>,
+    relative_time: Vec<i64>,
+    min_lag: i64,
+    max_lag: i64,
+    reference_period: i64,
+    cluster_ids: Vec<u64>,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::econometrics::did::event_study(
+        &y,
+        &entity_ids,
+        &time_ids,
+        &relative_time,
+        min_lag,
+        max_lag,
+        reference_period,
+        &cluster_ids,
+    )
+    .map_err(|e| PyValueError::new_err(format!("event_study failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("relative_times", res.relative_times)?;
+    out.set_item("coefficients", res.coefficients)?;
+    out.set_item("se_cluster", res.se_cluster)?;
+    out.set_item("ci_lower", res.ci_lower)?;
+    out.set_item("ci_upper", res.ci_upper)?;
+    out.set_item("n_obs", res.n_obs)?;
+    out.set_item("reference_period", res.reference_period)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (y, x_exog, k_exog, x_endog, k_endog, z, m, *, exog_names=None, endog_names=None, cluster_ids=None))]
+fn iv_2sls(
+    py: Python<'_>,
+    y: Vec<f64>,
+    x_exog: Vec<f64>,
+    k_exog: usize,
+    x_endog: Vec<f64>,
+    k_endog: usize,
+    z: Vec<f64>,
+    m: usize,
+    exog_names: Option<Vec<String>>,
+    endog_names: Option<Vec<String>>,
+    cluster_ids: Option<Vec<u64>>,
+) -> PyResult<Py<PyAny>> {
+    let exog_n = exog_names.unwrap_or_default();
+    let endog_n = endog_names.unwrap_or_default();
+
+    let res = ns_inference::econometrics::iv::iv_2sls(
+        &y,
+        &x_exog,
+        k_exog,
+        &x_endog,
+        k_endog,
+        &z,
+        m,
+        &exog_n,
+        &endog_n,
+        cluster_ids.as_deref(),
+    )
+    .map_err(|e| PyValueError::new_err(format!("iv_2sls failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("coefficients", res.coefficients)?;
+    out.set_item("names", res.names)?;
+    out.set_item("se", res.se)?;
+    out.set_item("se_cluster", res.se_cluster)?;
+    out.set_item("n_obs", res.n_obs)?;
+    out.set_item("n_instruments", res.n_instruments)?;
+
+    let first_stage_list = PyList::empty(py);
+    for fs in &res.first_stage {
+        let d = PyDict::new(py);
+        d.set_item("f_stat", fs.f_stat)?;
+        d.set_item("r_squared", fs.r_squared)?;
+        d.set_item("partial_r_squared", fs.partial_r_squared)?;
+        d.set_item("passes_stock_yogo_10", fs.passes_stock_yogo_10)?;
+        first_stage_list.append(d)?;
+    }
+    out.set_item("first_stage", first_stage_list)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (y, treat, propensity, mu1, mu0, *, trim=0.01))]
+fn aipw_ate(
+    py: Python<'_>,
+    y: Vec<f64>,
+    treat: Vec<u8>,
+    propensity: Vec<f64>,
+    mu1: Vec<f64>,
+    mu0: Vec<f64>,
+    trim: f64,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::econometrics::aipw::aipw_ate(&y, &treat, &propensity, &mu1, &mu0, trim)
+        .map_err(|e| PyValueError::new_err(format!("aipw_ate failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("ate", res.ate)?;
+    out.set_item("se", res.se)?;
+    out.set_item("ci_lower", res.ci_lower)?;
+    out.set_item("ci_upper", res.ci_upper)?;
+    out.set_item("n_treated", res.n_treated)?;
+    out.set_item("n_control", res.n_control)?;
+    out.set_item("mean_propensity", res.mean_propensity)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (y_treated, y_control, gammas))]
+fn rosenbaum_bounds(
+    py: Python<'_>,
+    y_treated: Vec<f64>,
+    y_control: Vec<f64>,
+    gammas: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::econometrics::aipw::rosenbaum_bounds(&y_treated, &y_control, &gammas)
+        .map_err(|e| PyValueError::new_err(format!("rosenbaum_bounds failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("gammas", res.gammas)?;
+    out.set_item("p_upper", res.p_upper)?;
+    out.set_item("p_lower", res.p_lower)?;
+    out.set_item("gamma_critical", res.gamma_critical)?;
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Survival: Kaplan-Meier + Log-rank (non-parametric)
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (times, events, *, conf_level=0.95))]
+fn kaplan_meier(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let est = ns_inference::kaplan_meier(&times, &events, conf_level)
+        .map_err(|e| PyValueError::new_err(format!("kaplan_meier failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("n", est.n)?;
+    out.set_item("n_events", est.n_events)?;
+    out.set_item("conf_level", est.conf_level)?;
+    out.set_item("median", est.median)?;
+
+    let step_times = PyList::new(py, est.steps.iter().map(|s| s.time))?;
+    let step_n_risk = PyList::new(py, est.steps.iter().map(|s| s.n_risk))?;
+    let step_n_events = PyList::new(py, est.steps.iter().map(|s| s.n_events))?;
+    let step_n_censored = PyList::new(py, est.steps.iter().map(|s| s.n_censored))?;
+    let step_survival = PyList::new(py, est.steps.iter().map(|s| s.survival))?;
+    let step_variance = PyList::new(py, est.steps.iter().map(|s| s.variance))?;
+    let step_ci_lower = PyList::new(py, est.steps.iter().map(|s| s.ci_lower))?;
+    let step_ci_upper = PyList::new(py, est.steps.iter().map(|s| s.ci_upper))?;
+
+    out.set_item("time", step_times)?;
+    out.set_item("n_risk", step_n_risk)?;
+    out.set_item("n_event", step_n_events)?;
+    out.set_item("n_censored", step_n_censored)?;
+    out.set_item("survival", step_survival)?;
+    out.set_item("variance", step_variance)?;
+    out.set_item("ci_lower", step_ci_lower)?;
+    out.set_item("ci_upper", step_ci_upper)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups))]
+fn log_rank_test(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+) -> PyResult<Py<PyAny>> {
+    let res = ns_inference::log_rank_test(&times, &events, &groups)
+        .map_err(|e| PyValueError::new_err(format!("log_rank_test failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("n", res.n)?;
+    out.set_item("chi_squared", res.chi_squared)?;
+    out.set_item("df", res.df)?;
+    out.set_item("p_value", res.p_value)?;
+
+    let grp_ids = PyList::new(py, res.group_summaries.iter().map(|(g, _, _)| *g))?;
+    let grp_obs = PyList::new(py, res.group_summaries.iter().map(|(_, o, _)| *o))?;
+    let grp_exp = PyList::new(py, res.group_summaries.iter().map(|(_, _, e)| *e))?;
+
+    out.set_item("group_ids", grp_ids)?;
+    out.set_item("observed", grp_obs)?;
+    out.set_item("expected", grp_exp)?;
+
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Churn / Subscription vertical
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (*, n_customers=2000, n_cohorts=6, max_time=24.0, treatment_fraction=0.3, seed=42))]
+fn churn_generate_data(
+    py: Python<'_>,
+    n_customers: usize,
+    n_cohorts: usize,
+    max_time: f64,
+    treatment_fraction: f64,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    let config = ns_inference::ChurnDataConfig {
+        n_customers,
+        n_cohorts,
+        max_time,
+        treatment_fraction,
+        seed,
+        ..Default::default()
+    };
+    let ds = ns_inference::generate_churn_dataset(&config)
+        .map_err(|e| PyValueError::new_err(format!("churn_generate_data failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("n", ds.records.len())?;
+    out.set_item("n_events", ds.events.iter().filter(|&&e| e).count())?;
+    out.set_item("times", PyList::new(py, &ds.times)?)?;
+    out.set_item("events", PyList::new(py, &ds.events)?)?;
+    out.set_item("groups", PyList::new(py, &ds.groups)?)?;
+    out.set_item("treated", PyList::new(py, ds.records.iter().map(|r| r.treated))?)?;
+    out.set_item("covariates", &ds.covariates)?;
+    out.set_item(
+        "covariate_names",
+        vec!["plan_basic", "plan_premium", "usage_score", "support_tickets"],
+    )?;
+
+    let plans = PyList::new(py, ds.records.iter().map(|r| r.plan))?;
+    let regions = PyList::new(py, ds.records.iter().map(|r| r.region))?;
+    let cohorts = PyList::new(py, ds.records.iter().map(|r| r.cohort))?;
+    let usage = PyList::new(py, ds.records.iter().map(|r| r.usage_score))?;
+    out.set_item("plan", plans)?;
+    out.set_item("region", regions)?;
+    out.set_item("cohort", cohorts)?;
+    out.set_item("usage_score", usage)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups, *, conf_level=0.95))]
+fn churn_retention(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let ra = ns_inference::retention_analysis(&times, &events, &groups, conf_level)
+        .map_err(|e| PyValueError::new_err(format!("churn_retention failed: {e}")))?;
+
+    let out = PyDict::new(py);
+
+    // Overall KM summary.
+    let overall = PyDict::new(py);
+    overall.set_item("n", ra.overall.n)?;
+    overall.set_item("n_events", ra.overall.n_events)?;
+    overall.set_item("median", ra.overall.median)?;
+    overall.set_item("time", PyList::new(py, ra.overall.steps.iter().map(|s| s.time))?)?;
+    overall.set_item("survival", PyList::new(py, ra.overall.steps.iter().map(|s| s.survival))?)?;
+    out.set_item("overall", overall)?;
+
+    // Per-group.
+    let by_group = PyList::empty(py);
+    for (g, km) in &ra.by_group {
+        let gd = PyDict::new(py);
+        gd.set_item("group", *g)?;
+        gd.set_item("n", km.n)?;
+        gd.set_item("n_events", km.n_events)?;
+        gd.set_item("median", km.median)?;
+        gd.set_item("time", PyList::new(py, km.steps.iter().map(|s| s.time))?)?;
+        gd.set_item("survival", PyList::new(py, km.steps.iter().map(|s| s.survival))?)?;
+        by_group.append(gd)?;
+    }
+    out.set_item("by_group", by_group)?;
+
+    // Log-rank.
+    let lr = PyDict::new(py);
+    lr.set_item("chi_squared", ra.log_rank.chi_squared)?;
+    lr.set_item("df", ra.log_rank.df)?;
+    lr.set_item("p_value", ra.log_rank.p_value)?;
+    out.set_item("log_rank", lr)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, covariates, names, *, conf_level=0.95))]
+fn churn_risk_model(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    covariates: Vec<Vec<f64>>,
+    names: Vec<String>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let result = ns_inference::churn_risk_model(&times, &events, &covariates, &names, conf_level)
+        .map_err(|e| PyValueError::new_err(format!("churn_risk_model failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("n", result.n)?;
+    out.set_item("n_events", result.n_events)?;
+    out.set_item("nll", result.nll)?;
+    out.set_item("names", &result.names)?;
+    out.set_item("coefficients", &result.coefficients)?;
+    out.set_item("se", &result.se)?;
+    out.set_item("hazard_ratios", &result.hazard_ratios)?;
+    out.set_item("hr_ci_lower", &result.hr_ci_lower)?;
+    out.set_item("hr_ci_upper", &result.hr_ci_upper)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, treated, covariates, *, horizon=12.0))]
+fn churn_uplift(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    treated: Vec<u8>,
+    covariates: Vec<Vec<f64>>,
+    horizon: f64,
+) -> PyResult<Py<PyAny>> {
+    let result = ns_inference::churn_uplift(&times, &events, &treated, &covariates, horizon)
+        .map_err(|e| PyValueError::new_err(format!("churn_uplift failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("ate", result.ate)?;
+    out.set_item("se", result.se)?;
+    out.set_item("ci_lower", result.ci_lower)?;
+    out.set_item("ci_upper", result.ci_upper)?;
+    out.set_item("n_treated", result.n_treated)?;
+    out.set_item("n_control", result.n_control)?;
+    out.set_item("gamma_critical", result.gamma_critical)?;
+    out.set_item("horizon", horizon)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups, *, treated=vec![], covariates=vec![], covariate_names=vec![], trim=0.01))]
+fn churn_diagnostics(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+    treated: Vec<u8>,
+    covariates: Vec<Vec<f64>>,
+    covariate_names: Vec<String>,
+    trim: f64,
+) -> PyResult<Py<PyAny>> {
+    let r = ns_inference::churn_diagnostics_report(
+        &times,
+        &events,
+        &groups,
+        &treated,
+        &covariates,
+        &covariate_names,
+        trim,
+    )
+    .map_err(|e| PyValueError::new_err(format!("churn_diagnostics failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("n", r.n)?;
+    out.set_item("n_events", r.n_events)?;
+    out.set_item("overall_censoring_frac", r.overall_censoring_frac)?;
+    out.set_item("trust_gate_passed", r.trust_gate_passed)?;
+
+    // Censoring by segment.
+    let cens_list = PyList::empty(py);
+    for seg in &r.censoring_by_segment {
+        let d = PyDict::new(py);
+        d.set_item("group", seg.group)?;
+        d.set_item("n", seg.n)?;
+        d.set_item("n_events", seg.n_events)?;
+        d.set_item("n_censored", seg.n_censored)?;
+        d.set_item("frac_censored", seg.frac_censored)?;
+        cens_list.append(d)?;
+    }
+    out.set_item("censoring_by_segment", cens_list)?;
+
+    // Covariate balance.
+    let bal_list = PyList::empty(py);
+    for b in &r.covariate_balance {
+        let d = PyDict::new(py);
+        d.set_item("name", &b.name)?;
+        d.set_item("smd_raw", b.smd_raw)?;
+        d.set_item("mean_treated", b.mean_treated)?;
+        d.set_item("mean_control", b.mean_control)?;
+        bal_list.append(d)?;
+    }
+    out.set_item("covariate_balance", bal_list)?;
+
+    // Propensity overlap (optional).
+    if let Some(ref po) = r.propensity_overlap {
+        let pod = PyDict::new(py);
+        pod.set_item("quantiles", po.quantiles.to_vec())?;
+        pod.set_item("mean", po.mean)?;
+        pod.set_item("n_trimmed_low", po.n_trimmed_low)?;
+        pod.set_item("n_trimmed_high", po.n_trimmed_high)?;
+        pod.set_item("trim", po.trim)?;
+        out.set_item("propensity_overlap", pod)?;
+    } else {
+        out.set_item("propensity_overlap", py.None())?;
+    }
+
+    // Warnings.
+    let warn_list = PyList::empty(py);
+    for w in &r.warnings {
+        let d = PyDict::new(py);
+        d.set_item("category", &w.category)?;
+        d.set_item("severity", &w.severity)?;
+        d.set_item("message", &w.message)?;
+        warn_list.append(d)?;
+    }
+    out.set_item("warnings", warn_list)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups, period_boundaries))]
+fn churn_cohort_matrix(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+    period_boundaries: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let r = ns_inference::cohort_retention_matrix(&times, &events, &groups, &period_boundaries)
+        .map_err(|e| PyValueError::new_err(format!("churn_cohort_matrix failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("period_boundaries", &r.period_boundaries)?;
+
+    // Cohort rows.
+    let rows_list = PyList::empty(py);
+    for row in &r.cohorts {
+        let rd = PyDict::new(py);
+        rd.set_item("cohort", row.cohort)?;
+        rd.set_item("n_total", row.n_total)?;
+        rd.set_item("n_events", row.n_events)?;
+        let periods = PyList::empty(py);
+        for cell in &row.periods {
+            let cd = PyDict::new(py);
+            cd.set_item("n_at_risk", cell.n_at_risk)?;
+            cd.set_item("n_events", cell.n_events)?;
+            cd.set_item("n_censored", cell.n_censored)?;
+            cd.set_item("retention_rate", cell.retention_rate)?;
+            cd.set_item("cumulative_retention", cell.cumulative_retention)?;
+            periods.append(cd)?;
+        }
+        rd.set_item("periods", periods)?;
+        rows_list.append(rd)?;
+    }
+    out.set_item("cohorts", rows_list)?;
+
+    // Overall row.
+    let od = PyDict::new(py);
+    od.set_item("cohort", r.overall.cohort)?;
+    od.set_item("n_total", r.overall.n_total)?;
+    od.set_item("n_events", r.overall.n_events)?;
+    let op = PyList::empty(py);
+    for cell in &r.overall.periods {
+        let cd = PyDict::new(py);
+        cd.set_item("n_at_risk", cell.n_at_risk)?;
+        cd.set_item("n_events", cell.n_events)?;
+        cd.set_item("n_censored", cell.n_censored)?;
+        cd.set_item("retention_rate", cell.retention_rate)?;
+        cd.set_item("cumulative_retention", cell.cumulative_retention)?;
+        op.append(cd)?;
+    }
+    od.set_item("periods", op)?;
+    out.set_item("overall", od)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups, *, conf_level=0.95, correction="benjamini_hochberg", alpha=0.05))]
+fn churn_compare(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+    conf_level: f64,
+    correction: &str,
+    alpha: f64,
+) -> PyResult<Py<PyAny>> {
+    let corr = match correction {
+        "bonferroni" => ns_inference::CorrectionMethod::Bonferroni,
+        "benjamini_hochberg" | "bh" => ns_inference::CorrectionMethod::BenjaminiHochberg,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown correction method '{other}'; use 'bonferroni' or 'benjamini_hochberg'"
+            )));
+        }
+    };
+
+    let r =
+        ns_inference::segment_comparison_report(&times, &events, &groups, conf_level, corr, alpha)
+            .map_err(|e| PyValueError::new_err(format!("churn_compare failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("overall_chi_squared", r.overall_chi_squared)?;
+    out.set_item("overall_p_value", r.overall_p_value)?;
+    out.set_item("overall_df", r.overall_df)?;
+    out.set_item("alpha", r.alpha)?;
+    out.set_item("n", r.n)?;
+    out.set_item("n_events", r.n_events)?;
+    out.set_item("correction_method", correction)?;
+
+    // Segments.
+    let seg_list = PyList::empty(py);
+    for s in &r.segments {
+        let sd = PyDict::new(py);
+        sd.set_item("group", s.group)?;
+        sd.set_item("n", s.n)?;
+        sd.set_item("n_events", s.n_events)?;
+        sd.set_item("median", s.median)?;
+        sd.set_item("observed", s.observed)?;
+        sd.set_item("expected", s.expected)?;
+        seg_list.append(sd)?;
+    }
+    out.set_item("segments", seg_list)?;
+
+    // Pairwise comparisons.
+    let pw_list = PyList::empty(py);
+    for pw in &r.pairwise {
+        let pd = PyDict::new(py);
+        pd.set_item("group_a", pw.group_a)?;
+        pd.set_item("group_b", pw.group_b)?;
+        pd.set_item("chi_squared", pw.chi_squared)?;
+        pd.set_item("p_value", pw.p_value)?;
+        pd.set_item("p_adjusted", pw.p_adjusted)?;
+        pd.set_item("hazard_ratio_proxy", pw.hazard_ratio_proxy)?;
+        pd.set_item("median_diff", pw.median_diff)?;
+        pd.set_item("significant", pw.significant)?;
+        pw_list.append(pd)?;
+    }
+    out.set_item("pairwise", pw_list)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, treated, *, covariates=vec![], horizon=12.0, eval_horizons=vec![3.0, 6.0, 12.0, 24.0], trim=0.01))]
+fn churn_uplift_survival(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    treated: Vec<u8>,
+    covariates: Vec<Vec<f64>>,
+    horizon: f64,
+    eval_horizons: Vec<f64>,
+    trim: f64,
+) -> PyResult<Py<PyAny>> {
+    let r = ns_inference::survival_uplift_report(
+        &times,
+        &events,
+        &treated,
+        &covariates,
+        horizon,
+        &eval_horizons,
+        trim,
+    )
+    .map_err(|e| PyValueError::new_err(format!("churn_uplift_survival failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("rmst_treated", r.rmst_treated)?;
+    out.set_item("rmst_control", r.rmst_control)?;
+    out.set_item("delta_rmst", r.delta_rmst)?;
+    out.set_item("horizon", r.horizon)?;
+    out.set_item("ipw_applied", r.ipw_applied)?;
+
+    // Arms.
+    let arms_list = PyList::empty(py);
+    for arm in &r.arms {
+        let ad = PyDict::new(py);
+        ad.set_item("arm", &arm.arm)?;
+        ad.set_item("n", arm.n)?;
+        ad.set_item("n_events", arm.n_events)?;
+        ad.set_item("rmst", arm.rmst)?;
+        ad.set_item("median", arm.median)?;
+        arms_list.append(ad)?;
+    }
+    out.set_item("arms", arms_list)?;
+
+    // Survival diffs.
+    let sd_list = PyList::empty(py);
+    for sd in &r.survival_diffs {
+        let dd = PyDict::new(py);
+        dd.set_item("horizon", sd.horizon)?;
+        dd.set_item("survival_treated", sd.survival_treated)?;
+        dd.set_item("survival_control", sd.survival_control)?;
+        dd.set_item("delta_survival", sd.delta_survival)?;
+        sd_list.append(dd)?;
+    }
+    out.set_item("survival_diffs", sd_list)?;
+
+    // Overlap.
+    let ol = PyDict::new(py);
+    ol.set_item("n_total", r.overlap.n_total)?;
+    ol.set_item("n_after_trim", r.overlap.n_after_trim)?;
+    ol.set_item("n_trimmed", r.overlap.n_trimmed)?;
+    ol.set_item("mean_propensity", r.overlap.mean_propensity)?;
+    ol.set_item("min_propensity", r.overlap.min_propensity)?;
+    ol.set_item("max_propensity", r.overlap.max_propensity)?;
+    ol.set_item("ess_treated", r.overlap.ess_treated)?;
+    ol.set_item("ess_control", r.overlap.ess_control)?;
+    out.set_item("overlap", ol)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95))]
+fn churn_bootstrap_hr(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    covariates: Vec<Vec<f64>>,
+    names: Vec<String>,
+    n_bootstrap: usize,
+    seed: u64,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let r = ns_inference::bootstrap_hazard_ratios(
+        &times,
+        &events,
+        &covariates,
+        &names,
+        n_bootstrap,
+        seed,
+        conf_level,
+    )
+    .map_err(|e| PyValueError::new_err(format!("churn_bootstrap_hr failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("names", &r.names)?;
+    out.set_item("hr_point", &r.hr_point)?;
+    out.set_item("hr_ci_lower", &r.hr_ci_lower)?;
+    out.set_item("hr_ci_upper", &r.hr_ci_upper)?;
+    out.set_item("n_bootstrap", r.n_bootstrap)?;
+    out.set_item("n_converged", r.n_converged)?;
+    out.set_item("elapsed_s", r.elapsed_s)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, *, groups=None, treated=None, covariates=vec![], covariate_names=vec![], observation_end=None))]
+fn churn_ingest(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Option<Vec<i64>>,
+    treated: Option<Vec<u8>>,
+    covariates: Vec<Vec<f64>>,
+    covariate_names: Vec<String>,
+    observation_end: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    let r = ns_inference::ingest_churn_arrays(
+        &times,
+        &events,
+        groups.as_deref(),
+        treated.as_deref(),
+        &covariates,
+        &covariate_names,
+        observation_end,
+    )
+    .map_err(|e| PyValueError::new_err(format!("churn_ingest failed: {e}")))?;
+
+    let out = PyDict::new(py);
+    let ds = &r.dataset;
+    out.set_item("n", ds.records.len())?;
+    out.set_item("n_events", ds.events.iter().filter(|&&e| e).count())?;
+    out.set_item("times", PyList::new(py, &ds.times)?)?;
+    out.set_item("events", PyList::new(py, &ds.events)?)?;
+    out.set_item("groups", PyList::new(py, &ds.groups)?)?;
+    out.set_item("treated", PyList::new(py, ds.records.iter().map(|r| r.treated))?)?;
+    out.set_item("covariates", &ds.covariates)?;
+    out.set_item("covariate_names", &r.covariate_names)?;
+    out.set_item("n_dropped", r.n_dropped)?;
+    out.set_item("warnings", &r.warnings)?;
     Ok(out.into_any().unbind())
 }
 
@@ -2347,6 +3790,395 @@ impl PyNegativeBinomialRegressionModel {
     fn suggested_bounds(&self) -> Vec<(f64, f64)> {
         self.inner.parameter_bounds()
     }
+}
+
+/// Python wrapper for `GammaRegressionModel` (Gamma GLM, log link).
+#[pyclass(name = "GammaRegressionModel")]
+struct PyGammaRegressionModel {
+    inner: RustGammaRegressionModel,
+}
+
+#[pymethods]
+impl PyGammaRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, include_intercept=true))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> PyResult<Self> {
+        let inner = RustGammaRegressionModel::new(x, y, include_intercept)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner.grad_nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `TweedieRegressionModel` (Tweedie GLM, log link, p ∈ (1,2)).
+#[pyclass(name = "TweedieRegressionModel")]
+struct PyTweedieRegressionModel {
+    inner: RustTweedieRegressionModel,
+}
+
+#[pymethods]
+impl PyTweedieRegressionModel {
+    #[new]
+    #[pyo3(signature = (x, y, *, p=1.5, include_intercept=true))]
+    fn new(x: Vec<Vec<f64>>, y: Vec<f64>, p: f64, include_intercept: bool) -> PyResult<Self> {
+        let inner = RustTweedieRegressionModel::new(x, y, include_intercept, p)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+    fn power(&self) -> f64 {
+        self.inner.power()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner.grad_nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `GevModel` (Generalized Extreme Value).
+#[pyclass(name = "GevModel")]
+struct PyGevModel {
+    inner: RustGevModel,
+}
+
+#[pymethods]
+impl PyGevModel {
+    #[new]
+    fn new(data: Vec<f64>) -> PyResult<Self> {
+        let inner = RustGevModel::new(data).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner.grad_nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+
+    #[staticmethod]
+    fn return_level(params: Vec<f64>, return_period: f64) -> PyResult<f64> {
+        RustGevModel::return_level(&params, return_period)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+}
+
+/// Python wrapper for `GpdModel` (Generalized Pareto Distribution).
+#[pyclass(name = "GpdModel")]
+struct PyGpdModel {
+    inner: RustGpdModel,
+}
+
+#[pymethods]
+impl PyGpdModel {
+    #[new]
+    fn new(exceedances: Vec<f64>) -> PyResult<Self> {
+        let inner =
+            RustGpdModel::new(exceedances).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner.grad_nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+
+    #[staticmethod]
+    fn quantile(params: Vec<f64>, p: f64) -> PyResult<f64> {
+        RustGpdModel::quantile(&params, p).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+}
+
+/// Python wrapper for `EightSchoolsModel` (hierarchical, non-centered).
+#[pyclass(name = "EightSchoolsModel")]
+struct PyEightSchoolsModel {
+    inner: RustEightSchoolsModel,
+}
+
+#[pymethods]
+impl PyEightSchoolsModel {
+    #[new]
+    #[pyo3(signature = (y, sigma, *, prior_mu_sigma=5.0, prior_tau_scale=5.0))]
+    fn new(
+        y: Vec<f64>,
+        sigma: Vec<f64>,
+        prior_mu_sigma: f64,
+        prior_tau_scale: f64,
+    ) -> PyResult<Self> {
+        let inner = RustEightSchoolsModel::new(y, sigma, prior_mu_sigma, prior_tau_scale)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+    fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner.grad_nll(&params).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Fixed-effects meta-analysis (inverse-variance method).
+#[pyfunction]
+#[pyo3(signature = (estimates, standard_errors, *, labels=None, conf_level=0.95))]
+fn meta_fixed(
+    py: Python<'_>,
+    estimates: Vec<f64>,
+    standard_errors: Vec<f64>,
+    labels: Option<Vec<String>>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let studies = build_study_effects(&estimates, &standard_errors, labels.as_deref())?;
+    let res =
+        rust_meta_fixed(&studies, conf_level).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    meta_result_to_pydict(py, &res)
+}
+
+/// Random-effects meta-analysis (DerSimonian–Laird method).
+#[pyfunction]
+#[pyo3(signature = (estimates, standard_errors, *, labels=None, conf_level=0.95))]
+fn meta_random(
+    py: Python<'_>,
+    estimates: Vec<f64>,
+    standard_errors: Vec<f64>,
+    labels: Option<Vec<String>>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let studies = build_study_effects(&estimates, &standard_errors, labels.as_deref())?;
+    let res =
+        rust_meta_random(&studies, conf_level).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    meta_result_to_pydict(py, &res)
+}
+
+fn build_study_effects(
+    estimates: &[f64],
+    standard_errors: &[f64],
+    labels: Option<&[String]>,
+) -> PyResult<Vec<RustStudyEffect>> {
+    if estimates.len() != standard_errors.len() {
+        return Err(PyValueError::new_err("estimates and standard_errors must have same length"));
+    }
+    Ok(estimates
+        .iter()
+        .zip(standard_errors.iter())
+        .enumerate()
+        .map(|(i, (&est, &se))| RustStudyEffect {
+            label: labels
+                .and_then(|l| l.get(i))
+                .cloned()
+                .unwrap_or_else(|| format!("Study {}", i + 1)),
+            estimate: est,
+            se,
+        })
+        .collect())
+}
+
+fn meta_result_to_pydict(
+    py: Python<'_>,
+    res: &ns_inference::meta_analysis::MetaAnalysisResult,
+) -> PyResult<Py<PyAny>> {
+    let out = PyDict::new(py);
+    out.set_item("estimate", res.estimate)?;
+    out.set_item("se", res.se)?;
+    out.set_item("ci_lower", res.ci_lower)?;
+    out.set_item("ci_upper", res.ci_upper)?;
+    out.set_item("z", res.z)?;
+    out.set_item("p_value", res.p_value)?;
+    out.set_item("method", res.method)?;
+    out.set_item("conf_level", res.conf_level)?;
+    out.set_item("k", res.k)?;
+
+    let het = PyDict::new(py);
+    het.set_item("q", res.heterogeneity.q)?;
+    het.set_item("df", res.heterogeneity.df)?;
+    het.set_item("p_value", res.heterogeneity.p_value)?;
+    het.set_item("i_squared", res.heterogeneity.i_squared)?;
+    het.set_item("h_squared", res.heterogeneity.h_squared)?;
+    het.set_item("tau_squared", res.heterogeneity.tau_squared)?;
+    out.set_item("heterogeneity", het)?;
+
+    let forest: Vec<_> = res
+        .forest
+        .iter()
+        .map(|r| {
+            let d = PyDict::new(py);
+            d.set_item("label", &r.label).unwrap();
+            d.set_item("estimate", r.estimate).unwrap();
+            d.set_item("se", r.se).unwrap();
+            d.set_item("ci_lower", r.ci_lower).unwrap();
+            d.set_item("ci_upper", r.ci_upper).unwrap();
+            d.set_item("weight", r.weight).unwrap();
+            d
+        })
+        .collect();
+    out.set_item("forest", forest)?;
+
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Chain Ladder / Mack bindings
+// ---------------------------------------------------------------------------
+
+/// Deterministic Chain Ladder reserving from a cumulative claims triangle.
+#[pyfunction]
+#[pyo3(signature = (triangle))]
+fn chain_ladder(py: Python<'_>, triangle: Vec<Vec<f64>>) -> PyResult<Py<PyAny>> {
+    let tri = ClaimsTriangle::new(triangle).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let res = rust_chain_ladder(&tri).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    let out = PyDict::new(py);
+    out.set_item("development_factors", &res.development_factors)?;
+    out.set_item("cumulative_factors", &res.cumulative_factors)?;
+
+    let ultimates: Vec<f64> = res.rows.iter().map(|r| r.ultimate).collect();
+    let ibnr: Vec<f64> = res.rows.iter().map(|r| r.ibnr).collect();
+    let latest: Vec<f64> = res.rows.iter().map(|r| r.latest).collect();
+    out.set_item("ultimates", &ultimates)?;
+    out.set_item("ibnr", &ibnr)?;
+    out.set_item("latest", &latest)?;
+    out.set_item("total_ibnr", res.total_ibnr)?;
+    out.set_item("projected", &res.projected)?;
+
+    Ok(out.into_any().unbind())
+}
+
+/// Mack Chain Ladder with prediction standard errors.
+#[pyfunction]
+#[pyo3(signature = (triangle, *, conf_level=0.95))]
+fn mack_chain_ladder(
+    py: Python<'_>,
+    triangle: Vec<Vec<f64>>,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let tri = ClaimsTriangle::new(triangle).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let res = rust_mack_chain_ladder(&tri, conf_level)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    let out = PyDict::new(py);
+    out.set_item("development_factors", &res.development_factors)?;
+    out.set_item("sigma_sq", &res.sigma_sq)?;
+
+    let ultimates: Vec<f64> = res.rows.iter().map(|r| r.ultimate).collect();
+    let ibnr: Vec<f64> = res.rows.iter().map(|r| r.ibnr).collect();
+    let latest: Vec<f64> = res.rows.iter().map(|r| r.latest).collect();
+    let se: Vec<f64> = res.rows.iter().map(|r| r.se).collect();
+    let cv: Vec<f64> = res.rows.iter().map(|r| r.cv).collect();
+    let pi_lower: Vec<f64> = res.rows.iter().map(|r| r.pi_lower).collect();
+    let pi_upper: Vec<f64> = res.rows.iter().map(|r| r.pi_upper).collect();
+
+    out.set_item("ultimates", &ultimates)?;
+    out.set_item("ibnr", &ibnr)?;
+    out.set_item("latest", &latest)?;
+    out.set_item("se", &se)?;
+    out.set_item("cv", &cv)?;
+    out.set_item("pi_lower", &pi_lower)?;
+    out.set_item("pi_upper", &pi_upper)?;
+    out.set_item("total_ibnr", res.total_ibnr)?;
+    out.set_item("total_se", res.total_se)?;
+    out.set_item("conf_level", res.conf_level)?;
+
+    Ok(out.into_any().unbind())
 }
 
 /// Python wrapper for `ComposedGlmModel` built via `ModelBuilder`.
@@ -3249,15 +5081,12 @@ struct PyMaximumLikelihoodEstimator {
 #[pymethods]
 impl PyMaximumLikelihoodEstimator {
     #[new]
-    #[pyo3(signature = (*, max_iter=1000, tol=1e-6, m=10))]
-    fn new(max_iter: u64, tol: f64, m: usize) -> PyResult<Self> {
+    #[pyo3(signature = (*, max_iter=1000, tol=1e-6, m=0, smooth_bounds=false))]
+    fn new(max_iter: u64, tol: f64, m: usize, smooth_bounds: bool) -> PyResult<Self> {
         if !tol.is_finite() || tol < 0.0 {
             return Err(PyValueError::new_err("tol must be finite and >= 0"));
         }
-        if m == 0 {
-            return Err(PyValueError::new_err("m must be >= 1"));
-        }
-        let cfg = OptimizerConfig { max_iter, tol, m, smooth_bounds: false };
+        let cfg = OptimizerConfig { max_iter, tol, m, smooth_bounds };
         Ok(PyMaximumLikelihoodEstimator { inner: RustMLE::with_config(cfg) })
     }
 
@@ -3353,6 +5182,14 @@ impl PyMaximumLikelihoodEstimator {
                             &m, init, b, &mut tape,
                         )
                     }
+                    PosteriorModel::Unbinned(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::Hybrid(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
                     PosteriorModel::GaussianMean(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
@@ -3418,6 +5255,26 @@ impl PyMaximumLikelihoodEstimator {
                         None => mle.fit_minimum(&m),
                     },
                     PosteriorModel::OneCompartmentOralPkNlme(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::GammaRegression(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::TweedieRegression(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::Gev(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::Gpd(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::EightSchools(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
@@ -3494,6 +5351,26 @@ impl PyMaximumLikelihoodEstimator {
                         PyValueError::new_err("All items in the list must be HistFactoryModel")
                     })?;
                     models.push(hf.inner.clone());
+                }
+
+                let results = py.detach(move || mle.fit_batch(&models));
+                return results
+                    .into_iter()
+                    .map(|r| {
+                        let r =
+                            r.map_err(|e| PyValueError::new_err(format!("Fit failed: {}", e)))?;
+                        Ok(PyFitResult::from(r))
+                    })
+                    .collect();
+            }
+
+            if first.extract::<PyRef<'_, PyUnbinnedModel>>().is_ok() {
+                let mut models: Vec<RustUnbinnedModel> = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    let ub = item.extract::<PyRef<'_, PyUnbinnedModel>>().map_err(|_| {
+                        PyValueError::new_err("All items in the list must be UnbinnedModel")
+                    })?;
+                    models.push(ub.inner.clone());
                 }
 
                 let results = py.detach(move || mle.fit_batch(&models));
@@ -4033,6 +5910,42 @@ fn from_parquet(
     Ok(PyHistFactoryModel { inner: model })
 }
 
+/// Create a HistFactoryModel from Parquet yields + modifiers files (binned Parquet v2).
+///
+/// The yields file must contain the histogram yields table schema:
+/// `channel` (Utf8), `sample` (Utf8), `yields` (List<Float64>),
+/// optionally `stat_error` (List<Float64>).
+///
+/// The modifiers file must contain the modifiers table schema:
+/// `channel` (Utf8), `sample` (Utf8), `modifier_name` (Utf8), `modifier_type` (Utf8),
+/// optionally `data_hi`/`data_lo`/`data` (List<Float64>).
+#[pyfunction]
+#[pyo3(signature = (yields_path, modifiers_path, poi="mu", observations=None))]
+fn from_parquet_with_modifiers(
+    yields_path: &str,
+    modifiers_path: &str,
+    poi: &str,
+    observations: Option<std::collections::HashMap<String, Vec<f64>>>,
+) -> PyResult<PyHistFactoryModel> {
+    let config = ns_translate::arrow::ingest::ArrowIngestConfig {
+        poi: poi.to_string(),
+        observations,
+        ..Default::default()
+    };
+
+    let workspace = ns_translate::arrow::parquet::from_parquet_with_modifiers(
+        std::path::Path::new(yields_path),
+        std::path::Path::new(modifiers_path),
+        &config,
+    )
+    .map_err(|e| PyValueError::new_err(format!("Parquet ingest failed: {e}")))?;
+
+    let model = ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)
+        .map_err(|e| PyValueError::new_err(format!("Model construction failed: {e}")))?;
+
+    Ok(PyHistFactoryModel { inner: model })
+}
+
 /// Export model expected yields as Arrow IPC bytes.
 ///
 /// Returns bytes that can be deserialized with:
@@ -4291,6 +6204,55 @@ fn fit_toys(
     mle.fit_toys(py, model, params, n_toys, seed)
 }
 
+/// Generate Poisson-fluctuated toys and fit each for an unbinned model.
+///
+/// Uses warm-start (from `init_params` or observed-data MLE), retry with jitter,
+/// and Rayon parallelism for ≥95% convergence on typical unbinned models.
+#[pyfunction]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42, init_params=None, max_retries=3, max_iter=5000, compute_hessian=false))]
+fn unbinned_fit_toys(
+    py: Python<'_>,
+    model: &PyUnbinnedModel,
+    params: Vec<f64>,
+    n_toys: usize,
+    seed: u64,
+    init_params: Option<Vec<f64>>,
+    max_retries: usize,
+    max_iter: u64,
+    compute_hessian: bool,
+) -> PyResult<Vec<PyFitResult>> {
+    let m = model.inner.clone();
+
+    let results = py.detach(move || {
+        let toy_config = ns_inference::ToyFitConfig {
+            optimizer: OptimizerConfig { max_iter, ..OptimizerConfig::default() },
+            max_retries,
+            compute_hessian,
+            ..ns_inference::ToyFitConfig::default()
+        };
+
+        let batch = ns_inference::fit_unbinned_toys_batch_cpu(
+            &m,
+            &params,
+            n_toys,
+            seed,
+            init_params.as_deref(),
+            toy_config,
+            |m, p, s| m.sample_poisson_toy(p, s),
+        );
+        batch.fits
+    });
+
+    results
+        .into_iter()
+        .map(|r| {
+            let r =
+                r.map_err(|e| PyValueError::new_err(format!("Unbinned toy fit failed: {}", e)))?;
+            Ok(PyFitResult::from(r))
+        })
+        .collect()
+}
+
 /// Batch toy fitting (skips Hessian/covariance for speed).
 ///
 /// Uses Accelerate (vDSP/vForce) for Poisson NLL when built with `--features accelerate`.
@@ -4487,6 +6449,107 @@ fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<
     mle.ranking(py, model)
 }
 
+/// Convenience wrapper: nuisance-parameter ranking (impact on POI) for `UnbinnedModel`.
+#[pyfunction]
+fn unbinned_ranking<'py>(py: Python<'py>, model: &PyUnbinnedModel) -> PyResult<Vec<Py<PyAny>>> {
+    let poi_idx = model.inner.poi_index().ok_or_else(|| {
+        PyValueError::new_err("UnbinnedModel has no POI (spec.model.poi is required for ranking)")
+    })?;
+
+    let mle = RustMLE::new();
+    let m = model.inner.clone();
+
+    let entries: Vec<RankingEntry> = py
+        .detach(move || -> NsResult<Vec<RankingEntry>> {
+            // Nominal fit (WITH Hessian) to get pull/constraint.
+            let nominal = mle.fit(&m)?;
+            let mu_hat = nominal.parameters.get(poi_idx).copied().unwrap_or(f64::NAN);
+
+            let base_bounds: Vec<(f64, f64)> = m.parameters().iter().map(|p| p.bounds).collect();
+
+            let mut entries = Vec::<RankingEntry>::new();
+            for (np_idx, p) in m.parameters().iter().enumerate() {
+                if np_idx == poi_idx {
+                    continue;
+                }
+                let Some(constraint) = p.constraint.clone() else { continue };
+                if (p.bounds.0 - p.bounds.1).abs() < 1e-12 {
+                    continue;
+                }
+
+                let (center, sigma) = match constraint {
+                    ns_unbinned::Constraint::Gaussian { mean, sigma } => (mean, sigma),
+                };
+                if !sigma.is_finite() || sigma <= 0.0 {
+                    continue;
+                }
+
+                let (b_lo, b_hi) = base_bounds[np_idx];
+                let val_up = (center + sigma).min(b_hi);
+                let val_down = (center - sigma).max(b_lo);
+
+                let theta_hat = nominal.parameters[np_idx];
+                let pull = (theta_hat - center) / sigma;
+                let constraint = nominal.uncertainties[np_idx] / sigma;
+
+                // --- +1σ refit ---
+                let m_up = m.with_fixed_param(np_idx, val_up);
+                let mut warm_up = nominal.parameters.clone();
+                warm_up[np_idx] = val_up;
+                let r_up = mle.fit_minimum_from(&m_up, &warm_up);
+                let mu_up = r_up
+                    .ok()
+                    .filter(|r| r.converged)
+                    .and_then(|r| r.parameters.get(poi_idx).copied());
+
+                // --- -1σ refit ---
+                let m_down = m.with_fixed_param(np_idx, val_down);
+                let mut warm_down = nominal.parameters.clone();
+                warm_down[np_idx] = val_down;
+                let r_down = mle.fit_minimum_from(&m_down, &warm_down);
+                let mu_down = r_down
+                    .ok()
+                    .filter(|r| r.converged)
+                    .and_then(|r| r.parameters.get(poi_idx).copied());
+
+                let (Some(mu_up), Some(mu_down)) = (mu_up, mu_down) else { continue };
+                entries.push(RankingEntry {
+                    name: p.name.clone(),
+                    delta_mu_up: mu_up - mu_hat,
+                    delta_mu_down: mu_down - mu_hat,
+                    pull,
+                    constraint,
+                });
+            }
+
+            // Sort by |impact|
+            entries.sort_by(|a, b| {
+                let impact_a = a.delta_mu_up.abs().max(a.delta_mu_down.abs());
+                let impact_b = b.delta_mu_up.abs().max(b.delta_mu_down.abs());
+                impact_b
+                    .partial_cmp(&impact_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.name.cmp(&b.name))
+            });
+
+            Ok(entries)
+        })
+        .map_err(|e| PyValueError::new_err(format!("Unbinned ranking failed: {}", e)))?;
+
+    entries
+        .into_iter()
+        .map(|e| {
+            let d = PyDict::new(py);
+            d.set_item("name", e.name)?;
+            d.set_item("delta_mu_up", e.delta_mu_up)?;
+            d.set_item("delta_mu_down", e.delta_mu_down)?;
+            d.set_item("pull", e.pull)?;
+            d.set_item("constraint", e.constraint)?;
+            Ok(d.into_any().unbind())
+        })
+        .collect()
+}
+
 /// GPU-accelerated nuisance-parameter ranking (impact on POI).
 ///
 /// Nominal fit uses CPU (needs Hessian for pull/constraint). Per-NP refits
@@ -4660,6 +6723,185 @@ fn hypotest_toys(
             r.cls.into_py_any(py)
         }
     }
+}
+
+/// Unbinned hypotest (toy-based CLs, qtilde) returning CLs.
+#[pyfunction]
+#[pyo3(signature = (poi_test, model, *, n_toys=1000, seed=42, expected_set=false, return_tail_probs=false, return_meta=false))]
+fn unbinned_hypotest_toys(
+    py: Python<'_>,
+    poi_test: f64,
+    model: &PyUnbinnedModel,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    return_tail_probs: bool,
+    return_meta: bool,
+) -> PyResult<Py<PyAny>> {
+    let mle = RustMLE::new();
+    let fit_model = model.inner.clone();
+
+    let sample_toy =
+        |m: &RustUnbinnedModel, params: &[f64], seed: u64| m.sample_poisson_toy(params, seed);
+
+    if expected_set {
+        let r = ns_inference::hypotest_qtilde_toys_expected_set_with_sampler(
+            &mle, &fit_model, poi_test, n_toys, seed, sample_toy,
+        )
+        .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
+
+        if return_meta {
+            let d = PyDict::new(py);
+            d.set_item("mu_test", r.observed.mu_test)?;
+            d.set_item("cls", r.observed.cls)?;
+            d.set_item("clsb", r.observed.clsb)?;
+            d.set_item("clb", r.observed.clb)?;
+            d.set_item("q_obs", r.observed.q_obs)?;
+            d.set_item("mu_hat", r.observed.mu_hat)?;
+            d.set_item("n_toys_b", r.observed.n_toys_b)?;
+            d.set_item("n_toys_sb", r.observed.n_toys_sb)?;
+            d.set_item("n_error_b", r.observed.n_error_b)?;
+            d.set_item("n_error_sb", r.observed.n_error_sb)?;
+            d.set_item("n_nonconverged_b", r.observed.n_nonconverged_b)?;
+            d.set_item("n_nonconverged_sb", r.observed.n_nonconverged_sb)?;
+            d.set_item("expected", r.expected.to_vec())?;
+            return Ok(d.into_any().unbind());
+        }
+
+        if return_tail_probs {
+            (r.observed.cls, r.expected.to_vec(), vec![r.observed.clsb, r.observed.clb])
+                .into_py_any(py)
+        } else {
+            (r.observed.cls, r.expected.to_vec()).into_py_any(py)
+        }
+    } else {
+        let r = ns_inference::hypotest_qtilde_toys_with_sampler(
+            &mle, &fit_model, poi_test, n_toys, seed, sample_toy,
+        )
+        .map_err(|e| PyValueError::new_err(format!("Toy-based hypotest failed: {}", e)))?;
+
+        if return_meta {
+            let d = PyDict::new(py);
+            d.set_item("mu_test", r.mu_test)?;
+            d.set_item("cls", r.cls)?;
+            d.set_item("clsb", r.clsb)?;
+            d.set_item("clb", r.clb)?;
+            d.set_item("q_obs", r.q_obs)?;
+            d.set_item("mu_hat", r.mu_hat)?;
+            d.set_item("n_toys_b", r.n_toys_b)?;
+            d.set_item("n_toys_sb", r.n_toys_sb)?;
+            d.set_item("n_error_b", r.n_error_b)?;
+            d.set_item("n_error_sb", r.n_error_sb)?;
+            d.set_item("n_nonconverged_b", r.n_nonconverged_b)?;
+            d.set_item("n_nonconverged_sb", r.n_nonconverged_sb)?;
+            return Ok(d.into_any().unbind());
+        }
+
+        if return_tail_probs {
+            (r.cls, vec![r.clsb, r.clb]).into_py_any(py)
+        } else {
+            r.cls.into_py_any(py)
+        }
+    }
+}
+
+/// Unbinned profile likelihood scan over POI values (q_mu).
+#[pyfunction]
+#[pyo3(signature = (model, mu_values))]
+fn unbinned_profile_scan(
+    py: Python<'_>,
+    model: &PyUnbinnedModel,
+    mu_values: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let mle = RustMLE::new();
+    let scan = pl::scan(&mle, &model.inner, &mu_values)
+        .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("input_schema_version", model.schema_version())?;
+    out.set_item("poi_index", scan.poi_index)?;
+    out.set_item("mu_hat", scan.mu_hat)?;
+    out.set_item("nll_hat", scan.nll_hat)?;
+
+    let mut point_objs: Vec<Py<PyAny>> = Vec::with_capacity(scan.points.len());
+    for p in scan.points {
+        let d = PyDict::new(py);
+        d.set_item("mu", p.mu)?;
+        d.set_item("q_mu", p.q_mu)?;
+        d.set_item("nll_mu", p.nll_mu)?;
+        d.set_item("converged", p.converged)?;
+        d.set_item("n_iter", p.n_iter)?;
+        point_objs.push(d.into_any().unbind());
+    }
+    out.set_item("points", PyList::new(py, point_objs)?)?;
+
+    Ok(out.into_any().unbind())
+}
+
+/// Unbinned `q_mu` computation (upper-limit style, one-sided).
+#[pyfunction]
+#[pyo3(signature = (mu_test, model))]
+fn unbinned_hypotest(py: Python<'_>, mu_test: f64, model: &PyUnbinnedModel) -> PyResult<Py<PyAny>> {
+    let poi_idx = model.inner.poi_index().ok_or_else(|| {
+        PyValueError::new_err("UnbinnedModel has no POI (spec.model.poi is required for hypotest)")
+    })?;
+
+    let mle = RustMLE::new();
+    let m = model.inner.clone();
+
+    let (free, fixed_mu, q0, nll_mu0) = py
+        .detach(move || -> NsResult<(RustOptimizationResult, RustOptimizationResult, Option<f64>, Option<f64>)> {
+            let free = mle.fit_minimum(&m)?;
+            let fixed_model = m.with_fixed_param(poi_idx, mu_test);
+            let mut warm_mu = free.parameters.clone();
+            warm_mu[poi_idx] = mu_test;
+            let fixed_mu = mle.fit_minimum_from(&fixed_model, &warm_mu)?;
+
+            let (poi_lo, poi_hi) = m.parameter_bounds()[poi_idx];
+            let mut q0: Option<f64> = None;
+            let mut nll_mu0: Option<f64> = None;
+            if poi_lo <= 0.0 && 0.0 <= poi_hi {
+                let fixed0_model = m.with_fixed_param(poi_idx, 0.0);
+                let mut warm0 = free.parameters.clone();
+                warm0[poi_idx] = 0.0;
+                let fixed0 = mle.fit_minimum_from(&fixed0_model, &warm0)?;
+                let llr0 = 2.0 * (fixed0.fval - free.fval);
+                let mu_hat = free.parameters.get(poi_idx).copied().unwrap_or(f64::NAN);
+                q0 = Some(if mu_hat < 0.0 { 0.0 } else { llr0.max(0.0) });
+                nll_mu0 = Some(fixed0.fval);
+            }
+
+            Ok((free, fixed_mu, q0, nll_mu0))
+        })
+        .map_err(|e| PyValueError::new_err(format!("Unbinned hypotest failed: {}", e)))?;
+
+    let mu_hat = free.parameters.get(poi_idx).copied().unwrap_or(f64::NAN);
+    let nll_hat = free.fval;
+    let nll_mu = fixed_mu.fval;
+
+    // Upper-limit style q_mu (one-sided).
+    let llr = 2.0 * (nll_mu - nll_hat);
+    let mut q_mu = llr.max(0.0);
+    if mu_hat > mu_test {
+        q_mu = 0.0;
+    }
+
+    let out = PyDict::new(py);
+    out.set_item("input_schema_version", model.schema_version())?;
+    out.set_item("poi_index", poi_idx)?;
+    out.set_item("mu_test", mu_test)?;
+    out.set_item("mu_hat", mu_hat)?;
+    out.set_item("nll_hat", nll_hat)?;
+    out.set_item("nll_mu", nll_mu)?;
+    out.set_item("q_mu", q_mu)?;
+    out.set_item("q0", q0)?;
+    out.set_item("nll_mu0", nll_mu0)?;
+    out.set_item("converged_hat", free.converged)?;
+    out.set_item("converged_mu", fixed_mu.converged)?;
+    out.set_item("n_iter_hat", free.n_iter)?;
+    out.set_item("n_iter_mu", fixed_mu.n_iter)?;
+
+    Ok(out.into_any().unbind())
 }
 
 /// Profile likelihood scan over POI values (q_mu).
@@ -4854,7 +7096,7 @@ fn upper_limits_root(
 
 /// Bayesian NUTS/HMC sampling with ArviZ-compatible output.
 #[pyfunction]
-#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None))]
+#[pyo3(signature = (model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", metric="diagonal", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0, data=None))]
 fn sample<'py>(
     py: Python<'py>,
     model: &Bound<'py, PyAny>,
@@ -4864,9 +7106,12 @@ fn sample<'py>(
     seed: u64,
     max_treedepth: usize,
     target_accept: f64,
+    init_strategy: &str,
+    metric: &str,
     init_jitter: f64,
     init_jitter_rel: Option<f64>,
     init_overdispersed_rel: Option<f64>,
+    stepsize_jitter: f64,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
     validate_nuts_config(
@@ -4880,13 +7125,36 @@ fn sample<'py>(
         init_overdispersed_rel,
     )?;
 
+    let init_strategy = match init_strategy {
+        "random" => InitStrategy::Random,
+        "mle" => InitStrategy::Mle,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "init must be 'random' or 'mle', got '{other}'"
+            )));
+        }
+    };
+
+    let metric_type = match metric {
+        "diagonal" | "diag" | "diag_e" => ns_inference::MetricType::Diagonal,
+        "dense" | "dense_e" => ns_inference::MetricType::Dense,
+        "auto" => ns_inference::MetricType::Auto,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "metric must be 'diagonal', 'dense', or 'auto', got '{other}'"
+            )));
+        }
+    };
+
     let config = NutsConfig {
         max_treedepth,
         target_accept,
+        init_strategy,
+        metric_type,
         init_jitter,
         init_jitter_rel,
         init_overdispersed_rel,
-        ..Default::default()
+        stepsize_jitter,
     };
 
     // Accept `Posterior` objects (MAP sampling), otherwise sample the model (ML posterior).
@@ -5169,6 +7437,163 @@ impl PyProfiledDiffSession {
 }
 
 // ---------------------------------------------------------------------------
+// GpuFlowSession — GPU-accelerated flow PDF NLL reduction (CUDA only)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "cuda")]
+#[pyclass(name = "GpuFlowSession")]
+struct PyGpuFlowSession {
+    inner: ns_inference::gpu_flow_session::GpuFlowSession,
+}
+
+#[cfg(feature = "cuda")]
+#[pymethods]
+impl PyGpuFlowSession {
+    /// Create a GPU flow session for unbinned NLL reduction.
+    ///
+    /// Args:
+    ///     n_events: int — number of events
+    ///     n_params: int — number of global parameters
+    ///     processes: list[dict] — process descriptors, each with keys:
+    ///         - process_index: int
+    ///         - base_yield: float
+    ///         - yield_param_idx: int | None
+    ///         - yield_is_scaled: bool (default False)
+    ///     gauss_constraints: list[dict] — Gaussian constraint entries, each with keys:
+    ///         - center: float
+    ///         - sigma: float (> 0)
+    ///         - param_idx: int
+    ///     constraint_const: float (default 0.0)
+    #[new]
+    #[pyo3(signature = (n_events, n_params, processes, gauss_constraints=None, constraint_const=0.0))]
+    fn new(
+        n_events: usize,
+        n_params: usize,
+        processes: Vec<pyo3::Bound<'_, pyo3::types::PyDict>>,
+        gauss_constraints: Option<Vec<pyo3::Bound<'_, pyo3::types::PyDict>>>,
+        constraint_const: f64,
+    ) -> PyResult<Self> {
+        use ns_compute::unbinned_types::GpuUnbinnedGaussConstraintEntry;
+        use ns_inference::gpu_flow_session::{FlowProcessDesc, GpuFlowSessionConfig};
+
+        let procs: Vec<FlowProcessDesc> = processes
+            .iter()
+            .map(|d| {
+                let process_index: usize = d.get_item("process_index")?.unwrap().extract()?;
+                let base_yield: f64 = d.get_item("base_yield")?.unwrap().extract()?;
+                let yield_param_idx: Option<usize> =
+                    d.get_item("yield_param_idx")?.and_then(|v| v.extract().ok());
+                let yield_is_scaled: bool = d
+                    .get_item("yield_is_scaled")
+                    .ok()
+                    .and_then(|v| v)
+                    .and_then(|v| v.extract().ok())
+                    .unwrap_or(false);
+                let context_param_indices: Vec<usize> = d
+                    .get_item("context_param_indices")
+                    .ok()
+                    .and_then(|v| v)
+                    .and_then(|v| v.extract().ok())
+                    .unwrap_or_default();
+                Ok(FlowProcessDesc {
+                    process_index,
+                    base_yield,
+                    yield_param_idx,
+                    yield_is_scaled,
+                    context_param_indices,
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let gauss: Vec<GpuUnbinnedGaussConstraintEntry> = gauss_constraints
+            .unwrap_or_default()
+            .iter()
+            .map(|d| {
+                let center: f64 = d.get_item("center")?.unwrap().extract()?;
+                let sigma: f64 = d.get_item("sigma")?.unwrap().extract()?;
+                let param_idx: u32 = d.get_item("param_idx")?.unwrap().extract()?;
+                Ok(GpuUnbinnedGaussConstraintEntry {
+                    center,
+                    inv_width: 1.0 / sigma,
+                    param_idx,
+                    _pad: 0,
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let n_context = procs.first().map(|p| p.context_param_indices.len()).unwrap_or(0);
+        let config = GpuFlowSessionConfig {
+            processes: procs,
+            n_events,
+            n_params,
+            n_context,
+            gauss_constraints: gauss,
+            constraint_const,
+        };
+
+        let inner = ns_inference::gpu_flow_session::GpuFlowSession::new(config)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))?;
+        Ok(Self { inner })
+    }
+
+    /// Compute NLL from host-side f64 log-prob values.
+    ///
+    /// Args:
+    ///     logp_flat: list[float] — [n_procs × n_events] row-major
+    ///     params: list[float] — [n_params] current parameter values
+    ///
+    /// Returns:
+    ///     float — NLL value
+    fn nll(&mut self, logp_flat: Vec<f64>, params: Vec<f64>) -> PyResult<f64> {
+        self.inner.nll(&logp_flat, &params).map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Compute NLL from a GPU-resident float (f32) log-prob buffer (zero-copy CUDA EP path).
+    ///
+    /// This is the zero-copy path for ONNX Runtime CUDA Execution Provider:
+    /// the log_prob output tensor stays on device, no D2H copy, no f32→f64 conversion.
+    ///
+    /// Args:
+    ///     d_logp_flat_ptr: int — raw CUDA device pointer (from ort I/O binding or
+    ///         torch.Tensor.data_ptr()) to float[n_procs × n_events]
+    ///     params: list[float] — [n_params] current parameter values
+    ///
+    /// Returns:
+    ///     float — NLL value
+    fn nll_device_ptr_f32(&mut self, d_logp_flat_ptr: u64, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll_device_ptr_f32(d_logp_flat_ptr, &params)
+            .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
+    /// Compute yields from parameters.
+    ///
+    /// Args:
+    ///     params: list[float] — [n_params]
+    ///
+    /// Returns:
+    ///     list[float] — [n_procs] computed yields
+    fn compute_yields(&self, params: Vec<f64>) -> Vec<f64> {
+        self.inner.compute_yields(&params)
+    }
+
+    /// Number of events.
+    fn n_events(&self) -> usize {
+        self.inner.n_events()
+    }
+
+    /// Number of processes.
+    fn n_procs(&self) -> usize {
+        self.inner.n_procs()
+    }
+
+    /// Number of parameters.
+    fn n_params(&self) -> usize {
+        self.inner.n_params()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // MetalProfiledDifferentiableSession — profiled q₀/qμ on Apple Silicon (Metal)
 // ---------------------------------------------------------------------------
 
@@ -5267,6 +7692,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(unbinned_fit_toys, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
     m.add_function(wrap_pyfunction!(set_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(set_threads, m)?)?;
@@ -5278,13 +7704,17 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
+    m.add_function(wrap_pyfunction!(unbinned_ranking, m)?)?;
     #[cfg(feature = "cuda")]
     m.add_function(wrap_pyfunction!(ranking_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest_toys, m)?)?;
+    m.add_function(wrap_pyfunction!(unbinned_hypotest, m)?)?;
+    m.add_function(wrap_pyfunction!(unbinned_hypotest_toys, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(unbinned_profile_scan, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits_root, m)?)?;
@@ -5296,15 +7726,44 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_simulate, m)?)?;
+    m.add_function(wrap_pyfunction!(garch11_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(sv_logchi2_fit, m)?)?;
+
+    // Econometrics & Causal Inference
+    m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
+    m.add_function(wrap_pyfunction!(did, m)?)?;
+    m.add_function(wrap_pyfunction!(event_study, m)?)?;
+    m.add_function(wrap_pyfunction!(iv_2sls, m)?)?;
+    m.add_function(wrap_pyfunction!(aipw_ate, m)?)?;
+    m.add_function(wrap_pyfunction!(rosenbaum_bounds, m)?)?;
+
+    // Survival: Kaplan-Meier + Log-rank
+    m.add_function(wrap_pyfunction!(kaplan_meier, m)?)?;
+    m.add_function(wrap_pyfunction!(log_rank_test, m)?)?;
+
+    // Churn / Subscription vertical
+    m.add_function(wrap_pyfunction!(churn_generate_data, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_retention, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_risk_model, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_uplift, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_diagnostics, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_cohort_matrix, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_compare, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_uplift_survival, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_bootstrap_hr, m)?)?;
+    m.add_function(wrap_pyfunction!(churn_ingest, m)?)?;
 
     // Arrow / Parquet
     m.add_function(wrap_pyfunction!(from_arrow_ipc, m)?)?;
     m.add_function(wrap_pyfunction!(from_parquet, m)?)?;
+    m.add_function(wrap_pyfunction!(from_parquet_with_modifiers, m)?)?;
     m.add_function(wrap_pyfunction!(to_arrow_yields_ipc, m)?)?;
     m.add_function(wrap_pyfunction!(to_arrow_params_ipc, m)?)?;
 
     // Add classes
     m.add_class::<PyHistFactoryModel>()?;
+    m.add_class::<PyUnbinnedModel>()?;
+    m.add_class::<PyHybridModel>()?;
     m.add_class::<PyPosterior>()?;
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
@@ -5316,6 +7775,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOrderedProbitModel>()?;
     m.add_class::<PyPoissonRegressionModel>()?;
     m.add_class::<PyNegativeBinomialRegressionModel>()?;
+    m.add_class::<PyGammaRegressionModel>()?;
+    m.add_class::<PyTweedieRegressionModel>()?;
+    m.add_class::<PyGevModel>()?;
+    m.add_class::<PyGpdModel>()?;
+    m.add_class::<PyEightSchoolsModel>()?;
+    m.add_wrapped(wrap_pyfunction!(meta_fixed))?;
+    m.add_wrapped(wrap_pyfunction!(meta_random))?;
+    m.add_wrapped(wrap_pyfunction!(chain_ladder))?;
+    m.add_wrapped(wrap_pyfunction!(mack_chain_ladder))?;
     m.add_class::<PyComposedGlmModel>()?;
     m.add_class::<PyLmmMarginalModel>()?;
     m.add_class::<PyExponentialSurvivalModel>()?;
@@ -5328,11 +7796,20 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFitResult>()?;
     m.add_class::<PyFitMinimumResult>()?;
 
+    // Neural PDFs (FlowPdf + DcrSurrogate, neural only)
+    #[cfg(feature = "neural")]
+    m.add_class::<PyFlowPdf>()?;
+    #[cfg(feature = "neural")]
+    m.add_class::<PyDcrSurrogate>()?;
+
     // DifferentiableSession (CUDA only)
     #[cfg(feature = "cuda")]
     m.add_class::<PyDiffSession>()?;
     #[cfg(feature = "cuda")]
     m.add_class::<PyProfiledDiffSession>()?;
+    // GpuFlowSession (CUDA only)
+    #[cfg(feature = "cuda")]
+    m.add_class::<PyGpuFlowSession>()?;
     // MetalProfiledDifferentiableSession (Metal only)
     #[cfg(feature = "metal")]
     m.add_class::<PyMetalProfiledDiffSession>()?;

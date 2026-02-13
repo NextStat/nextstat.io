@@ -10,16 +10,16 @@ ordered logistic regression (proportional odds model).
 
 ## What is implemented
 
-`nextstat.ordinal.ordered_logit.fit(...)`:
+`nextstat.ordinal.ordered_logit.fit(x, y, *, n_levels: int) -> OrderedLogitFit`:
 
 - Ordered logistic regression (K levels, y in `{0..K-1}`)
-- MLE fit through the standard `nextstat.fit(...)` surface
-- Prediction: per-level probabilities via `predict_proba(...)`
+- MLE fit through the standard `nextstat.fit(model)` surface (the helper constructs an `nextstat._core.OrderedLogitModel` internally)
+- Prediction: per-level probabilities via `fit.predict_proba(x_new)`
 
-`nextstat.ordinal.ordered_probit.fit(...)`:
+`nextstat.ordinal.ordered_probit.fit(x, y, *, n_levels: int) -> OrderedProbitFit`:
 
 - Ordered probit regression (latent Gaussian threshold model)
-- Same output surface as ordered logit (fit + `predict_proba`)
+- Same output surface as ordered logit (`fit` + `fit.predict_proba`)
 
 ## Prerequisites
 
@@ -140,7 +140,7 @@ fixtures and checked in pure-Python tests.
 1) Generate/refresh the NextStat fixture JSONs:
 
 ```bash
-PYTHONPATH=bindings/ns-py/python python3 tests/generate_golden_ordinal.py
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/generate_golden_ordinal.py
 ```
 
 2) Generate an external reference JSON using your preferred tool (Stan/PyMC).
@@ -149,7 +149,7 @@ Expected schema is documented implicitly by `tests/external/merge_ordinal_extern
 Optional helper (PyMC MAP):
 
 ```bash
-python3 tests/external/generate_ordinal_goldens_pymc.py \
+./.venv/bin/python tests/external/generate_ordinal_goldens_pymc.py \
   tests/fixtures/ordinal/ordered_logit_small.json \
   --out /tmp/external_ordinal_logit.json
 ```
@@ -157,7 +157,7 @@ python3 tests/external/generate_ordinal_goldens_pymc.py \
 3) Merge the external reference into a fixture:
 
 ```bash
-python3 tests/external/merge_ordinal_external_goldens.py \
+./.venv/bin/python tests/external/merge_ordinal_external_goldens.py \
   tests/fixtures/ordinal/ordered_logit_small.json \
   /tmp/external_ordinal_logit.json
 ```

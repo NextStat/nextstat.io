@@ -10,7 +10,7 @@
 
 use crate::hypotest::NSIGMA_ORDER;
 use crate::mle::MaximumLikelihoodEstimator;
-use ns_core::traits::LogDensityModel;
+use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel};
 use ns_core::{Error, Result};
 use ns_translate::pyhf::HistFactoryModel;
 use rayon::prelude::*;
@@ -33,6 +33,10 @@ fn safe_cls(clsb: f64, clb: f64) -> f64 {
 }
 
 fn poi_index(model: &HistFactoryModel) -> Result<usize> {
+    model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
+}
+
+fn poi_index_generic(model: &impl PoiModel) -> Result<usize> {
     model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
 
@@ -104,6 +108,31 @@ fn qtilde_for_dataset(
         bounds_fixed,
         tape,
     )?;
+
+    let q = (2.0 * (fixed.fval - free_nll)).max(0.0);
+    Ok((q, mu_hat, free_nll, free.converged, fixed.converged))
+}
+
+fn qtilde_for_dataset_generic<M: LogDensityModel + FixedParamModel>(
+    mle: &MaximumLikelihoodEstimator,
+    model: &M,
+    poi: usize,
+    mu_test: f64,
+    init_free: &[f64],
+) -> Result<(f64, f64, f64, bool, bool)> {
+    // Returns: (qtilde, mu_hat, free_nll, free_converged, fixed_converged)
+    let free = mle.fit_minimum_from(model, init_free)?;
+    let mu_hat = free.parameters[poi];
+    let free_nll = free.fval;
+
+    if mu_hat > mu_test {
+        return Ok((0.0, mu_hat, free_nll, free.converged, true));
+    }
+
+    let fixed_model = model.with_fixed_param(poi, mu_test);
+    let mut init_fixed = free.parameters;
+    init_fixed[poi] = mu_test;
+    let fixed = mle.fit_minimum_from(&fixed_model, &init_fixed)?;
 
     let q = (2.0 * (fixed.fval - free_nll)).max(0.0);
     Ok((q, mu_hat, free_nll, free.converged, fixed.converged))
@@ -257,7 +286,117 @@ fn generate_q_ensemble(
     QEnsemble { q, n_error, n_nonconverged }
 }
 
+fn count_q_ge_ensemble_generic<M, F>(
+    mle: &MaximumLikelihoodEstimator,
+    base_model: &M,
+    poi: usize,
+    mu_test: f64,
+    q_obs: f64,
+    gen_params: &[f64],
+    init_free: &[f64],
+    n_toys: usize,
+    seed: u64,
+    sample_toy: &F,
+) -> ToyCounts
+where
+    M: LogDensityModel + FixedParamModel,
+    F: Fn(&M, &[f64], u64) -> Result<M> + Sync,
+{
+    (0..n_toys)
+        .into_par_iter()
+        .with_min_len(16)
+        .map(|toy_idx| {
+            let toy_seed = seed.wrapping_add(toy_idx as u64);
+            let toy_model = match sample_toy(base_model, gen_params, toy_seed) {
+                Ok(m) => m,
+                Err(_) => return ToyCounts { n_ge: 0, n_valid: 0, n_error: 1, n_nonconverged: 0 },
+            };
+
+            let (q, _mu_hat, _free_nll, free_conv, fixed_conv) =
+                match qtilde_for_dataset_generic(mle, &toy_model, poi, mu_test, init_free) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ToyCounts { n_ge: 0, n_valid: 0, n_error: 1, n_nonconverged: 0 };
+                    }
+                };
+
+            if !q.is_finite() {
+                return ToyCounts { n_ge: 0, n_valid: 0, n_error: 1, n_nonconverged: 0 };
+            }
+
+            ToyCounts {
+                n_ge: usize::from(q >= q_obs),
+                n_valid: 1,
+                n_error: 0,
+                n_nonconverged: usize::from(!(free_conv && fixed_conv)),
+            }
+        })
+        .reduce(
+            || ToyCounts { n_ge: 0, n_valid: 0, n_error: 0, n_nonconverged: 0 },
+            |a, b| ToyCounts {
+                n_ge: a.n_ge + b.n_ge,
+                n_valid: a.n_valid + b.n_valid,
+                n_error: a.n_error + b.n_error,
+                n_nonconverged: a.n_nonconverged + b.n_nonconverged,
+            },
+        )
+}
+
+fn generate_q_ensemble_generic<M, F>(
+    mle: &MaximumLikelihoodEstimator,
+    base_model: &M,
+    poi: usize,
+    mu_test: f64,
+    gen_params: &[f64],
+    init_free: &[f64],
+    n_toys: usize,
+    seed: u64,
+    sample_toy: &F,
+) -> QEnsemble
+where
+    M: LogDensityModel + FixedParamModel,
+    F: Fn(&M, &[f64], u64) -> Result<M> + Sync,
+{
+    let results: Vec<Result<(f64, bool)>> = (0..n_toys)
+        .into_par_iter()
+        .with_min_len(16)
+        .map(|toy_idx| {
+            let toy_seed = seed.wrapping_add(toy_idx as u64);
+            let toy_model = sample_toy(base_model, gen_params, toy_seed)?;
+
+            let (q, _mu_hat, _free_nll, free_conv, fixed_conv) =
+                qtilde_for_dataset_generic(mle, &toy_model, poi, mu_test, init_free)?;
+            Ok((q, free_conv && fixed_conv))
+        })
+        .collect();
+
+    let mut q: Vec<f64> = Vec::with_capacity(n_toys);
+    let mut n_error = 0usize;
+    let mut n_nonconverged = 0usize;
+
+    for r in results {
+        match r {
+            Ok((qq, converged)) => {
+                if qq.is_finite() {
+                    q.push(qq);
+                } else {
+                    n_error += 1;
+                }
+                if !converged {
+                    n_nonconverged += 1;
+                }
+            }
+            Err(_) => {
+                n_error += 1;
+            }
+        }
+    }
+
+    QEnsemble { q, n_error, n_nonconverged }
+}
+
 /// Result of a toy-based CLs `hypotest` at a fixed tested POI value.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct ToyHypotestResult {
     /// Tested POI value.
@@ -293,6 +432,263 @@ pub struct ToyHypotestExpectedSet {
     pub observed: ToyHypotestResult,
     /// Expected CLs at `n_sigma = [2, 1, 0, -1, -2]` (pyhf ordering).
     pub expected: [f64; 5],
+}
+
+/// Toy-based CLs hypotest (qtilde) for arbitrary models, with a caller-provided toy sampler.
+///
+/// This is intended for non-HistFactory models (e.g. unbinned/event-level likelihoods) where
+/// toy generation depends on model-specific data structures.
+pub fn hypotest_qtilde_toys_with_sampler<M, F>(
+    mle: &MaximumLikelihoodEstimator,
+    model: &M,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    sample_toy: F,
+) -> Result<ToyHypotestResult>
+where
+    M: LogDensityModel + PoiModel + FixedParamModel,
+    F: Fn(&M, &[f64], u64) -> Result<M> + Sync,
+{
+    hypotest_qtilde_toys_with_sampler_impl(mle, model, mu_test, n_toys, seed, false, &sample_toy)
+        .map(|(r, _)| r)
+}
+
+/// Toy-based CLs hypotest (qtilde) for arbitrary models, returning observed + expected-set CLs.
+pub fn hypotest_qtilde_toys_expected_set_with_sampler<M, F>(
+    mle: &MaximumLikelihoodEstimator,
+    model: &M,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    sample_toy: F,
+) -> Result<ToyHypotestExpectedSet>
+where
+    M: LogDensityModel + PoiModel + FixedParamModel,
+    F: Fn(&M, &[f64], u64) -> Result<M> + Sync,
+{
+    let (observed, expected_opt) = hypotest_qtilde_toys_with_sampler_impl(
+        mle,
+        model,
+        mu_test,
+        n_toys,
+        seed,
+        true,
+        &sample_toy,
+    )?;
+    let expected = expected_opt.ok_or_else(|| {
+        Error::Validation("internal error: expected_set requested but not produced".to_string())
+    })?;
+    Ok(ToyHypotestExpectedSet { observed, expected })
+}
+
+fn hypotest_qtilde_toys_with_sampler_impl<M, F>(
+    mle: &MaximumLikelihoodEstimator,
+    model: &M,
+    mu_test: f64,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    sample_toy: &F,
+) -> Result<(ToyHypotestResult, Option<[f64; 5]>)>
+where
+    M: LogDensityModel + PoiModel + FixedParamModel,
+    F: Fn(&M, &[f64], u64) -> Result<M> + Sync,
+{
+    if n_toys == 0 {
+        return Err(Error::Validation("n_toys must be > 0".to_string()));
+    }
+
+    let poi = poi_index_generic(model)?;
+    let bounds = model.parameter_bounds();
+    if poi >= bounds.len() {
+        return Err(Error::Validation(format!(
+            "POI index out of bounds: poi={} bounds_len={}",
+            poi,
+            bounds.len()
+        )));
+    }
+    let (poi_lo, poi_hi) = bounds[poi];
+    if mu_test < poi_lo || mu_test > poi_hi {
+        return Err(Error::Validation(format!(
+            "mu_test out of POI bounds: mu_test={mu_test} not in [{poi_lo}, {poi_hi}]"
+        )));
+    }
+    if !(poi_lo <= 0.0 && 0.0 <= poi_hi) {
+        return Err(Error::Validation(format!(
+            "toy-based CLs requires mu=0 within POI bounds, got POI bounds [{poi_lo}, {poi_hi}]"
+        )));
+    }
+
+    // Baseline: observed free fit + conditional fits for generation points.
+    let init0 = model.parameter_init();
+    let free_obs = mle.fit_minimum_from(model, &init0)?;
+    if !free_obs.converged {
+        return Err(Error::Validation(format!(
+            "Observed-data free fit did not converge: {}",
+            free_obs.message
+        )));
+    }
+    let free_nll = free_obs.fval;
+    let mu_hat = free_obs.parameters[poi];
+
+    // Conditional fit at mu_test: s+b generation point.
+    let fixed_mu_model = model.with_fixed_param(poi, mu_test);
+    let mut warm_mu = free_obs.parameters.clone();
+    warm_mu[poi] = mu_test;
+    let fixed_mu = mle.fit_minimum_from(&fixed_mu_model, &warm_mu)?;
+    if !fixed_mu.converged {
+        return Err(Error::Validation(format!(
+            "Failed to fit generation point at mu={}: {}",
+            mu_test, fixed_mu.message
+        )));
+    }
+
+    // Conditional fit at mu=0: b-only generation point.
+    let fixed_0_model = model.with_fixed_param(poi, 0.0);
+    let mut warm_0 = free_obs.parameters.clone();
+    warm_0[poi] = 0.0;
+    let fixed_0 = mle.fit_minimum_from(&fixed_0_model, &warm_0)?;
+    if !fixed_0.converged {
+        return Err(Error::Validation(format!(
+            "Failed to fit generation point at mu=0: {}",
+            fixed_0.message
+        )));
+    }
+
+    // Observed qtilde(mu_test) uses the same fixed(mu_test) fit; apply qtilde definition.
+    let q_obs = if mu_hat > mu_test { 0.0 } else { (2.0 * (fixed_mu.fval - free_nll)).max(0.0) };
+
+    // Use separate deterministic seeds for the two ensembles.
+    let seed_b = seed;
+    let seed_sb = seed.wrapping_add(1_000_000_000u64);
+
+    if !expected_set {
+        let ens_b = count_q_ge_ensemble_generic(
+            mle,
+            model,
+            poi,
+            mu_test,
+            q_obs,
+            &fixed_0.parameters,
+            &fixed_0.parameters,
+            n_toys,
+            seed_b,
+            sample_toy,
+        );
+        let ens_sb = count_q_ge_ensemble_generic(
+            mle,
+            model,
+            poi,
+            mu_test,
+            q_obs,
+            &fixed_mu.parameters,
+            &fixed_mu.parameters,
+            n_toys,
+            seed_sb,
+            sample_toy,
+        );
+
+        if ens_b.n_valid == 0 || ens_sb.n_valid == 0 {
+            return Err(Error::Validation(format!(
+                "All toys failed: b_only_valid={} sb_valid={}",
+                ens_b.n_valid, ens_sb.n_valid
+            )));
+        }
+
+        let clsb = tail_prob_counts(ens_sb.n_ge, ens_sb.n_valid);
+        let clb = tail_prob_counts(ens_b.n_ge, ens_b.n_valid);
+        let cls = safe_cls(clsb, clb);
+
+        return Ok((
+            ToyHypotestResult {
+                mu_test,
+                cls,
+                clsb,
+                clb,
+                q_obs,
+                mu_hat,
+                n_toys_b: n_toys,
+                n_toys_sb: n_toys,
+                n_error_b: ens_b.n_error,
+                n_error_sb: ens_sb.n_error,
+                n_nonconverged_b: ens_b.n_nonconverged,
+                n_nonconverged_sb: ens_sb.n_nonconverged,
+            },
+            None,
+        ));
+    }
+
+    let ens_b = generate_q_ensemble_generic(
+        mle,
+        model,
+        poi,
+        mu_test,
+        &fixed_0.parameters,
+        &fixed_0.parameters,
+        n_toys,
+        seed_b,
+        sample_toy,
+    );
+    let ens_sb = generate_q_ensemble_generic(
+        mle,
+        model,
+        poi,
+        mu_test,
+        &fixed_mu.parameters,
+        &fixed_mu.parameters,
+        n_toys,
+        seed_sb,
+        sample_toy,
+    );
+
+    if ens_b.q.is_empty() || ens_sb.q.is_empty() {
+        return Err(Error::Validation(format!(
+            "Toy ensembles are empty after filtering errors: b_only={} sb={}",
+            ens_b.q.len(),
+            ens_sb.q.len()
+        )));
+    }
+
+    let mut q_b_sorted = ens_b.q.clone();
+    q_b_sorted.sort_by(|a, b| a.total_cmp(b));
+    let mut q_sb_sorted = ens_sb.q.clone();
+    q_sb_sorted.sort_by(|a, b| a.total_cmp(b));
+
+    let clsb = tail_prob_sorted(&q_sb_sorted, q_obs);
+    let clb = tail_prob_sorted(&q_b_sorted, q_obs);
+    let cls = safe_cls(clsb, clb);
+
+    let observed = ToyHypotestResult {
+        mu_test,
+        cls,
+        clsb,
+        clb,
+        q_obs,
+        mu_hat,
+        n_toys_b: n_toys,
+        n_toys_sb: n_toys,
+        n_error_b: ens_b.n_error,
+        n_error_sb: ens_sb.n_error,
+        n_nonconverged_b: ens_b.n_nonconverged,
+        n_nonconverged_sb: ens_sb.n_nonconverged,
+    };
+
+    let mut cls_vals: Vec<f64> = Vec::with_capacity(q_b_sorted.len());
+    for &q in &q_b_sorted {
+        let clsb_q = tail_prob_sorted(&q_sb_sorted, q);
+        let clb_q = tail_prob_sorted(&q_b_sorted, q);
+        cls_vals.push(safe_cls(clsb_q, clb_q));
+    }
+    cls_vals.sort_by(|a, b| a.total_cmp(b));
+
+    let mut expected = [0.0; 5];
+    for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {
+        let p = normal_cdf(-t);
+        expected[i] = quantile_sorted(&cls_vals, p);
+    }
+
+    Ok((observed, Some(expected)))
 }
 
 /// Toy-based CLs hypotest (qtilde) returning observed p-values.
@@ -497,9 +893,9 @@ fn hypotest_qtilde_toys_impl(
     }
 
     let mut q_b_sorted = ens_b.q.clone();
-    q_b_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    q_b_sorted.sort_by(|a, b| a.total_cmp(b));
     let mut q_sb_sorted = ens_sb.q.clone();
-    q_sb_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    q_sb_sorted.sort_by(|a, b| a.total_cmp(b));
 
     let clsb = tail_prob_sorted(&q_sb_sorted, q_obs);
     let clb = tail_prob_sorted(&q_b_sorted, q_obs);
@@ -530,7 +926,7 @@ fn hypotest_qtilde_toys_impl(
         let clb_q = tail_prob_sorted(&q_b_sorted, q);
         cls_vals.push(safe_cls(clsb_q, clb_q));
     }
-    cls_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    cls_vals.sort_by(|a, b| a.total_cmp(b));
 
     let mut expected = [0.0; 5];
     for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {
@@ -1052,9 +1448,9 @@ fn hypotest_qtilde_toys_gpu_impl(
     }
 
     let mut q_b_sorted = ens_b_result.q.clone();
-    q_b_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    q_b_sorted.sort_by(|a, b| a.total_cmp(b));
     let mut q_sb_sorted = ens_sb_result.q.clone();
-    q_sb_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    q_sb_sorted.sort_by(|a, b| a.total_cmp(b));
 
     let clsb = tail_prob_sorted(&q_sb_sorted, q_obs);
     let clb = tail_prob_sorted(&q_b_sorted, q_obs);
@@ -1081,7 +1477,7 @@ fn hypotest_qtilde_toys_gpu_impl(
         let clb_q = tail_prob_sorted(&q_b_sorted, q_val);
         cls_vals.push(safe_cls(clsb_q, clb_q));
     }
-    cls_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    cls_vals.sort_by(|a, b| a.total_cmp(b));
 
     let mut expected = [0.0; 5];
     for (i, t) in NSIGMA_ORDER.into_iter().enumerate() {

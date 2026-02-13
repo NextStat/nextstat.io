@@ -1,0 +1,11 @@
+# Column mapping for churn_sample.csv
+time_col: tenure_months
+event_col: churned
+group_col: plan
+treated_col: treated
+covariate_cols:
+  - usage_score
+  - support_tickets
+user_id_col: customer_id
+observation_end: 24.0
+time_unit: months

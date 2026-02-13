@@ -23,7 +23,7 @@ category: ml
 
 # JAX Compile vs Execution: The Benchmark You Actually Need
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme) · **Next:** [Trust Offensive series index](/blog/trust-offensive-public-benchmarks)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme) · **Next:** [Trust Offensive series index](/blog/trust-offensive)
 
 Many ML “benchmarks” measure only steady-state throughput.
 
@@ -42,7 +42,8 @@ This post explains how we benchmark “compile vs execution” as a first-class 
 
 Runbook/spec:
 
-- [ML Benchmark Suite](/docs/benchmarks/suites/ml)
+- [Public Benchmarks specification (protocol + artifacts)](/docs/public-benchmarks)
+- Suite runbook (repo path): `docs/benchmarks/suites/ml.md`
 
 ---
 
@@ -141,7 +142,12 @@ For each snapshot:
 - baseline manifest (versions, hardware, settings)
 - cache policy and harness version
 
-Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
+Published artifact contracts (ML suite):
+
+- per-case results: `nextstat.ml_benchmark_result.v1`
+- suite index: `nextstat.ml_benchmark_suite_result.v1`
+
+Publishing contract: [Public Benchmarks](/docs/public-benchmarks). Validation pack artifact: [Validation Report](/docs/validation-report).
 
 ---
 
@@ -159,8 +165,23 @@ Compile-vs-execution tradeoffs are part of that story when ML is inside the loop
 
 ## Appendix: seed harness status (today)
 
-The public benchmarks seed repo now includes a runnable ML suite under `suites/ml/`:
+The public benchmarks seed repo includes a runnable ML suite under `benchmarks/nextstat-public-benchmarks/suites/ml/`:
 
 - it measures cold-start TTFR (import + first call) using multiple **fresh processes**
 - it measures warm-call throughput as a per-call distribution
-- it runs with NumPy by default and includes optional `jax_jit_*` cases (skipped with `warn` if JAX is not installed)
+- it runs with NumPy by default and includes optional `jax_jit_*` cases:
+  - `warn` with `reason="missing_dependency: jax"` if JAX is not installed
+  - GPU-intended cases report `warn` with `reason="gpu_unavailable"` when a CUDA backend is not available
+
+Reproducible seed run (suite runner writes per-case JSON + suite index):
+
+```bash
+python benchmarks/nextstat-public-benchmarks/suites/ml/suite.py \
+  --deterministic \
+  --out-dir benchmarks/nextstat-public-benchmarks/out/ml
+```
+
+Published artifact schemas (seed harness writes `schema_version` fields):
+
+- per-case: `nextstat.ml_benchmark_result.v1`
+- suite index: `nextstat.ml_benchmark_suite_result.v1`

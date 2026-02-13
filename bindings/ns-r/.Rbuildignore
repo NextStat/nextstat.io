@@ -1,0 +1,17 @@
+^src/rust/target$
+^src/rust/target/.*$
+^src/.*\.o$
+^src/nextstat\.so$
+^src/symbols\.rds$
+^\.git$
+^\.gitignore$
+^\.github$
+^\.Rproj\.user$
+^.*\.Rproj$
+^LICENSE\.md$
+^README\.Rmd$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.lintr$
+^vignettes/.*_cache$

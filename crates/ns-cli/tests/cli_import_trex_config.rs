@@ -90,9 +90,11 @@ fn import_trex_config_emits_analysis_yaml_and_coverage_json_and_expr_coverage_js
         .and_then(|v| v.get("base_dir"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let base_dir_path =
+        PathBuf::from(base_dir).canonicalize().unwrap_or_else(|_| PathBuf::from(base_dir));
     assert!(
-        base_dir.ends_with("nextstat.io"),
-        "expected base_dir to be repo root, got={base_dir:?}"
+        base_dir_path == root,
+        "expected base_dir to equal --base-dir (repo root), got={base_dir:?}"
     );
 
     let cov: serde_json::Value =

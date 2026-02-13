@@ -257,13 +257,22 @@ def make_hier_random_intercept_dataset(*, n_groups: int, n_per_group: int, seed:
     }
 
 
+def make_eight_schools_dataset() -> dict[str, Any]:
+    return {
+        "kind": "eight_schools",
+        "J": 8,
+        "y": [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0],
+        "sigma": [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0],
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", required=True, help="Case id for reporting.")
     ap.add_argument(
         "--model",
         required=True,
-        choices=["histfactory_simple", "glm_logistic", "hier_random_intercept"],
+        choices=["histfactory_simple", "glm_logistic", "hier_random_intercept", "eight_schools"],
         help="Which baseline model to run.",
     )
     ap.add_argument("--out", required=True, help="Output JSON path.")
@@ -271,7 +280,7 @@ def main() -> int:
     ap.add_argument(
         "--backend",
         default="nextstat",
-        choices=["nextstat", "cmdstanpy", "pymc"],
+        choices=["nextstat", "cmdstanpy", "pymc", "numpyro"],
         help="Which NUTS backend to run (optional).",
     )
 
@@ -280,9 +289,18 @@ def main() -> int:
     ap.add_argument("--warmup", type=int, default=500)
     ap.add_argument("--samples", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--dataset-seed",
+        type=int,
+        default=None,
+        help="Seed used for dataset generation (generated cases). Defaults to --seed for backward-compat.",
+    )
     ap.add_argument("--max-treedepth", type=int, default=10)
     ap.add_argument("--target-accept", type=float, default=0.8)
     ap.add_argument("--init-jitter-rel", type=float, default=0.10)
+    ap.add_argument("--metric", type=str, default="diagonal",
+                    choices=["diagonal", "dense", "auto"],
+                    help="(nextstat) Mass matrix type.")
 
     # Dataset/model-specific knobs (for generated cases).
     ap.add_argument("--n", type=int, default=200, help="(glm_logistic) number of rows.")
@@ -300,10 +318,16 @@ def main() -> int:
         "n_warmup": int(args.warmup),
         "n_samples": int(args.samples),
         "seed": int(args.seed),
+        "dataset_seed": int(args.dataset_seed) if args.dataset_seed is not None else int(args.seed),
         "max_treedepth": int(args.max_treedepth),
         "target_accept": float(args.target_accept),
         "init_jitter_rel": float(args.init_jitter_rel),
+        "metric": str(args.metric),
     }
+
+    # Eight Schools has funnel geometry — raise target_accept for better exploration.
+    if args.model == "eight_schools":
+        cfg["target_accept"] = max(cfg["target_accept"], 0.95)
 
     try:
         import nextstat  # type: ignore
@@ -351,9 +375,10 @@ def main() -> int:
         model_type = "HistFactoryModel(simple_workspace.json)"
         dataset = {"id": str(ws_path), "path": str(ws_path), "sha256": dataset_sha}
     elif args.model == "glm_logistic":
-        raw = make_logistic_regression_dataset(n=int(args.n), p=int(args.p), seed=int(args.seed))
+        dataset_seed = int(args.dataset_seed) if args.dataset_seed is not None else int(args.seed)
+        raw = make_logistic_regression_dataset(n=int(args.n), p=int(args.p), seed=dataset_seed)
         generated = raw
-        dataset_id = f"generated:glm_logistic_n={args.n}_p={args.p}_seed={args.seed}"
+        dataset_id = f"generated:glm_logistic_n={args.n}_p={args.p}_seed={dataset_seed}"
         dataset_sha = sha256_json_obj(raw)
         spec = nextstat.data.GlmSpec.logistic_regression(
             x=raw["x"],
@@ -365,17 +390,18 @@ def main() -> int:
         model_obj = spec.build()
         model_type = "ComposedGlmModel.logistic_regression"
         dataset = {"id": dataset_id, "sha256": dataset_sha}
-    else:
+    elif args.model == "hier_random_intercept":
+        dataset_seed = int(args.dataset_seed) if args.dataset_seed is not None else int(args.seed)
         raw = make_hier_random_intercept_dataset(
-            n_groups=int(args.n_groups), n_per_group=int(args.n_per_group), seed=int(args.seed)
+            n_groups=int(args.n_groups), n_per_group=int(args.n_per_group), seed=dataset_seed
         )
         generated = raw
-        dataset_id = f"generated:hier_logistic_random_intercept_g={args.n_groups}_nper={args.n_per_group}_seed={args.seed}"
+        dataset_id = f"generated:hier_logistic_random_intercept_g={args.n_groups}_nper={args.n_per_group}_seed={dataset_seed}"
         dataset_sha = sha256_json_obj(raw)
         spec = nextstat.data.GlmSpec.logistic_regression(
             x=raw["x"],
             y=raw["y"],
-            include_intercept=True,
+            include_intercept=False,
             group_idx=raw["group_idx"],
             n_groups=int(args.n_groups),
             coef_prior_mu=0.0,
@@ -384,6 +410,15 @@ def main() -> int:
         )
         model_obj = spec.build()
         model_type = "Hierarchical logistic (random intercept, non-centered)"
+        dataset = {"id": dataset_id, "sha256": dataset_sha}
+    else:
+        # eight_schools
+        raw = make_eight_schools_dataset()
+        generated = raw
+        dataset_id = "eight_schools"
+        dataset_sha = sha256_json_obj(raw)
+        model_obj = nextstat.EightSchoolsModel(y=raw["y"], sigma=raw["sigma"])
+        model_type = "Eight Schools (non-centered, funnel geometry)"
         dataset = {"id": dataset_id, "sha256": dataset_sha}
 
     if args.backend == "nextstat":
@@ -397,6 +432,7 @@ def main() -> int:
                 seed=cfg["seed"],
                 max_treedepth=cfg["max_treedepth"],
                 target_accept=cfg["target_accept"],
+                metric=cfg["metric"],
                 init_jitter_rel=cfg["init_jitter_rel"],
             )
             wall = time.perf_counter() - t0
@@ -499,7 +535,7 @@ model {
                 "X": generated["x"],
                 "y": generated["y"],
             }
-        else:
+        elif args.model == "hier_random_intercept":
             stan_code = """
 data {
   int<lower=1> N;
@@ -536,6 +572,35 @@ model {
                 "x": x,
                 "y": generated["y"],
                 "g": g,
+            }
+        else:
+            # eight_schools (non-centered parameterization)
+            stan_code = """
+data {
+  int<lower=0> J;
+  array[J] real y;
+  array[J] real<lower=0> sigma;
+}
+parameters {
+  real mu;
+  real<lower=0> tau;
+  vector[J] theta_raw;
+}
+transformed parameters {
+  vector[J] theta = mu + tau * theta_raw;
+}
+model {
+  mu ~ normal(0, 5);
+  tau ~ cauchy(0, 5);
+  theta_raw ~ normal(0, 1);
+  y ~ normal(theta, to_vector(sigma));
+}
+"""
+            assert generated is not None
+            stan_data = {
+                "J": int(generated["J"]),
+                "y": generated["y"],
+                "sigma": generated["sigma"],
             }
 
         code_hash = hashlib.sha256(stan_code.encode("utf-8")).hexdigest()
@@ -722,7 +787,7 @@ model {
                     progressbar=False,
                 )
                 wall = time.perf_counter() - t0
-        else:
+        elif args.model == "hier_random_intercept":
             assert generated is not None
             x = np.asarray([float(row[0]) for row in generated["x"]], dtype=float)
             y = np.asarray(generated["y"], dtype=int)
@@ -748,6 +813,211 @@ model {
                     progressbar=False,
                 )
                 wall = time.perf_counter() - t0
+        else:
+            # eight_schools (non-centered)
+            assert generated is not None
+            J = int(generated["J"])
+            y_obs = np.asarray(generated["y"], dtype=float)
+            sigma_obs = np.asarray(generated["sigma"], dtype=float)
+            with pm.Model():
+                mu = pm.Normal("mu", mu=0.0, sigma=5.0)
+                tau = pm.HalfCauchy("tau", beta=5.0)
+                theta_raw = pm.Normal("theta_raw", mu=0.0, sigma=1.0, shape=(J,))
+                theta = pm.Deterministic("theta", mu + tau * theta_raw)
+                pm.Normal("y", mu=theta, sigma=sigma_obs, observed=y_obs)
+                t0 = time.perf_counter()
+                idata = pm.sample(
+                    draws=int(cfg["n_samples"]),
+                    tune=int(cfg["n_warmup"]),
+                    chains=int(cfg["n_chains"]),
+                    cores=max(1, int(cfg["n_chains"])),
+                    random_seed=int(cfg["seed"]),
+                    target_accept=float(cfg["target_accept"]),
+                    nuts={"max_treedepth": int(cfg["max_treedepth"])},
+                    progressbar=False,
+                )
+                wall = time.perf_counter() - t0
+
+        df = az.summary(idata, round_to=None)
+        r_hat_map = _series_to_float_dict(df.get("r_hat", {}))
+        ess_bulk_map = _series_to_float_dict(df.get("ess_bulk", {}))
+        ess_tail_map = _series_to_float_dict(df.get("ess_tail", {}))
+
+        ess_bulk_vals = list(ess_bulk_map.values())
+        ess_tail_vals = list(ess_tail_map.values())
+        max_r_hat = max(r_hat_map.values()) if r_hat_map else None
+        min_ess_bulk = min(ess_bulk_vals) if ess_bulk_vals else None
+        min_ess_tail = min(ess_tail_vals) if ess_tail_vals else None
+
+        divergence_rate: float | None = None
+        max_treedepth_rate: float | None = None
+        try:
+            div = idata.sample_stats.get("diverging")
+            if div is not None:
+                divergence_rate = float(div.mean().to_numpy())
+        except Exception:
+            pass
+        try:
+            td = idata.sample_stats.get("tree_depth")
+            if td is not None:
+                max_treedepth_rate = float((td >= int(cfg["max_treedepth"])).mean().to_numpy())
+        except Exception:
+            pass
+
+        min_ebfmi: float | None = None
+        try:
+            bfmi = az.bfmi(idata)
+            vals = [v for v in (float(x) for x in bfmi) if math.isfinite(v)]
+            min_ebfmi = min(vals) if vals else None
+        except Exception:
+            pass
+
+        summary = {
+            "divergence_rate": divergence_rate,
+            "max_treedepth_rate": max_treedepth_rate,
+            "max_r_hat": max_r_hat,
+            "min_ess_bulk": min_ess_bulk,
+            "min_ess_tail": min_ess_tail,
+            "min_ebfmi": min_ebfmi,
+        }
+        timing = {
+            "wall_time_s": float(wall),
+            "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
+            "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
+        }
+
+        doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
+        doc.update(
+            {
+                "status": "ok",
+                "backend_meta": backend_meta,
+                "timing": timing,
+                "diagnostics_summary": summary,
+                "diagnostics": {"r_hat": r_hat_map, "ess_bulk": ess_bulk_map, "ess_tail": ess_tail_map},
+            }
+        )
+        _write_json(out_path, doc)
+        return 0
+
+    if args.backend == "numpyro":
+        try:
+            import arviz as az  # type: ignore
+            import jax  # type: ignore
+            import jax.numpy as jnp  # type: ignore
+            import numpyro  # type: ignore
+            import numpyro.distributions as dist  # type: ignore
+            from numpyro.infer import MCMC, NUTS  # type: ignore
+        except Exception as e:
+            return _emit_missing_backend(out_path=out_path, args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg, backend_name="numpyro", err=e)
+
+        backend_meta: dict[str, Any] = {
+            "numpyro_version": str(getattr(numpyro, "__version__", "unknown")),
+            "jax_version": str(getattr(jax, "__version__", "unknown")),
+        }
+
+        import numpy as np  # type: ignore
+
+        if args.model == "glm_logistic":
+            assert generated is not None
+            x_np = np.asarray(generated["x"], dtype=np.float64)
+            y_np = np.asarray(generated["y"], dtype=np.int32)
+
+            def _numpyro_glm_logistic(X, y_obs=None):
+                N, P = X.shape
+                alpha = numpyro.sample("alpha", dist.Normal(0.0, 1.0))
+                beta = numpyro.sample("beta", dist.Normal(jnp.zeros(P), jnp.ones(P)).to_event(1))
+                logits = alpha + X @ beta
+                numpyro.sample("y", dist.BernoulliLogits(logits), obs=y_obs)
+
+            model_fn = _numpyro_glm_logistic
+            model_args = (jnp.array(x_np),)
+            model_kwargs = {"y_obs": jnp.array(y_np)}
+
+        elif args.model == "hier_random_intercept":
+            assert generated is not None
+            x_np = np.asarray([float(row[0]) for row in generated["x"]], dtype=np.float64)
+            y_np = np.asarray(generated["y"], dtype=np.int32)
+            g_np = np.asarray(generated["group_idx"], dtype=np.int32)
+            g_n = int(generated["n_groups"])
+
+            def _numpyro_hier(x, g, g_n, y_obs=None):
+                alpha0 = numpyro.sample("alpha0", dist.Normal(0.0, 1.0))
+                beta = numpyro.sample("beta", dist.Normal(0.0, 1.0))
+                sigma_alpha = numpyro.sample("sigma_alpha", dist.HalfNormal(1.0))
+                alpha_raw = numpyro.sample("alpha_raw", dist.Normal(jnp.zeros(g_n), jnp.ones(g_n)).to_event(1))
+                alpha = alpha0 + sigma_alpha * alpha_raw
+                logits = alpha[g] + beta * x
+                numpyro.sample("y", dist.BernoulliLogits(logits), obs=y_obs)
+
+            model_fn = _numpyro_hier
+            model_args = (jnp.array(x_np), jnp.array(g_np), g_n)
+            model_kwargs = {"y_obs": jnp.array(y_np)}
+
+        else:
+            # eight_schools (non-centered)
+            assert generated is not None
+            J = int(generated["J"])
+            y_obs_np = np.asarray(generated["y"], dtype=np.float64)
+            sigma_np = np.asarray(generated["sigma"], dtype=np.float64)
+
+            def _numpyro_eight_schools(J, sigma, y_obs=None):
+                mu = numpyro.sample("mu", dist.Normal(0.0, 5.0))
+                tau = numpyro.sample("tau", dist.HalfCauchy(5.0))
+                theta_raw = numpyro.sample("theta_raw", dist.Normal(jnp.zeros(J), jnp.ones(J)).to_event(1))
+                theta = mu + tau * theta_raw
+                numpyro.sample("y", dist.Normal(theta, sigma), obs=y_obs)
+
+            model_fn = _numpyro_eight_schools
+            model_args = (J, jnp.array(sigma_np))
+            model_kwargs = {"y_obs": jnp.array(y_obs_np)}
+
+        kernel = NUTS(model_fn, target_accept_prob=float(cfg["target_accept"]), max_tree_depth=int(cfg["max_treedepth"]))
+        mcmc = MCMC(
+            kernel,
+            num_warmup=int(cfg["n_warmup"]),
+            num_samples=int(cfg["n_samples"]),
+            num_chains=int(cfg["n_chains"]),
+            chain_method="sequential",
+            progress_bar=False,
+        )
+
+        rng_key = jax.random.PRNGKey(int(cfg["seed"]))
+        # JIT warmup: tiny MCMC run to compile kernels (not timed)
+        try:
+            jit_kernel = NUTS(model_fn, target_accept_prob=float(cfg["target_accept"]), max_tree_depth=int(cfg["max_treedepth"]))
+            jit_mcmc = MCMC(jit_kernel, num_warmup=5, num_samples=5, num_chains=1, progress_bar=False)
+            jit_mcmc.run(jax.random.PRNGKey(9999), *model_args, **model_kwargs)
+            del jit_mcmc, jit_kernel
+        except Exception:
+            pass
+
+        t0 = time.perf_counter()
+        try:
+            mcmc.run(rng_key, *model_args, **model_kwargs)
+            wall = time.perf_counter() - t0
+        except Exception as e:
+            wall = time.perf_counter() - t0
+            doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
+            doc.update(
+                {
+                    "status": "failed",
+                    "reason": f"numpyro_sample_failed:{type(e).__name__}:{e}",
+                    "backend_meta": backend_meta,
+                    "timing": {"wall_time_s": float(wall)},
+                    "diagnostics_summary": {
+                        "divergence_rate": None,
+                        "max_treedepth_rate": None,
+                        "max_r_hat": None,
+                        "min_ess_bulk": None,
+                        "min_ess_tail": None,
+                        "min_ebfmi": None,
+                    },
+                }
+            )
+            _write_json(out_path, doc)
+            return 2
+
+        idata = az.from_numpyro(mcmc)
 
         df = az.summary(idata, round_to=None)
         r_hat_map = _series_to_float_dict(df.get("r_hat", {}))

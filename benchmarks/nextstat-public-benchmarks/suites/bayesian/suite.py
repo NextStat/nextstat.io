@@ -52,12 +52,18 @@ def main() -> int:
     ap.add_argument(
         "--backends",
         default="nextstat",
-        help="Comma-separated list of backends: nextstat,cmdstanpy,pymc (optional).",
+        help="Comma-separated list of backends: nextstat,cmdstanpy,pymc,numpyro (optional).",
     )
     ap.add_argument("--n-chains", type=int, default=4)
     ap.add_argument("--warmup", type=int, default=500)
     ap.add_argument("--samples", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--dataset-seed",
+        type=int,
+        default=12345,
+        help="Seed used for generated datasets (kept fixed across chain seeds).",
+    )
     ap.add_argument("--max-treedepth", type=int, default=10)
     ap.add_argument("--target-accept", type=float, default=0.8)
     ap.add_argument("--init-jitter-rel", type=float, default=0.10)
@@ -73,6 +79,7 @@ def main() -> int:
         {"case_id": "histfactory_simple_8p", "model": "histfactory_simple"},
         {"case_id": "glm_logistic_regression", "model": "glm_logistic"},
         {"case_id": "hier_random_intercept_non_centered", "model": "hier_random_intercept"},
+        {"case_id": "eight_schools_non_centered", "model": "eight_schools"},
     ]
 
     index_cases = []
@@ -84,7 +91,7 @@ def main() -> int:
     worst_score = float("inf")
 
     backends = [b.strip() for b in str(args.backends).split(",") if b.strip()]
-    allowed = {"nextstat", "cmdstanpy", "pymc"}
+    allowed = {"nextstat", "cmdstanpy", "pymc", "numpyro"}
     for b in backends:
         if b not in allowed:
             raise SystemExit(f"unknown backend: {b} (allowed: {sorted(allowed)})")
@@ -113,6 +120,8 @@ def main() -> int:
                 str(int(args.samples)),
                 "--seed",
                 str(int(args.seed)),
+                "--dataset-seed",
+                str(int(args.dataset_seed)),
                 "--max-treedepth",
                 str(int(args.max_treedepth)),
                 "--target-accept",

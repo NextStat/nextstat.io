@@ -41,3 +41,8 @@ jobs:
       - name: "Smoke: HEP suite"
         run: |
           python suites/hep/run.py --deterministic --out out/hep_simple_nll.json
+
+      - name: "Smoke: Econometrics suite"
+        run: |
+          python suites/econometrics/suite.py --deterministic --out-dir out/econometrics_smoke
+          python -c "import json; from pathlib import Path; import jsonschema; root=Path('.'); schema_case=json.loads((root/'manifests/schema/econometrics_benchmark_result_v1.schema.json').read_text()); schema_suite=json.loads((root/'manifests/schema/econometrics_benchmark_suite_result_v1.schema.json').read_text()); suite=json.loads((root/'out/econometrics_smoke/econometrics_suite.json').read_text()); jsonschema.validate(suite, schema_suite); [jsonschema.validate(json.loads((root/'out/econometrics_smoke'/e['path']).read_text()), schema_case) for e in suite.get('cases',[])]; print('econometrics: schema ok')"

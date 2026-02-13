@@ -25,7 +25,7 @@ This suite benchmarks NextStat on the workflows that dominate binned-likelihood 
 - profile likelihood scans
 - hypothesis tests / toy ensembles
 
-This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/benchmarks/public-benchmarks)).
+This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
 
 ## What is compared
 
@@ -61,6 +61,15 @@ Existing harness (today, in-repo):
 Seed harness (public benchmarks repo bootstrap):
 
 - `benchmarks/nextstat-public-benchmarks/suites/hep/` (single-case `run.py` and multi-case `suite.py`)
+
+Publishable artifacts under pinned schemas:
+
+- `nextstat.benchmark_result.v1` per case
+- `nextstat.benchmark_suite_result.v1` index
+
+Optional baseline artifacts (seed):
+
+- `nextstat.hep_root_baseline_result.v1` for ROOT baseline runs
 
 The seed harness also supports optional full MLE fit timing via `--fit --fit-repeat N` and records results in the per-case JSON under the `fit` block.
 
@@ -137,7 +146,7 @@ cargo bench -p ns-inference --bench mle_benchmark
 
 ## Related reading
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec.
 - [Benchmarks — GPU section](/docs/benchmarks#gpu-benchmarks-cuda) — full GPU benchmark tables.
-- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Validation Report Artifacts](/docs/validation-report) — validation pack for published snapshots.
 - [Numerical Accuracy](/blog/numerical-accuracy) — ROOT/pyhf/NextStat 3-way profile scan comparison.

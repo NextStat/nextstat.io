@@ -26,8 +26,11 @@ This repo's parity tests configure **pyhf** to use Code4/Code4p and compare agai
 default model builder settings. If you want strict HistFactory defaults instead, use Code1/Code0.
 
 Note: NextStat may preserve extra HistFactory metadata that is **not** part of the pyhf JSON schema
-(e.g. `measurements[].config.parameters[].constraint` from `<ConstraintTerm>`). pyhf will ignore such
-fields; parity is defined over the numerical model surfaces (expected data, NLL, gradients), not
+(e.g. `measurements[].config.parameters[].constraint` from `<ConstraintTerm>`). pyhf ≥0.7 validates
+workspaces strictly (`additionalProperties: false`) and will **reject** such non-standard fields with
+`InvalidSpecification`. The test harness uses `strip_for_pyhf()` (defined in `tests/python/conftest.py`)
+to remove these extensions before passing workspace dicts to `pyhf.Workspace()`.
+Parity is defined over the numerical model surfaces (expected data, NLL, gradients), not
 over byte-identical JSON.
 
 ### Activating Parity Mode

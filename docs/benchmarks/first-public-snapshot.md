@@ -19,7 +19,7 @@ This playbook is the practical “day 1” path for publishing the **first** pub
 
 Canonical specs (read later, reference always):
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks)
+- [Public Benchmarks Specification](/docs/public-benchmarks)
 - [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing)
 - [Public Benchmarks Repo Skeleton](/docs/benchmarks/repo-skeleton)
 

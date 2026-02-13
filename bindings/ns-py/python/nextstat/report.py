@@ -379,7 +379,7 @@ def render_report(
 
         # Always emit a valid PDF even if no artifacts were present.
         if n_saved == 0:
-            fig, ax = plt.subplots(figsize=(7.6, 2.8))
+            fig, ax = plt.subplots(figsize=(7.6, 2.8), constrained_layout=False)
             ax.text(0.5, 0.5, f"No report artifacts found in: {input_dir}", ha="center", va="center")
             ax.axis("off")
             save(fig, "empty_report")

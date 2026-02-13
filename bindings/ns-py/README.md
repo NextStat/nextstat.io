@@ -65,8 +65,8 @@ pip install nextstat
 ### Build From Source
 
 ```bash
-git clone https://github.com/nextstat/nextstat.git
-cd nextstat
+git clone https://github.com/NextStat/nextstat.io.git
+cd nextstat.io
 
 # Rust workspace
 cargo build --release
@@ -133,6 +133,24 @@ poi_idx = model.poi_index()
 print("POI index:", poi_idx)
 print("Best-fit POI:", result.bestfit[poi_idx])
 print("Uncertainty:", result.uncertainties[poi_idx])
+```
+
+### Unbinned (event-level) API
+
+Compile an event-level likelihood from an `unbinned_spec_v0` JSON/YAML file and run fits/scans:
+
+```python
+import nextstat
+
+analysis = nextstat.unbinned.from_config("unbinned.json")
+fit = analysis.fit()
+print("NLL:", fit.nll)
+
+scan = analysis.scan([0.0, 0.5, 1.0, 2.0])
+print("mu_hat:", scan["mu_hat"])
+
+cls = analysis.hypotest_toys(1.0, n_toys=2000, seed=42)
+print("CLs:", cls)
 ```
 
 ### Bayesian (NUTS) + ArviZ
@@ -413,4 +431,4 @@ NextStat uses a dual-licensing model:
 ## Contact
 
 - Website: https://nextstat.io
-- GitHub: https://github.com/nextstat/nextstat
+- GitHub: https://github.com/NextStat/nextstat.io

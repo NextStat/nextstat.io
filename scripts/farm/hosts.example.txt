@@ -1,0 +1,5 @@
+# host [optional key=value overrides]
+node01.hep.local
+node02.hep.local weight=48
+node03.hep.local threads=64
+node04.hep.local user=analysis port=2222 weight=32 threads=32

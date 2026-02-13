@@ -39,6 +39,8 @@ pub enum Hs3Distribution {
     Gaussian(Hs3GaussianDist),
     Poisson(Hs3PoissonDist),
     LogNormal(Hs3LogNormalDist),
+    /// NextStat extension: unbinned (event-level) distribution.
+    Unbinned(Hs3UnbinnedDist),
     /// Unknown distribution type — preserved as raw JSON for roundtrip.
     Unknown(serde_json::Value),
 }
@@ -67,6 +69,9 @@ impl<'de> Deserialize<'de> for Hs3Distribution {
             "lognormal_dist" => serde_json::from_value(value.clone())
                 .map(Hs3Distribution::LogNormal)
                 .map_err(serde::de::Error::custom),
+            "nextstat_unbinned_dist" => serde_json::from_value(value.clone())
+                .map(Hs3Distribution::Unbinned)
+                .map_err(serde::de::Error::custom),
             _ => Ok(Hs3Distribution::Unknown(value)),
         }
     }
@@ -82,6 +87,7 @@ impl Serialize for Hs3Distribution {
             Hs3Distribution::Gaussian(d) => d.serialize(serializer),
             Hs3Distribution::Poisson(d) => d.serialize(serializer),
             Hs3Distribution::LogNormal(d) => d.serialize(serializer),
+            Hs3Distribution::Unbinned(d) => d.serialize(serializer),
             Hs3Distribution::Unknown(v) => v.serialize(serializer),
         }
     }
@@ -95,6 +101,7 @@ impl Hs3Distribution {
             Hs3Distribution::Gaussian(d) => Some(&d.name),
             Hs3Distribution::Poisson(d) => Some(&d.name),
             Hs3Distribution::LogNormal(d) => Some(&d.name),
+            Hs3Distribution::Unbinned(d) => Some(&d.name),
             Hs3Distribution::Unknown(v) => v.get("name").and_then(|n| n.as_str()),
         }
     }
@@ -106,6 +113,7 @@ impl Hs3Distribution {
             Hs3Distribution::Gaussian(_) => "gaussian_dist",
             Hs3Distribution::Poisson(_) => "poisson_dist",
             Hs3Distribution::LogNormal(_) => "lognormal_dist",
+            Hs3Distribution::Unbinned(_) => "nextstat_unbinned_dist",
             Hs3Distribution::Unknown(v) => {
                 v.get("type").and_then(|t| t.as_str()).unwrap_or("unknown")
             }
@@ -494,6 +502,124 @@ pub struct Hs3LogNormalDist {
     pub x: String,
     pub mean: String,
     pub sigma: f64,
+}
+
+// ---------------------------------------------------------------------------
+// NextStat extension: unbinned (event-level) distribution
+// ---------------------------------------------------------------------------
+
+/// NextStat extension distribution for event-level (unbinned) channels.
+///
+/// Type tag: `"nextstat_unbinned_dist"`. Other HS3 consumers will treat this
+/// as an unknown distribution and skip it gracefully.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedDist {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub dist_type: String,
+    /// Observables (axes without binning — continuous).
+    pub observables: Vec<Hs3UnbinnedObservable>,
+    /// Processes (signal/background components).
+    pub processes: Vec<Hs3UnbinnedProcess>,
+    /// Data source reference (file path, format).
+    #[serde(default)]
+    pub data_source: Option<Hs3UnbinnedDataSource>,
+}
+
+/// Observable definition for an unbinned channel.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedObservable {
+    pub name: String,
+    pub min: f64,
+    pub max: f64,
+    #[serde(default)]
+    pub expr: Option<String>,
+}
+
+/// Process (signal/background) within an unbinned distribution.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedProcess {
+    pub name: String,
+    pub pdf: Hs3UnbinnedPdf,
+    #[serde(rename = "yield")]
+    pub yield_spec: Hs3UnbinnedYield,
+}
+
+/// PDF specification for an unbinned process.
+///
+/// Uses the same type-tag convention as HS3 modifiers. The `params` list
+/// references parameter names from the workspace `parameter_points`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct Hs3UnbinnedPdf {
+    #[serde(rename = "type")]
+    pub pdf_type: String,
+    #[serde(default)]
+    pub observable: Option<String>,
+    #[serde(default)]
+    pub params: Vec<String>,
+    #[serde(default)]
+    pub components: Option<Vec<Hs3UnbinnedPdf>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bin_edges: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bin_content: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centers: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weights: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub knots_x: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub knots_y: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_params: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub systematics: Option<Vec<String>>,
+}
+
+/// Yield specification for an unbinned process.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedYield {
+    #[serde(rename = "type")]
+    pub yield_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_yield: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<Hs3UnbinnedRateModifier>,
+}
+
+/// Rate modifier for an unbinned process yield.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedRateModifier {
+    #[serde(rename = "type")]
+    pub mod_type: String,
+    pub param: String,
+    pub lo: f64,
+    pub hi: f64,
+}
+
+/// Data source reference for an unbinned channel.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Hs3UnbinnedDataSource {
+    pub file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

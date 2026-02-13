@@ -24,7 +24,7 @@ category: bayesian
 
 # Bayesian Benchmarks That Mean Something: ESS/sec vs Wall-Time
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Differentiable HistFactory in PyTorch](/blog/differentiable-layer-nextstat-pytorch) · **Next:** [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Differentiable HistFactory in PyTorch](/blog/differentiable-layer) · **Next:** [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme)
 
 Bayesian benchmarks are notorious because they collapse a multi-dimensional object (a posterior + a sampling algorithm) into a single number.
 
@@ -34,7 +34,8 @@ This post explains how we benchmark Bayesian inference in NextStat using **ESS/s
 
 Runbook/spec:
 
-- [Bayesian Benchmark Suite](/docs/benchmarks/suites/bayesian)
+- [Public Benchmarks specification (protocol + artifacts)](/docs/public-benchmarks)
+- Suite runbook (repo path): `docs/benchmarks/suites/bayesian.md`
 
 ---
 
@@ -47,7 +48,10 @@ We treat Bayesian performance numbers as scientific claims. That means:
 - we report **sampling efficiency** (ESS/sec, bulk + tail) *and* health (divergences, treedepth saturation, $\hat{R}$, E‑BFMI),
 - and we publish artifacts (raw timings, manifests, and validation packs) so an outsider can rerun.
 
-Today’s public harness ships a **NextStat-only seed** that produces these metrics and artifacts under pinned schemas. Stan/PyMC integration will reuse the same protocols and publishing format once the cross-framework harness is pinned.
+Today’s public harness ships a runnable **seed** that produces these metrics and artifacts under pinned schemas:
+
+- `nextstat` backend: dependency-light and always available.
+- `cmdstanpy` and `pymc` backends: optional; when dependencies are missing, the runner emits a schema-valid JSON artifact with `status="warn"` and an actionable `reason` instead of failing the whole snapshot.
 
 ---
 
@@ -101,7 +105,9 @@ To avoid benchmark theater, we pin:
   - target acceptance
   - step-size adaptation policy
   - mass matrix policy (diag vs dense) + update schedule
-- RNG seeding policy (and determinism policy)
+- RNG seeding policy (and determinism policy), including:
+  - a fixed `dataset_seed` for generated datasets
+  - varied chain seeds for stability checks
 
 If any of these differ, we don’t call it a comparison — we call it a different experiment.
 
@@ -173,7 +179,14 @@ For each benchmark snapshot:
 
 If a run has pathologies (divergences, failure to adapt), we publish that as a result, not as a footnote.
 
-Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
+Publishing spec: [Public Benchmarks](/docs/public-benchmarks).
+
+Published artifact contracts (Bayesian suite):
+
+- per-case results: `nextstat.bayesian_benchmark_result.v1`
+- suite index: `nextstat.bayesian_benchmark_suite_result.v1`
+
+Canonical snapshot publishing contract + artifact inventory: [Public Benchmarks](/docs/public-benchmarks). Validation pack artifact: [Validation Report](/docs/validation-report).
 
 ---
 

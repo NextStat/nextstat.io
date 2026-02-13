@@ -1,8 +1,11 @@
 //! Column-oriented data extraction from TTree branches.
 
+use std::sync::{Arc, OnceLock};
+
 use rayon::prelude::*;
 
-use crate::basket::read_basket_data;
+use crate::basket::read_basket_data_cached;
+use crate::cache::BasketCache;
 use crate::error::{Result, RootError};
 use crate::tree::{BranchInfo, LeafType};
 
@@ -38,18 +41,30 @@ pub struct BranchReader<'a> {
     file_data: &'a [u8],
     branch: &'a BranchInfo,
     is_large: bool,
+    cache: Option<&'a BasketCache>,
+    cached_baskets: OnceLock<Vec<Arc<[u8]>>>,
 }
 
 impl<'a> BranchReader<'a> {
-    /// Create a new branch reader.
+    /// Create a new branch reader (without cache — backward compatible).
     pub fn new(file_data: &'a [u8], branch: &'a BranchInfo, is_large: bool) -> Self {
-        Self { file_data, branch, is_large }
+        Self { file_data, branch, is_large, cache: None, cached_baskets: OnceLock::new() }
+    }
+
+    /// Create a new branch reader with basket cache.
+    pub fn with_cache(
+        file_data: &'a [u8],
+        branch: &'a BranchInfo,
+        is_large: bool,
+        cache: &'a BasketCache,
+    ) -> Self {
+        Self { file_data, branch, is_large, cache: Some(cache), cached_baskets: OnceLock::new() }
     }
 
     /// Read all entries as `f64`, converting from the native type.
     pub fn as_f64(&self) -> Result<Vec<f64>> {
-        let raw_baskets = self.read_all_baskets()?;
-        decode_as_f64(&raw_baskets, self.branch.leaf_type)
+        let raw_baskets = self.get_or_read_all_baskets()?;
+        decode_as_f64(raw_baskets, self.branch.leaf_type)
     }
 
     /// Read a single indexed element per entry as `f64` for array/jagged branches.
@@ -67,9 +82,9 @@ impl<'a> BranchReader<'a> {
 
             // Best-effort support: unsplit std::vector<T> branches (TBranchElement without offset table).
             // These baskets typically store [len_i][elem_0..elem_len-1] for each entry.
-            let raw_baskets = self.read_all_baskets()?;
+            let raw_baskets = self.get_or_read_all_baskets()?;
             if let Some(out) = try_decode_unsplit_vector_indexed_all_baskets(
-                &raw_baskets,
+                raw_baskets,
                 &self.branch.basket_entry,
                 self.branch.entries,
                 self.branch.leaf_type,
@@ -80,7 +95,7 @@ impl<'a> BranchReader<'a> {
             }
 
             // Fixed-size arrays (no entry offsets, but basket contains N = entries * len).
-            let flat = decode_as_f64(&raw_baskets, self.branch.leaf_type)?;
+            let flat = decode_as_f64(raw_baskets, self.branch.leaf_type)?;
             if flat.len() == entries {
                 if index == 0 {
                     return Ok(flat);
@@ -121,10 +136,11 @@ impl<'a> BranchReader<'a> {
             )));
         }
 
-        let raw_baskets = self.read_all_baskets()?;
+        let raw_baskets = self.get_or_read_all_baskets()?;
         let mut out: Vec<f64> = Vec::with_capacity(self.branch.entries as usize);
 
         for (i, payload) in raw_baskets.iter().enumerate() {
+            let payload = payload.as_ref();
             let n_entries = self
                 .branch
                 .basket_entry
@@ -152,26 +168,26 @@ impl<'a> BranchReader<'a> {
 
     /// Read all entries as `f64` using parallel basket decompression.
     pub fn as_f64_par(&self) -> Result<Vec<f64>> {
-        let raw_baskets = self.read_all_baskets_par()?;
-        decode_as_f64(&raw_baskets, self.branch.leaf_type)
+        let raw_baskets = self.get_or_read_all_baskets_par()?;
+        decode_as_f64(raw_baskets, self.branch.leaf_type)
     }
 
     /// Read all entries as `f32`.
     pub fn as_f32(&self) -> Result<Vec<f32>> {
-        let raw_baskets = self.read_all_baskets()?;
-        decode_as_f32(&raw_baskets, self.branch.leaf_type)
+        let raw_baskets = self.get_or_read_all_baskets()?;
+        decode_as_f32(raw_baskets, self.branch.leaf_type)
     }
 
     /// Read all entries as `i32`.
     pub fn as_i32(&self) -> Result<Vec<i32>> {
-        let raw_baskets = self.read_all_baskets()?;
-        decode_as_i32(&raw_baskets, self.branch.leaf_type)
+        let raw_baskets = self.get_or_read_all_baskets()?;
+        decode_as_i32(raw_baskets, self.branch.leaf_type)
     }
 
     /// Read all entries as `i64`.
     pub fn as_i64(&self) -> Result<Vec<i64>> {
-        let raw_baskets = self.read_all_baskets()?;
-        decode_as_i64(&raw_baskets, self.branch.leaf_type)
+        let raw_baskets = self.get_or_read_all_baskets()?;
+        decode_as_i64(raw_baskets, self.branch.leaf_type)
     }
 
     /// Read all entries as a jagged column (variable-length per entry).
@@ -186,9 +202,9 @@ impl<'a> BranchReader<'a> {
             }
 
             // Best-effort: unsplit std::vector<T> branches (TBranchElement without offset table).
-            let raw_baskets = self.read_all_baskets()?;
+            let raw_baskets = self.get_or_read_all_baskets()?;
             if let Some(j) = try_decode_unsplit_vector_jagged_all_baskets(
-                &raw_baskets,
+                raw_baskets,
                 &self.branch.basket_entry,
                 self.branch.entries,
                 self.branch.leaf_type,
@@ -197,7 +213,7 @@ impl<'a> BranchReader<'a> {
             }
 
             // Fixed-size array — synthesize offsets
-            let flat = decode_as_f64(&raw_baskets, self.branch.leaf_type)?;
+            let flat = decode_as_f64(raw_baskets, self.branch.leaf_type)?;
             let elem_per_entry = if flat.len() == entries {
                 1
             } else {
@@ -226,11 +242,14 @@ impl<'a> BranchReader<'a> {
             )));
         }
 
-        let raw_baskets = self.read_all_baskets()?;
-        let mut flat = Vec::new();
-        let mut offsets = vec![0usize];
+        let raw_baskets = self.get_or_read_all_baskets()?;
+        let flat_hint = raw_baskets.iter().map(|payload| payload.len() / elem_size).sum::<usize>();
+        let mut flat = Vec::with_capacity(flat_hint);
+        let mut offsets = Vec::with_capacity((self.branch.entries as usize).saturating_add(1));
+        offsets.push(0usize);
 
         for (i, payload) in raw_baskets.iter().enumerate() {
+            let payload = payload.as_ref();
             let n_entries = self
                 .branch
                 .basket_entry
@@ -255,21 +274,53 @@ impl<'a> BranchReader<'a> {
         Ok(JaggedCol { flat, offsets })
     }
 
-    /// Read and decompress all baskets sequentially.
-    fn read_all_baskets(&self) -> Result<Vec<Vec<u8>>> {
+    #[inline]
+    fn get_or_read_all_baskets(&self) -> Result<&[Arc<[u8]>]> {
+        if let Some(baskets) = self.cached_baskets.get() {
+            return Ok(baskets.as_slice());
+        }
+        let baskets = self.read_all_baskets()?;
+        let _ = self.cached_baskets.set(baskets);
+        Ok(self.cached_baskets.get().unwrap().as_slice())
+    }
+
+    #[inline]
+    fn get_or_read_all_baskets_par(&self) -> Result<&[Arc<[u8]>]> {
+        if let Some(baskets) = self.cached_baskets.get() {
+            return Ok(baskets.as_slice());
+        }
+        let baskets = self.read_all_baskets_par()?;
+        let _ = self.cached_baskets.set(baskets);
+        Ok(self.cached_baskets.get().unwrap().as_slice())
+    }
+
+    /// Read and decompress all baskets sequentially, using cache when available.
+    fn read_all_baskets(&self) -> Result<Vec<Arc<[u8]>>> {
         let mut baskets = Vec::with_capacity(self.branch.n_baskets);
         for i in 0..self.branch.n_baskets {
-            let data = read_basket_data(self.file_data, self.branch.basket_seek[i], self.is_large)?;
+            let data = read_basket_data_cached(
+                self.file_data,
+                self.branch.basket_seek[i],
+                self.is_large,
+                self.cache,
+            )?;
             baskets.push(data);
         }
         Ok(baskets)
     }
 
-    /// Read and decompress all baskets in parallel via rayon.
-    fn read_all_baskets_par(&self) -> Result<Vec<Vec<u8>>> {
-        let results: Vec<Result<Vec<u8>>> = (0..self.branch.n_baskets)
+    /// Read and decompress all baskets in parallel via rayon, using cache when available.
+    fn read_all_baskets_par(&self) -> Result<Vec<Arc<[u8]>>> {
+        let results: Vec<Result<Arc<[u8]>>> = (0..self.branch.n_baskets)
             .into_par_iter()
-            .map(|i| read_basket_data(self.file_data, self.branch.basket_seek[i], self.is_large))
+            .map(|i| {
+                read_basket_data_cached(
+                    self.file_data,
+                    self.branch.basket_seek[i],
+                    self.is_large,
+                    self.cache,
+                )
+            })
             .collect();
 
         results.into_iter().collect()
@@ -362,6 +413,12 @@ fn decode_indexed_from_payload(
     Ok(())
 }
 
+#[inline]
+#[allow(clippy::manual_is_multiple_of)]
+fn is_multiple_of_usize(value: usize, divisor: usize) -> bool {
+    divisor != 0 && value % divisor == 0
+}
+
 /// Split a decompressed ROOT basket payload into the data section and a synthesized
 /// offset array of length `n_entries + 1`.
 ///
@@ -392,13 +449,13 @@ fn split_basket_payload_and_offsets(
     // - For many branches, fEntryOffsetLen acts like a bit width (16/32/64).
     // - For streamed vectors, fEntryOffsetLen is commonly `n_entries * bytes_per_offset`.
     let mut counted_bytes_per_offset: Vec<usize> = Vec::new();
-    if entry_offset_len.is_multiple_of(8) {
+    if is_multiple_of_usize(entry_offset_len, 8) {
         let b = entry_offset_len / 8;
         if matches!(b, 2 | 4 | 8) {
             counted_bytes_per_offset.push(b);
         }
     }
-    if entry_offset_len.is_multiple_of(n_entries) {
+    if is_multiple_of_usize(entry_offset_len, n_entries) {
         let b = entry_offset_len / n_entries;
         if matches!(b, 2 | 4 | 8) && !counted_bytes_per_offset.contains(&b) {
             counted_bytes_per_offset.push(b);
@@ -468,7 +525,7 @@ fn split_basket_payload_and_offsets(
     // Raw offsets array format: fEntryOffsetLen is the byte size of the offsets array.
     if entry_offset_len > 0
         && entry_offset_len <= payload.len()
-        && entry_offset_len.is_multiple_of(n_entries)
+        && is_multiple_of_usize(entry_offset_len, n_entries)
     {
         let bytes_per_offset = entry_offset_len / n_entries;
         if matches!(bytes_per_offset, 2 | 4 | 8) {
@@ -829,7 +886,7 @@ fn decode_unsplit_vector_jagged_from_payload(
 }
 
 fn try_decode_unsplit_vector_indexed_all_baskets(
-    raw_baskets: &[Vec<u8>],
+    raw_baskets: &[Arc<[u8]>],
     basket_entry: &[u64],
     total_entries: u64,
     leaf_type_prefer: LeafType,
@@ -846,6 +903,7 @@ fn try_decode_unsplit_vector_indexed_all_baskets(
         let mut ok = true;
 
         for (i, payload) in raw_baskets.iter().enumerate() {
+            let payload = payload.as_ref();
             let n_entries = basket_n_entries(basket_entry, total_entries, i);
             if n_entries == 0 {
                 continue;
@@ -874,7 +932,7 @@ fn try_decode_unsplit_vector_indexed_all_baskets(
 }
 
 fn try_decode_unsplit_vector_jagged_all_baskets(
-    raw_baskets: &[Vec<u8>],
+    raw_baskets: &[Arc<[u8]>],
     basket_entry: &[u64],
     total_entries: u64,
     leaf_type_prefer: LeafType,
@@ -886,10 +944,12 @@ fn try_decode_unsplit_vector_jagged_all_baskets(
 
     for lt in leaf_type_candidates(leaf_type_prefer) {
         let mut flat: Vec<f64> = Vec::new();
-        let mut offsets: Vec<usize> = vec![0usize];
+        let mut offsets: Vec<usize> = Vec::with_capacity(total_entries_usize + 1);
+        offsets.push(0usize);
         let mut ok = true;
 
         for (i, payload) in raw_baskets.iter().enumerate() {
+            let payload = payload.as_ref();
             let n_entries = basket_n_entries(basket_entry, total_entries, i);
             if n_entries == 0 {
                 continue;
@@ -937,123 +997,413 @@ fn decode_one_f64(data: &[u8], off: usize, leaf_type: LeafType) -> f64 {
     }
 }
 
-fn decode_as_f64(baskets: &[Vec<u8>], leaf_type: LeafType) -> Result<Vec<f64>> {
+#[inline]
+unsafe fn read_u64_be_unaligned(ptr: *const u8) -> u64 {
+    u64::from_be(unsafe { std::ptr::read_unaligned(ptr as *const u64) })
+}
+
+#[inline]
+unsafe fn read_u32_be_unaligned(ptr: *const u8) -> u32 {
+    u32::from_be(unsafe { std::ptr::read_unaligned(ptr as *const u32) })
+}
+
+#[inline]
+unsafe fn read_u16_be_unaligned(ptr: *const u8) -> u16 {
+    u16::from_be(unsafe { std::ptr::read_unaligned(ptr as *const u16) })
+}
+
+fn decode_as_f64(raw_baskets: &[Arc<[u8]>], leaf_type: LeafType) -> Result<Vec<f64>> {
     let elem_size = leaf_type.byte_size();
-    let mut out = Vec::new();
+    if elem_size == 0 {
+        return Err(RootError::TypeMismatch(format!(
+            "unsupported leaf type for f64 decoding: {leaf_type:?}"
+        )));
+    }
 
-    for basket in baskets {
-        let data = basket.as_slice();
-        // Number of elements based on element size
-        let n = data.len() / elem_size;
+    let total_elems: usize = raw_baskets.iter().map(|b| b.len() / elem_size).sum();
+    let mut out = Vec::with_capacity(total_elems);
 
-        for i in 0..n {
-            let offset = i * elem_size;
-            let val = match leaf_type {
-                LeafType::F64 => f64::from_be_bytes(data[offset..offset + 8].try_into().unwrap()),
-                LeafType::F32 => {
-                    f32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as f64
+    match leaf_type {
+        LeafType::F64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let bits = unsafe { read_u64_be_unaligned(ptr.add(off)) };
+                    out.push(f64::from_bits(bits));
+                    off += 8;
                 }
-                LeafType::I32 => {
-                    i32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as f64
+            }
+        }
+        LeafType::F32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let bits = unsafe { read_u32_be_unaligned(ptr.add(off)) };
+                    out.push(f32::from_bits(bits) as f64);
+                    off += 4;
                 }
-                LeafType::I64 => {
-                    i64::from_be_bytes(data[offset..offset + 8].try_into().unwrap()) as f64
+            }
+        }
+        LeafType::I32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) } as i32;
+                    out.push(v as f64);
+                    off += 4;
                 }
-                LeafType::U32 => {
-                    u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as f64
+            }
+        }
+        LeafType::I64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let v = unsafe { read_u64_be_unaligned(ptr.add(off)) } as i64;
+                    out.push(v as f64);
+                    off += 8;
                 }
-                LeafType::U64 => {
-                    u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap()) as f64
+            }
+        }
+        LeafType::U32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) };
+                    out.push(v as f64);
+                    off += 4;
                 }
-                LeafType::I16 => {
-                    i16::from_be_bytes(data[offset..offset + 2].try_into().unwrap()) as f64
+            }
+        }
+        LeafType::U64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let v = unsafe { read_u64_be_unaligned(ptr.add(off)) };
+                    out.push(v as f64);
+                    off += 8;
                 }
-                LeafType::I8 => data[offset] as i8 as f64,
-                LeafType::Bool => {
-                    if data[offset] != 0 {
-                        1.0
-                    } else {
-                        0.0
-                    }
+            }
+        }
+        LeafType::I16 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 2 <= data.len() {
+                    let v = unsafe { read_u16_be_unaligned(ptr.add(off)) } as i16;
+                    out.push(v as f64);
+                    off += 2;
                 }
-            };
-            out.push(val);
+            }
+        }
+        LeafType::I8 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) } as i8;
+                    out.push(v as f64);
+                    off += 1;
+                }
+            }
+        }
+        LeafType::Bool => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) };
+                    out.push(if v != 0 { 1.0 } else { 0.0 });
+                    off += 1;
+                }
+            }
         }
     }
 
     Ok(out)
 }
 
-fn decode_as_f32(baskets: &[Vec<u8>], leaf_type: LeafType) -> Result<Vec<f32>> {
-    let f64s = decode_as_f64(baskets, leaf_type)?;
-    Ok(f64s.into_iter().map(|v| v as f32).collect())
-}
-
-fn decode_as_i32(baskets: &[Vec<u8>], leaf_type: LeafType) -> Result<Vec<i32>> {
+fn decode_as_f32(raw_baskets: &[Arc<[u8]>], leaf_type: LeafType) -> Result<Vec<f32>> {
     let elem_size = leaf_type.byte_size();
-    let mut out = Vec::new();
+    if elem_size == 0 {
+        return Err(RootError::TypeMismatch(format!(
+            "unsupported leaf type for f32 decoding: {leaf_type:?}"
+        )));
+    }
 
-    for basket in baskets {
-        let data = basket.as_slice();
-        let n = data.len() / elem_size;
+    let total_elems: usize = raw_baskets.iter().map(|b| b.len() / elem_size).sum();
+    let mut out = Vec::with_capacity(total_elems);
 
-        for i in 0..n {
-            let offset = i * elem_size;
-            let val = match leaf_type {
-                LeafType::I32 => i32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()),
-                LeafType::I16 => {
-                    i16::from_be_bytes(data[offset..offset + 2].try_into().unwrap()) as i32
+    match leaf_type {
+        LeafType::F64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let bits = unsafe { read_u64_be_unaligned(ptr.add(off)) };
+                    out.push(f64::from_bits(bits) as f32);
+                    off += 8;
                 }
-                LeafType::I8 => data[offset] as i8 as i32,
-                LeafType::Bool => {
-                    if data[offset] != 0 {
-                        1
-                    } else {
-                        0
-                    }
+            }
+        }
+        LeafType::F32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let bits = unsafe { read_u32_be_unaligned(ptr.add(off)) };
+                    out.push(f32::from_bits(bits));
+                    off += 4;
                 }
-                other => {
-                    return Err(RootError::TypeMismatch(format!("cannot read {:?} as i32", other)));
+            }
+        }
+        LeafType::I32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) } as i32;
+                    out.push(v as f32);
+                    off += 4;
                 }
-            };
-            out.push(val);
+            }
+        }
+        LeafType::I64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let v = unsafe { read_u64_be_unaligned(ptr.add(off)) } as i64;
+                    out.push(v as f32);
+                    off += 8;
+                }
+            }
+        }
+        LeafType::U32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) };
+                    out.push(v as f32);
+                    off += 4;
+                }
+            }
+        }
+        LeafType::U64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let v = unsafe { read_u64_be_unaligned(ptr.add(off)) };
+                    out.push(v as f32);
+                    off += 8;
+                }
+            }
+        }
+        LeafType::I16 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 2 <= data.len() {
+                    let v = unsafe { read_u16_be_unaligned(ptr.add(off)) } as i16;
+                    out.push(v as f32);
+                    off += 2;
+                }
+            }
+        }
+        LeafType::I8 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) } as i8;
+                    out.push(v as f32);
+                    off += 1;
+                }
+            }
+        }
+        LeafType::Bool => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) };
+                    out.push(if v != 0 { 1.0 } else { 0.0 });
+                    off += 1;
+                }
+            }
         }
     }
 
     Ok(out)
 }
 
-fn decode_as_i64(baskets: &[Vec<u8>], leaf_type: LeafType) -> Result<Vec<i64>> {
+fn decode_as_i32(raw_baskets: &[Arc<[u8]>], leaf_type: LeafType) -> Result<Vec<i32>> {
     let elem_size = leaf_type.byte_size();
-    let mut out = Vec::new();
+    if elem_size == 0 {
+        return Err(RootError::TypeMismatch(format!(
+            "unsupported leaf type for i32 decoding: {leaf_type:?}"
+        )));
+    }
 
-    for basket in baskets {
-        let data = basket.as_slice();
-        let n = data.len() / elem_size;
+    let total_elems: usize = raw_baskets.iter().map(|b| b.len() / elem_size).sum();
+    let mut out = Vec::with_capacity(total_elems);
 
-        for i in 0..n {
-            let offset = i * elem_size;
-            let val = match leaf_type {
-                LeafType::I64 => i64::from_be_bytes(data[offset..offset + 8].try_into().unwrap()),
-                LeafType::I32 => {
-                    i32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as i64
+    match leaf_type {
+        LeafType::I32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) } as i32;
+                    out.push(v);
+                    off += 4;
                 }
-                LeafType::I16 => {
-                    i16::from_be_bytes(data[offset..offset + 2].try_into().unwrap()) as i64
+            }
+        }
+        LeafType::I16 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 2 <= data.len() {
+                    let v = unsafe { read_u16_be_unaligned(ptr.add(off)) } as i16;
+                    out.push(v as i32);
+                    off += 2;
                 }
-                LeafType::I8 => data[offset] as i8 as i64,
-                LeafType::Bool => {
-                    if data[offset] != 0 {
-                        1
-                    } else {
-                        0
-                    }
+            }
+        }
+        LeafType::I8 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) } as i8;
+                    out.push(v as i32);
+                    off += 1;
                 }
-                other => {
-                    return Err(RootError::TypeMismatch(format!("cannot read {:?} as i64", other)));
+            }
+        }
+        LeafType::Bool => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) };
+                    out.push(if v != 0 { 1 } else { 0 });
+                    off += 1;
                 }
-            };
-            out.push(val);
+            }
+        }
+        other => {
+            return Err(RootError::TypeMismatch(format!("cannot read {:?} as i32", other)));
+        }
+    }
+
+    Ok(out)
+}
+
+fn decode_as_i64(raw_baskets: &[Arc<[u8]>], leaf_type: LeafType) -> Result<Vec<i64>> {
+    let elem_size = leaf_type.byte_size();
+    if elem_size == 0 {
+        return Err(RootError::TypeMismatch(format!(
+            "unsupported leaf type for i64 decoding: {leaf_type:?}"
+        )));
+    }
+
+    let total_elems: usize = raw_baskets.iter().map(|b| b.len() / elem_size).sum();
+    let mut out = Vec::with_capacity(total_elems);
+
+    match leaf_type {
+        LeafType::I64 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 8 <= data.len() {
+                    let v = unsafe { read_u64_be_unaligned(ptr.add(off)) } as i64;
+                    out.push(v);
+                    off += 8;
+                }
+            }
+        }
+        LeafType::I32 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 4 <= data.len() {
+                    let v = unsafe { read_u32_be_unaligned(ptr.add(off)) } as i32;
+                    out.push(v as i64);
+                    off += 4;
+                }
+            }
+        }
+        LeafType::I16 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off + 2 <= data.len() {
+                    let v = unsafe { read_u16_be_unaligned(ptr.add(off)) } as i16;
+                    out.push(v as i64);
+                    off += 2;
+                }
+            }
+        }
+        LeafType::I8 => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) } as i8;
+                    out.push(v as i64);
+                    off += 1;
+                }
+            }
+        }
+        LeafType::Bool => {
+            for b in raw_baskets {
+                let data = b.as_ref();
+                let ptr = data.as_ptr();
+                let mut off = 0usize;
+                while off < data.len() {
+                    let v = unsafe { *ptr.add(off) };
+                    out.push(if v != 0 { 1 } else { 0 });
+                    off += 1;
+                }
+            }
+        }
+        other => {
+            return Err(RootError::TypeMismatch(format!("cannot read {:?} as i64", other)));
         }
     }
 
@@ -1187,7 +1537,7 @@ mod tests {
         payload.extend_from_slice(&be_f32(3.0));
         payload.extend_from_slice(&be_f32(4.0));
 
-        let baskets = vec![payload];
+        let baskets: Vec<Arc<[u8]>> = vec![Arc::from(payload)];
         let basket_entry = vec![0u64, 3u64];
         let out = try_decode_unsplit_vector_indexed_all_baskets(
             &baskets,

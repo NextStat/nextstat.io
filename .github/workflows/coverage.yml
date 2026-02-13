@@ -1,0 +1,54 @@
+name: Coverage
+
+on:
+  # Weekly schedule instead of per-PR — coverage changes slowly, saves ~$10/mo.
+  schedule:
+    - cron: "0 5 * * 1"  # Monday 05:00 UTC
+  workflow_dispatch:
+  # Still run on push to main (not PRs) for up-to-date Codecov badge.
+  push:
+    branches: [main]
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  coverage:
+    name: Code Coverage
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Generate coverage (workspace, exclude ns-zstd fork)
+        run: >
+          cargo llvm-cov
+          --workspace
+          --exclude ns-zstd
+          --exclude zstd-shim
+          --lcov
+          --output-path lcov.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false

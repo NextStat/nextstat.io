@@ -32,6 +32,12 @@ Run (NextStat-only):
 python3 suites/bayesian/suite.py --deterministic --out-dir out/bayesian
 ```
 
+Run multi-seed (stability check, keeps dataset fixed via `--dataset-seed`):
+
+```bash
+python3 suites/bayesian/multiseed.py --deterministic --out-dir out/bayesian_multiseed --seeds 42,0,123 --dataset-seed 12345
+```
+
 Run with optional backends:
 
 ```bash

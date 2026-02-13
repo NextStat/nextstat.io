@@ -3,6 +3,9 @@
 **/*.rs.bk
 *.pdb
 
+# R bindings (Rust build artifacts)
+/bindings/ns-r/rust/target/
+
 # Playground (generated wasm-bindgen output)
 /playground/pkg/
 
@@ -104,6 +107,8 @@ coverage.xml
 # Benchmarks
 criterion/
 *.bench
+benchmarks/unbinned/artifacts/
+benchmarks/nextstat-public-benchmarks/
 
 # Documentation
 target/doc/

@@ -87,6 +87,73 @@ pub fn yields_to_record_batch(
     Ok(batch)
 }
 
+/// Export a pyhf Workspace's yields as an Arrow RecordBatch.
+///
+/// Schema: `channel (Utf8)`, `sample (Utf8)`, `yields (List<Float64>)`,
+/// `stat_error (List<Float64>, nullable)`.
+///
+/// One row per (channel, sample) pair.  This mirrors the ingest schema so
+/// that a Workspace can round-trip through Parquet.
+pub fn yields_from_workspace(
+    workspace: &crate::pyhf::schema::Workspace,
+) -> Result<RecordBatch, ArrowExportError> {
+    let mut channel_builder = StringBuilder::new();
+    let mut sample_builder = StringBuilder::new();
+    let mut yields_builder = ListBuilder::new(Float64Builder::new());
+    let mut stat_err_builder = ListBuilder::new(Float64Builder::new());
+
+    for ch in &workspace.channels {
+        for samp in &ch.samples {
+            channel_builder.append_value(&ch.name);
+            sample_builder.append_value(&samp.name);
+
+            let vals = yields_builder.values();
+            for &v in &samp.data {
+                vals.append_value(v);
+            }
+            yields_builder.append(true);
+
+            // Look for staterror modifier to populate stat_error column.
+            let se = samp.modifiers.iter().find_map(|m| {
+                if let crate::pyhf::schema::Modifier::StatError { data, .. } = m {
+                    Some(data)
+                } else {
+                    None
+                }
+            });
+            if let Some(se_data) = se {
+                let vals = stat_err_builder.values();
+                for &v in se_data {
+                    vals.append_value(v);
+                }
+                stat_err_builder.append(true);
+            } else {
+                stat_err_builder.append_null();
+            }
+        }
+    }
+
+    let list_f64_field = Arc::new(Field::new_list_field(DataType::Float64, true));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("channel", DataType::Utf8, false),
+        Field::new("sample", DataType::Utf8, false),
+        Field::new("yields", DataType::List(list_f64_field.clone()), false),
+        Field::new("stat_error", DataType::List(list_f64_field), true),
+    ]));
+
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(channel_builder.finish()) as ArrayRef,
+            Arc::new(sample_builder.finish()) as ArrayRef,
+            Arc::new(yields_builder.finish()) as ArrayRef,
+            Arc::new(stat_err_builder.finish()) as ArrayRef,
+        ],
+    )?;
+
+    Ok(batch)
+}
+
 /// Export model parameters as an Arrow RecordBatch.
 ///
 /// Schema:
@@ -175,5 +242,147 @@ pub fn parameters_to_ipc(
     params: Option<&[f64]>,
 ) -> Result<Vec<u8>, ArrowExportError> {
     let batch = parameters_to_record_batch(model, params)?;
+    record_batch_to_ipc(&batch)
+}
+
+/// Export workspace modifier declarations as an Arrow RecordBatch.
+///
+/// Schema (binned Parquet v2 — modifiers table):
+/// - `channel` (Utf8) — channel name
+/// - `sample` (Utf8) — sample name
+/// - `modifier_name` (Utf8) — modifier parameter name
+/// - `modifier_type` (Utf8) — pyhf modifier type tag
+/// - `data_hi` (List<Float64>) — up-variation (histosys hi_data, normsys [hi])
+/// - `data_lo` (List<Float64>) — down-variation (histosys lo_data, normsys [lo])
+/// - `data` (List<Float64>) — generic data (shapesys σ, staterror σ)
+///
+/// One row per (channel, sample, modifier) triple.
+pub fn modifiers_to_record_batch(
+    workspace: &crate::pyhf::schema::Workspace,
+) -> Result<RecordBatch, ArrowExportError> {
+    let mut channel_b = StringBuilder::new();
+    let mut sample_b = StringBuilder::new();
+    let mut mod_name_b = StringBuilder::new();
+    let mut mod_type_b = StringBuilder::new();
+    let mut data_hi_b = ListBuilder::new(Float64Builder::new());
+    let mut data_lo_b = ListBuilder::new(Float64Builder::new());
+    let mut data_b = ListBuilder::new(Float64Builder::new());
+
+    for ch in &workspace.channels {
+        for samp in &ch.samples {
+            for m in &samp.modifiers {
+                channel_b.append_value(&ch.name);
+                sample_b.append_value(&samp.name);
+
+                use crate::pyhf::schema::Modifier;
+                match m {
+                    Modifier::NormFactor { name, .. } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("normfactor");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        data_b.append_null();
+                    }
+                    Modifier::NormSys { name, data } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("normsys");
+                        data_hi_b.values().append_value(data.hi);
+                        data_hi_b.append(true);
+                        data_lo_b.values().append_value(data.lo);
+                        data_lo_b.append(true);
+                        data_b.append_null();
+                    }
+                    Modifier::HistoSys { name, data } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("histosys");
+                        for &v in &data.hi_data {
+                            data_hi_b.values().append_value(v);
+                        }
+                        data_hi_b.append(true);
+                        for &v in &data.lo_data {
+                            data_lo_b.values().append_value(v);
+                        }
+                        data_lo_b.append(true);
+                        data_b.append_null();
+                    }
+                    Modifier::ShapeSys { name, data } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("shapesys");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        for &v in data {
+                            data_b.values().append_value(v);
+                        }
+                        data_b.append(true);
+                    }
+                    Modifier::ShapeFactor { name, .. } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("shapefactor");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        data_b.append_null();
+                    }
+                    Modifier::StatError { name, data } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("staterror");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        for &v in data {
+                            data_b.values().append_value(v);
+                        }
+                        data_b.append(true);
+                    }
+                    Modifier::Lumi { name, .. } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("lumi");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        data_b.append_null();
+                    }
+                    Modifier::Unknown(val) => {
+                        let name = val.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("unknown");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        data_b.append_null();
+                    }
+                }
+            }
+        }
+    }
+
+    let list_f64_field = Arc::new(Field::new_list_field(DataType::Float64, true));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("channel", DataType::Utf8, false),
+        Field::new("sample", DataType::Utf8, false),
+        Field::new("modifier_name", DataType::Utf8, false),
+        Field::new("modifier_type", DataType::Utf8, false),
+        Field::new("data_hi", DataType::List(list_f64_field.clone()), true),
+        Field::new("data_lo", DataType::List(list_f64_field.clone()), true),
+        Field::new("data", DataType::List(list_f64_field), true),
+    ]));
+
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(channel_b.finish()) as ArrayRef,
+            Arc::new(sample_b.finish()) as ArrayRef,
+            Arc::new(mod_name_b.finish()) as ArrayRef,
+            Arc::new(mod_type_b.finish()) as ArrayRef,
+            Arc::new(data_hi_b.finish()) as ArrayRef,
+            Arc::new(data_lo_b.finish()) as ArrayRef,
+            Arc::new(data_b.finish()) as ArrayRef,
+        ],
+    )?;
+
+    Ok(batch)
+}
+
+/// Export workspace modifiers as Arrow IPC bytes.
+pub fn modifiers_to_ipc(
+    workspace: &crate::pyhf::schema::Workspace,
+) -> Result<Vec<u8>, ArrowExportError> {
+    let batch = modifiers_to_record_batch(workspace)?;
     record_batch_to_ipc(&batch)
 }

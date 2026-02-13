@@ -21,13 +21,13 @@ This page is the **canonical specification** for how NextStat benchmarks are des
 
 If you want the narrative version (why we're doing this and what it changes), see the blog posts:
 
-- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks)
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive)
 - [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks)
 - [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
 - [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness)
 - [Numerical Accuracy](/blog/numerical-accuracy)
-- [Differentiable HistFactory in PyTorch](/blog/differentiable-layer-nextstat-pytorch)
+- [Differentiable HistFactory in PyTorch](/blog/differentiable-layer)
 - [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec)
 - [Pharma Benchmarks: PK/NLME](/blog/pharma-benchmarks-pk-nlme)
 - [JAX Compile vs Execution](/blog/jax-compile-vs-execution)
@@ -106,7 +106,7 @@ Each benchmark snapshot should publish:
 - Summary tables (median/best-of-N policy must be explicit)
 - A **baseline manifest**: code SHA, env versions, dataset hashes, and run configuration
 - Any correctness/parity reports used as gating
-- A **validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail summary
+- A **validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail summary
 
 ## Suites
 
@@ -116,6 +116,8 @@ Each benchmark snapshot should publish:
 **Blog:** results + interpretation once snapshots are public.
 
 Suite doc: [HEP Benchmark Suite](/docs/benchmarks/suites/hep).
+Unbinned cross-framework tables: [Unbinned Likelihood Benchmark Suite](/docs/benchmarks/unbinned-benchmark-suite).
+Reproducibility runbook + JSON contract: [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility).
 
 Measurements:
 
@@ -200,6 +202,7 @@ We publish benchmark snapshots via CI:
 - Baseline comparisons are opt-in and versioned (no silent "moving targets").
 
 Publishing + replication doc: [Publishing Benchmarks](/docs/benchmarks/publishing).
+Unbinned reproducibility (commands + schema): [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility).
 
 Benchmarks repo skeleton (pinned envs, manifests): [Benchmarks Repo Skeleton](/docs/benchmarks/repo-skeleton).
 
@@ -242,6 +245,6 @@ Runbook: [Third-Party Replication Runbook](/docs/benchmarks/replication).
 
 ## Blog posts (narrative)
 
-- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why this exists and how to interpret it.
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive) — why this exists and how to interpret it.
 - [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — how reproducible benchmarking changes how we build scientific software.
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — external reruns + signed validation reports as the ultimate trust signal.

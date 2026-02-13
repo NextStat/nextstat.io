@@ -1,0 +1,30 @@
+name: R Vendored Crates Drift
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/**"
+      - "Cargo.lock"
+      - "bindings/ns-r/src/**"
+      - "scripts/nsr_vendor_sync.sh"
+      - ".github/workflows/r-vendored-crates-drift.yml"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/**"
+      - "Cargo.lock"
+      - "bindings/ns-r/src/**"
+      - "scripts/nsr_vendor_sync.sh"
+      - ".github/workflows/r-vendored-crates-drift.yml"
+
+jobs:
+  drift-check:
+    name: Check vendored crate drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Verify bindings/ns-r vendored crates are in sync
+        run: bash scripts/nsr_vendor_sync.sh --check

@@ -79,6 +79,28 @@ class _TimingFacade:
             return fn(*args, **kwargs)
 
 
+def strip_for_pyhf(workspace: dict) -> dict:
+    """Return a deep-copy of *workspace* with NextStat-specific extension fields removed.
+
+    pyhf ≥0.7 validates workspaces with ``additionalProperties: false``, so
+    non-standard fields (e.g. ``constraint`` in
+    ``measurements[].config.parameters[]``) cause ``InvalidSpecification``.
+
+    This helper strips those fields so the same fixture can be consumed by both
+    NextStat (which reads the extensions) and pyhf (which rejects them).
+    """
+    import copy
+
+    ws = copy.deepcopy(workspace)
+    # Known NextStat extensions that live inside the pyhf-validated subtree:
+    _PARAM_EXTRA_KEYS = {"constraint"}
+    for meas in ws.get("measurements", []):
+        for param in meas.get("config", {}).get("parameters", []):
+            for key in _PARAM_EXTRA_KEYS:
+                param.pop(key, None)
+    return ws
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--ns-test-timings",

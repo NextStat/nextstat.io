@@ -23,7 +23,7 @@ This suite benchmarks NextStat's time series and state-space model infrastructur
 - EM convergence cost (iterations × NLL evaluations)
 - Forecasting latency per horizon step
 
-This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/benchmarks/public-benchmarks)).
+This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
 
 ## What is compared
 
@@ -90,6 +90,6 @@ The time series validation results are included in the Apex2 master report under
 
 ## Related reading
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec.
 - [Time Series Tutorial](/docs/tutorials/phase-8-timeseries) — Kalman filter/smoother/EM walkthrough.
-- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Validation Report Artifacts](/docs/validation-report) — validation pack for published snapshots.

@@ -19,10 +19,12 @@ path = "src/main.rs"
 ns-core.workspace = true
 ns-compute.workspace = true
 ns-inference = { workspace = true, features = ["root-io"] }
-ns-translate = { workspace = true, features = ["root-io"] }
+ns-translate = { workspace = true, features = ["root-io", "arrow-io-unbinned"] }
 ns-viz.workspace = true
-ns-unbinned.workspace = true
+ns-unbinned = { workspace = true, features = ["arrow-io"] }
 ns-root.workspace = true
+arrow.workspace = true
+csv.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true
@@ -41,5 +43,8 @@ default = []
 accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
 cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
+neural = ["ns-unbinned/neural"]
+neural-cuda = ["neural", "ns-unbinned/neural-cuda"]
+neural-tensorrt = ["neural-cuda", "ns-unbinned/neural-tensorrt"]
 
 [dev-dependencies]

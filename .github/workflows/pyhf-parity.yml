@@ -12,7 +12,8 @@ env:
 jobs:
   parity:
     name: pyhf Parity Validation
-    runs-on: ubuntu-latest
+    # PR: github-hosted (security). Push main: self-hosted bench (free).
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
 
     steps:
       - name: Checkout code

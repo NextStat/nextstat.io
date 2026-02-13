@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use tokio::sync::Mutex;
 
+use crate::jobs::JobStore;
 use crate::pool::ModelPool;
 
 /// Shared state available to all request handlers.
@@ -34,6 +35,9 @@ pub struct AppState {
 
     /// LRU model cache.
     pub model_pool: ModelPool,
+
+    /// Async job store for long-running tasks.
+    pub job_store: JobStore,
 }
 
 impl AppState {
@@ -46,6 +50,7 @@ impl AppState {
             inflight: std::sync::atomic::AtomicU64::new(0),
             total_requests: std::sync::atomic::AtomicU64::new(0),
             model_pool: ModelPool::new(None),
+            job_store: JobStore::new(),
         }
     }
 

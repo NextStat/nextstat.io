@@ -89,6 +89,18 @@ cargo test --workspace
 - [ ] My changes are backward compatible (or I have created an RFC for breaking changes)
 - [ ] I have checked compatibility with pyhf (if applicable)
 - [ ] I have verified numerical accuracy (if applicable)
+- [ ] If I changed root Rust crates or `Cargo.lock`, I ran `make nsr-vendor-sync` and committed synced files under `bindings/ns-r/src`
+
+### R Bindings Vendoring (if applicable)
+
+- [ ] I ran the vendoring sync/check commands:
+
+```bash
+make nsr-vendor-sync
+make nsr-vendor-check
+```
+
+- [ ] If sync changed files, I committed updates under `bindings/ns-r/src`
 
 ## Performance Impact
 

@@ -39,13 +39,22 @@ env = make_histfactory_env(
     init_noise=0.0,
 )
 
-obs, info = env.reset(seed=123)
+reset_out = env.reset(seed=123)
+if isinstance(reset_out, tuple) and len(reset_out) == 2:
+    obs, info = reset_out
+else:
+    obs, info = reset_out, {}
 total = 0.0
 for _ in range(64):
     action = env.action_space.sample()  # baseline: random
-    obs, reward, terminated, truncated, info = env.step(action)
+    step_out = env.step(action)
+    if isinstance(step_out, tuple) and len(step_out) == 5:
+        obs, reward, terminated, truncated, info = step_out
+        done = bool(terminated or truncated)
+    else:
+        obs, reward, done, info = step_out
     total += float(reward)
-    if terminated or truncated:
+    if done:
         break
 
 print("episode reward:", total)

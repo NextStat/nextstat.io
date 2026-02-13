@@ -79,3 +79,19 @@ def test_e_value_rr_basic():
     assert nextstat.causal.aipw.e_value_rr(2.0) > 2.0
     assert nextstat.causal.aipw.e_value_rr(0.5) == pytest.approx(nextstat.causal.aipw.e_value_rr(2.0))
 
+
+def test_rosenbaum_bounds_basic():
+    y_treated = [10.0, 12.0, 15.0, 11.0, 13.0]
+    y_control = [5.0, 6.0, 7.0, 5.5, 6.5]
+    res = nextstat.causal.aipw.rosenbaum_bounds(y_treated, y_control, gammas=[1.0, 1.5, 2.0, 3.0, 5.0])
+    assert len(res.gammas) == 5
+    assert len(res.p_upper) == 5
+    assert len(res.p_lower) == 5
+    assert float(res.p_upper[0]) < 0.05 or float(res.p_lower[0]) < 0.05
+
+
+def test_rosenbaum_bounds_validation():
+    with pytest.raises(ValueError):
+        nextstat.causal.aipw.rosenbaum_bounds([], [])
+    with pytest.raises(ValueError):
+        nextstat.causal.aipw.rosenbaum_bounds([1.0], [2.0], gammas=[0.5])

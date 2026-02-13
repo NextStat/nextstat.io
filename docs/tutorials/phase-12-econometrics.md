@@ -20,6 +20,7 @@ Phase 12 adds a dependency-light econometrics baseline:
 - [DiD + event study](phase-12-did-event-study.md)
 - [IV / 2SLS](phase-12-iv-2sls.md)
 - [AIPW (ATE/ATT)](phase-12-aipw.md)
+- [Volatility (GARCH(1,1) + SV baseline)](phase-12-volatility.md)
 
 ## Key limitations (baseline)
 

@@ -19,6 +19,8 @@ pub struct Chain {
     pub accept_probs: Vec<f64>,
     /// Hamiltonian energy per draw (after momentum resampling at start of transition).
     pub energies: Vec<f64>,
+    /// Number of leapfrog steps per draw.
+    pub n_leapfrog: Vec<usize>,
     /// Configured maximum tree depth for this chain (for diagnostics).
     pub max_treedepth: usize,
     /// Final adapted step size.
@@ -120,9 +122,8 @@ mod tests {
         let config = NutsConfig {
             max_treedepth: 8,
             target_accept: 0.8,
-            init_jitter: 0.0,
-            init_jitter_rel: None,
-            init_overdispersed_rel: None,
+            init_strategy: crate::nuts::InitStrategy::Mle,
+            ..Default::default()
         };
         let r1 = sample_nuts_multichain(&model, 2, 50, 20, 42, config.clone()).unwrap();
         let r2 = sample_nuts_multichain(&model, 2, 50, 20, 42, config).unwrap();
@@ -150,8 +151,8 @@ mod tests {
             max_treedepth: 8,
             target_accept: 0.8,
             init_jitter: 0.5,
-            init_jitter_rel: None,
-            init_overdispersed_rel: None,
+            init_strategy: crate::nuts::InitStrategy::Mle,
+            ..Default::default()
         };
         let result = sample_nuts_multichain(&model, 2, 100, 50, 42, config).unwrap();
 

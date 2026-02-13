@@ -1,0 +1,148 @@
+name: Unbinned Toy Parity
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  parity:
+    name: Parity (${{ matrix.backend }})
+    if: matrix.backend == 'cpu' || github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:gpu')
+    runs-on: ${{ fromJSON(matrix.runs_on_json) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: cpu
+            runs_on_json: '"ubuntu-latest"'
+            rust_features: ''
+          - backend: cuda
+            runs_on_json: '["self-hosted","linux","cuda"]'
+            rust_features: 'cuda'
+          - backend: metal
+            runs_on_json: '["self-hosted","macOS","apple-silicon"]'
+            rust_features: 'metal'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Python tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install "maturin>=1.11,<2.0" "pytest>=9.0" "numpy>=2.0" "pyarrow>=18.0"
+
+      - name: Build and install Python extension
+        run: |
+          if [[ -n "${{ matrix.rust_features }}" ]]; then
+            maturin develop --release -m bindings/ns-py/Cargo.toml --features "${{ matrix.rust_features }}"
+          else
+            maturin develop --release -m bindings/ns-py/Cargo.toml
+          fi
+
+      - name: Build NextStat CLI
+        run: |
+          if [[ -n "${{ matrix.rust_features }}" ]]; then
+            cargo build --release -p ns-cli --features "${{ matrix.rust_features }}"
+          else
+            cargo build --release -p ns-cli
+          fi
+
+      - name: Run unbinned toy parity tests
+        env:
+          NS_CLI_BIN: target/release/nextstat
+          NS_UNBINNED_TOY_PARITY_REPORT_DIR: artifacts/parity
+        run: |
+          mkdir -p artifacts/parity
+          PYTHONPATH=bindings/ns-py/python python -m pytest -q tests/python/test_unbinned_fit_toys_cli_parity.py
+
+      - name: Upload backend parity reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unbinned-toy-parity-${{ matrix.backend }}
+          path: artifacts/parity/*.json
+
+  parity-report:
+    name: Parity Matrix Report
+    needs: [parity]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install schema validator
+        run: |
+          python -m pip install --upgrade pip
+          pip install "jsonschema>=4.0"
+
+      - name: Download parity artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: unbinned-toy-parity-*
+          merge-multiple: true
+          path: artifacts/parity_reports
+
+      - name: Build matrix JSON report
+        run: |
+          mkdir -p artifacts
+          python3 scripts/benchmarks/aggregate_unbinned_toy_parity_reports.py \
+            --reports-dir artifacts/parity_reports \
+            --out artifacts/unbinned_toy_parity_matrix_report.json
+          cat artifacts/unbinned_toy_parity_matrix_report.json
+
+      - name: Validate parity report schemas
+        run: |
+          python - <<'PY'
+          import glob
+          import json
+          from pathlib import Path
+          import jsonschema
+
+          root = Path("artifacts/parity_reports")
+          report_paths = sorted(root.glob("*.json"))
+          if not report_paths:
+              raise SystemExit("No backend parity reports found under artifacts/parity_reports")
+
+          input_schema = json.loads(Path("docs/schemas/benchmarks/unbinned_toy_parity_report_v1.schema.json").read_text())
+          for path in report_paths:
+              inst = json.loads(path.read_text())
+              jsonschema.validate(inst, input_schema)
+          print(f"validated {len(report_paths)} backend parity report(s)")
+
+          matrix_path = Path("artifacts/unbinned_toy_parity_matrix_report.json")
+          matrix = json.loads(matrix_path.read_text())
+          matrix_schema = json.loads(Path("docs/schemas/benchmarks/unbinned_toy_parity_matrix_report_v1.schema.json").read_text())
+          jsonschema.validate(matrix, matrix_schema)
+          if int(matrix.get("n_reports", 0)) < 1:
+              raise SystemExit("matrix report has n_reports < 1")
+          print("matrix parity report schema: ok")
+          PY
+
+      - name: Upload matrix parity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unbinned-toy-parity-matrix-report
+          path: artifacts/unbinned_toy_parity_matrix_report.json

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_toy_parity_matrix_report_v1.schema.json",
+  "title": "Unbinned Toy Parity Matrix Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "ok",
+    "n_reports",
+    "backends"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat.unbinned_toy_parity_matrix_report.v1"
+    },
+    "generated_at": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "n_reports": { "type": "integer", "minimum": 0 },
+    "backends": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/backend_summary" }
+    }
+  },
+  "$defs": {
+    "backend_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "n_reports", "kinds"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "n_reports": { "type": "integer", "minimum": 0 },
+        "kinds": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/report_payload" }
+        }
+      }
+    },
+    "report_payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["schema_version", "backend", "kind", "ok"],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "nextstat.unbinned_toy_parity_report.v1"
+        },
+        "backend": {
+          "type": "string",
+          "enum": ["cpu", "cuda", "metal"]
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["api_cli", "cli_gpu"]
+        },
+        "ok": { "type": "boolean" },
+        "_source": { "type": "string" }
+      }
+    }
+  }
+}

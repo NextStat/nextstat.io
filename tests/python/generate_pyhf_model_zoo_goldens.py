@@ -28,6 +28,7 @@ PY_TESTS_DIR = Path(__file__).resolve().parent
 if str(PY_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(PY_TESTS_DIR))
 
+from conftest import strip_for_pyhf  # noqa: E402
 from _pyhf_model_zoo import (  # noqa: E402
     make_synthetic_shapesys_workspace,
     make_workspace_histo_normsys_staterror,
@@ -52,7 +53,7 @@ def _load_fixture(rel: str) -> dict[str, Any]:
 
 
 def _pyhf_model_and_data(workspace: dict[str, Any], measurement_name: str):
-    ws = pyhf.Workspace(workspace)
+    ws = pyhf.Workspace(strip_for_pyhf(workspace))
     model = ws.model(
         measurement_name=measurement_name,
         modifier_settings={

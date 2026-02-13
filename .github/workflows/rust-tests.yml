@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+concurrency:
+  group: rust-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -13,15 +17,13 @@ env:
 jobs:
   test:
     name: Test Suite
-    runs-on: ${{ matrix.os }}
+    # PR: github-hosted (security — public repo). Push main: self-hosted bench (free, 64 threads).
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [stable, beta]
-        include:
-          - os: ubuntu-latest
-            rust: nightly
+        # PR: stable only. Push main: stable + beta + nightly.
+        rust: ${{ github.event_name == 'pull_request' && fromJSON('["stable"]') || fromJSON('["stable","beta","nightly"]') }}
 
     steps:
       - name: Checkout code
@@ -36,11 +38,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Shellcheck (bash -n) validation pack script
-        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        if: matrix.rust == 'stable'
         run: bash -n validation-pack/render_validation_pack.sh
 
       - name: validation-pack --help smoke
-        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        if: matrix.rust == 'stable'
         run: |
           set -euo pipefail
           out="$(bash validation-pack/render_validation_pack.sh --help)"
@@ -48,20 +50,17 @@ jobs:
           echo "$out" | grep -q -- "Examples:"
 
       - name: Run tests
-        run: cargo test --workspace --all-features --verbose
+        run: cargo test --workspace --verbose
 
       - name: Run tests (no default features)
         run: cargo test --workspace --no-default-features --verbose
 
-      # Keep validation-report invariants (determinism + regulated_review) explicitly exercised in CI.
-      # This is intentionally redundant with the workspace test run above, but makes the signal obvious
-      # and resilient to future test selection changes.
       - name: Run validation-report CLI tests
-        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        if: matrix.rust == 'stable'
         run: cargo test -p ns-cli --test cli_validation_report --verbose
 
   wasm-smoke:
-    name: WASM Smoke (parquet/zstd)
+    name: WASM Smoke (parquet/zstd adapters)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -76,12 +75,15 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Run wasm smoke test (ignored)
+      - name: Run ns-translate wasm smoke test (ignored)
         run: cargo test -p ns-translate --test wasm_smoke -- --ignored --nocapture
+
+      - name: Run ns-unbinned wasm smoke test (ignored)
+        run: cargo test -p ns-unbinned --test wasm_smoke -- --ignored --nocapture
 
   clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -95,7 +97,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: >
+          cargo clippy
+          --workspace
+          --exclude ns-zstd
+          --exclude zstd-shim
+          --all-targets
+          -- -D warnings
 
   fmt:
     name: Rustfmt
@@ -114,7 +122,7 @@ jobs:
 
   docs:
     name: Documentation
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -126,13 +134,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build documentation
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
+  neural-smoke:
+    name: Neural PDFs (ort) Smoke
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -140,21 +148,79 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          components: llvm-tools-preview
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
+          toolchain: stable
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Generate coverage
-        run: cargo llvm-cov --workspace --all-features --cobertura --output-path cobertura.xml
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+      # ort-sys downloads prebuilt ONNX Runtime binaries into the OS cache dir:
+      # ~/.cache/dfbin/... on Linux. Cache it to avoid repeated downloads.
+      - name: Cache ONNX Runtime binaries (ort-sys)
+        uses: actions/cache@v4
         with:
-          files: ./cobertura.xml
-          fail_ci_if_error: false
+          path: ~/.cache/dfbin
+          key: ${{ runner.os }}-ort-dfbin-${{ hashFiles('Cargo.lock') }}
+
+      - name: Run FlowPdf integration tests (neural)
+        run: cargo test -p ns-unbinned --features neural --test flow_integration --verbose
+
+      - name: Run DcrSurrogate integration tests (neural)
+        run: cargo test -p ns-unbinned --features neural --test dcr_integration --verbose
+
+  gpu-cuda:
+    name: GPU Tests (CUDA)
+    runs-on: [self-hosted, linux, cuda]
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:gpu')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify CUDA device
+        run: nvidia-smi
+
+      - name: Build ns-compute (CUDA)
+        run: cargo build -p ns-compute --features cuda --verbose
+
+      - name: Run ns-compute CUDA tests
+        run: cargo test -p ns-compute --features cuda --verbose
+
+      - name: Run ns-inference CUDA tests
+        run: cargo test -p ns-inference --features cuda --verbose
+
+      - name: Run CLI unbinned-fit CUDA smoke
+        run: cargo test -p ns-cli --features cuda --test cli_unbinned_fit --verbose
+
+  gpu-metal:
+    name: GPU Tests (Metal)
+    runs-on: [self-hosted, macOS, apple-silicon]
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ci:gpu')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Metal device
+        run: system_profiler SPDisplaysDataType | head -20
+
+      - name: Build ns-compute (Metal)
+        run: cargo build -p ns-compute --features metal --verbose
+
+      - name: Run ns-compute Metal tests
+        run: cargo test -p ns-compute --features metal --verbose
+
+      - name: Run ns-inference Metal tests
+        run: cargo test -p ns-inference --features metal --verbose
+
+      - name: Run CLI unbinned-fit Metal smoke
+        run: cargo test -p ns-cli --features metal --test cli_unbinned_fit --verbose

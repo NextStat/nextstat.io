@@ -1,27 +1,252 @@
-# NextStat Commercial License
+# NextStat Commercial License Agreement
 
-Copyright (c) 2026 NextStat Inc. All rights reserved.
+**Version 1.0 — Effective February 2026**
 
-This software is available under a commercial license for organizations
-that do not wish to comply with the AGPL-3.0 license terms.
+Copyright (c) 2024–2026 NextStat Inc. All rights reserved.
 
-For licensing inquiries, contact: licensing@nextstat.io
+This Commercial License Agreement ("Agreement") is between NextStat Inc.
+("Licensor") and the entity or individual agreeing to these terms ("Licensee").
 
-The open source version of this software is available under AGPL-3.0.
-See LICENSE file for details.
+The open-source version of this software is separately available under the
+GNU Affero General Public License v3.0 (AGPL-3.0). See the LICENSE file.
+This Agreement provides an alternative license for organizations that
+require exemption from the AGPL-3.0 copyleft obligations.
 
----
-
-## Commercial License Benefits:
-- No AGPL copyleft requirements
-- Priority support and SLA
-- Access to NS-Audit and NS-Compliance modules
-- On-premise deployment assistance
-
-Pricing is available upon request.
+For licensing inquiries: licensing@nextstat.io
 
 ---
 
-> **DRAFT NOTICE:** This is a draft commercial license header, not a complete
-> legal document. A full commercial license agreement will be prepared by
-> legal counsel before any commercial transactions.
+## 1. Definitions
+
+**"Software"** means the NextStat statistical computing engine, including all
+source code, object code, libraries, bindings (Python, R, Rust, WASM), CLI
+tools, documentation, and associated files distributed under this Agreement.
+
+**"Enterprise Modules"** means the NS-Audit and NS-Compliance modules,
+validation pack artifacts, and pre-compiled CRAN binaries available
+exclusively to commercial licensees.
+
+**"Derivative Work"** means any software that incorporates, links against,
+or is based upon the Software or any portion thereof.
+
+**"Authorized Users"** means the number of named individuals permitted to
+use the Software as specified in the applicable Order Form.
+
+**"Order Form"** means the purchase document executed by both parties
+specifying the license tier, number of Authorized Users, fees, and term.
+
+---
+
+## 2. Grant of License
+
+Subject to the terms of this Agreement and payment of applicable fees,
+Licensor grants Licensee a:
+
+(a) **Non-exclusive**, **non-transferable**, worldwide license to use,
+    copy, modify, and create Derivative Works of the Software for
+    Licensee's internal business purposes;
+
+(b) Right to embed the Software or Derivative Works in Licensee's
+    proprietary products and services **without** obligation to disclose
+    source code under AGPL-3.0 Section 13 (network interaction) or
+    Section 5 (modified source versions);
+
+(c) Right to deploy the Software in validated (GxP) environments,
+    containers, and CI/CD pipelines without source disclosure;
+
+(d) Access to Enterprise Modules for the duration of the license term.
+
+---
+
+## 3. Restrictions
+
+Licensee shall NOT:
+
+(a) Redistribute, sublicense, sell, lease, or otherwise transfer the
+    Software source code to any third party outside Licensee's organization;
+
+(b) Remove, alter, or obscure any copyright, trademark, or attribution
+    notices in the Software;
+
+(c) Use Licensor's name, trademarks, or logos without prior written consent,
+    except as required for reasonable attribution;
+
+(d) Use the Software to provide a competing commercial statistical computing
+    service (SaaS or hosted) without a separate Platform license;
+
+(e) Reverse-engineer any proprietary Enterprise Module not provided in
+    source form under this Agreement.
+
+---
+
+## 4. Fees and Payment
+
+(a) Fees are as specified in the Order Form.
+
+(b) All fees are due within thirty (30) days of invoice date.
+
+(c) Fees are non-refundable except as expressly stated in this Agreement.
+
+(d) Licensor may adjust fees upon renewal with sixty (60) days' prior
+    written notice.
+
+---
+
+## 5. Support and Maintenance
+
+(a) **Enterprise Tier**: Email support with 48-hour response SLA during
+    business hours (Mon–Fri, 9:00–18:00 CET). Includes software updates,
+    patches, and quarterly security advisories.
+
+(b) **Platform Tier**: Dedicated channel (Slack/Teams) with 4-hour response
+    SLA during business hours. Includes all Enterprise benefits plus
+    on-site training (2 days/year) and early access to new features.
+
+(c) Support does not include: custom model development (available separately),
+    regulatory strategy consulting, or FDA/EMA submission preparation.
+
+---
+
+## 6. Intellectual Property
+
+(a) Licensor retains all right, title, and interest in the Software,
+    including all intellectual property rights.
+
+(b) Licensee retains all right, title, and interest in Derivative Works
+    created by Licensee, subject to Licensor's underlying rights in the
+    Software.
+
+(c) Nothing in this Agreement grants Licensee any rights to Licensor's
+    patents, except the implied license to use the Software as permitted.
+
+---
+
+## 7. Warranty
+
+(a) Licensor warrants that the Software will materially conform to its
+    published documentation for ninety (90) days from delivery.
+
+(b) If the Software fails to conform, Licensor will use commercially
+    reasonable efforts to correct the non-conformance or provide a
+    workaround.
+
+(c) **THE SOFTWARE IS NOT WARRANTED FOR ANY PARTICULAR REGULATORY PURPOSE.**
+    Licensee is solely responsible for determining the Software's
+    suitability for use in regulatory submissions (FDA, EMA, PMDA, or
+    other authorities). The validation pack and compliance documentation
+    are provided as tools to assist Licensee's own qualification process.
+
+(d) EXCEPT AS EXPRESSLY STATED ABOVE, THE SOFTWARE IS PROVIDED "AS IS"
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+    LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+    PURPOSE, OR NON-INFRINGEMENT.
+
+---
+
+## 8. Limitation of Liability
+
+(a) IN NO EVENT SHALL LICENSOR'S AGGREGATE LIABILITY UNDER THIS AGREEMENT
+    EXCEED THE TOTAL FEES PAID BY LICENSEE IN THE TWELVE (12) MONTHS
+    PRECEDING THE EVENT GIVING RISE TO LIABILITY.
+
+(b) IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+    SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED
+    TO LOSS OF DATA, LOSS OF PROFITS, BUSINESS INTERRUPTION, OR REGULATORY
+    DECISIONS BASED ON SOFTWARE OUTPUT.
+
+(c) The limitations in this Section apply regardless of the form of action,
+    whether in contract, tort, strict liability, or otherwise.
+
+---
+
+## 9. Term and Termination
+
+(a) This Agreement commences on the effective date specified in the Order
+    Form and continues for the initial term stated therein.
+
+(b) The Agreement automatically renews for successive one-year periods
+    unless either party provides thirty (30) days' written notice of
+    non-renewal before the end of the then-current term.
+
+(c) Either party may terminate this Agreement immediately upon written
+    notice if the other party materially breaches any provision and fails
+    to cure such breach within thirty (30) days of receiving written
+    notice.
+
+(d) Upon termination:
+    - Licensee must cease all use of the Software and Enterprise Modules;
+    - Licensee must delete or return all copies of the Software source code;
+    - Licensee may continue to use Derivative Works already incorporated
+      into Licensee's deployed products for a wind-down period of six (6)
+      months.
+
+(e) Sections 6, 7(c), 7(d), 8, 10, and 11 survive termination.
+
+---
+
+## 10. Confidentiality
+
+(a) Each party agrees to keep confidential any non-public technical or
+    business information disclosed by the other party under this Agreement.
+
+(b) Confidentiality obligations do not apply to information that:
+    (i) is or becomes publicly available through no fault of the receiving
+    party; (ii) was known to the receiving party prior to disclosure;
+    (iii) is independently developed; or (iv) is required to be disclosed
+    by law or regulation.
+
+---
+
+## 11. General Provisions
+
+(a) **Governing Law**: This Agreement is governed by the laws of the State
+    of Delaware, USA, without regard to conflict of law principles.
+
+(b) **Dispute Resolution**: Any dispute shall be resolved by binding
+    arbitration under the rules of the American Arbitration Association
+    in Wilmington, Delaware.
+
+(c) **Assignment**: Licensee may not assign this Agreement without
+    Licensor's prior written consent, except in connection with a merger
+    or acquisition of substantially all of Licensee's assets.
+
+(d) **Entire Agreement**: This Agreement and the applicable Order Form
+    constitute the entire agreement between the parties and supersede all
+    prior agreements, representations, and understandings.
+
+(e) **Severability**: If any provision is held unenforceable, the remaining
+    provisions continue in full force and effect.
+
+(f) **Waiver**: Failure to enforce any provision does not constitute a
+    waiver of that provision.
+
+(g) **Notices**: All notices must be in writing and sent to the addresses
+    specified in the Order Form or to licensing@nextstat.io.
+
+---
+
+## 12. Tier Summary
+
+| Feature | Community (AGPL-3.0) | Enterprise | Platform |
+|---------|---------------------|-----------|----------|
+| Core engine + all models | ✅ | ✅ | ✅ |
+| Python / R (source) / Rust / WASM | ✅ | ✅ | ✅ |
+| GPU acceleration (CUDA, Metal) | ✅ | ✅ | ✅ |
+| AGPL copyleft exemption | ❌ | ✅ | ✅ |
+| NS-Audit (21 CFR Part 11) | ❌ | ✅ | ✅ |
+| NS-Compliance (IQ/OQ/PQ) | ❌ | ✅ | ✅ |
+| Pre-built validation pack | ❌ | ✅ | ✅ |
+| CRAN binary package | ❌ | ✅ | ✅ |
+| Priority support (48h SLA) | ❌ | ✅ | ✅ |
+| Unlimited seats (site license) | ❌ | ❌ | ✅ |
+| nextstat-server (GPU API) | ❌ | ❌ | ✅ |
+| Dedicated channel (4h SLA) | ❌ | ❌ | ✅ |
+| On-site training | ❌ | ❌ | ✅ |
+| Custom integration | ❌ | ❌ | ✅ |
+
+---
+
+> **NOTICE**: This document has not yet been reviewed by legal counsel.
+> The terms above represent the intended commercial framework. A final
+> legally binding version will be prepared before any commercial
+> transactions. Contact licensing@nextstat.io for inquiries.

@@ -93,6 +93,44 @@ df = pl.read_parquet("histograms.parquet")
 model = nextstat.from_arrow(df.to_arrow(), poi="mu")
 ```
 
+## High-Performance Unbinned Reads (Rust)
+
+For unbinned event-level Parquet files (written by `nextstat convert` or `EventStore::to_parquet`),
+`ns-translate` provides optimized readers:
+
+| Function | Feature |
+|----------|---------|
+| `read_parquet_mmap()` | memmap2 zero-copy, no heap alloc for I/O |
+| `read_parquet_mmap_projected()` | + column projection (35–50% faster) |
+| `read_parquet_mmap_filtered()` | + row group predicate pushdown via min/max stats (up to 5×) |
+| `read_parquet_mmap_parallel()` | + rayon parallel row group decode |
+| `read_parquet_events_soa()` | All of the above → GPU-ready SoA f64 layout |
+
+Benchmarks (MacBook M5, 100k events, 4 observables):
+
+- Full decode: **557 µs**
+- With 10% predicate filter: **159 µs** (5× speedup from row group pruning)
+
+### Direct-to-GPU Upload
+
+`read_parquet_events_soa()` produces a `ParquetEventData` struct that can be uploaded
+directly to GPU memory without intermediate copies:
+
+```rust
+use ns_translate::arrow::parquet::read_parquet_events_soa;
+use ns_compute::metal_parquet::upload_events_to_metal;
+
+let data = read_parquet_events_soa(path, &columns, bounds, None)?;
+let gpu = upload_events_to_metal(&device, &data.soa, data.weights.as_deref(), data.n_events, data.n_obs)?;
+```
+
+| Target | Module | Precision |
+|--------|--------|-----------|
+| CUDA | `ns_compute::cuda_parquet` | f64 (native) |
+| Metal | `ns_compute::metal_parquet` | f32 (converted at upload) |
+
+See `docs/gpu-contract.md` § Direct-to-GPU Parquet Pipeline for tolerance and performance details.
+
 ## Notes on Type Mapping
 
 - Strings: `Utf8` and `LargeUtf8` are both accepted.

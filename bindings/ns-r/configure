@@ -1,0 +1,53 @@
+#!/bin/sh
+# configure script for nextstat R package
+# Checks that a Rust toolchain (cargo) is available before attempting to build.
+
+CARGO="${CARGO:-cargo}"
+MIN_RUST_VERSION="1.85"
+
+check_cargo() {
+  if ! command -v "$CARGO" >/dev/null 2>&1; then
+    echo "-----------------------------------------------------"
+    echo "ERROR: 'cargo' not found on PATH."
+    echo ""
+    echo "The nextstat R package requires the Rust toolchain."
+    echo "Install it from: https://rustup.rs"
+    echo ""
+    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo ""
+    echo "Then restart your shell and try again."
+    echo "-----------------------------------------------------"
+    exit 1
+  fi
+}
+
+check_version() {
+  RUST_VERSION=$("$CARGO" --version 2>/dev/null | sed 's/cargo //' | cut -d' ' -f1)
+  if [ -z "$RUST_VERSION" ]; then
+    echo "WARNING: Could not determine Rust version. Proceeding anyway."
+    return 0
+  fi
+
+  RUST_MAJOR=$(echo "$RUST_VERSION" | cut -d. -f1)
+  RUST_MINOR=$(echo "$RUST_VERSION" | cut -d. -f2)
+  MIN_MAJOR=$(echo "$MIN_RUST_VERSION" | cut -d. -f1)
+  MIN_MINOR=$(echo "$MIN_RUST_VERSION" | cut -d. -f2)
+
+  if [ "$RUST_MAJOR" -lt "$MIN_MAJOR" ] 2>/dev/null || \
+     { [ "$RUST_MAJOR" -eq "$MIN_MAJOR" ] && [ "$RUST_MINOR" -lt "$MIN_MINOR" ]; } 2>/dev/null; then
+    echo "-----------------------------------------------------"
+    echo "ERROR: Rust $MIN_RUST_VERSION or later is required."
+    echo "Found: $RUST_VERSION"
+    echo ""
+    echo "Update with: rustup update stable"
+    echo "-----------------------------------------------------"
+    exit 1
+  fi
+
+  echo "Found Rust $RUST_VERSION (>= $MIN_RUST_VERSION required) -- OK"
+}
+
+check_cargo
+check_version
+
+exit 0

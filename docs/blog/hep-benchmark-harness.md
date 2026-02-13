@@ -24,7 +24,7 @@ category: hep
 
 # Building a Trustworthy HEP Benchmark Harness (pyhf + ROOT/RooFit)
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) · **Next:** [Numerical Accuracy](/blog/numerical-accuracy)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Third-Party Replication: Signed Reports](/blog/third-party-replication) · **Next:** [Numerical Accuracy](/blog/numerical-accuracy)
 
 Benchmarks are easy to get wrong even when nobody is trying to cheat.
 
@@ -38,8 +38,8 @@ This post explains how we build a HEP benchmark harness that treats performance 
 
 If you want the runbook/spec rather than the narrative, start with:
 
-- [HEP Benchmark Suite](/docs/benchmarks/suites/hep) (suite definition)
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) (global benchmark program contract)
+- `docs/benchmarks/suites/hep.md` (suite definition, in-repo)
+- [/docs/public-benchmarks](/docs/public-benchmarks) (global benchmark program contract)
 
 ---
 
@@ -290,9 +290,14 @@ Performance results should include:
 - environment manifest (toolchains, deps, hardware),
 - and correctness reports used as gates.
 
+For evidence-grade publication, snapshots also include a unified validation pack and a machine-readable inventory:
+
+- `validation_report.json` (schema `validation_report_v1`)
+- `snapshot_index.json` (schema `nextstat.snapshot_index.v1`)
+
 This is the difference between a screenshot and an artifact.
 
-Publishing spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
+Canonical specification (protocol + artifacts): [/docs/public-benchmarks](/docs/public-benchmarks).
 
 Also see: [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts).
 

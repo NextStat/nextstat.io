@@ -148,6 +148,7 @@ pub fn expected_cls_band_from_sqrtq_a(sqrtq_a: f64) -> [f64; 5] {
 }
 
 /// Result of an asymptotic `hypotest` at a single tested POI value.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct HypotestResult {
     /// Tested POI value.

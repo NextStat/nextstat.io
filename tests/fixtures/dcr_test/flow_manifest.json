@@ -1,0 +1,32 @@
+{
+  "schema_version": "nextstat_flow_v0",
+  "flow_type": "dcr_test_shifted_gaussian",
+  "features": 1,
+  "context_features": 1,
+  "observable_names": [
+    "mass"
+  ],
+  "context_names": [
+    "alpha_syst"
+  ],
+  "support": [
+    [
+      -6.0,
+      6.0
+    ]
+  ],
+  "base_distribution": "standard_normal",
+  "models": {
+    "log_prob": "log_prob.onnx",
+    "sample": "sample.onnx"
+  },
+  "training": {
+    "library": "test_fixture",
+    "architecture": "shifted_gaussian",
+    "note": "DCR test fixture: Gaussian with systematic shift \u03b4=0.5 per unit \u03b1",
+    "protocol": "FAIR-HUC"
+  },
+  "validation": {
+    "normalization_check": 1.0
+  }
+}

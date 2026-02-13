@@ -35,10 +35,45 @@ fn gen_rootish_bytes(len: usize) -> Vec<u8> {
     out
 }
 
+fn parse_cli_overrides(
+    mut mb: usize,
+    mut iters: usize,
+    mut level: String,
+) -> (usize, usize, String) {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--mb" => {
+                if let Some(v) = args.next() {
+                    if let Ok(parsed) = v.parse::<usize>() {
+                        mb = parsed;
+                    }
+                }
+            }
+            "--iters" => {
+                if let Some(v) = args.next() {
+                    if let Ok(parsed) = v.parse::<usize>() {
+                        iters = parsed;
+                    }
+                }
+            }
+            "--level" => {
+                if let Some(v) = args.next() {
+                    level = v;
+                }
+            }
+            _ => {}
+        }
+    }
+    (mb, iters, level)
+}
+
 fn main() {
-    let mb = env_usize("NS_ZSTD_PROFILE_MB", 64);
-    let iters = env_usize("NS_ZSTD_PROFILE_ITERS", 200);
-    let level_s = std::env::var("NS_ZSTD_PROFILE_LEVEL").unwrap_or_else(|_| "default".to_string());
+    let env_mb = env_usize("NS_ZSTD_PROFILE_MB", 64);
+    let env_iters = env_usize("NS_ZSTD_PROFILE_ITERS", 200);
+    let env_level =
+        std::env::var("NS_ZSTD_PROFILE_LEVEL").unwrap_or_else(|_| "default".to_string());
+    let (mb, iters, level_s) = parse_cli_overrides(env_mb, env_iters, env_level);
     let level = match level_s.as_str() {
         "fastest" => ns_zstd::encoding::CompressionLevel::Fastest,
         "uncompressed" => ns_zstd::encoding::CompressionLevel::Uncompressed,

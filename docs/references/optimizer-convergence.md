@@ -184,6 +184,25 @@ Full analysis: `docs/references/root-histfactory-comparison.md`
 
 ---
 
+## 7. L-BFGS Steepest-Descent Fallback
+
+When the L-BFGS two-loop recursion produces a search direction that is **not** a descent
+direction (i.e. `∇f · d > 0`), the optimizer now correctly falls back to the negative
+gradient (steepest descent) instead of proceeding with the non-descent direction.
+
+This fixes rare convergence failures on ill-conditioned problems where the limited-memory
+Hessian approximation becomes inaccurate (e.g. near parameter bounds or after many
+constraint activations). The fallback is logged at `WARN` level:
+
+```
+WARN L-BFGS: non-descent direction detected (dot=+1.2e-3), falling back to steepest descent
+```
+
+The steepest-descent step uses the same Armijo line search as L-BFGS. Once the curvature
+condition is satisfied at the new point, L-BFGS updates resume normally.
+
+---
+
 ## References
 
 - ROOT/HistFactory comparison: `docs/references/root-histfactory-comparison.md`

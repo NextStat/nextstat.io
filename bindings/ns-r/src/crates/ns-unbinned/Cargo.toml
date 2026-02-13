@@ -1,0 +1,51 @@
+[package]
+name = "ns-unbinned"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Unbinned (event-level) likelihood models for NextStat"
+
+[dependencies]
+anyhow.workspace = true
+ns-core.workspace = true
+ns-root.workspace = true
+rayon.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+statrs.workspace = true
+wide.workspace = true
+
+# Neural density estimation (Phase 3, optional)
+ort = { workspace = true, optional = true }
+
+# Arrow / Parquet event I/O (optional)
+arrow = { workspace = true, optional = true }
+parquet = { version = "57.3", default-features = false, features = ["arrow", "snap"], optional = true }
+bytes = { version = "1", optional = true }
+
+[dev-dependencies]
+approx.workspace = true
+criterion.workspace = true
+ns-inference.workspace = true
+ns-translate.workspace = true
+
+[[bench]]
+name = "unbinned_nll"
+harness = false
+
+[features]
+default = []
+arrow-io = ["dep:arrow", "dep:parquet", "dep:bytes"]
+arrow-io-zstd = ["arrow-io", "parquet/zstd"]
+neural = ["ort", "ort/download-binaries", "ort/tls-native"]
+neural-cuda = ["neural", "ort/cuda"]
+neural-tensorrt = ["neural-cuda", "ort/tensorrt"]

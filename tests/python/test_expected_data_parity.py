@@ -15,6 +15,7 @@ import pytest
 
 import nextstat
 
+from conftest import strip_for_pyhf
 from _tolerances import EXPECTED_DATA_ATOL, EXPECTED_DATA_PER_BIN_ATOL
 
 
@@ -30,7 +31,7 @@ def load_fixture(name: str) -> dict:
 
 
 def pyhf_model(workspace: dict, measurement_name: str):
-    ws = pyhf.Workspace(workspace)
+    ws = pyhf.Workspace(strip_for_pyhf(workspace))
     return ws.model(
         measurement_name=measurement_name,
         modifier_settings={
@@ -40,7 +41,7 @@ def pyhf_model(workspace: dict, measurement_name: str):
     )
 
 def pyhf_model_and_data(workspace: dict, measurement_name: str):
-    ws = pyhf.Workspace(workspace)
+    ws = pyhf.Workspace(strip_for_pyhf(workspace))
     model = ws.model(
         measurement_name=measurement_name,
         modifier_settings={
@@ -93,12 +94,13 @@ def sample_params(rng: random.Random, init: list[float], bounds: list[tuple[floa
 )
 def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):
     workspace = load_fixture(fixture)
+    workspace_for_parity = strip_for_pyhf(workspace)
     with ns_timing.time("pyhf"):
         model = pyhf_model(workspace, measurement)
         pyhf_init = list(map(float, model.config.suggested_init()))
 
     with ns_timing.time("nextstat"):
-        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace_for_parity))
         ns_params = map_params_by_name(
             model.config.par_names,
             pyhf_init,
@@ -137,12 +139,13 @@ def test_expected_data_matches_pyhf_at_suggested_init(fixture: str, measurement:
 )
 def test_nll_accepts_buffer_and_matches_pyhf_at_suggested_init(fixture: str, measurement: str, ns_timing):
     workspace = load_fixture(fixture)
+    workspace_for_parity = strip_for_pyhf(workspace)
     with ns_timing.time("pyhf"):
         model, data = pyhf_model_and_data(workspace, measurement)
         pyhf_init = list(map(float, model.config.suggested_init()))
 
     with ns_timing.time("nextstat"):
-        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace_for_parity))
         ns_params_list = map_params_by_name(
             model.config.par_names,
             pyhf_init,
@@ -187,13 +190,14 @@ def test_grad_nll_accepts_buffer_matches_list_simple_fixture():
 )
 def test_expected_data_matches_pyhf_at_random_points(fixture: str, measurement: str, seed: int, ns_timing):
     workspace = load_fixture(fixture)
+    workspace_for_parity = strip_for_pyhf(workspace)
     with ns_timing.time("pyhf"):
         model = pyhf_model(workspace, measurement)
         pyhf_init = list(map(float, model.config.suggested_init()))
         pyhf_bounds = [(float(a), float(b)) for a, b in model.config.suggested_bounds()]
 
     with ns_timing.time("nextstat"):
-        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace_for_parity))
         ns_init = ns_model.suggested_init()
         ns_names = ns_model.parameter_names()
 
@@ -263,13 +267,14 @@ def test_expected_data_per_bin_golden(fixture: str, measurement: str, ns_timing)
     individually. Generates a JSON report if NEXTSTAT_GOLDEN_REPORT_DIR is set.
     """
     workspace = load_fixture(fixture)
+    workspace_for_parity = strip_for_pyhf(workspace)
     with ns_timing.time("pyhf"):
         model = pyhf_model(workspace, measurement)
         pyhf_init = list(map(float, model.config.suggested_init()))
         pyhf_bounds = [(float(a), float(b)) for a, b in model.config.suggested_bounds()]
 
     with ns_timing.time("nextstat"):
-        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+        ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace_for_parity))
         ns_names = ns_model.parameter_names()
         ns_init = ns_model.suggested_init()
 

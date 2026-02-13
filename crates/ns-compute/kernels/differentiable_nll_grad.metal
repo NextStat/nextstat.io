@@ -81,7 +81,10 @@ float normsys_code4_value(
     float abs_alpha = fabs(alpha);
     if (abs_alpha >= 1.0f) {
         float ln_base = (alpha >= 0.0f) ? mdata[6] : mdata[7];
-        return exp(abs_alpha * ln_base);
+        float arg = abs_alpha * ln_base;
+        /* Clamp to prevent f32 overflow (exp(88+) = +inf) */
+        if (arg > 80.0f) arg = 80.0f;
+        return exp(arg);
     }
     float a1 = alpha;
     float a2 = a1 * alpha;

@@ -47,6 +47,18 @@ python suites/bayesian/suite.py --deterministic --out-dir out/bayesian
 python suites/ml/suite.py --deterministic --out-dir out/ml
 ```
 
+7. Run the econometrics suite (panel/DiD/IV/AIPW, seed):
+
+```bash
+python suites/econometrics/suite.py --deterministic --out-dir out/econometrics
+```
+
+Optional: enable econometrics parity baselines (statsmodels + linearmodels):
+
+```bash
+pip install -r env/python/requirements-econometrics-baselines.txt
+```
+
 Optional: enable JAX backends for ML suite (CPU):
 
 ```bash
@@ -105,7 +117,7 @@ The workflow templates under `ci/` expect a **pinned** NextStat wheel to be inst
 - `ci/publish.yml` (manual): either:
   - provide `nextstat_wheel_url` + `nextstat_wheel_sha256`, or
   - leave them empty and provide `nextstat_ref` to build the wheel from source (optionally override `nextstat_repo` / `nextstat_py_subdir`).
-  You can also toggle `run_hep` / `run_pharma`.
+  You can also toggle `run_hep` / `run_pharma` / `run_econometrics`.
 
 ## Publish A Local Snapshot (Seed)
 
@@ -119,6 +131,12 @@ By default this runs the `hep` and `pharma` suites. Add `--bayesian` to include 
 
 ```bash
 python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --fit --fit-repeat 3 --bayesian
+```
+
+Add `--econometrics` to include the econometrics suite:
+
+```bash
+python scripts/publish_snapshot.py --snapshot-id snapshot-YYYY-MM-DD --deterministic --econometrics
 ```
 
 If you want the baseline manifest to pin the exact measured NextStat build, pass the wheel path so the manifest records `nextstat.wheel_sha256`:
@@ -135,6 +153,7 @@ Suites:
 - `pharma/` (NextStat-only seed + baseline templates)
 - `bayesian/` (NextStat-only seed: NUTS diagnostics + ESS/sec proxies; only when `--bayesian` is passed)
 - `ml/` (NextStat-only seed: cold-start TTFR vs warm-call throughput; optional JAX cases)
+- `econometrics/` (NextStat seed + optional parity vs statsmodels/linearmodels; only when `--econometrics` is passed)
 
 ## DOI Publishing (Template)
 

@@ -11,7 +11,7 @@ Nuisance models (baseline):
 
 Sensitivity analysis
 - `e_value_rr(...)` is implemented for risk-ratio scale effects.
-- Rosenbaum-style sensitivity is provided as a placeholder (API only).
+- Rosenbaum bounds (`rosenbaum_bounds(...)`) are provided for matched-pairs outcomes.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from typing import Any, List, Literal, Optional, Sequence
+
+import nextstat
 
 from nextstat.causal import propensity as ps
 from nextstat.glm import linear as ns_linear
@@ -225,28 +227,63 @@ def e_value_rr(rr: float) -> float:
 
 
 @dataclass(frozen=True)
-class RosenbaumSensitivityPlaceholder:
-    gamma_grid: List[float]
-    message: str
+class RosenbaumBoundsResult:
+    """Rosenbaum sensitivity bounds for matched-pairs outcomes.
+
+    This is a design-specific tool. Inputs must represent matched pairs:
+    `y_treated[i]` and `y_control[i]` correspond to the same matched pair.
+    """
+
+    gammas: List[float]
+    p_upper: List[float]
+    p_lower: List[float]
+    gamma_critical: Optional[float]
 
 
-def rosenbaum_sensitivity_placeholder(*, gamma_grid: Optional[Sequence[float]] = None) -> RosenbaumSensitivityPlaceholder:
-    """Placeholder for Rosenbaum-style sensitivity analysis."""
-    gg = [1.0, 1.25, 1.5, 2.0] if gamma_grid is None else [float(v) for v in gamma_grid]
+def rosenbaum_bounds(
+    y_treated: Sequence[float],
+    y_control: Sequence[float],
+    *,
+    gammas: Optional[Sequence[float]] = None,
+) -> RosenbaumBoundsResult:
+    """Compute Rosenbaum bounds for matched pairs.
+
+    Args:
+        y_treated: outcomes for matched treated units.
+        y_control: outcomes for matched control units, paired with `y_treated`.
+        gammas: sensitivity parameter grid (Gamma >= 1). Default: `[1.0, 1.25, 1.5, 2.0, 3.0, 5.0]`.
+    """
+    yt = [float(v) for v in y_treated]
+    yc = [float(v) for v in y_control]
+    if len(yt) == 0:
+        raise ValueError("Matched pairs must be non-empty")
+    if len(yc) != len(yt):
+        raise ValueError("y_treated and y_control must have the same length")
+
+    gg = [1.0, 1.25, 1.5, 2.0, 3.0, 5.0] if gammas is None else [float(v) for v in gammas]
+    if not gg:
+        raise ValueError("gammas must be non-empty")
     if any((not math.isfinite(v)) or (v < 1.0) for v in gg):
-        raise ValueError("gamma_grid must be finite and >= 1")
-    return RosenbaumSensitivityPlaceholder(
-        gamma_grid=gg,
-        message="Rosenbaum sensitivity bounds are design-specific; this is a placeholder hook.",
+        raise ValueError("All gamma values must be finite and >= 1.0")
+
+    core = getattr(nextstat, "_core", None)
+    if core is None or not hasattr(core, "rosenbaum_bounds"):
+        raise ImportError("nextstat._core.rosenbaum_bounds is not available (native extension not built/installed).")
+
+    out = core.rosenbaum_bounds(yt, yc, gg)
+    return RosenbaumBoundsResult(
+        gammas=[float(v) for v in (out.get("gammas") or [])],
+        p_upper=[float(v) for v in (out.get("p_upper") or [])],
+        p_lower=[float(v) for v in (out.get("p_lower") or [])],
+        gamma_critical=(None if out.get("gamma_critical") is None else float(out.get("gamma_critical"))),
     )
 
 
 __all__ = [
     "AipwFit",
     "Estimand",
-    "RosenbaumSensitivityPlaceholder",
+    "RosenbaumBoundsResult",
     "aipw_fit",
     "e_value_rr",
-    "rosenbaum_sensitivity_placeholder",
+    "rosenbaum_bounds",
 ]
-

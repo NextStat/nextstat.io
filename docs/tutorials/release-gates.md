@@ -44,16 +44,16 @@ This runs:
 Optional (pytest timing breakdown):
 - CLI flag: `pytest -m "not slow" tests/python --ns-test-timings`
 - Env var: `NS_TEST_TIMINGS=1 pytest -m "not slow" tests/python`
-- JSON output: `--ns-test-timings-json tmp/pytest_timings.json` (or `NS_TEST_TIMINGS_JSON=...`)
+- JSON output: `--ns-test-timings-json tmp/pytest_timings.json` (or `NS_TEST_TIMINGS_JSON=tmp/pytest_timings.json`)
 
 Optional (GPU backends):
 - CUDA (requires `nvcc`): `APEX2_CARGO_TEST_ARGS="--workspace --all-features" make apex2-pre-release-gate`
 
 Optional (TREx analysis spec):
-- Record once: `make trex-spec-baseline-record TREX_SPEC=...`
+- Record once: `make trex-spec-baseline-record TREX_SPEC=docs/specs/trex/canonical/histfactory_fixture_baseline.yaml`
 - Compare before release: `make trex-spec-baseline-compare TREX_COMPARE_ARGS="--require-same-host"`
 - If `tmp/baselines/latest_trex_analysis_spec_manifest.json` exists, `make apex2-pre-release-gate` also runs this compare.
-- Set `APEX2_SKIP_TREX_SPEC=1` to skip, or override args with `APEX2_TREX_COMPARE_ARGS="..."`.
+- Set `APEX2_SKIP_TREX_SPEC=1` to skip, or override args with `APEX2_TREX_COMPARE_ARGS="--require-same-host"`.
 
 Notes:
 
@@ -75,16 +75,16 @@ Exit codes:
 - Note: by default, very small baseline timings are **not** gated (to avoid timer noise):
   - pyhf: `--pyhf-min-baseline-s` (default `1e-5`)
   - P6: `--p6-min-baseline-fit-s` and `--p6-min-baseline-predict-s` (default `1e-2`)
-  Override via `COMPARE_ARGS="..."` if you want stricter gating on a dedicated benchmark host.
+  Override via `COMPARE_ARGS="--require-same-host"` if you want stricter gating on a dedicated benchmark host.
 - If the baseline is stale (e.g. after a known perf improvement), record a new baseline and re-run the gate.
 
 ## Cluster notes (ROOT/TRExFitter)
 
 ROOT/HistFactory parity baselines are recorded separately on a cluster environment (e.g. lxplus) via:
-- `tests/record_baseline.py --only root ...`
+- `PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only root --root-search-dir /abs/path/to/trex/output`
 
 TREx replacement baselines (numbers-only: fit + expected_data surfaces) can also be recorded from a TRExFitter/HistFactory export dir via:
-- `tests/record_trex_baseline.py --export-dir ...`
+- `PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_trex_baseline.py --export-dir tests/fixtures/trex_exports/tttt-prod`
 
 Typical cluster gate workflow:
 - Record a ROOT baseline once (on the cluster machine where ROOT/TRExFitter are available).
@@ -93,7 +93,7 @@ Typical cluster gate workflow:
 
 Notes:
 - For large suites, it can be faster to record the baseline via HTCondor array + aggregation, then register it with:
-  `tests/record_baseline.py --only root --root-suite-existing ... --root-cases-existing ...`.
+  `PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/record_baseline.py --only root --root-suite-existing tmp/apex2_root_suite_aggregate.json --root-cases-existing tests/fixtures/trex_parity_pack/cases_trex_exports.json --out-dir tmp/baselines`.
 
 See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, baseline registration, aggregation, and perf compare.
 

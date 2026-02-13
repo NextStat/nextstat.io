@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+concurrency:
+  group: python-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -27,12 +31,14 @@ jobs:
 
   test:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    # PR: github-hosted ubuntu, py3.13 only (1 job). Push main: self-hosted, full matrix.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.13"]') || fromJSON('["3.11","3.12","3.13"]') }}
+        # macOS only on push (self-hosted has no macOS; we test macOS wheels in release.yml)
+        os: ['linux']
 
     steps:
       - name: Checkout code
@@ -61,10 +67,10 @@ jobs:
         run: pip install target/wheels/*.whl
 
       - name: Upload wheel artifact (for validation-pack job)
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        if: matrix.python-version == '3.13'
         uses: actions/upload-artifact@v4
         with:
-          name: nextstat-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: nextstat-wheel-linux-py${{ matrix.python-version }}
           path: bindings/ns-py/target/wheels/*.whl
 
       - name: Run Python tests
@@ -74,7 +80,9 @@ jobs:
 
   validation-pack:
     name: Validation Pack (JSON/PDF determinism)
-    runs-on: ubuntu-latest
+    # Only on push to main (not on every PR — saves ~15 min of compute).
+    if: github.event_name == 'push'
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     needs: [docs-lint, test]
     steps:
       - name: Checkout code
@@ -94,13 +102,16 @@ jobs:
       - name: Download wheel artifact
         uses: actions/download-artifact@v4
         with:
-          name: nextstat-wheel-ubuntu-latest-py3.13
+          name: nextstat-wheel-linux-py3.13
           path: wheel/
 
       - name: Install Python package
         run: |
           python -m pip install --upgrade pip
           pip install wheel/*.whl
+
+      - name: Build NextStat CLI (unbinned benchmark smoke)
+        run: cargo build --release -p ns-cli
 
       - name: Render validation pack (JSON + PDF)
         run: |
@@ -156,6 +167,124 @@ jobs:
             --artifacts-dir artifacts \
             --out artifacts/snapshot_index.json
 
+          # Unbinned benchmark contract smoke: deterministic toy run + schema validation.
+          pip install "numpy>=2.0" "pyarrow>=18.0"
+          NS_CLI_BIN=target/release/nextstat \
+            python benchmarks/unbinned/run_suite.py \
+            --cases gauss_exp \
+            --n-events 2000 \
+            --seed 42 \
+            --out artifacts/unbinned_bench_smoke.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+          schema = json.loads(Path("docs/schemas/benchmarks/unbinned_run_suite_result_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts/unbinned_bench_smoke.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("unbinned_run_suite_result_v1: schema ok")
+          PY
+
+      - name: Find unbinned baseline artifact
+        if: always()
+        id: unbinned_baseline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflow_id = 'python-tests.yml';
+            const artifact_name = 'validation-report-ubuntu-py3.13';
+            const ref = context.ref || '';
+            const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
+
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              status: 'success',
+              ...(branch ? { branch } : {}),
+              per_page: 1,
+            });
+
+            if (!runs.data.workflow_runs.length) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const run_id = runs.data.workflow_runs[0].id;
+            if (run_id === context.runId) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const arts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id,
+              per_page: 100,
+            });
+
+            const a = arts.data.artifacts.find(x => x.name === artifact_name && !x.expired);
+            if (!a) {
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            core.setOutput('found', 'true');
+            core.setOutput('run_id', String(run_id));
+            core.setOutput('artifact_id', String(a.id));
+
+      - name: Download baseline validation artifact
+        if: steps.unbinned_baseline.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const artifact_id = Number('${{ steps.unbinned_baseline.outputs.artifact_id }}');
+            const download = await github.rest.actions.downloadArtifact({
+              owner,
+              repo,
+              artifact_id,
+              archive_format: 'zip',
+            });
+            fs.writeFileSync('baseline_artifact.zip', Buffer.from(download.data));
+
+      - name: Compare unbinned smoke vs baseline
+        if: always()
+        run: |
+          set -euo pipefail
+          baseline_path="baseline/unbinned_bench_smoke.json"
+          baseline_run_id="${{ steps.unbinned_baseline.outputs.run_id }}"
+          baseline_found="${{ steps.unbinned_baseline.outputs.found }}"
+          if [[ -z "${baseline_run_id}" ]]; then
+            baseline_run_id="none"
+          fi
+          if [[ -z "${baseline_found}" ]]; then
+            baseline_found="false"
+          fi
+
+          if [[ "${baseline_found}" == "true" ]]; then
+            mkdir -p baseline
+            unzip -q baseline_artifact.zip -d baseline
+            discovered="$(find baseline -maxdepth 4 -name unbinned_bench_smoke.json | head -n 1 || true)"
+            if [[ -n "${discovered}" ]]; then
+              baseline_path="${discovered}"
+            fi
+          fi
+
+          python3 scripts/benchmarks/compare_unbinned_bench.py \
+            --baseline "${baseline_path}" \
+            --current artifacts/unbinned_bench_smoke.json \
+            --out artifacts/unbinned_bench_drift_summary.json \
+            --case gauss_exp \
+            --tool nextstat \
+            --max-wall-regression-ratio 2.5 \
+            --meta baseline_run_id="${baseline_run_id}" \
+            --meta baseline_found="${baseline_found}"
+
       - name: Upload Apex2 report artifact
         uses: actions/upload-artifact@v4
         with:
@@ -171,6 +300,8 @@ jobs:
             artifacts/validation_report.pdf
             artifacts/validation_pack_manifest.json
             artifacts/snapshot_index.json
+            artifacts/unbinned_bench_smoke.json
+            artifacts/unbinned_bench_drift_summary.json
 
       - name: Upload validation pack determinism artifacts (debug)
         if: always()
@@ -212,7 +343,9 @@ jobs:
 
   stub-generation:
     name: Generate Python Stubs
-    runs-on: ubuntu-latest
+    # Only on push to main — stub drift doesn't need per-PR validation.
+    if: github.event_name == 'push'
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

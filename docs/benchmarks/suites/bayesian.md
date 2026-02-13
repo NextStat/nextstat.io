@@ -91,12 +91,21 @@ Standalone public benchmarks harness (seed repo) status:
 
 - runnable implementation: **seed (NextStat + optional Stan/PyMC)**
 - suite directory: `benchmarks/nextstat-public-benchmarks/suites/bayesian/`
-- CLI: `python3 suites/bayesian/suite.py --out-dir ... --backends nextstat,cmdstanpy,pymc`
+- CLI (single run): `python3 suites/bayesian/suite.py --out-dir ... --backends nextstat,cmdstanpy,pymc --dataset-seed 12345 --seed 42`
+- CLI (multi-seed stability): `python3 suites/bayesian/multiseed.py --out-dir ... --backends nextstat,cmdstanpy --dataset-seed 12345 --seeds 42,0,123`
+- Publishable artifacts under pinned schemas:
+  - `nextstat.bayesian_benchmark_result.v1` per case
+  - `nextstat.bayesian_benchmark_suite_result.v1` index
+
+Seeding policy:
+
+- `dataset_seed` controls generated dataset content (fixed for publishable comparisons).
+- `seed` controls chain RNG (varied across repeats for stability).
 
 Dependency note (seed repo):
 
 - Core harness deps are pinned and minimal.
-- Optional backends require extra deps (and for Stan, **CmdStan** binaries). Missing optional deps are reported as `status="warn"` with an actionable `reason`, rather than failing the whole snapshot.
+- Optional backends require extra deps (and for Stan, **CmdStan** binaries). Missing optional deps are reported as `status="warn"` with a machine-readable `reason` (for example `missing_backend_dep:cmdstanpy:ImportError:...`), rather than failing the whole snapshot.
 
 ## SBC calibration suite (shipped)
 
@@ -128,5 +137,5 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_nuts_quality_rep
 
 ## Related reading
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
-- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec.
+- [Validation Report Artifacts](/docs/validation-report) — validation pack for published snapshots.

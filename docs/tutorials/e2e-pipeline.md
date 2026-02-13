@@ -14,6 +14,23 @@ If you want implementation details, start here:
 - Differentiable HistFactory layer for PyTorch: `docs/differentiable-layer.md`
 - GPU parity / tolerance contract: `docs/gpu-contract.md`
 
+Runnable (tool-shaped) demo:
+- End-to-end discovery runner: `scripts/e2e_discovery.py`
+
+Example (local tools via Python bindings):
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/e2e_discovery.py \
+  --workspace tests/fixtures/complex_workspace.json \
+  --out-dir tmp/e2e_discovery \
+  --transport local \
+  --eval-mode parity \
+  --threads 1 \
+  --mu 1.0 \
+  --scan-start 0 --scan-stop 1 --scan-points 21 \
+  --ranking-top-n 10
+```
+
 ## What "E2E" Means Here
 
 The E2E pattern is:
@@ -88,5 +105,4 @@ Key points:
 
 - `docs/differentiable-layer.md`
 - `docs/gpu-contract.md`
-- `docs/pyhf-parity-contract.md`
-
+- `docs/references/pyhf-parity-contract.md`

@@ -39,8 +39,15 @@ impl<'a> RBuffer<'a> {
     }
 
     /// Set read position absolutely.
+    ///
+    /// Allows setting to `data.len()` (end-of-buffer) but rejects beyond.
     pub fn set_pos(&mut self, pos: usize) {
-        self.pos = pos;
+        if pos > self.data.len() {
+            // Clamp to end of buffer — the next read will produce BufferUnderflow.
+            self.pos = self.data.len();
+        } else {
+            self.pos = pos;
+        }
     }
 
     /// Skip `n` bytes forward.
@@ -156,8 +163,9 @@ impl<'a> RBuffer<'a> {
         if raw & 0x4000_0000 != 0 {
             let byte_count = (raw & !0x4000_0000) as usize;
             let version = self.read_u16()?;
-            // byte_count counts from right after the u32
-            let end_pos = start + 4 + byte_count;
+            // byte_count counts from right after the u32.
+            // Guard against malformed files: clamp end_pos to buffer length.
+            let end_pos = start.saturating_add(4).saturating_add(byte_count).min(self.data.len());
             Ok((version, Some(end_pos)))
         } else {
             // No byte count — first two bytes are the version.

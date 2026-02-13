@@ -1,6 +1,6 @@
 ---
 title: "How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch"
-slug: differentiable-layer-nextstat-pytorch
+slug: differentiable-layer
 description: "A scientific deep dive into NextStat’s differentiable HistFactory layer for PyTorch: soft histogramming, a fused CUDA/Metal NLL+gradient kernel, profiled fits, and envelope-theorem gradients for Z₀ training."
 date: 2026-02-08
 author: NextStat Team
@@ -30,7 +30,7 @@ category: ml
 
 # How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Numerical Accuracy](/blog/numerical-accuracy) · **Next:** [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Numerical Accuracy](/blog/numerical-accuracy) · **Next:** [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec)
 
 ## Abstract
 
@@ -47,7 +47,7 @@ is traditionally **non‑differentiable**: histogram binning is discrete, and th
 
 The result is a PyTorch‑native loss: you can train a network directly to **maximize $Z_0$** (or minimize $-Z_0$) with standard optimizers.
 
-If you just want the usage/API surface (and not the derivations), start with [Differentiable HistFactory Layer for PyTorch](/docs/differentiable-layer).
+If you just want the usage/API surface (and not the derivations), start with [Differentiable HistFactory Layer for PyTorch](/docs/differentiable).
 
 ---
 
@@ -538,7 +538,7 @@ For a differentiable inference layer, the *gradient* is the product. NextStat va
 1. **Unit/integration tests** compare analytical gradients against central finite differences on GPU:
    - Fixed-parameter NLL signal gradient: `tests/python/test_torch_layer.py`
    - Profiled q₀/qμ envelope gradients: `tests/python/test_differentiable_profiled_q0.py`
-2. **Benchmark fixtures** report maximum absolute gradient error vs finite differences; for the differentiable NLL layer this is **2.07e‑9** on the benchmark workspace (see [Benchmarks → Differentiable Layer](/docs/benchmarks#differentiable-layer-gpu-only)).
+2. **Benchmark fixtures** report maximum absolute gradient error vs finite differences; for the differentiable NLL layer this is **2.07e‑9** on the benchmark workspace (see [Benchmark Results](/docs/benchmark-results)).
 
 These checks are designed to catch both algebraic mistakes in the fused kernel and subtle issues such as missing stream synchronization or non-zero-initialized gradient buffers.
 

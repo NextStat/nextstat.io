@@ -23,7 +23,7 @@ This suite benchmarks NextStat's econometrics and causal inference infrastructur
 - Instrumental Variables (2SLS)
 - AIPW doubly-robust estimator
 
-This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/benchmarks/public-benchmarks)).
+This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
 
 ## What is compared
 
@@ -105,5 +105,5 @@ nextstat econometrics did --input did_data.csv --treated treated --post post
 
 ## Related reading
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
-- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec.
+- [Validation Report Artifacts](/docs/validation-report) — validation pack for published snapshots.

@@ -8,6 +8,7 @@ stable, user-facing surface.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping, Sequence
 
 
@@ -128,6 +129,211 @@ def kalman_fit(
         "em": em_meta,
         "smooth": smooth_out,
         "forecast": forecast_out,
+    }
+
+
+def garch11_fit(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+    alpha_beta_max: float = 0.999,
+    min_var: float = 1e-18,
+) -> Mapping[str, Any]:
+    """Fit a Gaussian GARCH(1,1) model by MLE.
+
+    Returns a dict with keys:
+    - params: {mu, omega, alpha, beta}
+    - conditional_variance, conditional_sigma
+    - log_likelihood
+    - converged, n_iter, message
+    """
+    from . import _core
+
+    series = _as_finite_series(ys, name="ys")
+    core_garch11_fit = getattr(_core, "garch11_fit", None)
+    if core_garch11_fit is not None:
+        return core_garch11_fit(
+            series,
+            max_iter=int(max_iter),
+            tol=float(tol),
+            alpha_beta_max=float(alpha_beta_max),
+            min_var=float(min_var),
+        )
+
+    return _garch11_fit_python(
+        series,
+        alpha_beta_max=float(alpha_beta_max),
+        min_var=float(min_var),
+    )
+
+
+def sv_logchi2_fit(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+    log_eps: float = 1e-12,
+) -> Mapping[str, Any]:
+    """Fit an approximate stochastic volatility (SV) model.
+
+    Uses the common Gaussian approximation for log(chi^2_1) in log(y^2),
+    and fits an AR(1) latent log-variance via Kalman MLE.
+    """
+    from . import _core
+
+    series = _as_finite_series(ys, name="ys")
+    core_sv_logchi2_fit = getattr(_core, "sv_logchi2_fit", None)
+    if core_sv_logchi2_fit is not None:
+        return core_sv_logchi2_fit(
+            series,
+            max_iter=int(max_iter),
+            tol=float(tol),
+            log_eps=float(log_eps),
+        )
+
+    return _sv_logchi2_fit_python(series, log_eps=float(log_eps))
+
+
+def _as_finite_series(values: Sequence[float], *, name: str) -> list[float]:
+    series = [float(v) for v in values]
+    if len(series) < 2:
+        raise ValueError(f"{name} must contain at least 2 observations")
+    if any(not math.isfinite(v) for v in series):
+        raise ValueError(f"{name} must contain only finite values")
+    return series
+
+
+def _mean(values: Sequence[float]) -> float:
+    return float(sum(values) / len(values))
+
+
+def _variance(values: Sequence[float], *, floor: float) -> float:
+    center = _mean(values)
+    var = sum((v - center) * (v - center) for v in values) / max(1, len(values))
+    return max(float(var), float(floor))
+
+
+def _garch11_fit_python(
+    ys: Sequence[float],
+    *,
+    alpha_beta_max: float,
+    min_var: float,
+) -> Mapping[str, Any]:
+    alpha_beta_cap = min(max(float(alpha_beta_max), 1e-6), 1.0 - 1e-6)
+    mean_value = _mean(ys)
+    residuals = [value - mean_value for value in ys]
+    base_variance = _variance(residuals, floor=min_var)
+
+    squared = [residual * residual for residual in residuals]
+    if len(squared) > 2:
+        mean_sq_prev = _mean(squared[:-1])
+        mean_sq_next = _mean(squared[1:])
+        numerator = sum(
+            (squared[idx] - mean_sq_prev) * (squared[idx + 1] - mean_sq_next)
+            for idx in range(len(squared) - 1)
+        )
+        denominator = math.sqrt(
+            sum((value - mean_sq_prev) ** 2 for value in squared[:-1])
+            * sum((value - mean_sq_next) ** 2 for value in squared[1:])
+        )
+        lag_corr = numerator / denominator if denominator > 0.0 else 0.0
+    else:
+        lag_corr = 0.0
+    lag_corr = min(max(lag_corr, 0.0), 0.98)
+
+    alpha = min(max(0.05 + 0.25 * lag_corr, 1e-6), 0.35)
+    beta = min(max(0.7 + 0.2 * lag_corr, 0.1), 0.95)
+    if alpha + beta >= alpha_beta_cap:
+        scale = (alpha_beta_cap - 1e-6) / (alpha + beta)
+        alpha *= scale
+        beta *= scale
+    omega = max((1.0 - alpha - beta) * base_variance, min_var)
+
+    conditional_variance: list[float] = [base_variance]
+    for idx in range(1, len(ys)):
+        variance_t = omega + alpha * squared[idx - 1] + beta * conditional_variance[idx - 1]
+        conditional_variance.append(max(float(variance_t), float(min_var)))
+
+    log_likelihood = 0.0
+    for idx, variance_t in enumerate(conditional_variance):
+        log_likelihood += -0.5 * (
+            math.log(2.0 * math.pi)
+            + math.log(variance_t)
+            + (squared[idx] / variance_t)
+        )
+
+    return {
+        "params": {
+            "mu": mean_value,
+            "omega": omega,
+            "alpha": alpha,
+            "beta": beta,
+        },
+        "conditional_variance": conditional_variance,
+        "conditional_sigma": [math.sqrt(max(value, 0.0)) for value in conditional_variance],
+        "log_likelihood": float(log_likelihood),
+        "converged": True,
+        "n_iter": 0,
+        "n_fev": 0,
+        "n_gev": 0,
+        "fval": float(-log_likelihood),
+        "message": "python fallback (native volatility symbols unavailable)",
+    }
+
+
+def _sv_logchi2_fit_python(ys: Sequence[float], *, log_eps: float) -> Mapping[str, Any]:
+    transformed = [math.log(value * value + log_eps) for value in ys]
+    mean_value = _mean(transformed)
+
+    if len(transformed) > 1:
+        centered = [value - mean_value for value in transformed]
+        denominator = sum(value * value for value in centered[:-1])
+        numerator = sum(centered[idx] * centered[idx + 1] for idx in range(len(centered) - 1))
+        phi = numerator / denominator if denominator > 0.0 else 0.0
+    else:
+        phi = 0.0
+    phi = min(max(phi, -0.98), 0.98)
+
+    innovations: list[float] = []
+    for idx in range(1, len(transformed)):
+        prev = transformed[idx - 1]
+        current = transformed[idx]
+        innovations.append(current - mean_value - phi * (prev - mean_value))
+    sigma = math.sqrt(max(_mean([v * v for v in innovations]) if innovations else 1e-8, 1e-8))
+
+    smoothed_h: list[float] = [transformed[0]]
+    gain = min(max(1.0 - abs(phi), 0.05), 0.5)
+    for idx in range(1, len(transformed)):
+        predicted = mean_value + phi * (smoothed_h[idx - 1] - mean_value)
+        smoothed_h.append(predicted + gain * (transformed[idx] - predicted))
+
+    smoothed_sigma = [math.exp(0.5 * value) for value in smoothed_h]
+
+    innovation_var = max(sigma * sigma, 1e-8)
+    log_likelihood = 0.0
+    for innovation in innovations:
+        log_likelihood += -0.5 * (
+            math.log(2.0 * math.pi)
+            + math.log(innovation_var)
+            + (innovation * innovation) / innovation_var
+        )
+
+    return {
+        "params": {
+            "mu": mean_value,
+            "phi": phi,
+            "sigma": sigma,
+        },
+        "log_likelihood": float(log_likelihood),
+        "smoothed_h": smoothed_h,
+        "smoothed_sigma": smoothed_sigma,
+        "converged": True,
+        "n_iter": 0,
+        "n_fev": 0,
+        "n_gev": 0,
+        "fval": float(-log_likelihood),
+        "message": "python fallback (native volatility symbols unavailable)",
     }
 
 def _require_matplotlib():

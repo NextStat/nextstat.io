@@ -1,6 +1,6 @@
 # Benchmarks
 
-For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
+For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: [Public Benchmarks Specification](/docs/public-benchmarks).
 
 For the live registry of published artifacts on nextstat.io, see: [Benchmark Results](/docs/benchmark-results) and [Snapshot Registry](/docs/snapshot-registry).
 
@@ -27,6 +27,7 @@ Available benchmarks:
 | `nuts_benchmark.rs` | NUTS sampler (warmup + sampling) |
 | `kalman_benchmark.rs` | Kalman filter/smoother/EM |
 | `hier_benchmark.rs` | Hierarchical model NLL/gradient |
+| `flow_nll_f32_vs_f64.rs` | Flow NLL: f32 device-ptr vs f64 host upload (CUDA) |
 
 ### Local Runs
 
@@ -312,6 +313,47 @@ Warm-start between scan points amortizes the per-point GPU overhead.
 | tHu | 184 | 3.66 ms | — |
 
 Signal gradient accuracy vs finite differences: **2.07e-9** max error.
+
+### Flow NLL Reduction — f32 Zero-Copy vs f64 Host Upload
+
+When ONNX Runtime CUDA EP produces log-prob outputs as `float*` device pointers,
+the f32 zero-copy path (`nll_device_ptr_f32`) eliminates the host-to-device memcpy
+entirely. The f64 host path requires uploading `n_procs × n_events` doubles (~16 bytes/event)
+to GPU before each kernel launch.
+
+Measured on RTX 4000 SFF Ada, release build, Criterion 100 samples.
+
+#### Single process, no constraints
+
+| Events | f64 host (H2D + kernel) | f32 device ptr (kernel only) | Speedup |
+|-------:|------------------------:|-----------------------------:|--------:|
+| 100 | 1.741 ms | 0.911 ms | 1.9x |
+| 1,000 | 1.761 ms | 30.8 µs | **57x** |
+| 10,000 | 1.947 ms | 251.8 µs | 7.7x |
+| 100,000 | 3.832 ms | 3.121 ms | 1.2x |
+
+#### Two processes + Gaussian constraint
+
+| Events | f64 host (H2D + kernel) | f32 device ptr (kernel only) | Speedup |
+|-------:|------------------------:|-----------------------------:|--------:|
+| 1,000 | 374.1 µs | 48.2 µs | **7.8x** |
+| 10,000 | 359.3 µs | 351.3 µs | 1.02x |
+| 100,000 | 3.497 ms | 3.390 ms | 1.03x |
+
+**Key insight**: The speedup comes entirely from eliminating H2D memcpy, not from f32
+arithmetic being faster (accumulation is still f64 on GPU). The sweet spot is 100–10K events
+— the typical range for unbinned flow fits in HEP — where H2D transfer dominates.
+At 100K+ events, GPU compute time dominates and both paths converge.
+
+**Numerical accuracy**: f32 path matches f64 to `rel_err < 1e-4` on standard data,
+`< 1e-3` on extreme logp values ([-10..−28]).
+
+#### Reproducing
+
+```bash
+# On a CUDA machine:
+cargo bench -p ns-compute --features cuda --bench flow_nll_f32_vs_f64
+```
 
 ### Neural Network Training (GPU-only)
 

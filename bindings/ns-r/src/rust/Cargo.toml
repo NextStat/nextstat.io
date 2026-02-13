@@ -1,0 +1,19 @@
+[package]
+name = "nsr"
+version = "0.9.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+extendr-api = "0.8.1"
+nalgebra = "0.34"
+ns-core = { path = "../crates/ns-core", version = "0.9.0", default-features = false }
+ns-inference = { path = "../crates/ns-inference", version = "0.9.0", default-features = false }
+ns-translate = { path = "../crates/ns-translate", version = "0.9.0", default-features = false }
+rayon = "1"
+serde_json = "1"

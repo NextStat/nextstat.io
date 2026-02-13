@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_run_suite_result_v1.schema.json",
+  "title": "Unbinned Run Suite Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "seed",
+    "n_events",
+    "availability",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat.unbinned_run_suite_result.v1"
+    },
+    "suite": {
+      "type": "string",
+      "const": "benchmarks/unbinned/run_suite.py"
+    },
+    "seed": { "type": "integer", "minimum": 0 },
+    "n_events": { "type": "integer", "minimum": 1 },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "zfit", "morefit"],
+      "properties": {
+        "root": { "type": "boolean" },
+        "zfit": { "type": "boolean" },
+        "morefit": { "type": "boolean" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case_result" }
+    },
+    "workdir": {
+      "type": "string",
+      "description": "Present only when run with --keep."
+    }
+  },
+  "$defs": {
+    "case_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "kind", "nextstat", "roofit", "zfit", "morefit"],
+      "properties": {
+        "case": {
+          "type": "string",
+          "enum": ["gauss_exp", "cb_exp", "product2d"]
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["gauss_exp_ext", "cb_exp_ext", "product2d"]
+        },
+        "nextstat": { "$ref": "#/$defs/tool_result" },
+        "roofit": { "$ref": "#/$defs/tool_result" },
+        "zfit": { "$ref": "#/$defs/tool_result" },
+        "morefit": { "$ref": "#/$defs/tool_result" }
+      }
+    },
+    "tool_result": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "skipped": { "type": "boolean" },
+        "failed": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "_wall_ms": { "type": "number" },
+        "tool": { "type": "string" },
+        "status": { "type": "number" },
+        "nll": { "type": "number" },
+        "mu_hat": { "type": "number" },
+        "fit_real_s": { "type": "number" },
+        "fit_cpu_s": { "type": "number" }
+      }
+    }
+  }
+}

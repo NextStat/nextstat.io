@@ -35,6 +35,7 @@ print("replicated mean(y) range:", min(rep_means), max(rep_means))
 Notes:
 - Sampling seeds are deterministic per chain: chain `i` uses `seed + i`.
 - Initialization options are mutually exclusive (set at most one): `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
+- PPC helpers expect the raw dict returned by `nextstat.sample` (or `nextstat.bayes.sample(..., return_idata=False)`).
 
 ## Linear random intercept: replicate mean/variance
 

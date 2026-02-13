@@ -10,7 +10,7 @@ body:
 
         Before opening a new question:
         - Check the [documentation](https://docs.nextstat.io)
-        - Search [existing issues](https://github.com/nextstat/nextstat/issues)
+        - Search [existing issues](https://github.com/NextStat/nextstat.io/issues)
 
   - type: textarea
     id: question

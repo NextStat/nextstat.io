@@ -34,3 +34,6 @@ This behavior is covered by Rust tests in `crates/ns-translate/src/trex/mod.rs` 
 - No attempt is made to infer or rebuild HistFactory objects from TREx rules; the export dir is authoritative.
 - Any TREx settings that would normally affect histogram production, smoothing, or pruning are out of scope for HIST wrapper (those are preprocessing steps in the export, not the wrapper).
 
+## See also
+
+- [TRExFitter Config Surface Reference](trex_config_surface.md) — full list of recognized blocks and keys across NTUP and HIST modes.

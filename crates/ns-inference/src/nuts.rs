@@ -1,8 +1,14 @@
 //! No-U-Turn Sampler (NUTS).
 //!
-//! Implements NUTS with tree doubling and the no-U-turn criterion.
-//! The current implementation uses the slice-based NUTS variant:
-//! proposals are selected uniformly among states that fall inside the slice.
+//! Implements NUTS with multinomial sampling and the generalized no-U-turn
+//! criterion (Betancourt 2017).
+//!
+//! Proposal selection matches Stan:
+//! - **Within subtrees**: multinomial sampling proportional to `exp(-energy_error)`
+//! - **Top-level subtree joins**: Stan-style *progressive* sampling biased away
+//!   from the initial point (uses `W_subtree / W_existing`, clamped to 1)
+//!
+//! The U-turn check uses the momentum sum (rho) instead of position difference.
 
 use crate::adapt::{WindowedAdaptation, find_reasonable_step_size};
 use crate::hmc::{HmcState, LeapfrogIntegrator};
@@ -11,6 +17,32 @@ use ns_core::Result;
 use ns_core::traits::LogDensityModel;
 use rand::Rng;
 
+/// Chain initialization strategy.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InitStrategy {
+    /// Random initialization: each chain starts from `Uniform(-2, 2)` in unconstrained
+    /// space (same as Stan/CmdStan). Best for general Bayesian models, especially
+    /// hierarchical and funnel geometries.
+    Random,
+    /// MLE initialization: run a quick L-BFGS-B fit, then start near the mode.
+    /// Best for HistFactory/HEP models where the mode is well-defined and the
+    /// posterior is nearly Gaussian.
+    Mle,
+}
+
+/// Euclidean metric type for mass matrix adaptation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MetricType {
+    /// Diagonal mass matrix (CmdStan default). Each parameter has an independent
+    /// scale; cross-correlations are ignored.
+    Diagonal,
+    /// Dense mass matrix with off-diagonal elements. Better for correlated posteriors
+    /// but requires more warmup samples for stable estimation.
+    Dense,
+    /// Automatic selection: dense for dim <= 32, diagonal otherwise.
+    Auto,
+}
+
 /// NUTS sampler configuration.
 #[derive(Debug, Clone)]
 pub struct NutsConfig {
@@ -18,6 +50,10 @@ pub struct NutsConfig {
     pub max_treedepth: usize,
     /// Target acceptance probability (default 0.8).
     pub target_accept: f64,
+    /// Chain initialization strategy (default: Random).
+    pub init_strategy: InitStrategy,
+    /// Euclidean metric type (default: Diagonal, matching CmdStan).
+    pub metric_type: MetricType,
     /// Stddev of random jitter added to the initial unconstrained position.
     ///
     /// This helps avoid identical initial states across chains.
@@ -39,6 +75,14 @@ pub struct NutsConfig {
     ///
     /// Mutually exclusive with `init_jitter` and `init_jitter_rel`.
     pub init_overdispersed_rel: Option<f64>,
+
+    /// Fractional jitter applied to the step size during sampling.
+    ///
+    /// After warmup, each transition uses `eps * (1 + jitter * U(-1,1))` where
+    /// `U(-1,1)` is uniform noise.  This breaks autocorrelation patterns that
+    /// arise from a fixed step size.  Stan supports this (`stepsize_jitter`
+    /// parameter, default 0).
+    pub stepsize_jitter: f64,
 }
 
 impl Default for NutsConfig {
@@ -46,9 +90,12 @@ impl Default for NutsConfig {
         Self {
             max_treedepth: 10,
             target_accept: 0.8,
+            init_strategy: InitStrategy::Random,
+            metric_type: MetricType::Diagonal,
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            stepsize_jitter: 0.0,
         }
     }
 }
@@ -62,7 +109,6 @@ pub(crate) struct NutsTransition {
     pub divergent: bool,
     pub accept_prob: f64,
     pub energy: f64,
-    #[allow(dead_code)]
     pub n_leapfrog: usize,
 }
 
@@ -78,6 +124,8 @@ struct NutsTree {
     potential_proposal: f64,
     grad_proposal: Vec<f64>,
     log_sum_weight: f64,
+    /// Sum of momenta across all leaves in this sub-tree (generalized U-turn criterion).
+    p_sum: Vec<f64>,
     depth: usize,
     n_leapfrog: usize,
     divergent: bool,
@@ -88,24 +136,33 @@ struct NutsTree {
 /// Maximum energy error before declaring divergence.
 const DIVERGENCE_THRESHOLD: f64 = 1000.0;
 
-/// Check the no-U-turn criterion.
-fn is_turning(dq: &[f64], p_left: &[f64], p_right: &[f64], metric: &crate::hmc::Metric) -> bool {
+/// Check the generalized no-U-turn criterion (Betancourt 2017).
+///
+/// `rho` is the sum of all momenta in the sub-tree.  The criterion checks
+/// whether the trajectory is still making progress by testing
+/// `rho · M^{-1} p_left >= 0` and `rho · M^{-1} p_right >= 0`.
+fn is_turning(rho: &[f64], p_left: &[f64], p_right: &[f64], metric: &crate::hmc::Metric) -> bool {
     let v_left = metric.mul_inv_mass(p_left);
     let v_right = metric.mul_inv_mass(p_right);
-    let dot_left: f64 = dq.iter().zip(v_left.iter()).map(|(&d, &v)| d * v).sum();
-    let dot_right: f64 = dq.iter().zip(v_right.iter()).map(|(&d, &v)| d * v).sum();
+    let dot_left: f64 = rho.iter().zip(v_left.iter()).map(|(&r, &v)| r * v).sum();
+    let dot_right: f64 = rho.iter().zip(v_right.iter()).map(|(&r, &v)| r * v).sum();
     if !dot_left.is_finite() || !dot_right.is_finite() {
-        // Defensive: if momenta or positions blow up numerically, stop building the tree.
         return true;
     }
     dot_left < 0.0 || dot_right < 0.0
 }
 
 fn log_sum_exp(a: f64, b: f64) -> f64 {
-    // Defensive: treat NaN/+inf as "missing weight" to avoid propagating NaNs
-    // into acceptance probabilities and diagnostics.
-    let a = if a.is_finite() || a == f64::NEG_INFINITY { a } else { f64::NEG_INFINITY };
-    let b = if b.is_finite() || b == f64::NEG_INFINITY { b } else { f64::NEG_INFINITY };
+    // Defensive: treat NaNs as "missing weight" (-inf) to avoid propagating NaNs
+    // into selection probabilities and diagnostics.
+    //
+    // +inf is a valid (though unexpected) sentinel for overwhelming weight and
+    // should dominate the sum.
+    let a = if a.is_nan() { f64::NEG_INFINITY } else { a };
+    let b = if b.is_nan() { f64::NEG_INFINITY } else { b };
+    if a == f64::INFINITY || b == f64::INFINITY {
+        return f64::INFINITY;
+    }
     let max = a.max(b);
     if max == f64::NEG_INFINITY {
         f64::NEG_INFINITY
@@ -114,12 +171,80 @@ fn log_sum_exp(a: f64, b: f64) -> f64 {
     }
 }
 
+/// Stable `P(select outer)` for multinomial subtree selection.
+///
+/// Returns `exp(logw_outer) / (exp(logw_inner) + exp(logw_outer))` with
+/// protections for +/-inf and NaNs.
+fn prob_select_outer(logw_inner: f64, logw_outer: f64) -> f64 {
+    let a = if logw_inner.is_nan() { f64::NEG_INFINITY } else { logw_inner };
+    let b = if logw_outer.is_nan() { f64::NEG_INFINITY } else { logw_outer };
+
+    if b == f64::NEG_INFINITY {
+        return 0.0;
+    }
+    if a == f64::NEG_INFINITY {
+        return 1.0;
+    }
+    if b == f64::INFINITY {
+        return if a == f64::INFINITY { 0.5 } else { 1.0 };
+    }
+    if a == f64::INFINITY {
+        return 0.0;
+    }
+
+    // p = 1 / (1 + exp(a - b))
+    let d = a - b;
+    if !d.is_finite() {
+        return 0.0;
+    }
+    if d > 0.0 {
+        let e = (-d).exp(); // exp(b-a)
+        e / (1.0 + e)
+    } else {
+        let e = d.exp(); // exp(a-b) in (0, 1]
+        1.0 / (1.0 + e)
+    }
+}
+
+/// Stan-style *progressive* sampling when joining a new subtree at top-level.
+///
+/// This is intentionally biased away from the initial point: it uses the ratio
+/// `W_subtree / W_existing` (before updating the total weight), clamped to 1.
+///
+/// Note: this differs from the within-subtree multinomial selection, which uses
+/// `W_outer / (W_inner + W_outer)`.
+fn prob_select_outer_progressive(logw_existing: f64, logw_subtree: f64) -> f64 {
+    let a = if logw_existing.is_nan() { f64::NEG_INFINITY } else { logw_existing };
+    let b = if logw_subtree.is_nan() { f64::NEG_INFINITY } else { logw_subtree };
+
+    if b == f64::NEG_INFINITY {
+        return 0.0;
+    }
+    if a == f64::NEG_INFINITY {
+        return 1.0;
+    }
+    if b == f64::INFINITY {
+        return 1.0;
+    }
+    if a == f64::INFINITY {
+        return 0.0;
+    }
+
+    let d = b - a; // log(W_sub / W_exist)
+    if !d.is_finite() {
+        return 0.0;
+    }
+    if d >= 0.0 { 1.0 } else { d.exp().clamp(0.0, 1.0) }
+}
+
 /// Build a single-node tree (one leapfrog step).
+///
+/// Multinomial NUTS: the leaf weight is `exp(-energy_error)` rather than a
+/// binary in/out-of-slice indicator.
 fn build_leaf<M: LogDensityModel + ?Sized>(
     integrator: &LeapfrogIntegrator<'_, '_, M>,
     state: &HmcState,
     direction: i32,
-    log_u: f64,
     h0: f64,
     metric: &crate::hmc::Metric,
 ) -> Result<NutsTree> {
@@ -131,6 +256,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
         // treat it as an immediate divergence with zero weight. This mirrors Stan's
         // behavior: invalid proposals should be rejected and drive step size down,
         // not abort the entire sampling run.
+        let dim = state.q.len();
         return Ok(NutsTree {
             q_left: state.q.clone(),
             p_left: state.p.clone(),
@@ -142,6 +268,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
             potential_proposal: state.potential,
             grad_proposal: state.grad_potential.clone(),
             log_sum_weight: f64::NEG_INFINITY,
+            p_sum: vec![0.0; dim],
             depth: 0,
             n_leapfrog: 1,
             divergent: true,
@@ -154,15 +281,13 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
     let energy_error = h - h0;
     let divergent =
         !h.is_finite() || !energy_error.is_finite() || energy_error.abs() > DIVERGENCE_THRESHOLD;
-    // Slice: keep only states with log_u <= log p(q,p) where log p = -H.
-    // Use weights relative to the start point: log_weight = -(H - H0) = -energy_error.
-    let logp = -h;
-    let in_slice = log_u <= logp;
-    // Slice-based NUTS: select uniformly among states in the slice.
-    // (Stan's multinomial-weighted variant does not use an explicit slice threshold.)
-    let log_weight = if in_slice && !divergent { 0.0 } else { f64::NEG_INFINITY };
+    // Multinomial NUTS: weight each leaf by exp(-energy_error).
+    // log_weight = -energy_error for valid states, NEG_INFINITY for divergent.
+    let log_weight = if divergent { f64::NEG_INFINITY } else { -energy_error };
 
     let accept_prob = if !energy_error.is_finite() { 0.0 } else { (-energy_error).exp().min(1.0) };
+
+    let p_sum = new_state.p.clone();
 
     Ok(NutsTree {
         q_left: new_state.q.clone(),
@@ -175,6 +300,7 @@ fn build_leaf<M: LogDensityModel + ?Sized>(
         potential_proposal: new_state.potential,
         grad_proposal: new_state.grad_potential.clone(),
         log_sum_weight: log_weight,
+        p_sum,
         depth: 0,
         n_leapfrog: 1,
         divergent,
@@ -189,23 +315,27 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     state: &HmcState,
     depth: usize,
     direction: i32,
-    log_u: f64,
     h0: f64,
     metric: &crate::hmc::Metric,
     rng: &mut impl Rng,
 ) -> Result<NutsTree> {
     if depth == 0 {
-        return build_leaf(integrator, state, direction, log_u, h0, metric);
+        return build_leaf(integrator, state, direction, h0, metric);
     }
 
-    // Build first half-tree
-    let mut inner = build_tree(integrator, state, depth - 1, direction, log_u, h0, metric, rng)?;
+    // Build first half-tree (init subtree)
+    let mut inner = build_tree(integrator, state, depth - 1, direction, h0, metric, rng)?;
 
     if inner.divergent || inner.turning {
         return Ok(inner);
     }
 
-    // Build second half-tree from the edge of the first
+    // Save init subtree's momentum sum and junction momentum before merge
+    // (needed for Stan-style cross-checks between subtrees).
+    let rho_init = inner.p_sum.clone();
+    let p_init_junction = if direction > 0 { inner.p_right.clone() } else { inner.p_left.clone() };
+
+    // Build second half-tree (final subtree) from the edge of the first
     let edge_state = if direction > 0 {
         HmcState {
             q: inner.q_right.clone(),
@@ -222,23 +352,25 @@ fn build_tree<M: LogDensityModel + ?Sized>(
         }
     };
 
-    // Recompute potential for the edge state
-    let outer = build_tree(integrator, &edge_state, depth - 1, direction, log_u, h0, metric, rng)?;
+    let outer = build_tree(integrator, &edge_state, depth - 1, direction, h0, metric, rng)?;
+
+    // Save final subtree's junction momentum and momentum sum
+    let p_final_junction = if direction > 0 { outer.p_left.clone() } else { outer.p_right.clone() };
+    let rho_final = outer.p_sum.clone();
 
     // Merge trees
     let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
 
-    // Multinomial selection: accept outer proposal with probability
-    // exp(outer.log_sum_weight - new_log_sum_weight)
-    let mut accept_outer = if new_log_sum_weight == f64::NEG_INFINITY {
-        0.0
-    } else {
-        (outer.log_sum_weight - new_log_sum_weight).exp()
-    };
-    if !accept_outer.is_finite() {
-        accept_outer = 0.0;
-    }
-    accept_outer = accept_outer.clamp(0.0, 1.0);
+    // Multinomial selection: accept outer proposal with probability proportional
+    // to subtree weights. Use a stable logistic form to avoid inf - inf and
+    // other numerical edge cases.
+    //
+    // Divergent leaves already have log_weight = -inf, so they contribute zero
+    // selection probability. Turning subtrees contain valid leaves and should
+    // participate in multinomial sampling (turning is a stopping criterion, not
+    // a validity criterion).
+    let accept_outer =
+        prob_select_outer(inner.log_sum_weight, outer.log_sum_weight).clamp(0.0, 1.0);
     let u: f64 = rng.random();
     if u < accept_outer {
         inner.q_proposal = outer.q_proposal;
@@ -251,6 +383,11 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     inner.sum_accept_prob += outer.sum_accept_prob;
     inner.divergent = inner.divergent || outer.divergent;
 
+    // Merge p_sum (generalized U-turn criterion)
+    for (ps, os) in inner.p_sum.iter_mut().zip(outer.p_sum.iter()) {
+        *ps += *os;
+    }
+
     // Update tree edges
     if direction > 0 {
         inner.q_right = outer.q_right;
@@ -262,11 +399,26 @@ fn build_tree<M: LogDensityModel + ?Sized>(
         inner.grad_left = outer.grad_left;
     }
 
-    // Check U-turn on full tree
-    let dq: Vec<f64> =
-        inner.q_right.iter().zip(inner.q_left.iter()).map(|(&r, &l)| r - l).collect();
-    inner.turning =
-        inner.turning || outer.turning || is_turning(&dq, &inner.p_left, &inner.p_right, metric);
+    // Stan-style generalized U-turn check (3 criteria, Betancourt 2017).
+    //
+    // Check 1: Full merged tree — standard rho · v check on overall endpoints.
+    // Check 2: Init-to-junction — catches U-turns at the boundary between subtrees
+    //          using rho = rho_init + p_final_junction.
+    // Check 3: Junction-to-final — symmetric check from the other side,
+    //          using rho = rho_final + p_init_junction.
+    let turning1 = is_turning(&inner.p_sum, &inner.p_left, &inner.p_right, metric);
+
+    let rho_cross2: Vec<f64> =
+        rho_init.iter().zip(p_final_junction.iter()).map(|(&a, &b)| a + b).collect();
+    let p_start = if direction > 0 { &inner.p_left } else { &inner.p_right };
+    let turning2 = is_turning(&rho_cross2, p_start, &p_final_junction, metric);
+
+    let rho_cross3: Vec<f64> =
+        rho_final.iter().zip(p_init_junction.iter()).map(|(&a, &b)| a + b).collect();
+    let p_end = if direction > 0 { &inner.p_right } else { &inner.p_left };
+    let turning3 = is_turning(&rho_cross3, &p_init_junction, p_end, metric);
+
+    inner.turning = inner.turning || outer.turning || turning1 || turning2 || turning3;
 
     inner.depth = depth;
     Ok(inner)
@@ -291,11 +443,8 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             "non-finite initial Hamiltonian in NUTS transition".to_string(),
         ));
     }
-    // Slice variable: log(u) where u ~ Uniform(0, exp(-H0)).
-    // Equivalent: log_u = ln(rand()) - H0.
-    let log_u: f64 = rng.random::<f64>().ln() - h0;
 
-    // Initialize tree with current point
+    // Initialize tree with current point (multinomial: log_weight = 0 = log(1))
     let mut tree = NutsTree {
         q_left: state.q.clone(),
         p_left: state.p.clone(),
@@ -307,6 +456,7 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         potential_proposal: state.potential,
         grad_proposal: state.grad_potential.clone(),
         log_sum_weight: 0.0, // log(1) = 0
+        p_sum: state.p.clone(),
         depth: 0,
         n_leapfrog: 0,
         divergent: false,
@@ -314,15 +464,22 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         sum_accept_prob: 0.0,
     };
 
-    // Tree depth is 0-based (Stan convention): depth=0 means a single leapfrog step.
-    // We track the maximum built depth and return it for diagnostics.
+    // Tree doubling (Stan convention): `depth` counts completed doublings.
+    // At depth d, the tree has 2^d leaves (2^d leapfrog steps total).
+    // `while depth < max_treedepth` ensures at most 2^max_treedepth leaves
+    // (e.g., 1024 for max_treedepth=10).  The previous `<=` was an off-by-one
+    // that doubled the maximum trajectory length vs Stan.
     let mut depth: usize = 0;
-    let mut depth_reached: usize = 0;
 
-    while depth <= max_treedepth {
-        depth_reached = depth;
+    while depth < max_treedepth {
         // Choose direction uniformly: +1 or -1
         let direction: i32 = if rng.random::<bool>() { 1 } else { -1 };
+
+        // Save existing tree's momentum sum and junction momentum before merge
+        // (needed for Stan-style cross-checks between subtrees).
+        let rho_existing = tree.p_sum.clone();
+        let p_existing_junction =
+            if direction > 0 { tree.p_right.clone() } else { tree.p_left.clone() };
 
         // Build subtree in chosen direction
         let edge_state = if direction > 0 {
@@ -341,21 +498,19 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             }
         };
 
-        let subtree =
-            build_tree(integrator, &edge_state, depth, direction, log_u, h0, metric, rng)?;
+        let subtree = build_tree(integrator, &edge_state, depth, direction, h0, metric, rng)?;
+
+        // Save subtree's junction momentum and momentum sum
+        let p_subtree_junction =
+            if direction > 0 { subtree.p_left.clone() } else { subtree.p_right.clone() };
+        let rho_subtree = subtree.p_sum.clone();
 
         // Multinomial merge: accept subtree proposal with probability
-        // exp(subtree.log_sum_weight - new_log_sum_weight)
+        // exp(subtree.log_sum_weight - log_sum_weight_existing) (Stan-style progressive sampling).
+        let accept_subtree =
+            prob_select_outer_progressive(tree.log_sum_weight, subtree.log_sum_weight)
+                .clamp(0.0, 1.0);
         let new_log_sum_weight = log_sum_exp(tree.log_sum_weight, subtree.log_sum_weight);
-        let mut accept_subtree = if new_log_sum_weight == f64::NEG_INFINITY {
-            0.0
-        } else {
-            (subtree.log_sum_weight - new_log_sum_weight).exp()
-        };
-        if !accept_subtree.is_finite() {
-            accept_subtree = 0.0;
-        }
-        accept_subtree = accept_subtree.clamp(0.0, 1.0);
         let u: f64 = rng.random();
         if u < accept_subtree {
             tree.q_proposal = subtree.q_proposal;
@@ -369,6 +524,11 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         tree.divergent = tree.divergent || subtree.divergent;
         tree.turning = tree.turning || subtree.turning;
 
+        // Merge p_sum (generalized U-turn criterion)
+        for (ps, ss) in tree.p_sum.iter_mut().zip(subtree.p_sum.iter()) {
+            *ps += *ss;
+        }
+
         // Update tree edges
         if direction > 0 {
             tree.q_right = subtree.q_right;
@@ -380,18 +540,43 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             tree.grad_left = subtree.grad_left;
         }
 
-        // Check U-turn on full tree
-        let dq: Vec<f64> =
-            tree.q_right.iter().zip(tree.q_left.iter()).map(|(&r, &l)| r - l).collect();
-        if is_turning(&dq, &tree.p_left, &tree.p_right, metric) {
+        // Increment depth BEFORE checking U-turn (matches Stan: depth counts
+        // completed doublings, so the reported value includes this iteration).
+        depth += 1;
+
+        // Stan-style generalized U-turn check (3 criteria).
+        //
+        // After merging, the existing tree and subtree form left/right halves
+        // (depending on direction). We check:
+        // 1. Full merged trajectory (rho_total against overall endpoints)
+        // 2. Left start to junction (rho_left + p_right_junction)
+        // 3. Junction to right end (rho_right + p_left_junction)
+        let turning1 = is_turning(&tree.p_sum, &tree.p_left, &tree.p_right, metric);
+
+        // Map existing/subtree to absolute left/right based on direction
+        let (rho_left, rho_right, p_left_junction, p_right_junction) = if direction > 0 {
+            // existing = left, subtree = right
+            (&rho_existing, &rho_subtree, &p_existing_junction, &p_subtree_junction)
+        } else {
+            // subtree = left, existing = right
+            (&rho_subtree, &rho_existing, &p_subtree_junction, &p_existing_junction)
+        };
+
+        let rho_cross2: Vec<f64> =
+            rho_left.iter().zip(p_right_junction.iter()).map(|(&a, &b)| a + b).collect();
+        let turning2 = is_turning(&rho_cross2, &tree.p_left, p_right_junction, metric);
+
+        let rho_cross3: Vec<f64> =
+            rho_right.iter().zip(p_left_junction.iter()).map(|(&a, &b)| a + b).collect();
+        let turning3 = is_turning(&rho_cross3, p_left_junction, &tree.p_right, metric);
+
+        if turning1 || turning2 || turning3 {
             tree.turning = true;
             break;
         }
         if tree.divergent || tree.turning {
             break;
         }
-
-        depth += 1;
     }
 
     let n_total = tree.n_leapfrog.max(1) as f64;
@@ -408,7 +593,7 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             q: current.q.clone(),
             potential: current.potential,
             grad_potential: current.grad_potential.clone(),
-            depth: depth_reached,
+            depth,
             divergent: true,
             accept_prob: 0.0,
             energy: h0,
@@ -420,12 +605,73 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         q: tree.q_proposal,
         potential: tree.potential_proposal,
         grad_potential: tree.grad_proposal,
-        depth: depth_reached,
+        depth,
         divergent: tree.divergent,
         accept_prob,
         energy: h0,
         n_leapfrog: tree.n_leapfrog,
     })
+}
+
+/// Clamp non-finite values in unconstrained coordinates to bounded values.
+fn clamp_non_finite(z: &mut [f64]) {
+    const Z_CLAMP: f64 = 20.0;
+    for zi in z.iter_mut() {
+        if zi.is_finite() {
+            continue;
+        }
+        *zi = if zi.is_nan() {
+            0.0
+        } else if *zi == f64::NEG_INFINITY {
+            -Z_CLAMP
+        } else if *zi == f64::INFINITY {
+            Z_CLAMP
+        } else {
+            0.0
+        };
+    }
+}
+
+#[cfg(test)]
+mod nuts_numerics_tests {
+    use super::*;
+
+    #[test]
+    fn test_log_sum_exp_handles_infinities() {
+        assert_eq!(log_sum_exp(f64::NEG_INFINITY, f64::NEG_INFINITY), f64::NEG_INFINITY);
+        assert_eq!(log_sum_exp(f64::INFINITY, 0.0), f64::INFINITY);
+        assert_eq!(log_sum_exp(0.0, f64::INFINITY), f64::INFINITY);
+    }
+
+    #[test]
+    fn test_prob_select_outer_basic() {
+        // Equal weights -> 0.5
+        let p = prob_select_outer(0.0, 0.0);
+        assert!((p - 0.5).abs() < 1e-12);
+
+        // Outer dominates -> ~1
+        let p = prob_select_outer(-100.0, 0.0);
+        assert!(p > 0.999);
+
+        // Inner dominates -> ~0
+        let p = prob_select_outer(0.0, -100.0);
+        assert!(p < 0.001);
+    }
+
+    #[test]
+    fn test_prob_select_outer_progressive_basic() {
+        // Equal weights -> always accept (ratio 1).
+        let p = prob_select_outer_progressive(0.0, 0.0);
+        assert!((p - 1.0).abs() < 1e-12);
+
+        // Subtree bigger -> always accept.
+        let p = prob_select_outer_progressive(0.0, 1.0);
+        assert!((p - 1.0).abs() < 1e-12);
+
+        // Subtree smaller -> ratio.
+        let p = prob_select_outer_progressive(0.0, -2.0);
+        assert!((p - (-2.0f64).exp()).abs() < 1e-12);
+    }
 }
 
 /// Run NUTS sampling on any [`LogDensityModel`].
@@ -445,136 +691,135 @@ pub fn sample_nuts<M: LogDensityModel>(
     let dim = posterior.dim();
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-    // Initialize near the posterior mode (MLE) for stability and multi-chain consistency.
-    //
-    // This improves convergence of short warmup runs (e.g. CI quality gates) and
-    // mirrors the common HEP workflow where MLE is readily available.
-    let theta_init: Vec<f64> = {
-        let mle = crate::mle::MaximumLikelihoodEstimator::new();
-        match mle.fit_minimum(model) {
-            Ok(r) if r.converged => r.parameters,
-            _ => model.parameter_init(),
-        }
-    };
-    let mut z_init = posterior.to_unconstrained(&theta_init)?;
-    if z_init.iter().any(|v| !v.is_finite()) {
-        // If MLE/initialization lands exactly on a parameter bound, the inverse
-        // transform can produce ±inf (or NaN if slightly out-of-bounds). NUTS
-        // requires finite unconstrained coordinates; clamp to a large but finite
-        // value to start very near the boundary.
-        const Z_CLAMP: f64 = 20.0;
-        for zi in z_init.iter_mut() {
-            if zi.is_finite() {
-                continue;
+    // ---------- Initialization strategy ----------
+    let z_init: Vec<f64> = match config.init_strategy {
+        InitStrategy::Random => {
+            // Stan-style: Uniform(-2, 2) in unconstrained space, independent per chain.
+            // Validates that the initial point has finite log-density; retries up to
+            // 100 times with fresh draws (matching CmdStan behavior).
+            let mut z = vec![0.0; dim];
+            let mut ok = false;
+            for _ in 0..100 {
+                for zi in z.iter_mut() {
+                    *zi = rng.random::<f64>() * 4.0 - 2.0; // Uniform(-2, 2)
+                }
+                // Validate: posterior must be finite at this point
+                let theta = match posterior.to_constrained(&z) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                match model.nll(&theta) {
+                    Ok(v) if v.is_finite() => {
+                        ok = true;
+                        break;
+                    }
+                    _ => continue,
+                }
             }
-            let orig = *zi;
-            *zi = if orig.is_nan() {
-                0.0
-            } else if orig == f64::NEG_INFINITY {
-                -Z_CLAMP
-            } else if orig == f64::INFINITY {
-                Z_CLAMP
+            if !ok {
+                // Fall back to model's default init (e.g. parameter_init)
+                let theta_init = model.parameter_init();
+                let mut zf = posterior.to_unconstrained(&theta_init)?;
+                clamp_non_finite(&mut zf);
+                zf
             } else {
-                0.0
-            };
+                z
+            }
         }
-    }
-    let init_modes = (config.init_jitter > 0.0) as u8
-        + config.init_jitter_rel.is_some() as u8
-        + config.init_overdispersed_rel.is_some() as u8;
-    if init_modes > 1 {
-        return Err(ns_core::Error::Validation(
-            "init_jitter, init_jitter_rel, init_overdispersed_rel are mutually exclusive"
-                .to_string(),
-        ));
-    }
-
-    let z_init: Vec<f64> = if let Some(frac) = config.init_overdispersed_rel.filter(|&f| f > 0.0) {
-        use rand_distr::{Distribution, Normal};
-
-        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
-        let jac = posterior.transform().jacobian_diag(&z_init);
-
-        let mut out = Vec::with_capacity(dim);
-        for i in 0..dim {
-            let (lo, hi) = bounds[i];
-            let lo_finite = lo > f64::NEG_INFINITY;
-            let hi_finite = hi < f64::INFINITY;
-
-            // Larger, more overdispersed constrained-space scale than init_jitter_rel.
-            let theta0 = theta_init[i];
-            let theta_sigma = if lo_finite && hi_finite {
-                (hi - lo).abs() * frac
-            } else if lo_finite || hi_finite {
-                theta0.abs().max(1.0) * frac
-            } else {
-                0.0
+        InitStrategy::Mle => {
+            // MLE initialization: find the mode, then optionally jitter.
+            let theta_init: Vec<f64> = {
+                let mle = crate::mle::MaximumLikelihoodEstimator::new();
+                match mle.fit_minimum(model) {
+                    Ok(r) if r.converged => r.parameters,
+                    _ => model.parameter_init(),
+                }
             };
+            let mut z = posterior.to_unconstrained(&theta_init)?;
+            clamp_non_finite(&mut z);
 
-            let jac_abs = jac[i].abs().max(1e-12);
-            let mut z_sigma = if theta_sigma > 0.0 {
-                theta_sigma / jac_abs
+            // Apply jitter if requested
+            let init_modes = (config.init_jitter > 0.0) as u8
+                + config.init_jitter_rel.is_some() as u8
+                + config.init_overdispersed_rel.is_some() as u8;
+            if init_modes > 1 {
+                return Err(ns_core::Error::Validation(
+                    "init_jitter, init_jitter_rel, init_overdispersed_rel are mutually exclusive"
+                        .to_string(),
+                ));
+            }
+
+            if let Some(frac) = config.init_overdispersed_rel.filter(|&f| f > 0.0) {
+                use rand_distr::{Distribution, Normal};
+                let bounds = model.parameter_bounds();
+                let jac = posterior.transform().jacobian_diag(&z);
+                let mut out = Vec::with_capacity(dim);
+                for i in 0..dim {
+                    let (lo, hi) = bounds[i];
+                    let lo_finite = lo > f64::NEG_INFINITY;
+                    let hi_finite = hi < f64::INFINITY;
+                    let theta0 = theta_init[i];
+                    let theta_sigma = if lo_finite && hi_finite {
+                        (hi - lo).abs() * frac
+                    } else if lo_finite || hi_finite {
+                        theta0.abs().max(1.0) * frac
+                    } else {
+                        0.0
+                    };
+                    let jac_abs = jac[i].abs().max(1e-12);
+                    let mut z_sigma = if theta_sigma > 0.0 {
+                        theta_sigma / jac_abs
+                    } else {
+                        (1.0 + z[i].abs()) * frac
+                    };
+                    z_sigma = z_sigma.clamp(1e-6, 20.0);
+                    let normal = Normal::new(0.0, z_sigma).unwrap();
+                    out.push(z[i] + normal.sample(&mut rng));
+                }
+                out
+            } else if let Some(frac) = config.init_jitter_rel.filter(|&f| f > 0.0) {
+                use rand_distr::{Distribution, Normal};
+                let bounds = model.parameter_bounds();
+                let jac = posterior.transform().jacobian_diag(&z);
+                let mut out = Vec::with_capacity(dim);
+                for i in 0..dim {
+                    let (lo, hi) = bounds[i];
+                    let lo_finite = lo > f64::NEG_INFINITY;
+                    let hi_finite = hi < f64::INFINITY;
+                    let theta0 = theta_init[i];
+                    let theta_sigma = if lo_finite && hi_finite {
+                        (hi - lo).abs() * frac
+                    } else if lo_finite || hi_finite {
+                        theta0.abs().max(1.0) * frac
+                    } else {
+                        0.0
+                    };
+                    let jac_abs = jac[i].abs().max(1e-12);
+                    let mut z_sigma = if theta_sigma > 0.0 {
+                        theta_sigma / jac_abs
+                    } else {
+                        (1.0 + z[i].abs()) * frac
+                    };
+                    z_sigma = z_sigma.clamp(1e-6, 5.0);
+                    let normal = Normal::new(0.0, z_sigma).unwrap();
+                    out.push(z[i] + normal.sample(&mut rng));
+                }
+                out
+            } else if config.init_jitter > 0.0 {
+                use rand_distr::{Distribution, Normal};
+                let normal = Normal::new(0.0, config.init_jitter).unwrap();
+                z.iter().map(|&zi| zi + normal.sample(&mut rng)).collect()
             } else {
-                (1.0 + z_init[i].abs()) * frac
-            };
-
-            // Overdispersed: allow larger excursions than init_jitter_rel.
-            z_sigma = z_sigma.clamp(1e-6, 20.0);
-
-            let normal = Normal::new(0.0, z_sigma).unwrap();
-            out.push(z_init[i] + normal.sample(&mut rng));
+                z
+            }
         }
-        out
-    } else if let Some(frac) = config.init_jitter_rel.filter(|&f| f > 0.0) {
-        use rand_distr::{Distribution, Normal};
-
-        let bounds: Vec<(f64, f64)> = model.parameter_bounds();
-        let jac = posterior.transform().jacobian_diag(&z_init);
-
-        let mut out = Vec::with_capacity(dim);
-        for i in 0..dim {
-            let (lo, hi) = bounds[i];
-            let lo_finite = lo > f64::NEG_INFINITY;
-            let hi_finite = hi < f64::INFINITY;
-
-            // Target constrained-space jitter scale, mapped to unconstrained using local Jacobian.
-            let theta0 = theta_init[i];
-            let theta_sigma = if lo_finite && hi_finite {
-                (hi - lo).abs() * frac
-            } else if lo_finite || hi_finite {
-                theta0.abs().max(1.0) * frac
-            } else {
-                // Unbounded: treat as an unconstrained scale factor.
-                0.0
-            };
-
-            let jac_abs = jac[i].abs().max(1e-12);
-            let mut z_sigma = if theta_sigma > 0.0 {
-                theta_sigma / jac_abs
-            } else {
-                // Unbounded: jitter around the current unconstrained location.
-                (1.0 + z_init[i].abs()) * frac
-            };
-
-            // Avoid pathological huge jitters near transform boundaries.
-            z_sigma = z_sigma.clamp(1e-6, 5.0);
-
-            let normal = Normal::new(0.0, z_sigma).unwrap();
-            out.push(z_init[i] + normal.sample(&mut rng));
-        }
-        out
-    } else if config.init_jitter > 0.0 {
-        use rand_distr::{Distribution, Normal};
-        let normal = Normal::new(0.0, config.init_jitter).unwrap();
-        z_init.iter().map(|&z| z + normal.sample(&mut rng)).collect()
-    } else {
-        z_init
     };
 
     let metric = crate::hmc::Metric::identity(dim);
-    let init_eps = find_reasonable_step_size(&posterior, &z_init, &metric);
+    let init_eps = find_reasonable_step_size(&posterior, &z_init, &metric, &mut rng);
 
-    let mut adaptation = WindowedAdaptation::new(dim, n_warmup, config.target_accept, init_eps);
+    let mut adaptation =
+        WindowedAdaptation::new(dim, n_warmup, config.target_accept, init_eps, config.metric_type);
 
     let integrator = LeapfrogIntegrator::new(&posterior, init_eps, metric.clone());
 
@@ -613,13 +858,30 @@ pub fn sample_nuts<M: LogDensityModel>(
             last_good_grad.clone_from(&state.grad_potential);
         }
 
-        adaptation.update(i, &state.q, accept_prob);
+        let mass_updated = adaptation.update(i, &state.q, accept_prob);
+
+        // Stan-exact: re-search for a reasonable step size after every metric
+        // update (matches `init_stepsize()` + `set_mu()` + `restart()` in
+        // Stan's `adapt_diag_e_nuts::transition()`).
+        if mass_updated {
+            let new_eps =
+                find_reasonable_step_size(&posterior, &state.q, adaptation.metric(), &mut rng);
+            adaptation.reinit_stepsize(new_eps);
+        }
     }
 
     // Sampling with fixed adapted parameters
     let final_eps = adaptation.adapted_step_size();
     let final_metric = adaptation.metric().clone();
-    let sample_integrator = LeapfrogIntegrator::new(&posterior, final_eps, final_metric.clone());
+    let jitter = config.stepsize_jitter.clamp(0.0, 1.0);
+    let use_jitter = jitter > 0.0;
+
+    // Pre-build integrator for the common no-jitter case (avoids per-iteration clone).
+    let fixed_integrator = if !use_jitter {
+        Some(LeapfrogIntegrator::new(&posterior, final_eps, final_metric.clone()))
+    } else {
+        None
+    };
 
     let mut draws_unconstrained = Vec::with_capacity(n_samples);
     let mut draws_constrained = Vec::with_capacity(n_samples);
@@ -627,10 +889,21 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut tree_depths = Vec::with_capacity(n_samples);
     let mut accept_probs = Vec::with_capacity(n_samples);
     let mut energies = Vec::with_capacity(n_samples);
+    let mut leapfrog_counts = Vec::with_capacity(n_samples);
 
     for _ in 0..n_samples {
-        let transition =
-            nuts_transition(&sample_integrator, &state, config.max_treedepth, &mut rng)?;
+        // Optional step-size jittering (Stan-compatible: eps * (1 + j * U(-1,1)))
+        let jittered_integrator;
+        let integrator_ref = if let Some(ref fi) = fixed_integrator {
+            fi
+        } else {
+            let u: f64 = rng.random::<f64>() * 2.0 - 1.0;
+            let eps = final_eps * (1.0 + jitter * u);
+            jittered_integrator = LeapfrogIntegrator::new(&posterior, eps, final_metric.clone());
+            &jittered_integrator
+        };
+
+        let transition = nuts_transition(integrator_ref, &state, config.max_treedepth, &mut rng)?;
 
         let mut divergent = transition.divergent;
         let mut accept_prob = transition.accept_prob;
@@ -683,6 +956,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         tree_depths.push(depth);
         accept_probs.push(accept_prob);
         energies.push(energy);
+        leapfrog_counts.push(transition.n_leapfrog);
     }
 
     let mass_diag: Vec<f64> = final_metric.mass_diag();
@@ -694,6 +968,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         tree_depths,
         accept_probs,
         energies,
+        n_leapfrog: leapfrog_counts,
         max_treedepth: config.max_treedepth,
         step_size: final_eps,
         mass_diag,
@@ -783,6 +1058,7 @@ mod tests {
             init_jitter: 0.5,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
         let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
 
@@ -820,6 +1096,7 @@ mod tests {
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
         let chain1 = sample_nuts(&model, 50, 20, 123, config.clone()).unwrap();
         let chain2 = sample_nuts(&model, 50, 20, 123, config).unwrap();
@@ -882,6 +1159,7 @@ mod tests {
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
 
         let chain = sample_nuts(&model, 10, 5, 123, config).unwrap();
@@ -917,6 +1195,7 @@ mod tests {
             init_jitter: 0.5,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
         let result = sample_nuts_multichain(&model, 4, 1000, 1000, 42, config).unwrap();
 
@@ -1064,6 +1343,7 @@ mod tests {
             init_jitter: 1.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
 
         let result = sample_nuts_multichain(&model, 4, 600, 600, 123, config).unwrap();
@@ -1210,6 +1490,7 @@ mod tests {
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
 
         let mut ranks = Vec::with_capacity(n_rep);
@@ -1401,6 +1682,7 @@ mod tests {
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
 
         let mut ranks = Vec::with_capacity(n_rep);
@@ -1680,6 +1962,7 @@ mod tests {
             init_jitter: 0.0,
             init_jitter_rel: None,
             init_overdispersed_rel: None,
+            ..Default::default()
         };
 
         let mut ranks = Vec::with_capacity(n_rep);

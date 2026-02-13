@@ -127,13 +127,7 @@ mod tests {
     #[test]
     fn test_generic_nuts_on_non_hep_model_smoke() {
         let m = StdNormal1D;
-        let cfg = crate::NutsConfig {
-            max_treedepth: 7,
-            target_accept: 0.8,
-            init_jitter: 0.0,
-            init_jitter_rel: None,
-            init_overdispersed_rel: None,
-        };
+        let cfg = crate::NutsConfig { max_treedepth: 7, target_accept: 0.8, ..Default::default() };
 
         // Smoke: run a tiny chain and validate moments are sane.
         let chain = crate::sample_nuts(&m, 100, 200, 123, cfg).unwrap();
