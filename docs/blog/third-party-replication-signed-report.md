@@ -1,6 +1,6 @@
 ---
 title: "Third-Party Replication: How External Reruns and Signed Reports Close the Benchmark Trust Gap"
-slug: third-party-replication-signed-report
+slug: third-party-replication
 description: "The strongest trust signal for software benchmarks is an independent rerun. Learn how NextStat's replication protocol works — same harness, published manifests, signed reports, and verifiable artifacts."
 date: 2026-02-08
 author: NextStat Team
@@ -20,7 +20,7 @@ category: trust
 
 # Third-Party Replication: External Reruns + Signed Reports
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts) · **Next:** [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts) · **Next:** [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness)
 
 If you’ve ever been burned by an “impressive benchmark”, you already know the problem:
 
@@ -30,10 +30,7 @@ And the only robust way to evaluate a claim is to replicate it.
 
 That’s why our public benchmark program treats **third-party replication** as a first-class feature, not a nice-to-have.
 
-The canonical replication protocol is documented here:
-
-- [Third-Party Replication Runbook (Signed Reports)](/docs/benchmarks/replication)
-- [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing)
+Canonical specification for the benchmark program (including replication as a trust signal): [/docs/public-benchmarks](/docs/public-benchmarks).
 
 ---
 
@@ -41,7 +38,7 @@ The canonical replication protocol is documented here:
 
 The strongest trust signal for a benchmark is not “more charts”, “more machines”, or “more blog posts”. It is an **independent rerun**.
 
-In NextStat we operationalize replication as a publishable artifact set:
+In NextStat we operationalize replication as a publishable artifact set with explicit contracts:
 
 - a rerun **snapshot index** (hashed artifact inventory),
 - a machine-readable **replication report** comparing original vs rerun,
@@ -99,13 +96,13 @@ We therefore publish two small, machine-readable “index” documents alongside
 Additionally, each validation pack includes:
 
 - `validation_report.json` (schema `validation_report_v1`) — dataset fingerprint + environment + suite pass/fail summary
-- `validation_pack_manifest.json` (format version `validation_pack_manifest_v1`) — SHA-256 + sizes for the core validation pack files
+- `validation_pack_manifest.json` — SHA-256 + sizes for the core pack files (used for signing and replication)
 
-Schemas live in-repo:
+Schema examples live in-repo:
 
-- `docs/schemas/benchmarks/snapshot_index_v1.schema.json`
-- `docs/schemas/benchmarks/replication_report_v1.schema.json`
-- `docs/schemas/validation/validation_report_v1.schema.json`
+- `docs/specs/snapshot_index_v1.example.json`
+- `docs/specs/replication_report_v1.example.json`
+- `docs/specs/validation_report_v1.example.json`
 
 ---
 
@@ -119,7 +116,7 @@ A signed report is a lightweight way to guarantee:
 - what snapshot it refers to
 - that the published artifact hasn't been modified
 
-The `validation_report.json` produced by [`nextstat validation-report`](/docs/references/validation-report) already includes SHA-256 hashes for both the workspace and the Apex2 master report. Adding a GPG or Sigstore signature to that JSON creates a complete chain: *data hash → validation result → signer identity*.
+The `validation_report.json` produced by [`nextstat validation-report`](/docs/validation-report) already includes SHA-256 hashes for both the workspace and the Apex2 master report. Adding a GPG or Sigstore signature to that JSON creates a complete chain: *data hash → validation result → signer identity*.
 
 We don't need bureaucracy. We need integrity.
 
@@ -127,7 +124,7 @@ We don't need bureaucracy. We need integrity.
 
 ## 5) Step-by-step: a minimal replication loop
 
-The full runbook is in [/docs/benchmarks/replication](/docs/benchmarks/replication). The minimal loop is:
+The minimal loop is:
 
 1. Download the original snapshot artifacts (`snapshot_index.json`, `validation_pack_manifest.json`, `validation_report.json`).
 2. Verify original signatures (if provided).
@@ -166,7 +163,8 @@ That’s how performance claims become community knowledge.
 
 ## Related reading
 
-- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why we publish reproducible benchmarks.
-- [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) — how benchmarking shifts from scripts to experiments.
-- [Publishing Benchmarks (CI, Artifacts, DOI)](/docs/benchmarks/publishing) — CI automation, DOI minting, and baseline management.
-- [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive)
+- [The End of the Scripting Era](/blog/end-of-scripting-era)
+- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
+- [Public Benchmarks](/docs/public-benchmarks)
+- [Validation Report Artifacts](/docs/validation-report)

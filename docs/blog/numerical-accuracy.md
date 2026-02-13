@@ -26,7 +26,7 @@ category: hep
 
 # Where ROOT Gets It Wrong: A Rigorous Numerical Comparison of HistFactory Implementations
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness) · **Next:** [Differentiable HistFactory in PyTorch](/blog/differentiable-layer-nextstat-pytorch)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Building a Trustworthy HEP Benchmark Harness](/blog/hep-benchmark-harness) · **Next:** [Differentiable HistFactory in PyTorch](/blog/differentiable-layer)
 
 *NextStat Team, February 2026*
 
@@ -120,7 +120,7 @@ Unless stated otherwise, results and figures in this post were produced with:
 
 - ROOT 6.38.00 (`hist2workspace` + RooFit/Minuit2)
 - pyhf 0.7.6 (SciPy 1.17.0, NumPy 2.4.2)
-- NextStat 0.1.0 (git `c98f36e`)
+- NextStat 0.9.0 (git `c186c29`)
 - Host: Apple M5 (arm64), macOS 26.2
 
 The raw scan JSON used for the plots is snapshotted under `docs/blog/assets/numerical-accuracy/data/` and rendered into SVGs by `scripts/blog/generate_numerical_accuracy_plots.py`.

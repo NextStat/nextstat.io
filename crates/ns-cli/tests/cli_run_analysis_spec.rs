@@ -503,3 +503,92 @@ gates:
 
     let _ = std::fs::remove_dir_all(&spec_dir);
 }
+
+#[test]
+fn run_analysis_spec_v0_baseline_gate_requires_manifest() {
+    let root = repo_root();
+    let ws = root.join("tests/fixtures/histfactory/workspace.json");
+    assert!(ws.exists());
+
+    let spec_dir = tmp_dir("run_spec_baseline_gate_missing_manifest");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+    let missing_baseline_dir = spec_dir.join("missing_baselines");
+    let spec_path = spec_dir.join("analysis.yaml");
+
+    let yaml = format!(
+        r#"$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: "fixture"
+  description: "fixture"
+  tags: ["test"]
+
+inputs:
+  mode: workspace_json
+  workspace_json:
+    path: "{ws}"
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: false
+    output_json: "{unused}"
+
+  fit:
+    enabled: false
+    output_json: "{unused_fit}"
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: "{unused_scan}"
+
+  report:
+    enabled: false
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: false
+      pdf: null
+      svg_dir: null
+      python: null
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: true
+    baseline_dir: "{baseline_dir}"
+    require_same_host: true
+    max_slowdown: 1.3
+"#,
+        ws = ws.display(),
+        unused = spec_dir.join("unused.json").display(),
+        unused_fit = spec_dir.join("unused_fit.json").display(),
+        unused_scan = spec_dir.join("unused_scan.json").display(),
+        report_dir = spec_dir.join("report").display(),
+        baseline_dir = missing_baseline_dir.display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run(&["run", "--config", spec_path.to_string_lossy().as_ref()]);
+    assert!(
+        !out.status.success(),
+        "run should fail when baseline_compare gate is enabled without manifest"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("baseline_compare gate is enabled")
+            && stderr.contains("latest_trex_analysis_spec_manifest.json"),
+        "stderr should explain missing baseline manifest, got={stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+}

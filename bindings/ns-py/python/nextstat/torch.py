@@ -192,9 +192,12 @@ class NextStatNLL:
         class _Fn(torch.autograd.Function):
             @staticmethod
             def forward(ctx, signal):
-                assert signal.is_cuda, "signal must be on CUDA"
-                assert signal.dtype == torch.float64, "signal must be float64"
-                assert signal.is_contiguous(), "signal must be contiguous"
+                if not signal.is_cuda:
+                    raise ValueError("signal must be on CUDA")
+                if signal.dtype != torch.float64:
+                    raise ValueError("signal must be float64")
+                if not signal.is_contiguous():
+                    raise ValueError("signal must be contiguous")
 
                 # Pre-allocate gradient tensor on same device (zeroed — kernel uses atomicAdd)
                 grad_signal = torch.zeros_like(signal)
@@ -338,9 +341,12 @@ class ProfiledQ0Loss:
         class _Fn(torch.autograd.Function):
             @staticmethod
             def forward(ctx, signal):
-                assert signal.is_cuda, "signal must be on CUDA"
-                assert signal.dtype == torch.float64, "signal must be float64"
-                assert signal.is_contiguous(), "signal must be contiguous"
+                if not signal.is_cuda:
+                    raise ValueError("signal must be on CUDA")
+                if signal.dtype != torch.float64:
+                    raise ValueError("signal must be float64")
+                if not signal.is_contiguous():
+                    raise ValueError("signal must be contiguous")
 
                 torch.cuda.synchronize()
 
@@ -372,9 +378,12 @@ class ProfiledQmuLoss:
         class _Fn(torch.autograd.Function):
             @staticmethod
             def forward(ctx, signal):
-                assert signal.is_cuda, "signal must be on CUDA"
-                assert signal.dtype == torch.float64, "signal must be float64"
-                assert signal.is_contiguous(), "signal must be contiguous"
+                if not signal.is_cuda:
+                    raise ValueError("signal must be on CUDA")
+                if signal.dtype != torch.float64:
+                    raise ValueError("signal must be float64")
+                if not signal.is_contiguous():
+                    raise ValueError("signal must be contiguous")
 
                 torch.cuda.synchronize()
 

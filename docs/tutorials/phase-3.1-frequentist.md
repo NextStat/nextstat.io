@@ -39,7 +39,7 @@ Notes:
 
 - `maturin develop` installs the compiled extension into the active venv. The built binary is **not**
   committed to git (only the Rust/Python source is).
-- Re-run `maturin develop --release ...` any time you change Rust code under `crates/` or `bindings/ns-py/src/`.
+- Re-run `maturin develop --release -m bindings/ns-py/Cargo.toml` any time you change Rust code under `crates/` or `bindings/ns-py/src/`.
 
 Optional (plots in this doc):
 

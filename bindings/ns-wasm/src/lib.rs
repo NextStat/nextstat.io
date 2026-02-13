@@ -2,8 +2,6 @@
 mod wasm_exports {
     use ns_inference::profile_likelihood::scan_histfactory;
     use ns_inference::{AsymptoticCLsContext, MaximumLikelihoodEstimator};
-    use ns_translate::arrow::ingest::ArrowIngestConfig;
-    use ns_translate::arrow::parquet as parquet_io;
     use ns_translate::pyhf::schema::{
         Channel, Measurement, MeasurementConfig, Modifier, Observation, Sample,
     };
@@ -65,7 +63,24 @@ mod wasm_exports {
         measurement_name: Option<String>,
     }
 
-    fn ingest_config_from_options(options: JsValue) -> Result<ArrowIngestConfig, JsValue> {
+    #[derive(Debug, Clone)]
+    struct IngestConfig {
+        poi: String,
+        observations: Option<std::collections::HashMap<String, Vec<f64>>>,
+        measurement_name: String,
+    }
+
+    impl Default for IngestConfig {
+        fn default() -> Self {
+            Self {
+                poi: "mu".to_string(),
+                observations: None,
+                measurement_name: "NormalMeasurement".to_string(),
+            }
+        }
+    }
+
+    fn ingest_config_from_options(options: JsValue) -> Result<IngestConfig, JsValue> {
         let opts: HistogramIngestOptions = if options.is_null() || options.is_undefined() {
             HistogramIngestOptions {
                 poi: Some("mu".to_string()),
@@ -76,7 +91,7 @@ mod wasm_exports {
             serde_wasm_bindgen::from_value(options).map_err(|e| js_err(e.to_string()))?
         };
 
-        let mut cfg = ArrowIngestConfig::default();
+        let mut cfg = IngestConfig::default();
         if let Some(poi) = opts.poi {
             cfg.poi = poi;
         }
@@ -105,7 +120,7 @@ mod wasm_exports {
 
     fn workspace_from_rows(
         rows: &[HistogramRow],
-        cfg: &ArrowIngestConfig,
+        cfg: &IngestConfig,
     ) -> Result<Workspace, JsValue> {
         use std::collections::HashMap;
 
@@ -215,21 +230,6 @@ mod wasm_exports {
         let rows: Vec<HistogramRow> =
             serde_json::from_str(rows_json).map_err(|e| js_err(e.to_string()))?;
         let ws = workspace_from_rows(&rows, &cfg)?;
-        serde_json::to_string(&ws).map_err(|e| js_err(e.to_string()))
-    }
-
-    #[wasm_bindgen]
-    pub fn workspace_from_parquet_bytes(
-        parquet_bytes: js_sys::Uint8Array,
-        options: JsValue,
-    ) -> Result<String, JsValue> {
-        console_error_panic_hook::set_once();
-        let cfg = ingest_config_from_options(options)?;
-
-        let mut buf = vec![0u8; parquet_bytes.length() as usize];
-        parquet_bytes.copy_to(&mut buf);
-
-        let ws = parquet_io::from_parquet_bytes(&buf, &cfg).map_err(|e| js_err(e.to_string()))?;
         serde_json::to_string(&ws).map_err(|e| js_err(e.to_string()))
     }
 
@@ -499,6 +499,170 @@ mod wasm_exports {
         };
 
         serde_wasm_bindgen::to_value(&out).map_err(|e| js_err(e.to_string()))
+    }
+
+    // ── 5. GLM Regression ─────────────────────────────────────────────────
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GlmInput {
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        #[serde(default = "default_true")]
+        include_intercept: bool,
+        #[serde(default)]
+        model: String, // "linear", "logistic", "poisson"
+    }
+
+    fn default_true() -> bool {
+        true
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GlmResultJs {
+        model: String,
+        parameter_names: Vec<String>,
+        parameters: Vec<f64>,
+        nll: f64,
+        converged: bool,
+        n_iter: u64,
+        n_obs: usize,
+        n_features: usize,
+        elapsed_ms: f64,
+    }
+
+    use ns_core::traits::LogDensityModel;
+
+    #[wasm_bindgen]
+    pub fn run_glm(input_json: &str) -> Result<JsValue, JsValue> {
+        console_error_panic_hook::set_once();
+        let start_t = web_time::Instant::now();
+
+        let input: GlmInput =
+            serde_json::from_str(input_json).map_err(|e| js_err(e.to_string()))?;
+
+        if input.x.is_empty() {
+            return Err(js_err("X must be non-empty"));
+        }
+        let n_obs = input.x.len();
+        let n_features = input.x[0].len();
+        if input.y.len() != n_obs {
+            return Err(js_err(format!(
+                "y length ({}) must match X rows ({})",
+                input.y.len(),
+                n_obs
+            )));
+        }
+
+        let model_type = if input.model.is_empty() { "linear" } else { input.model.as_str() };
+
+        let cfg =
+            ns_inference::OptimizerConfig { max_iter: 500, tol: 1e-8, m: 0, smooth_bounds: false };
+        let opt = ns_inference::LbfgsbOptimizer::new(cfg);
+
+        let (param_names, result) = match model_type {
+            "linear" => {
+                let m = ns_inference::LinearRegressionModel::new(
+                    input.x,
+                    input.y,
+                    input.include_intercept,
+                )
+                .map_err(|e| js_err(e.to_string()))?;
+                let names = m.parameter_names();
+                let init = m.parameter_init();
+                let bounds = m.parameter_bounds();
+                let obj = GlmObjective(&m);
+                let res = opt.minimize(&obj, &init, &bounds).map_err(|e| js_err(e.to_string()))?;
+                (names, res)
+            }
+            "logistic" => {
+                let y_u8: Vec<u8> = input
+                    .y
+                    .iter()
+                    .map(|&v| {
+                        if v == 0.0 {
+                            Ok(0u8)
+                        } else if v == 1.0 {
+                            Ok(1u8)
+                        } else {
+                            Err(js_err(format!("logistic y must be 0/1, got {v}")))
+                        }
+                    })
+                    .collect::<Result<Vec<u8>, JsValue>>()?;
+                let m = ns_inference::LogisticRegressionModel::new(
+                    input.x,
+                    y_u8,
+                    input.include_intercept,
+                )
+                .map_err(|e| js_err(e.to_string()))?;
+                let names = m.parameter_names();
+                let init = m.parameter_init();
+                let bounds = m.parameter_bounds();
+                let obj = GlmObjective(&m);
+                let res = opt.minimize(&obj, &init, &bounds).map_err(|e| js_err(e.to_string()))?;
+                (names, res)
+            }
+            "poisson" => {
+                let y_u64: Vec<u64> = input
+                    .y
+                    .iter()
+                    .map(|&v| {
+                        if v >= 0.0 && v == v.floor() {
+                            Ok(v as u64)
+                        } else {
+                            Err(js_err(format!("poisson y must be non-negative integers, got {v}")))
+                        }
+                    })
+                    .collect::<Result<Vec<u64>, JsValue>>()?;
+                let m = ns_inference::PoissonRegressionModel::new(
+                    input.x,
+                    y_u64,
+                    input.include_intercept,
+                    None,
+                )
+                .map_err(|e| js_err(e.to_string()))?;
+                let names = m.parameter_names();
+                let init = m.parameter_init();
+                let bounds = m.parameter_bounds();
+                let obj = GlmObjective(&m);
+                let res = opt.minimize(&obj, &init, &bounds).map_err(|e| js_err(e.to_string()))?;
+                (names, res)
+            }
+            other => {
+                return Err(js_err(format!(
+                    "Unknown model type: {other}. Use linear, logistic, or poisson."
+                )));
+            }
+        };
+
+        let elapsed_ms = start_t.elapsed().as_secs_f64() * 1000.0;
+
+        let out = GlmResultJs {
+            model: model_type.to_string(),
+            parameter_names: param_names,
+            parameters: result.parameters,
+            nll: result.fval,
+            converged: result.converged,
+            n_iter: result.n_iter,
+            n_obs,
+            n_features,
+            elapsed_ms,
+        };
+
+        serde_wasm_bindgen::to_value(&out).map_err(|e| js_err(e.to_string()))
+    }
+
+    struct GlmObjective<'a, M: LogDensityModel>(&'a M);
+
+    impl<M: LogDensityModel> ns_inference::ObjectiveFunction for GlmObjective<'_, M> {
+        fn eval(&self, params: &[f64]) -> ns_core::Result<f64> {
+            self.0.nll(params)
+        }
+
+        fn gradient(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+            self.0.grad_nll(params)
+        }
     }
 
     // ── 4. Single-point Hypothesis Test ──────────────────────────────────

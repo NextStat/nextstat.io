@@ -181,6 +181,65 @@ def compare_pharma_suite(a_path: Path, b_path: Path) -> dict[str, Any]:
     return out
 
 
+def compare_econometrics_suite(a_path: Path, b_path: Path) -> dict[str, Any]:
+    a = load_json(a_path)
+    b = load_json(b_path)
+    out: dict[str, Any] = {"suite": "econometrics", "case_diffs": [], "ok": True}
+
+    def case_map(obj: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        base = a_path.parent if obj is a else b_path.parent
+        out2 = {}
+        for e in obj.get("cases", []):
+            cid = str(e.get("case", ""))
+            if not cid:
+                continue
+            inst = load_json((base / str(e["path"])).resolve())
+            out2[cid] = inst
+        return out2
+
+    am = case_map(a)
+    bm = case_map(b)
+    keys = sorted(set(am.keys()) | set(bm.keys()))
+    for k in keys:
+        if k not in am or k not in bm:
+            out["case_diffs"].append({"case": k, "status": "missing_in_one"})
+            out["ok"] = False
+            continue
+        ap = am[k].get("parity", {}) or {}
+        bp = bm[k].get("parity", {}) or {}
+        a_ps = str(ap.get("status", "skipped"))
+        b_ps = str(bp.get("status", "skipped"))
+        a_status = str(am[k].get("status", ""))
+        b_status = str(bm[k].get("status", ""))
+        # Replication "ok" means the harness is stable under reruns:
+        # - same statuses and parity statuses
+        # - no hard failures
+        if a_status == "failed" or b_status == "failed":
+            out["ok"] = False
+        if a_status != b_status or a_ps != b_ps:
+            out["ok"] = False
+        out["case_diffs"].append(
+            {
+                "case": k,
+                "status": {"a": a_status, "b": b_status},
+                "parity_status": {"a": a_ps, "b": b_ps},
+                "wall_time_median_s": {
+                    "a": float((am[k].get("timing", {}) or {}).get("wall_time_s", {}).get("median", 0.0)),
+                    "b": float((bm[k].get("timing", {}) or {}).get("wall_time_s", {}).get("median", 0.0)),
+                },
+                "coef_max_abs_diff": {
+                    "a": (ap.get("metrics", {}) or {}).get("coef_max_abs_diff"),
+                    "b": (bp.get("metrics", {}) or {}).get("coef_max_abs_diff"),
+                },
+                "se_max_abs_diff": {
+                    "a": (ap.get("metrics", {}) or {}).get("se_max_abs_diff"),
+                    "b": (bp.get("metrics", {}) or {}).get("se_max_abs_diff"),
+                },
+            }
+        )
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--a", required=True, help="Snapshot dir A (contains baseline_manifest.json).")
@@ -237,6 +296,10 @@ def main() -> int:
                 report["ok"] = False
         if suite == "pharma":
             suite_entry["comparison"] = compare_pharma_suite(a_path, b_path)
+            if not suite_entry["comparison"].get("ok", False):
+                report["ok"] = False
+        if suite == "econometrics":
+            suite_entry["comparison"] = compare_econometrics_suite(a_path, b_path)
             if not suite_entry["comparison"].get("ok", False):
                 report["ok"] = False
 

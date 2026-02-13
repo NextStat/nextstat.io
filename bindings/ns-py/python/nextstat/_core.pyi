@@ -44,6 +44,130 @@ class HistFactoryModel:
     def expected_main_by_channel_sample(self, params: ParamsLike) -> List[Dict[str, Any]]: ...
 
 
+class GammaRegressionModel:
+    def __init__(self, x: List[List[float]], y: List[float], *, include_intercept: bool = ...) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class TweedieRegressionModel:
+    def __init__(
+        self,
+        x: List[List[float]],
+        y: List[float],
+        *,
+        p: float = ...,
+        include_intercept: bool = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def power(self) -> float: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class GevModel:
+    def __init__(self, data: List[float]) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+    @staticmethod
+    def return_level(params: List[float], return_period: float) -> float: ...
+
+
+class GpdModel:
+    def __init__(self, exceedances: List[float]) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+    @staticmethod
+    def quantile(params: List[float], p: float) -> float: ...
+
+
+class EightSchoolsModel:
+    def __init__(
+        self,
+        y: List[float],
+        sigma: List[float],
+        *,
+        prior_mu_sigma: float = ...,
+        prior_tau_scale: float = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class UnbinnedModel:
+    @staticmethod
+    def from_config(path: str) -> UnbinnedModel: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def schema_version(self) -> str: ...
+    def nll(self, params: ParamsLike) -> float: ...
+    def grad_nll(self, params: ParamsLike) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+    def poi_index(self) -> Optional[int]: ...
+    def with_fixed_param(self, param_idx: int, value: float) -> UnbinnedModel: ...
+
+
+class HybridModel:
+    @staticmethod
+    def from_models(
+        binned: HistFactoryModel,
+        unbinned: UnbinnedModel,
+        poi_from: str = ...,
+    ) -> HybridModel: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: ParamsLike) -> float: ...
+    def grad_nll(self, params: ParamsLike) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+    def poi_index(self) -> Optional[int]: ...
+    def n_shared(self) -> int: ...
+    def with_fixed_param(self, param_idx: int, value: float) -> HybridModel: ...
+
+
 class GaussianMeanModel:
     def __init__(self, y: List[float], sigma: float) -> None: ...
 
@@ -444,6 +568,8 @@ class Posterior:
             OrderedProbitModel,
             PoissonRegressionModel,
             NegativeBinomialRegressionModel,
+            GammaRegressionModel,
+            TweedieRegressionModel,
             ComposedGlmModel,
             LmmMarginalModel,
             ExponentialSurvivalModel,
@@ -452,6 +578,8 @@ class Posterior:
             CoxPhModel,
             OneCompartmentOralPkModel,
             OneCompartmentOralPkNlmeModel,
+            GevModel,
+            GpdModel,
         ],
     ) -> None: ...
 
@@ -475,7 +603,7 @@ class Posterior:
 
 
 class MaximumLikelihoodEstimator:
-    def __init__(self, *, max_iter: int = ..., tol: float = ..., m: int = ...) -> None: ...
+    def __init__(self, *, max_iter: int = ..., tol: float = ..., m: int = ..., smooth_bounds: bool = ...) -> None: ...
     @overload
     def fit(self, model: HistFactoryModel, *, data: Optional[List[float]] = ..., init_pars: Optional[List[float]] = ...) -> FitResult: ...
     @overload
@@ -497,6 +625,10 @@ class MaximumLikelihoodEstimator:
             CoxPhModel,
             OneCompartmentOralPkModel,
             OneCompartmentOralPkNlmeModel,
+            GammaRegressionModel,
+            TweedieRegressionModel,
+            GevModel,
+            GpdModel,
         ],
         *,
         data: Literal[None] = ...,
@@ -672,22 +804,61 @@ class MaximumLikelihoodEstimator:
 def from_pyhf(json_str: str) -> HistFactoryModel: ...
 def from_histfactory(xml_path: str) -> HistFactoryModel: ...
 def histfactory_bin_edges_by_channel(xml_path: str) -> Dict[str, List[float]]: ...
-def apply_patchset(json_str: str) -> HistFactoryModel: ...
+def apply_patchset(
+    workspace_json: str,
+    patchset_json: str,
+    *,
+    patch_name: Optional[str] = ...,
+) -> str: ...
+def meta_fixed(
+    estimates: List[float],
+    standard_errors: List[float],
+    *,
+    labels: Optional[List[str]] = ...,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+def meta_random(
+    estimates: List[float],
+    standard_errors: List[float],
+    *,
+    labels: Optional[List[str]] = ...,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+def chain_ladder(
+    triangle: List[List[float]],
+) -> Dict[str, Any]: ...
+def mack_chain_ladder(
+    triangle: List[List[float]],
+    *,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
 def hypotest_toys(
     poi_test: float,
     model: HistFactoryModel,
     *,
     n_toys: int = ...,
     seed: int = ...,
-) -> List[float]: ...
+    expected_set: bool = ...,
+    data: Optional[List[float]] = ...,
+    return_tail_probs: bool = ...,
+    return_meta: bool = ...,
+) -> Any: ...
 def ranking_gpu(model: HistFactoryModel) -> List[Dict[str, Any]]: ...
+def ranking_metal(model: HistFactoryModel) -> List[Dict[str, Any]]: ...
 
 def read_root_histogram(root_path: str, hist_path: str) -> Dict[str, Any]: ...
 @overload
-def fit(model: HistFactoryModel, *, data: Optional[List[float]] = ..., init_pars: Optional[List[float]] = ...) -> FitResult: ...
+def fit(
+    model: HistFactoryModel,
+    *,
+    data: Optional[List[float]] = ...,
+    init_pars: Optional[List[float]] = ...,
+    device: str = "cpu",
+) -> FitResult: ...
 @overload
 def fit(
     model: Union[
+        UnbinnedModel,
         GaussianMeanModel,
         LinearRegressionModel,
         LogisticRegressionModel,
@@ -695,6 +866,8 @@ def fit(
         OrderedProbitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
+        GammaRegressionModel,
+        TweedieRegressionModel,
         ComposedGlmModel,
         LmmMarginalModel,
         ExponentialSurvivalModel,
@@ -703,15 +876,20 @@ def fit(
         CoxPhModel,
         OneCompartmentOralPkModel,
         OneCompartmentOralPkNlmeModel,
+        GevModel,
+        GpdModel,
     ],
     *,
     data: Literal[None] = ...,
     init_pars: Optional[List[float]] = ...,
+    device: str = "cpu",
 ) -> FitResult: ...
 
 def map_fit(posterior: Posterior) -> FitResult: ...
 @overload
 def fit_batch(models_or_model: List[HistFactoryModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
+@overload
+def fit_batch(models_or_model: List[UnbinnedModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
 def fit_batch(models_or_model: List[GaussianMeanModel], datasets: Literal[None] = ...) -> List[FitResult]: ...
 @overload
@@ -757,6 +935,17 @@ def fit_toys(
     n_toys: int = ...,
     seed: int = ...,
 ) -> List[FitResult]: ...
+def unbinned_fit_toys(
+    model: UnbinnedModel,
+    params: List[float],
+    *,
+    n_toys: int = ...,
+    seed: int = ...,
+    init_params: Optional[List[float]] = ...,
+    max_retries: int = ...,
+    max_iter: int = ...,
+    compute_hessian: bool = ...,
+) -> List[FitResult]: ...
 def fit_toys_batch(
     model: HistFactoryModel,
     params: List[float],
@@ -770,7 +959,7 @@ def fit_toys_batch_gpu(
     *,
     n_toys: int = ...,
     seed: int = ...,
-    device: str = ...,
+    device: str = "cpu",
 ) -> List[FitResult]: ...
 def set_eval_mode(mode: str) -> None: ...
 def set_threads(threads: int) -> bool: ...
@@ -790,6 +979,32 @@ def poisson_toys(
 def ranking(
     model: HistFactoryModel,
 ) -> List[Dict[str, Any]]: ...
+
+def unbinned_ranking(
+    model: UnbinnedModel,
+) -> List[Dict[str, Any]]: ...
+
+def unbinned_profile_scan(
+    model: UnbinnedModel,
+    mu_values: List[float],
+) -> Dict[str, Any]: ...
+
+def unbinned_hypotest(
+    mu_test: float,
+    model: UnbinnedModel,
+) -> Dict[str, Any]: ...
+
+def unbinned_hypotest_toys(
+    poi_test: float,
+    model: UnbinnedModel,
+    *,
+    n_toys: int = ...,
+    seed: int = ...,
+    expected_set: bool = ...,
+    return_tail_probs: bool = ...,
+    return_meta: bool = ...,
+) -> Any: ...
+
 def rk4_linear(
     a: List[List[float]],
     y0: List[float],
@@ -816,7 +1031,7 @@ def profile_scan(
     mu_values: List[float],
     *,
     data: Optional[List[float]] = ...,
-    device: str = ...,
+    device: str = "cpu",
     return_params: bool = ...,
 ) -> Dict[str, Any]: ...
 
@@ -894,6 +1109,8 @@ def sample(
         OrderedProbitModel,
         PoissonRegressionModel,
         NegativeBinomialRegressionModel,
+        GammaRegressionModel,
+        TweedieRegressionModel,
         ComposedGlmModel,
         LmmMarginalModel,
         ExponentialSurvivalModel,
@@ -902,6 +1119,9 @@ def sample(
         CoxPhModel,
         OneCompartmentOralPkModel,
         OneCompartmentOralPkNlmeModel,
+        GevModel,
+        GpdModel,
+        EightSchoolsModel,
     ],
     *,
     n_chains: int = ...,
@@ -979,14 +1199,225 @@ def kalman_simulate(
 ) -> Dict[str, Any]: ...
 
 
+def garch11_fit(
+    ys: List[float],
+    *,
+    max_iter: int = ...,
+    tol: float = ...,
+    alpha_beta_max: float = ...,
+    min_var: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def sv_logchi2_fit(
+    ys: List[float],
+    *,
+    max_iter: int = ...,
+    tol: float = ...,
+    log_eps: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def panel_fe(
+    entity_ids: List[int],
+    x: List[float],
+    y: List[float],
+    p: int,
+    *,
+    cluster_ids: Optional[List[int]] = ...,
+) -> Dict[str, Any]: ...
+
+
+def did(
+    y: List[float],
+    treat: List[int],
+    post: List[int],
+    cluster_ids: List[int],
+) -> Dict[str, Any]: ...
+
+
+def event_study(
+    y: List[float],
+    entity_ids: List[int],
+    time_ids: List[int],
+    relative_time: List[int],
+    min_lag: int,
+    max_lag: int,
+    reference_period: int,
+    cluster_ids: List[int],
+) -> Dict[str, Any]: ...
+
+
+def iv_2sls(
+    y: List[float],
+    x_exog: List[float],
+    k_exog: int,
+    x_endog: List[float],
+    k_endog: int,
+    z: List[float],
+    m: int,
+    *,
+    exog_names: Optional[List[str]] = ...,
+    endog_names: Optional[List[str]] = ...,
+    cluster_ids: Optional[List[int]] = ...,
+) -> Dict[str, Any]: ...
+
+
+def aipw_ate(
+    y: List[float],
+    treat: List[int],
+    propensity: List[float],
+    mu1: List[float],
+    mu0: List[float],
+    *,
+    trim: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def rosenbaum_bounds(
+    y_treated: List[float],
+    y_control: List[float],
+    gammas: List[float],
+) -> Dict[str, Any]: ...
+
+
+def kaplan_meier(
+    times: List[float],
+    events: List[bool],
+    *,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def log_rank_test(
+    times: List[float],
+    events: List[bool],
+    groups: List[int],
+) -> Dict[str, Any]: ...
+
+
+def churn_generate_data(
+    *,
+    n_customers: int = ...,
+    n_cohorts: int = ...,
+    max_time: float = ...,
+    treatment_fraction: float = ...,
+    seed: int = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_retention(
+    times: List[float],
+    events: List[bool],
+    groups: List[int],
+    *,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_risk_model(
+    times: List[float],
+    events: List[bool],
+    covariates: List[List[float]],
+    names: List[str],
+    *,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_uplift(
+    times: List[float],
+    events: List[bool],
+    treated: List[int],
+    covariates: List[List[float]],
+    *,
+    horizon: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_diagnostics(
+    times: List[float],
+    events: List[bool],
+    groups: List[int],
+    *,
+    treated: List[int] = ...,
+    covariates: List[List[float]] = ...,
+    covariate_names: List[str] = ...,
+    trim: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_cohort_matrix(
+    times: List[float],
+    events: List[bool],
+    groups: List[int],
+    period_boundaries: List[float],
+) -> Dict[str, Any]: ...
+
+
+def churn_compare(
+    times: List[float],
+    events: List[bool],
+    groups: List[int],
+    *,
+    conf_level: float = ...,
+    correction: str = ...,
+    alpha: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_uplift_survival(
+    times: List[float],
+    events: List[bool],
+    treated: List[int],
+    *,
+    covariates: List[List[float]] = ...,
+    horizon: float = ...,
+    eval_horizons: List[float] = ...,
+    trim: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_bootstrap_hr(
+    times: List[float],
+    events: List[bool],
+    covariates: List[List[float]],
+    names: List[str],
+    *,
+    n_bootstrap: int = ...,
+    seed: int = ...,
+    conf_level: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def churn_ingest(
+    times: List[float],
+    events: List[bool],
+    *,
+    groups: Optional[List[int]] = ...,
+    treated: Optional[List[int]] = ...,
+    covariates: List[List[float]] = ...,
+    covariate_names: List[str] = ...,
+    observation_end: Optional[float] = ...,
+) -> Dict[str, Any]: ...
+
+
 def from_arrow_ipc(
     ipc_bytes: bytes,
     poi: str = "mu",
     observations: Optional[Dict[str, List[float]]] = ...,
 ) -> HistFactoryModel: ...
 
+
 def from_parquet(
     path: str,
+    poi: str = "mu",
+    observations: Optional[Dict[str, List[float]]] = ...,
+) -> HistFactoryModel: ...
+
+def from_parquet_with_modifiers(
+    yields_path: str,
+    modifiers_path: str,
     poi: str = "mu",
     observations: Optional[Dict[str, List[float]]] = ...,
 ) -> HistFactoryModel: ...
@@ -1038,3 +1469,56 @@ class MetalProfiledDifferentiableSession:
     def signal_n_bins(self) -> int: ...
     def n_params(self) -> int: ...
     def parameter_init(self) -> List[float]: ...
+
+
+class FlowPdf:
+    @staticmethod
+    def from_manifest(manifest_path: str, context_param_indices: List[int]) -> FlowPdf: ...
+    def n_context(self) -> int: ...
+    def observable_names(self) -> List[str]: ...
+    def log_norm_correction(self) -> float: ...
+    def update_normalization(self, params: ParamsLike) -> None: ...
+    def log_prob_batch(
+        self,
+        events: Dict[str, List[float]],
+        bounds: Dict[str, Tuple[float, float]],
+        params: ParamsLike,
+    ) -> List[float]: ...
+
+
+class DcrSurrogate:
+    @staticmethod
+    def from_manifest(
+        manifest_path: str,
+        systematic_param_indices: List[int],
+        systematic_names: List[str],
+        process_name: str,
+    ) -> DcrSurrogate: ...
+    def process_name(self) -> str: ...
+    def systematic_names(self) -> List[str]: ...
+    def norm_tolerance(self) -> float: ...
+    def update_normalization(self, params: ParamsLike) -> None: ...
+    def validate_nominal_normalization(self, params: ParamsLike) -> Tuple[float, float]: ...
+    def log_prob_batch(
+        self,
+        events: Dict[str, List[float]],
+        bounds: Dict[str, Tuple[float, float]],
+        params: ParamsLike,
+    ) -> List[float]: ...
+
+
+class GpuFlowSession:
+    def __init__(
+        self,
+        n_events: int,
+        n_params: int,
+        processes: List[Dict[str, Any]],
+        gauss_constraints: Optional[List[Dict[str, Any]]] = ...,
+        constraint_const: float = ...,
+    ) -> None: ...
+    def nll(self, logp_flat: List[float], params: List[float]) -> float: ...
+    def nll_device_ptr_f32(self, d_logp_flat_ptr: int, params: List[float]) -> float: ...
+    def compute_yields(self, params: List[float]) -> List[float]: ...
+    def n_events(self) -> int: ...
+    def n_procs(self) -> int: ...
+    def n_params(self) -> int: ...

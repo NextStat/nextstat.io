@@ -15,7 +15,7 @@ Files:
 - Schema: `docs/schemas/trex/analysis_spec_v0.schema.json`
 - Main example: `docs/specs/trex/analysis_spec_v0.yaml`
 - Additional examples: `docs/specs/trex/examples/*.yaml`
-- CLI validator/runner: `nextstat validate --config ...` / `nextstat run --config ...`
+- CLI validator/runner: `nextstat validate --config docs/specs/trex/analysis_spec_v0.yaml` / `nextstat run --config docs/specs/trex/analysis_spec_v0.yaml`
 - Schema validator (optional): `scripts/trex/validate_analysis_spec.py`
 - Schema-validated runner wrapper (optional): `scripts/trex/run_analysis_spec.py`
 - Baseline recorder: `tests/record_trex_analysis_spec_baseline.py`
@@ -123,13 +123,13 @@ Optional: pick an explicit `nextstat` binary:
 - Wraps the existing line-based config consumed by `nextstat import trex-config` (subset; `ReadFrom=NTUP`).
 - Useful as a bridge while migrating away from the text format.
 - Note: report generation requires HistFactory XML; for ntuple mode use fit/scan first.
-  - Tip: `nextstat import trex-config --analysis-yaml analysis.yaml --coverage-json coverage.json ...` can generate:
+  - Tip: `nextstat import trex-config --config analysis.config --output tmp/trex_workspace.json --analysis-yaml analysis.yaml --coverage-json coverage.json` can generate:
     - an analysis spec wrapper (`inputs.mode=trex_config_txt`) for `nextstat run`, and
     - a coverage report highlighting unknown keys/attrs in legacy configs.
 
 4) `trex_config_yaml`
 - IDE-friendly YAML representation of the same subset as `trex_config_txt`.
-- Supported natively by `nextstat run --config ...` (it generates an equivalent internal text config and reuses the same importer).
+- Supported natively by `nextstat run --config docs/specs/trex/examples/trex_config_yaml_fit.yaml` (it generates an equivalent internal text config and reuses the same importer).
 - Migration tip: generate a starter spec from a TRExFitter `.config` via:
   - `nextstat trex import-config --config analysis.config --out analysis.yaml --report analysis.mapping.json`
 
@@ -161,3 +161,9 @@ make trex-spec-baseline-compare TREX_COMPARE_ARGS="--require-same-host"
 Outputs:
 - Latest manifest pointer: `tmp/baselines/latest_trex_analysis_spec_manifest.json`
 - Compare report: `tmp/trex_analysis_spec_compare_report.json`
+
+If `gates.baseline_compare.enabled: true` in the analysis spec, `nextstat run --config docs/specs/trex/analysis_spec_v0.yaml` now enforces this gate directly:
+- reads manifest from `<baseline_dir>/latest_trex_analysis_spec_manifest.json`
+- runs `tests/compare_trex_analysis_spec_with_latest_baseline.py`
+- writes report to `<baseline_dir>/../trex_analysis_spec_compare_report.json`
+- exits non-zero when numeric/perf gate fails.

@@ -4,7 +4,7 @@ This tutorial shows the minimal end-to-end flow:
 
 1. Build a hierarchical GLM with a group-indexed random intercept
 2. Run MAP fit (`nextstat.fit`)
-3. Run NUTS (`nextstat.sample` or `nextstat.bayes.sample`)
+3. Run NUTS (`nextstat.sample` for the raw dict, or `nextstat.bayes.sample` for ArviZ `InferenceData`)
 
 See also:
 - Phase 6 (regression / GLMs): `docs/tutorials/phase-6-regression.md`
@@ -14,7 +14,7 @@ See also:
 - Random effects are typically modeled as **Normal** and **exchangeable** across groups.
 - Partial pooling assumes groups come from a shared population (shrinkage toward a common mean).
 - If some groups are tiny or highly imbalanced, posteriors can be weakly identified; consider stronger priors.
-- For Bayesian fits, always check sampling diagnostics (`raw["diagnostics"]["quality"]`) and do posterior predictive checks (see PPC section).
+- For Bayesian fits, always check sampling diagnostics (`raw["diagnostics"]["quality"]`, or `idata.attrs["nextstat_diagnostics"]["quality"]` if you used `nextstat.bayes.sample`) and do posterior predictive checks (see PPC section).
 
 ## Logistic regression with random intercept
 
@@ -61,7 +61,7 @@ Notes:
 PPC answers: "Does the fitted model generate data that looks like what we observed?"
 
 NextStat provides lightweight helpers in `nextstat.ppc` that work on the raw dict
-returned by `nextstat.sample(...)` (no ArviZ required).
+returned by `nextstat.sample` (or `nextstat.bayes.sample(..., return_idata=False)`) (no ArviZ required).
 
 ```python
 import nextstat

@@ -57,7 +57,7 @@ print(fit.parameters)
 - Parameter names use log-scale for standard deviations:
   `log_sigma_y`, `log_tau_alpha`, and (if enabled) `log_tau_u_betaK`.
 - For fully Bayesian hierarchical modeling, prefer `nextstat.hier.*` builders
-  and `nextstat.bayes.sample(...)` (NUTS) for posterior inference.
+  and `nextstat.bayes.sample(model, n_chains=4, n_warmup=500, n_samples=1000, seed=42)` (NUTS) for posterior inference.
 
 ## External parity (lme4)
 
@@ -67,7 +67,7 @@ for the committed fixtures:
 
 ```bash
 Rscript tests/external/generate_lmm_goldens_lme4.R tests/fixtures/lmm/lmm_intercept_small.json > /tmp/lme4.json
-python3 tests/external/merge_lmm_external_goldens.py tests/fixtures/lmm/lmm_intercept_small.json /tmp/lme4.json
+./.venv/bin/python tests/external/merge_lmm_external_goldens.py tests/fixtures/lmm/lmm_intercept_small.json /tmp/lme4.json
 ```
 
 This environment may not have R installed; the scripts are meant to be run in

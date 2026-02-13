@@ -20,7 +20,12 @@ on:
         required: false
         default: "200"
   schedule:
-    - cron: "0 6 * * *" # daily 06:00 UTC
+    # Mon + Thu at 06:00 UTC (2x/week instead of daily — saves ~$30/mo).
+    - cron: "0 6 * * 1,4"
+
+concurrency:
+  group: apex2-nightly
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,7 +33,7 @@ env:
 
 jobs:
   nightly:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

@@ -293,4 +293,4 @@ This requires the cross-Hessian d2NLL/ds/dtheta, which can be computed via finit
 ## Further reading
 
 - Canonical implementation reference: `bindings/ns-py/python/nextstat/torch.py`
-- Scientific deep-dive (problem → solution → derivations): [How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch](/blog/differentiable-layer-nextstat-pytorch)
+- Scientific deep-dive (problem → solution → derivations): [How NextStat Makes the HistFactory Pipeline Differentiable in PyTorch](/blog/differentiable-layer)

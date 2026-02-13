@@ -9,6 +9,12 @@ use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel, PreparedNll};
 use statrs::function::gamma::ln_gamma;
 use std::collections::HashMap;
 
+/// Minimum expected value floor for Poisson NLL computation.
+///
+/// Prevents `log(0)` divergence in the Poisson log-likelihood.
+/// Must match the floor used in GPU kernels (`batch_nll_grad.cu` / `.metal`).
+const EXPECTED_FLOOR: f64 = 1e-10;
+
 /// HistFactory model
 #[derive(Debug, Clone)]
 pub struct HistFactoryModel {
@@ -138,6 +144,9 @@ pub enum HistoSysInterpCode {
     /// Piecewise linear (InterpCode=0). pyhf default for HistoSys.
     /// Kink at alpha=0 (discontinuous first derivative).
     Code0,
+    /// Quadratic interpolation + linear extrapolation (InterpCode=2).
+    /// Smooth at alpha=0, linear outside |alpha|>1.
+    Code2,
     /// Polynomial + linear extrapolation (Code4p). Smooth at alpha=0.
     Code4p,
 }
@@ -890,13 +899,25 @@ impl HistFactoryModel {
                                 }
                             }
                         }
+                        Modifier::Unknown(val) => {
+                            let ty = val.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                            log::warn!(
+                                "Unknown modifier type '{}' in sample '{}' — skipped",
+                                ty,
+                                sample.name,
+                            );
+                        }
                     }
                 }
             }
         }
 
         // Compute StatError sigmas (relative uncertainties) and attach constraints to parameters.
-        for (name, accum) in staterror_accum {
+        // Sort keys for deterministic iteration order (HashMap is non-deterministic).
+        let mut staterror_names: Vec<String> = staterror_accum.keys().cloned().collect();
+        staterror_names.sort();
+        for name in staterror_names {
+            let accum = &staterror_accum[&name];
             for bin_idx in 0..accum.sum_nominal.len() {
                 let denom = accum.sum_nominal[bin_idx];
                 let sigma_rel =
@@ -1232,6 +1253,9 @@ impl HistFactoryModel {
                                 modifiers.push(ModelModifier::Lumi { param_idx: idx });
                             }
                         }
+                        Modifier::Unknown(_) => {
+                            // Already warned in first pass — skip silently here.
+                        }
                     }
                 }
 
@@ -1491,7 +1515,8 @@ impl HistFactoryModel {
     /// - use SIMD kernels for the `histosys` `code4p` hot-path and scalar factor scaling
     fn expected_data_f64_fast(&self, params: &[f64]) -> Result<Vec<f64>> {
         use ns_compute::simd::{
-            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+            histosys_code0_delta_accumulate, histosys_code2_delta_accumulate,
+            histosys_code4p_delta_accumulate, vec_scale,
         };
 
         let mut result = Vec::new();
@@ -1576,6 +1601,13 @@ impl HistFactoryModel {
                                         sample_nominal,
                                         hi_template,
                                     ),
+                                    HistoSysInterpCode::Code2 => histosys_code2_delta_accumulate(
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
+                                    ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
                                         &mut sample_deltas,
                                         alpha,
@@ -1594,6 +1626,9 @@ impl HistFactoryModel {
                                     let delta = match interp_code {
                                         HistoSysInterpCode::Code0 => {
                                             histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code2 => {
+                                            histosys_code2_delta(alpha, lo, nom_val, hi)
                                         }
                                         HistoSysInterpCode::Code4p => {
                                             histosys_code4p_delta(alpha, lo, nom_val, hi)
@@ -1672,7 +1707,8 @@ impl HistFactoryModel {
     /// the buffers in `scratch`. The result is written to `scratch.expected[..n_main_bins]`.
     fn expected_data_f64_fast_into(&self, params: &[f64], scratch: &mut NllScratch) -> Result<()> {
         use ns_compute::simd::{
-            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+            histosys_code0_delta_accumulate, histosys_code2_delta_accumulate,
+            histosys_code4p_delta_accumulate, vec_scale,
         };
 
         let mut offset = 0usize;
@@ -1762,6 +1798,13 @@ impl HistFactoryModel {
                                         sample_nominal,
                                         hi_template,
                                     ),
+                                    HistoSysInterpCode::Code2 => histosys_code2_delta_accumulate(
+                                        sd,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
+                                    ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
                                         sd,
                                         alpha,
@@ -1779,6 +1822,9 @@ impl HistFactoryModel {
                                     let delta = match interp_code {
                                         HistoSysInterpCode::Code0 => {
                                             histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code2 => {
+                                            histosys_code2_delta(alpha, lo, nom_val, hi)
                                         }
                                         HistoSysInterpCode::Code4p => {
                                             histosys_code4p_delta(alpha, lo, nom_val, hi)
@@ -1863,7 +1909,8 @@ impl HistFactoryModel {
         params: &[f64],
     ) -> Result<Vec<ExpectedChannelSampleYields>> {
         use ns_compute::simd::{
-            histosys_code0_delta_accumulate, histosys_code4p_delta_accumulate, vec_scale,
+            histosys_code0_delta_accumulate, histosys_code2_delta_accumulate,
+            histosys_code4p_delta_accumulate, vec_scale,
         };
 
         self.validate_params_len(params.len())?;
@@ -1951,6 +1998,13 @@ impl HistFactoryModel {
                                         sample_nominal,
                                         hi_template,
                                     ),
+                                    HistoSysInterpCode::Code2 => histosys_code2_delta_accumulate(
+                                        &mut sample_deltas,
+                                        alpha,
+                                        lo_template,
+                                        sample_nominal,
+                                        hi_template,
+                                    ),
                                     HistoSysInterpCode::Code4p => histosys_code4p_delta_accumulate(
                                         &mut sample_deltas,
                                         alpha,
@@ -1968,6 +2022,9 @@ impl HistFactoryModel {
                                     let delta = match interp_code {
                                         HistoSysInterpCode::Code0 => {
                                             histosys_code0_delta(alpha, lo, nom_val, hi)
+                                        }
+                                        HistoSysInterpCode::Code2 => {
+                                            histosys_code2_delta(alpha, lo, nom_val, hi)
                                         }
                                         HistoSysInterpCode::Code4p => {
                                             histosys_code4p_delta(alpha, lo, nom_val, hi)
@@ -2254,7 +2311,7 @@ impl HistFactoryModel {
                         params.len()
                     ))
                 })?;
-                out.push((gamma * tau_i).max(1e-10));
+                out.push((gamma * tau_i).max(EXPECTED_FLOOR));
             }
         }
         for name in sorted_keys(&staterror) {
@@ -2295,8 +2352,8 @@ impl HistFactoryModel {
             }
             for i in 0..n_bins {
                 let obs = channel.observed.get(i).copied().unwrap_or(0.0);
-                let exp = expected.get(bin_idx).copied().unwrap_or(T::from_f64(1e-10));
-                let exp = exp.max_s(T::from_f64(1e-10));
+                let exp = expected.get(bin_idx).copied().unwrap_or(T::from_f64(EXPECTED_FLOOR));
+                let exp = exp.max_s(T::from_f64(EXPECTED_FLOOR));
 
                 if obs > 0.0 {
                     let ln_factorial = T::from_f64(Self::ln_factorial(obs));
@@ -2327,7 +2384,7 @@ impl HistFactoryModel {
                                 params.len()
                             ))
                         })?;
-                        let exp_aux = (gamma * T::from_f64(tau)).max_s(T::from_f64(1e-10));
+                        let exp_aux = (gamma * T::from_f64(tau)).max_s(T::from_f64(EXPECTED_FLOOR));
 
                         if obs_aux > 0.0 {
                             let ln_factorial = T::from_f64(Self::ln_factorial(obs_aux));
@@ -2363,7 +2420,7 @@ impl HistFactoryModel {
                             params.len()
                         ))
                     })?;
-                    let beta = beta.max_s(T::from_f64(1e-10));
+                    let beta = beta.max_s(T::from_f64(EXPECTED_FLOOR));
 
                     let tau = 1.0 / (*rel * *rel);
                     let k = tau + 1.0;
@@ -2518,6 +2575,30 @@ impl HistFactoryModel {
                                             );
                                             *delta_slot = *delta_slot + (nom - lo) * alpha;
                                         }
+                                    }
+                                }
+                                HistoSysInterpCode::Code2 => {
+                                    for (bin_idx, delta_slot) in
+                                        sample_deltas.iter_mut().enumerate()
+                                    {
+                                        let nom = sample_nominal
+                                            .get(bin_idx)
+                                            .copied()
+                                            .unwrap_or(T::from_f64(0.0));
+                                        let hi = T::from_f64(
+                                            hi_template
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(nom.value()),
+                                        );
+                                        let lo = T::from_f64(
+                                            lo_template
+                                                .get(bin_idx)
+                                                .copied()
+                                                .unwrap_or(nom.value()),
+                                        );
+                                        *delta_slot =
+                                            *delta_slot + histosys_code2_delta(alpha, lo, nom, hi);
                                     }
                                 }
                                 HistoSysInterpCode::Code4p => {
@@ -2778,7 +2859,7 @@ impl HistFactoryModel {
                         expected.len()
                     ))
                 })?;
-                let floor = tape.constant(1e-10);
+                let floor = tape.constant(EXPECTED_FLOOR);
                 let exp = tape.max(exp, floor);
 
                 if obs > 0.0 {
@@ -2817,7 +2898,7 @@ impl HistFactoryModel {
                         })?;
                         let tau_c = tape.constant(tau);
                         let exp_aux = tape.mul(gamma, tau_c);
-                        let floor = tape.constant(1e-10);
+                        let floor = tape.constant(EXPECTED_FLOOR);
                         let exp_aux = tape.max(exp_aux, floor);
 
                         if obs_aux > 0.0 {
@@ -2854,7 +2935,7 @@ impl HistFactoryModel {
                             params.len()
                         ))
                     })?;
-                    let floor = tape.constant(1e-10);
+                    let floor = tape.constant(EXPECTED_FLOOR);
                     let beta = tape.max(beta, floor);
 
                     let tau = 1.0 / (*rel * *rel);
@@ -3030,6 +3111,55 @@ impl HistFactoryModel {
                                             );
                                             let delta_dn = tape.sub(nom, lo);
                                             let delta = tape.mul(alpha, delta_dn);
+                                            *delta_slot = tape.add(*delta_slot, delta);
+                                        }
+                                    }
+                                }
+                                HistoSysInterpCode::Code2 => {
+                                    // Quadratic interpolation + linear extrapolation
+                                    let c_half = tape.constant(0.5);
+                                    for (bin_idx, delta_slot) in
+                                        sample_deltas.iter_mut().enumerate()
+                                    {
+                                        let nom = sample_nominal[bin_idx];
+                                        let nom_val = tape.val(nom);
+                                        let hi = tape.constant(
+                                            hi_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                        );
+                                        let lo = tape.constant(
+                                            lo_template.get(bin_idx).copied().unwrap_or(nom_val),
+                                        );
+                                        // S = 0.5*(up - down), A = 0.5*(up + down) - nom
+                                        let up_minus_down = tape.sub(hi, lo);
+                                        let s = tape.mul(c_half, up_minus_down);
+                                        let up_plus_down = tape.add(hi, lo);
+                                        let half_upd = tape.mul(c_half, up_plus_down);
+                                        let a = tape.sub(half_upd, nom);
+                                        // δ = α·S + f(α)·A
+                                        let alpha_s = tape.mul(alpha, s);
+                                        if alpha_val.abs() <= 1.0 {
+                                            // |α| ≤ 1: f(α) = α²
+                                            let asq = tape.mul(alpha, alpha);
+                                            let asq_a = tape.mul(asq, a);
+                                            let delta = tape.add(alpha_s, asq_a);
+                                            *delta_slot = tape.add(*delta_slot, delta);
+                                        } else if alpha_val > 1.0 {
+                                            // α > 1: f(α) = 2α − 1
+                                            let two = tape.constant(2.0);
+                                            let one = tape.constant(1.0);
+                                            let two_alpha = tape.mul(two, alpha);
+                                            let f = tape.sub(two_alpha, one);
+                                            let f_a = tape.mul(f, a);
+                                            let delta = tape.add(alpha_s, f_a);
+                                            *delta_slot = tape.add(*delta_slot, delta);
+                                        } else {
+                                            // α < −1: f(α) = −2α − 1
+                                            let neg_two = tape.constant(-2.0);
+                                            let one = tape.constant(1.0);
+                                            let neg_two_alpha = tape.mul(neg_two, alpha);
+                                            let f = tape.sub(neg_two_alpha, one);
+                                            let f_a = tape.mul(f, a);
+                                            let delta = tape.add(alpha_s, f_a);
                                             *delta_slot = tape.add(*delta_slot, delta);
                                         }
                                     }
@@ -3219,6 +3349,12 @@ impl HistFactoryModel {
 
         for channel in &self.channels {
             let channel_n_bins = channel.samples.first().map(|s| s.nominal.len()).unwrap_or(0);
+            if channel_n_bins == 0 {
+                log::warn!(
+                    "serialize_for_gpu: skipping channel with 0 bins (should not happen after validation)"
+                );
+                continue;
+            }
             let main_bin_offset = n_main_bins;
             n_main_bins += channel_n_bins;
 
@@ -3632,21 +3768,21 @@ impl PreparedModel<'_> {
             return Ok(f64::INFINITY);
         }
 
-        // 2. Clamp expected >= 1e-10
+        // 2. Clamp expected >= EXPECTED_FLOOR
         #[cfg(feature = "accelerate")]
         if ns_compute::accelerate_enabled() {
-            ns_compute::accelerate::clamp_expected_inplace(&mut expected, 1e-10);
+            ns_compute::accelerate::clamp_expected_inplace(&mut expected, EXPECTED_FLOOR);
         } else {
             for val in &mut expected {
-                if *val < 1e-10 {
-                    *val = 1e-10;
+                if *val < EXPECTED_FLOOR {
+                    *val = EXPECTED_FLOOR;
                 }
             }
         }
         #[cfg(not(feature = "accelerate"))]
         for val in &mut expected {
-            if *val < 1e-10 {
-                *val = 1e-10;
+            if *val < EXPECTED_FLOOR {
+                *val = EXPECTED_FLOOR;
             }
         }
 
@@ -3697,7 +3833,7 @@ impl PreparedModel<'_> {
                                 params.len()
                             ))
                         })?;
-                        let exp_aux = (gamma * tau).max(1e-10);
+                        let exp_aux = (gamma * tau).max(EXPECTED_FLOOR);
 
                         if obs_aux > 0.0 {
                             let ln_factorial = Self::ln_factorial_static(obs_aux);
@@ -3727,7 +3863,7 @@ impl PreparedModel<'_> {
                             params.len()
                         ))
                     })?;
-                    let beta = beta.max(1e-10);
+                    let beta = beta.max(EXPECTED_FLOOR);
 
                     let tau = 1.0 / (*rel * *rel);
                     let k = tau + 1.0;
@@ -3780,21 +3916,21 @@ impl PreparedModel<'_> {
             return Ok(f64::INFINITY);
         }
 
-        // 2. Clamp expected >= 1e-10
+        // 2. Clamp expected >= EXPECTED_FLOOR
         #[cfg(feature = "accelerate")]
         if ns_compute::accelerate_enabled() {
-            ns_compute::accelerate::clamp_expected_inplace(expected, 1e-10);
+            ns_compute::accelerate::clamp_expected_inplace(expected, EXPECTED_FLOOR);
         } else {
             for val in expected.iter_mut() {
-                if *val < 1e-10 {
-                    *val = 1e-10;
+                if *val < EXPECTED_FLOOR {
+                    *val = EXPECTED_FLOOR;
                 }
             }
         }
         #[cfg(not(feature = "accelerate"))]
         for val in expected.iter_mut() {
-            if *val < 1e-10 {
-                *val = 1e-10;
+            if *val < EXPECTED_FLOOR {
+                *val = EXPECTED_FLOOR;
             }
         }
 
@@ -3839,7 +3975,7 @@ impl PreparedModel<'_> {
                                 params.len()
                             ))
                         })?;
-                        let exp_aux = (gamma * tau).max(1e-10);
+                        let exp_aux = (gamma * tau).max(EXPECTED_FLOOR);
 
                         if obs_aux > 0.0 {
                             let ln_factorial = Self::ln_factorial_static(obs_aux);
@@ -3867,7 +4003,7 @@ impl PreparedModel<'_> {
                             params.len()
                         ))
                     })?;
-                    let beta = beta.max(1e-10);
+                    let beta = beta.max(EXPECTED_FLOOR);
 
                     let tau = 1.0 / (*rel * *rel);
                     let k = tau + 1.0;
@@ -4176,6 +4312,26 @@ fn normsys_code4<T: Scalar>(alpha: T, hi: f64, lo: f64) -> T {
 /// pyhf interpolators: histosys `code0` (piecewise linear) delta term (added to nominal).
 fn histosys_code0_delta<T: Scalar>(alpha: T, down: T, nom: T, up: T) -> T {
     if alpha.value() >= 0.0 { (up - nom) * alpha } else { (nom - down) * alpha }
+}
+
+/// pyhf interpolators: histosys `code2` (quadratic interp + linear extrap) delta term.
+///
+/// S = (up - down) / 2, A = (up + down) / 2 - nom.
+/// |α| ≤ 1: δ = α·S + α²·A (quadratic).
+/// α > 1:  δ = α·S + (2α−1)·A (linear extrapolation).
+/// α < −1: δ = α·S + (−2α−1)·A (linear extrapolation).
+fn histosys_code2_delta<T: Scalar>(alpha: T, down: T, nom: T, up: T) -> T {
+    let s = (up - down) * T::from_f64(0.5);
+    let a = (up + down) * T::from_f64(0.5) - nom;
+    let alpha_val = alpha.value();
+    if alpha_val.abs() <= 1.0 {
+        alpha * s + alpha * alpha * a
+    } else if alpha_val > 1.0 {
+        alpha * s + (alpha * T::from_f64(2.0) - T::from_f64(1.0)) * a
+    } else {
+        // alpha < -1
+        alpha * s + (alpha * T::from_f64(-2.0) - T::from_f64(1.0)) * a
+    }
 }
 
 /// pyhf interpolators: histosys `code4p` delta term (added to nominal).

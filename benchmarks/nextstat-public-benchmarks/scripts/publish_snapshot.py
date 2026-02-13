@@ -60,6 +60,7 @@ def main() -> int:
     )
     ap.add_argument("--hep", action="store_true", help="Run HEP suite.")
     ap.add_argument("--pharma", action="store_true", help="Run pharma suite.")
+    ap.add_argument("--econometrics", action="store_true", help="Run econometrics suite.")
     ap.add_argument("--bayesian", action="store_true", help="Run Bayesian suite.")
     ap.add_argument(
         "--bayesian-backends",
@@ -123,9 +124,10 @@ def main() -> int:
     results: list[Path] = []
 
     # Defaults: keep the seed publisher lightweight (HEP + pharma) unless a suite is explicitly requested.
-    run_any = bool(args.hep or args.pharma or args.bayesian or args.ml)
+    run_any = bool(args.hep or args.pharma or args.econometrics or args.bayesian or args.ml)
     run_hep = bool(args.hep or (not run_any))
     run_pharma = bool(args.pharma or (not run_any))
+    run_econometrics = bool(args.econometrics)
     run_bayesian = bool(args.bayesian)
     run_ml = bool(args.ml)
 
@@ -181,6 +183,33 @@ def main() -> int:
                 str(pharma_out / "pharma_suite.json"),
                 "--out",
                 str(snap_dir / "README_snippet_pharma.md"),
+            ],
+            cwd=str(repo_root),
+            env=env,
+        )
+
+    if run_econometrics:
+        econ_out = snap_dir / "econometrics"
+        cmd = [
+            sys.executable,
+            "suites/econometrics/suite.py",
+            "--out-dir",
+            str(econ_out),
+            "--seed",
+            "0",
+        ]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(econ_out / "econometrics_suite.json")
+        subprocess.check_call(
+            [
+                sys.executable,
+                "suites/econometrics/report.py",
+                "--suite",
+                str(econ_out / "econometrics_suite.json"),
+                "--out",
+                str(snap_dir / "README_snippet_econometrics.md"),
             ],
             cwd=str(repo_root),
             env=env,
@@ -261,6 +290,8 @@ def main() -> int:
     schema_bayes_suite = repo_root / "manifests/schema/bayesian_benchmark_suite_result_v1.schema.json"
     schema_ml_case = repo_root / "manifests/schema/ml_benchmark_result_v1.schema.json"
     schema_ml_suite = repo_root / "manifests/schema/ml_benchmark_suite_result_v1.schema.json"
+    schema_econ_case = repo_root / "manifests/schema/econometrics_benchmark_result_v1.schema.json"
+    schema_econ_suite = repo_root / "manifests/schema/econometrics_benchmark_suite_result_v1.schema.json"
     for r in results:
         obj = load_json(r)
         sv = str(obj.get("schema_version", ""))
@@ -280,6 +311,10 @@ def main() -> int:
             validate_json(r, schema_ml_suite)
             for e in obj.get("cases", []):
                 validate_json((r.parent / e["path"]).resolve(), schema_ml_case)
+        elif sv == "nextstat.econometrics_benchmark_suite_result.v1":
+            validate_json(r, schema_econ_suite)
+            for e in obj.get("cases", []):
+                validate_json((r.parent / e["path"]).resolve(), schema_econ_case)
         elif sv == "nextstat.benchmark_result.v1":
             validate_json(r, schema_case)
         elif sv == "nextstat.pharma_benchmark_result.v1":
@@ -288,6 +323,8 @@ def main() -> int:
             validate_json(r, schema_bayes_case)
         elif sv == "nextstat.ml_benchmark_result.v1":
             validate_json(r, schema_ml_case)
+        elif sv == "nextstat.econometrics_benchmark_result.v1":
+            validate_json(r, schema_econ_case)
 
     # Write baseline manifest referencing produced results; dataset list will be derived from results.
     baseline_path = snap_dir / "baseline_manifest.json"

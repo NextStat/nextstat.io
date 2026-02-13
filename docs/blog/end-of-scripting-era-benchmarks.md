@@ -1,6 +1,6 @@
 ---
 title: "The End of the Scripting Era: Why Reproducible Benchmarks Change Scientific Software"
-slug: end-of-scripting-era-benchmarks
+slug: end-of-scripting-era
 description: "Scripts gave us speed. Reproducible benchmark harnesses give us trust. How NextStat treats performance claims as scientific experiments — with protocols, correctness gates, and auditable artifacts."
 date: 2026-02-08
 author: NextStat Team
@@ -19,172 +19,146 @@ category: trust
 
 # The End of the Scripting Era: Why Reproducible Benchmarks Change Scientific Software
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) · **Next:** [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Trust Offensive: Public Benchmarks](/blog/trust-offensive) · **Next:** [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
 
 ## Abstract
 
-For years, performance “benchmarks” in scientific software were mostly scripts: a notebook, a dataset download, a chart, and a number. That workflow is great for exploration, but it is a poor substrate for trust — because it rarely produces artifacts that can be rerun, audited, diffed, or replicated by outsiders.
+For years, performance “benchmarks” in scientific software were scripts: a notebook, an ad hoc dataset download, a chart, and a single number. This is effective for exploration, but it is structurally weak evidence: it rarely produces immutable artifacts that can be rerun, diffed, audited, or replicated by outsiders.
 
-This post argues that the *unit of publication* is shifting from a single number to a **benchmark snapshot**: an immutable artifact set with pinned environments, correctness gates, manifests, and raw distributions. That shift changes how scientific software is built: determinism becomes a mode, correctness becomes a gate, and CI becomes a publisher.
+This post argues that the unit of publication is shifting from a number to a **benchmark snapshot**: a protocol-defined, uniquely identified artifact set with pinned environments, correctness gates, and raw distributions. This shift changes engineering practice: determinism becomes a mode, correctness becomes a gate, and CI becomes a publisher.
 
-For a long time, scientific software lived in a world of scripts:
-
-- a notebook that downloads data
-- a few helper functions
-- one more plot
-- “here are the numbers”
-
-That era is ending — not because scripts are bad, but because the *cost of trust* has gone up.
-
-When your result is a number that drives decisions (limits, discoveries, claims, or compute budgets), it’s not enough to be fast. You need to be **reproducibly fast**.
-
-Benchmarks are where this change becomes obvious.
+Canonical specification (protocol + artifacts): [/docs/public-benchmarks](/docs/public-benchmarks).
 
 ---
 
-## 1) The scripting failure mode: performance without a protocol
+## 1. The scripting failure mode: performance without a protocol
 
-Most benchmark screenshots look convincing, and most are incomplete.
+Most benchmark screenshots look convincing and are incomplete.
 
-They rarely answer:
+They rarely specify the experimental boundary conditions:
 
-- What exact input was used?
-- What correctness checks were performed?
-- Was compilation time included?
-- What was warmed up?
-- What versions were installed?
-- What flags were enabled?
+- What exact inputs were used (and are they hash-identifiable)?
+- What correctness checks were performed before timing?
+- Does the metric include compilation, kernel loading, cache population?
+- What warmup policy was applied?
+- What toolchain versions and lockfiles were active?
+- What flags, modes, and determinism settings were enabled?
 
-In other words: they don’t describe an experiment. They describe a story.
-
-That’s fine for exploration. It’s not fine for trust.
+Without these, a benchmark is not an experiment; it is a story.
 
 ---
 
-## 2) Benchmarks as experiments
+## 2. Benchmarks as experiments: protocol invariants
 
-In NextStat, we treat performance as a scientific claim. A claim needs:
+In NextStat, we treat performance as a scientific claim. A claim requires a protocol with explicit invariants.
 
-1. a protocol (what is measured and how)
-2. a reference (what “correct” means)
-3. environment pinning (what was actually run)
-4. artifacts (what others can rerun)
+At minimum:
 
-This is why our benchmark program is structured around:
+- **Task definition** (what computation is executed).
+- **Metric definition** (what is measured and what is excluded).
+- **Correctness gates** (what “correct” means, and the tolerance).
+- **Environment pinning** (what toolchains and dependencies were used).
+- **Repeat strategy** (how stability is measured; distributions and aggregation policy).
 
-- correctness gates before timing (e.g., NLL parity checks)
-- pinned toolchains + dependency locks
-- raw result publishing (not only summaries)
-- baseline manifests and CI artifacts
-
-The canonical spec is here: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
+These invariants are enforced operationally through artifacts.
 
 ---
 
-## 3) The new unit: benchmark snapshots (artifact sets)
+## 3. The new unit: benchmark snapshots (artifact sets)
 
-The key move is to make a benchmark run produce a **publishable artifact set**, not just a number.
+A benchmark snapshot is a uniquely identified directory of immutable artifacts produced under a protocol.
 
-At minimum, a snapshot should include:
+At minimum, a snapshot should contain:
 
-- raw per-test/per-repeat measurements (so variance and policy are visible),
-- correctness gates results (so “fast” implies “correct under a contract”),
-- a baseline manifest (versions, hardware, dataset hashes, flags),
-- and an index with file hashes (so outsiders can verify the bytes they downloaded).
-
-If you want the full publishing contract, see:
-
-- [Publishing Benchmarks (CI, Artifacts, DOI, Replication)](/docs/benchmarks/publishing)
-- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
+- raw per-test/per-repeat measurements (so variance and aggregation policy are visible),
+- correctness gate results (so “fast” implies “correct under a contract”),
+- environment metadata and lockfiles (so the run can be reconstructed),
+- and a signed-or-signable manifest of file hashes (so outsiders can verify bytes).
 
 ---
 
-## 4) Why this matters in HEP-like pipelines
+## 4. Artifact contracts (schemas, not prose)
 
-HEP-style inference pipelines have a property that breaks naive benchmarking:
+The trust story only closes when artifacts are machine-readable and schema-validated.
+
+### 4.1 Validation report pack (`validation_report_v1`)
+
+NextStat’s unified validation pack is generated via:
+
+```bash
+nextstat validation-report \
+  --apex2 tmp/apex2_master_report.json \
+  --workspace workspace.json \
+  --out validation_report.json \
+  --pdf validation_report.pdf \
+  --deterministic
+```
+
+This produces a `validation_report.json` with `schema_version = validation_report_v1` and (optionally) a publishable PDF.
+
+Canonical reference: [/docs/validation-report](/docs/validation-report).
+
+### 4.2 Snapshot index (`nextstat.snapshot_index.v1`)
+
+A snapshot index is a machine-readable inventory of artifacts with SHA-256 digests, bytes, and CI metadata.
+
+Schema example: `docs/specs/snapshot_index_v1.example.json`.
+
+### 4.3 Replication report (`nextstat.replication_report.v1`)
+
+Replication is the strongest trust signal: an independent rerun that compares artifact digests.
+
+Schema example: `docs/specs/replication_report_v1.example.json`.
+
+---
+
+## 5. Why this matters in HEP-like pipelines
+
+Inference pipelines have a benchmark-specific failure mode:
 
 > You can be “fast” by not doing the same inference.
 
-If the likelihood is off by a small but systematic amount (wrong interpolation, wrong constraints, wrong masks), the benchmark number is meaningless — because the computation changed.
+If the likelihood is off by a small but systematic amount (wrong interpolation, wrong constraints, wrong masks), the benchmark is meaningless because the computation changed.
 
-So “end of scripting era” here means:
+The end of the scripting era means:
 
-- you don’t benchmark without a reference check,
-- you don’t publish numbers without artifacts,
-- and you don’t accept “it seems close” as a contract.
+- no timing without correctness gating,
+- no publication without immutable artifacts,
+- and no “it seems close” without tolerances.
 
 ---
 
-## 5) The deeper shift: software becomes a system
+## 6. Engineering implication: software becomes a system
 
-The shift is not about Rust vs Python, or compiled vs interpreted.
+The shift is not about Rust vs Python or compiled vs interpreted.
 
-It’s that software becomes a system with:
+It is that scientific software becomes a system with:
 
 - deterministic modes (for parity and debugging),
 - fast modes (for production),
 - explicit tolerances (so correctness is measurable),
 - and automation (so the same harness runs every time).
 
-That is what replaces “a script” as your source of truth.
+This is what replaces “a script” as the source of truth.
 
 ---
 
-## 6) What to expect from our public benchmark snapshots
+## 7. The ask: rerun it
 
-When we publish benchmark snapshots, the goal is that you can:
+If you rerun a snapshot on your hardware, publish:
 
-- rerun the same suite on your machine,
-- see the same correctness gates,
-- and compare results with full context.
+- your `snapshot_index.json` (artifact hashes),
+- your `validation_report.json`,
+- and (optionally) a `replication_report.json` comparing your rerun to the published snapshot.
 
-If the number differs, you should be able to answer *why*:
-
-- hardware / driver / compiler differences,
-- different datasets,
-- different reference implementations,
-- or a bug.
-
-That is progress: disagreement becomes diagnosable.
-
----
-
-## 7) Replication is the endgame
-
-If you want the strongest possible trust signal, you want an independent rerun with a publishable report.
-
-That’s why our program treats third‑party replication as a first-class protocol:
-
-- same suite definition,
-- same dataset IDs,
-- published hashes/manifests,
-- and (optionally) signatures for tamper resistance.
-
-Runbook: [Third-Party Replication Runbook (Signed Reports)](/docs/benchmarks/replication).
-
----
-
-## 8) The point of a “trust offensive”
-
-Publishing benchmarks is not a marketing stunt. It’s a commitment:
-
-- to show our work,
-- to make it reproducible,
-- and to invite replication.
-
-If we do this right, the conversation changes from:
-
-> “Are you really that fast?”
-
-to:
-
-> "Here's the harness. Let's measure it together."
+That is how disagreement becomes diagnosable and performance becomes durable.
 
 ---
 
 ## Related reading
 
-- [Trust Offensive: Public Benchmarks](/blog/trust-offensive-public-benchmarks) — why this program exists and how to interpret it.
-- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — external reruns as the ultimate trust signal.
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — the canonical spec.
-- [Validation Report Artifacts](/docs/references/validation-report) — the machine-readable + PDF validation pack.
+- [Trust Offensive: Public Benchmarks](/blog/trust-offensive)
+- [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts)
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication)
+- [Public Benchmarks](/docs/public-benchmarks)
+- [Validation Report Artifacts](/docs/validation-report)

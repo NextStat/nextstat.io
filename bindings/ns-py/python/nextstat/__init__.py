@@ -34,8 +34,14 @@ profile_scan = _get("profile_scan")
 upper_limit = _get("upper_limit")
 upper_limits = _get("upper_limits")
 upper_limits_root = _get("upper_limits_root")
+unbinned_hypotest = _get("unbinned_hypotest")
+unbinned_hypotest_toys = _get("unbinned_hypotest_toys")
+unbinned_profile_scan = _get("unbinned_profile_scan")
+unbinned_fit_toys = _get("unbinned_fit_toys")
 
 HistFactoryModel = _get("HistFactoryModel")
+UnbinnedModel = _get("UnbinnedModel")
+HybridModel = _get("HybridModel")
 MaximumLikelihoodEstimator = _get("MaximumLikelihoodEstimator")
 FitResult = _get("FitResult")
 Posterior = _get("Posterior")
@@ -58,6 +64,11 @@ LogNormalAftModel = _get("LogNormalAftModel")
 CoxPhModel = _get("CoxPhModel")
 OneCompartmentOralPkModel = _get("OneCompartmentOralPkModel")
 OneCompartmentOralPkNlmeModel = _get("OneCompartmentOralPkNlmeModel")
+GammaRegressionModel = _get("GammaRegressionModel")
+TweedieRegressionModel = _get("TweedieRegressionModel")
+GevModel = _get("GevModel")
+GpdModel = _get("GpdModel")
+EightSchoolsModel = _get("EightSchoolsModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
 fit_toys_batch = _get("fit_toys_batch")
@@ -70,9 +81,11 @@ has_cuda = _get("has_cuda")
 has_metal = _get("has_metal")
 DifferentiableSession = _get("DifferentiableSession")
 ProfiledDifferentiableSession = _get("ProfiledDifferentiableSession")
+MetalProfiledDifferentiableSession = _get("MetalProfiledDifferentiableSession")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
+unbinned_ranking = _get("unbinned_ranking")
 rk4_linear = _get("rk4_linear")
 read_root_histogram = _get("read_root_histogram")
 workspace_audit = _get("workspace_audit")
@@ -83,13 +96,36 @@ kalman_smooth = _get("kalman_smooth")
 kalman_em = _get("kalman_em")
 kalman_forecast = _get("kalman_forecast")
 kalman_simulate = _get("kalman_simulate")
+meta_fixed = _get("meta_fixed")
+meta_random = _get("meta_random")
+chain_ladder = _get("chain_ladder")
+mack_chain_ladder = _get("mack_chain_ladder")
+kaplan_meier = _get("kaplan_meier")
+log_rank_test = _get("log_rank_test")
+rosenbaum_bounds = _get("rosenbaum_bounds")
+churn_generate_data = _get("churn_generate_data")
+churn_retention = _get("churn_retention")
+churn_risk_model = _get("churn_risk_model")
+churn_uplift = _get("churn_uplift")
+churn_diagnostics = _get("churn_diagnostics")
+churn_cohort_matrix = _get("churn_cohort_matrix")
+churn_compare = _get("churn_compare")
+churn_uplift_survival = _get("churn_uplift_survival")
+churn_bootstrap_hr = _get("churn_bootstrap_hr")
+churn_ingest = _get("churn_ingest")
 from_arrow_ipc = _get("from_arrow_ipc")
 from_parquet = _get("from_parquet")
+from_parquet_with_modifiers = _get("from_parquet_with_modifiers")
 to_arrow_yields_ipc = _get("to_arrow_yields_ipc")
 to_arrow_params_ipc = _get("to_arrow_params_ipc")
 
+# Optional native classes (feature-gated in Rust; present only when built with those features).
+FlowPdf = _get("FlowPdf")
+DcrSurrogate = _get("DcrSurrogate")
+
 _LAZY_SUBMODULES = {
     # Optional convenience wrappers (may require optional deps like numpy/arviz/matplotlib).
+    "unbinned",
     "arrow_io",
     "bayes",
     "viz",
@@ -114,6 +150,14 @@ _LAZY_SUBMODULES = {
     "tools",
     "distill",
     "remote",
+    "audit",
+    "report",
+    "validation_report",
+    "analysis",
+    "trex_config",
+    "torch",
+    "gym",
+    "volatility",
 }
 
 
@@ -205,6 +249,7 @@ def to_arrow(model: HistFactoryModel, *, params: list[float] | None = None, what
 
 __all__ = [
     "__version__",
+    "_core",
     "fit",
     "map_fit",
     "fit_batch",
@@ -215,6 +260,7 @@ __all__ = [
     "bayes",
     "viz",
     "data",
+    "unbinned",
     "glm",
     "timeseries",
     "hier",
@@ -230,7 +276,12 @@ __all__ = [
     "sklearn",
     "panel",
     "econometrics",
+    "volatility",
+    "torch",
+    "gym",
     "HistFactoryModel",
+    "UnbinnedModel",
+    "HybridModel",
     "GaussianMeanModel",
     "FunnelModel",
     "StdNormalModel",
@@ -249,23 +300,29 @@ __all__ = [
     "CoxPhModel",
     "OneCompartmentOralPkModel",
     "OneCompartmentOralPkNlmeModel",
+    "GammaRegressionModel",
+    "TweedieRegressionModel",
+    "GevModel",
+    "GpdModel",
+    "EightSchoolsModel",
     "MaximumLikelihoodEstimator",
     "FitResult",
     "Posterior",
-    "ols_fit",
-    "fit_toys",
-    "fit_toys_batch",
-    "fit_toys_batch_gpu",
-    "set_eval_mode",
-    "get_eval_mode",
-    "has_accelerate",
-    "has_cuda",
-    "DifferentiableSession",
-    "ProfiledDifferentiableSession",
     "asimov_data",
     "poisson_toys",
     "ranking",
+    "unbinned_ranking",
     "rk4_linear",
+    "ols_fit",
+    "fit_toys",
+    "unbinned_fit_toys",
+    "fit_toys_batch",
+    "fit_toys_batch_gpu",
+    "set_eval_mode",
+    "set_threads",
+    "get_eval_mode",
+    "has_accelerate",
+    "has_cuda",
     "has_metal",
     "read_root_histogram",
     "workspace_audit",
@@ -276,10 +333,29 @@ __all__ = [
     "kalman_em",
     "kalman_forecast",
     "kalman_simulate",
+    "meta_fixed",
+    "meta_random",
+    "chain_ladder",
+    "mack_chain_ladder",
+    "kaplan_meier",
+    "log_rank_test",
+    "churn_generate_data",
+    "churn_retention",
+    "churn_risk_model",
+    "churn_uplift",
+    "churn_diagnostics",
+    "churn_cohort_matrix",
+    "churn_compare",
+    "churn_uplift_survival",
+    "churn_bootstrap_hr",
+    "churn_ingest",
     "from_arrow_ipc",
     "from_parquet",
+    "from_parquet_with_modifiers",
     "to_arrow_yields_ipc",
     "to_arrow_params_ipc",
+    "FlowPdf",
+    "DcrSurrogate",
     "from_arrow",
     "to_arrow",
     "from_pyhf",
@@ -290,6 +366,9 @@ __all__ = [
     "upper_limit",
     "upper_limits",
     "upper_limits_root",
+    "unbinned_hypotest",
+    "unbinned_hypotest_toys",
+    "unbinned_profile_scan",
     "mlops",
     "interpret",
     "tools",

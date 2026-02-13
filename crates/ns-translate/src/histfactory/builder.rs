@@ -243,6 +243,7 @@ fn modifier_sort_key(m: &Modifier) -> (&'static str, &str) {
         Modifier::ShapeSys { name, .. } => ("shapesys", name.as_str()),
         Modifier::ShapeFactor { name, .. } => ("shapefactor", name.as_str()),
         Modifier::Lumi { name, .. } => ("lumi", name.as_str()),
+        Modifier::Unknown(_) => ("zzz_unknown", ""),
     }
 }
 

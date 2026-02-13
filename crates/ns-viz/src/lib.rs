@@ -25,11 +25,23 @@ pub mod distributions;
 /// Pulls + constraints artifacts (TREx-style).
 pub mod pulls;
 
+/// Gammas (staterror / Barlow-Beeston) artifacts.
+pub mod gammas;
+
 /// Correlation matrix artifacts (TREx-style).
 pub mod corr;
 
 /// Yields tables artifacts (TREx-style).
 pub mod yields;
+
+/// Separation plot artifacts (S vs B shape comparison).
+pub mod separation;
+
+/// Summary plot artifacts (multi-fit μ comparison).
+pub mod summary;
+
+/// Pie chart artifacts (sample composition per channel).
+pub mod pie;
 
 /// Uncertainty breakdown artifacts (TREx-style).
 pub mod uncertainty;
@@ -37,8 +49,12 @@ pub mod uncertainty;
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
 pub use corr::CorrArtifact;
 pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy};
+pub use gammas::GammasArtifact;
+pub use pie::PieArtifact;
 pub use profile::{ProfileCurveArtifact, ProfileCurvePoint};
 pub use pulls::{PullEntry, PullsArtifact};
 pub use ranking::RankingArtifact;
+pub use separation::SeparationArtifact;
+pub use summary::SummaryArtifact;
 pub use uncertainty::UncertaintyBreakdownArtifact;
 pub use yields::YieldsArtifact;

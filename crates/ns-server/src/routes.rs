@@ -14,6 +14,7 @@ use axum::{Json, Router};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use ns_core::PoiModel;
 use ns_core::traits::LogDensityModel;
 
 use crate::state::SharedState;
@@ -29,12 +30,19 @@ pub fn router() -> Router<SharedState> {
         .route("/v1/ranking", post(ranking_handler))
         .route("/v1/batch/fit", post(batch_fit_handler))
         .route("/v1/batch/toys", post(batch_toys_handler))
+        .route("/v1/unbinned/fit", post(unbinned_fit_handler))
+        .route("/v1/nlme/fit", post(nlme_fit_handler))
+        .route("/v1/jobs/submit", post(job_submit_handler))
+        .route("/v1/jobs/{id}", get(job_status_handler))
+        .route("/v1/jobs/{id}", delete(job_cancel_handler))
+        .route("/v1/jobs", get(job_list_handler))
         .route("/v1/tools/execute", post(tools_execute_handler))
         .route("/v1/tools/schema", get(tools_schema_handler))
         .route("/v1/models", post(upload_model_handler))
         .route("/v1/models", get(list_models_handler))
         .route("/v1/models/{id}", delete(delete_model_handler))
         .route("/v1/health", get(health_handler))
+        .route("/v1/openapi.json", get(openapi_handler))
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +213,293 @@ async fn fit_handler(
             n_gev: fit_result.n_gev,
             covariance: fit_result.covariance,
             device,
+            wall_time_s,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("task panicked: {e}")))?;
+
+    result.map(Json)
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/unbinned/fit
+// ---------------------------------------------------------------------------
+
+/// Request body for `/v1/unbinned/fit`.
+#[derive(Debug, Deserialize)]
+struct UnbinnedFitRequest {
+    /// Unbinned spec JSON (nextstat_unbinned_spec_v0 schema).
+    spec: serde_json::Value,
+
+    /// Server-side directory containing data files referenced by the spec.
+    /// Relative paths in `spec.channels[].data.file` are resolved against this.
+    /// Defaults to "." (server working directory).
+    #[serde(default = "default_data_root")]
+    data_root: String,
+}
+
+fn default_data_root() -> String {
+    ".".to_string()
+}
+
+/// Response body for `/v1/unbinned/fit`.
+#[derive(Debug, Serialize)]
+struct UnbinnedFitResponse {
+    parameter_names: Vec<String>,
+    poi_index: Option<usize>,
+    bestfit: Vec<f64>,
+    uncertainties: Vec<f64>,
+    nll: f64,
+    twice_nll: f64,
+    converged: bool,
+    n_iter: usize,
+    n_fev: usize,
+    n_gev: usize,
+    covariance: Option<Vec<f64>>,
+    device: String,
+    wall_time_s: f64,
+}
+
+async fn unbinned_fit_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<UnbinnedFitRequest>,
+) -> Result<Json<UnbinnedFitResponse>, AppError> {
+    state.inflight.fetch_add(1, Ordering::Relaxed);
+    let _dec = DecrementOnDrop(&state.inflight);
+    state.total_requests.fetch_add(1, Ordering::Relaxed);
+
+    let pool_ref = Arc::clone(&state);
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+
+        let _compute_guard = pool_ref.compute_lock.blocking_lock();
+
+        // Parse the unbinned spec from the request JSON.
+        let spec: ns_unbinned::spec::UnbinnedSpecV0 = serde_json::from_value(req.spec)
+            .map_err(|e| AppError::bad_request(format!("invalid unbinned spec JSON: {e}")))?;
+
+        if spec.schema_version != ns_unbinned::spec::UNBINNED_SPEC_V0 {
+            return Err(AppError::bad_request(format!(
+                "unsupported schema_version: {} (expected {})",
+                spec.schema_version,
+                ns_unbinned::spec::UNBINNED_SPEC_V0
+            )));
+        }
+
+        // Validate data_root: reject path traversal via '..' components.
+        let data_root = std::path::Path::new(&req.data_root);
+        for component in data_root.components() {
+            if matches!(component, std::path::Component::ParentDir) {
+                return Err(AppError::bad_request(
+                    "data_root must not contain '..' components (path traversal rejected)"
+                        .to_string(),
+                ));
+            }
+        }
+        // compile_unbinned_model uses spec_path.parent() as the base dir;
+        // we pass data_root/spec.json so that parent() == data_root.
+        let synthetic_spec_path = data_root.join("spec.json");
+
+        let model = ns_unbinned::spec::compile_unbinned_model(&spec, &synthetic_spec_path)
+            .map_err(|e| AppError::bad_request(format!("unbinned model compilation error: {e}")))?;
+
+        let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
+        let fit_result = mle
+            .fit(&model)
+            .map_err(|e| AppError::internal(format!("unbinned CPU fit failed: {e}")))?;
+
+        let wall_time_s = t0.elapsed().as_secs_f64();
+
+        let parameter_names: Vec<String> =
+            model.parameters().iter().map(|p| p.name.clone()).collect();
+        let poi_index = model.poi_index();
+
+        Ok(UnbinnedFitResponse {
+            parameter_names,
+            poi_index,
+            bestfit: fit_result.parameters,
+            uncertainties: fit_result.uncertainties,
+            nll: fit_result.nll,
+            twice_nll: 2.0 * fit_result.nll,
+            converged: fit_result.converged,
+            n_iter: fit_result.n_iter,
+            n_fev: fit_result.n_fev,
+            n_gev: fit_result.n_gev,
+            covariance: fit_result.covariance,
+            device: "cpu".to_string(),
+            wall_time_s,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("task panicked: {e}")))?;
+
+    result.map(Json)
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/nlme/fit
+// ---------------------------------------------------------------------------
+
+/// Request body for `/v1/nlme/fit`.
+#[derive(Debug, Deserialize)]
+struct NlmeFitRequest {
+    /// Model type: "pk_1cpt" (individual) or "nlme_1cpt" (population NLME).
+    model_type: String,
+
+    /// Observation times (must be >= 0).
+    times: Vec<f64>,
+
+    /// Observed concentrations (must be >= 0).
+    observations: Vec<f64>,
+
+    /// Dose amount (> 0).
+    dose: f64,
+
+    /// Bioavailability (> 0, default: 1.0).
+    #[serde(default = "default_bioavailability")]
+    bioavailability: f64,
+
+    /// Observation noise standard deviation (> 0).
+    sigma: f64,
+
+    /// Subject indices (required for model_type "nlme_1cpt").
+    /// Each entry maps the corresponding observation to a subject [0, n_subjects).
+    subject_idx: Option<Vec<usize>>,
+
+    /// Number of subjects (required for model_type "nlme_1cpt").
+    n_subjects: Option<usize>,
+
+    /// Lower limit of quantification (optional).
+    lloq: Option<f64>,
+
+    /// LLOQ handling policy: "ignore", "replace_half", or "censored" (default: "censored").
+    #[serde(default = "default_lloq_policy")]
+    lloq_policy: String,
+}
+
+fn default_bioavailability() -> f64 {
+    1.0
+}
+
+fn default_lloq_policy() -> String {
+    "censored".to_string()
+}
+
+/// Response body for `/v1/nlme/fit`.
+#[derive(Debug, Serialize)]
+struct NlmeFitResponse {
+    model_type: String,
+    parameter_names: Vec<String>,
+    bestfit: Vec<f64>,
+    uncertainties: Vec<f64>,
+    nll: f64,
+    twice_nll: f64,
+    converged: bool,
+    n_iter: usize,
+    n_fev: usize,
+    n_gev: usize,
+    covariance: Option<Vec<f64>>,
+    wall_time_s: f64,
+}
+
+fn parse_lloq_policy(s: &str) -> Result<ns_inference::pk::LloqPolicy, AppError> {
+    match s {
+        "ignore" => Ok(ns_inference::pk::LloqPolicy::Ignore),
+        "replace_half" => Ok(ns_inference::pk::LloqPolicy::ReplaceHalf),
+        "censored" => Ok(ns_inference::pk::LloqPolicy::Censored),
+        other => Err(AppError::bad_request(format!(
+            "unknown lloq_policy '{other}'; expected 'ignore', 'replace_half', or 'censored'"
+        ))),
+    }
+}
+
+async fn nlme_fit_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<NlmeFitRequest>,
+) -> Result<Json<NlmeFitResponse>, AppError> {
+    state.inflight.fetch_add(1, Ordering::Relaxed);
+    let _dec = DecrementOnDrop(&state.inflight);
+    state.total_requests.fetch_add(1, Ordering::Relaxed);
+
+    let pool_ref = Arc::clone(&state);
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+
+        let _compute_guard = pool_ref.compute_lock.blocking_lock();
+
+        let lloq_policy = parse_lloq_policy(&req.lloq_policy)?;
+        let mle = ns_inference::mle::MaximumLikelihoodEstimator::new();
+
+        let (fit_result, param_names, model_type) = match req.model_type.as_str() {
+            "pk_1cpt" => {
+                let model = ns_inference::pk::OneCompartmentOralPkModel::new(
+                    req.times,
+                    req.observations,
+                    req.dose,
+                    req.bioavailability,
+                    req.sigma,
+                    req.lloq,
+                    lloq_policy,
+                )
+                .map_err(|e| AppError::bad_request(format!("PK model error: {e}")))?;
+
+                let names = model.parameter_names();
+                let fit = mle
+                    .fit(&model)
+                    .map_err(|e| AppError::internal(format!("PK fit failed: {e}")))?;
+                (fit, names, "pk_1cpt".to_string())
+            }
+            "nlme_1cpt" => {
+                let subject_idx = req.subject_idx.ok_or_else(|| {
+                    AppError::bad_request("subject_idx is required for nlme_1cpt".into())
+                })?;
+                let n_subjects = req.n_subjects.ok_or_else(|| {
+                    AppError::bad_request("n_subjects is required for nlme_1cpt".into())
+                })?;
+
+                let model = ns_inference::pk::OneCompartmentOralPkNlmeModel::new(
+                    req.times,
+                    req.observations,
+                    subject_idx,
+                    n_subjects,
+                    req.dose,
+                    req.bioavailability,
+                    req.sigma,
+                    req.lloq,
+                    lloq_policy,
+                )
+                .map_err(|e| AppError::bad_request(format!("NLME model error: {e}")))?;
+
+                let names = model.parameter_names();
+                let fit = mle
+                    .fit(&model)
+                    .map_err(|e| AppError::internal(format!("NLME fit failed: {e}")))?;
+                (fit, names, "nlme_1cpt".to_string())
+            }
+            other => {
+                return Err(AppError::bad_request(format!(
+                    "unknown model_type '{other}'; expected 'pk_1cpt' or 'nlme_1cpt'"
+                )));
+            }
+        };
+
+        let wall_time_s = t0.elapsed().as_secs_f64();
+
+        Ok(NlmeFitResponse {
+            model_type,
+            parameter_names: param_names,
+            bestfit: fit_result.parameters,
+            uncertainties: fit_result.uncertainties,
+            nll: fit_result.nll,
+            twice_nll: 2.0 * fit_result.nll,
+            converged: fit_result.converged,
+            n_iter: fit_result.n_iter,
+            n_fev: fit_result.n_fev,
+            n_gev: fit_result.n_gev,
+            covariance: fit_result.covariance,
             wall_time_s,
         })
     })
@@ -653,6 +948,191 @@ fn default_seed() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Async Jobs API
+// ---------------------------------------------------------------------------
+
+async fn job_submit_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<crate::jobs::JobSubmitRequest>,
+) -> Result<Json<crate::jobs::JobSubmitResponse>, AppError> {
+    let job_id = state.job_store.create(&req.task_type).await.map_err(AppError::internal)?;
+
+    match req.task_type.as_str() {
+        "batch_toys" => {
+            let toys_req: BatchToysRequest = serde_json::from_value(req.payload)
+                .map_err(|e| AppError::bad_request(format!("invalid batch_toys payload: {e}")))?;
+
+            let st = Arc::clone(&state);
+            let jid = job_id.clone();
+
+            tokio::spawn(async move {
+                st.job_store.set_running(&jid).await;
+
+                let cancel_token = st.job_store.cancel_token(&jid).await;
+                let st2 = Arc::clone(&st);
+
+                let result = tokio::task::spawn_blocking(move || {
+                    let t0 = Instant::now();
+                    let _compute_guard = st2.compute_lock.blocking_lock();
+
+                    let json_str = serde_json::to_string(&toys_req.workspace)
+                        .map_err(|e| format!("invalid workspace JSON: {e}"))?;
+                    let model = load_model(&json_str).map_err(|e| e.message)?;
+
+                    let params = toys_req.params.unwrap_or_else(|| model.parameter_init());
+                    if params.len() != model.n_params() {
+                        return Err(format!(
+                            "params length {} != model parameters {}",
+                            params.len(),
+                            model.n_params()
+                        ));
+                    }
+
+                    let use_gpu =
+                        toys_req.gpu.should_use_gpu(st2.has_gpu(), st2.gpu_device.as_deref())?;
+                    let gpu_device = if use_gpu { st2.gpu_device.clone() } else { None };
+
+                    let _gpu_guard =
+                        if use_gpu { Some(st2.gpu_lock.blocking_lock()) } else { None };
+
+                    // Check cancellation before starting compute.
+                    if let Some(ref token) = cancel_token
+                        && token.load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        return Err("job cancelled".to_string());
+                    }
+
+                    let (fit_results, device) = match gpu_device.as_deref() {
+                        #[cfg(feature = "cuda")]
+                        Some("cuda") => {
+                            let r = ns_inference::gpu_batch::fit_toys_batch_gpu(
+                                &model,
+                                &params,
+                                toys_req.n_toys,
+                                toys_req.seed,
+                                None,
+                            )
+                            .map_err(|e| format!("CUDA batch toys failed: {e}"))?;
+                            (r, "cuda")
+                        }
+                        #[cfg(not(feature = "cuda"))]
+                        Some("cuda") => {
+                            return Err("CUDA not compiled".to_string());
+                        }
+                        #[cfg(feature = "metal")]
+                        Some("metal") => {
+                            let r = ns_inference::metal_batch::fit_toys_batch_metal(
+                                &model,
+                                &params,
+                                toys_req.n_toys,
+                                toys_req.seed,
+                                None,
+                            )
+                            .map_err(|e| format!("Metal batch toys failed: {e}"))?;
+                            (r, "metal")
+                        }
+                        #[cfg(not(feature = "metal"))]
+                        Some("metal") => {
+                            return Err("Metal not compiled".to_string());
+                        }
+                        _ => {
+                            let r = ns_inference::batch::fit_toys_batch(
+                                &model,
+                                &params,
+                                toys_req.n_toys,
+                                toys_req.seed,
+                                None,
+                            );
+                            (r, "cpu")
+                        }
+                    };
+
+                    let wall_time_s = t0.elapsed().as_secs_f64();
+                    let mut n_converged = 0usize;
+                    let mut n_failed = 0usize;
+                    let results: Vec<serde_json::Value> = fit_results
+                        .into_iter()
+                        .filter_map(|r| match r {
+                            Ok(fr) => {
+                                if fr.converged {
+                                    n_converged += 1;
+                                }
+                                Some(serde_json::json!({
+                                    "bestfit": fr.parameters,
+                                    "nll": fr.nll,
+                                    "converged": fr.converged,
+                                    "n_iter": fr.n_iter,
+                                }))
+                            }
+                            Err(_) => {
+                                n_failed += 1;
+                                None
+                            }
+                        })
+                        .collect();
+
+                    Ok(serde_json::json!({
+                        "n_toys": results.len(),
+                        "n_converged": n_converged,
+                        "n_failed": n_failed,
+                        "results": results,
+                        "device": device,
+                        "wall_time_s": wall_time_s,
+                    }))
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(val)) => st.job_store.set_completed(&jid, val).await,
+                    Ok(Err(e)) => st.job_store.set_failed(&jid, e).await,
+                    Err(e) => st.job_store.set_failed(&jid, format!("task panicked: {e}")).await,
+                }
+            });
+        }
+        other => {
+            return Err(AppError::bad_request(format!(
+                "unknown task_type '{other}'; supported: 'batch_toys'"
+            )));
+        }
+    }
+
+    Ok(Json(crate::jobs::JobSubmitResponse { job_id, status: crate::jobs::JobStatus::Pending }))
+}
+
+async fn job_status_handler(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::jobs::JobStatusResponse>, AppError> {
+    state
+        .job_store
+        .get(&id)
+        .await
+        .map(Json)
+        .ok_or_else(|| AppError::not_found(format!("job {id} not found")))
+}
+
+async fn job_cancel_handler(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    state.job_store.cancel(&id).await.map_err(AppError::bad_request)?;
+    Ok(Json(serde_json::json!({"cancelled": true, "job_id": id})))
+}
+
+async fn job_list_handler(State(state): State<SharedState>) -> Json<serde_json::Value> {
+    let jobs = state.job_store.list().await;
+    Json(serde_json::json!({"jobs": jobs}))
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/openapi.json
+// ---------------------------------------------------------------------------
+
+async fn openapi_handler() -> Json<serde_json::Value> {
+    Json(crate::openapi::openapi_spec())
+}
+
+// ---------------------------------------------------------------------------
 // GET /v1/health
 // ---------------------------------------------------------------------------
 
@@ -886,11 +1366,109 @@ impl Drop for DecrementOnDrop<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FitRequest, GpuSelector};
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    /// Build a test router with no auth, no rate limiting.
+    fn test_app() -> Router<()> {
+        let state = Arc::new(crate::state::AppState::new(None));
+        let api_keys = crate::auth::ApiKeys(None);
+        let rate_limiter = crate::rate_limit::RateLimiter::disabled();
+
+        Router::new()
+            .merge(super::router())
+            .layer(axum::middleware::from_fn(crate::rate_limit::rate_limit_middleware))
+            .layer(axum::Extension(rate_limiter))
+            .layer(axum::middleware::from_fn(crate::auth::auth_middleware))
+            .layer(axum::Extension(api_keys))
+            .with_state(state)
+    }
+
+    /// Build a test router with auth enabled.
+    fn test_app_with_auth(keys: std::collections::HashSet<String>) -> Router<()> {
+        let state = Arc::new(crate::state::AppState::new(None));
+        let api_keys = crate::auth::ApiKeys(Some(Arc::new(keys)));
+        let rate_limiter = crate::rate_limit::RateLimiter::disabled();
+
+        Router::new()
+            .merge(super::router())
+            .layer(axum::middleware::from_fn(crate::rate_limit::rate_limit_middleware))
+            .layer(axum::Extension(rate_limiter))
+            .layer(axum::middleware::from_fn(crate::auth::auth_middleware))
+            .layer(axum::Extension(api_keys))
+            .with_state(state)
+    }
+
+    /// Build a test router with rate limiting enabled.
+    fn test_app_with_rate_limit(rps: u32) -> Router<()> {
+        let state = Arc::new(crate::state::AppState::new(None));
+        let api_keys = crate::auth::ApiKeys(None);
+        let rate_limiter = crate::rate_limit::RateLimiter::new(rps);
+
+        Router::new()
+            .merge(super::router())
+            .layer(axum::middleware::from_fn(crate::rate_limit::rate_limit_middleware))
+            .layer(axum::Extension(rate_limiter))
+            .layer(axum::middleware::from_fn(crate::auth::auth_middleware))
+            .layer(axum::Extension(api_keys))
+            .with_state(state)
+    }
+
+    async fn post_json(
+        app: Router<()>,
+        uri: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        (status, val)
+    }
+
+    async fn get_json(app: Router<()>, uri: &str) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder().method(Method::GET).uri(uri).body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        (status, val)
+    }
+
+    async fn get_json_with_bearer(
+        app: Router<()>,
+        uri: &str,
+        token: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        (status, val)
+    }
+
+    // --- GpuSelector (existing) ---
 
     #[test]
     fn gpu_selector_accepts_bool_and_string() {
-        // Default (missing gpu) is equivalent to gpu=true with "try GPU if available".
         let req: FitRequest = serde_json::from_value(serde_json::json!({"workspace": {}})).unwrap();
         match req.gpu {
             GpuSelector::Bool(true) => {}
@@ -898,15 +1476,243 @@ mod tests {
         }
         assert!(!req.gpu.should_use_gpu(false, None).unwrap());
 
-        // Case-insensitive string form.
         let req: FitRequest =
             serde_json::from_value(serde_json::json!({"workspace": {}, "gpu": "Metal"})).unwrap();
         assert!(req.gpu.should_use_gpu(true, Some("metal")).unwrap());
         assert!(req.gpu.should_use_gpu(true, Some("cuda")).is_err());
 
-        // Explicit CPU.
         let req: FitRequest =
             serde_json::from_value(serde_json::json!({"workspace": {}, "gpu": "cpu"})).unwrap();
         assert!(!req.gpu.should_use_gpu(true, Some("metal")).unwrap());
+    }
+
+    // --- Health ---
+
+    #[tokio::test]
+    async fn health_returns_ok() {
+        let (status, body) = get_json(test_app(), "/v1/health").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["status"], "ok");
+        assert!(body["version"].is_string());
+        assert_eq!(body["device"], "cpu");
+    }
+
+    // --- OpenAPI ---
+
+    #[tokio::test]
+    async fn openapi_returns_valid_spec() {
+        let (status, body) = get_json(test_app(), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["openapi"], "3.1.0");
+        assert!(body["info"]["title"].is_string());
+        assert!(body["paths"]["/v1/fit"].is_object());
+        assert!(body["paths"]["/v1/unbinned/fit"].is_object());
+        assert!(body["paths"]["/v1/nlme/fit"].is_object());
+        assert!(body["paths"]["/v1/jobs/submit"].is_object());
+    }
+
+    // --- NLME / PK ---
+
+    #[tokio::test]
+    async fn nlme_pk_1cpt_smoke() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/nlme/fit",
+            serde_json::json!({
+                "model_type": "pk_1cpt",
+                "times": [0.5, 1.0, 2.0, 4.0, 8.0],
+                "observations": [2.0, 3.5, 3.0, 1.5, 0.3],
+                "dose": 100.0,
+                "sigma": 0.5
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["model_type"], "pk_1cpt");
+        assert!(body["converged"].is_boolean());
+        assert!(body["nll"].is_number());
+        assert_eq!(body["parameter_names"].as_array().unwrap().len(), 3);
+        assert!(body["wall_time_s"].as_f64().unwrap() > 0.0);
+    }
+
+    #[tokio::test]
+    async fn nlme_nlme_1cpt_smoke() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/nlme/fit",
+            serde_json::json!({
+                "model_type": "nlme_1cpt",
+                "times": [0.5, 1.0, 2.0, 4.0, 0.5, 1.0, 2.0, 4.0],
+                "observations": [2.0, 3.5, 3.0, 1.5, 1.8, 3.2, 2.8, 1.3],
+                "subject_idx": [0, 0, 0, 0, 1, 1, 1, 1],
+                "n_subjects": 2,
+                "dose": 100.0,
+                "sigma": 0.5
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "body: {body}");
+        assert_eq!(body["model_type"], "nlme_1cpt");
+        // 6 pop params + 3*2 etas = 12
+        assert_eq!(body["parameter_names"].as_array().unwrap().len(), 12);
+        assert!(body["nll"].is_number());
+    }
+
+    #[tokio::test]
+    async fn nlme_bad_model_type_returns_400() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/nlme/fit",
+            serde_json::json!({
+                "model_type": "nonexistent",
+                "times": [1.0],
+                "observations": [1.0],
+                "dose": 100.0,
+                "sigma": 0.5
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("unknown model_type"));
+    }
+
+    #[tokio::test]
+    async fn nlme_missing_subject_idx_returns_400() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/nlme/fit",
+            serde_json::json!({
+                "model_type": "nlme_1cpt",
+                "times": [1.0],
+                "observations": [1.0],
+                "dose": 100.0,
+                "sigma": 0.5
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("subject_idx"));
+    }
+
+    // --- Unbinned fit ---
+
+    #[tokio::test]
+    async fn unbinned_fit_bad_spec_returns_400() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/unbinned/fit",
+            serde_json::json!({ "spec": { "not": "valid" } }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("invalid unbinned spec"));
+    }
+
+    #[tokio::test]
+    async fn unbinned_fit_wrong_schema_version_returns_400() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/unbinned/fit",
+            serde_json::json!({
+                "spec": {
+                    "schema_version": "wrong_version",
+                    "model": { "parameters": [] },
+                    "channels": []
+                }
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("unsupported schema_version"));
+    }
+
+    // --- Async Jobs ---
+
+    #[tokio::test]
+    async fn jobs_bad_task_type_returns_400() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/jobs/submit",
+            serde_json::json!({ "task_type": "nonexistent", "payload": {} }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("unknown task_type"));
+    }
+
+    #[tokio::test]
+    async fn jobs_status_not_found_returns_404() {
+        let (status, body) = get_json(test_app(), "/v1/jobs/nonexistent-id").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(body["error"].as_str().unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn jobs_list_returns_empty() {
+        let (status, body) = get_json(test_app(), "/v1/jobs").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body["jobs"].as_array().unwrap().is_empty());
+    }
+
+    // --- Auth integration ---
+
+    #[tokio::test]
+    async fn auth_health_exempt() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = get_json(test_app_with_auth(keys), "/v1/health").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_missing_token() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = get_json(test_app_with_auth(keys), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("missing"));
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_bad_token() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) =
+            get_json_with_bearer(test_app_with_auth(keys), "/v1/openapi.json", "wrong-key").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("invalid"));
+    }
+
+    #[tokio::test]
+    async fn auth_accepts_valid_token() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) =
+            get_json_with_bearer(test_app_with_auth(keys), "/v1/openapi.json", "secret-key").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["openapi"], "3.1.0");
+    }
+
+    // --- Rate limiting integration ---
+
+    #[tokio::test]
+    async fn rate_limit_blocks_after_budget() {
+        let app = test_app_with_rate_limit(2);
+        let (s1, _) = get_json(app.clone(), "/v1/openapi.json").await;
+        assert_eq!(s1, StatusCode::OK);
+        let (s2, _) = get_json(app.clone(), "/v1/openapi.json").await;
+        assert_eq!(s2, StatusCode::OK);
+        let (s3, body) = get_json(app, "/v1/openapi.json").await;
+        assert_eq!(s3, StatusCode::TOO_MANY_REQUESTS);
+        assert!(body["error"].as_str().unwrap().contains("rate limit"));
+    }
+
+    #[tokio::test]
+    async fn rate_limit_health_exempt() {
+        let app = test_app_with_rate_limit(1);
+        // Use up the budget
+        let (s1, _) = get_json(app.clone(), "/v1/openapi.json").await;
+        assert_eq!(s1, StatusCode::OK);
+        // Health should still work
+        let (s2, body) = get_json(app, "/v1/health").await;
+        assert_eq!(s2, StatusCode::OK);
+        assert_eq!(body["status"], "ok");
     }
 }

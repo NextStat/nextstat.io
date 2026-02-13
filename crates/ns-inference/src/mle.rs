@@ -247,22 +247,93 @@ impl MaximumLikelihoodEstimator {
         let bounds: Vec<(f64, f64)> = model.parameter_bounds();
         let prepared = model.prepared();
 
-        struct ModelObjective<'a, M: LogDensityModel + ?Sized, P: PreparedNll> {
-            prepared: P,
-            model: &'a M,
+        #[derive(Default)]
+        struct Cache {
+            params: Vec<f64>,
+            nll: f64,
+            grad: Vec<f64>,
+            nll_valid: bool,
+            grad_valid: bool,
         }
 
-        impl<M: LogDensityModel + ?Sized, P: PreparedNll> ObjectiveFunction for ModelObjective<'_, M, P> {
+        struct CachedObjective<'a, M: LogDensityModel + ?Sized> {
+            prepared: M::Prepared<'a>,
+            model: &'a M,
+            prefer_fused: bool,
+            cache: RefCell<Cache>,
+        }
+
+        // SAFETY: L-BFGS-B optimizer is single-threaded within one minimize() call.
+        // The RefCell is never shared across threads.
+        unsafe impl<M: LogDensityModel + ?Sized> Send for CachedObjective<'_, M> {}
+        unsafe impl<M: LogDensityModel + ?Sized> Sync for CachedObjective<'_, M> {}
+
+        impl<M: LogDensityModel + ?Sized> CachedObjective<'_, M> {
+            fn ensure_cost(&self, params: &[f64]) -> Result<()> {
+                let mut cache = self.cache.borrow_mut();
+                if cache.nll_valid && cache.params == params {
+                    return Ok(());
+                }
+
+                if self.prefer_fused {
+                    let (nll, grad) = self.model.nll_grad_prepared(&self.prepared, params)?;
+                    cache.params = params.to_vec();
+                    cache.nll = nll;
+                    cache.grad = grad;
+                    cache.nll_valid = true;
+                    cache.grad_valid = true;
+                } else {
+                    let nll = self.prepared.nll(params)?;
+                    cache.params = params.to_vec();
+                    cache.nll = nll;
+                    cache.nll_valid = true;
+                    cache.grad_valid = false;
+                }
+                Ok(())
+            }
+
+            fn ensure_grad(&self, params: &[f64]) -> Result<()> {
+                let mut cache = self.cache.borrow_mut();
+                if cache.grad_valid && cache.params == params {
+                    return Ok(());
+                }
+
+                if self.prefer_fused {
+                    let (nll, grad) = self.model.nll_grad_prepared(&self.prepared, params)?;
+                    cache.params = params.to_vec();
+                    cache.nll = nll;
+                    cache.grad = grad;
+                    cache.nll_valid = true;
+                    cache.grad_valid = true;
+                } else {
+                    let grad = self.model.grad_nll(params)?;
+                    cache.params = params.to_vec();
+                    cache.grad = grad;
+                    cache.nll_valid = false;
+                    cache.grad_valid = true;
+                }
+                Ok(())
+            }
+        }
+
+        impl<M: LogDensityModel + ?Sized> ObjectiveFunction for CachedObjective<'_, M> {
             fn eval(&self, params: &[f64]) -> Result<f64> {
-                self.prepared.nll(params)
+                self.ensure_cost(params)?;
+                Ok(self.cache.borrow().nll)
             }
 
             fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
-                self.model.grad_nll(params)
+                self.ensure_grad(params)?;
+                Ok(self.cache.borrow().grad.clone())
             }
         }
 
-        let objective = ModelObjective { prepared, model };
+        let objective = CachedObjective {
+            prepared,
+            model,
+            prefer_fused: model.prefer_fused_eval_grad(),
+            cache: RefCell::new(Cache::default()),
+        };
         let optimizer = LbfgsbOptimizer::new(self.config.clone());
         optimizer.minimize(&objective, initial_params, &bounds)
     }
@@ -827,8 +898,23 @@ impl MaximumLikelihoodEstimator {
             )
             .collect::<Vec<_>>();
 
-        // Collect results, sort by |impact|
-        let mut ranking: Vec<RankingEntry> = entries.into_iter().filter_map(|r| r.ok()).collect();
+        // Collect results; warn about failures instead of silently dropping them.
+        let mut ranking: Vec<RankingEntry> = Vec::with_capacity(entries.len());
+        let mut n_failed = 0u32;
+        for entry in entries {
+            match entry {
+                Ok(e) => ranking.push(e),
+                Err(e) => {
+                    n_failed += 1;
+                    log::warn!("Ranking NP refit failed: {e}");
+                }
+            }
+        }
+        if n_failed > 0 {
+            log::warn!(
+                "Ranking: {n_failed} NP(s) omitted due to refit failures (see warnings above)"
+            );
+        }
 
         ranking.sort_by(|a, b| {
             let impact_a = a.delta_mu_up.abs().max(a.delta_mu_down.abs());
@@ -1470,6 +1556,7 @@ impl MaximumLikelihoodEstimator {
 }
 
 /// Entry in ranking plot: impact of a nuisance parameter on the POI.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct RankingEntry {
     /// Parameter name

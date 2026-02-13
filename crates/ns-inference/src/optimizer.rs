@@ -134,6 +134,26 @@ impl<'a> ObjectiveFunction for TransformedObjective<'a> {
     }
 }
 
+/// Optimizer strategy presets matching common pyhf optimizer configurations.
+///
+/// These presets configure [`OptimizerConfig`] to approximate the behavior of
+/// pyhf's supported optimizers (`scipy`, `minuit`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OptimizerStrategy {
+    /// Default NextStat strategy: L-BFGS-B with hard boundary clamping.
+    /// Fast, suitable for most HistFactory models. Equivalent to pyhf's
+    /// `scipy` optimizer backend with `method="L-BFGS-B"`.
+    Default,
+    /// Minuit-like strategy: L-BFGS-B with smooth internal variable transforms
+    /// (logistic/exp), mimicking Minuit2's MIGRAD internal parameterization.
+    /// Better convergence near boundaries at the cost of slightly more evaluations.
+    /// Use this for parity comparisons with `pyhf` using `iminuit` backend.
+    MinuitLike,
+    /// High-precision strategy: tighter tolerance, more L-BFGS corrections.
+    /// For final results where robustness is preferred over speed.
+    HighPrecision,
+}
+
 /// Configuration for L-BFGS-B optimizer
 #[derive(Debug, Clone)]
 pub struct OptimizerConfig {
@@ -141,7 +161,10 @@ pub struct OptimizerConfig {
     pub max_iter: u64,
     /// Convergence tolerance for gradient norm
     pub tol: f64,
-    /// Number of corrections to approximate inverse Hessian
+    /// Number of corrections to approximate inverse Hessian.
+    ///
+    /// Set to [`Self::AUTO_M`] (0) to auto-select based on model size.
+    /// Explicit values (e.g. 10, 20, 30) are used as-is.
     pub m: usize,
     /// If true, use a smooth bounds transform (logistic/exp) instead of hard clamping.
     ///
@@ -150,13 +173,42 @@ pub struct OptimizerConfig {
     pub smooth_bounds: bool,
 }
 
+impl OptimizerConfig {
+    /// Sentinel value for auto-selecting L-BFGS-B history size based on model dimension.
+    pub const AUTO_M: usize = 0;
+
+    /// Returns the effective L-BFGS-B history size, auto-scaling for large models.
+    ///
+    /// When `m` is [`Self::AUTO_M`] (0), scales up for models with >50 parameters:
+    ///   `effective_m = max(10, min(50, n_params / 5))`
+    ///
+    /// When `m` was explicitly set (e.g. via constructor or strategy preset), returns it unchanged.
+    pub fn effective_m(&self, n_params: usize) -> usize {
+        if self.m == Self::AUTO_M { (n_params / 5).max(10).min(50) } else { self.m }
+    }
+
+    /// Create a config from a named strategy preset.
+    pub fn from_strategy(strategy: OptimizerStrategy) -> Self {
+        match strategy {
+            OptimizerStrategy::Default => Self::default(),
+            OptimizerStrategy::MinuitLike => {
+                Self { max_iter: 2000, tol: 1e-7, m: 20, smooth_bounds: true }
+            }
+            OptimizerStrategy::HighPrecision => {
+                Self { max_iter: 5000, tol: 1e-9, m: 30, smooth_bounds: false }
+            }
+        }
+    }
+}
+
 impl Default for OptimizerConfig {
     fn default() -> Self {
-        Self { max_iter: 1000, tol: 1e-6, m: 10, smooth_bounds: false }
+        Self { max_iter: 1000, tol: 1e-6, m: Self::AUTO_M, smooth_bounds: false }
     }
 }
 
 /// Result of optimization
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct OptimizationResult {
     /// Best-fit parameters
@@ -530,13 +582,12 @@ impl LbfgsbOptimizer {
             let linesearch = MoreThuenteLineSearch::new();
             let tol_cost =
                 if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
-            let solver = LBFGS::new(linesearch, self.config.m)
+            let effective_m = self.config.effective_m(bounds.len());
+            let solver = LBFGS::new(linesearch, effective_m)
                 .with_tolerance_grad(self.config.tol)
                 .map_err(|e| {
-                    ns_core::Error::Validation(format!(
-                        "Invalid optimizer configuration (tol): {e}"
-                    ))
-                })?;
+                ns_core::Error::Validation(format!("Invalid optimizer configuration (tol): {e}"))
+            })?;
             let solver = solver.with_tolerance_cost(tol_cost).map_err(|e| {
                 ns_core::Error::Validation(format!(
                     "Invalid optimizer configuration (tol_cost): {e}"
@@ -596,7 +647,8 @@ impl LbfgsbOptimizer {
         // can lead to unnecessary max-iter terminations on larger HistFactory models.
         let tol_cost =
             if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
-        let solver = LBFGS::new(linesearch, self.config.m)
+        let effective_m = self.config.effective_m(bounds.len());
+        let solver = LBFGS::new(linesearch, effective_m)
             .with_tolerance_grad(self.config.tol)
             .map_err(|e| {
                 ns_core::Error::Validation(format!("Invalid optimizer configuration (tol): {e}"))
@@ -655,6 +707,37 @@ impl LbfgsbOptimizer {
 impl Default for LbfgsbOptimizer {
     fn default() -> Self {
         Self::new(OptimizerConfig::default())
+    }
+}
+
+/// Configuration for batch toy fitting with warm-start and retry logic.
+///
+/// Used by [`crate::unbinned_batch_cpu::fit_unbinned_toys_batch_cpu`] and the Python
+/// `unbinned_fit_toys()` binding. The defaults are tuned for ≥95% convergence on
+/// typical unbinned models (Crystal Ball + Exponential, 7 params, 2M events).
+#[derive(Debug, Clone)]
+pub struct ToyFitConfig {
+    /// Base optimizer config. Default: `max_iter=5000`, auto-m.
+    pub optimizer: OptimizerConfig,
+    /// Maximum retry attempts with jittered init on non-convergence. Default: 3.
+    pub max_retries: usize,
+    /// Jitter scale as a fraction of the parameter range. Default: 0.10 (10%).
+    pub jitter_scale: f64,
+    /// Whether to compute Hessian/covariance for converged fits. Default: false.
+    ///
+    /// Set to `true` when parameter pulls are needed (e.g. `--max-abs-poi-pull-mean`).
+    /// When `false`, `FitResult.uncertainties` will be zeros (much faster).
+    pub compute_hessian: bool,
+}
+
+impl Default for ToyFitConfig {
+    fn default() -> Self {
+        Self {
+            optimizer: OptimizerConfig { max_iter: 5000, ..OptimizerConfig::default() },
+            max_retries: 3,
+            jitter_scale: 0.10,
+            compute_hessian: false,
+        }
     }
 }
 
@@ -944,5 +1027,38 @@ mod tests {
         let result = optimizer.minimize(&Quad, &[0.0], &[(0.0, f64::INFINITY)]).unwrap();
         assert_relative_eq!(result.parameters[0], 3.0, epsilon = 1e-6);
         assert!(result.converged);
+    }
+
+    #[test]
+    fn test_effective_m_auto_scaling() {
+        let auto = OptimizerConfig::default();
+        assert_eq!(auto.m, OptimizerConfig::AUTO_M);
+
+        // Small models: floor at 10
+        assert_eq!(auto.effective_m(5), 10);
+        assert_eq!(auto.effective_m(20), 10);
+        assert_eq!(auto.effective_m(50), 10);
+
+        // Scales with n_params / 5
+        assert_eq!(auto.effective_m(100), 20);
+        assert_eq!(auto.effective_m(150), 30);
+
+        // Large models: capped at 50
+        assert_eq!(auto.effective_m(277), 50); // tchannel
+        assert_eq!(auto.effective_m(500), 50);
+
+        // Explicit m is respected unchanged
+        let explicit = OptimizerConfig { m: 15, ..Default::default() };
+        assert_eq!(explicit.effective_m(5), 15);
+        assert_eq!(explicit.effective_m(500), 15);
+
+        // Strategy presets keep their explicit m
+        let minuit = OptimizerConfig::from_strategy(OptimizerStrategy::MinuitLike);
+        assert_eq!(minuit.effective_m(5), 20);
+        assert_eq!(minuit.effective_m(500), 20);
+
+        let hp = OptimizerConfig::from_strategy(OptimizerStrategy::HighPrecision);
+        assert_eq!(hp.effective_m(5), 30);
+        assert_eq!(hp.effective_m(500), 30);
     }
 }

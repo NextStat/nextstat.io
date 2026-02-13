@@ -23,7 +23,7 @@ category: trust
 
 # Benchmark Snapshots as Products: CI Artifacts, Manifests, and Baselines
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [The End of the Scripting Era](/blog/end-of-scripting-era-benchmarks) · **Next:** [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [The End of the Scripting Era](/blog/end-of-scripting-era) · **Next:** [Third-Party Replication: Signed Reports](/blog/third-party-replication)
 
 Benchmarks are not just measurements — they are *claims*.
 
@@ -31,9 +31,7 @@ If a claim is not rerunnable, it is not evidence. It’s a screenshot.
 
 This post explains the publishing layer of our public benchmark program: how we turn “we ran it once” into a **benchmark snapshot** that others can rerun, audit, and (eventually) cite.
 
-Canonical spec: [Publishing Benchmarks](/docs/benchmarks/publishing).
-
-If you want a single “do this first” runbook (first snapshot end-to-end), use: [First Public Benchmark Snapshot (Playbook)](/docs/benchmarks/first-public-snapshot).
+Canonical specification (protocol + artifacts): [/docs/public-benchmarks](/docs/public-benchmarks).
 
 ---
 
@@ -92,7 +90,7 @@ The single-command entrypoint for generating a complete validation pack is:
 make validation-pack
 ```
 
-This produces `apex2_master_report.json` + `validation_report.json` (+ optional PDF) + `validation_pack_manifest.json` in `tmp/validation_pack/`. See: [Validation Report Artifacts](/docs/references/validation-report).
+This produces `apex2_master_report.json` + `validation_report.json` (+ optional PDF) + `validation_pack_manifest.json` in `tmp/validation_pack/`. See: [/docs/validation-report](/docs/validation-report).
 
 ---
 
@@ -231,8 +229,8 @@ That’s why our replication protocol is a first-class part of the program:
 
 See:
 
-- [Third-Party Replication Runbook](/docs/benchmarks/replication)
-- [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report)
+- [Public Benchmarks](/docs/public-benchmarks)
+- [Third-Party Replication: Signed Reports](/blog/third-party-replication)
 
 ---
 

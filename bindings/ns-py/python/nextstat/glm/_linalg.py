@@ -1,32 +1,50 @@
-"""Tiny linear algebra helpers for small problems (no numpy required).
+"""Linear algebra helpers — numpy-accelerated with pure-Python fallback.
 
-These routines are intentionally minimal and intended for small p (<= ~50).
+The public interface uses List[List[float]] / List[float] for backward
+compatibility with callers that expect plain Python lists.  Internally
+everything runs through numpy (BLAS) when available.
 """
 
 from __future__ import annotations
 
 from typing import List, Sequence
 
+try:
+    import numpy as _np
+    _HAS_NP = True
+except ImportError:
+    _HAS_NP = False
 
 Vector = List[float]
 Matrix = List[List[float]]
 
 
 def mat_t(a: Matrix) -> Matrix:
+    if _HAS_NP:
+        return _np.asarray(a, dtype=_np.float64).T.tolist()
     return [list(col) for col in zip(*a)]
 
 
 def mat_mul(a: Matrix, b: Matrix) -> Matrix:
+    if _HAS_NP:
+        return (_np.asarray(a, dtype=_np.float64) @ _np.asarray(b, dtype=_np.float64)).tolist()
     bt = mat_t(b)
     return [[sum(ai * bj for ai, bj in zip(row, col)) for col in bt] for row in a]
 
 
 def mat_vec_mul(a: Matrix, x: Vector) -> Vector:
+    if _HAS_NP:
+        return (_np.asarray(a, dtype=_np.float64) @ _np.asarray(x, dtype=_np.float64)).tolist()
     return [sum(ai * xi for ai, xi in zip(row, x)) for row in a]
 
 
 def solve_linear(a: Matrix, b: Vector) -> Vector:
-    """Solve a x = b by Gaussian elimination with partial pivoting."""
+    """Solve a x = b."""
+    if _HAS_NP:
+        return _np.linalg.solve(
+            _np.asarray(a, dtype=_np.float64),
+            _np.asarray(b, dtype=_np.float64),
+        ).tolist()
 
     n = len(a)
     if n == 0:
@@ -61,6 +79,9 @@ def solve_linear(a: Matrix, b: Vector) -> Vector:
 
 
 def mat_inv(a: Matrix) -> Matrix:
+    if _HAS_NP:
+        return _np.linalg.inv(_np.asarray(a, dtype=_np.float64)).tolist()
+
     n = len(a)
     if n == 0:
         return []
@@ -77,9 +98,13 @@ def mat_inv(a: Matrix) -> Matrix:
 
 
 def add_intercept(x: Sequence[Sequence[float]]) -> Matrix:
+    if _HAS_NP:
+        arr = _np.asarray(x, dtype=_np.float64)
+        return _np.column_stack([_np.ones(arr.shape[0]), arr]).tolist()
     return [[1.0] + [float(v) for v in row] for row in x]
 
 
 def as_2d_float_list(x: Sequence[Sequence[float]]) -> Matrix:
+    if _HAS_NP:
+        return _np.asarray(x, dtype=_np.float64).tolist()
     return [[float(v) for v in row] for row in x]
-

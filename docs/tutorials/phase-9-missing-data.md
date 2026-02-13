@@ -11,7 +11,7 @@ The design goal is simple: missing-data handling must be explicit and reproducib
 
 ## What is implemented
 
-`nextstat.missing.apply_policy(...)`:
+`nextstat.missing.apply_policy(x, y=None, *, policy="drop_rows") -> MissingResult`:
 
 - `policy="drop_rows"`: drop any row with missing in `X` or `y`
 - `policy="impute_mean"`: mean-impute missing values in `X` (per-column), drop rows with missing `y`

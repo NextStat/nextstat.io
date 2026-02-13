@@ -108,6 +108,7 @@ def collect_datasets_from_result(result_path: Path) -> list[dict[str, str]]:
         "nextstat.pharma_benchmark_result.v1",
         "nextstat.bayesian_benchmark_result.v1",
         "nextstat.ml_benchmark_result.v1",
+        "nextstat.econometrics_benchmark_result.v1",
     ):
         ds = obj.get("dataset") or {}
         ds_id = ds.get("id")
@@ -121,6 +122,7 @@ def collect_datasets_from_result(result_path: Path) -> list[dict[str, str]]:
         "nextstat.pharma_benchmark_suite_result.v1",
         "nextstat.bayesian_benchmark_suite_result.v1",
         "nextstat.ml_benchmark_suite_result.v1",
+        "nextstat.econometrics_benchmark_suite_result.v1",
     ):
         base = result_path.parent
         for e in obj.get("cases", []):

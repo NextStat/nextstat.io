@@ -44,6 +44,7 @@ pub struct ProfilePointDiag {
 }
 
 /// Profile likelihood scan result.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct ProfileLikelihoodScan {
     /// POI index in NextStat parameter order.
@@ -60,6 +61,20 @@ fn poi_index(model: &(impl PoiModel + ?Sized)) -> Result<usize> {
     model.poi_index().ok_or_else(|| Error::Validation("No POI defined".to_string()))
 }
 
+/// Test statistic variant selector (arXiv:1007.1727).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestStatistic {
+    /// `q̃_μ` (Eq. 14): one-sided, bounded POI (`μ̂ ∈ [0, μ]`).
+    /// Used for upper limits. Default in `pyhf` for `test_stat="qtilde"`.
+    QMuTilde,
+    /// `q_μ` (Eq. 12): one-sided (`q = 0` when `μ̂ > μ`).
+    QMu,
+    /// `t_μ` (Eq. 8): two-sided. For confidence intervals (not just upper limits).
+    TMu,
+    /// `t̃_μ` (Eq. 11): two-sided with bounded POI (`μ̂ ≥ 0`).
+    TMuTilde,
+}
+
 /// Compute pyhf-style `q_mu`/`qtilde_mu` for a single `mu_test`.
 ///
 /// Note: NextStat's `HistFactoryModel::nll` is `-log L`, while pyhf uses `twice_nll = -2 log L`.
@@ -69,20 +84,83 @@ pub fn qmu_like(
     model: &(impl LogDensityModel + PoiModel + FixedParamModel),
     mu_test: f64,
 ) -> Result<f64> {
+    compute_test_statistic(mle, model, mu_test, TestStatistic::QMuTilde)
+}
+
+/// Compute a test statistic for a single `mu_test`.
+///
+/// Supports all four test statistics from arXiv:1007.1727:
+/// - `QMuTilde` (Eq. 14): one-sided, bounded POI — for upper limits (default).
+/// - `QMu` (Eq. 12): one-sided — for upper limits (unbounded μ̂).
+/// - `TMu` (Eq. 8): two-sided — for confidence intervals.
+/// - `TMuTilde` (Eq. 11): two-sided, bounded POI — for confidence intervals.
+pub fn compute_test_statistic(
+    mle: &MaximumLikelihoodEstimator,
+    model: &(impl LogDensityModel + PoiModel + FixedParamModel),
+    mu_test: f64,
+    test_stat: TestStatistic,
+) -> Result<f64> {
     let poi = poi_index(model)?;
 
     let free = mle.fit_minimum(model)?;
     let mu_hat = free.parameters[poi];
 
+    // Conditional fit at mu_test
     let fixed_model = model.with_fixed_param(poi, mu_test);
     let fixed = mle.fit_minimum(&fixed_model)?;
 
-    let llr = 2.0 * (fixed.fval - free.fval);
-    let mut q = llr.max(0.0);
-    if mu_hat > mu_test {
-        q = 0.0;
+    eval_test_statistic(test_stat, mu_hat, mu_test, fixed.fval, free.fval, || {
+        // Lazy boundary fit: only needed for tilde variants when mu_hat < 0
+        let fixed_zero_model = model.with_fixed_param(poi, 0.0);
+        mle.fit_minimum(&fixed_zero_model).map(|r| r.fval)
+    })
+}
+
+/// Pure computation of a test statistic value from pre-computed fit results.
+///
+/// `nll_mu`: conditional NLL at `mu_test`.
+/// `nll_hat`: unconditional NLL at `mu_hat`.
+/// `nll_zero_fn`: lazy evaluation of NLL at `mu=0` (only called for tilde variants when needed).
+fn eval_test_statistic(
+    test_stat: TestStatistic,
+    mu_hat: f64,
+    mu_test: f64,
+    nll_mu: f64,
+    nll_hat: f64,
+    nll_zero_fn: impl FnOnce() -> Result<f64>,
+) -> Result<f64> {
+    match test_stat {
+        // Eq. 14 (q̃_μ): one-sided, bounded POI
+        TestStatistic::QMuTilde => {
+            if mu_hat > mu_test {
+                Ok(0.0)
+            } else if mu_hat < 0.0 {
+                let nll_zero = nll_zero_fn()?;
+                Ok((2.0 * (nll_mu - nll_zero)).max(0.0))
+            } else {
+                Ok((2.0 * (nll_mu - nll_hat)).max(0.0))
+            }
+        }
+        // Eq. 12 (q_μ): one-sided, unbounded
+        TestStatistic::QMu => {
+            if mu_hat > mu_test {
+                Ok(0.0)
+            } else {
+                Ok((2.0 * (nll_mu - nll_hat)).max(0.0))
+            }
+        }
+        // Eq. 8 (t_μ): two-sided
+        TestStatistic::TMu => Ok((2.0 * (nll_mu - nll_hat)).max(0.0)),
+        // Eq. 11 (t̃_μ): two-sided, bounded POI (μ̂ ≥ 0)
+        TestStatistic::TMuTilde => {
+            if mu_hat >= 0.0 {
+                Ok((2.0 * (nll_mu - nll_hat)).max(0.0))
+            } else {
+                let nll_zero = nll_zero_fn()?;
+                Ok((2.0 * (nll_mu - nll_zero)).max(0.0))
+            }
+        }
     }
-    Ok(q)
 }
 
 /// Run a profile likelihood scan over the provided POI values.
@@ -285,8 +363,13 @@ fn scan_histfactory_impl(
             q = 0.0;
         }
 
-        // Carry forward for warm-start
-        warm_params = fixed.parameters.clone();
+        // Carry forward for warm-start — reset to global MLE if fit didn't converge.
+        if fixed.converged {
+            warm_params = fixed.parameters.clone();
+        } else {
+            log::warn!("Profile scan: fit at mu={mu} did not converge, resetting warm-start");
+            warm_params = free.parameters.clone();
+        }
 
         let diag = if include_diag {
             let grad_l2 = fixed.final_gradient.as_ref().map(|g| {
@@ -434,6 +517,63 @@ mod tests {
     fn load_workspace(json: &str) -> HistFactoryModel {
         let ws: Workspace = serde_json::from_str(json).unwrap();
         HistFactoryModel::from_workspace(&ws).unwrap()
+    }
+
+    #[test]
+    fn test_test_statistic_variants() {
+        let model = load_workspace(include_str!("../../../tests/fixtures/simple_workspace.json"));
+        let mle = MaximumLikelihoodEstimator::new();
+        let mu_test = 1.5;
+
+        let q_tilde =
+            compute_test_statistic(&mle, &model, mu_test, TestStatistic::QMuTilde).unwrap();
+        let q_mu = compute_test_statistic(&mle, &model, mu_test, TestStatistic::QMu).unwrap();
+        let t_mu = compute_test_statistic(&mle, &model, mu_test, TestStatistic::TMu).unwrap();
+        let t_tilde =
+            compute_test_statistic(&mle, &model, mu_test, TestStatistic::TMuTilde).unwrap();
+
+        // qmu_like should equal QMuTilde
+        let q_legacy = qmu_like(&mle, &model, mu_test).unwrap();
+        assert!((q_tilde - q_legacy).abs() < 1e-12, "QMuTilde should match legacy qmu_like");
+
+        // All test stats should be non-negative
+        assert!(q_tilde >= 0.0);
+        assert!(q_mu >= 0.0);
+        assert!(t_mu >= 0.0);
+        assert!(t_tilde >= 0.0);
+
+        // t_mu >= q_mu (two-sided is always >= one-sided, since one-sided clips to 0 when mu_hat > mu)
+        assert!(t_mu >= q_mu - 1e-12, "t_mu={} should be >= q_mu={}", t_mu, q_mu);
+
+        // For mu_test well above mu_hat: one-sided and two-sided should agree
+        // (because mu_hat < mu_test, so no clipping)
+        let free = mle.fit_minimum(&model).unwrap();
+        let mu_hat = free.parameters[model.poi_index().unwrap()];
+        if mu_hat < mu_test {
+            assert!(
+                (q_tilde - t_tilde).abs() < 1e-10,
+                "when mu_hat < mu_test, q_tilde should equal t_tilde (both use same denominator)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_tmu_nonzero_when_mu_hat_above_mu_test() {
+        let model = load_workspace(include_str!("../../../tests/fixtures/simple_workspace.json"));
+        let mle = MaximumLikelihoodEstimator::new();
+
+        // mu_test = 0.0 → mu_hat should be > 0, so qmu clips to 0 but tmu should be > 0
+        let mu_test = 0.0;
+        let q_mu = compute_test_statistic(&mle, &model, mu_test, TestStatistic::QMu).unwrap();
+        let t_mu = compute_test_statistic(&mle, &model, mu_test, TestStatistic::TMu).unwrap();
+
+        let free = mle.fit_minimum(&model).unwrap();
+        let mu_hat = free.parameters[model.poi_index().unwrap()];
+
+        if mu_hat > mu_test {
+            assert_eq!(q_mu, 0.0, "q_mu should be 0 when mu_hat > mu_test");
+            assert!(t_mu > 0.0, "t_mu should be >0 when mu_hat > mu_test (two-sided)");
+        }
     }
 
     #[test]

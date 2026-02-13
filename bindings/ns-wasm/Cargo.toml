@@ -14,12 +14,11 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-# Enable Parquet Zstd compression support (backed by this workspace's pure-Rust `zstd` shim).
-arrow-io-zstd = ["ns-translate/arrow-io-zstd"]
 
 [dependencies]
+ns-core = { workspace = true }
 ns-inference = { workspace = true, default-features = false }
-ns-translate = { workspace = true, default-features = false, features = ["arrow-io"] }
+ns-translate = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 

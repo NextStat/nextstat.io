@@ -26,6 +26,8 @@ ndarray.workspace = true
 rayon.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 statrs.workspace = true
 
 [features]
@@ -33,6 +35,7 @@ default = ["root-io"]
 root-io = ["ns-translate/root-io"]
 accelerate = ["ns-translate/accelerate", "ns-compute/accelerate"]
 cuda = ["ns-translate/cuda", "ns-compute/cuda"]
+neural-tensorrt = ["ns-compute/flow-ort-tensorrt"]
 metal = ["ns-translate/metal", "ns-compute/metal"]
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
@@ -42,8 +45,6 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 approx.workspace = true
 criterion.workspace = true
 env_logger.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 
 [[bench]]
 name = "mle_benchmark"

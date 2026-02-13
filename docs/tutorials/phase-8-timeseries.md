@@ -64,7 +64,7 @@ fit = nextstat.timeseries.kalman_fit(
 )
 print("converged:", fit["em"]["converged"], "iters:", fit["em"]["n_iter"])
 print("phi_hat:", fit["em"]["f"][0][0])
-print("forecast t[-1]:", fit["forecast"]["t"][-1], "y_mean[-1]:", fit["forecast"]["obs_mean"][-1][0])
+print("forecast t[-1]:", fit["forecast"]["t"][-1], "y_mean[-1]:", fit["forecast"]["obs_means"][-1][0])
 ```
 
 ## ARMA(1,1) forecast (fixed-parameter baseline)
@@ -77,7 +77,7 @@ model = nextstat.timeseries.arma11_model(phi=0.6, theta=0.2, sigma2=0.4, r=1e-12
 ys = [[0.1], [0.2], [-0.1], [0.0], [0.15], [0.05]]
 
 fc = nextstat.timeseries.kalman_forecast(model, ys, steps=5, alpha=0.05)
-print(fc["obs_mean"])
+print(fc["obs_means"])
 ```
 
 ## CLI quickstart
@@ -109,12 +109,12 @@ nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 
 - CLI: `--estimate-f true` to estimate `F[0,0]`.
 - CLI: `--estimate-h true` to estimate `H[0,0]`.
-- Python: `nextstat.timeseries.kalman_em(..., estimate_f=True, estimate_h=True)`.
+- Python: `nextstat.timeseries.kalman_em(model, ys, estimate_f=True, estimate_h=True)`.
 
 ## Fit helper
 
 - Python: `nextstat.timeseries.kalman_fit(model, ys, forecast_steps=10)` runs EM + RTS smoothing (+ optional forecast) and returns a dict with `model`, `em`, `smooth`, `forecast`.
-- CLI: `nextstat timeseries kalman-fit --input ... --forecast-steps 10` outputs the same sections in JSON.
+- CLI: `nextstat timeseries kalman-fit --input kalman_1d.json --forecast-steps 10` outputs the same sections in JSON.
 
 ## Missing observations
 
@@ -124,12 +124,12 @@ nextstat timeseries kalman-simulate --input kalman_1d.json --t-max 50 --seed 123
 ## Standard models
 
 - CLI: specify exactly one of `model`, `local_level`, `local_linear_trend`, `ar1`, `arma11`, `local_level_seasonal`, `local_linear_trend_seasonal`.
-- Python: use `nextstat.timeseries.local_level_model(...)`, `nextstat.timeseries.local_linear_trend_model(...)`, `nextstat.timeseries.ar1_model(...)`, `nextstat.timeseries.arma11_model(...)`, `nextstat.timeseries.local_level_seasonal_model(...)`, or `nextstat.timeseries.local_linear_trend_seasonal_model(...)`.
+- Python: use `nextstat.timeseries.local_level_model(q=0.1, r=0.2, m0=0.0, p0=1.0)`, `nextstat.timeseries.local_linear_trend_model(q_level=0.1, q_slope=0.05, r=0.2, level0=0.0, slope0=0.0, p0_level=1.0, p0_slope=1.0)`, `nextstat.timeseries.ar1_model(phi=0.8, q=0.2, r=0.1, m0=0.0, p0=1.0)`, `nextstat.timeseries.arma11_model(phi=0.6, theta=0.2, sigma2=0.4, r=1e-12, m0_x=0.0, m0_eps=0.0, p0_x=1.0, p0_eps=1.0)`, `nextstat.timeseries.local_level_seasonal_model(period=12, q_level=0.1, q_season=0.01, r=0.2, level0=0.0, p0_level=1.0, p0_season=1.0)`, or `nextstat.timeseries.local_linear_trend_seasonal_model(period=12, q_level=0.1, q_slope=0.05, q_season=0.01, r=0.2, level0=0.0, slope0=0.0, p0_level=1.0, p0_slope=1.0, p0_season=1.0)`.
 
 ARMA(1,1) baseline:
 
-- CLI: `{"arma11": {"phi": ..., "theta": ..., "sigma2": ..., "r": 1e-12}, "ys": ...}`
-- Python: `nextstat.timeseries.arma11_model(phi=..., theta=..., sigma2=..., r=1e-12, ...)`
+- CLI: `{"arma11": {"phi": 0.6, "theta": 0.2, "sigma2": 0.4, "r": 1e-12}, "ys": [[0.1], [0.2], [-0.1], [0.0], [0.15], [0.05]]}`
+- Python: `nextstat.timeseries.arma11_model(phi=0.6, theta=0.2, sigma2=0.4, r=1e-12, m0_x=0.0, m0_eps=0.0, p0_x=1.0, p0_eps=1.0)`
 - Limitation: the baseline Kalman implementation requires `r > 0` (use a tiny value like `1e-12` to approximate `r=0`).
 
 ## JSON contract (Python)
@@ -141,4 +141,4 @@ Both `kalman_filter` and `kalman_smooth` return plain Python dicts containing ne
 
 Forecast intervals:
 
-- `kalman_forecast(..., alpha=0.05)` adds `obs_lower` and `obs_upper` (marginal normal intervals).
+- `kalman_forecast(model, ys, steps=10, alpha=0.05)` adds `obs_lower` and `obs_upper` (marginal normal intervals).

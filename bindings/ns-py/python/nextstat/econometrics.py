@@ -18,6 +18,8 @@ import math
 from dataclasses import dataclass
 from typing import Any, List, Literal, Mapping, Optional, Sequence, Tuple, Union
 
+import numpy as np
+
 import nextstat
 
 from .glm._linalg import as_2d_float_list, mat_inv, mat_mul, mat_t, mat_vec_mul
@@ -54,30 +56,20 @@ def _within_demean(y: List[float], x: List[List[float]], entity: Sequence[Any]) 
 
     ent_idx, _n_ent = _encode_groups(entity)
 
-    # Means per entity.
-    sum_y: dict[int, float] = {}
-    sum_x: dict[int, List[float]] = {}
-    cnt: dict[int, int] = {}
+    # Vectorised group-mean subtraction via numpy.
+    g = np.asarray(ent_idx, dtype=np.intp)
+    ya = np.asarray(y, dtype=np.float64)
+    xa = np.asarray(x, dtype=np.float64)
 
-    for yi, xi, gi in zip(y, x, ent_idx):
-        sum_y[gi] = sum_y.get(gi, 0.0) + float(yi)
-        if gi not in sum_x:
-            sum_x[gi] = [0.0] * k
-        sx = sum_x[gi]
-        for j in range(k):
-            sx[j] += float(xi[j])
-        cnt[gi] = cnt.get(gi, 0) + 1
+    cnt = np.bincount(g).astype(np.float64)  # (n_groups,)
+    # Group sums → group means.
+    y_mean_g = np.bincount(g, weights=ya) / cnt
+    x_mean_g = np.zeros((_n_ent, k), dtype=np.float64)
+    for j in range(k):
+        x_mean_g[:, j] = np.bincount(g, weights=xa[:, j]) / cnt
 
-    mean_y = {g: sum_y[g] / float(cnt[g]) for g in cnt}
-    mean_x = {g: [sxj / float(cnt[g]) for sxj in sum_x[g]] for g in cnt}
-
-    y_star: List[float] = []
-    x_star: List[List[float]] = []
-    for yi, xi, gi in zip(y, x, ent_idx):
-        y_star.append(float(yi) - float(mean_y[gi]))
-        mx = mean_x[gi]
-        x_star.append([float(xi[j]) - float(mx[j]) for j in range(k)])
-
+    y_star = (ya - y_mean_g[g]).tolist()
+    x_star = (xa - x_mean_g[g]).tolist()
     return y_star, x_star
 
 
@@ -95,54 +87,31 @@ def _two_way_demean(y: List[float], x: List[List[float]], entity: Sequence[Any],
     ent_idx, n_ent = _encode_groups(entity)
     time_idx, n_time = _encode_groups(time)
 
-    # Means by entity, by time, and overall.
-    cnt_ent: dict[int, int] = {}
-    cnt_time: dict[int, int] = {}
-    sum_y_ent: dict[int, float] = {}
-    sum_y_time: dict[int, float] = {}
-    sum_x_ent: dict[int, List[float]] = {}
-    sum_x_time: dict[int, List[float]] = {}
+    # Vectorised two-way demeaning via numpy.
+    g = np.asarray(ent_idx, dtype=np.intp)
+    t = np.asarray(time_idx, dtype=np.intp)
+    ya = np.asarray(y, dtype=np.float64)
+    xa = np.asarray(x, dtype=np.float64)
 
-    sum_y_all = 0.0
-    sum_x_all = [0.0] * k
+    cnt_g = np.bincount(g).astype(np.float64)
+    cnt_t = np.bincount(t).astype(np.float64)
 
-    for yi, xi, gi, ti in zip(y, x, ent_idx, time_idx):
-        fy = float(yi)
-        sum_y_all += fy
-        sum_y_ent[gi] = sum_y_ent.get(gi, 0.0) + fy
-        sum_y_time[ti] = sum_y_time.get(ti, 0.0) + fy
+    # y means by entity, time, and overall.
+    y_mean_g = np.bincount(g, weights=ya) / cnt_g
+    y_mean_t = np.bincount(t, weights=ya) / cnt_t
+    y_mean_all = ya.mean()
 
-        if gi not in sum_x_ent:
-            sum_x_ent[gi] = [0.0] * k
-        if ti not in sum_x_time:
-            sum_x_time[ti] = [0.0] * k
+    # x means by entity, time, and overall.
+    x_mean_g = np.zeros((n_ent, k), dtype=np.float64)
+    x_mean_t = np.zeros((n_time, k), dtype=np.float64)
+    for j in range(k):
+        x_mean_g[:, j] = np.bincount(g, weights=xa[:, j]) / cnt_g
+        x_mean_t[:, j] = np.bincount(t, weights=xa[:, j]) / cnt_t
+    x_mean_all = xa.mean(axis=0)
 
-        sxg = sum_x_ent[gi]
-        sxt = sum_x_time[ti]
-        for j in range(k):
-            fx = float(xi[j])
-            sum_x_all[j] += fx
-            sxg[j] += fx
-            sxt[j] += fx
-
-        cnt_ent[gi] = cnt_ent.get(gi, 0) + 1
-        cnt_time[ti] = cnt_time.get(ti, 0) + 1
-
-    mean_y_all = sum_y_all / float(n)
-    mean_x_all = [sx / float(n) for sx in sum_x_all]
-
-    mean_y_ent = {g: sum_y_ent[g] / float(cnt_ent[g]) for g in cnt_ent}
-    mean_y_time = {t: sum_y_time[t] / float(cnt_time[t]) for t in cnt_time}
-    mean_x_ent = {g: [sxj / float(cnt_ent[g]) for sxj in sum_x_ent[g]] for g in cnt_ent}
-    mean_x_time = {t: [sxj / float(cnt_time[t]) for sxj in sum_x_time[t]] for t in cnt_time}
-
-    y_dd: List[float] = []
-    x_dd: List[List[float]] = []
-    for yi, xi, gi, ti in zip(y, x, ent_idx, time_idx):
-        y_dd.append(float(yi) - float(mean_y_ent[gi]) - float(mean_y_time[ti]) + float(mean_y_all))
-        mxg = mean_x_ent[gi]
-        mxt = mean_x_time[ti]
-        x_dd.append([float(xi[j]) - float(mxg[j]) - float(mxt[j]) + float(mean_x_all[j]) for j in range(k)])
+    # Two-way demeaning: y_it - y_bar_i - y_bar_t + y_bar
+    y_dd = (ya - y_mean_g[g] - y_mean_t[t] + y_mean_all).tolist()
+    x_dd = (xa - x_mean_g[g] - x_mean_t[t] + x_mean_all).tolist()
 
     return y_dd, x_dd, n_ent, n_time
 
@@ -150,11 +119,11 @@ def _two_way_demean(y: List[float], x: List[List[float]], entity: Sequence[Any],
 def _dot(a: Sequence[float], b: Sequence[float]) -> float:
     if len(a) != len(b):
         raise ValueError("length mismatch")
-    return sum(float(x) * float(y) for x, y in zip(a, b))
+    return float(np.dot(a, b))
 
 def _outer(v: Sequence[float]) -> List[List[float]]:
-    vv = [float(x) for x in v]
-    return [[a * b for b in vv] for a in vv]
+    va = np.asarray(v, dtype=np.float64)
+    return np.outer(va, va).tolist()
 
 
 def _mat_add_inplace(a: List[List[float]], b: List[List[float]]) -> None:
@@ -188,7 +157,7 @@ def _select_independent_columns(
     """Select a numerically linearly independent subset of columns from X.
 
     This prevents singular XtX in small samples and drops columns absorbed by FE.
-    Uses a simple modified Gram-Schmidt on columns.
+    Uses modified Gram-Schmidt via numpy for performance.
     """
     if not x:
         raise ValueError("X must be non-empty")
@@ -203,26 +172,25 @@ def _select_independent_columns(
     mand = sorted(set(int(i) for i in (mandatory or []) if 0 <= int(i) < k))
     order = mand + [j for j in range(k) if j not in set(mand)]
 
-    basis: List[List[float]] = []
+    xa = np.asarray(x, dtype=np.float64)
+    basis: list[np.ndarray] = []
     kept: List[int] = []
     tol2 = float(tol) * float(tol)
-    n = len(x)
 
     for j in order:
-        v = _col_as_vec(x, j)
+        v = xa[:, j].copy()
         for b in basis:
-            proj = _dot(v, b)
+            proj = float(v @ b)
             if proj != 0.0:
-                for i in range(n):
-                    v[i] -= proj * b[i]
-        norm2 = _dot(v, v)
+                v -= proj * b
+        norm2 = float(v @ v)
         if norm2 > tol2:
-            norm = norm2 ** 0.5
-            basis.append([vi / norm for vi in v])
+            v /= np.sqrt(norm2)
+            basis.append(v)
             kept.append(j)
 
     kept_sorted = sorted(kept)
-    x2 = [[row[j] for j in kept_sorted] for row in x]
+    x2 = xa[:, kept_sorted].tolist()
     names2 = [names[j] for j in kept_sorted]
     return x2, names2
 
@@ -719,7 +687,8 @@ def _require_full_rank(x: List[List[float]], names: List[str], what: str) -> Non
 
 
 def _sum_sq(v: Sequence[float]) -> float:
-    return sum(float(x) * float(x) for x in v)
+    va = np.asarray(v, dtype=np.float64)
+    return float(va @ va)
 
 
 def iv_2sls_fit(
@@ -837,34 +806,34 @@ def iv_2sls_fit(
         sigma2 = _sum_sq(resid) / float(n - kx)
         cov_beta = [[sigma2 * float(v) for v in row] for row in a_inv]
     else:
-        meat = [[0.0] * kz for _ in range(kz)]
+        # Vectorised sandwich meat computation via numpy.
+        za = np.asarray(z_sel, dtype=np.float64)   # (n, kz)
+        ua = np.asarray(resid, dtype=np.float64)    # (n,)
+
         if cov == "hc1":
-            for ui, zi in zip(resid, z_sel):
-                oi = _outer([float(v) * float(ui) for v in zi])
-                _mat_add_inplace(meat, oi)
+            zu = za * ua[:, None]                   # (n, kz) element-wise
+            meat_np = zu.T @ zu                     # (kz, kz)
             if df_correction and n > kx:
-                _mat_scale_inplace(meat, float(n) / float(n - kx))
+                meat_np *= float(n) / float(n - kx)
         else:
             if cluster is None:
                 raise ValueError("cluster must be provided when cov='cluster'")
             _validate_lengths(n, cluster)
-            by_g: dict[Any, List[float]] = {}
-            for ui, zi, gi in zip(resid, z_sel, cluster):
-                s = by_g.get(gi)
-                if s is None:
-                    by_g[gi] = [float(v) * float(ui) for v in zi]
-                else:
-                    for j in range(kz):
-                        s[j] += float(zi[j]) * float(ui)
-            g = len(by_g)
-            if g < 2:
+            cl_idx, n_cl = _encode_groups(cluster)
+            if n_cl < 2:
                 raise ValueError("cluster must have at least 2 distinct groups")
-            for s in by_g.values():
-                _mat_add_inplace(meat, _outer(s))
+            ga = np.asarray(cl_idx, dtype=np.intp)
+            # Score per observation, then sum within cluster.
+            zu = za * ua[:, None]                   # (n, kz)
+            sg = np.zeros((n_cl, kz), dtype=np.float64)
+            for j in range(kz):
+                sg[:, j] = np.bincount(ga, weights=zu[:, j], minlength=n_cl)
+            meat_np = sg.T @ sg                     # (kz, kz)
             if df_correction and n > kx:
-                scale = (float(g) / float(g - 1)) * ((float(n) - 1.0) / float(n - kx))
-                _mat_scale_inplace(meat, scale)
+                scale = (float(n_cl) / float(n_cl - 1)) * ((float(n) - 1.0) / float(n - kx))
+                meat_np *= scale
 
+        meat = meat_np.tolist()
         b = mat_mul(mat_mul(xz_inv, mat_mul(meat, ztz_inv)), ztx)
         cov_beta = mat_mul(mat_mul(a_inv, b), a_inv)
 

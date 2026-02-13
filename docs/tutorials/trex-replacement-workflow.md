@@ -28,7 +28,7 @@ For reproducible parity comparisons, use:
 ```yaml
 # analysis.yaml
 execution:
-  determinism: { threads: 1, parity: true }
+  determinism: { threads: 1 }
 ```
 
 Or via CLI:
@@ -48,12 +48,12 @@ When Parity mode is active:
 1. **EvalMode::Parity** is set process-wide (atomic flag)
 2. **Kahan compensated summation** replaces naive `+=` in Poisson NLL
 3. **Apple Accelerate** is automatically disabled
-4. **Thread count forced to 1** (sequential Rayon)
+4. **Thread count forced to 1** (sequential Rayon; when using `--parity`)
 5. Results are **bit-exact reproducible** across runs
 
 ### Legacy: `threads: 1` only
 
-Setting `execution.determinism.threads: 1` without `parity: true` gives stable ordering but uses naive summation. Use `--parity` instead for full determinism.
+Setting `execution.determinism.threads: 1` gives stable ordering (and disables Accelerate), but it does not enable Kahan summation. Use `--parity` (or `nextstat.set_eval_mode("parity")`) for bit-exact parity.
 
 ### Tolerance contract (Parity mode vs pyhf)
 
@@ -105,7 +105,7 @@ inputs:
     measurement: NominalMeasurement
 
 execution:
-  determinism: { threads: 1, parity: true }
+  determinism: { threads: 1 }
 
   import:
     enabled: true
@@ -146,7 +146,7 @@ Enable `fit` and `report` to produce TREx-like artifacts:
 
 ```yaml
 execution:
-  determinism: { threads: 1, parity: true }
+  determinism: { threads: 1 }
   import: { enabled: true, output_json: workspace.json }
   fit: { enabled: true, output_json: fit.json }
   profile_scan: { enabled: false, start: 0.0, stop: 5.0, points: 21, output_json: scan.json }

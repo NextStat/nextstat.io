@@ -96,13 +96,7 @@ fn bench_nuts_sampling(c: &mut Criterion) {
     let histfactory = load_simple_model();
 
     // Keep it short: NUTS runs include an MLE-based init step.
-    let config = NutsConfig {
-        max_treedepth: 6,
-        target_accept: 0.8,
-        init_jitter: 0.0,
-        init_jitter_rel: None,
-        init_overdispersed_rel: None,
-    };
+    let config = NutsConfig { max_treedepth: 6, target_accept: 0.8, ..Default::default() };
 
     let mut group = c.benchmark_group("nuts_sample");
     group.sample_size(10);

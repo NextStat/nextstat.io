@@ -68,6 +68,8 @@ pub struct FilledHistogram {
     pub negative_weight_entries: u64,
     /// Total entries passing selection.
     pub entries: u64,
+    /// Count of NaN values encountered (skipped from all bins).
+    pub nan_entries: u64,
 }
 
 impl From<FilledHistogram> for Histogram {
@@ -137,6 +139,7 @@ pub fn fill_histograms(
                 overflow_sumw2: 0.0,
                 negative_weight_entries: 0,
                 entries: 0,
+                nan_entries: 0,
             }
         })
         .collect();
@@ -186,6 +189,12 @@ pub fn fill_histograms(
                 )));
             }
 
+            // NaN check — skip NaN values and track them.
+            if val.is_nan() {
+                results[i].nan_entries += 1;
+                continue;
+            }
+
             if val < edges[0] {
                 results[i].underflow += weight;
                 results[i].underflow_sumw2 += w2;
@@ -228,7 +237,7 @@ fn find_bin(edges: &[f64], val: f64) -> Option<usize> {
     if val < edges[0] || val >= edges[edges.len() - 1] {
         return None;
     }
-    match edges.binary_search_by(|e| e.partial_cmp(&val).unwrap()) {
+    match edges.binary_search_by(|e| e.partial_cmp(&val).unwrap_or(std::cmp::Ordering::Less)) {
         Ok(i) => {
             if i >= edges.len() - 1 {
                 None
@@ -381,6 +390,7 @@ pub fn fill_histograms_with_jagged(
                 overflow_sumw2: 0.0,
                 negative_weight_entries: 0,
                 entries: 0,
+                nan_entries: 0,
             }
         })
         .collect();
@@ -420,6 +430,12 @@ pub fn fill_histograms_with_jagged(
             let w2 = weight * weight;
             let edges = &results[i].bin_edges;
             let n_bins = results[i].bin_content.len();
+
+            // NaN check — skip NaN values and track them.
+            if val.is_nan() {
+                results[i].nan_entries += 1;
+                continue;
+            }
 
             if val < edges[0] {
                 results[i].underflow += weight;
@@ -608,6 +624,7 @@ mod tests {
             underflow_sumw2: 0.0,
             overflow_sumw2: 0.0,
             negative_weight_entries: 0,
+            nan_entries: 0,
             entries: 8,
         };
         let h: Histogram = fh.into();

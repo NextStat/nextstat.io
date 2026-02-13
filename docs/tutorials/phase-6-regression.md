@@ -21,10 +21,10 @@ See also:
 
 Linear regression (OLS):
 - Linearity and (approx.) homoskedastic errors are common baseline assumptions.
-- Check residuals; consider robust SE (`nextstat.robust.ols_hc_*`) if variance is not constant.
+- Check residuals; consider robust SE (`nextstat.robust.ols_hc_from_fit`) if variance is not constant.
 
 Logistic regression:
-- Watch for (near) perfect separation (coefficients can diverge); use `l2=...` if needed.
+- Watch for (near) perfect separation (coefficients can diverge); use `l2=1.0` if needed.
 - Calibrate: probabilities can be well-ranked but miscalibrated on small datasets.
 
 Poisson / NegBin:
@@ -77,7 +77,7 @@ print(nextstat.summary.summary_to_str(summary))
 
 Notes:
 - For some datasets, the unregularized MLE can be unstable due to (near) perfect separation.
-  Use `l2=...` (ridge/MAP) to stabilize.
+  Use `l2=1.0` (ridge/MAP) to stabilize.
 
 ### Logistic regression from a formula
 
@@ -136,7 +136,7 @@ print(nextstat.summary.summary_to_str(summary))
 
 ## Categorical variables
 
-NextStat’s formula builder supports one-hot encoding for categoricals via `categorical=[...]`.
+NextStat’s formula builder supports one-hot encoding for categoricals via `categorical=["device"]`.
 
 ```python
 import nextstat
@@ -190,8 +190,8 @@ summary = nextstat.summary.wald_summary(fit.coef, se, names=["Intercept", "x"])
 print(nextstat.summary.summary_to_str(summary))
 ```
 
-Cluster-robust variants are available for OLS (`ols_cluster_*`) and for the GLM sandwich estimators
-(`cluster=...` in the `*_sandwich_from_fit` helpers).
+Cluster-robust variants are available for OLS (`nextstat.robust.ols_cluster_from_fit`) and for the GLM sandwich estimators
+(`cluster=cluster_ids` in the `*_sandwich_from_fit` helpers).
 
 ## Metrics and cross-validation
 

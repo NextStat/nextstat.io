@@ -93,11 +93,11 @@ Seed scope (today):
 
 - NumPy baseline cases (always available via pinned harness deps)
 - Optional `jax_jit_cpu_*` / `jax_jit_gpu_*` cases:
-  - `warn` if JAX is not installed
+  - `warn` with `reason="missing_dependency: jax"` if JAX is not installed
   - GPU cases require a CUDA-capable runner + compatible JAX CUDA install
 - Publishable artifacts under pinned schemas:
-  - `ml_benchmark_result_v1` per case
-  - `ml_benchmark_suite_result_v1` index
+  - `nextstat.ml_benchmark_result.v1` per case
+  - `nextstat.ml_benchmark_suite_result.v1` index
 
 JAX installation templates live in:
 
@@ -106,8 +106,8 @@ JAX installation templates live in:
 
 ## Related reading
 
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec.
-- [Differentiable Layer blog post](/blog/differentiable-layer-nextstat-pytorch) — technical deep-dive.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec.
+- [Differentiable Layer blog post](/blog/differentiable-layer) — technical deep-dive.
 - [ML Overview](/docs/ml-overview) — terminology bridge and comparison table.
 - [ML Training Tutorial](/docs/ml-training) — end-to-end SignificanceLoss pipeline.
-- [Validation Report Artifacts](/docs/references/validation-report) — validation pack for published snapshots.
+- [Validation Report Artifacts](/docs/validation-report) — validation pack for published snapshots.

@@ -26,6 +26,12 @@ It covers the backlog items:
 
 If you want a single “do this first” checklist, use: [First Public Benchmark Snapshot (Playbook)](/docs/benchmarks/first-public-snapshot).
 
+For the shipped unbinned cross-framework benchmark tables (NextStat/RooFit/zfit/MoreFit):
+- [Unbinned Likelihood Benchmark Suite](/docs/benchmarks/unbinned-benchmark-suite)
+
+For exact rerun commands and output JSON contract in one place:
+- [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility)
+
 ## 1) Snapshot anatomy (what must exist)
 
 Each published snapshot must include:
@@ -39,7 +45,7 @@ Each published snapshot must include:
   - hardware: CPU, RAM, GPU, driver/runtime versions
   - benchmark configuration (flags, suite selection, warmup policy)
 - **Correctness gates report** (e.g., parity deltas used to validate the run)
-- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/references/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix (plus a signable `validation_pack_manifest.json` + signature files when used)
+- **Validation report** (`validation_report.json` + optional `validation_report.pdf`) produced by [`nextstat validation-report`](/docs/validation-report), containing dataset SHA-256 fingerprint, model spec, environment, and per-suite pass/fail matrix (plus a signable `validation_pack_manifest.json` + signature files when used)
 
 The single-command entrypoint for generating a complete validation pack is:
 
@@ -65,6 +71,25 @@ Best practices:
 
 In this repo, CI uses a minimal snapshot index format (`snapshot_index.json`) with a stable schema:
 `docs/schemas/benchmarks/snapshot_index_v1.schema.json`.
+
+Unbinned benchmark contract is also CI-gated:
+- workflow: `.github/workflows/python-tests.yml`
+- job: `validation-pack`
+- artifact: `artifacts/unbinned_bench_smoke.json`
+- schema: `docs/schemas/benchmarks/unbinned_run_suite_result_v1.schema.json`
+- baseline drift gate: `scripts/benchmarks/compare_unbinned_bench.py`
+  (`gauss_exp` smoke, fails if `nextstat._wall_ms` regresses by >2.5x)
+- drift summary artifact: `artifacts/unbinned_bench_drift_summary.json`
+
+Unbinned toy-fit parity is CI-gated as a backend matrix:
+- workflow: `.github/workflows/unbinned-toy-parity.yml`
+- backends: `cpu`, `cuda`, `metal` (GPU jobs run on push, or PRs labeled `ci:gpu`)
+- per-backend artifacts: `unbinned-toy-parity-<backend>` (JSON files emitted by parity tests)
+- aggregated matrix diff-report artifact: `unbinned-toy-parity-matrix-report`
+  (`artifacts/unbinned_toy_parity_matrix_report.json`)
+- schemas:
+  - `docs/schemas/benchmarks/unbinned_toy_parity_report_v1.schema.json`
+  - `docs/schemas/benchmarks/unbinned_toy_parity_matrix_report_v1.schema.json`
 
 ### Public benchmarks repo template: pin the exact NextStat wheel
 
@@ -197,7 +222,9 @@ The `validation_report.json` includes SHA-256 hashes for both the workspace and 
 ## Related reading
 
 - [Benchmark Snapshots as Products](/blog/benchmark-snapshots-ci-artifacts) — why snapshots are artifact sets (not screenshots).
-- [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks) — canonical spec for suite structure and protocols.
-- [Validation Report Artifacts](/docs/references/validation-report) — the `validation_report.json` + PDF system.
+- [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec for suite structure and protocols.
+- [Unbinned Likelihood Benchmark Suite](/docs/benchmarks/unbinned-benchmark-suite) — published cross-framework tables.
+- [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility) — commands + JSON schema contract.
+- [Validation Report Artifacts](/docs/validation-report) — the `validation_report.json` + PDF system.
 - [Third-Party Replication Runbook](/docs/benchmarks/replication) — step-by-step rerun + signed report template.
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — blog post on the replication protocol.

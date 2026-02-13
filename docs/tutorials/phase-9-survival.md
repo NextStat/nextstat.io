@@ -1,26 +1,32 @@
 ---
-title: "Phase 9: Survival Analysis (Parametric + Cox PH) — Tutorial"
+title: "Phase 9: Survival Analysis — Tutorial"
 status: draft
 ---
 
-# Phase 9: Survival Analysis (Parametric + Cox PH)
+# Phase 9: Survival Analysis
 
-This tutorial documents the baseline survival analysis support in NextStat:
+This tutorial documents the survival analysis support in NextStat:
 
-- Parametric right-censoring models: exponential, Weibull, log-normal AFT
-- Cox proportional hazards (Cox PH) via partial likelihood with explicit ties policy
+- **Non-parametric**: Kaplan-Meier estimator, log-rank test
+- **Parametric** right-censoring models: exponential, Weibull, log-normal AFT
+- **Semi-parametric**: Cox proportional hazards (Cox PH) via partial likelihood with explicit ties policy
 
 The implementation goal is a dependency-light, reproducible baseline with deterministic behavior
 and contract tests.
 
 ## What is implemented
 
-Core models (low-level; use `nextstat.fit(...)` for MLE):
+**Non-parametric estimators** (no model fitting required):
+
+- `nextstat.kaplan_meier(times, events, conf_level=0.95)` — Kaplan-Meier survival curve with Greenwood variance and log-log CIs
+- `nextstat.log_rank_test(times, events, groups)` — Mantel-Cox log-rank test (2+ groups)
+
+**Parametric models** (low-level; use `nextstat.fit(model)` for MLE):
 
 - `nextstat.ExponentialSurvivalModel(times, events)`
 - `nextstat.WeibullSurvivalModel(times, events)`
 - `nextstat.LogNormalAftModel(times, events)`
-- `nextstat.CoxPhModel(times, events, x, ties=...)`
+- `nextstat.CoxPhModel(times, events, x, ties="efron")`
 
 Notes:
 
@@ -35,6 +41,57 @@ From the repo root:
 ```bash
 cargo test -p ns-inference
 ./.venv/bin/maturin develop --release -m bindings/ns-py/Cargo.toml
+```
+
+## Quick start: Kaplan-Meier (Python)
+
+```python
+import nextstat
+
+# Right-censored data (True = event, False = censored).
+times  = [1, 1, 2, 2, 3, 4, 4, 5, 5, 8, 8, 12, 12, 15, 23, 27]
+events = [True, True, True, False, True, True, False, True, False,
+          True, True, True, False, False, True, True]
+
+km = nextstat.kaplan_meier(times, events, conf_level=0.95)
+print("n:", km["n"], "events:", km["n_events"])
+print("median survival:", km["median"])
+
+# Step-wise survival curve.
+for t, s, lo, hi in zip(km["time"], km["survival"], km["ci_lower"], km["ci_upper"]):
+    print(f"  t={t:5.1f}  S={s:.4f}  95% CI [{lo:.4f}, {hi:.4f}]")
+```
+
+## Quick start: Kaplan-Meier (CLI)
+
+```bash
+# Input: JSON with "times" and "events" arrays.
+nextstat survival km --input km_data.json
+nextstat survival km --input km_data.json --conf-level 0.90
+```
+
+## Quick start: Log-rank test (Python)
+
+```python
+import nextstat
+
+# R's aml dataset: Maintained vs Nonmaintained chemotherapy.
+times  = [9,13,13,18,23,28,31,34,45,48,161, 5,5,8,8,12,16,23,27,30,33,43,45]
+events = [True,True,False,True,True,False,True,True,False,True,False,
+          True,True,True,True,True,False,True,True,True,True,True,True]
+groups = [1]*11 + [2]*12  # 1=Maintained, 2=Nonmaintained
+
+lr = nextstat.log_rank_test(times, events, groups)
+print(f"chi² = {lr['chi_squared']:.2f}, df = {lr['df']}, p = {lr['p_value']:.4f}")
+for g, o, e in zip(lr["group_ids"], lr["observed"], lr["expected"]):
+    print(f"  group {g}: observed={o:.0f}, expected={e:.2f}")
+```
+
+## Quick start: Log-rank test (CLI)
+
+```bash
+# Input: JSON with "times", "events", and "groups" arrays.
+nextstat survival log-rank-test --input logrank_data.json
 ```
 
 ## Quick start: Cox PH (Python)
@@ -162,7 +219,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python \
 ### Cluster-robust SE (optional)
 
 If your data has correlated observations within groups (e.g. subjects, sites), you can request
-cluster-robust (sandwich) standard errors by passing `groups=...` to the fit helper. This does
+cluster-robust (sandwich) standard errors by passing `groups=subject_ids` to the fit helper. This does
 not change the MLE coefficients; it changes the uncertainty estimate.
 
 ```python

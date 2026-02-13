@@ -30,11 +30,11 @@ We aim to build an open and welcoming community. Please be respectful and constr
 ```bash
 # 1. Fork the repository on GitHub
 # 2. Clone your fork
-git clone https://github.com/your-username/nextstat.git
-cd nextstat
+git clone https://github.com/your-username/nextstat.io.git
+cd nextstat.io
 
 # 3. Add upstream remote
-git remote add upstream https://github.com/nextstat/nextstat.git
+git remote add upstream https://github.com/NextStat/nextstat.io.git
 
 # 4. Build and run tests
 cargo build --workspace

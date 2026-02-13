@@ -22,6 +22,11 @@ on:
         required: true
         type: boolean
         default: true
+      run_econometrics:
+        description: "Run econometrics suite"
+        required: true
+        type: boolean
+        default: true
       run_ml:
         description: "Run ML suite"
         required: true
@@ -32,6 +37,11 @@ on:
         required: true
         type: boolean
         default: false
+      econometrics_install_baselines:
+        description: "Install econometrics baseline deps (statsmodels + linearmodels)"
+        required: true
+        type: boolean
+        default: true
       nextstat_wheel_url:
         description: "URL to the pinned NextStat wheel (.whl) being measured"
         required: false
@@ -74,6 +84,12 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -r env/python/requirements-ml-jax-cpu.txt
+
+      - name: "Optional: install econometrics baseline deps"
+        if: ${{ inputs.run_econometrics && inputs.econometrics_install_baselines }}
+        run: |
+          set -euo pipefail
+          python -m pip install -r env/python/requirements-econometrics-baselines.txt
 
       - name: Validate NextStat wheel inputs
         env:
@@ -155,6 +171,7 @@ jobs:
         env:
           RUN_HEP: ${{ inputs.run_hep }}
           RUN_PHARMA: ${{ inputs.run_pharma }}
+          RUN_ECONOMETRICS: ${{ inputs.run_econometrics }}
           RUN_BAYESIAN: ${{ inputs.run_bayesian }}
           RUN_ML: ${{ inputs.run_ml }}
         run: |
@@ -172,6 +189,9 @@ jobs:
           fi
           if [ "${RUN_PHARMA}" = "true" ]; then
             args+=(--pharma)
+          fi
+          if [ "${RUN_ECONOMETRICS}" = "true" ]; then
+            args+=(--econometrics)
           fi
           if [ "${RUN_BAYESIAN}" = "true" ]; then
             args+=(--bayesian)

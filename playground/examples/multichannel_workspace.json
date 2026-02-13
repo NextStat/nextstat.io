@@ -1,0 +1,86 @@
+{
+  "channels": [
+    {
+      "name": "electron",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [2.0, 5.0, 8.0, 4.0, 1.5],
+          "modifiers": [
+            { "name": "mu", "type": "normfactor", "data": null }
+          ]
+        },
+        {
+          "name": "ttbar",
+          "data": [40.0, 55.0, 60.0, 45.0, 30.0],
+          "modifiers": [
+            { "name": "ttbar_xsec", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "staterror_electron",
+              "type": "staterror",
+              "data": [6.3, 7.4, 7.7, 6.7, 5.5]
+            }
+          ]
+        },
+        {
+          "name": "wjets",
+          "data": [15.0, 10.0, 6.0, 4.0, 3.0],
+          "modifiers": [
+            { "name": "wjets_norm", "type": "normsys", "data": { "hi": 1.15, "lo": 0.85 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "muon",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [1.8, 4.5, 7.2, 3.6, 1.2],
+          "modifiers": [
+            { "name": "mu", "type": "normfactor", "data": null }
+          ]
+        },
+        {
+          "name": "ttbar",
+          "data": [38.0, 52.0, 57.0, 43.0, 28.0],
+          "modifiers": [
+            { "name": "ttbar_xsec", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "staterror_muon",
+              "type": "staterror",
+              "data": [6.2, 7.2, 7.5, 6.6, 5.3]
+            }
+          ]
+        },
+        {
+          "name": "wjets",
+          "data": [12.0, 8.0, 5.0, 3.5, 2.5],
+          "modifiers": [
+            { "name": "wjets_norm", "type": "normsys", "data": { "hi": 1.15, "lo": 0.85 } }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "electron",
+      "data": [58.0, 71.0, 76.0, 54.0, 36.0]
+    },
+    {
+      "name": "muon",
+      "data": [53.0, 66.0, 71.0, 51.0, 33.0]
+    }
+  ],
+  "measurements": [
+    {
+      "name": "MultiChannel",
+      "config": {
+        "poi": "mu",
+        "parameters": []
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

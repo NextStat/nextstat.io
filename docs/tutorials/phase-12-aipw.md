@@ -53,6 +53,8 @@ print(fit.estimate, fit.standard_error)
 print("warnings:", fit.propensity_diagnostics.warnings)
 ```
 
+Here, `trim_eps` clips propensity scores into `(trim_eps, 1-trim_eps)` to avoid infinite weights.
+
 Example output (approx):
 
 ```text
@@ -69,7 +71,19 @@ For sensitivity analysis or integration with external models, you can pass preco
 
 Baseline helpers:
 - `nextstat.causal.aipw.e_value_rr(rr)` (risk-ratio scale)
-- `nextstat.causal.aipw.rosenbaum_sensitivity_placeholder()` (design-specific placeholder)
+- `nextstat.causal.aipw.rosenbaum_bounds(y_treated, y_control, *, gammas=None) -> RosenbaumBoundsResult` (Rosenbaum-style bounds for matched designs; returns `gammas`, `p_upper`, `p_lower`, `gamma_critical`)
+
+Example (matched pairs):
+
+```python
+import nextstat
+
+y_treated = [10.0, 12.0, 15.0, 11.0, 13.0]
+y_control = [5.0, 6.0, 7.0, 5.5, 6.5]
+
+rb = nextstat.causal.aipw.rosenbaum_bounds(y_treated, y_control, gammas=[1.0, 1.5, 2.0, 3.0, 5.0])
+print("gamma_critical:", rb.gamma_critical)
+```
 
 ## Limitations
 

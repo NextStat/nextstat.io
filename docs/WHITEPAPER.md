@@ -1,7 +1,7 @@
 # NextStat White Paper
 
-Version: 0.1.0 (Draft)  
-Last updated: 2026-02-06  
+Version: 0.9.0  
+Last updated: 2026-02-09  
 Status: Technical draft (public-facing)
 
 ## Abstract
@@ -132,12 +132,25 @@ NextStat implements asymptotic CLs calculations consistent with pyhf’s asympto
 
 ### 5.4 Bayesian Sampling (Optional)
 
-NextStat is designed to support Bayesian workflows without breaking the frequentist parity baseline. The standards define a posterior contract:
+NextStat supports Bayesian workflows without breaking the frequentist parity baseline. The standards define a posterior contract:
 
 - Constraints are already included in `model.logpdf` (pyhf parity baseline)
 - Bayesian mode adds only an explicit additional prior to avoid double counting
 
-The long-term goal is HMC/NUTS in Rust core, with reproducible seeds and diagnostics (R-hat, ESS, divergences), and golden tests on toy distributions.
+Shipped baseline (v0.9):
+
+- HMC/NUTS in Rust core with windowed warmup, mass matrix adaptation, and
+  generalized U-turn criterion.
+- Diagnostics exported in the Python API: rank-normalized $\hat{R}$, bulk/tail
+  ESS, E-BFMI, divergence rate, and treedepth saturation.
+- Benchmarks and methodology:
+  - Algorithm + benchmark report: `docs/references/nuts-sampler.md`
+  - Suite runbook: `docs/benchmarks/suites/bayesian.md`
+  - Reproducible artifacts (multi-seed): `benchmarks/nextstat-public-benchmarks/suites/bayesian/results_v10/`
+
+NextStat's NUTS implementation includes progressive sampling in the tree-doubling
+loop; this materially improved algorithmic efficiency (ESS/leapfrog) and closes
+the last known mismatch on GLM-style posteriors.
 
 ### 5.5 State Space Inference (Kalman / RTS / EM)
 

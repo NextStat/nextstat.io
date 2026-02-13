@@ -54,6 +54,11 @@ class HistogramTableStats:
     n_rows: int
 
 
+@dataclass(frozen=True)
+class ModifiersTableStats:
+    n_rows: int
+
+
 def _require_pyarrow():
     try:
         import pyarrow as pa  # type: ignore
@@ -139,6 +144,50 @@ def validate_histogram_table(table) -> HistogramTableStats:
         channels=chan_bins,
         n_rows=int(table.num_rows),
     )
+
+
+def validate_modifiers_table(table) -> ModifiersTableStats:
+    """Validate the modifiers table contract (binned Parquet v2).
+
+    Required columns:
+    - channel: Utf8/LargeUtf8
+    - sample: Utf8/LargeUtf8
+    - modifier_name: Utf8/LargeUtf8
+    - modifier_type: Utf8/LargeUtf8
+
+    Optional:
+    - data_hi: List<Float64> or LargeList<Float64>
+    - data_lo: List<Float64> or LargeList<Float64>
+    - data: List<Float64> or LargeList<Float64>
+    """
+    pa = _require_pyarrow()
+
+    if isinstance(table, pa.RecordBatch):
+        table = pa.Table.from_batches([table])
+
+    schema = table.schema
+    names = set(schema.names)
+    for col in ("channel", "sample", "modifier_name", "modifier_type"):
+        if col not in names:
+            raise ValueError(f"missing required column: {col!r}")
+
+    def _is_utf8(t) -> bool:
+        return pa.types.is_string(t) or pa.types.is_large_string(t)
+
+    def _is_list_f64(t) -> bool:
+        if pa.types.is_list(t) or pa.types.is_large_list(t):
+            return pa.types.is_float64(t.value_type)
+        return False
+
+    for col in ("channel", "sample", "modifier_name", "modifier_type"):
+        if not _is_utf8(schema.field(col).type):
+            raise TypeError(f"column {col!r} must be Utf8, got {schema.field(col).type}")
+
+    for col in ("data_hi", "data_lo", "data"):
+        if col in names and not _is_list_f64(schema.field(col).type):
+            raise TypeError(f"column {col!r} must be List<Float64>, got {schema.field(col).type}")
+
+    return ModifiersTableStats(n_rows=int(table.num_rows))
 
 
 def write_histograms_parquet(
@@ -274,6 +323,157 @@ def validate_histograms_parquet_manifest(
                 )
 
 
+# ---------------------------------------------------------------------------
+# Unbinned event-level Parquet (nextstat_unbinned_events_v1)
+# ---------------------------------------------------------------------------
+
+UNBINNED_EVENTS_SCHEMA_V1 = "nextstat_unbinned_events_v1"
+_WEIGHT_COLUMN = "_weight"
+_CHANNEL_COLUMN = "_channel"
+
+
+@dataclass(frozen=True)
+class EventTableStats:
+    observable_names: list[str]
+    has_weight: bool
+    has_channel: bool
+    channels: Dict[str, int]  # channel -> n_events (or {"_default": n} if no _channel col)
+    n_rows: int
+
+
+def validate_event_table(table) -> EventTableStats:
+    """Validate an unbinned event table contract.
+
+    Required: at least one Float64 column that is not ``_weight`` / ``_channel``.
+
+    Optional:
+    - ``_weight``:  Float64, per-event weight.
+    - ``_channel``: Utf8, channel label (for multi-channel files).
+    """
+    pa = _require_pyarrow()
+
+    if isinstance(table, pa.RecordBatch):
+        table = pa.Table.from_batches([table])
+
+    schema = table.schema
+    names = set(schema.names)
+
+    observable_names: list[str] = []
+    for field in schema:
+        if field.name in (_WEIGHT_COLUMN, _CHANNEL_COLUMN):
+            continue
+        if not pa.types.is_float64(field.type):
+            raise TypeError(
+                f"observable column '{field.name}' must be Float64, got {field.type}"
+            )
+        observable_names.append(field.name)
+
+    if not observable_names:
+        raise ValueError("event table must have at least one Float64 observable column")
+
+    has_weight = _WEIGHT_COLUMN in names
+    if has_weight and not pa.types.is_float64(schema.field(_WEIGHT_COLUMN).type):
+        raise TypeError(
+            f"column '{_WEIGHT_COLUMN}' must be Float64, "
+            f"got {schema.field(_WEIGHT_COLUMN).type}"
+        )
+
+    has_channel = _CHANNEL_COLUMN in names
+    if has_channel:
+        ct = schema.field(_CHANNEL_COLUMN).type
+        if not (pa.types.is_string(ct) or pa.types.is_large_string(ct)):
+            raise TypeError(f"column '{_CHANNEL_COLUMN}' must be Utf8, got {ct}")
+
+    channels: Dict[str, int] = {}
+    if has_channel:
+        ch_arr = table.column(_CHANNEL_COLUMN).combine_chunks()
+        for i in range(table.num_rows):
+            ch = ch_arr[i].as_py()
+            channels[ch] = channels.get(ch, 0) + 1
+    else:
+        channels["_default"] = int(table.num_rows)
+
+    return EventTableStats(
+        observable_names=observable_names,
+        has_weight=has_weight,
+        has_channel=has_channel,
+        channels=channels,
+        n_rows=int(table.num_rows),
+    )
+
+
+def write_events_parquet(
+    table,
+    path: str | Path,
+    *,
+    observables: Optional[list[dict[str, Any]]] = None,
+    compression: str = "zstd",
+) -> dict[str, Any]:
+    """Write an unbinned event table to Parquet with NextStat metadata.
+
+    Parameters
+    ----------
+    table : pyarrow.Table or pyarrow.RecordBatch
+        Event data.  Must pass :func:`validate_event_table`.
+    path : str or Path
+        Output Parquet file path.
+    observables : list of dict, optional
+        Observable metadata: ``[{"name": "mass", "bounds": [100, 180]}, ...]``.
+        If *None*, all Float64 columns are observables with ``[-inf, inf]`` bounds.
+    compression : str
+        Parquet compression codec (default ``"zstd"``).
+
+    Returns
+    -------
+    dict
+        Metadata dict written into the Parquet file footer.
+    """
+    pa = _require_pyarrow()
+    import pyarrow.parquet as pq  # type: ignore
+
+    if isinstance(path, str):
+        path = Path(path)
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(table, pa.RecordBatch):
+        table = pa.Table.from_batches([table])
+
+    stats = validate_event_table(table)
+
+    if observables is None:
+        observables = [
+            {"name": n, "bounds": [float("-inf"), float("inf")]}
+            for n in stats.observable_names
+        ]
+
+    meta_kv = {
+        UNBINNED_EVENTS_SCHEMA_V1.encode(): b"",  # marker
+        b"nextstat.schema_version": UNBINNED_EVENTS_SCHEMA_V1.encode(),
+        b"nextstat.observables": json.dumps(observables, separators=(",", ":")).encode(),
+    }
+
+    existing = table.schema.metadata or {}
+    merged_meta = {**existing, **meta_kv}
+    table = table.replace_schema_metadata(merged_meta)
+
+    pq.write_table(table, str(path), compression=compression)
+
+    return {
+        "schema_version": UNBINNED_EVENTS_SCHEMA_V1,
+        "observables": observables,
+        "stats": {
+            "n_rows": stats.n_rows,
+            "observable_names": stats.observable_names,
+            "has_weight": stats.has_weight,
+            "has_channel": stats.has_channel,
+            "channels": stats.channels,
+        },
+        "parquet_path": str(path),
+        "parquet_compression": compression,
+    }
+
+
 def load_parquet_as_histfactory_model(
     path: str | Path,
     *,
@@ -290,3 +490,29 @@ def load_parquet_as_histfactory_model(
     table = pq.read_table(str(p))
     validate_histogram_table(table)
     return _from_parquet(str(p), poi=poi, observations=observations)
+
+
+def load_parquet_v2_as_histfactory_model(
+    yields_path: str | Path,
+    modifiers_path: str | Path,
+    *,
+    poi: str = "mu",
+    observations: Optional[dict[str, list[float]]] = None,
+):
+    """Convenience: validate Parquet v2 schemas, then call nextstat.from_parquet_with_modifiers()."""
+    pa = _require_pyarrow()
+    import pyarrow.parquet as pq  # type: ignore
+
+    from . import (  # lazy import to keep module import light
+        from_parquet_with_modifiers as _from_parquet_with_modifiers,
+    )
+
+    y = Path(yields_path).resolve()
+    m = Path(modifiers_path).resolve()
+    yields_table = pq.read_table(str(y))
+    modifiers_table = pq.read_table(str(m))
+
+    validate_histogram_table(yields_table)
+    validate_modifiers_table(modifiers_table)
+
+    return _from_parquet_with_modifiers(str(y), str(m), poi=poi, observations=observations)

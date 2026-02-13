@@ -1,0 +1,31 @@
+{
+  "schema_version": "nextstat_flow_v0",
+  "flow_type": "test_standard_normal",
+  "features": 1,
+  "context_features": 0,
+  "observable_names": [
+    "x"
+  ],
+  "context_names": [],
+  "support": [
+    [
+      -6.0,
+      6.0
+    ]
+  ],
+  "base_distribution": "standard_normal",
+  "models": {
+    "log_prob": "flow_logprob.onnx",
+    "sample": "flow_sample.onnx"
+  },
+  "training": {
+    "library": "test_fixture",
+    "architecture": "identity",
+    "note": "Minimal test fixture: standard normal log-prob + identity sampling"
+  },
+  "validation": {
+    "pit_ks_pvalue": 1.0,
+    "closure_bias_percent": 0.0,
+    "normalization_check": 1.0
+  }
+}

@@ -23,8 +23,7 @@ y = [0.0, 1.0, 1.9, 3.2, 3.9, 5.1]
 fit = nextstat.glm.linear.fit(x, y, include_intercept=True)
 
 # HC1 covariance (White / MacKinnon)
-cov = nextstat.robust.ols_hc_from_fit(fit, x, y, kind="HC1")[0]
-se = nextstat.robust.cov_to_se(cov)
+cov, se = nextstat.robust.ols_hc_from_fit(fit, x, y, kind="HC1")
 
 print("coef:", fit.coef)
 print("HC1 se:", se)

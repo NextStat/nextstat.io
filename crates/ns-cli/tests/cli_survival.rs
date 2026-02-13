@@ -138,3 +138,102 @@ fn survival_cox_ph_fit_supports_breslow_ties() {
         v.get("baseline_times").and_then(|x| x.as_array()).expect("baseline_times should be array");
     assert!(bt.len() >= 2);
 }
+
+// ---------------------------------------------------------------------------
+// Kaplan-Meier CLI tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn survival_km_basic_output_contract() {
+    let input = fixture_path("km_input.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&["survival", "km", "--input", input.to_string_lossy().as_ref()]);
+    assert!(
+        out.status.success(),
+        "survival km should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+
+    assert_eq!(v.get("n").and_then(|x| x.as_u64()).unwrap(), 16);
+    assert_eq!(v.get("n_events").and_then(|x| x.as_u64()).unwrap(), 11);
+    assert!((v.get("conf_level").and_then(|x| x.as_f64()).unwrap() - 0.95).abs() < 1e-10);
+
+    let median = v.get("median").and_then(|x| x.as_f64()).unwrap();
+    assert!((median - 8.0).abs() < 1e-10, "median should be 8.0, got {median}");
+
+    let steps = v.get("steps").and_then(|x| x.as_array()).expect("steps should be array");
+    assert!(steps.len() >= 5);
+
+    // Survival should be monotone non-increasing.
+    let surv: Vec<f64> =
+        steps.iter().map(|s| s.get("survival").unwrap().as_f64().unwrap()).collect();
+    for i in 1..surv.len() {
+        assert!(surv[i] <= surv[i - 1] + 1e-12, "survival not non-increasing at i={i}");
+    }
+
+    // First step: S(1) = 0.875
+    let s1 = &steps[0];
+    assert!((s1.get("survival").unwrap().as_f64().unwrap() - 0.875).abs() < 1e-10);
+    assert_eq!(s1.get("n_risk").unwrap().as_u64().unwrap(), 16);
+    assert_eq!(s1.get("n_events").unwrap().as_u64().unwrap(), 2);
+}
+
+#[test]
+fn survival_km_custom_conf_level() {
+    let input = fixture_path("km_input.json");
+    assert!(input.exists());
+
+    let out = run(&[
+        "survival",
+        "km",
+        "--input",
+        input.to_string_lossy().as_ref(),
+        "--conf-level",
+        "0.90",
+    ]);
+    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!((v.get("conf_level").unwrap().as_f64().unwrap() - 0.90).abs() < 1e-10);
+}
+
+// ---------------------------------------------------------------------------
+// Log-rank test CLI tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn survival_log_rank_basic_output_contract() {
+    let input = fixture_path("logrank_input.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&["survival", "log-rank-test", "--input", input.to_string_lossy().as_ref()]);
+    assert!(
+        out.status.success(),
+        "survival log-rank-test should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+
+    assert_eq!(v.get("n").and_then(|x| x.as_u64()).unwrap(), 23);
+    assert_eq!(v.get("df").and_then(|x| x.as_u64()).unwrap(), 1);
+
+    let chi2 = v.get("chi_squared").and_then(|x| x.as_f64()).unwrap();
+    assert!((chi2 - 3.4).abs() < 0.15, "chi_squared: got {chi2}, expected ~3.4");
+
+    let p = v.get("p_value").and_then(|x| x.as_f64()).unwrap();
+    assert!(p > 0.05 && p < 0.10, "p_value: got {p}, expected ~0.065");
+
+    let summaries = v.get("group_summaries").and_then(|x| x.as_array()).expect("group_summaries");
+    assert_eq!(summaries.len(), 2);
+
+    let o1 = summaries[0].get("observed").unwrap().as_f64().unwrap();
+    let o2 = summaries[1].get("observed").unwrap().as_f64().unwrap();
+    assert!((o1 - 7.0).abs() < 1e-10);
+    assert!((o2 - 11.0).abs() < 1e-10);
+}

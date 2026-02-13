@@ -36,18 +36,21 @@ impl Default for CpuBackend {
 
 impl ComputeBackend for CpuBackend {
     fn nll(&self, _params: &[f64]) -> Result<f64> {
-        // Stub implementation - will be implemented in Phase 1
-        Ok(0.0)
+        Err(ns_core::Error::NotImplemented(
+            "CpuBackend::nll() is not implemented. Use PreparedModel::nll() from ns-translate instead.".into()
+        ))
     }
 
     fn gradient(&self, _params: &[f64]) -> Result<Vec<f64>> {
-        // Stub implementation - will be implemented in Phase 2B (autodiff)
-        Ok(vec![])
+        Err(ns_core::Error::NotImplemented(
+            "CpuBackend::gradient() is not implemented. Use ns-ad tape gradient instead.".into(),
+        ))
     }
 
     fn hessian(&self, _params: &[f64]) -> Result<Vec<Vec<f64>>> {
-        // Stub implementation - will be implemented in Phase 2B (autodiff)
-        Ok(vec![])
+        Err(ns_core::Error::NotImplemented(
+            "CpuBackend::hessian() is not implemented. Use compute_hessian() from ns-inference instead.".into()
+        ))
     }
 
     fn name(&self) -> &str {

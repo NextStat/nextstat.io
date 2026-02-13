@@ -16,16 +16,17 @@ These helpers are a convenience layer, not a claim of causal identification.
 
 ## What is implemented
 
-`nextstat.causal.propensity.fit(...)`:
+`nextstat.causal.propensity.fit(x, t, *, include_intercept=True, l2=1.0, penalize_intercept=False, clip_eps=1e-6) -> PropensityScoreFit`:
 
 - Fits a propensity score model (logistic regression with a small ridge penalty by default).
 - Returns clipped propensity scores in `(eps, 1-eps)` to avoid infinite weights.
 
-`nextstat.causal.propensity.ipw_weights(...)`:
+`nextstat.causal.propensity.ipw_weights(t, p, *, estimand="ate", stabilized=True, max_weight=None) -> list[float]`:
 
 - Computes IPW weights for common estimands (`ate`, `att`, `atc`).
+- `stabilized=True` is supported only for `estimand="ate"`.
 
-`nextstat.causal.propensity.diagnostics(...)`:
+`nextstat.causal.propensity.diagnostics(x, t, propensity_scores, *, weights=None, overlap_eps=0.01) -> PropensityDiagnostics`:
 
 - Overlap checks (min/max propensity, group ranges, warnings).
 - Balance checks via standardized mean differences (SMD), unweighted and optionally weighted.

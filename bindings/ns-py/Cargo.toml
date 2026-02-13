@@ -29,6 +29,7 @@ ns-inference = { workspace = true, features = ["root-io"] }
 ns-ad.workspace = true
 ns-root.workspace = true
 ns-translate = { workspace = true, features = ["root-io", "arrow-io"] }
+ns-unbinned = { workspace = true, features = ["arrow-io"] }
 ns-viz.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
 rayon = { workspace = true }
@@ -39,5 +40,6 @@ default = []
 accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
 cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
+neural = ["ns-unbinned/neural"]
 
 [dev-dependencies]

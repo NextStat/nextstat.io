@@ -590,7 +590,7 @@ condor_submit root_suite.sub
 ```
 
 Notes:
-- If ROOT/`hist2workspace` are available only after `source .../setup.sh`, add that into `arguments` before the Python command.
+- If ROOT/`hist2workspace` are available only after `source /cvmfs/sft.cern.ch/lcg/views/LCG_*/x86_64-el9-gcc*/setup.sh`, add that into `arguments` before the Python command.
 - For "big memory" on CERN HTCondor people often use `RequestCpus = 24` and `+BigMemJob = True` (see the link above).
 - If jobs sit in the queue for a long time due to priorities, it can help to explicitly set the accounting group in the `.sub`, e.g. `+AccountingGroup = "group_u_BE.ABP.NORMAL"` (see the link above).
 
@@ -733,16 +733,16 @@ This pattern is useful when:
 - you need strict control over what is returned to the submit side and where it lands.
 
 Key points in the submit file:
-- `should_transfer_files = YES` + `transfer_input_files = ...` so the job runs from worker scratch
-- `transfer_output_remaps = ...` to remap outputs into a convenient results folder structure
-- `max_materialize = ...` to avoid overloading shared FS (especially with `queue 2000`)
+- `should_transfer_files = YES` + `transfer_input_files = trex_hwfsdp_single.py, ../config/trexfitter_config_2poi.txt` so the job runs from worker scratch
+- `transfer_output_remaps = "fit_summary.json = results/summary/fit_summary_$(Process).json; replica_log.txt = results/condor_logs/replica_$(Process).log; replica_output.tgz = results/condor_tars/replica_$(Process).tgz"` to remap outputs into a convenient results folder structure
+- `max_materialize = 100` to avoid overloading shared FS (especially with `queue 2000`)
 - `getenv = True` to pass `TREX_INPUT_DIR` (inputs must be visible from worker nodes)
 
 An adapted example lives at: `docs/examples/htcondor/trex_hwfsdp.sub`.
 
 How this ties into NextStat parity:
 1) the job array generates/runs TRExFitter replicas and produces HistFactory exports (one `combination.xml` per replica)
-2) then you run the parity suite (`tests/apex2_root_suite_report.py` or the master report) on the export directory via `--root-search-dir ...`
+2) then you run the parity suite (`tests/apex2_root_suite_report.py` or the master report) on the export directory via `--root-search-dir /abs/path/to/trex/output`
 
 ## P6 benchmarks: end-to-end fit/predict baselines (GLM)
 
@@ -750,7 +750,7 @@ What already exists in the codebase:
 - Baseline recorder: `tests/record_baseline.py` (records both pyhf + P6 GLM baselines with full environment fingerprint).
 - Python end-to-end benchmark: `tests/benchmark_glm_fit_predict.py` (linear/logistic/poisson/negbin; fit + predict; writes JSON via `--out`).
 - Apex2 P6 report wrapper: `tests/apex2_p6_glm_benchmark_report.py` (compares against a baseline JSON).
-- Integrated into the master report: `tests/apex2_master_report.py --p6-glm-bench ...`.
+- Integrated into the master report: `tests/apex2_master_report.py --p6-glm-bench`.
 - Rust Criterion bench: `cargo bench -p ns-inference --bench glm_fit_predict_benchmark`.
 
 ### Recording baselines (recommended)
@@ -780,7 +780,7 @@ root_suite_baseline_<hostname>_<YYYYMMDD_HHMMSS>.json            # only if ROOT 
 root_cases_<hostname>_<YYYYMMDD_HHMMSS>.json                     # cases used by the suite (from --root-search-dir)
 root_prereq_<hostname>_<YYYYMMDD_HHMMSS>.json                    # prereq check snapshot (always recorded if root mode is requested)
 baseline_manifest_<hostname>_<YYYYMMDD_HHMMSS>.json   # links both + env fingerprint
-latest_manifest.json                                    # points to the most recent full baseline set (not overwritten by `--only ...` if it already exists)
+latest_manifest.json                                    # points to the most recent full baseline set (not overwritten by `--only root` if it already exists)
 latest_pyhf_manifest.json                               # last pyhf-only pointer
 latest_p6_glm_manifest.json                             # last P6-only pointer
 latest_root_manifest.json                               # last ROOT-only pointer (cluster)
@@ -882,7 +882,7 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/apex2_master_report.py
 
 Below are job script templates. They assume a shared filesystem (the repository is visible on compute nodes) and that the Python environment already contains dependencies (`pyhf`, `uproot`) and an installed/built NextStat Python binding.
 
-If you use environment modules on your cluster, replace the `module load ...` lines with your actual module names/versions.
+If you use environment modules on your cluster, replace the `module load python` / `module load root` lines with your actual module names/versions.
 
 #### SLURM (`sbatch`)
 
@@ -1098,7 +1098,7 @@ Script behavior:
 - builds a RooWorkspace via `hist2workspace`
 - runs a free fit and fixed-POI fits in ROOT → q(mu)
 - runs `nextstat.infer.profile_scan` on the same mu grid
-- prints a JSON summary and writes artifacts under `tmp/root_parity/...`
+- prints a JSON summary and writes artifacts under `tmp/root_parity/run_<unix_ts>/`
 
 ### Option B: start from HistFactory Combination XML (e.g. TRExFitter export)
 

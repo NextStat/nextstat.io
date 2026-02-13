@@ -1,0 +1,141 @@
+---
+title: "Getting Started with nextstat"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with nextstat}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Overview
+
+**nextstat** is an R interface to the NextStat statistical inference engine
+written in Rust. It provides:
+
+- **HistFactory fitting** — maximum-likelihood estimation, CLs hypothesis
+  testing, and upper limits (Brazil bands) from pyhf JSON or HS3 workspaces.
+- **GLM wrappers** — logistic, Poisson, and negative binomial regression.
+- **Time series** — Kalman filter/smoother, GARCH(1,1), and stochastic
+  volatility models.
+
+All heavy computation happens in compiled Rust code, giving R users
+access to a high-performance inference engine with zero Python dependencies.
+
+## Installation
+
+The package requires a Rust toolchain (>= 1.93). Install it from
+<https://rustup.rs> if you don't have one:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then install the R package:
+```r
+# From a local checkout:
+install.packages("path/to/bindings/ns-r", repos = NULL, type = "source")
+```
+
+## Normal Log-PDF
+
+A simple starting point — compute the log-density of a standard normal:
+
+```{r logpdf}
+library(nextstat)
+ns_normal_logpdf(c(-2, -1, 0, 1, 2))
+```
+
+## OLS Regression
+
+```{r ols}
+set.seed(1)
+x <- matrix(rnorm(200), nrow = 100, ncol = 2)
+y <- 1.5 + 0.8 * x[, 1] - 0.3 * x[, 2] + rnorm(100, sd = 0.5)
+coef <- ns_ols_fit(x, y, include_intercept = TRUE)
+names(coef) <- c("intercept", "x1", "x2")
+coef
+```
+
+## HistFactory Fit
+
+Load a pyhf JSON workspace and perform a maximum-likelihood fit:
+
+```{r histfactory, eval = FALSE}
+ws <- paste(readLines("workspace.json"), collapse = "\n")
+fit <- nextstat_fit(ws)
+str(fit)
+```
+
+## CLs Hypothesis Test
+
+```{r hypotest, eval = FALSE}
+ht <- nextstat_hypotest(ws, mu_test = 1.0)
+cat("CLs =", ht$cls, "\n")
+```
+
+## Upper Limit (Brazil Band)
+
+```{r upperlimit, eval = FALSE}
+ul <- nextstat_upper_limit(ws, cl = 0.95, mu_range = c(0, 10), points = 61)
+cat("Observed limit:", ul$observed_limit, "\n")
+cat("Expected limits:", ul$expected_limits, "\n")
+```
+
+## GLM: Logistic Regression
+
+```{r logistic}
+set.seed(1)
+x <- matrix(rnorm(200), 100, 2)
+y <- as.numeric(x[, 1] + 0.3 * x[, 2] + rnorm(100) > 0)
+fit <- nextstat_glm_logistic(x, y)
+data.frame(
+  name = fit$parameter_names,
+  coef = round(fit$coefficients, 3),
+  se   = round(fit$se, 3)
+)
+```
+
+## GLM: Poisson Regression
+
+```{r poisson}
+set.seed(1)
+x <- matrix(rnorm(200), 100, 2)
+y <- rpois(100, lambda = exp(0.2 + 0.1 * x[, 1] - 0.15 * x[, 2]))
+fit <- nextstat_glm_poisson(x, y)
+cat("AIC:", fit$aic, "\n")
+```
+
+## Kalman Filter
+
+```{r kalman}
+set.seed(1)
+y <- cumsum(rnorm(100, sd = 0.2)) + rnorm(100, sd = 0.5)
+kf <- nextstat_kalman(y,
+  F = matrix(1), H = matrix(1),
+  Q = matrix(0.1), R = matrix(0.25))
+cat("Log-likelihood:", kf$log_likelihood, "\n")
+```
+
+## GARCH(1,1)
+
+```{r garch}
+set.seed(1)
+rets <- rnorm(500, sd = 0.01)
+g <- nextstat_garch(rets)
+cat("omega:", g$omega, " alpha:", g$alpha, " beta:", g$beta, "\n")
+```
+
+## Stochastic Volatility
+
+```{r sv}
+set.seed(1)
+rets <- rnorm(500, sd = 0.01)
+sv <- nextstat_sv(rets)
+cat("phi:", sv$phi, " sigma:", sv$sigma, "\n")
+```

@@ -34,6 +34,7 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 - Phase 7 (hierarchical / multilevel): `docs/tutorials/phase-7-hierarchical.md`
 - Phase 7 (PPC): `docs/tutorials/phase-7-ppc.md`
 - Phase 8 (time series / state space): `docs/tutorials/phase-8-timeseries.md`
+- Phase 8 (volatility: GARCH / SV): `docs/tutorials/phase-8-volatility.md`
 - Phase 9 (audit bundles): `docs/tutorials/phase-9-audit.md`
 - Phase 9 (causal inference helpers): `docs/tutorials/phase-9-causal.md`
 - Phase 9 (mixed models / LMM): `docs/tutorials/phase-9-lmm.md`
@@ -49,6 +50,7 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 - Difference-in-differences + event study: `docs/tutorials/phase-12-did-event-study.md`
 - IV / 2SLS: `docs/tutorials/phase-12-iv-2sls.md`
 - AIPW (doubly-robust) baseline: `docs/tutorials/phase-12-aipw.md`
+- Volatility (GARCH(1,1) + SV baseline): `docs/tutorials/phase-12-volatility.md`
 
 ## Pharmacometrics
 

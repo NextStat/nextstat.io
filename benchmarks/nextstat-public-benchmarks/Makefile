@@ -1,4 +1,4 @@
-.PHONY: venv install hep hep-fit pharma pharma-fit bayesian ml validate snapshot
+.PHONY: venv install hep hep-fit pharma pharma-fit bayesian ml econometrics validate snapshot
 
 PY ?= python3
 VENV ?= .venv
@@ -29,6 +29,9 @@ bayesian: install
 
 ml: install
 	$(PYBIN) suites/ml/suite.py --deterministic --out-dir out/ml
+
+econometrics: install
+	$(PYBIN) suites/econometrics/suite.py --deterministic --out-dir out/econometrics
 
 validate: install
 	$(PYBIN) - <<'PY'
@@ -75,6 +78,18 @@ validate: install
 		        inst = json.loads((Path("out/ml") / e["path"]).read_text())
 		        jsonschema.validate(inst, schema_ml_case)
 		    print("ml_benchmark_suite_result_v1: schema ok")
+
+		# Econometrics suite (optional; validate if present)
+		schema_econ_case = json.loads(Path("manifests/schema/econometrics_benchmark_result_v1.schema.json").read_text())
+		schema_econ_suite = json.loads(Path("manifests/schema/econometrics_benchmark_suite_result_v1.schema.json").read_text())
+		esuite_path = Path("out/econometrics/econometrics_suite.json")
+		if esuite_path.exists():
+		    esuite = json.loads(esuite_path.read_text())
+		    jsonschema.validate(esuite, schema_econ_suite)
+		    for e in esuite["cases"]:
+		        inst = json.loads((Path("out/econometrics") / e["path"]).read_text())
+		        jsonschema.validate(inst, schema_econ_case)
+		    print("econometrics_benchmark_suite_result_v1: schema ok")
 
 		schema_baseline = json.loads(Path("manifests/schema/baseline_manifest_v1.schema.json").read_text())
 		schema_index = json.loads(Path("manifests/schema/snapshot_index_v1.schema.json").read_text())

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NextStat Playground</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdn.plot.ly/plotly-2.30.1.min.js"></script>
   </head>
   <body>
     <main class="container">
@@ -13,83 +12,248 @@
         <div>
           <h1>NextStat Playground</h1>
           <p class="subtitle">
-            Drag &amp; drop a <code>workspace.json</code>, run asymptotic CLs in your browser, and
-            plot Brazil bands — no Python, no server.
+            Load a <code>workspace.json</code>, choose an analysis mode, and run it entirely in your browser via WebAssembly.
+            <br><span style="color:rgba(255,255,255,0.20)">No server, no Python.</span>
           </p>
         </div>
         <div class="header-links">
+          <a href="https://nextstat.io/docs/wasm" target="_blank" rel="noreferrer">Docs</a>
           <a href="https://github.com/nextstat/nextstat" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </header>
 
+      <!-- ── WASM init banner ────────────────────────────────── -->
+      <div id="wasmBanner" class="wasm-banner">
+        <div class="wasm-spinner"></div>
+        <span id="wasmBannerText">Loading WebAssembly module…</span>
+      </div>
+
+      <!-- ── Operation tabs ──────────────────────────────────── -->
       <section class="grid">
+        <!-- ── Left: Input ──────────────────────────────────── -->
         <div class="card">
           <h2>Input</h2>
 
-          <div id="dropzone" class="dropzone" tabindex="0" aria-label="Drop workspace.json here">
-            <div class="dropzone-title">Drop <code>workspace.json</code> here</div>
+          <!-- ── Mode selector (2×2 grid) ──────────────────── -->
+          <nav class="tabs" role="tablist">
+            <button class="tab active" role="tab" data-op="brazil" aria-selected="true">Brazil Band<span class="tab-desc">CLs upper limits with ±1σ/±2σ bands</span></button>
+            <button class="tab" role="tab" data-op="scan" aria-selected="false">Profile Scan<span class="tab-desc">−2Δln L profile likelihood curve</span></button>
+            <button class="tab" role="tab" data-op="fit" aria-selected="false">MLE Fit<span class="tab-desc">Maximum likelihood parameter estimates</span></button>
+            <button class="tab" role="tab" data-op="hypotest" aria-selected="false">Hypothesis Test<span class="tab-desc">Single-point CLs p-value</span></button>
+            <button class="tab" role="tab" data-op="glm" aria-selected="false">GLM Regression<span class="tab-desc">Linear, logistic, Poisson models</span></button>
+          </nav>
+
+          <div id="dropzone" class="dropzone" tabindex="0" aria-label="Drop workspace.json or .parquet here">
+            <div class="dropzone-title">Drop <code>.json</code> or <code>.parquet</code> here</div>
             <div class="dropzone-subtitle">or</div>
             <div class="dropzone-actions">
               <label class="button">
                 Choose file
-                <input id="fileInput" type="file" accept=".json,application/json" hidden />
+                <input id="fileInput" type="file" accept=".json,.parquet,application/json,application/octet-stream" hidden />
               </label>
-              <button id="loadExample" class="button secondary" type="button">Load example</button>
+              <select id="exampleSelect" class="select">
+                <option value="">Load example…</option>
+                <option value="simple_workspace.json">Simple counting (2-bin)</option>
+                <option value="shape_workspace.json">Shape analysis (10-bin)</option>
+                <option value="multichannel_workspace.json">Multi-channel (2ch × 5-bin)</option>
+                <option value="discovery_workspace.json">Discovery (excess)</option>
+                <option value="glm_linear.json">GLM: Linear regression</option>
+                <option value="glm_logistic.json">GLM: Logistic regression</option>
+                <option value="glm_poisson.json">GLM: Poisson regression</option>
+              </select>
             </div>
           </div>
 
-          <h3>Settings</h3>
-          <div class="form">
-            <label class="field">
-              <span>α (CLs threshold)</span>
-              <input id="alpha" type="number" step="0.001" min="0.0001" max="0.9999" value="0.05" />
-            </label>
+          <div class="editor-wrap">
+            <div class="editor-bar">
+              <span class="editor-label">workspace.json</span>
+              <button id="formatBtn" class="button tiny" type="button" title="Format JSON">Format</button>
+            </div>
+            <textarea id="editor" class="editor" spellcheck="false" placeholder='{"channels": [...], "observations": [...], "measurements": [...]}' rows="14"></textarea>
+          </div>
 
-            <div class="row">
-              <label class="field">
-                <span>Scan start</span>
-                <input id="scanStart" type="number" step="0.1" value="0" />
-              </label>
-              <label class="field">
-                <span>Scan stop</span>
-                <input id="scanStop" type="number" step="0.1" value="5" />
-              </label>
-              <label class="field">
-                <span>Points</span>
-                <input id="scanPoints" type="number" step="1" min="2" value="41" />
-              </label>
+          <!-- ── Operation-specific settings ────────────────── -->
+          <div class="settings">
+            <!-- Brazil Band settings -->
+            <div class="op-settings" data-op="brazil">
+              <div class="row">
+                <label class="field">
+                  <span>α</span>
+                  <input id="alpha" type="number" step="0.001" min="0.0001" max="0.9999" value="0.05" />
+                </label>
+                <label class="field">
+                  <span>Scan start</span>
+                  <input id="scanStart" type="number" step="0.1" value="0" />
+                </label>
+                <label class="field">
+                  <span>Scan stop</span>
+                  <input id="scanStop" type="number" step="0.1" value="5" />
+                </label>
+                <label class="field">
+                  <span>Points</span>
+                  <input id="scanPoints" type="number" step="1" min="2" value="41" />
+                </label>
+              </div>
+              <div class="row" style="margin-top:8px;">
+                <label class="field" style="flex-direction:row;align-items:center;gap:8px;">
+                  <input id="massScanToggle" type="checkbox" />
+                  <span style="white-space:nowrap;">Mass Scan (Type B)</span>
+                </label>
+                <label class="field mass-scan-field" hidden>
+                  <span>Mass points</span>
+                  <input id="massScanPoints" type="number" step="1" min="3" max="20" value="7" />
+                </label>
+              </div>
             </div>
 
+            <!-- Profile Scan settings -->
+            <div class="op-settings" data-op="scan" hidden>
+              <div class="row">
+                <label class="field">
+                  <span>Scan start</span>
+                  <input id="pScanStart" type="number" step="0.1" value="0" />
+                </label>
+                <label class="field">
+                  <span>Scan stop</span>
+                  <input id="pScanStop" type="number" step="0.1" value="5" />
+                </label>
+                <label class="field">
+                  <span>Points</span>
+                  <input id="pScanPoints" type="number" step="1" min="2" value="41" />
+                </label>
+              </div>
+            </div>
+
+            <!-- Hypothesis Test settings -->
+            <div class="op-settings" data-op="hypotest" hidden>
+              <div class="row">
+                <label class="field">
+                  <span>μ<sub>test</sub></span>
+                  <input id="muTest" type="number" step="0.1" value="1.0" />
+                </label>
+              </div>
+            </div>
+
+            <!-- MLE Fit: no extra settings -->
+
+            <!-- GLM Regression settings -->
+            <div class="op-settings" data-op="glm" hidden>
+              <div class="row">
+                <label class="field">
+                  <span>Model</span>
+                  <select id="glmModel" class="select" style="font-size:12px;padding:7px 8px;">
+                    <option value="linear">Linear</option>
+                    <option value="logistic">Logistic</option>
+                    <option value="poisson">Poisson</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Intercept</span>
+                  <select id="glmIntercept" class="select" style="font-size:12px;padding:7px 8px;">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </label>
+              </div>
+              <div class="glm-data-hint" style="margin-top:8px;font-size:11px;color:var(--muted);">
+                Paste a JSON object with <code>"x"</code> (2D array), <code>"y"</code> (1D array) into the editor, or load an example.
+              </div>
+            </div>
+          </div>
+
+          <div class="run-bar">
             <button id="runBtn" class="button primary" type="button" disabled>Run</button>
+            <span class="kbd-hint"><kbd class="kbd">⌘</kbd>+<kbd class="kbd">⏎</kbd></span>
             <div id="status" class="status" role="status" aria-live="polite"></div>
-            <pre id="errorBox" class="error" hidden></pre>
           </div>
+          <pre id="errorBox" class="error" hidden></pre>
         </div>
 
+        <!-- ── Right: Results ───────────────────────────────── -->
         <div class="card">
           <h2>Results</h2>
-          <div class="results">
-            <div class="kv"><div class="k">Measurement</div><div id="measurement" class="v">—</div></div>
-            <div class="kv"><div class="k">POI</div><div id="poi" class="v">—</div></div>
-            <div class="kv"><div class="k"># params</div><div id="nParams" class="v">—</div></div>
-            <div class="kv"><div class="k">μ̂</div><div id="muHat" class="v">—</div></div>
-            <div class="kv"><div class="k">NLL(μ̂)</div><div id="nll" class="v">—</div></div>
-            <div class="kv"><div class="k">Observed μ<sub>up</sub></div><div id="obsLimit" class="v">—</div></div>
-            <div class="kv"><div class="k">Expected μ<sub>up</sub> (median)</div><div id="expMedLimit" class="v">—</div></div>
-            <div class="kv"><div class="k">Runtime</div><div id="runtime" class="v">—</div></div>
+
+          <!-- Brazil Band results -->
+          <div class="op-results" data-op="brazil">
+            <div class="results">
+              <div class="kv"><div class="k">Measurement</div><div id="measurement" class="v">—</div></div>
+              <div class="kv"><div class="k">POI</div><div id="poi" class="v">—</div></div>
+              <div class="kv"><div class="k"># params</div><div id="nParams" class="v">—</div></div>
+              <div class="kv"><div class="k">μ̂</div><div id="muHat" class="v">—</div></div>
+              <div class="kv"><div class="k">NLL(μ̂)</div><div id="nll" class="v">—</div></div>
+              <div class="kv"><div class="k">Obs. μ<sub>up</sub></div><div id="obsLimit" class="v">—</div></div>
+              <div class="kv"><div class="k">Exp. μ<sub>up</sub></div><div id="expMedLimit" class="v">—</div></div>
+              <div class="kv"><div class="k">Runtime</div><div id="brazilRuntime" class="v">—</div></div>
+            </div>
+            <div id="brazilChart" class="chart-wrap"></div>
+            <div id="massScanChart" class="chart-wrap" hidden></div>
           </div>
 
-          <div class="plot-wrap">
-            <div id="plot" class="plot"></div>
+          <!-- MLE Fit results -->
+          <div class="op-results" data-op="fit" hidden>
+            <div class="results results-wide">
+              <div class="kv"><div class="k">Measurement</div><div id="fitMeasurement" class="v">—</div></div>
+              <div class="kv"><div class="k">NLL</div><div id="fitNll" class="v">—</div></div>
+              <div class="kv"><div class="k">Converged</div><div id="fitConverged" class="v">—</div></div>
+              <div class="kv"><div class="k">Iterations</div><div id="fitIter" class="v">—</div></div>
+              <div class="kv"><div class="k">Runtime</div><div id="fitRuntime" class="v">—</div></div>
+            </div>
+            <div id="fitParamsWrap" class="params-table-wrap"></div>
+          </div>
+
+          <!-- Profile Scan results -->
+          <div class="op-results" data-op="scan" hidden>
+            <div class="results">
+              <div class="kv"><div class="k">POI</div><div id="scanPoi" class="v">—</div></div>
+              <div class="kv"><div class="k">μ̂</div><div id="scanMuHat" class="v">—</div></div>
+              <div class="kv"><div class="k">NLL(μ̂)</div><div id="scanNllHat" class="v">—</div></div>
+              <div class="kv"><div class="k"># params</div><div id="scanNParams" class="v">—</div></div>
+              <div class="kv"><div class="k">Runtime</div><div id="scanRuntime" class="v">—</div></div>
+            </div>
+            <div id="scanChart" class="chart-wrap"></div>
+          </div>
+
+          <!-- Hypothesis Test results -->
+          <div class="op-results" data-op="hypotest" hidden>
+            <div class="results results-wide">
+              <div class="kv"><div class="k">Measurement</div><div id="htMeasurement" class="v">—</div></div>
+              <div class="kv"><div class="k">POI</div><div id="htPoi" class="v">—</div></div>
+              <div class="kv"><div class="k">μ<sub>test</sub></div><div id="htMuTest" class="v">—</div></div>
+              <div class="kv"><div class="k">CL<sub>s</sub></div><div id="htCls" class="v">—</div></div>
+              <div class="kv"><div class="k">CL<sub>s+b</sub></div><div id="htClsb" class="v">—</div></div>
+              <div class="kv"><div class="k">CL<sub>b</sub></div><div id="htClb" class="v">—</div></div>
+              <div class="kv"><div class="k">q<sub>μ</sub></div><div id="htQmu" class="v">—</div></div>
+              <div class="kv"><div class="k">q<sub>μ,A</sub></div><div id="htQmuA" class="v">—</div></div>
+              <div class="kv"><div class="k">μ̂</div><div id="htMuHat" class="v">—</div></div>
+              <div class="kv"><div class="k">Runtime</div><div id="htRuntime" class="v">—</div></div>
+            </div>
+          </div>
+
+          <!-- GLM Regression results -->
+          <div class="op-results" data-op="glm" hidden>
+            <div class="results results-wide">
+              <div class="kv"><div class="k">Model</div><div id="glmModelOut" class="v">—</div></div>
+              <div class="kv"><div class="k">Converged</div><div id="glmConverged" class="v">—</div></div>
+              <div class="kv"><div class="k">NLL</div><div id="glmNll" class="v">—</div></div>
+              <div class="kv"><div class="k">n</div><div id="glmNobs" class="v">—</div></div>
+              <div class="kv"><div class="k">Iterations</div><div id="glmIter" class="v">—</div></div>
+              <div class="kv"><div class="k">Runtime</div><div id="glmRuntime" class="v">—</div></div>
+            </div>
+            <div id="glmParamsWrap" class="params-table-wrap"></div>
+          </div>
+
+          <!-- Empty state -->
+          <div id="emptyState" class="empty-state">
+            <p>Load a workspace and click <strong>Run</strong> to see results.</p>
           </div>
         </div>
       </section>
 
       <footer class="footer">
-        <small>
-          Tip: if the page errors with “missing <code>pkg/ns_wasm.js</code>”, build the WASM bundle
-          first (see <code>playground/README.md</code>).
-        </small>
+        <p>
+          WASM binary: ~540 KB · Runs entirely in your browser · No data leaves your machine ·
+          <a href="https://nextstat.io/docs/wasm">Learn more</a>
+        </p>
       </footer>
     </main>
 

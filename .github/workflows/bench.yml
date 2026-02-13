@@ -15,7 +15,7 @@ env:
 jobs:
   compile:
     name: Compile benches
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -27,13 +27,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Compile all benches
-        run: cargo bench --workspace --no-run --all-features
+        run: cargo bench --workspace --no-run
 
   quick:
     # Only run quick benches on schedule / manual dispatch to avoid noisy PR timings.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Run quick benches
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -46,9 +46,8 @@ jobs:
 
       - name: Run Criterion benches (quick)
         run: |
-          cargo bench -p ns-compute --all-features -- --quick
-          cargo bench -p ns-translate --all-features -- --quick
-          cargo bench -p ns-ad --all-features -- --quick
-          cargo bench -p ns-core --all-features -- --quick
-          cargo bench -p ns-inference --all-features -- --quick
-
+          cargo bench -p ns-compute -- --quick
+          cargo bench -p ns-translate -- --quick
+          cargo bench -p ns-ad -- --quick
+          cargo bench -p ns-core -- --quick
+          cargo bench -p ns-inference -- --quick

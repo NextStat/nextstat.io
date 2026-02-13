@@ -1,0 +1,89 @@
+{
+  "schema_version": "nextstat_unbinned_spec_v0",
+  "model": {
+    "poi": "mu",
+    "parameters": [
+      {
+        "name": "mu",
+        "init": 1.0,
+        "bounds": [
+          0.0,
+          5.0
+        ]
+      },
+      {
+        "name": "mu_sig",
+        "init": 91.0,
+        "bounds": [
+          85.0,
+          95.0
+        ]
+      },
+      {
+        "name": "sigma_sig",
+        "init": 2.5,
+        "bounds": [
+          0.5,
+          10.0
+        ]
+      },
+      {
+        "name": "lambda_bkg",
+        "init": -0.03,
+        "bounds": [
+          -0.1,
+          -0.001
+        ]
+      }
+    ]
+  },
+  "channels": [
+    {
+      "name": "main",
+      "data": {
+        "file": "../artifacts/runpod_h100_2x/bench_10k/observed.parquet"
+      },
+      "observables": [
+        {
+          "name": "mass",
+          "bounds": [
+            60.0,
+            120.0
+          ]
+        }
+      ],
+      "processes": [
+        {
+          "name": "signal",
+          "pdf": {
+            "type": "gaussian",
+            "observable": "mass",
+            "params": [
+              "mu_sig",
+              "sigma_sig"
+            ]
+          },
+          "yield": {
+            "type": "scaled",
+            "base_yield": 500000.0,
+            "scale": "mu"
+          }
+        },
+        {
+          "name": "background",
+          "pdf": {
+            "type": "exponential",
+            "observable": "mass",
+            "params": [
+              "lambda_bkg"
+            ]
+          },
+          "yield": {
+            "type": "fixed",
+            "value": 1500000.0
+          }
+        }
+      ]
+    }
+  ]
+}

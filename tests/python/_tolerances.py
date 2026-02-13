@@ -41,6 +41,18 @@ GPU_PARAM_ATOL = 2e-4     # Best-fit parameter values
 GPU_FIT_NLL_ATOL = 1e-6   # NLL at best-fit point
 
 # ---------------------------------------------------------------------------
+# Unbinned closure + coverage (HP3)
+# ---------------------------------------------------------------------------
+# Closure: |fitted - truth| for each free parameter after fitting a large dataset.
+UNBINNED_CLOSURE_PARAM_ATOL = 0.15       # absolute (generous: accounts for stat fluctuation)
+UNBINNED_CLOSURE_PARAM_RTOL = 0.10       # relative
+# Coverage: fraction of toys where truth is within 1σ of best-fit.
+# Nominal is 0.683; Hessian-based uncertainties from L-BFGS-B are typically
+# conservative (overestimate σ), so over-coverage up to ~95% is expected.
+UNBINNED_COVERAGE_1SIGMA_LO = 0.55       # lower bound (N_toys ~ 100-200)
+UNBINNED_COVERAGE_1SIGMA_HI = 0.98       # upper bound (conservative σ → over-coverage)
+
+# ---------------------------------------------------------------------------
 # Metal parity (f32 compute — Apple Silicon has no hardware f64)
 # ---------------------------------------------------------------------------
 METAL_NLL_ATOL = 1e-3

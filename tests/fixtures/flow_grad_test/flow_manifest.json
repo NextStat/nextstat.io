@@ -1,0 +1,35 @@
+{
+  "schema_version": "nextstat_flow_v0",
+  "flow_type": "conditional_gaussian",
+  "features": 1,
+  "context_features": 2,
+  "observable_names": [
+    "x"
+  ],
+  "context_names": [
+    "mu",
+    "sigma"
+  ],
+  "support": [
+    [
+      -10.0,
+      10.0
+    ]
+  ],
+  "base_distribution": "standard_normal",
+  "models": {
+    "log_prob": "log_prob.onnx",
+    "sample": "sample.onnx",
+    "log_prob_grad": "log_prob_grad.onnx"
+  },
+  "training": {
+    "library": "test_fixture",
+    "architecture": "conditional_gaussian",
+    "note": "Minimal conditional Gaussian for G3 analytical gradient parity test"
+  },
+  "validation": {
+    "pit_ks_pvalue": 1.0,
+    "closure_bias_percent": 0.0,
+    "normalization_check": 1.0
+  }
+}

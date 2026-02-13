@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Fit result containing parameter estimates and uncertainties
+#[must_use]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitResult {
     /// Best-fit parameter values
@@ -130,6 +131,7 @@ impl FitResult {
     }
 
     /// Back-compat alias for older code/tests. Prefer `n_iter`.
+    #[deprecated(since = "0.9.0", note = "Use the `n_iter` field directly")]
     pub fn n_evaluations(&self) -> usize {
         self.n_iter
     }

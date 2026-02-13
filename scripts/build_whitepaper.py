@@ -108,7 +108,6 @@ def _docker_pandoc(
         pass
     cmd += ["-v", f"{repo}:/data", "-w", "/data", docker_image]
     cmd += [
-        "pandoc",
         str(in_md_rel),
         "-o",
         str(out_pdf_rel),

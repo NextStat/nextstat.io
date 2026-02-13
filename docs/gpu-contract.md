@@ -13,13 +13,17 @@ GPU-accelerated paths must produce results within specified tolerance of the CPU
 
 ## Interpolation
 
-GPU kernels currently support only smooth interpolation:
+GPU HistFactory likelihood kernels currently support only smooth interpolation:
 
 - NormSys: Code4
 - HistoSys: Code4p
 
 This matches the NextStat default for pyhf JSON inputs. If you select strict pyhf defaults
 (Code1/Code0) via `--interp-defaults pyhf`, GPU commands will fail-fast.
+
+Unbinned helper kernels may support additional interpolation modes:
+
+- Per-event WeightSys morphing (`kernels/unbinned_weight_sys.cu`): Code0, Code4p
 
 ## CUDA f64
 
@@ -96,6 +100,141 @@ Contract:
 
 **Recommendation**: Use GPU for batch toy fitting on large models (6.4x at 184 params),
 differentiable training, and large-model scans. Use CPU for single-model fits and small models.
+
+## Unbinned Flow NLL Reduction
+
+A dedicated CUDA kernel (`flow_nll_reduce`) handles NLL reduction from externally-computed
+log-prob values (flow PDFs evaluated via ONNX Runtime). This separates PDF evaluation
+from likelihood reduction, enabling mixed parametric+flow models.
+
+### Contract
+
+| Metric | Tolerance (CUDA f64) |
+|--------|---------------------|
+| NLL at same log-prob input | atol=1e-8 |
+| NLL with host-upload vs device-resident | exact (same kernel) |
+
+### Supported features
+
+- Multi-process logsumexp reduction (signal + background)
+- Gaussian nuisance constraints
+- Host-upload path (`nll`): log-prob evaluated on CPU, uploaded per iteration
+- Device-resident path (`nll_device`): log-prob from ONNX CUDA EP stays on GPU (zero-copy)
+- **f32 device-pointer path (`nll_device_ptr_f32`)**: accepts a raw CUDA device pointer to `float` log-probs produced by ONNX Runtime CUDA EP with I/O Binding. Eliminates the f64 host-upload entirely — the f32 tensor stays on the GPU from ONNX EP output through NLL reduction. Up to **57× faster** than the f64 host-upload path at typical event counts (~1K). Python binding: `GpuFlowSession.nll_device_ptr_f32(ptr, params)`. Tolerance: NLL agrees with the f64 path to ~1e-3 (f32 precision).
+- Batch variant (`flow_batch_nll_reduce`): 1 CUDA block per toy dataset
+
+### Validation
+
+```bash
+# GPU flow session tests (requires NVIDIA GPU)
+cargo test -p ns-inference --features cuda --test gpu_flow_session_test
+
+# CPU flow integration tests (no GPU needed, requires ONNX fixtures)
+cargo test -p ns-unbinned --features neural --test flow_integration
+```
+
+## TensorRT Execution Provider for Neural PDFs
+
+When built with `--features neural-tensorrt`, `FlowPdf` attempts TensorRT EP first
+with automatic fallback to CUDA EP for unsupported ops.
+
+### Configuration (`FlowGpuConfig`)
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `fp16` | `true` | FP16 inference (2× throughput on Tensor Cores) |
+| `engine_cache_path` | `~/.cache/nextstat/tensorrt/` | Compiled TRT engine cache (skips recompilation) |
+| `profile_min_batch` | `1` | TRT optimization profile: minimum batch |
+| `profile_opt_batch` | `1024` | TRT optimization profile: optimal batch |
+| `profile_max_batch` | `65536` | TRT optimization profile: maximum batch |
+
+### Runtime introspection
+
+```rust
+let flow = FlowPdf::from_manifest(&path, &[])?;
+match flow.gpu_ep_kind() {
+    Some(FlowGpuEpKind::TensorRtEp) => println!("TensorRT active"),
+    Some(FlowGpuEpKind::CudaEp)     => println!("CUDA EP fallback"),
+    None                              => println!("CPU only"),
+}
+```
+
+### Engine cache behaviour
+
+- **First run**: TRT compiles the ONNX model → engine file saved to cache dir (10–60 s).
+- **Subsequent runs**: engine loaded from cache (<1 s).
+- Cache is keyed by model hash + TRT version + GPU architecture.
+- Set `engine_cache_path: None` to disable caching.
+
+### Feature flags
+
+```toml
+# Cargo.toml
+[features]
+neural-tensorrt = ["neural-cuda", "ort/tensorrt"]
+```
+
+`neural-tensorrt` implies `neural-cuda`. CUDA EP is always available as fallback.
+
+## Direct-to-GPU Parquet Pipeline
+
+End-to-end path from Parquet file to GPU-resident event buffers, bypassing intermediate
+Arrow/DataFrame materialization. Designed for unbinned likelihood fits with large event
+datasets.
+
+### Data flow
+
+```
+Parquet file
+  → mmap (memmap2, zero-copy)
+  → row group predicate pushdown (min/max statistics)
+  → parallel row group decode (rayon)
+  → Arrow Float64Array → SoA f64 buffer
+  → CUDA: clone_htod → CudaSlice<f64>      (f64 precision, zero conversion)
+  → Metal: f64→f32 + new_buffer_with_data → MTLBuffer  (f32 precision)
+```
+
+### Modules
+
+| Module | Crate | Function |
+|--------|-------|----------|
+| `arrow::parquet` | `ns-translate` | `read_parquet_events_soa()` → `ParquetEventData` |
+| `cuda_parquet` | `ns-compute` | `upload_events_to_cuda()`, `upload_events_with_bounds_to_cuda()` |
+| `metal_parquet` | `ns-compute` | `upload_events_to_metal()`, `upload_events_with_bounds_to_metal()` |
+
+### Performance (MacBook M5, 100k events, 4 observables)
+
+Parquet read benchmarks (Criterion, `benches/parquet_read.rs`):
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| mmap + decode (all cols, 100k) | 557 µs | Single-threaded, 4 columns |
+| mmap + decode (2/4 cols projected) | 362 µs | Column projection saves ~35% |
+| mmap + decode (1 col projected) | 259–314 µs | Column projection saves ~50% |
+| Predicate pushdown (no filter) | 813 µs | Baseline, 10 row groups |
+| Predicate pushdown (25% pass) | 728 µs | ~10% faster via RG pruning |
+| Predicate pushdown (10% pass) | 159 µs | **5× faster** — 9/10 RGs pruned |
+| Parallel decode (all RGs) | 3.16 ms | rayon overhead on small data |
+| Sequential decode (all RGs) | 943 µs | Sequential faster for <1M events |
+| Parallel + filtered (10% pass) | 1.11 ms | Parallel helps when RGs pass |
+| Sequential + filtered (10% pass) | 303 µs | Sequential wins for selective filters |
+
+Metal GPU upload (RTX → MTLBuffer, f64→f32 conversion):
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| SoA upload (6 elements, roundtrip) | <0.15 ms | Dominated by Metal device init |
+
+CUDA GPU upload (Hetzner RTX 4000 SFF Ada):
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| SoA upload (6 elements, roundtrip) | <0.15 ms | Dominated by CUDA context init |
+
+**Recommendation**: For production datasets (>100k events), predicate pushdown provides
+the largest speedup (up to 5×). Column projection adds ~35% on top. Parallel decode
+benefits large files (>1M events, many row groups). The GPU upload itself is negligible
+compared to Parquet decode.
 
 ## Known Issues (Fixed)
 

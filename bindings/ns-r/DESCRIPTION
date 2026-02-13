@@ -1,0 +1,31 @@
+Package: nextstat
+Type: Package
+Title: High-Performance Statistical Inference via Rust
+Version: 0.9.0
+Authors@R: c(
+    person("NextStat", "Contributors", email = "dev@nextstat.io", role = c("aut", "cre"))
+  )
+Description: R interface to the NextStat statistical inference engine
+    written in Rust. Provides population PK/PD modeling (FOCE/FOCEI, SAEM),
+    pharmacodynamic models (Emax, sigmoid Emax, indirect response Types I-IV),
+    adaptive ODE solvers for stiff PK/PD systems, stepwise covariate modeling
+    (SCM), VPC/GOF diagnostics, HistFactory maximum-likelihood fitting,
+    asymptotic CLs hypothesis testing, upper limits (Brazil bands),
+    generalized linear models (logistic, Poisson, negative binomial),
+    Kalman filter/smoother, GARCH(1,1), and stochastic volatility models.
+    All computations are performed in compiled Rust code via 'extendr'.
+License: AGPL-3 | file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+NeedsCompilation: yes
+SystemRequirements: Rust toolchain (>= 1.85, cargo), a C compiler
+    toolchain compatible with R.
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/nextstat/nextstat.io
+BugReports: https://github.com/nextstat/nextstat.io/issues

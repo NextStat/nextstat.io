@@ -26,8 +26,56 @@ pub mod cpu;
 /// Device-agnostic GPU accelerator abstraction (always available).
 pub mod gpu_accel;
 pub mod simd;
+/// GPU data types for unbinned likelihood kernels (always available).
+pub mod unbinned_types;
 
 pub use cpu::CpuBackend;
+
+/// Re-export cudarc driver types used in public APIs (CudaContext, CudaStream, CudaSlice).
+#[cfg(feature = "cuda")]
+pub use cudarc::driver as cuda_driver;
+
+/// Query total device memory (bytes) for a CUDA device by ordinal.
+///
+/// This is a lightweight call that does not create a full CUDA context.
+/// Returns `Err` if CUDA is not available or the device ordinal is invalid.
+#[cfg(feature = "cuda")]
+pub fn cuda_device_total_mem(ordinal: usize) -> ns_core::Result<usize> {
+    use cudarc::driver::result;
+    unsafe {
+        result::init().map_err(|e| ns_core::Error::Computation(format!("cuInit failed: {e}")))?;
+        let dev = result::device::get(ordinal as i32).map_err(|e| {
+            ns_core::Error::Computation(format!("cuDeviceGet({ordinal}) failed: {e}"))
+        })?;
+        result::device::total_mem(dev).map_err(|e| {
+            ns_core::Error::Computation(format!("cuDeviceTotalMem({ordinal}) failed: {e}"))
+        })
+    }
+}
+
+/// Return the number of CUDA devices visible to the process.
+///
+/// Returns 0 if CUDA is not available.
+#[cfg(feature = "cuda")]
+pub fn cuda_device_count() -> usize {
+    use cudarc::driver::result;
+    unsafe {
+        if result::init().is_err() {
+            return 0;
+        }
+        result::device::get_count().unwrap_or(0) as usize
+    }
+}
+
+/// Re-export core Metal types so downstream crates (ns-inference, ns-cli) can reference
+/// `metal_rs::Buffer`, `metal_rs::Device`, etc. without adding a direct `metal` dependency.
+#[cfg(feature = "metal")]
+pub mod metal_rs {
+    pub use metal::Buffer;
+    pub use metal::CommandQueue;
+    pub use metal::Device;
+    pub use metal::MTLResourceOptions;
+}
 
 #[cfg(feature = "metal")]
 pub mod metal;
@@ -51,6 +99,34 @@ pub mod metal_types;
 #[cfg(feature = "cuda")]
 pub mod cuda_batch;
 
+/// CUDA unbinned (event-level) NLL+gradient accelerator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_unbinned;
+
+/// CUDA unbinned (event-level) batch toy NLL+gradient accelerator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_unbinned_batch;
+
+/// CUDA unbinned (event-level) toy sampling accelerator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_unbinned_toy;
+
+/// CUDA helper kernel: per-event WeightSys morphing for unbinned workflows (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_unbinned_weight_sys;
+
+/// CUDA NLL reduction for externally-computed log-prob (flow PDFs, requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_flow_nll;
+
+/// CUDA batch toy NLL accelerator for flow PDFs (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_flow_batch;
+
+/// Direct Parquet → CUDA GPU upload (SoA f64 → CudaSlice, requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_parquet;
+
 /// CUDA differentiable NLL accelerator for PyTorch zero-copy integration.
 #[cfg(feature = "cuda")]
 pub mod differentiable;
@@ -59,9 +135,25 @@ pub mod differentiable;
 #[cfg(feature = "metal")]
 pub mod metal_batch;
 
+/// Metal unbinned (event-level) NLL+gradient accelerator (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_unbinned;
+
+/// Metal unbinned (event-level) batch toy NLL+gradient accelerator (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_unbinned_batch;
+
+/// Metal unbinned (event-level) toy sampling accelerator (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_unbinned_toy;
+
 /// Metal differentiable NLL accelerator for profiled fitting (requires `metal` feature).
 #[cfg(feature = "metal")]
 pub mod metal_differentiable;
+
+/// Direct Parquet → Metal GPU upload (SoA f64 → f32 MTLBuffer, requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_parquet;
 
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 pub mod accelerate;

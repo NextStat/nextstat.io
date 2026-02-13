@@ -67,6 +67,7 @@
         "n_warmup": { "type": "integer", "minimum": 0 },
         "n_samples": { "type": "integer", "minimum": 1 },
         "seed": { "type": "integer", "minimum": 0 },
+        "dataset_seed": { "type": "integer", "minimum": 0 },
         "max_treedepth": { "type": "integer", "minimum": 1 },
         "target_accept": { "type": "number", "minimum": 0, "maximum": 1 },
         "init_jitter_rel": { "type": "number", "minimum": 0 }

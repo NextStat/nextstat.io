@@ -41,8 +41,8 @@ Example output (approx):
 
 ```text
 ['x1']
-[1.00...]
-[0.00...]
+[1.0]
+[0.0]
 ```
 
 ## Notes and limitations

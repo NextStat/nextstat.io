@@ -82,12 +82,14 @@
           "data": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["file", "tree"],
+            "required": ["file"],
             "properties": {
               "file": { "$ref": "#/$defs/path" },
               "tree": { "type": "string", "minLength": 1 },
+              "channel": { "type": "string", "minLength": 1, "description": "Parquet only: select rows with _channel == channel." },
               "selection": { "type": "string", "minLength": 1 },
-              "weight": { "type": "string", "minLength": 1 }
+              "weight": { "type": "string", "minLength": 1 },
+              "format": { "type": "string", "enum": ["root", "parquet"], "description": "Optional explicit data format override." }
             }
           },
           "observables": {
@@ -184,6 +186,38 @@
                       "additionalProperties": false,
                       "required": ["type", "observable", "params"],
                       "properties": {
+                        "type": { "type": "string", "const": "argus" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [c, p]. Cutoff is taken from observable upper bound."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
+                        "type": { "type": "string", "const": "voigtian" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "params": {
+                          "type": "array",
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "items": { "type": "string", "minLength": 1 },
+                          "description": "Shape parameter names: [mu, sigma, gamma]."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "observable", "params"],
+                      "properties": {
                         "type": { "type": "string", "const": "chebyshev" },
                         "observable": { "type": "string", "minLength": 1 },
                         "params": {
@@ -253,6 +287,80 @@
                           "type": "integer",
                           "minimum": 1,
                           "description": "Optional cap on the number of training events (deterministically keeps the first N after selection)."
+                        },
+                        "weight_systematics": {
+                          "type": "array",
+                          "description": "Optional per-event weight systematics. Each entry provides up/down weight ratios (relative to source.weight) and maps to a nuisance parameter.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["param", "up", "down"],
+                            "properties": {
+                              "param": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Nuisance parameter name α controlling this weight systematic."
+                              },
+                              "up": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to a non-negative ratio w_up / w_nom per event."
+                              },
+                              "down": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to a non-negative ratio w_down / w_nom per event."
+                              },
+                              "interp": {
+                                "type": "string",
+                                "enum": ["code0", "code4p"],
+                                "default": "code0",
+                                "description": "Interpolation code for template morphing (HistFactory-style)."
+                              },
+                              "apply_to_shape": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "If true, morphs the PDF shape (template) using up/down histograms."
+                              },
+                              "apply_to_yield": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "If true, applies a yield rate modifier using total up/down weights."
+                              }
+                            }
+                          }
+                        },
+                        "horizontal_systematics": {
+                          "type": "array",
+                          "description": "Optional horizontal (observable-shift) systematics. Each entry provides up/down observable expressions (at α=±1) and maps to a nuisance parameter. Selection is evaluated on the nominal events; only the histogram observable is shifted when building up/down templates.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["param", "up", "down"],
+                            "properties": {
+                              "param": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Nuisance parameter name α controlling this horizontal systematic."
+                              },
+                              "up": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to the observable value at α=+1 (e.g. shifted branch or formula)."
+                              },
+                              "down": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to the observable value at α=-1."
+                              },
+                              "interp": {
+                                "type": "string",
+                                "enum": ["code0", "code4p"],
+                                "default": "code0",
+                                "description": "Interpolation code for template morphing (HistFactory-style)."
+                              }
+                            }
+                          }
                         }
                       }
                     },
@@ -280,6 +388,43 @@
                     {
                       "type": "object",
                       "additionalProperties": false,
+                      "required": ["type", "observable", "knots_x", "knots_y"],
+                      "properties": {
+                        "type": { "type": "string", "const": "spline" },
+                        "observable": { "type": "string", "minLength": 1 },
+                        "knots_x": {
+                          "type": "array",
+                          "minItems": 2,
+                          "items": { "type": "number" },
+                          "description": "Spline knot x-positions (strictly increasing). Must match observable bounds."
+                        },
+                        "knots_y": {
+                          "type": "array",
+                          "minItems": 2,
+                          "items": { "type": "number", "exclusiveMinimum": 0.0 },
+                          "description": "Spline knot density values (>0), length must match knots_x."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["type", "components"],
+                      "properties": {
+                        "type": { "type": "string", "const": "product" },
+                        "components": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "$ref": "#/properties/channels/items/properties/processes/items/properties/pdf"
+                          },
+                          "description": "List of independent component PDFs (disjoint observables)."
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
                       "required": ["type", "observable", "bandwidth", "source"],
                       "properties": {
                         "type": { "type": "string", "const": "kde_from_tree" },
@@ -300,6 +445,80 @@
                           "type": "integer",
                           "minimum": 1,
                           "description": "Optional cap on the number of training events (deterministically keeps the first N after selection)."
+                        },
+                        "weight_systematics": {
+                          "type": "array",
+                          "description": "Optional per-event weight systematics. Each entry provides up/down weight ratios (relative to source.weight) and maps to a nuisance parameter.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["param", "up", "down"],
+                            "properties": {
+                              "param": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Nuisance parameter name α controlling this weight systematic."
+                              },
+                              "up": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to a non-negative ratio w_up / w_nom per event."
+                              },
+                              "down": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to a non-negative ratio w_down / w_nom per event."
+                              },
+                              "interp": {
+                                "type": "string",
+                                "enum": ["code0", "code4p"],
+                                "default": "code0",
+                                "description": "Interpolation code for template morphing (HistFactory-style)."
+                              },
+                              "apply_to_shape": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "If true, morphs the PDF shape (template) using up/down KDE weights."
+                              },
+                              "apply_to_yield": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "If true, applies a yield rate modifier using total up/down weights."
+                              }
+                            }
+                          }
+                        },
+                        "horizontal_systematics": {
+                          "type": "array",
+                          "description": "Optional horizontal (observable-shift) systematics. Each entry provides up/down observable expressions (at α=±1) and maps to a nuisance parameter. Selection is evaluated on the nominal events; only the KDE observable is shifted when building per-kernel up/down centers.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["param", "up", "down"],
+                            "properties": {
+                              "param": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Nuisance parameter name α controlling this horizontal systematic."
+                              },
+                              "up": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to the observable value at α=+1 (e.g. shifted branch or formula)."
+                              },
+                              "down": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Expression evaluating to the observable value at α=-1."
+                              },
+                              "interp": {
+                                "type": "string",
+                                "enum": ["code0", "code4p"],
+                                "default": "code0",
+                                "description": "Interpolation code for center morphing (HistFactory-style)."
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -329,6 +548,23 @@
                                   "lo": { "type": "number", "exclusiveMinimum": 0.0 },
                                   "hi": { "type": "number", "exclusiveMinimum": 0.0 }
                                 }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "weightsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "interp_code": {
+                                    "type": "string",
+                                    "enum": ["code0", "code4p"],
+                                    "default": "code0",
+                                    "description": "Interpolation code (HistFactory-style) for WeightSys."
+                                  }
+                                }
                               }
                             ]
                           }
@@ -356,6 +592,23 @@
                                   "param": { "type": "string", "minLength": 1 },
                                   "lo": { "type": "number", "exclusiveMinimum": 0.0 },
                                   "hi": { "type": "number", "exclusiveMinimum": 0.0 }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "weightsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "interp_code": {
+                                    "type": "string",
+                                    "enum": ["code0", "code4p"],
+                                    "default": "code0",
+                                    "description": "Interpolation code (HistFactory-style) for WeightSys."
+                                  }
                                 }
                               }
                             ]
@@ -385,6 +638,23 @@
                                   "param": { "type": "string", "minLength": 1 },
                                   "lo": { "type": "number", "exclusiveMinimum": 0.0 },
                                   "hi": { "type": "number", "exclusiveMinimum": 0.0 }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["type", "param", "lo", "hi"],
+                                "properties": {
+                                  "type": { "type": "string", "const": "weightsys" },
+                                  "param": { "type": "string", "minLength": 1 },
+                                  "lo": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "hi": { "type": "number", "exclusiveMinimum": 0.0 },
+                                  "interp_code": {
+                                    "type": "string",
+                                    "enum": ["code0", "code4p"],
+                                    "default": "code0",
+                                    "description": "Interpolation code (HistFactory-style) for WeightSys."
+                                  }
                                 }
                               }
                             ]

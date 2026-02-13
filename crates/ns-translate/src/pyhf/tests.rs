@@ -68,6 +68,7 @@ fn test_parse_all_modifier_types() {
                     Modifier::ShapeFactor { .. } => "shapefactor",
                     Modifier::StatError { .. } => "staterror",
                     Modifier::Lumi { .. } => "lumi",
+                    Modifier::Unknown(_) => "unknown",
                 };
                 found_modifiers.insert(mod_type);
             }
@@ -1003,4 +1004,221 @@ fn test_normsys_cpu_fallback_non_positive_factors() {
     params[syst_idx] = -0.5;
     let exp = model.expected_data(&params).unwrap();
     assert!((exp[0] - 62.5).abs() < 1e-10, "alpha=-0.5: expected 62.5, got {}", exp[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Workspace operations (G1–G5 pyhf parity)
+// ---------------------------------------------------------------------------
+
+fn make_two_channel_workspace() -> Workspace {
+    serde_json::from_value(serde_json::json!({
+        "channels": [
+            {
+                "name": "SR",
+                "samples": [
+                    { "name": "signal", "data": [5.0, 10.0], "modifiers": [
+                        { "name": "mu", "type": "normfactor", "data": null }
+                    ]},
+                    { "name": "background", "data": [50.0, 60.0], "modifiers": [
+                        { "name": "syst1", "type": "normsys", "data": { "hi": 1.1, "lo": 0.9 } }
+                    ]}
+                ]
+            },
+            {
+                "name": "CR",
+                "samples": [
+                    { "name": "background", "data": [100.0], "modifiers": [
+                        { "name": "syst1", "type": "normsys", "data": { "hi": 1.05, "lo": 0.95 } }
+                    ]}
+                ]
+            }
+        ],
+        "observations": [
+            { "name": "SR", "data": [53.0, 65.0] },
+            { "name": "CR", "data": [102.0] }
+        ],
+        "measurements": [
+            { "name": "meas1", "config": { "poi": "mu", "parameters": [] } }
+        ]
+    }))
+    .unwrap()
+}
+
+#[test]
+fn test_workspace_prune_channel() {
+    let ws = make_two_channel_workspace();
+    let pruned = ws.prune(&["CR"], &[], &[], &[]);
+
+    assert_eq!(pruned.channels.len(), 1);
+    assert_eq!(pruned.channels[0].name, "SR");
+    assert_eq!(pruned.observations.len(), 1);
+    assert_eq!(pruned.observations[0].name, "SR");
+    assert_eq!(pruned.measurements.len(), 1);
+}
+
+#[test]
+fn test_workspace_prune_sample() {
+    let ws = make_two_channel_workspace();
+    let pruned = ws.prune(&[], &["signal"], &[], &[]);
+
+    assert_eq!(pruned.channels.len(), 2);
+    let sr = pruned.channels.iter().find(|c| c.name == "SR").unwrap();
+    assert_eq!(sr.samples.len(), 1);
+    assert_eq!(sr.samples[0].name, "background");
+}
+
+#[test]
+fn test_workspace_prune_modifier() {
+    let ws = make_two_channel_workspace();
+    let pruned = ws.prune(&[], &[], &["syst1"], &[]);
+
+    for ch in &pruned.channels {
+        for s in &ch.samples {
+            assert!(
+                s.modifiers.iter().all(|m| m.name() != "syst1"),
+                "syst1 should be pruned from {}:{}",
+                ch.name,
+                s.name
+            );
+        }
+    }
+}
+
+#[test]
+fn test_workspace_prune_measurement() {
+    let ws = make_two_channel_workspace();
+    let pruned = ws.prune(&[], &[], &[], &["meas1"]);
+    assert_eq!(pruned.measurements.len(), 0);
+}
+
+#[test]
+fn test_workspace_sorted_is_idempotent() {
+    let ws = make_two_channel_workspace();
+    let sorted1 = ws.sorted();
+    let sorted2 = sorted1.sorted();
+
+    let j1 = serde_json::to_string(&sorted1).unwrap();
+    let j2 = serde_json::to_string(&sorted2).unwrap();
+    assert_eq!(j1, j2, "sorted() should be idempotent");
+}
+
+#[test]
+fn test_workspace_sorted_orders_channels() {
+    let ws = make_two_channel_workspace();
+    let sorted = ws.sorted();
+
+    assert_eq!(sorted.channels[0].name, "CR");
+    assert_eq!(sorted.channels[1].name, "SR");
+    assert_eq!(sorted.observations[0].name, "CR");
+    assert_eq!(sorted.observations[1].name, "SR");
+}
+
+#[test]
+fn test_workspace_digest_deterministic() {
+    let ws = make_two_channel_workspace();
+    let d1 = ws.digest();
+    let d2 = ws.digest();
+    assert_eq!(d1, d2);
+    assert_eq!(d1.len(), 64, "SHA-256 hex should be 64 chars");
+}
+
+#[test]
+fn test_workspace_digest_changes_on_modification() {
+    let ws = make_two_channel_workspace();
+    let d_orig = ws.digest();
+    let pruned = ws.prune(&["CR"], &[], &[], &[]);
+    let d_pruned = pruned.digest();
+    assert_ne!(d_orig, d_pruned, "digest should change after prune");
+}
+
+#[test]
+fn test_workspace_rename_channel() {
+    use std::collections::HashMap;
+    let ws = make_two_channel_workspace();
+
+    let ch_map: HashMap<String, String> =
+        [("SR".to_string(), "SignalRegion".to_string())].into_iter().collect();
+    let empty: HashMap<String, String> = HashMap::new();
+
+    let renamed = ws.rename(&ch_map, &empty, &empty, &empty);
+
+    assert!(renamed.channels.iter().any(|c| c.name == "SignalRegion"));
+    assert!(!renamed.channels.iter().any(|c| c.name == "SR"));
+    assert!(renamed.observations.iter().any(|o| o.name == "SignalRegion"));
+}
+
+#[test]
+fn test_workspace_rename_modifier() {
+    use std::collections::HashMap;
+    let ws = make_two_channel_workspace();
+
+    let empty: HashMap<String, String> = HashMap::new();
+    let mod_map: HashMap<String, String> =
+        [("syst1".to_string(), "alpha_syst1".to_string())].into_iter().collect();
+
+    let renamed = ws.rename(&empty, &empty, &mod_map, &empty);
+
+    for ch in &renamed.channels {
+        for s in &ch.samples {
+            for m in &s.modifiers {
+                if m.modifier_type() == "normsys" {
+                    assert_eq!(m.name(), "alpha_syst1");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_workspace_combine_no_overlap() {
+    let ws1 = make_two_channel_workspace();
+    let ws2: Workspace = serde_json::from_value(serde_json::json!({
+        "channels": [
+            {
+                "name": "VR",
+                "samples": [
+                    { "name": "background", "data": [200.0], "modifiers": [] }
+                ]
+            }
+        ],
+        "observations": [{ "name": "VR", "data": [198.0] }],
+        "measurements": [
+            { "name": "meas2", "config": { "poi": "mu", "parameters": [] } }
+        ]
+    }))
+    .unwrap();
+
+    let combined = ws1.combine(&ws2, CombineJoin::None).unwrap();
+    assert_eq!(combined.channels.len(), 3);
+    assert_eq!(combined.observations.len(), 3);
+    assert_eq!(combined.measurements.len(), 2);
+}
+
+#[test]
+fn test_workspace_combine_overlap_none_errors() {
+    let ws = make_two_channel_workspace();
+    let result = ws.combine(&ws, CombineJoin::None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_workspace_combine_left_outer() {
+    let ws1 = make_two_channel_workspace();
+    let mut ws2 = make_two_channel_workspace();
+    ws2.channels[0].samples[0].data = vec![999.0, 999.0];
+
+    let combined = ws1.combine(&ws2, CombineJoin::LeftOuter).unwrap();
+    let sr = combined.channels.iter().find(|c| c.name == "SR").unwrap();
+    assert_eq!(sr.samples[0].data, vec![5.0, 10.0], "left outer should keep self's data");
+}
+
+#[test]
+fn test_workspace_combine_right_outer() {
+    let ws1 = make_two_channel_workspace();
+    let mut ws2 = make_two_channel_workspace();
+    ws2.channels[0].samples[0].data = vec![999.0, 999.0];
+
+    let combined = ws1.combine(&ws2, CombineJoin::RightOuter).unwrap();
+    let sr = combined.channels.iter().find(|c| c.name == "SR").unwrap();
+    assert_eq!(sr.samples[0].data, vec![999.0, 999.0], "right outer should keep other's data");
 }

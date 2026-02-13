@@ -2,22 +2,27 @@
 //!
 //! Currently implemented:
 //! - 1-compartment PK model (oral dosing, first-order absorption)
+//! - Individual and population (NLME) variants
+//!
+//! # Error models
+//! Observation noise can be configured via [`ErrorModel`]:
+//! - **Additive**: `Var(y|f) = σ²` — constant noise, suitable for assay-limited data.
+//! - **Proportional**: `Var(y|f) = (σ·f)²` — noise scales with concentration.
+//! - **Combined**: `Var(y|f) = σ_add² + (σ_prop·f)²` — standard in pop PK.
 //!
 //! # LLOQ policy
 //! Observations below the lower limit of quantification (LLOQ) can be handled as:
 //! - `Ignore`: drop those observations from the likelihood.
 //! - `ReplaceHalf`: replace `y < LLOQ` with `LLOQ/2` (simple heuristic).
 //! - `Censored`: left-censored likelihood term `P(Y < LLOQ)` under the observation model.
-//!
-//! Baseline observation model: additive Normal noise on concentration:
-//! `y_i ~ Normal(C(t_i), sigma)` with fixed `sigma` provided in the model config.
 
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
+use serde::{Deserialize, Serialize};
 use statrs::distribution::{Continuous, ContinuousCDF, Normal};
 
 #[inline]
-fn conc_oral(dose: f64, bioavailability: f64, cl: f64, v: f64, ka: f64, t: f64) -> f64 {
+pub fn conc_oral(dose: f64, bioavailability: f64, cl: f64, v: f64, ka: f64, t: f64) -> f64 {
     let ke = cl / v;
     let d = ka - ke;
     let d_amt = dose * bioavailability;
@@ -93,6 +98,104 @@ fn conc_oral_and_grad(
     (c, dc_dcl, dc_dv, dc_dka)
 }
 
+/// Micro-constants and eigenvalues for the 2-compartment model.
+///
+/// Macro parameters `(CL, V1, V2, Q)` map to micro-constants:
+/// - `k10 = CL / V1` (elimination)
+/// - `k12 = Q / V1`  (central → peripheral)
+/// - `k21 = Q / V2`  (peripheral → central)
+///
+/// Eigenvalues `α > β > 0` of the disposition matrix.
+#[derive(Debug, Clone, Copy)]
+struct TwoCptMicro {
+    k21: f64,
+    alpha: f64,
+    beta: f64,
+}
+
+impl TwoCptMicro {
+    #[inline]
+    fn from_macro(cl: f64, v1: f64, v2: f64, q: f64) -> Self {
+        let k10 = cl / v1;
+        let k12 = q / v1;
+        let k21 = q / v2;
+        let sum = k10 + k12 + k21;
+        let prod = k10 * k21;
+        let disc = (sum * sum - 4.0 * prod).max(0.0);
+        let sqrt_disc = disc.sqrt();
+        let alpha = 0.5 * (sum + sqrt_disc);
+        let beta = 0.5 * (sum - sqrt_disc);
+        Self { k21, alpha, beta }
+    }
+}
+
+/// Concentration at time `t` for 2-compartment IV bolus model.
+///
+/// `C(t) = (D/V1) * [A·exp(−α·t) + B·exp(−β·t)]`
+/// where `A = (α − k21)/(α − β)`, `B = (k21 − β)/(α − β)`.
+#[inline]
+fn conc_iv_2cpt(dose: f64, v1: f64, micro: &TwoCptMicro, t: f64) -> f64 {
+    let ab = micro.alpha - micro.beta;
+    if ab.abs() < 1e-12 {
+        let k = 0.5 * (micro.alpha + micro.beta);
+        return (dose / v1) * (-k * t).exp();
+    }
+    let coeff_a = (micro.alpha - micro.k21) / ab;
+    let coeff_b = (micro.k21 - micro.beta) / ab;
+    (dose / v1) * (coeff_a * (-micro.alpha * t).exp() + coeff_b * (-micro.beta * t).exp())
+}
+
+/// Concentration at time `t` for 2-compartment oral (first-order absorption) model.
+///
+/// `C(t) = (Ka·F·D/V1) · Σ_i [(k21 − λ_i) / Π_{j≠i}(λ_j − λ_i)] · exp(−λ_i·t)`
+/// where `λ = {α, β, Ka}`.
+#[inline]
+fn conc_oral_2cpt(dose: f64, bioav: f64, v1: f64, ka: f64, micro: &TwoCptMicro, t: f64) -> f64 {
+    let alpha = micro.alpha;
+    let beta = micro.beta;
+    let k21 = micro.k21;
+    let pref = ka * bioav * dose / v1;
+
+    let denom_a = (ka - alpha) * (beta - alpha);
+    let denom_b = (ka - beta) * (alpha - beta);
+    let denom_c = (alpha - ka) * (beta - ka);
+
+    if denom_a.abs() < 1e-12 || denom_b.abs() < 1e-12 || denom_c.abs() < 1e-12 {
+        let ka_p = ka * (1.0 + 1e-8);
+        let da = (ka_p - alpha) * (beta - alpha);
+        let db = (ka_p - beta) * (alpha - beta);
+        let dc = (alpha - ka_p) * (beta - ka_p);
+        let ta = (k21 - alpha) / da * (-alpha * t).exp();
+        let tb = (k21 - beta) / db * (-beta * t).exp();
+        let tc = (k21 - ka_p) / dc * (-ka_p * t).exp();
+        return pref * (ta + tb + tc);
+    }
+
+    let ta = (k21 - alpha) / denom_a * (-alpha * t).exp();
+    let tb = (k21 - beta) / denom_b * (-beta * t).exp();
+    let tc = (k21 - ka) / denom_c * (-ka * t).exp();
+    pref * (ta + tb + tc)
+}
+
+/// Central-difference numerical gradient of `nll` for models with few parameters.
+/// Used by 2-compartment models where analytical gradients are deferred.
+fn numerical_grad_nll<M: LogDensityModel>(model: &M, params: &[f64]) -> Result<Vec<f64>> {
+    let h = 1e-7;
+    let n = params.len();
+    let mut g = Vec::with_capacity(n);
+    let mut p_buf = params.to_vec();
+    for j in 0..n {
+        let orig = p_buf[j];
+        p_buf[j] = orig + h;
+        let fp = model.nll(&p_buf)?;
+        p_buf[j] = orig - h;
+        let fm = model.nll(&p_buf)?;
+        p_buf[j] = orig;
+        g.push((fp - fm) / (2.0 * h));
+    }
+    Ok(g)
+}
+
 /// Policy for handling observations below LLOQ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LloqPolicy {
@@ -102,6 +205,117 @@ pub enum LloqPolicy {
     ReplaceHalf,
     /// Treat points below LLOQ as left-censored.
     Censored,
+}
+
+/// Observation error model for PK/PD models.
+///
+/// Standard NONMEM-style residual error models:
+/// - **Additive**: `y = f + ε`, `ε ~ N(0, σ_add)` — constant variance.
+/// - **Proportional**: `y = f·(1 + ε)`, `ε ~ N(0, σ_prop)` — variance ∝ f².
+/// - **Combined**: `y = f·(1 + ε₁) + ε₂` — variance = σ_add² + (σ_prop·f)².
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ErrorModel {
+    /// Additive: `Var(y|f) = σ²`.
+    Additive(f64),
+    /// Proportional: `Var(y|f) = (σ·f)²`.
+    Proportional(f64),
+    /// Combined additive + proportional: `Var(y|f) = σ_add² + (σ_prop·f)²`.
+    Combined { sigma_add: f64, sigma_prop: f64 },
+}
+
+impl ErrorModel {
+    /// Validate the error model parameters.
+    pub fn validate(&self) -> Result<()> {
+        match *self {
+            ErrorModel::Additive(s) => {
+                if !s.is_finite() || s <= 0.0 {
+                    return Err(Error::Validation("sigma must be finite and > 0".to_string()));
+                }
+            }
+            ErrorModel::Proportional(s) => {
+                if !s.is_finite() || s <= 0.0 {
+                    return Err(Error::Validation("sigma_prop must be finite and > 0".to_string()));
+                }
+            }
+            ErrorModel::Combined { sigma_add, sigma_prop } => {
+                if !sigma_add.is_finite() || sigma_add <= 0.0 {
+                    return Err(Error::Validation("sigma_add must be finite and > 0".to_string()));
+                }
+                if !sigma_prop.is_finite() || sigma_prop <= 0.0 {
+                    return Err(Error::Validation("sigma_prop must be finite and > 0".to_string()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Observation noise variance at predicted concentration `f`.
+    #[inline]
+    pub fn variance(&self, f: f64) -> f64 {
+        match *self {
+            ErrorModel::Additive(s) => s * s,
+            ErrorModel::Proportional(s) => {
+                let sf = s * f;
+                sf * sf
+            }
+            ErrorModel::Combined { sigma_add, sigma_prop } => {
+                let spf = sigma_prop * f;
+                sigma_add * sigma_add + spf * spf
+            }
+        }
+    }
+
+    /// Observation noise standard deviation at predicted concentration `f`.
+    #[inline]
+    pub fn sd(&self, f: f64) -> f64 {
+        self.variance(f).sqrt()
+    }
+
+    /// d(variance)/d(f).
+    #[inline]
+    fn dvariance_df(&self, f: f64) -> f64 {
+        match *self {
+            ErrorModel::Additive(_) => 0.0,
+            ErrorModel::Proportional(s) => 2.0 * s * s * f,
+            ErrorModel::Combined { sigma_prop, .. } => 2.0 * sigma_prop * sigma_prop * f,
+        }
+    }
+
+    /// Negative log-likelihood contribution for a single observation `y` given predicted `f`.
+    /// Drops the constant `0.5 * ln(2π)`.
+    #[inline]
+    pub fn nll_obs(&self, y: f64, f: f64) -> f64 {
+        let v = self.variance(f);
+        let r = y - f;
+        0.5 * r * r / v + 0.5 * v.ln()
+    }
+
+    /// `dNLL_obs / df` for a single observation.
+    ///
+    /// Derivation: `NLL = 0.5·r²/V + 0.5·ln V` where `r = y − f`, `V = V(f)`.
+    /// `dNLL/df = −r/V + 0.5·(V'/V)·(1 − r²/V)`.
+    #[inline]
+    pub fn dnll_obs_df(&self, y: f64, f: f64) -> f64 {
+        let v = self.variance(f);
+        let dv = self.dvariance_df(f);
+        let r = y - f;
+        -r / v + 0.5 * (dv / v) * (1.0 - r * r / v)
+    }
+
+    /// Standardised residual `z = (lloq − f) / sd(f)` for censored LLOQ.
+    #[inline]
+    pub fn lloq_z(&self, lloq: f64, f: f64) -> f64 {
+        (lloq - f) / self.sd(f)
+    }
+
+    /// `dz / df` where `z = (lloq − f) / sd(f)`.
+    #[inline]
+    pub fn dlloq_z_df(&self, lloq: f64, f: f64) -> f64 {
+        let sd = self.sd(f);
+        let dv = self.dvariance_df(f);
+        let dsd_df = 0.5 * dv / sd;
+        (-sd - (lloq - f) * dsd_df) / (sd * sd)
+    }
 }
 
 /// 1-compartment PK model (oral, first-order absorption).
@@ -118,19 +332,40 @@ pub struct OneCompartmentOralPkModel {
     y: Vec<f64>,
     dose: f64,
     bioavailability: f64,
-    sigma: f64,
+    error_model: ErrorModel,
     lloq: Option<f64>,
     lloq_policy: LloqPolicy,
 }
 
 impl OneCompartmentOralPkModel {
-    /// Create a PK model instance.
+    /// Create a PK model instance with additive error model (backward-compatible).
     pub fn new(
         times: Vec<f64>,
         y: Vec<f64>,
         dose: f64,
         bioavailability: f64,
         sigma: f64,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        Self::with_error_model(
+            times,
+            y,
+            dose,
+            bioavailability,
+            ErrorModel::Additive(sigma),
+            lloq,
+            lloq_policy,
+        )
+    }
+
+    /// Create a PK model instance with a configurable error model.
+    pub fn with_error_model(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        error_model: ErrorModel,
         lloq: Option<f64>,
         lloq_policy: LloqPolicy,
     ) -> Result<Self> {
@@ -156,15 +391,18 @@ impl OneCompartmentOralPkModel {
         if !bioavailability.is_finite() || bioavailability <= 0.0 {
             return Err(Error::Validation("bioavailability must be finite and > 0".to_string()));
         }
-        if !sigma.is_finite() || sigma <= 0.0 {
-            return Err(Error::Validation("sigma must be finite and > 0".to_string()));
-        }
+        error_model.validate()?;
         if let Some(lloq) = lloq
             && (!lloq.is_finite() || lloq < 0.0)
         {
             return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
         }
-        Ok(Self { times, y, dose, bioavailability, sigma, lloq, lloq_policy })
+        Ok(Self { times, y, dose, bioavailability, error_model, lloq, lloq_policy })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
     }
 
     /// Predicted concentration at time `t` for parameters `(cl, v, ka)`.
@@ -202,13 +440,13 @@ pub struct OneCompartmentOralPkNlmeModel {
     n_subjects: usize,
     dose: f64,
     bioavailability: f64,
-    sigma: f64,
+    error_model: ErrorModel,
     lloq: Option<f64>,
     lloq_policy: LloqPolicy,
 }
 
 impl OneCompartmentOralPkNlmeModel {
-    /// Create a new NLME PK model instance.
+    /// Create a new NLME PK model instance with additive error model (backward-compatible).
     pub fn new(
         times: Vec<f64>,
         y: Vec<f64>,
@@ -217,6 +455,31 @@ impl OneCompartmentOralPkNlmeModel {
         dose: f64,
         bioavailability: f64,
         sigma: f64,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        Self::with_error_model(
+            times,
+            y,
+            subject_idx,
+            n_subjects,
+            dose,
+            bioavailability,
+            ErrorModel::Additive(sigma),
+            lloq,
+            lloq_policy,
+        )
+    }
+
+    /// Create a new NLME PK model instance with a configurable error model.
+    pub fn with_error_model(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        subject_idx: Vec<usize>,
+        n_subjects: usize,
+        dose: f64,
+        bioavailability: f64,
+        error_model: ErrorModel,
         lloq: Option<f64>,
         lloq_policy: LloqPolicy,
     ) -> Result<Self> {
@@ -249,9 +512,7 @@ impl OneCompartmentOralPkNlmeModel {
         if !bioavailability.is_finite() || bioavailability <= 0.0 {
             return Err(Error::Validation("bioavailability must be finite and > 0".to_string()));
         }
-        if !sigma.is_finite() || sigma <= 0.0 {
-            return Err(Error::Validation("sigma must be finite and > 0".to_string()));
-        }
+        error_model.validate()?;
         if let Some(lloq) = lloq
             && (!lloq.is_finite() || lloq < 0.0)
         {
@@ -264,10 +525,15 @@ impl OneCompartmentOralPkNlmeModel {
             n_subjects,
             dose,
             bioavailability,
-            sigma,
+            error_model,
             lloq,
             lloq_policy,
         })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
     }
 
     #[inline]
@@ -440,8 +706,7 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
         let (cl_pop, v_pop, ka_pop, omega_cl, omega_v, omega_ka, eta_cl, eta_v, eta_ka) =
             self.unpack(params)?;
 
-        let s = self.sigma;
-        let inv_s2 = 1.0 / (s * s);
+        let em = &self.error_model;
         let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
 
         let mut nll = 0.0;
@@ -464,12 +729,10 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                 match self.lloq_policy {
                     LloqPolicy::Ignore => continue,
                     LloqPolicy::ReplaceHalf => {
-                        let y = 0.5 * lloq;
-                        let r = y - c;
-                        nll += 0.5 * r * r * inv_s2 + s.ln();
+                        nll += em.nll_obs(0.5 * lloq, c);
                     }
                     LloqPolicy::Censored => {
-                        let z = (lloq - c) / s;
+                        let z = em.lloq_z(lloq, c);
                         let p = normal.cdf(z).max(1e-300);
                         nll += -p.ln();
                     }
@@ -477,8 +740,7 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                 continue;
             }
 
-            let r = yobs - c;
-            nll += 0.5 * r * r * inv_s2 + s.ln();
+            nll += em.nll_obs(yobs, c);
         }
 
         // Random effects priors, up to an additive constant.
@@ -500,8 +762,7 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
             self.unpack(params)?;
 
         let n = self.n_subjects;
-        let s = self.sigma;
-        let inv_s2 = 1.0 / (s * s);
+        let em = &self.error_model;
         let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
 
         let mut g = vec![0.0_f64; self.dim()];
@@ -519,41 +780,24 @@ impl LogDensityModel for OneCompartmentOralPkNlmeModel {
                 t,
             );
 
-            if let Some(lloq) = self.lloq
+            let w = if let Some(lloq) = self.lloq
                 && yobs < lloq
             {
                 match self.lloq_policy {
                     LloqPolicy::Ignore => continue,
-                    LloqPolicy::ReplaceHalf => {
-                        let y = 0.5 * lloq;
-                        let r = c - y;
-                        let w = r * inv_s2;
-                        g[0] += w * dc_dcl * (cl_i / cl_pop);
-                        g[1] += w * dc_dv * (v_i / v_pop);
-                        g[2] += w * dc_dka * (ka_i / ka_pop);
-                        g[6 + subj] += w * dc_dcl * cl_i;
-                        g[6 + n + subj] += w * dc_dv * v_i;
-                        g[6 + 2 * n + subj] += w * dc_dka * ka_i;
-                    }
+                    LloqPolicy::ReplaceHalf => em.dnll_obs_df(0.5 * lloq, c),
                     LloqPolicy::Censored => {
-                        let z = (lloq - c) / s;
+                        let z = em.lloq_z(lloq, c);
                         let p = normal.cdf(z).max(1e-300);
                         let pdf = normal.pdf(z);
-                        let ratio = pdf / p;
-                        let w = ratio / s;
-                        g[0] += w * dc_dcl * (cl_i / cl_pop);
-                        g[1] += w * dc_dv * (v_i / v_pop);
-                        g[2] += w * dc_dka * (ka_i / ka_pop);
-                        g[6 + subj] += w * dc_dcl * cl_i;
-                        g[6 + n + subj] += w * dc_dv * v_i;
-                        g[6 + 2 * n + subj] += w * dc_dka * ka_i;
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        -pdf / p * dz_dc
                     }
                 }
-                continue;
-            }
+            } else {
+                em.dnll_obs_df(yobs, c)
+            };
 
-            let r = c - yobs;
-            let w = r * inv_s2;
             g[0] += w * dc_dcl * (cl_i / cl_pop);
             g[1] += w * dc_dv * (v_i / v_pop);
             g[2] += w * dc_dka * (ka_i / ka_pop);
@@ -629,8 +873,7 @@ impl LogDensityModel for OneCompartmentOralPkModel {
         let v = params[1];
         let ka = params[2];
 
-        let s = self.sigma;
-        let inv_s2 = 1.0 / (s * s);
+        let em = &self.error_model;
         let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
 
         let mut nll = 0.0;
@@ -643,12 +886,10 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                 match self.lloq_policy {
                     LloqPolicy::Ignore => continue,
                     LloqPolicy::ReplaceHalf => {
-                        let y = 0.5 * lloq;
-                        let r = y - c;
-                        nll += 0.5 * r * r * inv_s2 + s.ln();
+                        nll += em.nll_obs(0.5 * lloq, c);
                     }
                     LloqPolicy::Censored => {
-                        let z = (lloq - c) / s;
+                        let z = em.lloq_z(lloq, c);
                         let p = normal.cdf(z).max(1e-300);
                         nll += -p.ln();
                     }
@@ -656,8 +897,7 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                 continue;
             }
 
-            let r = yobs - c;
-            nll += 0.5 * r * r * inv_s2 + s.ln();
+            nll += em.nll_obs(yobs, c);
         }
         Ok(nll)
     }
@@ -673,8 +913,7 @@ impl LogDensityModel for OneCompartmentOralPkModel {
         let v = params[1];
         let ka = params[2];
 
-        let s = self.sigma;
-        let inv_s2 = 1.0 / (s * s);
+        let em = &self.error_model;
         let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
 
         let mut g = vec![0.0_f64; 3];
@@ -687,19 +926,17 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                 match self.lloq_policy {
                     LloqPolicy::Ignore => continue,
                     LloqPolicy::ReplaceHalf => {
-                        let y = 0.5 * lloq;
-                        let r = c - y;
-                        let w = r * inv_s2;
+                        let w = em.dnll_obs_df(0.5 * lloq, c);
                         g[0] += w * dc_dcl;
                         g[1] += w * dc_dv;
                         g[2] += w * dc_dka;
                     }
                     LloqPolicy::Censored => {
-                        let z = (lloq - c) / s;
+                        let z = em.lloq_z(lloq, c);
                         let p = normal.cdf(z).max(1e-300);
                         let pdf = normal.pdf(z);
-                        let ratio = pdf / p; // φ/Φ
-                        let w = ratio / s;
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        let w = -pdf / p * dz_dc;
                         g[0] += w * dc_dcl;
                         g[1] += w * dc_dv;
                         g[2] += w * dc_dka;
@@ -708,14 +945,304 @@ impl LogDensityModel for OneCompartmentOralPkModel {
                 continue;
             }
 
-            let r = c - yobs;
-            let w = r * inv_s2;
+            let w = em.dnll_obs_df(yobs, c);
             g[0] += w * dc_dcl;
             g[1] += w * dc_dv;
             g[2] += w * dc_dka;
         }
 
         Ok(g)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
+/// 2-compartment PK model (IV bolus).
+///
+/// Parameters: `(cl, v1, v2, q)`.
+/// - `cl`: total clearance from central compartment
+/// - `v1`: central volume of distribution
+/// - `v2`: peripheral volume of distribution
+/// - `q`: intercompartmental clearance
+///
+/// Analytical bi-exponential solution with eigenvalue decomposition.
+#[derive(Debug, Clone)]
+pub struct TwoCompartmentIvPkModel {
+    times: Vec<f64>,
+    y: Vec<f64>,
+    dose: f64,
+    error_model: ErrorModel,
+    lloq: Option<f64>,
+    lloq_policy: LloqPolicy,
+}
+
+impl TwoCompartmentIvPkModel {
+    /// Create a 2-compartment IV PK model.
+    pub fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        error_model: ErrorModel,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        if times.is_empty() {
+            return Err(Error::Validation("times must be non-empty".to_string()));
+        }
+        if times.len() != y.len() {
+            return Err(Error::Validation(format!(
+                "times/y length mismatch: {} vs {}",
+                times.len(),
+                y.len()
+            )));
+        }
+        if times.iter().any(|t| !t.is_finite() || *t < 0.0) {
+            return Err(Error::Validation("times must be finite and >= 0".to_string()));
+        }
+        if y.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(Error::Validation("y must be finite and >= 0".to_string()));
+        }
+        if !dose.is_finite() || dose <= 0.0 {
+            return Err(Error::Validation("dose must be finite and > 0".to_string()));
+        }
+        error_model.validate()?;
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
+        Ok(Self { times, y, dose, error_model, lloq, lloq_policy })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
+    }
+
+    #[inline]
+    fn conc(&self, cl: f64, v1: f64, v2: f64, q: f64, t: f64) -> f64 {
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+        conc_iv_2cpt(self.dose, v1, &micro, t)
+    }
+}
+
+impl LogDensityModel for TwoCompartmentIvPkModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        4
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec!["cl".into(), "v1".into(), "v2".into(), "q".into()]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+        ]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![1.0, 10.0, 20.0, 0.5]
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != 4 {
+            return Err(Error::Validation(format!("expected 4 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, v2, q) = (params[0], params[1], params[2], params[3]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+
+        let mut nll = 0.0;
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let c = conc_iv_2cpt(self.dose, v1, &micro, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        nll += em.nll_obs(0.5 * lloq, c);
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
+                }
+                continue;
+            }
+            nll += em.nll_obs(yobs, c);
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        numerical_grad_nll(self, params)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
+/// 2-compartment PK model (oral, first-order absorption).
+///
+/// Parameters: `(cl, v1, v2, q, ka)`.
+/// - `cl`: total clearance from central compartment
+/// - `v1`: central volume of distribution
+/// - `v2`: peripheral volume of distribution
+/// - `q`: intercompartmental clearance
+/// - `ka`: first-order absorption rate constant
+///
+/// Analytical tri-exponential solution (superposition of α, β, Ka terms).
+#[derive(Debug, Clone)]
+pub struct TwoCompartmentOralPkModel {
+    times: Vec<f64>,
+    y: Vec<f64>,
+    dose: f64,
+    bioavailability: f64,
+    error_model: ErrorModel,
+    lloq: Option<f64>,
+    lloq_policy: LloqPolicy,
+}
+
+impl TwoCompartmentOralPkModel {
+    /// Create a 2-compartment oral PK model.
+    pub fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        error_model: ErrorModel,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        if times.is_empty() {
+            return Err(Error::Validation("times must be non-empty".to_string()));
+        }
+        if times.len() != y.len() {
+            return Err(Error::Validation(format!(
+                "times/y length mismatch: {} vs {}",
+                times.len(),
+                y.len()
+            )));
+        }
+        if times.iter().any(|t| !t.is_finite() || *t < 0.0) {
+            return Err(Error::Validation("times must be finite and >= 0".to_string()));
+        }
+        if y.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(Error::Validation("y must be finite and >= 0".to_string()));
+        }
+        if !dose.is_finite() || dose <= 0.0 {
+            return Err(Error::Validation("dose must be finite and > 0".to_string()));
+        }
+        if !bioavailability.is_finite() || bioavailability <= 0.0 {
+            return Err(Error::Validation("bioavailability must be finite and > 0".to_string()));
+        }
+        error_model.validate()?;
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
+        Ok(Self { times, y, dose, bioavailability, error_model, lloq, lloq_policy })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
+    }
+
+    #[inline]
+    fn conc(&self, cl: f64, v1: f64, v2: f64, q: f64, ka: f64, t: f64) -> f64 {
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+        conc_oral_2cpt(self.dose, self.bioavailability, v1, ka, &micro, t)
+    }
+}
+
+impl LogDensityModel for TwoCompartmentOralPkModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        5
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec!["cl".into(), "v1".into(), "v2".into(), "q".into(), "ka".into()]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+        ]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![1.0, 10.0, 20.0, 0.5, 1.5]
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != 5 {
+            return Err(Error::Validation(format!("expected 5 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, v2, q, ka) = (params[0], params[1], params[2], params[3], params[4]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+
+        let mut nll = 0.0;
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let c = conc_oral_2cpt(self.dose, self.bioavailability, v1, ka, &micro, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        nll += em.nll_obs(0.5 * lloq, c);
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
+                }
+                continue;
+            }
+            nll += em.nll_obs(yobs, c);
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        numerical_grad_nll(self, params)
     }
 
     fn prepared(&self) -> Self::Prepared<'_> {
@@ -863,5 +1390,376 @@ mod tests {
         // Laplace approximation at the MAP mode should be finite.
         let lap = laplace_log_marginal(&model, &fit.parameters).unwrap();
         assert!(lap.log_marginal.is_finite());
+    }
+
+    #[test]
+    fn error_model_additive_helpers() {
+        let em = ErrorModel::Additive(0.5);
+        em.validate().unwrap();
+        assert!((em.variance(3.0) - 0.25).abs() < 1e-12);
+        assert!((em.sd(3.0) - 0.5).abs() < 1e-12);
+
+        let nll = em.nll_obs(3.1, 3.0);
+        let expected = 0.5 * 0.01 / 0.25 + 0.5 * 0.25_f64.ln();
+        assert!((nll - expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn error_model_proportional_helpers() {
+        let em = ErrorModel::Proportional(0.1);
+        em.validate().unwrap();
+        let f = 5.0;
+        assert!((em.variance(f) - (0.1 * 5.0_f64).powi(2)).abs() < 1e-12);
+        assert!((em.sd(f) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn error_model_combined_helpers() {
+        let em = ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 };
+        em.validate().unwrap();
+        let f = 4.0;
+        let expected_var = 0.09 + (0.1 * 4.0_f64).powi(2);
+        assert!((em.variance(f) - expected_var).abs() < 1e-12);
+    }
+
+    #[test]
+    fn error_model_validation_rejects_bad() {
+        assert!(ErrorModel::Additive(0.0).validate().is_err());
+        assert!(ErrorModel::Additive(-1.0).validate().is_err());
+        assert!(ErrorModel::Additive(f64::NAN).validate().is_err());
+        assert!(ErrorModel::Proportional(0.0).validate().is_err());
+        assert!(ErrorModel::Combined { sigma_add: 0.5, sigma_prop: -0.1 }.validate().is_err());
+    }
+
+    #[test]
+    fn error_model_grad_finite_diff_additive() {
+        let em = ErrorModel::Additive(0.5);
+        let y = 3.1;
+        let f = 3.0;
+        let h = 1e-7;
+        let analytical = em.dnll_obs_df(y, f);
+        let numerical = (em.nll_obs(y, f + h) - em.nll_obs(y, f - h)) / (2.0 * h);
+        assert!(
+            (analytical - numerical).abs() < 1e-5,
+            "additive grad: analytical={analytical}, numerical={numerical}"
+        );
+    }
+
+    #[test]
+    fn error_model_grad_finite_diff_proportional() {
+        let em = ErrorModel::Proportional(0.15);
+        let y = 5.2;
+        let f = 5.0;
+        let h = 1e-7;
+        let analytical = em.dnll_obs_df(y, f);
+        let numerical = (em.nll_obs(y, f + h) - em.nll_obs(y, f - h)) / (2.0 * h);
+        assert!(
+            (analytical - numerical).abs() < 1e-5,
+            "proportional grad: analytical={analytical}, numerical={numerical}"
+        );
+    }
+
+    #[test]
+    fn error_model_grad_finite_diff_combined() {
+        let em = ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 };
+        let y = 4.5;
+        let f = 4.0;
+        let h = 1e-7;
+        let analytical = em.dnll_obs_df(y, f);
+        let numerical = (em.nll_obs(y, f + h) - em.nll_obs(y, f - h)) / (2.0 * h);
+        assert!(
+            (analytical - numerical).abs() < 1e-5,
+            "combined grad: analytical={analytical}, numerical={numerical}"
+        );
+    }
+
+    #[test]
+    fn pk_fit_proportional_error_smoke() {
+        let cl_true = 1.2;
+        let v_true = 15.0;
+        let ka_true = 2.0;
+        let dose = 100.0;
+        let bioav = 1.0;
+        let sigma_prop = 0.10;
+
+        let times: Vec<f64> = (1..30).map(|i| i as f64 * 0.25).collect();
+
+        let base = OneCompartmentOralPkModel::with_error_model(
+            vec![0.25],
+            vec![0.0],
+            dose,
+            bioav,
+            ErrorModel::Proportional(sigma_prop),
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut y = Vec::with_capacity(times.len());
+        for &t in &times {
+            let c = base.conc(cl_true, v_true, ka_true, t);
+            let sd = sigma_prop * c;
+            let noise = RandNormal::new(0.0, sd.max(1e-12)).unwrap();
+            y.push((c + noise.sample(&mut rng)).max(0.0));
+        }
+
+        let model = OneCompartmentOralPkModel::with_error_model(
+            times,
+            y,
+            dose,
+            bioav,
+            ErrorModel::Proportional(sigma_prop),
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).unwrap();
+        assert!(fit.converged, "proportional fit did not converge: {:?}", fit);
+        assert!((fit.parameters[0] - cl_true).abs() / cl_true < 0.20);
+        assert!((fit.parameters[1] - v_true).abs() / v_true < 0.20);
+    }
+
+    #[test]
+    fn pk_fit_combined_error_smoke() {
+        let cl_true = 1.2;
+        let v_true = 15.0;
+        let ka_true = 2.0;
+        let dose = 100.0;
+        let bioav = 1.0;
+        let em = ErrorModel::Combined { sigma_add: 0.02, sigma_prop: 0.08 };
+
+        let times: Vec<f64> = (1..30).map(|i| i as f64 * 0.25).collect();
+
+        let base = OneCompartmentOralPkModel::with_error_model(
+            vec![0.25],
+            vec![0.0],
+            dose,
+            bioav,
+            em,
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+        let mut y = Vec::with_capacity(times.len());
+        for &t in &times {
+            let c = base.conc(cl_true, v_true, ka_true, t);
+            let sd = em.sd(c);
+            let noise = RandNormal::new(0.0, sd.max(1e-12)).unwrap();
+            y.push((c + noise.sample(&mut rng)).max(0.0));
+        }
+
+        let model = OneCompartmentOralPkModel::with_error_model(
+            times,
+            y,
+            dose,
+            bioav,
+            em,
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).unwrap();
+        assert!(fit.converged, "combined fit did not converge: {:?}", fit);
+        assert!((fit.parameters[0] - cl_true).abs() / cl_true < 0.20);
+        assert!((fit.parameters[1] - v_true).abs() / v_true < 0.20);
+    }
+
+    #[test]
+    fn pk_grad_finite_diff_all_error_models() {
+        let dose = 100.0;
+        let bioav = 1.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0];
+        let y: Vec<f64> = vec![1.5, 3.0, 2.5, 1.0, 0.3];
+        let params = [1.2_f64, 15.0, 2.0];
+
+        for em in [
+            ErrorModel::Additive(0.5),
+            ErrorModel::Proportional(0.15),
+            ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 },
+        ] {
+            let model = OneCompartmentOralPkModel::with_error_model(
+                times.clone(),
+                y.clone(),
+                dose,
+                bioav,
+                em,
+                None,
+                LloqPolicy::Censored,
+            )
+            .unwrap();
+
+            let g = model.grad_nll(&params).unwrap();
+            let h = 1e-7;
+            for j in 0..3 {
+                let mut p_plus = params;
+                let mut p_minus = params;
+                p_plus[j] += h;
+                p_minus[j] -= h;
+                let fd = (model.nll(&p_plus).unwrap() - model.nll(&p_minus).unwrap()) / (2.0 * h);
+                assert!(
+                    (g[j] - fd).abs() < 1e-4,
+                    "ErrorModel {em:?}, param {j}: analytical={}, fd={fd}",
+                    g[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn two_cpt_iv_conc_sanity() {
+        let cl = 1.0_f64;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q = 0.5;
+        let dose = 100.0;
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+
+        let c0 = conc_iv_2cpt(dose, v1, &micro, 0.0);
+        assert!((c0 - dose / v1).abs() < 1e-10, "C(0) = D/V1 for IV bolus");
+
+        let c_late = conc_iv_2cpt(dose, v1, &micro, 500.0);
+        assert!(c_late < 1e-3, "concentration should decay to ~0 at t=500");
+
+        let c_mid = conc_iv_2cpt(dose, v1, &micro, 10.0);
+        assert!(c_mid < c0, "concentration should decrease over time");
+
+        assert!(micro.alpha > micro.beta, "alpha > beta");
+        assert!(micro.alpha > 0.0 && micro.beta > 0.0);
+    }
+
+    #[test]
+    fn two_cpt_oral_conc_sanity() {
+        let cl = 1.0_f64;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q = 0.5;
+        let ka = 2.0;
+        let dose = 100.0;
+        let bioav = 1.0;
+        let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+
+        let c0 = conc_oral_2cpt(dose, bioav, v1, ka, &micro, 0.0);
+        assert!(c0.abs() < 1e-10, "oral C(0) ≈ 0");
+
+        let c_late = conc_oral_2cpt(dose, bioav, v1, ka, &micro, 500.0);
+        assert!(c_late < 1e-3, "concentration decays at t=500");
+
+        let c_peak = (1..40)
+            .map(|i| conc_oral_2cpt(dose, bioav, v1, ka, &micro, i as f64 * 0.25))
+            .fold(0.0_f64, f64::max);
+        assert!(c_peak > 0.5, "oral model should have a visible peak");
+    }
+
+    #[test]
+    fn two_cpt_iv_fit_smoke() {
+        let cl_true = 1.0;
+        let v1_true = 10.0;
+        let v2_true = 20.0;
+        let q_true = 0.5;
+        let dose = 100.0;
+        let sigma = 0.1;
+
+        let times: Vec<f64> = (1..40).map(|i| i as f64 * 0.5).collect();
+        let micro = TwoCptMicro::from_macro(cl_true, v1_true, v2_true, q_true);
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let noise = RandNormal::new(0.0, sigma).unwrap();
+        let y: Vec<f64> = times
+            .iter()
+            .map(|&t| (conc_iv_2cpt(dose, v1_true, &micro, t) + noise.sample(&mut rng)).max(0.0))
+            .collect();
+
+        let model = TwoCompartmentIvPkModel::new(
+            times,
+            y,
+            dose,
+            ErrorModel::Additive(sigma),
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).unwrap();
+        assert!(fit.converged, "2-cpt IV fit did not converge: {:?}", fit);
+        assert!((fit.parameters[0] - cl_true).abs() / cl_true < 0.25);
+        assert!((fit.parameters[1] - v1_true).abs() / v1_true < 0.25);
+    }
+
+    #[test]
+    fn two_cpt_oral_fit_smoke() {
+        let cl_true = 1.0;
+        let v1_true = 10.0;
+        let v2_true = 20.0;
+        let q_true = 0.5;
+        let ka_true = 1.5;
+        let dose = 100.0;
+        let bioav = 1.0;
+        let sigma = 0.05;
+
+        let times: Vec<f64> = (1..60).map(|i| i as f64 * 0.25).collect();
+        let micro = TwoCptMicro::from_macro(cl_true, v1_true, v2_true, q_true);
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(13);
+        let noise = RandNormal::new(0.0, sigma).unwrap();
+        let y: Vec<f64> = times
+            .iter()
+            .map(|&t| {
+                (conc_oral_2cpt(dose, bioav, v1_true, ka_true, &micro, t) + noise.sample(&mut rng))
+                    .max(0.0)
+            })
+            .collect();
+
+        let model = TwoCompartmentOralPkModel::new(
+            times,
+            y,
+            dose,
+            bioav,
+            ErrorModel::Additive(sigma),
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).unwrap();
+        assert!(fit.converged, "2-cpt oral fit did not converge: {:?}", fit);
+        assert!((fit.parameters[0] - cl_true).abs() / cl_true < 0.30);
+    }
+
+    #[test]
+    fn two_cpt_iv_grad_finite_diff() {
+        let dose = 100.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let y: Vec<f64> = vec![8.0, 6.0, 4.0, 2.0, 0.8, 0.2];
+        let params = [1.0_f64, 10.0, 20.0, 0.5];
+
+        let model = TwoCompartmentIvPkModel::new(
+            times,
+            y,
+            dose,
+            ErrorModel::Additive(0.5),
+            None,
+            LloqPolicy::Censored,
+        )
+        .unwrap();
+
+        let g = model.grad_nll(&params).unwrap();
+        let h = 1e-7;
+        for j in 0..4 {
+            let mut pp = params;
+            let mut pm = params;
+            pp[j] += h;
+            pm[j] -= h;
+            let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
+            assert!((g[j] - fd).abs() < 1e-4, "2-cpt IV grad[{j}]: num={}, fd={fd}", g[j]);
+        }
     }
 }

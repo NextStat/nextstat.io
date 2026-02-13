@@ -1,0 +1,4 @@
+{
+  "times": [1, 1, 2, 2, 3, 4, 4, 5, 5, 8, 8, 12, 12, 15, 23, 27],
+  "events": [true, true, true, false, true, true, false, true, false, true, true, true, false, false, true, true]
+}

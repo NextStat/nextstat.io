@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use crate::{
     bit_io::BitWriter,
     encoding::frame_compressor::{CompressState, EncodedSequence},
-    encoding::{Matcher, Sequence},
+    encoding::Matcher,
     fse::fse_encoder::{build_table_from_data, FSETable, State},
     huff0::huff0_encoder,
 };
@@ -12,7 +12,17 @@ use crate::{
 use std::time::Instant;
 
 /// A block of [`crate::common::BlockType::Compressed`]
-pub fn compress_block<M: Matcher>(state: &mut CompressState<M>, output: &mut Vec<u8>) {
+pub(crate) enum FseTableStrategy {
+    Heuristic,
+    RepeatOrBuild,
+}
+
+/// A block of [`crate::common::BlockType::Compressed`]
+pub fn compress_block<M: Matcher>(
+    state: &mut CompressState<M>,
+    output: &mut Vec<u8>,
+    fse_table_strategy: FseTableStrategy,
+) {
     let out_start = output.len();
     let in_len = state.matcher.get_last_space().len();
     state.tmp_literals.clear();
@@ -26,11 +36,22 @@ pub fn compress_block<M: Matcher>(state: &mut CompressState<M>, output: &mut Vec
         let sequences = &mut state.tmp_sequences;
         let offset_hist = &mut state.offset_hist;
         let matcher = &mut state.matcher;
+        let literals_ptr: *mut Vec<u8> = literals_vec;
 
-        matcher.start_matching(|seq| match seq {
-            Sequence::Literals { literals } => literals_vec.extend_from_slice(literals),
-            Sequence::Triple { literals, offset, match_len } => {
-                literals_vec.extend_from_slice(literals);
+        matcher.start_matching_split(
+            |literals| unsafe {
+                // `start_matching_split` invokes callbacks synchronously on this thread.
+                if !literals.is_empty() {
+                    (*literals_ptr).extend_from_slice(literals);
+                }
+            },
+            |literals, offset, match_len| {
+                unsafe {
+                    // See comment above.
+                    if !literals.is_empty() {
+                        (*literals_ptr).extend_from_slice(literals);
+                    }
+                }
                 let ll = literals.len() as u32;
                 let actual_offset = offset as u32;
                 let of = encode_offset_with_history(actual_offset, ll, offset_hist);
@@ -46,19 +67,24 @@ pub fn compress_block<M: Matcher>(state: &mut CompressState<M>, output: &mut Vec
                 debug_assert!(ml_num_bits <= u8::MAX as usize);
                 debug_assert!(of_num_bits <= u8::MAX as usize);
 
+                let ll_bits = ll_num_bits;
+                let ml_bits = ml_num_bits;
+                let of_bits = of_num_bits;
+                let extra_bits = (ll_add_bits as u64)
+                    | ((ml_add_bits as u64) << ll_bits)
+                    | ((of_add_bits as u64) << (ll_bits + ml_bits));
+                let extra_bits_len = (ll_bits + ml_bits + of_bits) as u8;
+                debug_assert!((extra_bits_len as usize) <= 64);
+
                 sequences.push(EncodedSequence {
-                    ll_add_bits: ll_add_bits as u16,
-                    ml_add_bits: ml_add_bits as u16,
-                    of_add_bits,
                     ll_code,
                     ml_code,
                     of_code,
-                    ll_num_bits: ll_num_bits as u8,
-                    ml_num_bits: ml_num_bits as u8,
-                    of_num_bits: of_num_bits as u8,
+                    extra_bits,
+                    extra_bits_len,
                 });
-            }
-        });
+            },
+        );
     }
 
     #[cfg(feature = "std")]
@@ -99,26 +125,90 @@ pub fn compress_block<M: Matcher>(state: &mut CompressState<M>, output: &mut Vec
     } else {
         encode_seqnum(state.tmp_sequences.len(), &mut writer);
 
-        // Choose the tables
-        // TODO store previously used tables
-        let ll_mode = choose_table(
-            state.fse_tables.ll_previous.as_ref(),
-            &state.fse_tables.ll_default,
-            state.tmp_sequences.iter().map(|seq| seq.ll_code),
-            9,
-        );
-        let ml_mode = choose_table(
-            state.fse_tables.ml_previous.as_ref(),
-            &state.fse_tables.ml_default,
-            state.tmp_sequences.iter().map(|seq| seq.ml_code),
-            9,
-        );
-        let of_mode = choose_table(
-            state.fse_tables.of_previous.as_ref(),
-            &state.fse_tables.of_default,
-            state.tmp_sequences.iter().map(|seq| seq.of_code),
-            8,
-        );
+        // Throughput-first (Default): the heuristic table selection does multiple full
+        // passes over the symbol stream. For our workload the default tables are
+        // already competitive, so skip the per-block estimation work.
+        let (ll_mode, ml_mode, of_mode) = match fse_table_strategy {
+            FseTableStrategy::RepeatOrBuild => {
+                // A fast, streaming-friendly strategy:
+                // - If we have a previous (encoded) table and it can encode all symbols in this block, repeat it.
+                // - Otherwise build a new table from this block's symbols and encode it.
+                //
+                // This avoids the expensive per-block cost estimation pass.
+                let mut ll_used = [0u8; 256];
+                let mut ml_used = [0u8; 256];
+                let mut of_used = [0u8; 256];
+                for seq in state.tmp_sequences.iter() {
+                    ll_used[seq.ll_code as usize] = 1;
+                    ml_used[seq.ml_code as usize] = 1;
+                    of_used[seq.of_code as usize] = 1;
+                }
+
+                let supports = |table: &FSETable, used: &[u8; 256]| -> bool {
+                    for (sym, &u) in used.iter().enumerate() {
+                        if u == 0 {
+                            continue;
+                        }
+                        if table.try_start_state(sym as u8).is_none() {
+                            return false;
+                        }
+                    }
+                    true
+                };
+
+                let ll_mode = match state.fse_tables.ll_previous.as_ref() {
+                    Some(prev) if supports(prev, &ll_used) => FseTableMode::RepeatLast(prev),
+                    _ => FseTableMode::Encoded(build_table_from_data(
+                        state.tmp_sequences.iter().map(|seq| seq.ll_code),
+                        9,
+                        true,
+                    )),
+                };
+
+                let ml_mode = match state.fse_tables.ml_previous.as_ref() {
+                    Some(prev) if supports(prev, &ml_used) => FseTableMode::RepeatLast(prev),
+                    _ => FseTableMode::Encoded(build_table_from_data(
+                        state.tmp_sequences.iter().map(|seq| seq.ml_code),
+                        9,
+                        true,
+                    )),
+                };
+
+                let of_mode = match state.fse_tables.of_previous.as_ref() {
+                    Some(prev) if supports(prev, &of_used) => FseTableMode::RepeatLast(prev),
+                    _ => FseTableMode::Encoded(build_table_from_data(
+                        state.tmp_sequences.iter().map(|seq| seq.of_code),
+                        8,
+                        true,
+                    )),
+                };
+
+                (ll_mode, ml_mode, of_mode)
+            }
+            FseTableStrategy::Heuristic => {
+                // Choose the tables
+                // TODO store previously used tables
+                let ll_mode = choose_table(
+                    state.fse_tables.ll_previous.as_ref(),
+                    &state.fse_tables.ll_default,
+                    state.tmp_sequences.iter().map(|seq| seq.ll_code),
+                    9,
+                );
+                let ml_mode = choose_table(
+                    state.fse_tables.ml_previous.as_ref(),
+                    &state.fse_tables.ml_default,
+                    state.tmp_sequences.iter().map(|seq| seq.ml_code),
+                    9,
+                );
+                let of_mode = choose_table(
+                    state.fse_tables.of_previous.as_ref(),
+                    &state.fse_tables.of_default,
+                    state.tmp_sequences.iter().map(|seq| seq.of_code),
+                    8,
+                );
+                (ll_mode, ml_mode, of_mode)
+            }
+        };
 
         writer.write_bits(encode_fse_table_modes(&ll_mode, &ml_mode, &of_mode), 8);
 
@@ -290,53 +380,60 @@ fn encode_sequences(
     ml_table: &FSETable,
     of_table: &FSETable,
 ) {
-    let sequence = sequences[sequences.len() - 1];
-    let ll_code = sequence.ll_code;
-    let of_code = sequence.of_code;
-    let ml_code = sequence.ml_code;
-    let mut ll_state: &State = ll_table.start_state(ll_code);
-    let mut ml_state: &State = ml_table.start_state(ml_code);
-    let mut of_state: &State = of_table.start_state(of_code);
+    let (last, rest) = sequences.split_last().expect("empty sequences must be handled by caller");
+    let mut ll_state: &State = ll_table.start_state(last.ll_code);
+    let mut ml_state: &State = ml_table.start_state(last.ml_code);
+    let mut of_state: &State = of_table.start_state(last.of_code);
 
-    writer.write_bits(sequence.ll_add_bits, sequence.ll_num_bits as usize);
-    writer.write_bits(sequence.ml_add_bits, sequence.ml_num_bits as usize);
-    writer.write_bits(sequence.of_add_bits, sequence.of_num_bits as usize);
+    writer.write_bits_64(last.extra_bits, last.extra_bits_len as usize);
 
     // encode backwards so the decoder reads the first sequence first
-    if sequences.len() > 1 {
-        for sequence in (0..=sequences.len() - 2).rev() {
-            let sequence = sequences[sequence];
-            let ll_code = sequence.ll_code;
-            let of_code = sequence.of_code;
-            let ml_code = sequence.ml_code;
+    for sequence in rest.iter().rev() {
+        let ll_code = sequence.ll_code;
+        let of_code = sequence.of_code;
+        let ml_code = sequence.ml_code;
 
-            {
-                let next = of_table.next_state(of_code, of_state.index);
-                let diff = of_state.index - next.baseline;
-                writer.write_bits(diff as u64, next.num_bits as usize);
-                of_state = next;
-            }
-            {
-                let next = ml_table.next_state(ml_code, ml_state.index);
-                let diff = ml_state.index - next.baseline;
-                writer.write_bits(diff as u64, next.num_bits as usize);
-                ml_state = next;
-            }
-            {
-                let next = ll_table.next_state(ll_code, ll_state.index);
-                let diff = ll_state.index - next.baseline;
-                writer.write_bits(diff as u64, next.num_bits as usize);
-                ll_state = next;
-            }
+        let next_of = of_table.next_state(of_code, of_state.index);
+        let next_ml = ml_table.next_state(ml_code, ml_state.index);
+        let next_ll = ll_table.next_state(ll_code, ll_state.index);
 
-            writer.write_bits(sequence.ll_add_bits, sequence.ll_num_bits as usize);
-            writer.write_bits(sequence.ml_add_bits, sequence.ml_num_bits as usize);
-            writer.write_bits(sequence.of_add_bits, sequence.of_num_bits as usize);
+        let of_bits = next_of.num_bits as usize;
+        let ml_bits = next_ml.num_bits as usize;
+        let ll_bits = next_ll.num_bits as usize;
+        let diff_of = (of_state.index - next_of.baseline) as u64;
+        let diff_ml = (ml_state.index - next_ml.baseline) as u64;
+        let diff_ll = (ll_state.index - next_ll.baseline) as u64;
+
+        let diffs_bits = diff_of | (diff_ml << of_bits) | (diff_ll << (of_bits + ml_bits));
+        let diffs_total = of_bits + ml_bits + ll_bits;
+        debug_assert!(diffs_total <= 64);
+
+        of_state = next_of;
+        ml_state = next_ml;
+        ll_state = next_ll;
+
+        let extra_total = sequence.extra_bits_len as usize;
+        let total = diffs_total + extra_total;
+        if total <= 64 {
+            let bits = diffs_bits | (sequence.extra_bits << diffs_total);
+            writer.write_bits_64(bits, total);
+        } else {
+            // Rare slow-path for extremely large extra-bit payloads.
+            writer.write_bits_64(diffs_bits, diffs_total);
+            writer.write_bits_64(sequence.extra_bits, extra_total);
         }
     }
-    writer.write_bits(ml_state.index as u64, ml_table.table_size.ilog2() as usize);
-    writer.write_bits(of_state.index as u64, of_table.table_size.ilog2() as usize);
-    writer.write_bits(ll_state.index as u64, ll_table.table_size.ilog2() as usize);
+    {
+        let ml_bits = ml_table.table_size.ilog2() as usize;
+        let of_bits = of_table.table_size.ilog2() as usize;
+        let ll_bits = ll_table.table_size.ilog2() as usize;
+        let bits = (ml_state.index as u64)
+            | ((of_state.index as u64) << ml_bits)
+            | ((ll_state.index as u64) << (ml_bits + of_bits));
+        let total_bits = ml_bits + of_bits + ll_bits;
+        debug_assert!(total_bits <= 64);
+        writer.write_bits_64(bits, total_bits);
+    }
 
     let bits_to_fill = writer.misaligned();
     if bits_to_fill == 0 {
@@ -368,6 +465,7 @@ fn encode_seqnum(seqnum: usize, writer: &mut BitWriter<impl AsMut<Vec<u8>>>) {
     }
 }
 
+#[inline(always)]
 fn encode_literal_length(len: u32) -> (u8, u32, usize) {
     match len {
         0..=15 => (len as u8, 0, 0),
@@ -395,33 +493,33 @@ fn encode_literal_length(len: u32) -> (u8, u32, usize) {
     }
 }
 
-fn encode_match_len(len: u32) -> (u8, u32, usize) {
-    // Keep this in sync with decoder's ML_CODE_TABLE.
-    const ML_BASE: [u32; 53] = [
-        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-        27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 131, 259, 515,
-        1027, 2051, 4099, 8195, 16387, 32771, 65539,
-    ];
-    const ML_BITS: [u8; 53] = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-    ];
+// Keep these in sync with decoder's ML_CODE_TABLE.
+const ML_BASE: [u32; 53] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+    28, 29, 30, 31, 32, 33, 34, 35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 131, 259, 515, 1027,
+    2051, 4099, 8195, 16387, 32771, 65539,
+];
+const ML_BITS: [u8; 53] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+];
 
-    const fn build_ml_max() -> [u32; 53] {
-        let mut out = [0u32; 53];
-        let mut i = 0usize;
-        while i < 53 {
-            let base = ML_BASE[i];
-            let eb = ML_BITS[i] as u32;
-            out[i] = if eb == 0 { base } else { base + ((1u32 << eb) - 1) };
-            i += 1;
-        }
-        out
+const fn build_ml_max() -> [u32; 53] {
+    let mut out = [0u32; 53];
+    let mut i = 0usize;
+    while i < 53 {
+        let base = ML_BASE[i];
+        let eb = ML_BITS[i] as u32;
+        out[i] = if eb == 0 { base } else { base + ((1u32 << eb) - 1) };
+        i += 1;
     }
+    out
+}
 
-    const ML_MAX: [u32; 53] = build_ml_max();
+const ML_MAX: [u32; 53] = build_ml_max();
 
-    debug_assert!((3..=131_074).contains(&len));
+#[inline(always)]
+const fn encode_match_len_full(len: u32) -> (u8, u32, u8) {
     // Manual binary search is consistently faster than `partition_point` here (tiny arrays, hot path).
     let mut lo = 0usize;
     let mut hi = ML_MAX.len();
@@ -434,12 +532,38 @@ fn encode_match_len(len: u32) -> (u8, u32, usize) {
         }
     }
     let code = lo;
-    debug_assert!(code < ML_BASE.len());
     let base = ML_BASE[code];
-    let eb = ML_BITS[code] as usize;
+    let eb = ML_BITS[code];
     (code as u8, len - base, eb)
 }
 
+const fn build_ml_lookup_256() -> [(u8, u32, u8); 256] {
+    let mut out = [(0u8, 0u32, 0u8); 256];
+    let mut i = 0usize;
+    while i < 256 {
+        let len = i as u32;
+        if len >= 3 {
+            out[i] = encode_match_len_full(len);
+        }
+        i += 1;
+    }
+    out
+}
+
+const ML_LOOKUP_256: [(u8, u32, u8); 256] = build_ml_lookup_256();
+
+#[inline(always)]
+fn encode_match_len(len: u32) -> (u8, u32, usize) {
+    debug_assert!((3..=131_074).contains(&len));
+    if len < 256 {
+        let (code, add, eb) = ML_LOOKUP_256[len as usize];
+        return (code, add, eb as usize);
+    }
+    let (code, add, eb) = encode_match_len_full(len);
+    (code, add, eb as usize)
+}
+
+#[inline(always)]
 fn encode_offset_with_history(actual_offset: u32, lit_len: u32, hist: &mut [u32; 3]) -> u32 {
     // Use zstd repeat-offset encoding (rep-codes 1..=3) when possible.
     // History update rules are subtle (ll==0 has special handling), so we reuse the decoder logic
@@ -519,6 +643,7 @@ fn encode_offset_with_history(actual_offset: u32, lit_len: u32, hist: &mut [u32;
     of_value
 }
 
+#[inline(always)]
 fn encode_offset(len: u32) -> (u8, u32, usize) {
     let log = len.ilog2();
     let lower = len & ((1 << log) - 1);
@@ -555,7 +680,7 @@ fn compress_literals(
             6..1024 => (0b01, 10),
             1024..16384 => (0b10, 14),
             16384..262144 => (0b11, 18),
-            _ => unimplemented!("too many literals"),
+            _ => return false, // Too many literals for compressed encoding; caller falls back to raw.
         };
 
         writer.write_bits(size_format, 2);

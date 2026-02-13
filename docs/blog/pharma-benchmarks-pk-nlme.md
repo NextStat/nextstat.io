@@ -26,7 +26,7 @@ category: pharma
 
 # Pharma Benchmarks: PK and NLME Without Benchmark Theater
 
-**Trust Offensive series:** [Index](/blog/trust-offensive-public-benchmarks) · **Prev:** [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec) · **Next:** [JAX Compile vs Execution](/blog/jax-compile-vs-execution)
+**Trust Offensive series:** [Index](/blog/trust-offensive) · **Prev:** [Bayesian Benchmarks: ESS/sec](/blog/bayesian-benchmarks-ess-per-sec) · **Next:** [JAX Compile vs Execution](/blog/jax-compile-vs-execution)
 
 Pharmacometrics benchmarks are deceptively easy to do wrong.
 
@@ -41,7 +41,8 @@ This post defines what we benchmark in NextStat’s PK/NLME baselines and how we
 
 Runbook/spec:
 
-- [Pharma Benchmark Suite](/docs/benchmarks/suites/pharma)
+- [Public Benchmarks specification (protocol + artifacts)](/docs/public-benchmarks)
+- Suite runbook (repo path): `docs/benchmarks/suites/pharma.md`
 
 ---
 
@@ -143,10 +144,10 @@ and always publish:
 NextStat’s baseline models are intentionally minimal and explicit:
 
 - Individual PK: 1-compartment oral model with first-order absorption  
-  Tutorial: [Phase 13 PK baseline](/docs/tutorials/phase-13-pk)
+  Tutorial (repo path): `docs/tutorials/phase-13-pk.md`
 
 - NLME baseline: population parameters + independent log-normal random effects (diagonal Omega), joint MAP fit  
-  Tutorial: [Phase 13 NLME baseline](/docs/tutorials/phase-13-nlme)
+  Tutorial (repo path): `docs/tutorials/phase-13-nlme.md`
 
 This matters because “NLME” can mean many different approximations in production tools; benchmarks must compare like with like.
 
@@ -194,6 +195,15 @@ python benchmarks/nextstat-public-benchmarks/suites/pharma/suite.py \
 
 Each generated dataset carries a stable dataset ID (encoding key parameters) and a SHA‑256 hash of the dataset spec.
 
+This seed is NextStat-only today. Baseline templates (e.g. nlmixr2, Torsten) are tracked separately and will be incorporated only once their environments are reproducibly pinned.
+
+Published artifact contracts (Pharma suite):
+
+- per-case results: `nextstat.pharma_benchmark_result.v1`
+- suite index: `nextstat.pharma_benchmark_suite_result.v1`
+
+Canonical snapshot publishing contract + artifact inventory: [Public Benchmarks](/docs/public-benchmarks). Validation pack artifact: [Validation Report](/docs/validation-report).
+
 ---
 
 ## 8) Metrics we will publish
@@ -227,4 +237,4 @@ So we treat benchmarks as artifacts:
 - raw result publishing,
 - and external reruns when possible.
 
-Public benchmark contract: [Public Benchmarks Specification](/docs/benchmarks/public-benchmarks).
+Public benchmark contract: [Public Benchmarks](/docs/public-benchmarks).

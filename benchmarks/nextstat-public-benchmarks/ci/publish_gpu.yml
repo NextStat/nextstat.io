@@ -29,6 +29,11 @@ on:
         required: true
         type: boolean
         default: false
+      run_econometrics:
+        description: "Run econometrics suite"
+        required: true
+        type: boolean
+        default: false
       run_ml:
         description: "Run ML suite"
         required: true
@@ -120,6 +125,7 @@ jobs:
           RUN_HEP: ${{ inputs.run_hep }}
           RUN_PHARMA: ${{ inputs.run_pharma }}
           RUN_BAYESIAN: ${{ inputs.run_bayesian }}
+          RUN_ECONOMETRICS: ${{ inputs.run_econometrics }}
           RUN_ML: ${{ inputs.run_ml }}
         run: |
           set -euo pipefail
@@ -136,6 +142,9 @@ jobs:
           if [ "${RUN_PHARMA}" = "true" ]; then
             args+=(--pharma)
           fi
+          if [ "${RUN_ECONOMETRICS}" = "true" ]; then
+            args+=(--econometrics)
+          fi
           if [ "${RUN_BAYESIAN}" = "true" ]; then
             args+=(--bayesian)
           fi
@@ -143,6 +152,7 @@ jobs:
             args+=(--ml)
           fi
           "${args[@]}"
+
 
       - name: Upload snapshot artifacts
         uses: actions/upload-artifact@v4

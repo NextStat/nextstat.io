@@ -81,8 +81,9 @@ pub fn fit_toys_batch_gpu(
     let init_params: Vec<f64> = model.parameter_init();
     let bounds: Vec<(f64, f64)> = model.parameter_bounds();
 
+    let effective_m = config.effective_m(n_params);
     let mut states: Vec<LbfgsState> = (0..n_toys)
-        .map(|_| LbfgsState::new(init_params.clone(), bounds.clone(), config.m, config.tol))
+        .map(|_| LbfgsState::new(init_params.clone(), bounds.clone(), effective_m, config.tol))
         .collect();
 
     let mut active_mask: Vec<bool> = vec![true; n_toys];
@@ -125,11 +126,14 @@ pub fn fit_toys_batch_gpu(
     let results: Vec<Result<FitResult>> = states
         .into_iter()
         .map(|state| {
+            if state.failed {
+                log::warn!("GPU toy fit failed (non-finite NLL/gradient), nll={}", state.fval,);
+            }
             Ok(FitResult::new(
                 state.x,
                 vec![0.0; n_params], // No uncertainties for toy fits
                 state.fval,
-                state.converged,
+                state.converged && !state.failed,
                 state.iter,
                 state.n_fev,
                 state.n_gev,
@@ -194,8 +198,9 @@ pub fn fit_toys_from_data_gpu(
     accel.upload_observed(&observed_flat, &ln_facts_flat, &obs_mask_flat, n_toys)?;
 
     // Use custom init and bounds
+    let effective_m = config.effective_m(n_params);
     let mut states: Vec<LbfgsState> = (0..n_toys)
-        .map(|_| LbfgsState::new(init_params.to_vec(), bounds.to_vec(), config.m, config.tol))
+        .map(|_| LbfgsState::new(init_params.to_vec(), bounds.to_vec(), effective_m, config.tol))
         .collect();
 
     let mut active_mask: Vec<bool> = vec![true; n_toys];

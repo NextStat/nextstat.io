@@ -28,10 +28,35 @@ fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
 pub struct BundleMeta {
     pub tool: String,
     pub tool_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_rev: Option<String>,
     pub created_unix_ms: u128,
     pub command: String,
     pub args: serde_json::Value,
     pub input: BundleInputMeta,
+    pub reproducibility: ReproducibilityMeta,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReproducibilityMeta {
+    /// Whether the output is deterministic given the same inputs + seed.
+    pub deterministic: bool,
+    /// Schema version for the bundle format.
+    pub bundle_schema_version: u32,
+    /// Platform info for audit trail.
+    pub platform: String,
+}
+
+fn git_rev() -> Option<String> {
+    std::process::Command::new("git").args(["rev-parse", "--short", "HEAD"]).output().ok().and_then(
+        |o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        },
+    )
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -161,6 +186,7 @@ pub fn write_bundle(
     let meta = BundleMeta {
         tool: "nextstat".to_string(),
         tool_version: ns_core::VERSION.to_string(),
+        git_rev: git_rev(),
         created_unix_ms,
         command: command.to_string(),
         args: canonicalize_json(&args),
@@ -169,6 +195,11 @@ pub fn write_bundle(
             input_sha256,
             data_sha256,
             model_spec_sha256,
+        },
+        reproducibility: ReproducibilityMeta {
+            deterministic,
+            bundle_schema_version: 2,
+            platform: format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH),
         },
     };
     let meta_path = bundle_dir.join("meta.json");

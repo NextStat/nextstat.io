@@ -14,7 +14,23 @@ Tool result schema: `docs/schemas/tools/nextstat_tool_result_v1.schema.json`
 ## What You Get
 
 1. `nextstat.tools.get_toolkit()` returns OpenAI-compatible tool definitions (JSON Schema input).
-2. `nextstat.tools.execute_tool(name, arguments)` executes a tool call and returns a stable envelope:
+2. `nextstat.tools.execute_tool(name, arguments)` executes a tool call and returns a stable envelope.
+
+## Available Tools (9)
+
+| Tool | Description |
+|------|-------------|
+| `nextstat_fit` | MLE fit. Returns bestfit, uncertainties, NLL, covariance, convergence. |
+| `nextstat_hypotest` | Asymptotic CLs hypothesis test (qtilde) at given μ. Returns CLs, CLs+b, CLb. |
+| `nextstat_hypotest_toys` | Toy-based CLs hypothesis test (qtilde). Stochastic; requires `seed`. Returns observed + expected CLs. |
+| `nextstat_upper_limit` | 95% CL upper limit on μ via CLs. Observed + optionally expected (±1σ/±2σ). |
+| `nextstat_ranking` | Nuisance parameter ranking (systematic impact on μ). Sorted by impact. |
+| `nextstat_discovery_asymptotic` | Asymptotic discovery at μ=0. Returns q0, z0, p0. **Not CLs.** |
+| `nextstat_scan` | Profile likelihood scan over μ values. Returns (μ, q_μ, 2·ΔNLL) arrays. |
+| `nextstat_workspace_audit` | Audit a pyhf workspace: channels, samples, modifiers, parameter count. |
+| `nextstat_read_root_histogram` | Read a TH1 from a ROOT file (bin edges, content, sumw2, under/overflow). |
+
+### Envelope format
 
 ```json
 {

@@ -1,19 +1,27 @@
-//! TRExFitter config importer (subset) for TREx replacement workflows.
+//! TRExFitter config importer for TREx replacement workflows.
 //!
-//! This module parses a common, line-based TRExFitter-style config format and
-//! converts it into a NextStat-compatible pyhf JSON `Workspace` via the existing
-//! ntuple → workspace pipeline (`NtupleWorkspaceBuilder`).
+//! This module parses a TRExFitter-style config format and converts it into a
+//! NextStat-compatible pyhf JSON `Workspace` via the existing ntuple → workspace
+//! pipeline (`NtupleWorkspaceBuilder`).
 //!
-//! Current scope:
-//! - Supports `ReadFrom: NTUP` (or omitted; defaults to NTUP).
-//! - Supports `Region:` blocks (channel variable/binning/selection).
-//! - Supports `Sample:` blocks (file/weight/type/regions + simple modifiers).
-//! - Supports `Systematic:` blocks (norm/weight/tree) applied by sample/region.
+//! ## Supported blocks
 //!
-//! Not implemented (yet):
-//! - Full TRExFitter config surface (many optional blocks/knobs are ignored).
-//! - `ReadFrom: HIST` supports importing a HistFactory export (`combination.xml`) plus TREx-like
-//!   region/sample masking; it does **not** re-derive histograms/variations from NTUP inputs.
+//! | Block             | Status  | Notes |
+//! |-------------------|---------|-------|
+//! | `Job`             | Full    | Global settings (Lumi, MCstatThreshold, pruning, …) |
+//! | `Fit`             | Parsed  | FitType, FitRegion, FitBlind, NumCPU, POIAsimov, UseMinos, … |
+//! | `Limit`           | Parsed  | LimitType, LimitBlind, ConfidenceLevel, … |
+//! | `Significance`    | Parsed  | SignificanceBlind, … |
+//! | `Region`          | Full    | Variable/Binning/Selection + Type/Label/LogScale/Rebin/MCweight |
+//! | `Sample`          | Full    | File/Weight/Type + NormalizedByTheory/Group/Exclude/IgnoreSelection/… |
+//! | `Systematic`      | Full    | Norm/Weight/Tree/Histo/Shape + NuisanceParameter/Symmetrisation/Decorrelate/Exclude/… |
+//! | `NormFactor`      | Full    | Nominal/Min/Max/Samples/Regions/Constant/Expression |
+//!
+//! ## Modes
+//!
+//! - `ReadFrom: NTUP` (default) — reads ROOT ntuples and builds histograms.
+//! - `ReadFrom: HIST` — imports a HistFactory export (`combination.xml`) plus TREx-like
+//!   region/sample masking; does **not** re-derive histograms from NTUP inputs.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -35,6 +43,9 @@ struct Attr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockKind {
     Job,
+    Fit,
+    Limit,
+    Significance,
     Region,
     Sample,
     Systematic,
@@ -395,6 +406,9 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
     fn can_nest(parent: BlockKind, child: BlockKind) -> bool {
         match parent {
             BlockKind::Job => true,
+            BlockKind::Fit => false,
+            BlockKind::Limit => false,
+            BlockKind::Significance => false,
             BlockKind::Region => matches!(child, BlockKind::Sample | BlockKind::Systematic),
             BlockKind::Sample => matches!(child, BlockKind::Systematic),
             BlockKind::Systematic => false,
@@ -421,16 +435,22 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
 
         // Ambiguity: some NextStat-compatible minimal configs use `NormFactor:` as a Sample attribute,
         // while full TREx configs use `NormFactor:` as a dedicated block. To preserve back-compat,
-        // treat `NormFactor:` as a block only when not currently inside Region/Sample/Systematic.
+        // treat `NormFactor:` as a block only when not directly inside a Sample (where NormFactor
+        // is a recognized attribute). Other blocks (Region, Systematic, Job, etc.) would be
+        // auto-closed before the NormFactor block starts.
         let can_start_normfactor_block = match stack.last() {
-            Some(top) => {
-                !matches!(top.kind, BlockKind::Region | BlockKind::Sample | BlockKind::Systematic)
-            }
+            Some(top) => !matches!(top.kind, BlockKind::Sample),
             None => true,
         };
 
         let kind = if key_eq(&key, "Job") {
             Some(BlockKind::Job)
+        } else if key_eq(&key, "Fit") {
+            Some(BlockKind::Fit)
+        } else if key_eq(&key, "Limit") {
+            Some(BlockKind::Limit)
+        } else if key_eq(&key, "Significance") {
+            Some(BlockKind::Significance)
         } else if key_eq(&key, "Region") || key_eq(&key, "Channel") {
             Some(BlockKind::Region)
         } else if key_eq(&key, "Sample") {
@@ -441,6 +461,12 @@ fn parse_raw(text: &str) -> Result<(Vec<Attr>, Vec<RawBlock>)> {
             Some(BlockKind::NormFactor)
         } else if key_eq(&key, "EndJob") {
             Some(BlockKind::Job)
+        } else if key_eq(&key, "EndFit") {
+            Some(BlockKind::Fit)
+        } else if key_eq(&key, "EndLimit") {
+            Some(BlockKind::Limit)
+        } else if key_eq(&key, "EndSignificance") {
+            Some(BlockKind::Significance)
         } else if key_eq(&key, "EndRegion") || key_eq(&key, "EndChannel") {
             Some(BlockKind::Region)
         } else if key_eq(&key, "EndSample") {
@@ -533,7 +559,7 @@ fn has_attr(attrs: &[Attr], key: &str) -> bool {
     attrs.iter().any(|a| key_eq(&a.key, key))
 }
 
-/// Parsed TRExFitter-style configuration (subset).
+/// Parsed TRExFitter-style configuration.
 #[derive(Debug, Clone)]
 pub struct TrexConfig {
     /// `ReadFrom` mode, e.g. `NTUP` or `HIST`.
@@ -548,12 +574,116 @@ pub struct TrexConfig {
     pub measurement: Option<String>,
     /// Parameter of interest name.
     pub poi: Option<String>,
+    /// Integrated luminosity (pb⁻¹).
+    pub lumi: Option<f64>,
+    /// Relative luminosity uncertainty (e.g. 0.017 for 1.7%).
+    pub lumi_rel_err: Option<f64>,
+    /// MC stat error threshold (relative); bins below this are pruned.
+    pub mcstat_threshold: Option<f64>,
+    /// Systematic pruning threshold for shape variations.
+    pub syst_pruning_shape: Option<f64>,
+    /// Systematic pruning threshold for normalization variations.
+    pub syst_pruning_norm: Option<f64>,
+    /// Debug level.
+    pub debug_level: Option<u32>,
+    /// Blinding type (`SIGNAL`, `SIDEBAND`, etc.).
+    pub blinding_type: Option<String>,
+    /// Blinding threshold.
+    pub blinding_threshold: Option<f64>,
+    /// Fit configuration block.
+    pub fit: Option<TrexFit>,
+    /// Limit configuration block.
+    pub limit: Option<TrexLimit>,
+    /// Significance configuration block.
+    pub significance: Option<TrexSignificance>,
     /// Regions/channels in input order.
     pub regions: Vec<TrexRegion>,
     /// Samples in input order.
     pub samples: Vec<TrexSample>,
     /// Systematics in input order.
     pub systematics: Vec<TrexSystematic>,
+    /// NormFactor blocks (structured).
+    pub norm_factors: Vec<TrexNormFactor>,
+}
+
+/// Fit configuration block.
+#[derive(Debug, Clone)]
+pub struct TrexFit {
+    /// Block name.
+    pub name: String,
+    /// Fit type: `SPLUSB` or `BONLY`.
+    pub fit_type: Option<String>,
+    /// Fit regions: `CRSR` or `CRONLY`.
+    pub fit_region: Option<String>,
+    /// Whether to blind the fit.
+    pub fit_blind: Option<bool>,
+    /// Number of CPUs for fitting.
+    pub num_cpu: Option<u32>,
+    /// POI Asimov value.
+    pub poi_asimov: Option<f64>,
+    /// Use MINOS errors.
+    pub use_minos: Option<Vec<String>>,
+    /// Saturated model flag.
+    pub saturated_model: Option<bool>,
+    /// Do injection test.
+    pub do_injection: Option<bool>,
+    /// Injection signal strength.
+    pub injection_signal: Option<f64>,
+}
+
+/// Limit configuration block.
+#[derive(Debug, Clone)]
+pub struct TrexLimit {
+    /// Block name.
+    pub name: String,
+    /// Limit type: `ASYMPTOTIC` or `TOYS`.
+    pub limit_type: Option<String>,
+    /// Whether to blind the limit.
+    pub limit_blind: Option<bool>,
+    /// POI for limit.
+    pub poi: Option<String>,
+    /// Limit output directory.
+    pub output_dir: Option<String>,
+    /// Confidence level (e.g. 0.95).
+    pub confidence_level: Option<f64>,
+}
+
+/// Significance configuration block.
+#[derive(Debug, Clone)]
+pub struct TrexSignificance {
+    /// Block name.
+    pub name: String,
+    /// Whether to blind significance.
+    pub significance_blind: Option<bool>,
+    /// POI for significance.
+    pub poi: Option<String>,
+    /// Significance output directory.
+    pub output_dir: Option<String>,
+}
+
+/// Structured NormFactor block.
+#[derive(Debug, Clone)]
+pub struct TrexNormFactor {
+    /// NormFactor name (parameter name).
+    pub name: String,
+    /// Display title.
+    pub title: Option<String>,
+    /// Nominal value (default init).
+    pub nominal: Option<f64>,
+    /// Minimum bound.
+    pub min: Option<f64>,
+    /// Maximum bound.
+    pub max: Option<f64>,
+    /// Target sample names.
+    pub samples: Vec<String>,
+    /// Target region names (None = all).
+    pub regions: Option<Vec<String>>,
+    /// Whether the NormFactor is held constant.
+    pub constant: Option<bool>,
+    /// Expression for derived NormFactors.
+    pub expression: Option<String>,
+    /// Category label.
+    pub category: Option<String>,
 }
 
 /// One TREx region/channel block.
@@ -571,6 +701,22 @@ pub struct TrexRegion {
     pub data_file: Option<PathBuf>,
     /// Optional override TTree name for data.
     pub data_tree_name: Option<String>,
+    /// Region type: `SIGNAL`, `CONTROL`, `VALIDATION`.
+    pub region_type: Option<String>,
+    /// Display label.
+    pub label: Option<String>,
+    /// Short label.
+    pub short_label: Option<String>,
+    /// TeX label.
+    pub tex_label: Option<String>,
+    /// Log-scale Y axis.
+    pub log_scale: Option<bool>,
+    /// Rebinning factor or edges.
+    pub rebin: Option<String>,
+    /// Per-region MC weight (alias for Weight in non-override context).
+    pub mc_weight: Option<String>,
+    /// Automatic bin dropping.
+    pub auto_drop_bins: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -595,6 +741,28 @@ pub struct TrexSample {
     pub regions: Option<Vec<String>>,
     /// Modifiers applied to this sample.
     pub modifiers: Vec<NtupleModifier>,
+    /// Display title.
+    pub title: Option<String>,
+    /// TeX title.
+    pub tex_title: Option<String>,
+    /// Sample group for merging in plots.
+    pub group: Option<String>,
+    /// Whether this sample is normalized by theory (triggers lumi modifier).
+    pub normalized_by_theory: Option<bool>,
+    /// Luminosity scale factor override.
+    pub lumi_scale: Option<f64>,
+    /// Exclude sample from named regions.
+    pub exclude: Option<Vec<String>>,
+    /// Ignore region selection for this sample.
+    pub ignore_selection: Option<bool>,
+    /// Fill color index.
+    pub fill_color: Option<i32>,
+    /// Line color index.
+    pub line_color: Option<i32>,
+    /// Separate gammas (per-bin stat factors).
+    pub separate_gammas: Option<bool>,
+    /// Use only these named systematics.
+    pub use_systematic: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -634,10 +802,38 @@ pub struct TrexSystematic {
     histo_name_down: Option<String>,
     histo_file_up: Option<PathBuf>,
     histo_file_down: Option<PathBuf>,
-    // Optional TREx knobs (currently parsed for coverage/parity work).
+    // Optional TREx knobs.
     smoothing: Option<String>,
     drop_norm: Option<String>,
     pruning: Option<String>,
+    /// Custom nuisance parameter name (default = systematic name).
+    pub nuisance_parameter: Option<String>,
+    /// Symmetrisation method: `ONESIDED`, `TWOSIDED`, `MAXIMUM`, `ABSMEAN`.
+    pub symmetrisation: Option<String>,
+    /// Whether this systematic is a free parameter (unconstrained).
+    pub is_free_parameter: Option<bool>,
+    /// Decorrelation mode: `REGION`, `SAMPLE`, `SHAPEACC`, etc.
+    pub decorrelate: Option<String>,
+    /// Exclude from named regions or samples.
+    pub exclude: Option<Vec<String>>,
+    /// Exclude from named regions.
+    pub exclude_region: Option<Vec<String>>,
+    /// Category label for grouping.
+    pub category: Option<String>,
+    /// Sub-category label.
+    pub sub_category: Option<String>,
+    /// Display title.
+    pub title: Option<String>,
+    /// Reference sample for symmetrisation.
+    pub reference_sample: Option<String>,
+    /// Scale factor for +1σ variation.
+    pub scale_up: Option<f64>,
+    /// Scale factor for −1σ variation.
+    pub scale_down: Option<f64>,
+    /// Pre-smoothing flag.
+    pub pre_smoothing: Option<bool>,
+    /// Smoothing option/algorithm.
+    pub smoothing_option: Option<String>,
 }
 
 /// A single unrecognized `key: value` attribute encountered while parsing a TREx config.
@@ -739,70 +935,86 @@ impl TrexConfig {
     }
 
     fn parse_from_raw(globals: Vec<Attr>, blocks: Vec<RawBlock>) -> Result<Self> {
-        // Globals (can also be present inside a Job block).
-        let mut read_from = last_attr_value(&globals, "ReadFrom");
-        let mut histo_path = last_attr_value(&globals, "HistoPath")
-            .or_else(|| last_attr_value(&globals, "HistPath"))
-            .or_else(|| last_attr_value(&globals, "ExportDir"));
-        let mut combination_xml = last_attr_value(&globals, "CombinationXml")
-            .or_else(|| last_attr_value(&globals, "HistFactoryXml"))
-            .or_else(|| last_attr_value(&globals, "CombinationXML"));
-        let mut tree_name =
-            last_attr_value(&globals, "TreeName").or_else(|| last_attr_value(&globals, "Tree"));
-        tree_name = tree_name.or_else(|| last_attr_value(&globals, "NtupleName"));
-        let mut measurement = last_attr_value(&globals, "Measurement");
-        let mut poi = last_attr_value(&globals, "POI").or_else(|| last_attr_value(&globals, "Poi"));
-
-        // First pass: treat Job attrs as global overrides so we can decide mode up-front.
-        for b in blocks.iter() {
-            if b.kind != BlockKind::Job {
-                continue;
+        // --- Helper: extract a global-or-Job attribute, preferring the last Job occurrence. ---
+        fn global_or_job_str(
+            globals: &[Attr],
+            blocks: &[RawBlock],
+            keys: &[&str],
+        ) -> Option<String> {
+            let mut val: Option<String> = None;
+            for k in keys {
+                if let Some(v) = last_attr_value(globals, k) {
+                    val = Some(v);
+                }
             }
-            if let Some(v) = last_attr_value(&b.attrs, "ReadFrom") {
-                read_from = Some(v);
+            for b in blocks {
+                if b.kind != BlockKind::Job {
+                    continue;
+                }
+                for k in keys {
+                    if let Some(v) = last_attr_value(&b.attrs, k) {
+                        val = Some(v);
+                    }
+                }
             }
-            if let Some(v) = last_attr_value(&b.attrs, "HistoPath")
-                .or_else(|| last_attr_value(&b.attrs, "HistPath"))
-                .or_else(|| last_attr_value(&b.attrs, "ExportDir"))
-            {
-                histo_path = Some(v);
-            }
-            if let Some(v) = last_attr_value(&b.attrs, "CombinationXml")
-                .or_else(|| last_attr_value(&b.attrs, "HistFactoryXml"))
-                .or_else(|| last_attr_value(&b.attrs, "CombinationXML"))
-            {
-                combination_xml = Some(v);
-            }
-            if let Some(v) =
-                last_attr_value(&b.attrs, "TreeName").or_else(|| last_attr_value(&b.attrs, "Tree"))
-            {
-                tree_name = Some(v);
-            }
-            if let Some(v) = last_attr_value(&b.attrs, "NtupleName") {
-                tree_name = Some(v);
-            }
-            if let Some(v) = last_attr_value(&b.attrs, "Measurement") {
-                measurement = Some(v);
-            }
-            if let Some(v) =
-                last_attr_value(&b.attrs, "POI").or_else(|| last_attr_value(&b.attrs, "Poi"))
-            {
-                poi = Some(v);
-            }
+            val
         }
+
+        fn global_or_job_f64(globals: &[Attr], blocks: &[RawBlock], keys: &[&str]) -> Option<f64> {
+            global_or_job_str(globals, blocks, keys).and_then(|s| s.trim().parse::<f64>().ok())
+        }
+
+        fn global_or_job_u32(globals: &[Attr], blocks: &[RawBlock], keys: &[&str]) -> Option<u32> {
+            global_or_job_str(globals, blocks, keys).and_then(|s| s.trim().parse::<u32>().ok())
+        }
+
+        // Globals (can also be present inside a Job block).
+        let read_from = global_or_job_str(&globals, &blocks, &["ReadFrom"]);
+        let histo_path =
+            global_or_job_str(&globals, &blocks, &["HistoPath", "HistPath", "ExportDir"]);
+        let combination_xml = global_or_job_str(
+            &globals,
+            &blocks,
+            &["CombinationXml", "HistFactoryXml", "CombinationXML"],
+        );
+        let tree_name = global_or_job_str(&globals, &blocks, &["TreeName", "Tree", "NtupleName"]);
+        let measurement = global_or_job_str(&globals, &blocks, &["Measurement"]);
+        let poi = global_or_job_str(&globals, &blocks, &["POI", "Poi"]);
+        let lumi = global_or_job_f64(&globals, &blocks, &["Lumi", "Luminosity"]);
+        let lumi_rel_err =
+            global_or_job_f64(&globals, &blocks, &["LumiRelErr", "LumiErr", "LumiRelativeError"]);
+        let mcstat_threshold =
+            global_or_job_f64(&globals, &blocks, &["MCstatThreshold", "StatErrorThreshold"]);
+        let syst_pruning_shape = global_or_job_f64(&globals, &blocks, &["SystPruningShape"]);
+        let syst_pruning_norm = global_or_job_f64(&globals, &blocks, &["SystPruningNorm"]);
+        let debug_level = global_or_job_u32(&globals, &blocks, &["DebugLevel"]);
+        let blinding_type = global_or_job_str(&globals, &blocks, &["BlindingType"]);
+        let blinding_threshold = global_or_job_f64(&globals, &blocks, &["BlindingThreshold"]);
 
         let read_from_mode = read_from.as_deref().unwrap_or("NTUP").trim().to_ascii_uppercase();
         let hist_filter_only = read_from_mode == "HIST";
 
+        let mut fit: Option<TrexFit> = None;
+        let mut limit: Option<TrexLimit> = None;
+        let mut significance: Option<TrexSignificance> = None;
         let mut regions = Vec::new();
         let mut samples = Vec::new();
         let mut systematics = Vec::new();
-        let mut norm_factors: Vec<(String, Vec<String>)> = Vec::new();
+        let mut norm_factors_structured: Vec<TrexNormFactor> = Vec::new();
 
         for b in blocks {
             match b.kind {
                 BlockKind::Job => {
-                    // Already applied in the first pass.
+                    // Already applied via global_or_job helpers.
+                }
+                BlockKind::Fit => {
+                    fit = Some(parse_fit_block(&b));
+                }
+                BlockKind::Limit => {
+                    limit = Some(parse_limit_block(&b));
+                }
+                BlockKind::Significance => {
+                    significance = Some(parse_significance_block(&b));
                 }
                 BlockKind::Region => {
                     let base_region = parse_region_block(&b, hist_filter_only)?;
@@ -822,10 +1034,6 @@ impl TrexConfig {
                     }
                 }
                 BlockKind::Sample => {
-                    // In NTUP mode: skip override-only nested samples (Region → Sample without File/Path).
-                    // These are handled by `workspace_from_str` composition rules.
-                    //
-                    // In HIST mode: Region-scoped Sample blocks without File are filters and must be kept.
                     if !hist_filter_only
                         && b.ctx_region.is_some()
                         && !has_attr(&b.attrs, "File")
@@ -837,35 +1045,28 @@ impl TrexConfig {
                     }
                     samples.push(parse_sample_block(&b, hist_filter_only)?);
                 }
-                BlockKind::Systematic => {
-                    match parse_systematic_block(&b) {
-                        Ok(s) => systematics.push(s),
-                        Err(Error::NotImplemented(_) | Error::Validation(_)) => {
-                            // Best-effort: skip systematics with unsupported types or
-                            // missing required fields (e.g. HISTO without HistoNameUp).
-                            continue;
-                        }
-                        Err(e) => return Err(e),
+                BlockKind::Systematic => match parse_systematic_block(&b) {
+                    Ok(s) => systematics.push(s),
+                    Err(Error::NotImplemented(_) | Error::Validation(_)) => {
+                        continue;
                     }
-                }
+                    Err(e) => return Err(e),
+                },
                 BlockKind::NormFactor => {
-                    let nf_name = b.name.clone();
-                    let samples_val =
-                        last_attr_value(&b.attrs, "Samples").unwrap_or_else(|| "all".to_string());
-                    let targets = parse_list(&samples_val);
-                    norm_factors.push((nf_name, targets));
+                    norm_factors_structured.push(parse_normfactor_block(&b));
                 }
             }
         }
 
-        if !hist_filter_only && !norm_factors.is_empty() {
-            for (nf, targets) in norm_factors {
+        // Apply NormFactor modifiers to matching samples.
+        if !hist_filter_only && !norm_factors_structured.is_empty() {
+            for nf in &norm_factors_structured {
                 for s in &mut samples {
                     if s.kind == SampleKind::Data {
                         continue;
                     }
-                    if targets.iter().any(|t| t == &s.name || t.eq_ignore_ascii_case("all")) {
-                        s.modifiers.push(NtupleModifier::NormFactor { name: nf.clone() });
+                    if nf.samples.iter().any(|t| t == &s.name || t.eq_ignore_ascii_case("all")) {
+                        s.modifiers.push(NtupleModifier::NormFactor { name: nf.name.clone() });
                     }
                 }
             }
@@ -878,9 +1079,21 @@ impl TrexConfig {
             tree_name,
             measurement,
             poi,
+            lumi,
+            lumi_rel_err,
+            mcstat_threshold,
+            syst_pruning_shape,
+            syst_pruning_norm,
+            debug_level,
+            blinding_type,
+            blinding_threshold,
+            fit,
+            limit,
+            significance,
             regions,
             samples,
             systematics,
+            norm_factors: norm_factors_structured,
         })
     }
 }
@@ -895,8 +1108,81 @@ pub fn expr_coverage_from_str(text: &str) -> Result<TrexExprCoverageReport> {
     Ok(trex_expr_coverage_from_raw(&globals, &blocks))
 }
 
+fn parse_fit_block(b: &RawBlock) -> TrexFit {
+    TrexFit {
+        name: b.name.clone(),
+        fit_type: last_attr_value(&b.attrs, "FitType"),
+        fit_region: last_attr_value(&b.attrs, "FitRegion"),
+        fit_blind: last_attr_value(&b.attrs, "FitBlind").and_then(|v| parse_bool(&v)),
+        num_cpu: last_attr_value(&b.attrs, "NumCPU").and_then(|v| v.trim().parse::<u32>().ok()),
+        poi_asimov: last_attr_value(&b.attrs, "POIAsimov")
+            .and_then(|v| v.trim().parse::<f64>().ok()),
+        use_minos: last_attr_value(&b.attrs, "UseMinos").map(|v| parse_list(&v)),
+        saturated_model: last_attr_value(&b.attrs, "SaturatedModel").and_then(|v| parse_bool(&v)),
+        do_injection: last_attr_value(&b.attrs, "doInjection")
+            .or_else(|| last_attr_value(&b.attrs, "DoInjection"))
+            .and_then(|v| parse_bool(&v)),
+        injection_signal: last_attr_value(&b.attrs, "InjectSignal")
+            .or_else(|| last_attr_value(&b.attrs, "InjectionSignal"))
+            .and_then(|v| v.trim().parse::<f64>().ok()),
+    }
+}
+
+fn parse_limit_block(b: &RawBlock) -> TrexLimit {
+    TrexLimit {
+        name: b.name.clone(),
+        limit_type: last_attr_value(&b.attrs, "LimitType"),
+        limit_blind: last_attr_value(&b.attrs, "LimitBlind").and_then(|v| parse_bool(&v)),
+        poi: last_attr_value(&b.attrs, "POI").or_else(|| last_attr_value(&b.attrs, "Poi")),
+        output_dir: last_attr_value(&b.attrs, "OutputDir"),
+        confidence_level: last_attr_value(&b.attrs, "ConfidenceLevel")
+            .or_else(|| last_attr_value(&b.attrs, "CL"))
+            .and_then(|v| v.trim().parse::<f64>().ok()),
+    }
+}
+
+fn parse_significance_block(b: &RawBlock) -> TrexSignificance {
+    TrexSignificance {
+        name: b.name.clone(),
+        significance_blind: last_attr_value(&b.attrs, "SignificanceBlind")
+            .and_then(|v| parse_bool(&v)),
+        poi: last_attr_value(&b.attrs, "POI").or_else(|| last_attr_value(&b.attrs, "Poi")),
+        output_dir: last_attr_value(&b.attrs, "OutputDir"),
+    }
+}
+
+fn parse_normfactor_block(b: &RawBlock) -> TrexNormFactor {
+    let samples_val = last_attr_value(&b.attrs, "Samples").unwrap_or_else(|| "all".to_string());
+    TrexNormFactor {
+        name: b.name.clone(),
+        title: last_attr_value(&b.attrs, "Title"),
+        nominal: last_attr_value(&b.attrs, "Nominal").and_then(|v| v.trim().parse::<f64>().ok()),
+        min: last_attr_value(&b.attrs, "Min").and_then(|v| v.trim().parse::<f64>().ok()),
+        max: last_attr_value(&b.attrs, "Max").and_then(|v| v.trim().parse::<f64>().ok()),
+        samples: parse_list(&samples_val),
+        regions: last_attr_value(&b.attrs, "Regions")
+            .map(|v| parse_list(&v))
+            .filter(|xs| !xs.is_empty()),
+        constant: last_attr_value(&b.attrs, "Constant").and_then(|v| parse_bool(&v)),
+        expression: last_attr_value(&b.attrs, "Expression"),
+        category: last_attr_value(&b.attrs, "Category"),
+    }
+}
+
 fn parse_region_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexRegion> {
     let name = b.name.clone();
+
+    // Common region metadata fields (parsed in both HIST and NTUP modes).
+    let region_type = last_attr_value(&b.attrs, "Type");
+    let label = last_attr_value(&b.attrs, "Label");
+    let short_label = last_attr_value(&b.attrs, "ShortLabel");
+    let tex_label = last_attr_value(&b.attrs, "TexLabel");
+    let log_scale = last_attr_value(&b.attrs, "LogScale").and_then(|v| parse_bool(&v));
+    let rebin =
+        last_attr_value(&b.attrs, "Rebin").or_else(|| last_attr_value(&b.attrs, "Rebinning"));
+    let mc_weight = last_attr_value(&b.attrs, "MCweight");
+    let auto_drop_bins =
+        last_attr_value(&b.attrs, "AutomaticDropBins").and_then(|v| parse_bool(&v));
 
     // HIST mode wrapper: Region blocks can be used as a pure channel include-list. TREx configs
     // in this mode often omit Variable/Binning entirely.
@@ -913,6 +1199,14 @@ fn parse_region_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexRegion
             selection,
             data_file,
             data_tree_name,
+            region_type,
+            label,
+            short_label,
+            tex_label,
+            log_scale,
+            rebin,
+            mc_weight,
+            auto_drop_bins,
         });
     }
 
@@ -995,6 +1289,14 @@ fn parse_region_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexRegion
         selection,
         data_file,
         data_tree_name,
+        region_type,
+        label,
+        short_label,
+        tex_label,
+        log_scale,
+        rebin,
+        mc_weight,
+        auto_drop_bins,
     })
 }
 
@@ -1010,9 +1312,53 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
             "HistFactoryXml",
             "TreeName",
             "Tree",
+            "NtupleName",
             "Measurement",
             "POI",
             "Poi",
+            "Lumi",
+            "Luminosity",
+            "LumiRelErr",
+            "LumiErr",
+            "LumiRelativeError",
+            "MCstatThreshold",
+            "StatErrorThreshold",
+            "SystPruningShape",
+            "SystPruningNorm",
+            "DebugLevel",
+            "BlindingType",
+            "BlindingThreshold",
+            // Cosmetic/presentation globals (recognized but not used for model building).
+            "LumiLabel",
+            "ImageFormat",
+            "AtlasLabel",
+            "CmeLabel",
+            "Label",
+            "MCweight",
+            "SystControlPlots",
+            "SystDataPlots",
+            "SystLarge",
+            "CorrelationThreshold",
+            "HistoChecks",
+            "SplitHistoFiles",
+            "RankingMaxNP",
+            "RankingOnly",
+            "RankingPlot",
+            "DoSummaryPlot",
+            "DoTables",
+            "DoSignalRegionsPlot",
+            "DoPieChartPlot",
+            "SummaryPlotRegions",
+            "OutputDir",
+            "InputFolder",
+            "HistoPath",
+            "NtuplePath",
+            "NtuplePaths",
+            "PlotOptions",
+            "TableOptions",
+            "GetChi2",
+            "UseStatErr",
+            "StatErrThreshold",
         ]
         .iter()
         .any(|k| key_eq(key, k))
@@ -1021,6 +1367,43 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
     fn known_in_block(kind: BlockKind, key: &str) -> bool {
         match kind {
             BlockKind::Job => known_global(key),
+            BlockKind::Fit => [
+                "FitType",
+                "FitRegion",
+                "FitBlind",
+                "NumCPU",
+                "POIAsimov",
+                "UseMinos",
+                "SaturatedModel",
+                "doInjection",
+                "DoInjection",
+                "InjectSignal",
+                "InjectionSignal",
+                "BinnedLikelihoodOptimization",
+                "FitToys",
+                "GetGoodnessOfFit",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+            BlockKind::Limit => [
+                "LimitType",
+                "LimitBlind",
+                "POI",
+                "Poi",
+                "OutputDir",
+                "ConfidenceLevel",
+                "CL",
+                "SignalInjection",
+                "ParamName",
+                "ParamValue",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
+            BlockKind::Significance => {
+                ["SignificanceBlind", "POI", "Poi", "OutputDir", "ParamName", "ParamValue"]
+                    .iter()
+                    .any(|k| key_eq(key, k))
+            }
             BlockKind::Region => [
                 "Variable",
                 "Var",
@@ -1032,6 +1415,32 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "DataFile",
                 "DataTreeName",
                 "DataTree",
+                "Type",
+                "Label",
+                "ShortLabel",
+                "TexLabel",
+                "LogScale",
+                "Rebin",
+                "Rebinning",
+                "MCweight",
+                "AutomaticDropBins",
+                "YaxisTitle",
+                "Ymin",
+                "Ymax",
+                "Xmin",
+                "Xmax",
+                "RatioYmin",
+                "RatioYmax",
+                "RatioYtitle",
+                "DropBins",
+                "TransfoD",
+                "TransfoF",
+                "TransfoJ",
+                "NumberOfRecoBins",
+                "NtuplePath",
+                "NtuplePaths",
+                "HistoPath",
+                "HistoFile",
             ]
             .iter()
             .any(|k| key_eq(key, k)),
@@ -1054,6 +1463,29 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "NormFactor",
                 "NormSys",
                 "StatError",
+                "Title",
+                "TexTitle",
+                "Group",
+                "NormalizedByTheory",
+                "NormByTheory",
+                "LumiScale",
+                "Exclude",
+                "IgnoreSelection",
+                "FillColor",
+                "FillColour",
+                "LineColor",
+                "LineColour",
+                "LineStyle",
+                "SeparateGammas",
+                "UseSystematic",
+                "NtuplePath",
+                "NtuplePaths",
+                "HistoPath",
+                "HistoFile",
+                "HistoName",
+                "BuildPullTable",
+                "Morphing",
+                "AsimovReplacementFor",
             ]
             .iter()
             .any(|k| key_eq(key, k)),
@@ -1084,7 +1516,6 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "DownFile",
                 "TreeName",
                 "Tree",
-                // HISTO/SHAPE systematics.
                 "HistoNameUp",
                 "HistoNameDown",
                 "HistoUp",
@@ -1095,16 +1526,56 @@ fn trex_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexCoverage
                 "HistoFileDown",
                 "HistoPathUp",
                 "HistoPathDown",
-                // Optional TREx knobs.
                 "Smoothing",
                 "DropNorm",
                 "Pruning",
+                "NuisanceParameter",
+                "Symmetrisation",
+                "Symmetrization",
+                "IsFreeParameter",
+                "Decorrelate",
+                "Exclude",
+                "ExcludeRegion",
+                "ExcludeRegions",
+                "Category",
+                "SubCategory",
+                "Title",
+                "TexTitle",
+                "ReferenceSample",
+                "ScaleUp",
+                "ScaleDown",
+                "PreSmoothing",
+                "SmoothingOption",
+                "CombinationType",
+                "CombineName",
+                "DropShapeIn",
+                "SampleUp",
+                "SampleDown",
+                "TreeNameUp",
+                "TreeNameDown",
+                "NtuplePath",
+                "NtuplePathUp",
+                "NtuplePathDown",
+                "HistoPath",
+                "HistoPathSufUp",
+                "HistoPathSufDown",
             ]
             .iter()
             .any(|k| key_eq(key, k)),
-            BlockKind::NormFactor => ["Title", "Nominal", "Min", "Max", "Samples", "Constant"]
-                .iter()
-                .any(|k| key_eq(key, k)),
+            BlockKind::NormFactor => [
+                "Title",
+                "Nominal",
+                "Min",
+                "Max",
+                "Samples",
+                "Regions",
+                "Constant",
+                "Expression",
+                "Category",
+                "Tau",
+            ]
+            .iter()
+            .any(|k| key_eq(key, k)),
         }
     }
 
@@ -1260,6 +1731,7 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
             }
             BlockKind::Job => None,
             BlockKind::NormFactor => None,
+            BlockKind::Fit | BlockKind::Limit | BlockKind::Significance => None,
         }
     }
 
@@ -1452,7 +1924,49 @@ fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample
         modifiers.push(NtupleModifier::StatError);
     }
 
-    Ok(TrexSample { name, kind, file, tree_name, weight, regions, modifiers })
+    let title = last_attr_value(&b.attrs, "Title");
+    let tex_title = last_attr_value(&b.attrs, "TexTitle");
+    let group = last_attr_value(&b.attrs, "Group");
+    let normalized_by_theory = last_attr_value(&b.attrs, "NormalizedByTheory")
+        .or_else(|| last_attr_value(&b.attrs, "NormByTheory"))
+        .and_then(|v| parse_bool(&v));
+    let lumi_scale =
+        last_attr_value(&b.attrs, "LumiScale").and_then(|v| v.trim().parse::<f64>().ok());
+    let exclude =
+        last_attr_value(&b.attrs, "Exclude").map(|v| parse_list(&v)).filter(|xs| !xs.is_empty());
+    let ignore_selection =
+        last_attr_value(&b.attrs, "IgnoreSelection").and_then(|v| parse_bool(&v));
+    let fill_color = last_attr_value(&b.attrs, "FillColor")
+        .or_else(|| last_attr_value(&b.attrs, "FillColour"))
+        .and_then(|v| v.trim().parse::<i32>().ok());
+    let line_color = last_attr_value(&b.attrs, "LineColor")
+        .or_else(|| last_attr_value(&b.attrs, "LineColour"))
+        .and_then(|v| v.trim().parse::<i32>().ok());
+    let separate_gammas = last_attr_value(&b.attrs, "SeparateGammas").and_then(|v| parse_bool(&v));
+    let use_systematic = last_attr_value(&b.attrs, "UseSystematic")
+        .map(|v| parse_list(&v))
+        .filter(|xs| !xs.is_empty());
+
+    Ok(TrexSample {
+        name,
+        kind,
+        file,
+        tree_name,
+        weight,
+        regions,
+        modifiers,
+        title,
+        tex_title,
+        group,
+        normalized_by_theory,
+        lumi_scale,
+        exclude,
+        ignore_selection,
+        fill_color,
+        line_color,
+        separate_gammas,
+        use_systematic,
+    })
 }
 
 fn parse_syst_kind(value: &str) -> Option<SystKind> {
@@ -1557,6 +2071,28 @@ fn parse_systematic_block(b: &RawBlock) -> Result<TrexSystematic> {
         smoothing: last_attr_value(&b.attrs, "Smoothing"),
         drop_norm: last_attr_value(&b.attrs, "DropNorm"),
         pruning: last_attr_value(&b.attrs, "Pruning"),
+        nuisance_parameter: last_attr_value(&b.attrs, "NuisanceParameter"),
+        symmetrisation: last_attr_value(&b.attrs, "Symmetrisation")
+            .or_else(|| last_attr_value(&b.attrs, "Symmetrization")),
+        is_free_parameter: last_attr_value(&b.attrs, "IsFreeParameter")
+            .and_then(|v| parse_bool(&v)),
+        decorrelate: last_attr_value(&b.attrs, "Decorrelate"),
+        exclude: last_attr_value(&b.attrs, "Exclude")
+            .map(|v| parse_list(&v))
+            .filter(|xs| !xs.is_empty()),
+        exclude_region: last_attr_value(&b.attrs, "ExcludeRegion")
+            .or_else(|| last_attr_value(&b.attrs, "ExcludeRegions"))
+            .map(|v| parse_list(&v))
+            .filter(|xs| !xs.is_empty()),
+        category: last_attr_value(&b.attrs, "Category"),
+        sub_category: last_attr_value(&b.attrs, "SubCategory"),
+        title: last_attr_value(&b.attrs, "Title"),
+        reference_sample: last_attr_value(&b.attrs, "ReferenceSample"),
+        scale_up: last_attr_value(&b.attrs, "ScaleUp").and_then(|v| v.trim().parse::<f64>().ok()),
+        scale_down: last_attr_value(&b.attrs, "ScaleDown")
+            .and_then(|v| v.trim().parse::<f64>().ok()),
+        pre_smoothing: last_attr_value(&b.attrs, "PreSmoothing").and_then(|v| parse_bool(&v)),
+        smoothing_option: last_attr_value(&b.attrs, "SmoothingOption"),
     };
 
     match kind {
@@ -1702,14 +2238,37 @@ fn sys_applies(sys: &TrexSystematic, region_name: &str, sample_name: &str) -> bo
     if !sys.samples.iter().any(|s| s == sample_name || s.eq_ignore_ascii_case("all")) {
         return false;
     }
+    #[allow(clippy::collapsible_if)]
     if let Some(ref regions) = sys.regions {
-        regions.iter().any(|r| r == region_name || r.eq_ignore_ascii_case("all"))
-    } else {
-        true
+        if !regions.iter().any(|r| r == region_name || r.eq_ignore_ascii_case("all")) {
+            return false;
+        }
     }
+    #[allow(clippy::collapsible_if)]
+    // Systematic-level Exclude: list of sample or region names to skip.
+    if let Some(ref excl) = sys.exclude {
+        if excl.iter().any(|e| e == sample_name || e == region_name) {
+            return false;
+        }
+    }
+    #[allow(clippy::collapsible_if)]
+    // Systematic-level ExcludeRegion: list of region names to skip.
+    if let Some(ref excl) = sys.exclude_region {
+        if excl.iter().any(|e| e == region_name) {
+            return false;
+        }
+    }
+    true
 }
 
 fn sample_applies(sample: &TrexSample, region_name: &str) -> bool {
+    // Sample-level Exclude: list of region names where this sample should not appear.
+    #[allow(clippy::collapsible_if)]
+    if let Some(ref excl) = sample.exclude {
+        if excl.iter().any(|e| e == region_name) {
+            return false;
+        }
+    }
     if let Some(ref regions) = sample.regions {
         regions.iter().any(|r| r == region_name || r.eq_ignore_ascii_case("all"))
     } else {
@@ -1863,9 +2422,10 @@ fn sys_to_modifier(
     external_weight: Option<&str>,
     nominal_sample_weight: Option<&str>,
 ) -> Result<NtupleModifier> {
+    let np_name = sys.nuisance_parameter.as_deref().unwrap_or(&sys.name).to_string();
     match sys.kind {
         SystKind::Norm => Ok(NtupleModifier::NormSys {
-            name: sys.name.clone(),
+            name: np_name,
             lo: sys.lo.ok_or_else(|| {
                 Error::Validation(format!("Systematic '{}' missing lo", sys.name))
             })?,
@@ -1903,7 +2463,7 @@ fn sys_to_modifier(
                     Error::Validation(format!("Systematic '{}' empty WeightSufDown", sys.name))
                 })?;
                 return Ok(NtupleModifier::WeightSys {
-                    name: sys.name.clone(),
+                    name: np_name,
                     weight_up: up,
                     weight_down: down,
                 });
@@ -1930,14 +2490,10 @@ fn sys_to_modifier(
             .ok_or_else(|| {
                 Error::Validation(format!("Systematic '{}' empty WeightDown", sys.name))
             })?;
-            Ok(NtupleModifier::WeightSys {
-                name: sys.name.clone(),
-                weight_up: up,
-                weight_down: down,
-            })
+            Ok(NtupleModifier::WeightSys { name: np_name, weight_up: up, weight_down: down })
         }
         SystKind::Tree => Ok(NtupleModifier::TreeSys {
-            name: sys.name.clone(),
+            name: np_name,
             file_up: sys.file_up.clone().ok_or_else(|| {
                 Error::Validation(format!("Systematic '{}' missing file_up", sys.name))
             })?,
@@ -1947,7 +2503,7 @@ fn sys_to_modifier(
             tree_name: sys.tree_name.clone(),
         }),
         SystKind::Histo | SystKind::Shape => Ok(NtupleModifier::HistoSys {
-            name: sys.name.clone(),
+            name: np_name,
             histo_name_up: sys.histo_name_up.clone().ok_or_else(|| {
                 Error::Validation(format!("Systematic '{}' missing histo_name_up", sys.name))
             })?,
@@ -2580,6 +3136,7 @@ WeightDown: weight_jes_down
                 crate::pyhf::Modifier::ShapeSys { .. } => "shapesys",
                 crate::pyhf::Modifier::ShapeFactor { .. } => "shapefactor",
                 crate::pyhf::Modifier::Lumi { .. } => "lumi",
+                crate::pyhf::Modifier::Unknown(_) => "unknown",
             })
             .map(|s| s.to_string())
             .collect();
@@ -3717,5 +4274,271 @@ Samples: sig
             ),
             "expected NormFactor block to attach modifier"
         );
+    }
+
+    #[test]
+    fn trex_parses_fit_limit_significance_blocks() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Fit: myfit
+FitType: SPLUSB
+FitRegion: CRSR
+FitBlind: TRUE
+NumCPU: 4
+POIAsimov: 1.0
+
+Limit: mylimit
+LimitType: ASYMPTOTIC
+LimitBlind: FALSE
+ConfidenceLevel: 0.95
+
+Significance: mysig
+SignificanceBlind: TRUE
+
+Region: SR
+Variable: x,2,0,2
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+
+        let fit = parsed.fit.as_ref().expect("missing Fit block");
+        assert_eq!(fit.name, "myfit");
+        assert_eq!(fit.fit_type.as_deref(), Some("SPLUSB"));
+        assert_eq!(fit.fit_region.as_deref(), Some("CRSR"));
+        assert_eq!(fit.fit_blind, Some(true));
+        assert_eq!(fit.num_cpu, Some(4));
+        assert!((fit.poi_asimov.unwrap() - 1.0).abs() < 1e-12);
+
+        let limit = parsed.limit.as_ref().expect("missing Limit block");
+        assert_eq!(limit.name, "mylimit");
+        assert_eq!(limit.limit_type.as_deref(), Some("ASYMPTOTIC"));
+        assert_eq!(limit.limit_blind, Some(false));
+        assert!((limit.confidence_level.unwrap() - 0.95).abs() < 1e-12);
+
+        let sig = parsed.significance.as_ref().expect("missing Significance block");
+        assert_eq!(sig.name, "mysig");
+        assert_eq!(sig.significance_blind, Some(true));
+    }
+
+    #[test]
+    fn trex_parses_job_level_lumi_and_mcstat_threshold() {
+        let cfg = r#"
+Job: myjob
+ReadFrom: NTUP
+TreeName: events
+Lumi: 140000
+LumiRelErr: 0.017
+MCstatThreshold: 0.05
+SystPruningShape: 0.005
+SystPruningNorm: 0.01
+DebugLevel: 2
+
+Region: SR
+Variable: x,2,0,2
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert!((parsed.lumi.unwrap() - 140000.0).abs() < 1e-6);
+        assert!((parsed.lumi_rel_err.unwrap() - 0.017).abs() < 1e-12);
+        assert!((parsed.mcstat_threshold.unwrap() - 0.05).abs() < 1e-12);
+        assert!((parsed.syst_pruning_shape.unwrap() - 0.005).abs() < 1e-12);
+        assert!((parsed.syst_pruning_norm.unwrap() - 0.01).abs() < 1e-12);
+        assert_eq!(parsed.debug_level, Some(2));
+    }
+
+    #[test]
+    fn trex_parses_region_type_and_metadata() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Type: SIGNAL
+Variable: x,2,0,2
+Label: Signal Region
+ShortLabel: SR
+LogScale: true
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.regions.len(), 1);
+        assert_eq!(parsed.regions[0].region_type.as_deref(), Some("SIGNAL"));
+        assert_eq!(parsed.regions[0].label.as_deref(), Some("Signal Region"));
+        assert_eq!(parsed.regions[0].short_label.as_deref(), Some("SR"));
+        assert_eq!(parsed.regions[0].log_scale, Some(true));
+    }
+
+    #[test]
+    fn trex_parses_sample_extended_fields() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+
+Sample: sig
+Type: SIGNAL
+File: tests/fixtures/simple_tree.root
+Title: Signal Sample
+Group: Physics
+NormalizedByTheory: true
+LumiScale: 1.5
+FillColor: 632
+LineColor: 1
+IgnoreSelection: false
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.samples.len(), 1);
+        let s = &parsed.samples[0];
+        assert_eq!(s.title.as_deref(), Some("Signal Sample"));
+        assert_eq!(s.group.as_deref(), Some("Physics"));
+        assert_eq!(s.normalized_by_theory, Some(true));
+        assert!((s.lumi_scale.unwrap() - 1.5).abs() < 1e-12);
+        assert_eq!(s.fill_color, Some(632));
+        assert_eq!(s.line_color, Some(1));
+        assert_eq!(s.ignore_selection, Some(false));
+    }
+
+    #[test]
+    fn trex_parses_systematic_extended_fields() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+
+Systematic: jes
+Type: OVERALL
+OverallUp: 0.03
+OverallDown: -0.03
+Samples: sig
+NuisanceParameter: alpha_JES
+Symmetrisation: TWOSIDED
+IsFreeParameter: false
+Decorrelate: REGION
+Category: Instrumental
+SubCategory: JES
+ScaleUp: 1.0
+ScaleDown: 1.0
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.systematics.len(), 1);
+        let sys = &parsed.systematics[0];
+        assert_eq!(sys.nuisance_parameter.as_deref(), Some("alpha_JES"));
+        assert_eq!(sys.symmetrisation.as_deref(), Some("TWOSIDED"));
+        assert_eq!(sys.is_free_parameter, Some(false));
+        assert_eq!(sys.decorrelate.as_deref(), Some("REGION"));
+        assert_eq!(sys.category.as_deref(), Some("Instrumental"));
+        assert_eq!(sys.sub_category.as_deref(), Some("JES"));
+        assert!((sys.scale_up.unwrap() - 1.0).abs() < 1e-12);
+        assert!((sys.scale_down.unwrap() - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn trex_parses_normfactor_block_with_all_fields() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Region: SR
+Variable: x,2,0,2
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+EndSample: sig
+
+NormFactor: mu_sig
+Title: Signal strength
+Nominal: 1
+Min: 0
+Max: 10
+Samples: sig
+Regions: SR
+Constant: false
+"#;
+
+        let parsed = TrexConfig::parse_str(cfg).expect("parse_str");
+        assert_eq!(parsed.norm_factors.len(), 1);
+        let nf = &parsed.norm_factors[0];
+        assert_eq!(nf.name, "mu_sig");
+        assert_eq!(nf.title.as_deref(), Some("Signal strength"));
+        assert!((nf.nominal.unwrap() - 1.0).abs() < 1e-12);
+        assert!((nf.min.unwrap() - 0.0).abs() < 1e-12);
+        assert!((nf.max.unwrap() - 10.0).abs() < 1e-12);
+        assert_eq!(nf.samples, vec!["sig".to_string()]);
+        assert_eq!(nf.regions.as_ref().unwrap(), &vec!["SR".to_string()]);
+        assert_eq!(nf.constant, Some(false));
+        // Also verify the modifier was attached to the sample.
+        assert!(
+            parsed.samples[0]
+                .modifiers
+                .iter()
+                .any(|m| matches!(m, NtupleModifier::NormFactor { name } if name == "mu_sig")),
+            "expected NormFactor block to attach modifier to sample"
+        );
+    }
+
+    #[test]
+    fn trex_coverage_recognizes_fit_limit_significance_blocks() {
+        let cfg = r#"
+ReadFrom: NTUP
+TreeName: events
+
+Fit: myfit
+FitType: SPLUSB
+FitBlind: TRUE
+
+Limit: mylimit
+LimitType: ASYMPTOTIC
+
+Significance: mysig
+SignificanceBlind: TRUE
+
+Region: SR
+Variable: x,2,0,2
+Type: SIGNAL
+Label: SR label
+
+Sample: sig
+File: tests/fixtures/simple_tree.root
+Title: Signal
+Group: Physics
+NormalizedByTheory: true
+
+Systematic: jes
+Type: OVERALL
+OverallUp: 0.03
+OverallDown: -0.03
+Samples: sig
+NuisanceParameter: alpha_JES
+Symmetrisation: TWOSIDED
+Decorrelate: REGION
+Category: JES
+
+NormFactor: mu
+Samples: sig
+Regions: SR
+Nominal: 1
+Min: 0
+Max: 10
+"#;
+
+        let (_cfg, report) = TrexConfig::parse_str_with_coverage(cfg).expect("parse");
+        assert!(report.unknown.is_empty(), "unexpected unknown attrs: {:?}", report.unknown);
     }
 }

@@ -1,0 +1,23 @@
+PKG_CFLAGS =
+PKG_CPPFLAGS =
+
+RUST_DIR = ./rust
+RUST_TARGET_DIR = $(RUST_DIR)/target
+RUST_LIB = $(RUST_TARGET_DIR)/release/libnsr.a
+RUST_SRC = $(RUST_DIR)/Cargo.toml $(RUST_DIR)/src/lib.rs
+
+PKG_LIBS = $(RUST_LIB)
+
+all: clean $(SHLIB)
+
+$(RUST_LIB): $(RUST_SRC)
+	@echo "==> building Rust staticlib (release, extendr)"
+	@rustc --version
+	@cargo --version
+	CARGO_TARGET_DIR="$(RUST_TARGET_DIR)" cargo build --manifest-path $(RUST_DIR)/Cargo.toml --release
+
+$(SHLIB): $(RUST_LIB)
+
+clean:
+	@echo "==> clean"
+	-rm -f $(OBJECTS) $(SHLIB) $(RUST_LIB)

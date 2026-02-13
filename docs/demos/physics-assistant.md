@@ -61,4 +61,15 @@ The runner writes:
 - `nominal_workspace.json`: nominal model workspace used for discovery/limits/scans
 - `best_anomaly_workspace.json`: best window from the anomaly scan
 - `anomaly_scan_plot_data.json`: plot-ready arrays (JSON)
+- `anomaly_scan.figure.v1.json`: anomaly scan plot in `nextstat.figure.v1` schema (see `docs/schemas/plots/figure_v1.schema.json`)
+- `nominal_profile_scan.figure.v1.json`: profile scan plot (if nominal scan produced points)
 - `plots/*.png`: optional PNGs when `--render` is enabled
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `demos/physics_assistant/run_demo.py` | Main runner (local or server transport). |
+| `demos/physics_assistant/run_demo_server_only.py` | Server-only variant for Docker (uses `httpx`, no local wheel). |
+| `demos/physics_assistant/env/docker/docker-compose.yml` | Two-container setup: `nextstat-server` + agent. |
+| `demos/physics_assistant/env/docker/agent.Dockerfile` | Lightweight Python agent image. |

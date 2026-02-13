@@ -68,7 +68,7 @@ impl ModelPool {
     /// If the model already exists, just updates last_used and returns the id.
     pub fn insert(&self, json_str: &str, model: HistFactoryModel, name: Option<String>) -> String {
         let hash = Self::hash_workspace(json_str);
-        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
+        let mut pool = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         if let Some(entry) = pool.models.get_mut(&hash) {
             entry.last_used = Instant::now();
@@ -111,7 +111,7 @@ impl ModelPool {
     /// Look up a model by id, updating last_used on hit.
     /// Returns an `Arc` reference (cheap clone — no model data copied).
     pub fn get(&self, model_id: &str) -> Option<Arc<HistFactoryModel>> {
-        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
+        let mut pool = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = pool.models.get_mut(model_id) {
             entry.last_used = Instant::now();
             entry.hit_count += 1;
@@ -123,13 +123,13 @@ impl ModelPool {
 
     /// Remove a model from the pool. Returns true if it existed.
     pub fn remove(&self, model_id: &str) -> bool {
-        let mut pool = self.inner.lock().expect("model pool mutex poisoned");
+        let mut pool = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         pool.models.remove(model_id).is_some()
     }
 
     /// List all cached models.
     pub fn list(&self) -> Vec<ModelInfo> {
-        let pool = self.inner.lock().expect("model pool mutex poisoned");
+        let pool = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         pool.models
             .values()
@@ -147,7 +147,7 @@ impl ModelPool {
 
     /// Number of models in the pool.
     pub fn len(&self) -> usize {
-        self.inner.lock().expect("model pool mutex poisoned").models.len()
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).models.len()
     }
 
     /// Whether the pool is empty.

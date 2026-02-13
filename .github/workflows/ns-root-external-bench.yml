@@ -1,0 +1,103 @@
+name: ns-root External Cache Bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_url:
+        description: "HTTP URL to external ROOT file"
+        required: false
+        default: "http://opendata.cern.ch/record/12341/files/Run2012BC_DoubleMuParked_Muons.root"
+      iters:
+        description: "Iterations per branch (cold+warm loops)"
+        required: false
+        default: "2"
+  schedule:
+    - cron: "0 4 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  external_cache_bench:
+    name: External ROOT cache benchmark
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Resolve inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          dataset_url="${{ github.event.inputs.dataset_url }}"
+          iters="${{ github.event.inputs.iters }}"
+          if [[ -z "${dataset_url}" ]]; then
+            dataset_url="http://opendata.cern.ch/record/12341/files/Run2012BC_DoubleMuParked_Muons.root"
+          fi
+          if [[ -z "${iters}" ]]; then
+            iters="2"
+          fi
+          echo "DATASET_URL=${dataset_url}" >> "$GITHUB_ENV"
+          echo "ITERS=${iters}" >> "$GITHUB_ENV"
+
+      - name: Download external ROOT dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ns-root-datasets
+          curl -L --fail --retry 3 --retry-delay 5 \
+            -o /tmp/ns-root-datasets/external.root \
+            "${DATASET_URL}"
+          ls -lh /tmp/ns-root-datasets/external.root
+
+      - name: Run cache bench (nMuon)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          NS_ROOT_BENCH_FILE=/tmp/ns-root-datasets/external.root \
+          NS_ROOT_BENCH_TREE=Events \
+          NS_ROOT_BENCH_BRANCH=nMuon \
+          NS_ROOT_BRANCH_ITERS="${ITERS}" \
+          NS_ROOT_BRANCH_MIN_SPEEDUP=1.20 \
+          cargo test -p ns-root --test branch_reader_cache_bench \
+            bench_branch_reader_cache_hot_vs_cold_external_root \
+            -- --ignored --nocapture 2>&1 | tee artifacts/nmuon.log
+
+      - name: Run cache bench (Muon_pt)
+        shell: bash
+        run: |
+          set -euo pipefail
+          NS_ROOT_BENCH_FILE=/tmp/ns-root-datasets/external.root \
+          NS_ROOT_BENCH_TREE=Events \
+          NS_ROOT_BENCH_BRANCH=Muon_pt \
+          NS_ROOT_BRANCH_ITERS="${ITERS}" \
+          NS_ROOT_BRANCH_MIN_SPEEDUP=1.30 \
+          cargo test -p ns-root --test branch_reader_cache_bench \
+            bench_branch_reader_cache_hot_vs_cold_external_root \
+            -- --ignored --nocapture 2>&1 | tee artifacts/muon_pt.log
+
+      - name: Summarize benchmark output
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            grep -h "branch_reader_external_bench" artifacts/nmuon.log || true
+            grep -h "branch_reader_external_bench" artifacts/muon_pt.log || true
+          } | tee artifacts/summary.txt
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ns-root-external-cache-bench
+          path: artifacts

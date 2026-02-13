@@ -62,7 +62,16 @@ impl DualAveraging {
         self.log_eps_bar.exp()
     }
 
-    /// Reset internal state for a new adaptation window, keeping the current step size.
+    /// Reset internal state for a new adaptation window.
+    ///
+    /// Sets the current step size to `init_eps` and re-initializes the
+    /// smoothed estimate to `ln(init_eps)`.  Counter and h_bar are reset
+    /// so dual averaging restarts from scratch targeting the new mu.
+    ///
+    /// Note: Stan zeros `x_bar_` in `restart()`.  We carry forward the
+    /// adapted value because the terminal buffer is too short (50 iters)
+    /// for `exp(x_bar)` to converge from 1.0 back to the correct region,
+    /// especially on models with small optimal step sizes (e.g. Hier).
     pub fn reset(&mut self, init_eps: f64) {
         self.log_eps = init_eps.ln();
         self.log_eps_bar = init_eps.ln();
@@ -95,6 +104,11 @@ impl WelfordVariance {
             let delta2 = x[i] - self.mean[i];
             self.m2[i] += delta * delta2;
         }
+    }
+
+    /// Number of samples incorporated.
+    pub fn count(&self) -> usize {
+        self.count
     }
 
     /// Current variance estimate. Returns `1.0` for each dimension if `count < 2`.
@@ -135,6 +149,10 @@ impl WelfordCovariance {
 
     pub fn count(&self) -> usize {
         self.count
+    }
+
+    pub fn dim(&self) -> usize {
+        self.dim
     }
 
     #[inline]
@@ -205,13 +223,25 @@ pub struct WindowedAdaptation {
     windows: Vec<(usize, usize)>,
     current_window: usize,
     metric: crate::hmc::Metric,
+    use_dense: bool,
 }
 
 impl WindowedAdaptation {
     /// Create windowed adaptation for given dimension and warmup length.
-    pub fn new(dim: usize, n_warmup: usize, target_accept: f64, init_eps: f64) -> Self {
+    pub fn new(
+        dim: usize,
+        n_warmup: usize,
+        target_accept: f64,
+        init_eps: f64,
+        metric_type: crate::nuts::MetricType,
+    ) -> Self {
         let windows = compute_windows(n_warmup);
-        let welford_cov = if dim <= 32 { Some(WelfordCovariance::new(dim)) } else { None };
+        let use_dense = match metric_type {
+            crate::nuts::MetricType::Dense => true,
+            crate::nuts::MetricType::Diagonal => false,
+            crate::nuts::MetricType::Auto => dim <= 32,
+        };
+        let welford_cov = if use_dense { Some(WelfordCovariance::new(dim)) } else { None };
         Self {
             dual_avg: DualAveraging::new(target_accept, init_eps),
             welford: WelfordVariance::new(dim),
@@ -219,6 +249,7 @@ impl WindowedAdaptation {
             windows,
             current_window: 0,
             metric: crate::hmc::Metric::identity(dim),
+            use_dense,
         }
     }
 
@@ -247,35 +278,43 @@ impl WindowedAdaptation {
             // At window boundary, update mass and restart dual averaging
             if iter + 1 >= end {
                 if is_slow_window {
+                    // Stan-exact regularization for diagonal variance:
+                    //   var_reg = alpha * var + 1e-3 * (1-alpha) * ones
+                    // where alpha = n_samples / (n_samples + 5).
                     let var = self.welford.variance();
-                    let inv_mass_diag: Vec<f64> = var.iter().map(|&v| 1.0 / v).collect();
-                    self.metric = crate::hmc::Metric::Diag(inv_mass_diag);
+                    let count = self.welford.count() as f64;
+                    let alpha = count / (count + 5.0);
+                    let one_minus_alpha = 1.0 - alpha;
+                    let var_reg: Vec<f64> =
+                        var.iter().map(|&v| alpha * v + 1e-3 * one_minus_alpha).collect();
+                    self.metric = crate::hmc::Metric::Diag(var_reg);
 
-                    // Try dense metric when available.
+                    // Try dense metric when available (Stan-exact regularization).
+                    // Stan requires at least 2*dim samples before using dense covariance.
                     if let Some(wc) = self.welford_cov.as_ref()
+                        && wc.count() >= 2 * wc.dim()
                         && let Some(mut cov) = wc.covariance()
                     {
                         let n = cov.nrows();
-                        let count = wc.count().max(1) as f64;
-                        // Stan-like shrinkage towards scaled identity for stability.
-                        let alpha = count / (count + 5.0);
-                        let trace = cov.trace();
-                        let scale = (trace / (n as f64)).abs().max(1e-6);
+                        let count_cov = wc.count() as f64;
+                        // Stan-exact: cov = alpha * cov + 1e-3 * (1-alpha) * I
+                        // where alpha = n_samples / (n_samples + 5).
+                        let alpha_cov = count_cov / (count_cov + 5.0);
+                        let one_minus_alpha_cov = 1.0 - alpha_cov;
 
-                        cov *= alpha;
+                        cov *= alpha_cov;
                         for i in 0..n {
-                            cov[(i, i)] += (1.0 - alpha) * scale + 1e-6 * scale;
+                            cov[(i, i)] += 1e-3 * one_minus_alpha_cov;
                         }
 
-                        if let Some(ch) = cov.clone().cholesky() {
-                            let prec = ch.inverse();
-                            if let Some(prec_ch) = prec.cholesky() {
-                                let l = prec_ch.l();
-                                self.metric = crate::hmc::Metric::DenseCholesky {
-                                    dim: n,
-                                    l: l.as_slice().to_vec(),
-                                };
-                            }
+                        // Store L = chol(Cov) directly — Cov IS the inverse mass.
+                        // (Previously we computed chol(Cov^{-1}) which inverted the metric.)
+                        if let Some(ch) = cov.cholesky() {
+                            let l = ch.l();
+                            self.metric = crate::hmc::Metric::DenseCholesky {
+                                dim: n,
+                                l: l.as_slice().to_vec(),
+                            };
                         }
                     }
 
@@ -286,14 +325,27 @@ impl WindowedAdaptation {
                     mass_updated = true;
                 }
 
-                // Restart dual averaging with current adapted step size
-                let eps = self.dual_avg.adapted_step_size();
-                self.dual_avg.reset(eps);
+                // Do NOT reset dual averaging at every window boundary.
+                // Only reset when the metric is updated (slow windows), via
+                // `reinit_stepsize()` called from the warmup loop after
+                // `find_reasonable_step_size()`.  Resetting at init/terminal
+                // boundaries disrupts the smoothed step-size estimate and hurts
+                // ESS/draw (benchmarked: v9c with all-boundary resets was ~10%
+                // worse on GLM than v9 without them).
                 self.current_window += 1;
             }
         }
 
         mass_updated
+    }
+
+    /// Re-initialize step size after a metric update (Stan-exact).
+    ///
+    /// Called after `find_reasonable_step_size()` with the new metric, this
+    /// matches Stan's `init_stepsize()` + `set_mu()` + `restart()` sequence
+    /// in `adapt_diag_e_nuts::transition()`.
+    pub fn reinit_stepsize(&mut self, new_eps: f64) {
+        self.dual_avg.reset(new_eps);
     }
 
     /// Current step size.
@@ -332,18 +384,28 @@ fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
     windows.push((0, init_buffer));
 
     if slow_size > 0 {
-        // Doubling slow windows
+        // Doubling slow windows (Stan-style: last window absorbs remainder).
+        //
+        // Build candidate windows with sizes 25, 50, 100, 200, ...
+        // If the next doubling would overshoot the slow region, extend the
+        // current (last) window to cover all remaining samples.  This ensures
+        // the final mass-matrix estimate comes from the *largest* window — not
+        // a tiny leftover.
+        let slow_end = init_buffer + slow_size;
         let mut start = init_buffer;
         let mut size = slow_size.min(25).max(1);
-        while start + size < init_buffer + slow_size {
-            let end = (start + size).min(init_buffer + slow_size);
-            windows.push((start, end));
-            start = end;
-            size *= 2;
-        }
-        // Last slow window extends to start of term buffer
-        if start < init_buffer + slow_size {
-            windows.push((start, init_buffer + slow_size));
+        while start < slow_end {
+            let next_end = start + size;
+            let next_size = size * 2;
+            // If the *next* window after this one wouldn't fit, extend this
+            // window to fill the remaining slow region.
+            if next_end + next_size >= slow_end {
+                windows.push((start, slow_end));
+                break;
+            }
+            windows.push((start, next_end));
+            start = next_end;
+            size = next_size;
         }
     }
 
@@ -359,10 +421,12 @@ fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
 ///
 /// Doubles or halves `eps` until the acceptance probability crosses 0.5.
 /// Follows Stan's algorithm (Hoffman & Gelman 2014, Algorithm 4).
+/// Uses a random momentum draw from N(0, M) instead of unit momentum.
 pub fn find_reasonable_step_size(
     posterior: &crate::posterior::Posterior<'_, impl ns_core::traits::LogDensityModel + ?Sized>,
     q: &[f64],
     metric: &crate::hmc::Metric,
+    rng: &mut impl rand::Rng,
 ) -> f64 {
     let integrator = crate::hmc::LeapfrogIntegrator::new(posterior, 1.0, metric.clone());
 
@@ -371,10 +435,8 @@ pub fn find_reasonable_step_size(
         Err(_) => return 0.01,
     };
 
-    // Set unit momentum
-    for p in &mut state.p {
-        *p = 1.0;
-    }
+    // Sample momentum from the metric (not unit) — matches Stan behavior.
+    state.p = metric.sample_momentum(rng);
     let h0 = state.hamiltonian(metric);
 
     // Test a single leapfrog step at given eps
@@ -387,16 +449,22 @@ pub fn find_reasonable_step_size(
         if a.is_finite() { Some(a.min(1.0)) } else { None }
     };
 
-    // Start from 0.1 and find where accept prob crosses 0.5
-    let mut eps = 0.1;
+    // Start from 1.0 (same as Stan) and find where accept prob crosses 0.5
+    let mut eps = 1.0;
     let accept0 = match test_accept(eps) {
         Some(a) => a,
         None => {
             // Try smaller
-            eps = 0.001;
+            eps = 0.01;
             match test_accept(eps) {
                 Some(a) => a,
-                None => return 0.001,
+                None => {
+                    eps = 0.001;
+                    match test_accept(eps) {
+                        Some(a) => a,
+                        None => return 0.001,
+                    }
+                }
             }
         }
     };
@@ -500,6 +568,34 @@ mod tests {
         for i in 1..windows.len() {
             assert_eq!(windows[i].0, windows[i - 1].1, "Windows not contiguous at {}", i);
         }
+
+        // Stan-style: the last slow window (second-to-last overall) must be
+        // the largest slow window.  With 1000 warmup the slow region is
+        // 75..950 (875 iters).  Doubling: 25, 50, 100, 200 → then the last
+        // window absorbs the remainder (875 - 375 = 500 samples).
+        let slow_windows: Vec<_> = windows[1..windows.len() - 1].to_vec();
+        assert!(!slow_windows.is_empty(), "Should have slow windows");
+        let last_slow = slow_windows.last().unwrap();
+        let last_slow_size = last_slow.1 - last_slow.0;
+        for (i, w) in slow_windows.iter().enumerate() {
+            let sz = w.1 - w.0;
+            assert!(
+                sz <= last_slow_size,
+                "Slow window {} (size {}) larger than last slow window (size {}): {:?}",
+                i,
+                sz,
+                last_slow_size,
+                windows
+            );
+        }
+        // The last slow window must have >= 400 samples (it absorbs the
+        // remainder that used to create a tiny 100-sample window).
+        assert!(
+            last_slow_size >= 400,
+            "Last slow window too small ({}): {:?}",
+            last_slow_size,
+            windows
+        );
     }
 
     #[test]

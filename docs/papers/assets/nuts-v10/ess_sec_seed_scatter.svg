@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360">
+<style>
+  text { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: #111827; }
+  .muted { fill: #6b7280; }
+  .label { font-size: 14px; }
+  .title { font-size: 16px; font-weight: 700; }
+  .small { font-size: 12px; }
+</style>
+<text x="240" y="24" class="title">Per-seed ESS/sec scatter (min bulk)</text>
+<text x="240" y="38" class="small muted">Each dot = one seed run; x-axis is ESS/sec</text>
+<line x1="240" y1="320" x2="860" y2="320" stroke="#e5e7eb" />
+<line x1="240.0" y1="40" x2="240.0" y2="320" stroke="#f3f4f6" />
+<text x="240.0" y="336" class="small muted" text-anchor="middle">0</text>
+<line x1="395.0" y1="40" x2="395.0" y2="320" stroke="#f3f4f6" />
+<text x="395.0" y="336" class="small muted" text-anchor="middle">15,074</text>
+<line x1="550.0" y1="40" x2="550.0" y2="320" stroke="#f3f4f6" />
+<text x="550.0" y="336" class="small muted" text-anchor="middle">30,147</text>
+<line x1="705.0" y1="40" x2="705.0" y2="320" stroke="#f3f4f6" />
+<text x="705.0" y="336" class="small muted" text-anchor="middle">45,221</text>
+<line x1="860.0" y1="40" x2="860.0" y2="320" stroke="#f3f4f6" />
+<text x="860.0" y="336" class="small muted" text-anchor="middle">60,294</text>
+<text x="228" y="91.7" class="label" text-anchor="end">GLM logistic (6p)</text>
+<circle cx="556.3" cy="94.7" r="4.2" fill="#9ca3af" />
+<text x="564.3" y="98.7" class="small muted">seed_0</text>
+<circle cx="555.8" cy="94.7" r="4.2" fill="#9ca3af" />
+<text x="563.8" y="98.7" class="small muted">seed_123</text>
+<circle cx="521.0" cy="94.7" r="4.2" fill="#9ca3af" />
+<text x="529.0" y="98.7" class="small muted">seed_42</text>
+<circle cx="555.3" cy="78.7" r="4.2" fill="#111827" />
+<text x="563.3" y="82.7" class="small muted">seed_0</text>
+<circle cx="543.1" cy="78.7" r="4.2" fill="#111827" />
+<text x="551.1" y="82.7" class="small muted">seed_123</text>
+<circle cx="543.8" cy="78.7" r="4.2" fill="#111827" />
+<text x="551.8" y="82.7" class="small muted">seed_42</text>
+<text x="228" y="185.0" class="label" text-anchor="end">Hierarchical logistic RI (non-centered, 22p)</text>
+<circle cx="248.9" cy="188.0" r="4.2" fill="#9ca3af" />
+<text x="256.9" y="192.0" class="small muted">seed_0</text>
+<circle cx="252.6" cy="188.0" r="4.2" fill="#9ca3af" />
+<text x="260.6" y="192.0" class="small muted">seed_123</text>
+<circle cx="249.8" cy="188.0" r="4.2" fill="#9ca3af" />
+<text x="257.8" y="192.0" class="small muted">seed_42</text>
+<circle cx="274.5" cy="172.0" r="4.2" fill="#111827" />
+<text x="282.5" y="176.0" class="small muted">seed_0</text>
+<circle cx="269.4" cy="172.0" r="4.2" fill="#111827" />
+<text x="277.4" y="176.0" class="small muted">seed_123</text>
+<circle cx="276.5" cy="172.0" r="4.2" fill="#111827" />
+<text x="284.5" y="176.0" class="small muted">seed_42</text>
+<text x="228" y="278.3" class="label" text-anchor="end">Eight Schools (non-centered, 10p)</text>
+<circle cx="538.1" cy="281.3" r="4.2" fill="#9ca3af" />
+<text x="546.1" y="285.3" class="small muted">seed_0</text>
+<circle cx="492.6" cy="281.3" r="4.2" fill="#9ca3af" />
+<text x="500.6" y="285.3" class="small muted">seed_123</text>
+<circle cx="511.2" cy="281.3" r="4.2" fill="#9ca3af" />
+<text x="519.2" y="285.3" class="small muted">seed_42</text>
+<circle cx="819.7" cy="265.3" r="4.2" fill="#111827" />
+<text x="827.7" y="269.3" class="small muted">seed_0</text>
+<circle cx="738.3" cy="265.3" r="4.2" fill="#111827" />
+<text x="746.3" y="269.3" class="small muted">seed_123</text>
+<circle cx="830.5" cy="265.3" r="4.2" fill="#111827" />
+<text x="838.5" y="269.3" class="small muted">seed_42</text>
+<circle cx="246" cy="346" r="5" fill="#111827" />
+<text x="258" y="350" class="small muted">NextStat</text>
+<circle cx="336" cy="346" r="5" fill="#9ca3af" />
+<text x="348" y="350" class="small muted">CmdStan</text>
+</svg>

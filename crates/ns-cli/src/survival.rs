@@ -34,7 +34,7 @@ fn sorted_desc(
 ) -> Result<(Vec<f64>, Vec<bool>, Vec<Vec<f64>>, Option<Vec<i64>>)> {
     let n = times.len();
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&i, &j| times[j].partial_cmp(&times[i]).unwrap().then_with(|| i.cmp(&j)));
+    order.sort_by(|&i, &j| times[j].total_cmp(&times[i]).then_with(|| i.cmp(&j)));
 
     let mut times_s = Vec::with_capacity(n);
     let mut events_s = Vec::with_capacity(n);
@@ -499,6 +499,123 @@ pub fn cmd_survival_cox_ph_fit(
                 "cluster_correction": cluster_correction,
                 "baseline": baseline,
             }),
+            input,
+            &output_json,
+            false,
+        )?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Kaplan-Meier CLI
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+struct KmInputJson {
+    times: Vec<f64>,
+    events: Vec<bool>,
+}
+
+pub fn cmd_survival_km(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    conf_level: f64,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let raw = std::fs::read_to_string(input)?;
+    let data: KmInputJson = serde_json::from_str(&raw)?;
+
+    let est = ns_inference::kaplan_meier(&data.times, &data.events, conf_level)?;
+
+    let steps_json: Vec<serde_json::Value> = est
+        .steps
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "time": s.time,
+                "n_risk": s.n_risk,
+                "n_events": s.n_events,
+                "n_censored": s.n_censored,
+                "survival": s.survival,
+                "variance": s.variance,
+                "ci_lower": s.ci_lower,
+                "ci_upper": s.ci_upper,
+            })
+        })
+        .collect();
+
+    let output_json = serde_json::json!({
+        "n": est.n,
+        "n_events": est.n_events,
+        "conf_level": est.conf_level,
+        "median": est.median,
+        "steps": steps_json,
+    });
+
+    crate::write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        crate::report::write_bundle(
+            dir,
+            "survival_km",
+            serde_json::json!({ "conf_level": conf_level }),
+            input,
+            &output_json,
+            false,
+        )?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Log-rank test CLI
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+struct LogRankInputJson {
+    times: Vec<f64>,
+    events: Vec<bool>,
+    groups: Vec<i64>,
+}
+
+pub fn cmd_survival_log_rank(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let raw = std::fs::read_to_string(input)?;
+    let data: LogRankInputJson = serde_json::from_str(&raw)?;
+
+    let res = ns_inference::log_rank_test(&data.times, &data.events, &data.groups)?;
+
+    let summaries_json: Vec<serde_json::Value> = res
+        .group_summaries
+        .iter()
+        .map(|(g, o, e)| {
+            serde_json::json!({
+                "group": g,
+                "observed": o,
+                "expected": e,
+            })
+        })
+        .collect();
+
+    let output_json = serde_json::json!({
+        "n": res.n,
+        "chi_squared": res.chi_squared,
+        "df": res.df,
+        "p_value": res.p_value,
+        "group_summaries": summaries_json,
+    });
+
+    crate::write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        crate::report::write_bundle(
+            dir,
+            "survival_log_rank",
+            serde_json::json!({}),
             input,
             &output_json,
             false,

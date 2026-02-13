@@ -20,6 +20,9 @@
 	apex2-root-aggregate \
 	apex2-root-suite-compare-perf \
 	apex2-root-suite-compare-latest \
+	nsr-vendor-sync \
+	nsr-vendor-check \
+	nsr-cran-check-clean \
 	playground-build-wasm \
 	playground-serve
 
@@ -165,6 +168,15 @@ apex2-root-suite-compare-latest:
 		--current "$(ROOT_CURRENT_SUITE)" \
 		--out "$(ROOT_PERF_OUT)" \
 		$(ROOT_PERF_ARGS)
+
+nsr-vendor-sync:
+	bash scripts/nsr_vendor_sync.sh
+
+nsr-vendor-check:
+	bash scripts/nsr_vendor_sync.sh --check
+
+nsr-cran-check-clean:
+	bash scripts/nsr_cran_check_clean.sh
 
 playground-build-wasm:
 	bash scripts/playground_build_wasm.sh

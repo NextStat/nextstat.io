@@ -866,3 +866,450 @@ fn test_export_with_bestfit_params() {
     assert_eq!(exported.parameter_points[1].name, "bestfit");
     assert_eq!(exported.parameter_points[1].parameters.len(), model.parameters().len());
 }
+
+// ---------------------------------------------------------------------------
+// Unbinned HS3 extension schema tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_unbinned_dist_serde_roundtrip() {
+    let dist = Hs3UnbinnedDist {
+        name: "signal_region".into(),
+        dist_type: "nextstat_unbinned_dist".into(),
+        observables: vec![Hs3UnbinnedObservable {
+            name: "mass".into(),
+            min: 100.0,
+            max: 180.0,
+            expr: None,
+        }],
+        processes: vec![Hs3UnbinnedProcess {
+            name: "signal".into(),
+            pdf: Hs3UnbinnedPdf {
+                pdf_type: "gaussian".into(),
+                observable: Some("mass".into()),
+                params: vec!["mu_sig".into(), "sigma_sig".into()],
+                ..Default::default()
+            },
+            yield_spec: Hs3UnbinnedYield {
+                yield_type: "scaled".into(),
+                value: None,
+                parameter: None,
+                base_yield: Some(100.0),
+                scale: Some("mu".into()),
+                modifiers: vec![],
+            },
+        }],
+        data_source: Some(Hs3UnbinnedDataSource {
+            file: "events.root".into(),
+            format: Some("root".into()),
+            tree: Some("MyTree".into()),
+            selection: None,
+            weight: None,
+        }),
+    };
+
+    let json = serde_json::to_string_pretty(&Hs3Distribution::Unbinned(dist.clone())).unwrap();
+    assert!(json.contains("nextstat_unbinned_dist"));
+    assert!(json.contains("signal_region"));
+    assert!(json.contains("gaussian"));
+
+    let roundtripped: Hs3Distribution = serde_json::from_str(&json).unwrap();
+    match &roundtripped {
+        Hs3Distribution::Unbinned(d) => {
+            assert_eq!(d.name, "signal_region");
+            assert_eq!(d.observables.len(), 1);
+            assert_eq!(d.observables[0].name, "mass");
+            assert_eq!(d.observables[0].min, 100.0);
+            assert_eq!(d.processes.len(), 1);
+            assert_eq!(d.processes[0].name, "signal");
+            assert_eq!(d.processes[0].pdf.pdf_type, "gaussian");
+            assert_eq!(d.processes[0].pdf.params, vec!["mu_sig", "sigma_sig"]);
+            assert_eq!(d.processes[0].yield_spec.yield_type, "scaled");
+            assert_eq!(d.processes[0].yield_spec.base_yield, Some(100.0));
+            let src = d.data_source.as_ref().unwrap();
+            assert_eq!(src.file, "events.root");
+            assert_eq!(src.tree.as_deref(), Some("MyTree"));
+        }
+        other => panic!("expected Unbinned, got {:?}", other.type_tag()),
+    }
+}
+
+#[test]
+fn test_unbinned_dist_in_workspace() {
+    let ws = Hs3Workspace {
+        distributions: vec![Hs3Distribution::Unbinned(Hs3UnbinnedDist {
+            name: "sr".into(),
+            dist_type: "nextstat_unbinned_dist".into(),
+            observables: vec![Hs3UnbinnedObservable {
+                name: "x".into(),
+                min: 0.0,
+                max: 10.0,
+                expr: None,
+            }],
+            processes: vec![Hs3UnbinnedProcess {
+                name: "bkg".into(),
+                pdf: Hs3UnbinnedPdf {
+                    pdf_type: "exponential".into(),
+                    observable: Some("x".into()),
+                    params: vec!["lambda".into()],
+                    ..Default::default()
+                },
+                yield_spec: Hs3UnbinnedYield {
+                    yield_type: "fixed".into(),
+                    value: Some(500.0),
+                    parameter: None,
+                    base_yield: None,
+                    scale: None,
+                    modifiers: vec![],
+                },
+            }],
+            data_source: None,
+        })],
+        data: vec![],
+        domains: vec![Hs3Domain {
+            name: "test_domain".into(),
+            domain_type: "product_domain".into(),
+            axes: vec![Hs3DomainAxis { name: "lambda".into(), min: -10.0, max: 0.0 }],
+        }],
+        parameter_points: vec![Hs3ParameterPointSet {
+            name: "default_values".into(),
+            parameters: vec![Hs3ParameterValue { name: "lambda".into(), value: -1.0 }],
+        }],
+        analyses: vec![Hs3Analysis {
+            name: "test_analysis".into(),
+            likelihood: "test_lh".into(),
+            parameters_of_interest: vec![],
+            domains: vec!["test_domain".into()],
+        }],
+        likelihoods: vec![Hs3Likelihood {
+            name: "test_lh".into(),
+            distributions: vec!["sr".into()],
+            data: vec![],
+        }],
+        metadata: Hs3Metadata {
+            hs3_version: "0.2".into(),
+            packages: Some(vec![Hs3Package {
+                name: "NextStat".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+            }]),
+        },
+        misc: Some(serde_json::json!({ "nextstat_extensions": ["unbinned_dist"] })),
+    };
+
+    let json = serde_json::to_string_pretty(&ws).unwrap();
+    let ws2: Hs3Workspace = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(ws2.distributions.len(), 1);
+    assert_eq!(ws2.distributions[0].type_tag(), "nextstat_unbinned_dist");
+    assert_eq!(ws2.distributions[0].name(), Some("sr"));
+    assert_eq!(ws2.metadata.hs3_version, "0.2");
+    assert!(ws2.misc.is_some());
+}
+
+#[test]
+fn test_unbinned_pdf_with_rate_modifiers() {
+    let proc = Hs3UnbinnedProcess {
+        name: "bkg".into(),
+        pdf: Hs3UnbinnedPdf {
+            pdf_type: "histogram".into(),
+            observable: Some("mass".into()),
+            bin_edges: Some(vec![100.0, 120.0, 140.0, 160.0, 180.0]),
+            bin_content: Some(vec![10.0, 20.0, 15.0, 5.0]),
+            ..Default::default()
+        },
+        yield_spec: Hs3UnbinnedYield {
+            yield_type: "fixed".into(),
+            value: Some(50.0),
+            parameter: None,
+            base_yield: None,
+            scale: None,
+            modifiers: vec![
+                Hs3UnbinnedRateModifier {
+                    mod_type: "normsys".into(),
+                    param: "alpha_jes".into(),
+                    lo: 0.9,
+                    hi: 1.1,
+                },
+                Hs3UnbinnedRateModifier {
+                    mod_type: "weightsys".into(),
+                    param: "alpha_btag".into(),
+                    lo: 0.95,
+                    hi: 1.05,
+                },
+            ],
+        },
+    };
+
+    let json = serde_json::to_string_pretty(&proc).unwrap();
+    let proc2: Hs3UnbinnedProcess = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(proc2.yield_spec.modifiers.len(), 2);
+    assert_eq!(proc2.yield_spec.modifiers[0].mod_type, "normsys");
+    assert_eq!(proc2.yield_spec.modifiers[0].param, "alpha_jes");
+    assert_eq!(proc2.yield_spec.modifiers[1].mod_type, "weightsys");
+    assert_eq!(proc2.pdf.bin_edges.as_ref().unwrap().len(), 5);
+    assert_eq!(proc2.pdf.bin_content.as_ref().unwrap().len(), 4);
+}
+
+#[test]
+fn test_unbinned_product_pdf_serde() {
+    let pdf = Hs3UnbinnedPdf {
+        pdf_type: "product".into(),
+        components: Some(vec![
+            Hs3UnbinnedPdf {
+                pdf_type: "gaussian".into(),
+                observable: Some("x".into()),
+                params: vec!["mu_x".into(), "sigma_x".into()],
+                ..Default::default()
+            },
+            Hs3UnbinnedPdf {
+                pdf_type: "exponential".into(),
+                observable: Some("y".into()),
+                params: vec!["lambda_y".into()],
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_string_pretty(&pdf).unwrap();
+    let pdf2: Hs3UnbinnedPdf = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(pdf2.pdf_type, "product");
+    let comps = pdf2.components.unwrap();
+    assert_eq!(comps.len(), 2);
+    assert_eq!(comps[0].pdf_type, "gaussian");
+    assert_eq!(comps[1].pdf_type, "exponential");
+}
+
+#[test]
+fn test_convert_hybrid_workspace_skips_unbinned_distributions() {
+    let ws = make_minimal_hybrid_hs3_workspace();
+    let json = serde_json::to_string_pretty(&ws).unwrap();
+    let model = convert::from_hs3_default(&json).expect("hybrid HS3 should parse for binned path");
+    assert_eq!(model.n_channels(), 1, "only histfactory channel should be converted");
+}
+
+#[cfg(feature = "unbinned")]
+#[test]
+fn test_import_unbinned_hs3_to_spec() {
+    let ws = make_minimal_hybrid_hs3_workspace();
+    let spec = export::import_unbinned_hs3(&ws, None, None).expect("unbinned import should work");
+
+    assert_eq!(spec.schema_version, ns_unbinned::spec::UNBINNED_SPEC_V0);
+    assert_eq!(spec.channels.len(), 1);
+    assert_eq!(spec.channels[0].name, "sr_unbinned");
+    assert_eq!(spec.model.poi.as_deref(), Some("mu"));
+
+    let mut names: Vec<&str> = spec.model.parameters.iter().map(|p| p.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, vec!["alpha_jes", "mu", "sigma"]);
+
+    let alpha = spec
+        .model
+        .parameters
+        .iter()
+        .find(|p| p.name == "alpha_jes")
+        .expect("alpha_jes should exist");
+    match alpha.constraint.as_ref().expect("alpha_jes must be constrained") {
+        ns_unbinned::spec::ConstraintSpec::Gaussian { mean, sigma } => {
+            assert!((*mean - 0.2).abs() < 1e-12);
+            assert!((*sigma - 1.5).abs() < 1e-12);
+        }
+    }
+
+    let proc = &spec.channels[0].processes[0];
+    match &proc.pdf {
+        ns_unbinned::spec::PdfSpec::Gaussian { observable, params } => {
+            assert_eq!(observable, "mass");
+            assert_eq!(params, &vec!["mu".to_string(), "sigma".to_string()]);
+        }
+        other => panic!("expected gaussian PDF, got {:?}", other),
+    }
+}
+
+#[cfg(feature = "unbinned")]
+#[test]
+fn test_import_unbinned_hs3_exotic_pdf_fallback() {
+    let mut ws = make_minimal_hybrid_hs3_workspace();
+    let exotic = Hs3Distribution::Unbinned(Hs3UnbinnedDist {
+        name: "sr_exotic".into(),
+        dist_type: "nextstat_unbinned_dist".into(),
+        observables: vec![Hs3UnbinnedObservable {
+            name: "x".into(),
+            min: 0.0,
+            max: 10.0,
+            expr: None,
+        }],
+        processes: vec![Hs3UnbinnedProcess {
+            name: "bkg".into(),
+            pdf: Hs3UnbinnedPdf {
+                pdf_type: "future_pdf_v9".into(),
+                observable: Some("x".into()),
+                ..Default::default()
+            },
+            yield_spec: Hs3UnbinnedYield {
+                yield_type: "fixed".into(),
+                value: Some(10.0),
+                parameter: None,
+                base_yield: None,
+                scale: None,
+                modifiers: vec![],
+            },
+        }],
+        data_source: None,
+    });
+    ws.distributions.push(exotic);
+    ws.likelihoods[0].distributions.push("sr_exotic".into());
+    ws.likelihoods[0].data.push("obsData_sr_exotic".into());
+    ws.data.push(Hs3Data {
+        name: "obsData_sr_exotic".into(),
+        data_type: "unbinned_ref".into(),
+        axes: vec![],
+        contents: vec![],
+    });
+
+    let spec = export::import_unbinned_hs3(&ws, None, None).expect("fallback import should work");
+    let ch =
+        spec.channels.iter().find(|c| c.name == "sr_exotic").expect("exotic channel must exist");
+    match &ch.processes[0].pdf {
+        ns_unbinned::spec::PdfSpec::Histogram { bin_edges, bin_content, .. } => {
+            assert_eq!(bin_edges, &vec![0.0, 10.0]);
+            assert_eq!(bin_content, &vec![1.0]);
+        }
+        other => panic!("expected fallback histogram, got {:?}", other),
+    }
+}
+
+#[cfg(feature = "unbinned")]
+#[test]
+fn test_import_hybrid_hs3() {
+    let ws = make_minimal_hybrid_hs3_workspace();
+    let imported = export::import_hybrid_hs3(&ws, None, None).expect("hybrid import should work");
+    assert_eq!(imported.binned.n_channels(), 1);
+    assert_eq!(imported.unbinned_spec.channels.len(), 1);
+    assert!(imported.shared_param_names.iter().any(|p| p == "mu"));
+}
+
+fn make_minimal_hybrid_hs3_workspace() -> Hs3Workspace {
+    let binned_dist = Hs3Distribution::HistFactory(Hs3HistFactoryDist {
+        name: "sr_binned".into(),
+        dist_type: "histfactory_dist".into(),
+        axes: vec![Hs3Axis {
+            name: "obs_x_sr_binned".into(),
+            min: Some(0.0),
+            max: Some(1.0),
+            nbins: Some(1),
+            edges: None,
+        }],
+        samples: vec![Hs3Sample {
+            name: "sig".into(),
+            data: Hs3SampleData { contents: vec![4.0], errors: None },
+            modifiers: vec![Hs3Modifier::NormFactor { name: "mu".into(), parameter: "mu".into() }],
+        }],
+    });
+
+    let unbinned_dist = Hs3Distribution::Unbinned(Hs3UnbinnedDist {
+        name: "sr_unbinned".into(),
+        dist_type: "nextstat_unbinned_dist".into(),
+        observables: vec![Hs3UnbinnedObservable {
+            name: "mass".into(),
+            min: 100.0,
+            max: 180.0,
+            expr: None,
+        }],
+        processes: vec![Hs3UnbinnedProcess {
+            name: "signal".into(),
+            pdf: Hs3UnbinnedPdf {
+                pdf_type: "gaussian".into(),
+                observable: Some("mass".into()),
+                params: vec!["mu".into(), "sigma".into()],
+                ..Default::default()
+            },
+            yield_spec: Hs3UnbinnedYield {
+                yield_type: "scaled".into(),
+                value: None,
+                parameter: None,
+                base_yield: Some(100.0),
+                scale: Some("mu".into()),
+                modifiers: vec![Hs3UnbinnedRateModifier {
+                    mod_type: "normsys".into(),
+                    param: "alpha_jes".into(),
+                    lo: 0.9,
+                    hi: 1.1,
+                }],
+            },
+        }],
+        data_source: Some(Hs3UnbinnedDataSource {
+            file: "events.root".into(),
+            format: Some("root".into()),
+            tree: Some("Events".into()),
+            selection: None,
+            weight: None,
+        }),
+    });
+
+    let gauss_constraint = Hs3Distribution::Gaussian(Hs3GaussianDist {
+        name: "alpha_jesConstraint".into(),
+        dist_type: "gaussian_dist".into(),
+        x: "alpha_jes".into(),
+        mean: "nom_alpha_jes".into(),
+        sigma: 1.5,
+    });
+
+    Hs3Workspace {
+        distributions: vec![binned_dist, unbinned_dist, gauss_constraint],
+        data: vec![
+            Hs3Data {
+                name: "obsData_sr_binned".into(),
+                data_type: "binned".into(),
+                axes: vec![],
+                contents: vec![10.0],
+            },
+            Hs3Data {
+                name: "obsData_sr_unbinned".into(),
+                data_type: "unbinned_ref".into(),
+                axes: vec![],
+                contents: vec![],
+            },
+        ],
+        domains: vec![Hs3Domain {
+            name: "analysis_np".into(),
+            domain_type: "product_domain".into(),
+            axes: vec![
+                Hs3DomainAxis { name: "mu".into(), min: 0.0, max: 5.0 },
+                Hs3DomainAxis { name: "sigma".into(), min: 0.1, max: 20.0 },
+                Hs3DomainAxis { name: "alpha_jes".into(), min: -5.0, max: 5.0 },
+                Hs3DomainAxis { name: "nom_alpha_jes".into(), min: -5.0, max: 5.0 },
+            ],
+        }],
+        parameter_points: vec![Hs3ParameterPointSet {
+            name: "default_values".into(),
+            parameters: vec![
+                Hs3ParameterValue { name: "mu".into(), value: 1.0 },
+                Hs3ParameterValue { name: "sigma".into(), value: 2.0 },
+                Hs3ParameterValue { name: "alpha_jes".into(), value: 0.0 },
+                Hs3ParameterValue { name: "nom_alpha_jes".into(), value: 0.2 },
+            ],
+        }],
+        analyses: vec![Hs3Analysis {
+            name: "analysis".into(),
+            likelihood: "analysis_lh".into(),
+            parameters_of_interest: vec!["mu".into()],
+            domains: vec!["analysis_np".into()],
+        }],
+        likelihoods: vec![Hs3Likelihood {
+            name: "analysis_lh".into(),
+            distributions: vec!["sr_binned".into(), "sr_unbinned".into()],
+            data: vec!["obsData_sr_binned".into(), "obsData_sr_unbinned".into()],
+        }],
+        metadata: Hs3Metadata {
+            hs3_version: "0.2".into(),
+            packages: Some(vec![Hs3Package {
+                name: "NextStat".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+            }]),
+        },
+        misc: None,
+    }
+}

@@ -25,7 +25,7 @@ env:
 jobs:
   rust_slow:
     name: Rust ignored slow tests (ns-inference)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -45,7 +45,7 @@ jobs:
   rust_very_slow:
     name: Rust very slow test (release pull distribution)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.rust_very_slow == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     timeout-minutes: 90
     steps:
       - name: Checkout code
@@ -64,7 +64,7 @@ jobs:
 
   slow:
     name: Slow regressions (ubuntu, py3.12)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

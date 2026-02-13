@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_toy_parity_report_v1.schema.json",
+  "title": "Unbinned Toy Parity Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "backend",
+    "ok",
+    "n_toys",
+    "seed",
+    "metrics",
+    "thresholds"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat.unbinned_toy_parity_report.v1"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["api_cli", "cli_gpu"]
+    },
+    "backend": {
+      "type": "string",
+      "enum": ["cpu", "cuda", "metal"]
+    },
+    "ok": { "type": "boolean" },
+    "n_toys": { "type": "integer", "minimum": 1 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "integer", "boolean", "null"] }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "integer", "boolean", "null"] }
+    }
+  }
+}
