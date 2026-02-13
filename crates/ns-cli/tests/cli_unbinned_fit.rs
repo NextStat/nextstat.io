@@ -4262,6 +4262,203 @@ fn unbinned_fit_toys_cuda_gpu_native_requires_explicit_flag() {
     let _ = std::fs::remove_file(&metrics);
 }
 
+#[cfg(feature = "cuda")]
+#[test]
+fn unbinned_fit_toys_cuda_dcb_default_route_is_host() {
+    let root = fixture_path("simple_tree.root");
+    if !root.exists() {
+        return;
+    }
+    if !ns_compute::cuda_unbinned_batch::CudaUnbinnedBatchAccelerator::is_available() {
+        return;
+    }
+
+    let config = tmp_path("unbinned_spec_toys_cuda_dcb_default_route.json");
+    let metrics = tmp_path("unbinned_fit_toys_cuda_dcb_default_route_metrics.json");
+    let spec = serde_json::json!({
+        "schema_version": "nextstat_unbinned_spec_v0",
+        "model": {
+            "poi": "mu",
+            "parameters": [
+                { "name": "mu", "init": 1.0, "bounds": [0.0, 5.0] },
+                { "name": "dcb_mu", "init": 125.0, "bounds": [125.0, 125.0] },
+                { "name": "dcb_sigma", "init": 30.0, "bounds": [30.0, 30.0] },
+                { "name": "dcb_alpha_l", "init": 1.5, "bounds": [1.5, 1.5] },
+                { "name": "dcb_n_l", "init": 2.0, "bounds": [2.0, 2.0] },
+                { "name": "dcb_alpha_r", "init": 2.0, "bounds": [2.0, 2.0] },
+                { "name": "dcb_n_r", "init": 3.0, "bounds": [3.0, 3.0] }
+            ]
+        },
+        "channels": [
+            {
+                "name": "SR",
+                "include_in_fit": true,
+                "data": { "file": root, "tree": "events" },
+                "observables": [ { "name": "mbb", "bounds": [0.0, 500.0] } ],
+                "processes": [
+                    {
+                        "name": "p",
+                        "pdf": {
+                            "type": "double_crystal_ball",
+                            "observable": "mbb",
+                            "params": [
+                                "dcb_mu",
+                                "dcb_sigma",
+                                "dcb_alpha_l",
+                                "dcb_n_l",
+                                "dcb_alpha_r",
+                                "dcb_n_r"
+                            ]
+                        },
+                        "yield": { "type": "scaled", "base_yield": 800.0, "scale": "mu" }
+                    }
+                ]
+            }
+        ]
+    });
+    std::fs::write(&config, serde_json::to_string_pretty(&spec).unwrap()).unwrap();
+
+    let out = run(&[
+        "unbinned-fit-toys",
+        "--config",
+        config.to_string_lossy().as_ref(),
+        "--n-toys",
+        "3",
+        "--seed",
+        "123",
+        "--threads",
+        "1",
+        "--gpu",
+        "cuda",
+        "--json-metrics",
+        metrics.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        out.status.success(),
+        "unbinned-fit-toys DCB --gpu cuda should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let bytes = std::fs::read(&metrics).unwrap();
+    let metrics_json: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("metrics file should be JSON");
+    assert_metrics_contract(&metrics_json, "unbinned_fit_toys");
+
+    let pipeline = metrics_json
+        .get("timing")
+        .and_then(|x| x.get("breakdown"))
+        .and_then(|x| x.get("toys"))
+        .and_then(|x| x.get("pipeline"))
+        .and_then(|x| x.as_str())
+        .expect("timing.breakdown.toys.pipeline must be present");
+    assert_eq!(
+        pipeline, "host",
+        "DCB default --gpu cuda route should remain host unless --gpu-native is passed"
+    );
+
+    let _ = std::fs::remove_file(&config);
+    let _ = std::fs::remove_file(&metrics);
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn unbinned_fit_toys_cuda_dcb_gpu_native_route_is_explicit() {
+    let root = fixture_path("simple_tree.root");
+    if !root.exists() {
+        return;
+    }
+    if !ns_compute::cuda_unbinned_batch::CudaUnbinnedBatchAccelerator::is_available() {
+        return;
+    }
+
+    let config = tmp_path("unbinned_spec_toys_cuda_dcb_native_route.json");
+    let metrics = tmp_path("unbinned_fit_toys_cuda_dcb_native_route_metrics.json");
+    let spec = serde_json::json!({
+        "schema_version": "nextstat_unbinned_spec_v0",
+        "model": {
+            "poi": "mu",
+            "parameters": [
+                { "name": "mu", "init": 1.0, "bounds": [0.0, 5.0] },
+                { "name": "dcb_mu", "init": 125.0, "bounds": [125.0, 125.0] },
+                { "name": "dcb_sigma", "init": 30.0, "bounds": [30.0, 30.0] },
+                { "name": "dcb_alpha_l", "init": 1.5, "bounds": [1.5, 1.5] },
+                { "name": "dcb_n_l", "init": 2.0, "bounds": [2.0, 2.0] },
+                { "name": "dcb_alpha_r", "init": 2.0, "bounds": [2.0, 2.0] },
+                { "name": "dcb_n_r", "init": 3.0, "bounds": [3.0, 3.0] }
+            ]
+        },
+        "channels": [
+            {
+                "name": "SR",
+                "include_in_fit": true,
+                "data": { "file": root, "tree": "events" },
+                "observables": [ { "name": "mbb", "bounds": [0.0, 500.0] } ],
+                "processes": [
+                    {
+                        "name": "p",
+                        "pdf": {
+                            "type": "double_crystal_ball",
+                            "observable": "mbb",
+                            "params": [
+                                "dcb_mu",
+                                "dcb_sigma",
+                                "dcb_alpha_l",
+                                "dcb_n_l",
+                                "dcb_alpha_r",
+                                "dcb_n_r"
+                            ]
+                        },
+                        "yield": { "type": "scaled", "base_yield": 800.0, "scale": "mu" }
+                    }
+                ]
+            }
+        ]
+    });
+    std::fs::write(&config, serde_json::to_string_pretty(&spec).unwrap()).unwrap();
+
+    let out = run(&[
+        "unbinned-fit-toys",
+        "--config",
+        config.to_string_lossy().as_ref(),
+        "--n-toys",
+        "3",
+        "--seed",
+        "123",
+        "--threads",
+        "1",
+        "--gpu",
+        "cuda",
+        "--gpu-native",
+        "--json-metrics",
+        metrics.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        out.status.success(),
+        "unbinned-fit-toys DCB --gpu cuda --gpu-native should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let bytes = std::fs::read(&metrics).unwrap();
+    let metrics_json: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("metrics file should be JSON");
+    assert_metrics_contract(&metrics_json, "unbinned_fit_toys");
+
+    let pipeline = metrics_json
+        .get("timing")
+        .and_then(|x| x.get("breakdown"))
+        .and_then(|x| x.get("toys"))
+        .and_then(|x| x.get("pipeline"))
+        .and_then(|x| x.as_str())
+        .expect("timing.breakdown.toys.pipeline must be present");
+    assert_eq!(
+        pipeline, "cuda_gpu_native",
+        "DCB --gpu-native must select cuda_gpu_native pipeline"
+    );
+
+    let _ = std::fs::remove_file(&config);
+    let _ = std::fs::remove_file(&metrics);
+}
+
 #[test]
 fn unbinned_fit_writes_metrics_json_to_file() {
     let root = fixture_path("simple_tree.root");

@@ -2,6 +2,7 @@
 //!
 //! Currently implemented:
 //! - 1-compartment PK model (oral dosing, first-order absorption)
+//! - 2-compartment PK models (IV bolus and oral) with analytical gradients
 //! - Individual and population (NLME) variants
 //!
 //! # Error models
@@ -145,6 +146,109 @@ fn conc_iv_2cpt(dose: f64, v1: f64, micro: &TwoCptMicro, t: f64) -> f64 {
     (dose / v1) * (coeff_a * (-micro.alpha * t).exp() + coeff_b * (-micro.beta * t).exp())
 }
 
+/// Concentration and partial derivatives for 2-compartment IV bolus model.
+///
+/// Returns `(c, dc/dcl, dc/dv1, dc/dv2, dc/dq)`.
+///
+/// Chain rule: macro params `(CL,V1,V2,Q)` → micro `(k10,k12,k21)` → eigenvalues `(α,β)` → C(t).
+/// Degenerate case `α ≈ β` falls back to central-difference numerical gradient.
+#[inline]
+fn conc_iv_2cpt_and_grad(
+    dose: f64,
+    cl: f64,
+    v1: f64,
+    v2: f64,
+    q: f64,
+    t: f64,
+) -> (f64, f64, f64, f64, f64) {
+    let k10 = cl / v1;
+    let k12 = q / v1;
+    let k21 = q / v2;
+    let sum = k10 + k12 + k21;
+    let prod = k10 * k21;
+    let disc = (sum * sum - 4.0 * prod).max(0.0);
+    let sqrt_disc = disc.sqrt();
+    let alpha = 0.5 * (sum + sqrt_disc);
+    let beta = 0.5 * (sum - sqrt_disc);
+    let ab = alpha - beta; // = sqrt_disc
+
+    let pref = dose / v1;
+    let ea = (-alpha * t).exp();
+    let eb = (-beta * t).exp();
+
+    // Degenerate α ≈ β: numerical fallback.
+    if ab.abs() < 1e-10 {
+        let c = pref * (-0.5 * (alpha + beta) * t).exp();
+        let eps = 1e-7;
+        let f = |cl_: f64, v1_: f64, v2_: f64, q_: f64| {
+            let m = TwoCptMicro::from_macro(cl_, v1_, v2_, q_);
+            conc_iv_2cpt(dose, v1_, &m, t)
+        };
+        let dc_dcl = (f(cl + eps, v1, v2, q) - f(cl - eps, v1, v2, q)) / (2.0 * eps);
+        let dc_dv1 = (f(cl, v1 + eps, v2, q) - f(cl, v1 - eps, v2, q)) / (2.0 * eps);
+        let dc_dv2 = (f(cl, v1, v2 + eps, q) - f(cl, v1, v2 - eps, q)) / (2.0 * eps);
+        let dc_dq = (f(cl, v1, v2, q + eps) - f(cl, v1, v2, q - eps)) / (2.0 * eps);
+        return (c, dc_dcl, dc_dv1, dc_dv2, dc_dq);
+    }
+
+    let coeff_a = (alpha - k21) / ab;
+    let coeff_b = (k21 - beta) / ab;
+    let c = pref * (coeff_a * ea + coeff_b * eb);
+
+    // Partials of C w.r.t. intermediate variables (α, β, k21).
+    // ∂C/∂α = pref · [B·(ea−eb)/ab − A·t·ea]
+    let dc_dalpha = pref * (coeff_b * (ea - eb) / ab - coeff_a * t * ea);
+    // ∂C/∂β = pref · [A·(ea−eb)/ab − B·t·eb]
+    let dc_dbeta = pref * (coeff_a * (ea - eb) / ab - coeff_b * t * eb);
+    // ∂C/∂k21 = pref · (eb − ea) / ab
+    let dc_dk21 = pref * (eb - ea) / ab;
+
+    // Eigenvalue derivatives w.r.t. micro-constants.
+    let inv_2sd = 0.5 / sqrt_disc;
+    let ddisc_dk10 = 2.0 * sum - 4.0 * k21;
+    let ddisc_dk12 = 2.0 * sum;
+    let ddisc_dk21 = 2.0 * sum - 4.0 * k10;
+
+    let dsqrt_dk10 = ddisc_dk10 * inv_2sd;
+    let dsqrt_dk12 = ddisc_dk12 * inv_2sd;
+    let dsqrt_dk21 = ddisc_dk21 * inv_2sd;
+
+    let dalpha_dk10 = 0.5 * (1.0 + dsqrt_dk10);
+    let dalpha_dk12 = 0.5 * (1.0 + dsqrt_dk12);
+    let dalpha_dk21_e = 0.5 * (1.0 + dsqrt_dk21);
+
+    let dbeta_dk10 = 0.5 * (1.0 - dsqrt_dk10);
+    let dbeta_dk12 = 0.5 * (1.0 - dsqrt_dk12);
+    let dbeta_dk21_e = 0.5 * (1.0 - dsqrt_dk21);
+
+    // Chain to macro parameters.
+    let v1_sq = v1 * v1;
+    let v2_sq = v2 * v2;
+
+    // CL: only k10 depends on cl (dk10/dcl = 1/v1).
+    let dalpha_dcl = dalpha_dk10 / v1;
+    let dbeta_dcl = dbeta_dk10 / v1;
+    let dc_dcl = dc_dalpha * dalpha_dcl + dc_dbeta * dbeta_dcl;
+
+    // V1: k10, k12 depend on v1; pref = D/v1 → dpref/dv1 = −pref/v1.
+    let dalpha_dv1 = dalpha_dk10 * (-cl / v1_sq) + dalpha_dk12 * (-q / v1_sq);
+    let dbeta_dv1 = dbeta_dk10 * (-cl / v1_sq) + dbeta_dk12 * (-q / v1_sq);
+    let dc_dv1 = dc_dalpha * dalpha_dv1 + dc_dbeta * dbeta_dv1 - c / v1;
+
+    // V2: only k21 depends on v2 (dk21/dv2 = −q/v2²).
+    let dk21_dv2 = -q / v2_sq;
+    let dalpha_dv2 = dalpha_dk21_e * dk21_dv2;
+    let dbeta_dv2 = dbeta_dk21_e * dk21_dv2;
+    let dc_dv2 = dc_dalpha * dalpha_dv2 + dc_dbeta * dbeta_dv2 + dc_dk21 * dk21_dv2;
+
+    // Q: k12 (dk12/dq = 1/v1) and k21 (dk21/dq = 1/v2).
+    let dalpha_dq = dalpha_dk12 / v1 + dalpha_dk21_e / v2;
+    let dbeta_dq = dbeta_dk12 / v1 + dbeta_dk21_e / v2;
+    let dc_dq = dc_dalpha * dalpha_dq + dc_dbeta * dbeta_dq + dc_dk21 / v2;
+
+    (c, dc_dcl, dc_dv1, dc_dv2, dc_dq)
+}
+
 /// Concentration at time `t` for 2-compartment oral (first-order absorption) model.
 ///
 /// `C(t) = (Ka·F·D/V1) · Σ_i [(k21 − λ_i) / Π_{j≠i}(λ_j − λ_i)] · exp(−λ_i·t)`
@@ -177,23 +281,146 @@ fn conc_oral_2cpt(dose: f64, bioav: f64, v1: f64, ka: f64, micro: &TwoCptMicro, 
     pref * (ta + tb + tc)
 }
 
-/// Central-difference numerical gradient of `nll` for models with few parameters.
-/// Used by 2-compartment models where analytical gradients are deferred.
-fn numerical_grad_nll<M: LogDensityModel>(model: &M, params: &[f64]) -> Result<Vec<f64>> {
-    let h = 1e-7;
-    let n = params.len();
-    let mut g = Vec::with_capacity(n);
-    let mut p_buf = params.to_vec();
-    for j in 0..n {
-        let orig = p_buf[j];
-        p_buf[j] = orig + h;
-        let fp = model.nll(&p_buf)?;
-        p_buf[j] = orig - h;
-        let fm = model.nll(&p_buf)?;
-        p_buf[j] = orig;
-        g.push((fp - fm) / (2.0 * h));
+/// Concentration and partial derivatives for 2-compartment oral model.
+///
+/// Returns `(c, dc/dcl, dc/dv1, dc/dv2, dc/dq, dc/dka)`.
+///
+/// Tri-exponential: `C = pref · [A1·e^{-α·t} + A2·e^{-β·t} + A3·e^{-ka·t}]`
+/// where `pref = ka·F·D/V1`.
+/// Degenerate cases (eigenvalue coincidences) fall back to numerical gradient.
+#[inline]
+fn conc_oral_2cpt_and_grad(
+    dose: f64,
+    bioav: f64,
+    cl: f64,
+    v1: f64,
+    v2: f64,
+    q: f64,
+    ka: f64,
+    t: f64,
+) -> (f64, f64, f64, f64, f64, f64) {
+    let k10 = cl / v1;
+    let k12 = q / v1;
+    let k21 = q / v2;
+    let sum = k10 + k12 + k21;
+    let prod = k10 * k21;
+    let disc = (sum * sum - 4.0 * prod).max(0.0);
+    let sqrt_disc = disc.sqrt();
+    let alpha = 0.5 * (sum + sqrt_disc);
+    let beta = 0.5 * (sum - sqrt_disc);
+
+    let pref = ka * bioav * dose / v1;
+    let ea = (-alpha * t).exp();
+    let eb = (-beta * t).exp();
+    let ek = (-ka * t).exp();
+
+    let denom_a = (ka - alpha) * (beta - alpha);
+    let denom_b = (ka - beta) * (alpha - beta);
+    let denom_c = (alpha - ka) * (beta - ka);
+
+    // Degenerate: any denominator near-zero or α ≈ β.
+    if denom_a.abs() < 1e-10 || denom_b.abs() < 1e-10 || denom_c.abs() < 1e-10 || sqrt_disc < 1e-10
+    {
+        let f = |cl_: f64, v1_: f64, v2_: f64, q_: f64, ka_: f64| {
+            let m = TwoCptMicro::from_macro(cl_, v1_, v2_, q_);
+            conc_oral_2cpt(dose, bioav, v1_, ka_, &m, t)
+        };
+        let c = f(cl, v1, v2, q, ka);
+        let eps = 1e-7;
+        let dc_dcl = (f(cl + eps, v1, v2, q, ka) - f(cl - eps, v1, v2, q, ka)) / (2.0 * eps);
+        let dc_dv1 = (f(cl, v1 + eps, v2, q, ka) - f(cl, v1 - eps, v2, q, ka)) / (2.0 * eps);
+        let dc_dv2 = (f(cl, v1, v2 + eps, q, ka) - f(cl, v1, v2 - eps, q, ka)) / (2.0 * eps);
+        let dc_dq = (f(cl, v1, v2, q + eps, ka) - f(cl, v1, v2, q - eps, ka)) / (2.0 * eps);
+        let dc_dka = (f(cl, v1, v2, q, ka + eps) - f(cl, v1, v2, q, ka - eps)) / (2.0 * eps);
+        return (c, dc_dcl, dc_dv1, dc_dv2, dc_dq, dc_dka);
     }
-    Ok(g)
+
+    let a1 = (k21 - alpha) / denom_a;
+    let a2 = (k21 - beta) / denom_b;
+    let a3 = (k21 - ka) / denom_c;
+
+    let s = a1 * ea + a2 * eb + a3 * ek;
+    let c = pref * s;
+
+    // Partial derivatives of A1, A2, A3 w.r.t. α, β, ka, k21 (quotient rule).
+    let denom_a_sq = denom_a * denom_a;
+    let denom_b_sq = denom_b * denom_b;
+    let denom_c_sq = denom_c * denom_c;
+
+    let n1 = k21 - alpha;
+    // dD1/dα = -(β−α) − (ka−α) = 2α−β−ka
+    let da1_dalpha = (-denom_a - n1 * (2.0 * alpha - beta - ka)) / denom_a_sq;
+    let da1_dbeta = -n1 * (ka - alpha) / denom_a_sq;
+    let da1_dk21 = 1.0 / denom_a;
+    let da1_dka = -n1 * (beta - alpha) / denom_a_sq;
+
+    let n2 = k21 - beta;
+    let da2_dalpha = -n2 * (ka - beta) / denom_b_sq;
+    // dD2/dβ = -(α−β) − (ka−β) = 2β−α−ka
+    let da2_dbeta = (-denom_b - n2 * (2.0 * beta - alpha - ka)) / denom_b_sq;
+    let da2_dk21 = 1.0 / denom_b;
+    let da2_dka = -n2 * (alpha - beta) / denom_b_sq;
+
+    let n3 = k21 - ka;
+    let da3_dalpha = -n3 * (beta - ka) / denom_c_sq;
+    let da3_dbeta = -n3 * (alpha - ka) / denom_c_sq;
+    let da3_dk21 = 1.0 / denom_c;
+    // dD3/dka = -(β−ka) − (α−ka) = 2ka−α−β
+    let da3_dka = (-denom_c - n3 * (2.0 * ka - alpha - beta)) / denom_c_sq;
+
+    // dS/d{α, β, k21, ka}.
+    let ds_dalpha = da1_dalpha * ea - a1 * t * ea + da2_dalpha * eb + da3_dalpha * ek;
+    let ds_dbeta = da1_dbeta * ea + da2_dbeta * eb - a2 * t * eb + da3_dbeta * ek;
+    let ds_dk21 = da1_dk21 * ea + da2_dk21 * eb + da3_dk21 * ek;
+    let ds_dka = da1_dka * ea + da2_dka * eb + da3_dka * ek - a3 * t * ek;
+
+    // Eigenvalue derivatives w.r.t. micro-constants (same algebra as IV model).
+    let inv_2sd = 0.5 / sqrt_disc;
+    let ddisc_dk10 = 2.0 * sum - 4.0 * k21;
+    let ddisc_dk12 = 2.0 * sum;
+    let ddisc_dk21_val = 2.0 * sum - 4.0 * k10;
+
+    let dsqrt_dk10 = ddisc_dk10 * inv_2sd;
+    let dsqrt_dk12 = ddisc_dk12 * inv_2sd;
+    let dsqrt_dk21 = ddisc_dk21_val * inv_2sd;
+
+    let dalpha_dk10 = 0.5 * (1.0 + dsqrt_dk10);
+    let dalpha_dk12 = 0.5 * (1.0 + dsqrt_dk12);
+    let dalpha_dk21_e = 0.5 * (1.0 + dsqrt_dk21);
+
+    let dbeta_dk10 = 0.5 * (1.0 - dsqrt_dk10);
+    let dbeta_dk12 = 0.5 * (1.0 - dsqrt_dk12);
+    let dbeta_dk21_e = 0.5 * (1.0 - dsqrt_dk21);
+
+    // Chain to macro parameters.
+    let v1_sq = v1 * v1;
+    let v2_sq = v2 * v2;
+
+    // CL: only k10 depends on cl.
+    let dalpha_dcl = dalpha_dk10 / v1;
+    let dbeta_dcl = dbeta_dk10 / v1;
+    let dc_dcl = pref * (ds_dalpha * dalpha_dcl + ds_dbeta * dbeta_dcl);
+
+    // V1: k10, k12 depend on v1; pref = ka·F·D/v1 → dpref/dv1 = −pref/v1.
+    let dalpha_dv1 = dalpha_dk10 * (-cl / v1_sq) + dalpha_dk12 * (-q / v1_sq);
+    let dbeta_dv1 = dbeta_dk10 * (-cl / v1_sq) + dbeta_dk12 * (-q / v1_sq);
+    let dc_dv1 = (-pref / v1) * s + pref * (ds_dalpha * dalpha_dv1 + ds_dbeta * dbeta_dv1);
+
+    // V2: only k21 depends on v2.
+    let dk21_dv2 = -q / v2_sq;
+    let dalpha_dv2 = dalpha_dk21_e * dk21_dv2;
+    let dbeta_dv2 = dbeta_dk21_e * dk21_dv2;
+    let dc_dv2 = pref * (ds_dalpha * dalpha_dv2 + ds_dbeta * dbeta_dv2 + ds_dk21 * dk21_dv2);
+
+    // Q: k12 (dk12/dq = 1/v1) and k21 (dk21/dq = 1/v2).
+    let dalpha_dq = dalpha_dk12 / v1 + dalpha_dk21_e / v2;
+    let dbeta_dq = dbeta_dk12 / v1 + dbeta_dk21_e / v2;
+    let dc_dq = pref * (ds_dalpha * dalpha_dq + ds_dbeta * dbeta_dq + ds_dk21 / v2);
+
+    // Ka: pref depends on ka (dpref/dka = pref/ka); S depends on ka.
+    let dc_dka = (pref / ka) * s + pref * ds_dka;
+
+    (c, dc_dcl, dc_dv1, dc_dv2, dc_dq, dc_dka)
 }
 
 /// Policy for handling observations below LLOQ.
@@ -1026,6 +1253,18 @@ impl TwoCompartmentIvPkModel {
         let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
         conc_iv_2cpt(self.dose, v1, &micro, t)
     }
+
+    #[inline]
+    fn conc_and_grad(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q: f64,
+        t: f64,
+    ) -> (f64, f64, f64, f64, f64) {
+        conc_iv_2cpt_and_grad(self.dose, cl, v1, v2, q, t)
+    }
 }
 
 impl LogDensityModel for TwoCompartmentIvPkModel {
@@ -1093,7 +1332,55 @@ impl LogDensityModel for TwoCompartmentIvPkModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
-        numerical_grad_nll(self, params)
+        if params.len() != 4 {
+            return Err(Error::Validation(format!("expected 4 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, v2, q) = (params[0], params[1], params[2], params[3]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+
+        let mut g = vec![0.0_f64; 4];
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let (c, dc_dcl, dc_dv1, dc_dv2, dc_dq) = self.conc_and_grad(cl, v1, v2, q, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let w = em.dnll_obs_df(0.5 * lloq, c);
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dv2;
+                        g[3] += w * dc_dq;
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        let w = -pdf / p * dz_dc;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dv2;
+                        g[3] += w * dc_dq;
+                    }
+                }
+                continue;
+            }
+
+            let w = em.dnll_obs_df(yobs, c);
+            g[0] += w * dc_dcl;
+            g[1] += w * dc_dv1;
+            g[2] += w * dc_dv2;
+            g[3] += w * dc_dq;
+        }
+
+        Ok(g)
     }
 
     fn prepared(&self) -> Self::Prepared<'_> {
@@ -1174,6 +1461,19 @@ impl TwoCompartmentOralPkModel {
         let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
         conc_oral_2cpt(self.dose, self.bioavailability, v1, ka, &micro, t)
     }
+
+    #[inline]
+    fn conc_and_grad(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q: f64,
+        ka: f64,
+        t: f64,
+    ) -> (f64, f64, f64, f64, f64, f64) {
+        conc_oral_2cpt_and_grad(self.dose, self.bioavailability, cl, v1, v2, q, ka, t)
+    }
 }
 
 impl LogDensityModel for TwoCompartmentOralPkModel {
@@ -1242,7 +1542,59 @@ impl LogDensityModel for TwoCompartmentOralPkModel {
     }
 
     fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
-        numerical_grad_nll(self, params)
+        if params.len() != 5 {
+            return Err(Error::Validation(format!("expected 5 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, v2, q, ka) = (params[0], params[1], params[2], params[3], params[4]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+
+        let mut g = vec![0.0_f64; 5];
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let (c, dc_dcl, dc_dv1, dc_dv2, dc_dq, dc_dka) =
+                self.conc_and_grad(cl, v1, v2, q, ka, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let w = em.dnll_obs_df(0.5 * lloq, c);
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dv2;
+                        g[3] += w * dc_dq;
+                        g[4] += w * dc_dka;
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        let w = -pdf / p * dz_dc;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dv2;
+                        g[3] += w * dc_dq;
+                        g[4] += w * dc_dka;
+                    }
+                }
+                continue;
+            }
+
+            let w = em.dnll_obs_df(yobs, c);
+            g[0] += w * dc_dcl;
+            g[1] += w * dc_dv1;
+            g[2] += w * dc_dv2;
+            g[3] += w * dc_dq;
+            g[4] += w * dc_dka;
+        }
+
+        Ok(g)
     }
 
     fn prepared(&self) -> Self::Prepared<'_> {
@@ -1760,6 +2112,193 @@ mod tests {
             pm[j] -= h;
             let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
             assert!((g[j] - fd).abs() < 1e-4, "2-cpt IV grad[{j}]: num={}, fd={fd}", g[j]);
+        }
+    }
+
+    #[test]
+    fn two_cpt_iv_grad_all_error_models() {
+        let dose = 100.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let y: Vec<f64> = vec![8.0, 6.0, 4.0, 2.0, 0.8, 0.2];
+        let params = [1.0_f64, 10.0, 20.0, 0.5];
+
+        for em in [
+            ErrorModel::Additive(0.5),
+            ErrorModel::Proportional(0.15),
+            ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 },
+        ] {
+            let model = TwoCompartmentIvPkModel::new(
+                times.clone(),
+                y.clone(),
+                dose,
+                em,
+                None,
+                LloqPolicy::Censored,
+            )
+            .unwrap();
+
+            let g = model.grad_nll(&params).unwrap();
+            let h = 1e-7;
+            for j in 0..4 {
+                let mut pp = params;
+                let mut pm = params;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
+                assert!(
+                    (g[j] - fd).abs() < 1e-4,
+                    "2-cpt IV {em:?} grad[{j}]: analytical={}, fd={fd}",
+                    g[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn two_cpt_oral_grad_finite_diff() {
+        let dose = 100.0;
+        let bioav = 1.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let y: Vec<f64> = vec![2.0, 5.0, 4.0, 2.0, 0.8, 0.2];
+        let params = [1.0_f64, 10.0, 20.0, 0.5, 1.5];
+
+        for em in [
+            ErrorModel::Additive(0.5),
+            ErrorModel::Proportional(0.15),
+            ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 },
+        ] {
+            let model = TwoCompartmentOralPkModel::new(
+                times.clone(),
+                y.clone(),
+                dose,
+                bioav,
+                em,
+                None,
+                LloqPolicy::Censored,
+            )
+            .unwrap();
+
+            let g = model.grad_nll(&params).unwrap();
+            let h = 1e-7;
+            for j in 0..5 {
+                let mut pp = params;
+                let mut pm = params;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
+                assert!(
+                    (g[j] - fd).abs() < 1e-4,
+                    "2-cpt oral {em:?} grad[{j}]: analytical={}, fd={fd}",
+                    g[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn two_cpt_iv_conc_and_grad_consistency() {
+        let dose = 100.0;
+        let cl = 1.0;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q = 0.5;
+        let h = 1e-7;
+
+        for t in [0.5, 1.0, 2.0, 5.0, 10.0, 20.0] {
+            let (c, dc_dcl, dc_dv1, dc_dv2, dc_dq) = conc_iv_2cpt_and_grad(dose, cl, v1, v2, q, t);
+
+            let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+            let c_check = conc_iv_2cpt(dose, v1, &micro, t);
+            assert!((c - c_check).abs() < 1e-12, "concentration mismatch at t={t}");
+
+            let fd_cl = {
+                let m = TwoCptMicro::from_macro(cl + h, v1, v2, q);
+                let cp = conc_iv_2cpt(dose, v1, &m, t);
+                let m = TwoCptMicro::from_macro(cl - h, v1, v2, q);
+                let cm = conc_iv_2cpt(dose, v1, &m, t);
+                (cp - cm) / (2.0 * h)
+            };
+            assert!((dc_dcl - fd_cl).abs() < 1e-5, "t={t} dc/dcl: analytical={dc_dcl}, fd={fd_cl}");
+
+            let fd_v1 = {
+                let m = TwoCptMicro::from_macro(cl, v1 + h, v2, q);
+                let cp = conc_iv_2cpt(dose, v1 + h, &m, t);
+                let m = TwoCptMicro::from_macro(cl, v1 - h, v2, q);
+                let cm = conc_iv_2cpt(dose, v1 - h, &m, t);
+                (cp - cm) / (2.0 * h)
+            };
+            assert!((dc_dv1 - fd_v1).abs() < 1e-5, "t={t} dc/dv1: analytical={dc_dv1}, fd={fd_v1}");
+
+            let fd_v2 = {
+                let m = TwoCptMicro::from_macro(cl, v1, v2 + h, q);
+                let cp = conc_iv_2cpt(dose, v1, &m, t);
+                let m = TwoCptMicro::from_macro(cl, v1, v2 - h, q);
+                let cm = conc_iv_2cpt(dose, v1, &m, t);
+                (cp - cm) / (2.0 * h)
+            };
+            assert!((dc_dv2 - fd_v2).abs() < 1e-5, "t={t} dc/dv2: analytical={dc_dv2}, fd={fd_v2}");
+
+            let fd_q = {
+                let m = TwoCptMicro::from_macro(cl, v1, v2, q + h);
+                let cp = conc_iv_2cpt(dose, v1, &m, t);
+                let m = TwoCptMicro::from_macro(cl, v1, v2, q - h);
+                let cm = conc_iv_2cpt(dose, v1, &m, t);
+                (cp - cm) / (2.0 * h)
+            };
+            assert!((dc_dq - fd_q).abs() < 1e-5, "t={t} dc/dq: analytical={dc_dq}, fd={fd_q}");
+        }
+    }
+
+    #[test]
+    fn two_cpt_oral_conc_and_grad_consistency() {
+        let dose = 100.0;
+        let bioav = 1.0;
+        let cl = 1.0;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q = 0.5;
+        let ka = 1.5;
+        let h = 1e-7;
+
+        for t in [0.5, 1.0, 2.0, 5.0, 10.0, 20.0] {
+            let (c, dc_dcl, dc_dv1, dc_dv2, dc_dq, dc_dka) =
+                conc_oral_2cpt_and_grad(dose, bioav, cl, v1, v2, q, ka, t);
+
+            let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+            let c_check = conc_oral_2cpt(dose, bioav, v1, ka, &micro, t);
+            assert!((c - c_check).abs() < 1e-12, "oral concentration mismatch at t={t}");
+
+            let fd = |cl_: f64, v1_: f64, v2_: f64, q_: f64, ka_: f64| {
+                let m = TwoCptMicro::from_macro(cl_, v1_, v2_, q_);
+                conc_oral_2cpt(dose, bioav, v1_, ka_, &m, t)
+            };
+
+            let fd_cl = (fd(cl + h, v1, v2, q, ka) - fd(cl - h, v1, v2, q, ka)) / (2.0 * h);
+            assert!(
+                (dc_dcl - fd_cl).abs() < 1e-5,
+                "t={t} oral dc/dcl: analytical={dc_dcl}, fd={fd_cl}"
+            );
+
+            let fd_v1 = (fd(cl, v1 + h, v2, q, ka) - fd(cl, v1 - h, v2, q, ka)) / (2.0 * h);
+            assert!(
+                (dc_dv1 - fd_v1).abs() < 1e-5,
+                "t={t} oral dc/dv1: analytical={dc_dv1}, fd={fd_v1}"
+            );
+
+            let fd_v2 = (fd(cl, v1, v2 + h, q, ka) - fd(cl, v1, v2 - h, q, ka)) / (2.0 * h);
+            assert!(
+                (dc_dv2 - fd_v2).abs() < 1e-5,
+                "t={t} oral dc/dv2: analytical={dc_dv2}, fd={fd_v2}"
+            );
+
+            let fd_q = (fd(cl, v1, v2, q + h, ka) - fd(cl, v1, v2, q - h, ka)) / (2.0 * h);
+            assert!((dc_dq - fd_q).abs() < 1e-5, "t={t} oral dc/dq: analytical={dc_dq}, fd={fd_q}");
+
+            let fd_ka = (fd(cl, v1, v2, q, ka + h) - fd(cl, v1, v2, q, ka - h)) / (2.0 * h);
+            assert!(
+                (dc_dka - fd_ka).abs() < 1e-5,
+                "t={t} oral dc/dka: analytical={dc_dka}, fd={fd_ka}"
+            );
         }
     }
 }

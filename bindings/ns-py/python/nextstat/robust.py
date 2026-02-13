@@ -1,8 +1,8 @@
 """Robust covariance estimators (sandwich / heteroskedasticity / cluster).
 
-This module is intentionally dependency-light (no numpy required). It provides
-baseline robust covariance estimators for small/medium p using pure-Python
-linear algebra helpers.
+This module provides baseline robust covariance estimators for OLS and GLMs.
+When numpy is available, the cluster-robust estimator uses vectorised BLAS
+operations. A pure-Python fallback is always available.
 
 Notes
 - OLS HC0-HC3 match the classic White/MacKinnon formulas.
@@ -16,6 +16,12 @@ from __future__ import annotations
 
 import math
 from typing import Any, List, Literal, Optional, Sequence, Tuple
+
+try:
+    import numpy as _np
+    _HAS_NP = True
+except ImportError:
+    _HAS_NP = False
 
 from .glm._linalg import add_intercept, as_2d_float_list, mat_inv, mat_mul, mat_t
 
@@ -88,6 +94,23 @@ def _weighted_xtx(xd: Matrix, w: Sequence[float]) -> Matrix:
     return out
 
 
+def _encode_groups_np(cluster: Sequence[Any]) -> tuple:
+    """Encode group labels to integer indices using numpy. Returns (indices, n_groups)."""
+    # Fast path for integer-typed clusters.
+    try:
+        arr = _np.asarray(cluster)
+        if _np.issubdtype(arr.dtype, _np.integer):
+            unique, inverse = _np.unique(arr, return_inverse=True)
+            return inverse.astype(_np.intp), int(len(unique))
+    except (ValueError, TypeError):
+        pass
+    # General path for arbitrary hashable values.
+    labels = [("None" if v is None else str(v)) for v in cluster]
+    levels = sorted(set(labels))
+    idx = {lvl: i for i, lvl in enumerate(levels)}
+    return _np.array([idx[v] for v in labels], dtype=_np.intp), len(levels)
+
+
 def ols_hc_covariance(
     x: Sequence[Sequence[float]],
     residuals: Sequence[float],
@@ -156,19 +179,58 @@ def ols_hc_covariance(
     return cov
 
 
-def ols_cluster_covariance(
+def _ols_cluster_covariance_np(
+    x: Any,
+    residuals: Any,
+    cluster: Sequence[Any],
+    *,
+    include_intercept: bool,
+    df_correction: bool,
+) -> Matrix:
+    """Numpy-accelerated cluster-robust covariance."""
+    X = _np.asarray(x, dtype=_np.float64)
+    if include_intercept:
+        X = _np.column_stack([_np.ones(X.shape[0], dtype=_np.float64), X])
+    n, k = X.shape
+    if n == 0:
+        raise ValueError("x must have at least 1 row")
+    if k == 0:
+        raise ValueError("x must have at least 1 column")
+    u = _np.asarray(residuals, dtype=_np.float64)
+    if len(u) != n:
+        raise ValueError("length mismatch between inputs")
+    if n <= k:
+        raise ValueError("Need n > n_params for cluster-robust covariance")
+
+    xtx_inv = _np.linalg.inv(X.T @ X)
+
+    g, n_cl = _encode_groups_np(cluster)
+    if n_cl < 2:
+        raise ValueError("cluster must have at least 2 distinct groups")
+
+    # Score per observation, then sum within cluster.
+    zu = X * u[:, None]                              # (n, k)
+    sg = _np.zeros((n_cl, k), dtype=_np.float64)
+    for j in range(k):
+        sg[:, j] = _np.bincount(g, weights=zu[:, j], minlength=n_cl)
+
+    meat = sg.T @ sg                                  # (k, k)
+    if df_correction and n > k:
+        scale = (float(n_cl) / float(n_cl - 1)) * ((float(n) - 1.0) / float(n - k))
+        meat *= scale
+
+    return (xtx_inv @ meat @ xtx_inv).tolist()
+
+
+def _ols_cluster_covariance_py(
     x: Sequence[Sequence[float]],
     residuals: Sequence[float],
     cluster: Sequence[Any],
     *,
     include_intercept: bool,
-    df_correction: bool = True,
+    df_correction: bool,
 ) -> Matrix:
-    """Compute 1-way cluster-robust covariance for OLS.
-
-    This is a baseline CR0 estimator with an optional finite-sample correction:
-    - multiplies by (G/(G-1)) * ((n-1)/(n-k))
-    """
+    """Pure-Python cluster-robust covariance (fallback)."""
     xd = _design_matrix(x, include_intercept=include_intercept)
     n = len(xd)
     if n == 0:
@@ -210,6 +272,34 @@ def ols_cluster_covariance(
         _mat_scale_inplace(meat, scale)
 
     return mat_mul(mat_mul(xtx_inv, meat), xtx_inv)
+
+
+def ols_cluster_covariance(
+    x: Any,
+    residuals: Any,
+    cluster: Sequence[Any],
+    *,
+    include_intercept: bool,
+    df_correction: bool = True,
+) -> Matrix:
+    """Compute 1-way cluster-robust covariance for OLS.
+
+    This is a baseline CR0 estimator with an optional finite-sample correction:
+    - multiplies by (G/(G-1)) * ((n-1)/(n-k))
+
+    Accepts both numpy arrays and Python lists for x and residuals.
+    """
+    if _HAS_NP:
+        return _ols_cluster_covariance_np(
+            x, residuals, cluster,
+            include_intercept=include_intercept,
+            df_correction=df_correction,
+        )
+    return _ols_cluster_covariance_py(
+        x, residuals, cluster,
+        include_intercept=include_intercept,
+        df_correction=df_correction,
+    )
 
 
 def ols_hc_from_fit(

@@ -26,7 +26,7 @@ members = [
 zstd = { path = "crates/zstd-shim" }
 
 [workspace.package]
-version = "0.9.2"
+version = "0.9.3"
 edition = "2024"
 rust-version = "1.93"
 authors = ["NextStat Contributors"]
@@ -38,16 +38,16 @@ categories = ["science", "mathematics"]
 
 [workspace.dependencies]
 # Internal workspace crates (for publishable versioned deps).
-ns-core = { path = "crates/ns-core", version = "0.9.2" }
-ns-compute = { path = "crates/ns-compute", version = "0.9.2" }
-ns-ad = { path = "crates/ns-ad", version = "0.9.2" }
-ns-prob = { path = "crates/ns-prob", version = "0.9.2" }
-ns-root = { path = "crates/ns-root", version = "0.9.2" }
-ns-translate = { path = "crates/ns-translate", version = "0.9.2", default-features = false }
-ns-inference = { path = "crates/ns-inference", version = "0.9.2", default-features = false }
-ns-viz = { path = "crates/ns-viz", version = "0.9.2" }
-ns-cli = { path = "crates/ns-cli", version = "0.9.2" }
-ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.2" }
+ns-core = { path = "crates/ns-core", version = "0.9.3" }
+ns-compute = { path = "crates/ns-compute", version = "0.9.3" }
+ns-ad = { path = "crates/ns-ad", version = "0.9.3" }
+ns-prob = { path = "crates/ns-prob", version = "0.9.3" }
+ns-root = { path = "crates/ns-root", version = "0.9.3" }
+ns-translate = { path = "crates/ns-translate", version = "0.9.3", default-features = false }
+ns-inference = { path = "crates/ns-inference", version = "0.9.3", default-features = false }
+ns-viz = { path = "crates/ns-viz", version = "0.9.3" }
+ns-cli = { path = "crates/ns-cli", version = "0.9.3" }
+ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.3" }
 
 # Core dependencies
 thiserror = "2.0"

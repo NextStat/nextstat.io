@@ -169,6 +169,7 @@ def __getattr__(name: str):
 
 # Back-compat alias: make the sampler intent explicit without breaking `sample`.
 sample_nuts = sample
+sample_mams = _get("sample_mams")
 
 # Aliases used throughout docs/plans.
 PyModel = HistFactoryModel
@@ -257,6 +258,7 @@ __all__ = [
     "hypotest_toys",
     "sample",
     "sample_nuts",
+    "sample_mams",
     "bayes",
     "viz",
     "data",

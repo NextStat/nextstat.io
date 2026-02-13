@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-02-13
+
+### Fixed
+
+- **PyPI wheel coverage** — release CI now builds wheels for all supported Python versions (3.11–3.14) on every platform. Previously, `--find-interpreter` was only set for Linux aarch64, causing macOS, Linux x86_64, and Windows to ship only the runner-default Python wheel (cp314/cp312). All four targets now use `--find-interpreter` in the maturin build matrix.
+
 ## [0.9.2] — 2026-02-13
 
 ### Added
@@ -41,8 +47,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **CUDA toy-fit warm-start + iteration budget parity (phase 1)** — analytical `unbinned-fit-toys --gpu cuda` now warm-starts from observed-data MLE `θ̂` when available (fallback to spec init), and uses `max_iter=5000` for both lockstep and native batch fit calls (previously 1000).
 - **GEX44 post-rebuild CUDA snapshot (2026-02-13)** — archived fresh single-GPU artifacts at `benchmarks/unbinned/artifacts/2026-02-13/gex44_pf33_rebuild_20260212T234615Z/summary.json`. On RTX 4000 Ada, both `cuda_device` and `cuda_gpu_native` toy paths remain drastically slower than CPU fused path for Gauss+Exp/CrystalBall toy workloads, with near-identical CUDA wall-time between default and native routes. Follow-up optimization tasks were opened in BMCP.
 - **CUDA toy-fit optimizer stabilization (pass 1)** — added relative objective-decrease stopping and non-finite fail-fast in the GPU-native unbinned L-BFGS kernel (`unbinned_batch_lbfgs_fit`), and mirrored relative objective early-stop in lockstep `LbfgsState` to reduce max-iter tails on toy workloads. Includes new unit tests for relative-objective stop behavior.
-- **GEX44 CUDA recovery snapshot (2026-02-13)** — archived new single-GPU artifacts at `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_20260213T091253Z` and `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z`. On this branch snapshot, analytical toy fits route to `cuda_gpu_native` and outperform CPU for Gauss+Exp: ~6.3x at 1k toys, ~5.0x at 10k toys, and ~2.9x on a ~2M-events/toy stress case (50 toys), with 100% convergence in listed runs.
+- **GEX44 CUDA recovery snapshot (2026-02-13)** — archived new single-GPU artifacts at `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_20260213T091253Z` and `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z`. On this branch snapshot, analytical toy fits route to `cuda_gpu_native` and outperform CPU for Gauss+Exp: ~6.3x at 1k toys, ~5.0x at 10k toys, ~4.6x at 50k toys, and ~2.9x on a ~2M-events/toy stress case (50 toys), with 100% convergence in listed runs.
+- **GEX44 CB/DCB CUDA scale snapshot (2026-02-13)** — added CrystalBall/DoubleCrystalBall 10k-event toy matrix artifacts and summary at `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_cb_dcb_scale.json`. Measured 100% convergence for all listed runs (1k and 10k toys): CB CUDA (`cuda_gpu_native`) ~15-17x faster than CPU; DCB CUDA host path already ~28-33x faster than CPU, and explicit `--gpu-native` further improves DCB throughput by ~12% (1k toys) to ~56% (10k toys) vs DCB CUDA host mode.
 - **PF3.1-OPT4 sharding estimation fix** — auto-shard VRAM estimation for Poisson toys now uses the expected yield at the toy generation point (sum of yield expressions) rather than the observed dataset size, preventing under-sharding on large-yield studies (e.g. O(2M) events/toy with O(10k) toys). Added `YieldExpr::value()` public helper for tooling.
+- **PF3.1 benchmark harness mode split (`host` vs `native`)** — `scripts/benchmarks/pf31_remote_matrix.sh` now supports `PF31_HOST_FIT_MODES` (default `host,native`) and emits explicit host lockstep (`..._host_t...`) and explicit `--gpu-native` (`..._native_t...`) cases for analytical CUDA toy fits. `summary.json` rows now include `fit_mode` classification (`cpu|host|native|host_sharded|device_sharded`) to avoid manual post-processing when comparing DCB host/native routes.
 - **Metal `--gpu-sample-toys`** — device-resident toy sampling on Apple Silicon (previously CUDA-only).
 - **Parquet observed data for unbinned `--gpu`** — unbinned GPU path can now ingest observed data directly from Parquet files.
 - **TensorRT execution provider for neural PDFs** — `--features neural-tensorrt` enables TensorRT EP with FP16 inference, engine caching (`~/.cache/nextstat/tensorrt/`), and dynamic batch-size optimization profiles. Automatic fallback chain: TensorRT → CUDA EP → CPU. `FlowGpuConfig` for custom TRT settings; `FlowPdf::from_manifest_with_config()` constructor; `FlowPdf::gpu_ep_kind()` for runtime introspection.

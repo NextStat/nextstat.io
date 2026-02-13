@@ -241,7 +241,7 @@ pub fn iv_2sls(
 
     // Cluster-robust SE
     let se_cluster = if let Some(clust) = cluster_ids {
-        Some(cluster_robust_se(&x2, &resid, &xtx2_inv, clust)?)
+        Some(cluster_robust_se(&x2, &resid, &xtx2_inv, clust, 0)?)
     } else {
         None
     };

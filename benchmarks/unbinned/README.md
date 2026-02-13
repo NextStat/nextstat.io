@@ -58,6 +58,13 @@ Use `scripts/benchmarks/pf31_remote_matrix.sh` for remote toy-fit shard matrix r
 Defaults target a Hetzner CUDA host and auto-detect whether to run single-device
 (`0`) or dual-device (`0;0,1`) cases.
 
+Host analytical CUDA modes are now explicit and labeled in artifacts:
+
+- `PF31_HOST_FIT_MODES=host,native` (default) runs both:
+  - host lockstep (`..._host_t...`)
+  - explicit native (`..._native_t...`, adds `--gpu-native`)
+- summary rows include `fit_mode` (`cpu|host|native|host_sharded|device_sharded`)
+
 ```bash
 PF31_HOST=88.198.23.172 \
 PF31_KEY=~/.ssh/rundesk_hetzner \
@@ -65,6 +72,7 @@ PF31_BIN=/root/nextstat.io/target/release/nextstat \
 PF31_SPEC=/root/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
 PF31_TOYS=10000,100000 \
 PF31_SHARDS=2,4,8 \
+PF31_HOST_FIT_MODES=host,native \
 bash scripts/benchmarks/pf31_remote_matrix.sh
 ```
 

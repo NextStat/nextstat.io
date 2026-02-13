@@ -12,10 +12,12 @@
 
 pub mod aipw;
 pub mod did;
+pub mod hdfe;
 pub mod iv;
 pub mod panel;
 
 pub use aipw::{AipwResult, RosenbaumResult, aipw_ate, rosenbaum_bounds};
 pub use did::{DidResult, EventStudyResult, did_canonical, event_study};
+pub use hdfe::FixedEffectsSolver;
 pub use iv::{FirstStageResult, IvResult, iv_2sls};
 pub use panel::{PanelFEResult, cluster_robust_se, panel_fe_fit};

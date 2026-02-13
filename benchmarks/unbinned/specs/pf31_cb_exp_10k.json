@@ -1,0 +1,109 @@
+{
+  "schema_version": "nextstat_unbinned_spec_v0",
+  "model": {
+    "poi": "mu",
+    "parameters": [
+      {
+        "name": "mu",
+        "init": 1.0,
+        "bounds": [
+          0.0,
+          5.0
+        ]
+      },
+      {
+        "name": "mu_cb",
+        "init": 91.0,
+        "bounds": [
+          85.0,
+          95.0
+        ]
+      },
+      {
+        "name": "sigma_cb",
+        "init": 3.0,
+        "bounds": [
+          0.5,
+          10.0
+        ]
+      },
+      {
+        "name": "alpha_cb",
+        "init": 1.5,
+        "bounds": [
+          0.1,
+          5.0
+        ],
+        "fixed": true
+      },
+      {
+        "name": "n_cb",
+        "init": 5.0,
+        "bounds": [
+          1.01,
+          50.0
+        ],
+        "fixed": true
+      },
+      {
+        "name": "lambda_bkg",
+        "init": -0.02,
+        "bounds": [
+          -0.1,
+          -0.001
+        ]
+      }
+    ]
+  },
+  "channels": [
+    {
+      "name": "main",
+      "data": {
+        "file": "../artifacts/runpod_h100_2x/bench_cb_10k/observed.parquet"
+      },
+      "observables": [
+        {
+          "name": "mass",
+          "bounds": [
+            60.0,
+            120.0
+          ]
+        }
+      ],
+      "processes": [
+        {
+          "name": "signal",
+          "pdf": {
+            "type": "crystal_ball",
+            "observable": "mass",
+            "params": [
+              "mu_cb",
+              "sigma_cb",
+              "alpha_cb",
+              "n_cb"
+            ]
+          },
+          "yield": {
+            "type": "scaled",
+            "base_yield": 2500.0,
+            "scale": "mu"
+          }
+        },
+        {
+          "name": "background",
+          "pdf": {
+            "type": "exponential",
+            "observable": "mass",
+            "params": [
+              "lambda_bkg"
+            ]
+          },
+          "yield": {
+            "type": "fixed",
+            "value": 7500.0
+          }
+        }
+      ]
+    }
+  ]
+}

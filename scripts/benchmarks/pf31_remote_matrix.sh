@@ -11,6 +11,7 @@ set -euo pipefail
 #   PF31_TOYS (comma list, default: 10000,50000,100000)
 #   PF31_SHARDS (comma list, default: 2,4,8)
 #   PF31_GPU_DEVICE_SETS (semicolon list, example: "0;0,1"; auto-detect if unset)
+#   PF31_HOST_FIT_MODES (comma list: host,native; default: host,native)
 #   PF31_INCLUDE_HOST_SHARDED (1 to include --gpu-shards without --gpu-sample-toys)
 #   PF31_LOCAL_DIR (local artifact dir)
 
@@ -24,6 +25,7 @@ PF31_SPEC="${PF31_SPEC:-/root/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_e
 PF31_TOYS="${PF31_TOYS:-10000,50000,100000}"
 PF31_SHARDS="${PF31_SHARDS:-2,4,8}"
 PF31_GPU_DEVICE_SETS="${PF31_GPU_DEVICE_SETS:-}"
+PF31_HOST_FIT_MODES="${PF31_HOST_FIT_MODES:-host,native}"
 PF31_INCLUDE_HOST_SHARDED="${PF31_INCLUDE_HOST_SHARDED:-0}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REMOTE_RUN_DIR="${PF31_REMOTE_RUN_DIR:-/workspace/gpu_test/pf31_matrix_${STAMP}}"
@@ -40,6 +42,7 @@ echo "[pf31] bin=${PF31_BIN}"
 echo "[pf31] spec=${PF31_SPEC}"
 echo "[pf31] toys=${PF31_TOYS}"
 echo "[pf31] shards=${PF31_SHARDS}"
+echo "[pf31] host_fit_modes=${PF31_HOST_FIT_MODES}"
 
 "${SSH_BASE[@]}" "mkdir -p '${REMOTE_RUN_DIR}'"
 
@@ -143,6 +146,7 @@ device_count_from_set() {
 IFS=',' read -r -a TOY_LIST <<< "$PF31_TOYS"
 IFS=';' read -r -a DEVICE_SET_LIST <<< "$PF31_GPU_DEVICE_SETS"
 IFS=',' read -r -a SHARD_LIST <<< "$PF31_SHARDS"
+IFS=',' read -r -a HOST_FIT_MODE_LIST <<< "$PF31_HOST_FIT_MODES"
 
 for toys in "${TOY_LIST[@]}"; do
   toys="$(echo "$toys" | xargs)"
@@ -153,7 +157,23 @@ for toys in "${TOY_LIST[@]}"; do
       continue
     fi
     n_devs="$(device_count_from_set "$dev_set")"
-    run_case "cuda${n_devs}_host_t${toys}" "$toys" --gpu cuda --gpu-devices "$dev_set"
+    for fit_mode in "${HOST_FIT_MODE_LIST[@]}"; do
+      fit_mode="$(echo "$fit_mode" | xargs)"
+      if [[ -z "$fit_mode" ]]; then
+        continue
+      fi
+      case "$fit_mode" in
+        host)
+          run_case "cuda${n_devs}_host_t${toys}" "$toys" --gpu cuda --gpu-devices "$dev_set"
+          ;;
+        native)
+          run_case "cuda${n_devs}_native_t${toys}" "$toys" --gpu cuda --gpu-devices "$dev_set" --gpu-native
+          ;;
+        *)
+          echo "[pf31] WARN unknown PF31_HOST_FIT_MODES entry '${fit_mode}', skipping"
+          ;;
+      esac
+    done
     for shard in "${SHARD_LIST[@]}"; do
       shard="$(echo "$shard" | xargs)"
       if [[ -z "$shard" ]]; then
@@ -171,9 +191,24 @@ python3 - "$LOCAL_RUN_DIR" <<'PY'
 import glob, json, os, sys
 base = sys.argv[1]
 rows = []
+
+def classify_case(name: str) -> str:
+    if "_device_sh" in name:
+        return "device_sharded"
+    if "_host_sh" in name:
+        return "host_sharded"
+    if "_native_t" in name:
+        return "native"
+    if "_host_t" in name:
+        return "host"
+    if name.startswith("cpu_"):
+        return "cpu"
+    return "unknown"
+
 for meta in sorted(glob.glob(os.path.join(base, "*.meta.json"))):
     d = json.load(open(meta, "r", encoding="utf-8"))
     mpath = meta.replace(".meta.json", ".metrics.json")
+    d["fit_mode"] = classify_case(d.get("name", ""))
     if os.path.exists(mpath):
         m = json.load(open(mpath, "r", encoding="utf-8"))
         t = (m.get("timing") or {})
