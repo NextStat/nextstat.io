@@ -2,7 +2,7 @@
 title: "Publishing Benchmarks (CI, Artifacts, DOI, Replication)"
 description: "How NextStat benchmark snapshots are published: CI automation, immutable artifacts, baseline manifests, DOI minting, validation report integration, and third-party replication with signed reports."
 status: draft
-last_updated: 2026-02-08
+last_updated: 2026-02-13
 keywords:
   - benchmark publishing
   - CI benchmark artifacts
@@ -225,6 +225,7 @@ The `validation_report.json` includes SHA-256 hashes for both the workspace and 
 - [Public Benchmarks Specification](/docs/public-benchmarks) — canonical spec for suite structure and protocols.
 - [Unbinned Likelihood Benchmark Suite](/docs/benchmarks/unbinned-benchmark-suite) — published cross-framework tables.
 - [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility) — commands + JSON schema contract.
+- [Unbinned GPU Publication Runbook (PF3.1)](/docs/benchmarks/unbinned-publication-runbook) — publication-grade matrix orchestration and bundle gates.
 - [Validation Report Artifacts](/docs/validation-report) — the `validation_report.json` + PDF system.
 - [Third-Party Replication Runbook](/docs/benchmarks/replication) — step-by-step rerun + signed report template.
 - [Third-Party Replication: Signed Reports](/blog/third-party-replication-signed-report) — blog post on the replication protocol.

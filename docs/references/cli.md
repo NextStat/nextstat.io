@@ -115,9 +115,13 @@ HEP / Hybrid (binned + unbinned) (Phase 4):
 - `--gpu-devices` selects CUDA devices for host-toy sharding (example: `--gpu cuda --gpu-devices 0,1`). If omitted, defaults to device `0`.
 - `--gpu-sample-toys` enables experimental GPU toy sampling (default remains CPU toy sampling). GPU toy sampling supports Gaussian/Exponential/CrystalBall/DoubleCrystalBall/Chebyshev/Histogram PDFs (per included channel; yields and yield modifiers are supported).
 - `--gpu-native` (CUDA only, experimental) enables persistent on-device L-BFGS (`pipeline = "cuda_gpu_native"` or `"cuda_gpu_native_sharded"`). This flag is explicit opt-in and is never auto-enabled.
+  - Metal does not support `--gpu-shards` yet. For large workloads, CLI now auto-splits toys into contiguous internal batches to keep 32-bit toy offsets safe (`timing.breakdown.toys.n_batches`, `max_toys_per_batch`). It fails fast only when a single toy already exceeds the 32-bit offset budget.
   - `--gpu-shards N` (CUDA only) enables logical toy sharding (round-robin over `--gpu-devices`):
     - with `--gpu-sample-toys`: sharded device-resident path (`pipeline = "cuda_device_sharded"`),
     - without `--gpu-sample-toys`: sharded host-toy path (`pipeline = "cuda_host_sharded"`).
+    - with `--gpu-sample-toys`, CLI may auto-increase requested shard count to satisfy
+      32-bit toy-offset and VRAM safety budgets; effective mapping is reported in
+      `timing.breakdown.toys.device_shard_plan`.
     - Practical single-GPU validation commands (no 2+ GPU stand required):
       - `nextstat unbinned-fit-toys --config unbinned.json --n-toys 2000 --gpu cuda --gpu-sample-toys --gpu-devices 0 --gpu-shards 4 --json-metrics metrics.json`
       - `nextstat unbinned-fit-toys --config unbinned.json --n-toys 2000 --gpu cuda --gpu-devices 0 --gpu-shards 4 --json-metrics metrics.json`
@@ -125,12 +129,16 @@ HEP / Hybrid (binned + unbinned) (Phase 4):
   - `histogram_from_tree` is also supported under `--gpu-sample-toys` when it falls into the GPU subset (materialized histogram shape, i.e. no shape morphing: no `horizontal_systematics`, and `weight_systematics` only with `apply_to_shape: false`).
   - Integration coverage includes this `histogram_from_tree` subset on both CUDA and Metal.
     - CUDA: `cuda_device` (single shard) / `cuda_device_sharded` (multi-shard) pipelines keep `obs_flat` device-resident for batch fits (eliminates D2H+H2D round-trip).
-    - Metal: `metal_gpu_sample` pipeline runs sampling on Metal; the batch fitter still uploads host `obs_flat` to the GPU (no device-resident toy→fit path yet).
+    - Metal: `metal_device` pipeline samples toys on Metal and passes device-resident `obs_flat` directly into the Metal batch fitter.
   - If `--json-metrics <path>` is provided, `timing.breakdown.toys` includes a coarse timing breakdown:
-    - `pipeline`: `cpu` (CPU fit) | `host` (CPU sample + single-GPU batch fit) | `cuda_host_sharded` (CPU sample + sharded CUDA host-toy batch fit) | `cuda_host_multi_gpu` (CPU sample + multi-GPU batch fit) | `cuda_device` (GPU sample + single-shard GPU batch fit) | `cuda_device_sharded` (GPU sample + sharded GPU batch fit) | `cuda_gpu_native` (persistent on-device L-BFGS) | `cuda_gpu_native_sharded` (sharded persistent on-device L-BFGS) | `metal_gpu_sample` (Metal sample + GPU batch fit)
+    - `pipeline`: `cpu` (CPU fit) | `host` (CPU sample + single-GPU CUDA batch fit) | `cuda_host_sharded` (CPU sample + sharded CUDA host-toy batch fit) | `cuda_host_multi_gpu` (CPU sample + multi-GPU CUDA batch fit) | `cuda_device` (GPU sample + single-shard CUDA batch fit) | `cuda_device_sharded` (GPU sample + sharded CUDA batch fit) | `cuda_gpu_native` (persistent on-device L-BFGS) | `cuda_gpu_native_sharded` (sharded persistent on-device L-BFGS) | `metal_host` (CPU sample + Metal batch fit) | `metal_device` (Metal sample + Metal batch fit)
     - `device_ids`: CUDA device ids used for sharding (only for CUDA runs)
     - `device_shard_plan`: CUDA shard→device mapping when `--gpu-shards` is active (only for CUDA runs)
-    - `warm_start`, `sample_s`, `batch_build_s`, `batch_fit_s`, `poi_sigma_s`
+    - `warm_start`, `sample_s`, `batch_build_s`, `batch_fit_s`, `poi_sigma_enabled`, `poi_sigma_s`
+    - Metal-specific:
+      - `n_batches`, `max_toys_per_batch`: internal Metal chunk plan used to stay within 32-bit toy-offset capacity
+      - `sampler_init_s`: sampler construction time for `metal_device` runs
+      - `sample_phase_detail`: aggregated sampler phase timings (`prepare_s`, `counts_kernel_s`, `counts_readback_s`, `prefix_sum_s`, `sample_kernel_s`) and per-channel breakdown
   - CI guardrails (optional): `--require-all-converged`, `--max-abs-poi-pull-mean <x>`, `--poi-pull-std-range <low> <high>`
 - `nextstat unbinned-ranking --config unbinned.json [--threads 0]`
   - Requires `model.poi` in the spec (impacts are computed on POI).
@@ -141,18 +149,26 @@ HEP / Hybrid (binned + unbinned) (Phase 4):
 - In `--gpu` mode: per-toy fits are accelerated via GPU batch/lockstep fitting (conservative GPU subset applies). Multi-channel specs are supported (each included channel must be 1D).
 - `--gpu-devices` selects CUDA devices for host-toy sharding (default `0` if omitted).
 - Toys are sampled on CPU by default; `--gpu-sample-toys` enables experimental GPU toy sampling (Gaussian/Exponential/CrystalBall/DoubleCrystalBall/Chebyshev/Histogram PDFs, per included channel).
+  - Metal does not support `--gpu-shards` yet. For large workloads, CLI now auto-splits toys into contiguous internal batches to keep 32-bit toy offsets safe (`timing.breakdown.toys.n_batches`, `max_toys_per_batch`). It fails fast only when a single toy already exceeds the 32-bit offset budget.
   - `--gpu-shards N` (CUDA only) enables logical toy sharding (round-robin over `--gpu-devices`):
     - with `--gpu-sample-toys`: sharded device-resident path (`pipeline = "cuda_device_sharded"`),
     - without `--gpu-sample-toys`: sharded host-toy path (`pipeline = "cuda_host_sharded"`).
+    - with `--gpu-sample-toys`, CLI may auto-increase requested shard count to satisfy
+      32-bit toy-offset and VRAM safety budgets; effective mapping is reported in
+      `timing.breakdown.toys.device_shard_plan`.
     - Practical single-GPU validation commands:
       - `nextstat unbinned-hypotest-toys --config unbinned.json --mu 1.0 --n-toys 2000 --gpu cuda --gpu-sample-toys --gpu-devices 0 --gpu-shards 4 --json-metrics metrics.json`
       - `nextstat unbinned-hypotest-toys --config unbinned.json --mu 1.0 --n-toys 2000 --gpu cuda --gpu-devices 0 --gpu-shards 4 --json-metrics metrics.json`
       - Expect `timing.breakdown.toys.device_shard_plan = [0,0,0,0]`.
   - `histogram_from_tree` is also supported under `--gpu-sample-toys` when it falls into the GPU subset (materialized histogram shape, i.e. no shape morphing: no `horizontal_systematics`, and `weight_systematics` only with `apply_to_shape: false`).
   - Integration coverage includes this `histogram_from_tree` subset on both CUDA and Metal.
-  - In `--gpu cuda` mode, `--json-metrics <path>` includes `timing.breakdown` with:
-    - `obs_fits_s`: observed-data baseline fits time (free + fixed generation points)
-    - `toys`: per-ensemble timings for `b` and `sb` (sampling + batch build + free/fixed fits)
+- In `--gpu cuda` mode, `--json-metrics <path>` includes `timing.breakdown` with:
+  - `obs_fits_s`: observed-data baseline fits time (free + fixed generation points)
+  - `toys`: per-ensemble timings for `b` and `sb` (sampling + batch build + free/fixed fits)
+- In `--gpu metal` mode, `--json-metrics <path>` includes the same per-ensemble timing structure under `timing.breakdown.toys`:
+  - `n_batches`, `max_toys_per_batch`
+  - `b.sample_s`, `b.ensemble_s`, `b.build_s`, `b.free_fit_s`, `b.fixed_fit_s`
+  - `sb.sample_s`, `sb.ensemble_s`, `sb.build_s`, `sb.free_fit_s`, `sb.fixed_fit_s`
 
 Time series (Phase 8):
 - `nextstat timeseries kalman-filter --input kalman_1d.json`

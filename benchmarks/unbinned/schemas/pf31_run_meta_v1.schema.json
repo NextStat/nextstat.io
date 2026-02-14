@@ -1,0 +1,33 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf31_run_meta_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.1 per-run metadata (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "name",
+    "spec",
+    "n_toys",
+    "rc",
+    "elapsed_s",
+    "args",
+    "ts_unix"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf31_run_meta.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "name": { "type": "string", "minLength": 1 },
+    "spec": { "type": "string", "minLength": 1 },
+    "n_toys": { "type": "integer", "minimum": 1 },
+    "rc": { "type": "integer" },
+    "elapsed_s": { "type": "integer", "minimum": 0 },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ts_unix": { "type": "integer", "minimum": 0 }
+  }
+}
+

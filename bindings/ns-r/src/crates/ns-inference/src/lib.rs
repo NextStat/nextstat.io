@@ -64,8 +64,22 @@ pub mod ode;
 pub mod optimizer;
 /// Ordinal regression models (Phase 9 Pack C).
 pub mod ordinal;
+/// Multi-dose event and regimen support.
+pub mod dosing;
+/// FOCE/FOCEI population PK estimation.
+pub mod foce;
+/// NONMEM dataset reader.
+pub mod nonmem;
+/// Adaptive Runge-Kutta ODE solver (required by PD indirect response).
+pub mod ode_adaptive;
+/// Pharmacodynamic models (Emax, Sigmoid Emax, Indirect Response).
+pub mod pd;
 /// Pharmacometrics models (Phase 13).
 pub mod pk;
+/// SAEM population PK estimation.
+pub mod saem;
+/// VPC and GOF diagnostics for population PK.
+pub mod vpc;
 /// Posterior API: log-pdf, gradient, transforms.
 pub mod posterior;
 /// Profile likelihood scans.
@@ -155,7 +169,14 @@ pub use optimizer::{
     LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig, OptimizerStrategy,
 };
 pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
-pub use pk::{LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel};
+pub use foce::{FoceConfig, FoceEstimator, FoceResult, OmegaMatrix};
+pub use pd::{EmaxModel, IndirectResponseModel, IndirectResponseType, PkPdLink, SigmoidEmaxModel};
+pub use pk::{
+    ErrorModel, LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel,
+    TwoCompartmentIvPkModel, TwoCompartmentOralPkModel,
+};
+pub use saem::{SaemConfig, SaemDiagnostics, SaemEstimator};
+pub use vpc::{GofRecord, VpcBin, VpcConfig, VpcResult, gof_1cpt_oral, vpc_1cpt_oral};
 pub use posterior::{Posterior, Prior};
 #[cfg(feature = "cuda")]
 pub use profile_likelihood::scan_gpu;

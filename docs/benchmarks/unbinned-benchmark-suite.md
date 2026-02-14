@@ -1,7 +1,7 @@
 ---
 title: "Unbinned Likelihood Benchmark Suite"
 status: published
-last_updated: 2026-02-13
+last_updated: 2026-02-14
 ---
 
 # Unbinned Likelihood Benchmark Suite
@@ -9,6 +9,11 @@ last_updated: 2026-02-13
 Criterion micro-benchmarks, cross-framework validation, library-level
 benchmarks, and GPU acceleration results for NextStat's unbinned
 (event-level) likelihood evaluation, gradient computation, and MLE fitting.
+
+Reproducibility and publication runbooks:
+
+- `docs/benchmarks/unbinned-reproducibility.md`
+- `docs/benchmarks/unbinned-publication-runbook.md`
 
 ## 1. Cross-Framework Validation (NextStat CLI vs RooFit)
 
@@ -358,6 +363,97 @@ than H100 due to RTX 4090 FP64 = 1.3 TFLOPS (1:64 ratio of FP32).
       - 1000 toys: 2.44 s (**~1.12× faster than DCB CUDA host path**)
       - 10000 toys: 20.08 s (**~1.56× faster than DCB CUDA host path**)
   - all listed runs converged 100% with zero fit errors
+- **PF3.4 Metal local matrix (Apple M5, 2026-02-13)**:
+  - artifact: `benchmarks/unbinned/artifacts/2026-02-13/pf34_metal_20260213T194850Z/summary.json`
+  - 16/16 runs completed (`rc=0`), preflight passed (`preflight.json` in same bundle)
+  - `unbinned-fit-toys` (`metal_device` vs `metal_host`):
+    - Gauss+Exp, 10k toys: `1.78 s` vs `5.18 s` (**2.91x faster**)
+    - CrystalBall+Exp, 10k toys: `1.73 s` vs `8.59 s` (**4.96x faster**)
+  - `unbinned-hypotest-toys` (`metal_device` vs `metal_host`):
+    - Gauss+Exp, 10k toys: `15.89 s` vs `24.65 s` (**1.55x faster**)
+    - CrystalBall+Exp, 10k toys: `8.53 s` vs `16.97 s` (**1.99x faster**)
+  - telemetry confirms default GPU toy runs now skip extra curvature pass unless guardrails are requested (`poi_sigma_enabled=false` in fit-device metrics).
+  - M8 orchestration check (same machine, local rerun): `benchmarks/unbinned/artifacts/2026-02-13/pf34_m8_local_20260213T204135Z`
+    - `hypotest_device` Gauss+Exp 10k toys: `16.09 s` (vs `15.89 s` baseline, ~`+1.2%`)
+    - `hypotest_device` CB+Exp 10k toys: `8.47 s` (vs `8.53 s` baseline, ~`-0.7%`)
+    - interpretation: sampler-pool reuse/closure dedup in Metal hypotest orchestration is performance-neutral (within run-to-run noise), no regression observed.
+  - M8 timing split pass (same machine): `benchmarks/unbinned/artifacts/2026-02-13/pf34_m8_timing_20260213T211006Z`
+    - `hypotest_device` Gauss+Exp 10k (`b` ensemble): `build=0.0039 s`, `free_fit=0.436 s`, `fixed_fit=12.047 s`
+    - `hypotest_device` CB+Exp 10k (`b` ensemble): `build=0.0009 s`, `free_fit=0.412 s`, `fixed_fit=4.176 s`
+    - key finding: Metal `hypotest_device` bottleneck is **fixed fit stage** in B-only ensemble; accelerator build is negligible.
+  - M8 fixed-fit optimization pass (same machine): `benchmarks/unbinned/artifacts/2026-02-13/pf34_m8_step3_20260213T212122Z`
+    - change: dedicated toy fixed-fit optimizer config in Metal hypotest path (`max_iter=400`, `tol=3e-6`) for constrained fits
+    - `hypotest_device` Gauss+Exp 10k: `15.162 s -> 3.262 s` (**4.65x faster** vs timing-split pass)
+    - `hypotest_device` CB+Exp 10k: `8.425 s -> 5.265 s` (**1.60x faster** vs timing-split pass)
+    - timing decomposition shift (`b` ensemble):
+      - Gauss+Exp: `fixed_fit_s 12.047 s -> 0.244 s` (free-fit unchanged ~`0.44 s`)
+      - CB+Exp: `fixed_fit_s 4.176 s -> 1.161 s` (free-fit unchanged ~`0.42 s`)
+    - numerical quality unchanged: `cls=clsb=clb=1.0`, `n_error_b/sb=0`, `n_nonconverged_b/sb=0` in both cases.
+  - M5 toy-sampler kernel step (same machine): explored two routes
+    - kept: per-toy process CDF cache in `unbinned_toy_sample_obs_1d` threadgroup memory (`TOY_MAX_PROC_CACHE=256`) to remove per-event process-yield recomputation in common low-process models.
+    - reverted from default path: GPU counts→scan→sample offsets chain, because local runs showed extra dispatch cost without end-to-end win.
+    - artifacts:
+      - matrix: `benchmarks/unbinned/artifacts/2026-02-13/pf34_m5_post_20260213T234528Z`
+      - repeats: `benchmarks/unbinned/artifacts/2026-02-13/pf34_m5_post_repeats_20260213T234748Z`
+      - final repeats after scan rollback: `benchmarks/unbinned/artifacts/2026-02-13/pf34_m5_final_repeats_20260213T235051Z`
+    - phase-level note: after rollback, `prefix_sum_s` returned to microsecond scale while keeping the sampler-kernel CDF cache.
+  - M6 gradient-atomic contention step (same machine): `unbinned_batch_nll_grad` now uses threadgroup-local gradient staging for first `min(n_params, 24)` params and performs a single global atomic flush per staged parameter/threadgroup.
+    - controlled repeats (`n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_repeats_20260214T000844Z`
+      - vs pre-M6 local baseline (`pf34_m5_final_repeats_20260213T235051Z`) at 10k toys:
+        - `fit_device` Gauss+Exp: speedup `+8.05%` (median wall-time)
+        - `fit_device` CB+Exp: speedup `+8.83%`
+        - `hypotest_device` Gauss+Exp: speedup `+1.39%`
+        - `hypotest_device` CB+Exp: speedup `+28.73%`
+    - full matrix rerun: `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_full_20260214T000926Z` (`16/16 rc=0`)
+    - interpretation: contention drop helps most on CB-heavy paths; additional work is still needed for stable gains across all hypotest configurations.
+  - M6.3 process-yield cache step (same machine): batch Metal kernels now precompute per-process `nu`, `log(nu)`, and `dnu` once per toy in threadgroup memory and reuse them across event loops (`unbinned_batch_nll_grad` + `unbinned_batch_nll_only`).
+    - short repeats (`n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_3_proc_cache_repeats_20260214T005418Z` (mixed `cb_fit` due noise)
+    - stabilized repeats (`n=5`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_3_proc_cache_repeats5_20260214T005553Z`
+      - comparison baseline: `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_2_repeats_20260214T004701Z`
+      - `fit_device` Gauss+Exp 10k: speedup `+18.81%`
+      - `fit_device` CB+Exp 10k: speedup `+3.03%`
+      - `hypotest_device` Gauss+Exp 10k: speedup `+26.68%`
+      - `hypotest_device` CB+Exp 10k: speedup `+16.70%`
+    - tested-but-reverted variant: dynamic process-cache sizing (`proc_cache_cols=min(n_procs,256)`), artifact `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_4_proc_cache_dyn_repeats_20260214T010139Z`; no stable improvement on fit paths.
+    - interpretation: precomputing process-rate terms removes repeated yield/modifier work from the event hot path and gives consistent end-to-end gains on `metal_device` at 10k toys.
+  - M6.5 rate-modifier derivative cache step (same machine): `unbinned_batch_nll_grad` now caches per-modifier `dnu_m = nu * dlogf` once per toy (`total_rate_mods <= 256`) and reuses it in the per-event gradient loop.
+    - cache-on run (`n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_5_rate_dnu_cache_repeats_20260214T093849Z`
+    - same-session control (cache disabled, `n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_5_ab_control_nocache_repeats_20260214T094256Z`
+      - `fit_device` Gauss+Exp 10k: speedup `+6.80%`
+      - `fit_device` CB+Exp 10k: speedup `+5.63%`
+      - `hypotest_device` Gauss+Exp 10k: speedup `+6.17%`
+      - `hypotest_device` CB+Exp 10k: speedup `+5.98%`
+    - final keep-run (`n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_5_final_repeats_20260214T094544Z`
+      - conservative deltas vs same-session control: `+0.91%` to `+2.11%` across the four 10k-toy device cases.
+    - interpretation: caching modifier derivatives is a net positive in controlled A/B and is kept; effect size is smaller than M6.3 and sensitive to short-run thermal/load drift.
+  - M6.6 process metadata cache step (same machine): `unbinned_batch_nll_grad` now caches per-process `rate_mod_offset` and sanitized `n_rate_mods` (`s_proc_mod_off/s_proc_nmods`) once per toy and reuses them in event and final-gradient loops.
+    - repeats (`n=3`): `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_6_proc_meta_cache_repeats_20260214T100036Z`
+    - comparison baseline: `benchmarks/unbinned/artifacts/2026-02-14/pf34_m6_5_final_repeats_20260214T094544Z`
+      - `fit_device` Gauss+Exp 10k: speedup `+6.85%`
+      - `fit_device` CB+Exp 10k: speedup `+4.59%`
+      - `hypotest_device` Gauss+Exp 10k: speedup `+6.21%`
+      - `hypotest_device` CB+Exp 10k: speedup `+5.91%`
+    - numerical quality unchanged: fit runs `n_error=0`, `n_nonconverged=0`; hypotest runs `n_error_b/sb=0`, `n_nonconverged_b/sb=0`, `cls=clsb=clb=1.0`.
+- **4x A40 large-scale matrix (2026-02-13, `2M events/toy × 10k toys`)**:
+  - artifact: `benchmarks/unbinned/artifacts/2026-02-13/pf31_2m10k_multigpu_20260213T125921Z/summary.json`
+  - `cuda_device_sharded`:
+    - 1 GPU (`--gpu-devices 0 --gpu-shards 8`): 210.78 s
+    - 2 GPU (`--gpu-devices 0,1 --gpu-shards 8`): 106.72 s (**1.97×** vs 1 GPU)
+    - 4 GPU (`--gpu-devices 0,1,2,3 --gpu-shards 16`): 58.79 s (**3.58×** vs 1 GPU)
+  - `cuda_gpu_native_sharded`:
+    - 1 GPU (`--gpu-devices 0 --gpu-native`): 479.09 s
+    - 2 GPU (`--gpu-devices 0,1 --gpu-native`): 238.42 s (**2.01×** vs 1 GPU)
+    - 4 GPU (`--gpu-devices 0,1,2,3 --gpu-native`): 121.49 s (**3.94×** vs 1 GPU)
+  - all successful runs converged 100% (`n_error=0`)
+  - operational note: for this workload, `cuda_device_sharded` is materially faster than `cuda_gpu_native_sharded` at the same GPU count.
+  - guardrail finding: single-GPU `cuda_device_sharded` with `--gpu-shards 4` fails fast due `u32` total toy-event offset overflow (`~4.296e9` events in shard); `--gpu-shards 8` resolves it.
+  - follow-up fix (same date): CLI preflight now checks 32-bit toy-offset budget from estimated events/toy and either:
+    - rejects undersharded explicit plans (`--gpu-shards` too small), or
+    - auto-increases shard count (including host-toy path) before launching GPU work.
+  - post-fix verification artifact: `benchmarks/unbinned/artifacts/2026-02-13/pf31_p0_2gpu_2m10k_20260213T143409Z/summary.json` (raw files kept as `run.metrics.json` / `run.out.json`)
+    - run shape: `--gpu-devices 0,1 --gpu-shards 8 --gpu-sample-toys`
+    - result: `pipeline=cuda_device_sharded`, `wall_time=106.711s`, `n_converged=10000`, `n_error=0`
+    - shard assignment remained balanced: `[0,1,0,1,0,1,0,1]`
 
 ## 4. Cross-Framework Comparison (same data, same hardware)
 

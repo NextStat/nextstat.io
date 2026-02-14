@@ -1,0 +1,29 @@
+{
+  "schema_version": "nextstat.pf34_metal_matrix.v1",
+  "title": "PF3.4 Metal throughput baseline matrix",
+  "notes": [
+    "Local Apple Silicon matrix for Metal telemetry and throughput baselines.",
+    "Use --dry-run first, then run on an isolated machine with no competing GPU load.",
+    "Includes both fit-toys and hypotest-toys for host/device toy-sampling paths."
+  ],
+  "cases": [
+    {
+      "id": "gauss_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_gauss_exp_10k.json",
+      "toys": "1000,10000",
+      "modes": "fit_host,fit_device,hypotest_host,hypotest_device",
+      "mu": 1.0,
+      "seed": 42,
+      "expected_set": 1
+    },
+    {
+      "id": "cb_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_cb_exp_10k.json",
+      "toys": "1000,10000",
+      "modes": "fit_host,fit_device,hypotest_host,hypotest_device",
+      "mu": 1.0,
+      "seed": 42,
+      "expected_set": 1
+    }
+  ]
+}

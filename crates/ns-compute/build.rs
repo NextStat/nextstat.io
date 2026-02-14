@@ -10,6 +10,23 @@ fn main() {
     {
         use std::io::Write as _;
 
+        // Find nvcc: check CUDA_PATH/CUDA_HOME, then /usr/local/cuda, then PATH.
+        let nvcc = {
+            let candidates = [
+                std::env::var("CUDA_PATH").ok().map(|p| format!("{}/bin/nvcc", p)),
+                std::env::var("CUDA_HOME").ok().map(|p| format!("{}/bin/nvcc", p)),
+                Some("/usr/local/cuda/bin/nvcc".to_string()),
+            ];
+            let mut found = String::from("nvcc"); // fallback to PATH lookup
+            for c in candidates.into_iter().flatten() {
+                if std::path::Path::new(&c).exists() {
+                    found = c;
+                    break;
+                }
+            }
+            found
+        };
+
         let kernel_dir = "kernels";
         let common_header = format!("{}/common.cuh", kernel_dir);
         println!("cargo:rerun-if-changed={}", common_header);
@@ -35,7 +52,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", batch_src);
         let batch_ptx = format!("{}/batch_nll_grad.ptx", out_dir);
 
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
                 "-arch=sm_70", // Volta minimum, forward-compatible via JIT
@@ -70,7 +87,7 @@ fn main() {
         // divisions/sqrts with less accurate intrinsics, which can introduce
         // gradient noise that hurts NN training convergence. Batch toy kernel
         // keeps --use_fast_math since convergence tolerance is already 1e-3.
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &diff_ptx, &diff_src])
             .status();
         match status {
@@ -93,7 +110,7 @@ fn main() {
 
         // NOTE: No --use_fast_math for unbinned likelihood kernels — they use erf/log1p
         // and are typically used for inference fits where numerical parity matters.
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
                 "-arch=sm_70", // Volta minimum, forward-compatible via JIT
@@ -123,7 +140,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", lbfgs_src);
         let lbfgs_ptx = format!("{}/unbinned_lbfgs_fit.ptx", out_dir);
 
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &lbfgs_ptx, &lbfgs_src])
             .status();
         match status {
@@ -146,7 +163,7 @@ fn main() {
 
         // NOTE: No --use_fast_math for this kernel — weight systematics are used for
         // inference/parity-sensitive workflows.
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
                 "-arch=sm_70",
@@ -176,7 +193,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", flow_src);
         let flow_ptx = format!("{}/flow_nll_reduce.ptx", out_dir);
 
-        let status = std::process::Command::new("nvcc")
+        let status = std::process::Command::new(&nvcc)
             .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &flow_ptx, &flow_src])
             .status();
         match status {
@@ -191,5 +208,69 @@ fn main() {
             Err(e) => panic!("failed to spawn nvcc for {}: {}", flow_src, e),
         }
         println!("cargo:rustc-env=CUDA_FLOW_PTX_PATH={}", flow_ptx);
+
+        // --- fault_tree_mc.cu ---
+        let ft_src = format!("{}/fault_tree_mc.cu", kernel_dir);
+        println!("cargo:rerun-if-changed={}", ft_src);
+        let ft_ptx = format!("{}/fault_tree_mc.ptx", out_dir);
+
+        // Use --use_fast_math: MC throughput > numerical parity.
+        let status = std::process::Command::new(&nvcc)
+            .args([
+                "--ptx",
+                "-arch=sm_70",
+                "-O3",
+                "--use_fast_math",
+                "-I",
+                kernel_dir,
+                "-o",
+                &ft_ptx,
+                &ft_src,
+            ])
+            .status();
+        match status {
+            Ok(st) if st.success() => {}
+            Ok(st) => panic!("nvcc failed to compile {} (exit={})", ft_src, st),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "cargo:warning=ns-compute: nvcc not found; writing stub PTX for fault_tree_mc (CUDA will not work at runtime)"
+                );
+                write_stub_ptx(&ft_ptx, "fault_tree_mc", "nvcc not found");
+            }
+            Err(e) => panic!("failed to spawn nvcc for {}: {}", ft_src, e),
+        }
+        println!("cargo:rustc-env=CUDA_FAULT_TREE_MC_PTX_PATH={}", ft_ptx);
+
+        // --- mams_engine.cuh (shared engine header for LAPS, used by build-time + JIT) ---
+        let mams_engine = format!("{}/mams_engine.cuh", kernel_dir);
+        println!("cargo:rerun-if-changed={}", mams_engine);
+
+        // Expose the engine header path so nvrtc_mams.rs can include_str! it for JIT compilation
+        let mams_engine_abs = std::fs::canonicalize(&mams_engine)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&mams_engine));
+        println!("cargo:rustc-env=CUDA_MAMS_ENGINE_PATH={}", mams_engine_abs.display());
+
+        // --- mams_leapfrog.cu (LAPS: GPU MAMS sampler) ---
+        let mams_src = format!("{}/mams_leapfrog.cu", kernel_dir);
+        println!("cargo:rerun-if-changed={}", mams_src);
+        let mams_ptx = format!("{}/mams_leapfrog.ptx", out_dir);
+
+        // NOTE: No --use_fast_math — MAMS energy conservation requires precise
+        // exp/log/sqrt for MH detailed balance.
+        let status = std::process::Command::new(&nvcc)
+            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &mams_ptx, &mams_src])
+            .status();
+        match status {
+            Ok(st) if st.success() => {}
+            Ok(st) => panic!("nvcc failed to compile {} (exit={})", mams_src, st),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "cargo:warning=ns-compute: nvcc not found; writing stub PTX for mams_leapfrog (CUDA will not work at runtime)"
+                );
+                write_stub_ptx(&mams_ptx, "mams_leapfrog", "nvcc not found");
+            }
+            Err(e) => panic!("failed to spawn nvcc for {}: {}", mams_src, e),
+        }
+        println!("cargo:rustc-env=CUDA_MAMS_PTX_PATH={}", mams_ptx);
     }
 }

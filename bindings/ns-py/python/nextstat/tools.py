@@ -350,6 +350,529 @@ _TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    # -----------------------------------------------------------------------
+    # Cross-vertical tools (GLM, Bayesian, Survival, Econometrics, etc.)
+    # -----------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_glm_fit",
+            "description": (
+                "Fit a Generalized Linear Model (GLM). Supports linear, logistic, Poisson, and "
+                "negative binomial regression. Returns coefficients, standard errors, and predictions. "
+                "Input is tabular: X (2D array of features), y (1D array of outcomes)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Feature matrix (2D array, each inner array is one observation).",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Response variable (1D array).",
+                    },
+                    "family": {
+                        "type": "string",
+                        "enum": ["linear", "logistic", "poisson", "negbin"],
+                        "description": "GLM family. Default: linear.",
+                        "default": "linear",
+                    },
+                    "include_intercept": {
+                        "type": "boolean",
+                        "description": "Whether to include an intercept term. Default: true.",
+                        "default": True,
+                    },
+                    "l2": {
+                        "type": ["number", "null"],
+                        "description": "L2 regularization strength (ridge). Default: none.",
+                        "default": None,
+                    },
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_bayesian_sample",
+            "description": (
+                "Run Bayesian NUTS sampling on any NextStat model. Returns posterior draws, "
+                "diagnostics (ESS, R-hat, divergences, E-BFMI), and sample statistics. "
+                "The model_spec describes which model to build (e.g. logistic regression, survival, etc.)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model_type": {
+                        "type": "string",
+                        "enum": [
+                            "linear_regression", "logistic_regression", "poisson_regression",
+                            "negbin_regression", "cox_ph", "weibull_survival",
+                            "lognormal_aft", "ordered_logit", "ordered_probit",
+                            "histfactory",
+                        ],
+                        "description": "Type of model to sample from.",
+                    },
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Feature matrix (for regression/survival models).",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Response variable.",
+                    },
+                    "time": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Event/censoring times (survival models only).",
+                    },
+                    "event": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Event indicator: 1=event, 0=censored (survival models only).",
+                    },
+                    "n_levels": {
+                        "type": "integer",
+                        "description": "Number of ordinal levels (ordered logit/probit only).",
+                    },
+                    "workspace_json": {
+                        "type": "string",
+                        "description": "pyhf/HS3 workspace JSON (histfactory model only).",
+                    },
+                    "n_chains": {
+                        "type": "integer",
+                        "description": "Number of MCMC chains. Default: 4.",
+                        "default": 4,
+                    },
+                    "n_warmup": {
+                        "type": "integer",
+                        "description": "Number of warmup iterations per chain. Default: 500.",
+                        "default": 500,
+                    },
+                    "n_samples": {
+                        "type": "integer",
+                        "description": "Number of post-warmup samples per chain. Default: 1000.",
+                        "default": 1000,
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "description": "Random seed. Default: 42.",
+                        "default": 42,
+                    },
+                    "target_accept": {
+                        "type": "number",
+                        "description": "Target acceptance rate for NUTS. Default: 0.8.",
+                        "default": 0.8,
+                    },
+                },
+                "required": ["model_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_survival_fit",
+            "description": (
+                "Fit a survival model via MLE. Supports Cox PH, Weibull, Log-Normal AFT, and "
+                "Exponential models. Returns parameter estimates (log-hazard ratios or AFT coefficients), "
+                "standard errors, and NLL. Input: X (covariates), time (event/censoring times), "
+                "event (1=event, 0=censored)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Covariate matrix.",
+                    },
+                    "time": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Event or censoring times.",
+                    },
+                    "event": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Event indicator (1=event, 0=censored).",
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["cox_ph", "weibull", "lognormal_aft", "exponential"],
+                        "description": "Survival model type. Default: cox_ph.",
+                        "default": "cox_ph",
+                    },
+                },
+                "required": ["x", "time", "event"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_kaplan_meier",
+            "description": (
+                "Compute the Kaplan-Meier survival curve and optionally a log-rank test. "
+                "Returns time points, survival probabilities, confidence intervals, and "
+                "number at risk. If group labels are provided, also returns a log-rank test."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "time": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Event or censoring times.",
+                    },
+                    "event": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Event indicator (1=event, 0=censored).",
+                    },
+                    "group": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Optional group labels for log-rank test (e.g. 0/1 for two arms).",
+                    },
+                },
+                "required": ["time", "event"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_panel_fe",
+            "description": (
+                "Fit a panel data model with entity fixed effects (within estimator). "
+                "Returns coefficients with cluster-robust standard errors. "
+                "Equivalent to Stata's xtreg, fe."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Feature matrix (no intercept column needed).",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Response variable.",
+                    },
+                    "entity": {
+                        "type": "array",
+                        "items": {},
+                        "description": "Entity/group identifiers (e.g. firm IDs).",
+                    },
+                    "cluster": {
+                        "type": "string",
+                        "enum": ["entity", "time", "none"],
+                        "description": "Cluster-robust SE type. Default: entity.",
+                        "default": "entity",
+                    },
+                },
+                "required": ["x", "y", "entity"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_did",
+            "description": (
+                "Estimate a Difference-in-Differences (DiD) model via two-way fixed effects (TWFE). "
+                "Returns the ATT (average treatment effect on the treated) with cluster-robust SE."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Outcome variable.",
+                    },
+                    "treat": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Treatment indicator (0/1).",
+                    },
+                    "post": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Post-treatment indicator (0/1).",
+                    },
+                    "entity": {
+                        "type": "array",
+                        "items": {},
+                        "description": "Entity identifiers.",
+                    },
+                    "time": {
+                        "type": "array",
+                        "items": {},
+                        "description": "Time period identifiers.",
+                    },
+                    "x": {
+                        "type": ["array", "null"],
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Optional control covariates.",
+                        "default": None,
+                    },
+                    "cluster": {
+                        "type": "string",
+                        "enum": ["entity", "time", "none"],
+                        "default": "entity",
+                    },
+                },
+                "required": ["y", "treat", "post", "entity", "time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_iv_2sls",
+            "description": (
+                "Estimate an Instrumental Variables (IV) model via Two-Stage Least Squares (2SLS). "
+                "Returns structural coefficients, standard errors (HC1 or cluster-robust), and "
+                "first-stage F-statistics for weak instrument diagnostics."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Outcome variable.",
+                    },
+                    "endog": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Endogenous regressors.",
+                    },
+                    "instruments": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Excluded instruments.",
+                    },
+                    "exog": {
+                        "type": ["array", "null"],
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Optional exogenous controls.",
+                        "default": None,
+                    },
+                    "cov": {
+                        "type": "string",
+                        "enum": ["homoskedastic", "hc1", "cluster"],
+                        "description": "Covariance estimator. Default: hc1.",
+                        "default": "hc1",
+                    },
+                },
+                "required": ["y", "endog", "instruments"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_aipw",
+            "description": (
+                "Estimate a doubly-robust Average Treatment Effect (ATE or ATT) via "
+                "Augmented Inverse Probability Weighting (AIPW). Returns the treatment effect "
+                "estimate, standard error, and propensity diagnostics."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Covariate matrix.",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Outcome variable.",
+                    },
+                    "treatment": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Treatment indicator (0/1).",
+                    },
+                    "estimand": {
+                        "type": "string",
+                        "enum": ["ate", "att"],
+                        "description": "Estimand: ATE or ATT. Default: ate.",
+                        "default": "ate",
+                    },
+                },
+                "required": ["x", "y", "treatment"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_meta_analysis",
+            "description": (
+                "Run a meta-analysis (fixed or random effects). Input: effect sizes and their "
+                "standard errors from multiple studies. Returns pooled estimate, confidence interval, "
+                "heterogeneity statistics (I², Q, tau²)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "effects": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Effect sizes from each study.",
+                    },
+                    "standard_errors": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Standard errors of each study's effect.",
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["fixed", "random"],
+                        "description": "Meta-analysis method. Default: random.",
+                        "default": "random",
+                    },
+                },
+                "required": ["effects", "standard_errors"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_kalman",
+            "description": (
+                "Run Kalman filtering, smoothing, or forecasting on a linear state-space model. "
+                "Returns filtered/smoothed state estimates, log-likelihood, and optionally forecasts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "F": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "State transition matrix.",
+                    },
+                    "H": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Observation matrix.",
+                    },
+                    "Q": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Process noise covariance.",
+                    },
+                    "R": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Observation noise covariance.",
+                    },
+                    "x0": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Initial state mean.",
+                    },
+                    "P0": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Initial state covariance.",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Observation sequence (each element is an observation vector).",
+                    },
+                    "operation": {
+                        "type": "string",
+                        "enum": ["filter", "smooth", "forecast"],
+                        "description": "Operation to perform. Default: filter.",
+                        "default": "filter",
+                    },
+                    "n_ahead": {
+                        "type": "integer",
+                        "description": "Number of steps to forecast ahead (forecast mode only). Default: 10.",
+                        "default": 10,
+                    },
+                },
+                "required": ["F", "H", "Q", "R", "x0", "P0", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_churn_retention",
+            "description": (
+                "Compute a churn retention curve from tenure and event data. "
+                "Returns survival probabilities at specified time points, "
+                "plus optional cohort matrix and diagnostics."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tenure": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Subscription tenure (time from signup to event/censoring).",
+                    },
+                    "event": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Churn indicator (1=churned, 0=still active).",
+                    },
+                    "time_grid": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Time points at which to evaluate retention. Default: [30, 60, 90, 180, 365].",
+                    },
+                },
+                "required": ["tenure", "event"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_chain_ladder",
+            "description": (
+                "Run chain ladder or Mack chain ladder reserving on an insurance loss triangle. "
+                "Returns ultimate losses, reserves, development factors, and (for Mack) prediction errors."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "triangle": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": ["number", "null"]}},
+                        "description": "Loss triangle as 2D array (rows=origin periods, cols=development periods). Use null for missing entries.",
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["basic", "mack"],
+                        "description": "basic = deterministic chain ladder; mack = with prediction errors. Default: mack.",
+                        "default": "mack",
+                    },
+                },
+                "required": ["triangle"],
+            },
+        },
+    },
 ]
 
 
@@ -669,6 +1192,275 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         root_path = arguments["root_path"]
         hist_path = arguments["hist_path"]
         result = nextstat.read_root_histogram(root_path, hist_path)
+        return dict(result)
+
+    # -------------------------------------------------------------------
+    # Cross-vertical tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_glm_fit":
+        import nextstat.glm as glm
+
+        x = arguments["x"]
+        y = arguments["y"]
+        family = arguments.get("family", "linear")
+        intercept = arguments.get("include_intercept", True)
+        l2 = arguments.get("l2")
+
+        if family == "linear":
+            fit = glm.linear.fit(x, y, include_intercept=intercept, l2=l2)
+            return {
+                "family": "linear",
+                "coef": list(fit.coef),
+                "standard_errors": list(fit.standard_errors),
+                "sigma2_hat": fit.sigma2_hat,
+            }
+        elif family == "logistic":
+            fit = glm.logistic.fit(x, y, include_intercept=intercept, l2=l2)
+            return {
+                "family": "logistic",
+                "coef": list(fit.coef),
+                "standard_errors": list(fit.standard_errors),
+            }
+        elif family == "poisson":
+            fit = glm.poisson.fit(x, y, include_intercept=intercept, l2=l2)
+            return {
+                "family": "poisson",
+                "coef": list(fit.coef),
+                "standard_errors": list(fit.standard_errors),
+            }
+        elif family == "negbin":
+            fit = glm.negbin.fit(x, y, include_intercept=intercept, l2=l2)
+            return {
+                "family": "negbin",
+                "coef": list(fit.coef),
+                "standard_errors": list(fit.standard_errors),
+                "alpha": fit.alpha,
+            }
+        else:
+            raise ValueError(f"Unknown GLM family: {family!r}")
+
+    if name == "nextstat_bayesian_sample":
+        import nextstat.bayes
+
+        mt = arguments["model_type"]
+        x = arguments.get("x")
+        y = arguments.get("y")
+        time_arr = arguments.get("time")
+        event_arr = arguments.get("event")
+        n_levels = arguments.get("n_levels")
+        ws_json = arguments.get("workspace_json")
+        n_chains = int(arguments.get("n_chains", 4))
+        n_warmup = int(arguments.get("n_warmup", 500))
+        n_samples = int(arguments.get("n_samples", 1000))
+        seed = int(arguments.get("seed", 42))
+        target_accept = float(arguments.get("target_accept", 0.8))
+
+        model_map = {
+            "linear_regression": lambda: nextstat.LinearRegressionModel(x, y),
+            "logistic_regression": lambda: nextstat.LogisticRegressionModel(x, y),
+            "poisson_regression": lambda: nextstat.PoissonRegressionModel(x, y),
+            "negbin_regression": lambda: nextstat.NegativeBinomialRegressionModel(x, y),
+            "cox_ph": lambda: nextstat.CoxPhModel(x, time_arr, event_arr),
+            "weibull_survival": lambda: nextstat.WeibullSurvivalModel(x, time_arr, event_arr),
+            "lognormal_aft": lambda: nextstat.LogNormalAftModel(x, time_arr, event_arr),
+            "ordered_logit": lambda: nextstat.OrderedLogitModel(x, y, n_levels),
+            "ordered_probit": lambda: nextstat.OrderedProbitModel(x, y, n_levels),
+            "histfactory": lambda: nextstat.HistFactoryModel.from_workspace(ws_json),
+        }
+        if mt not in model_map:
+            raise ValueError(f"Unknown model_type: {mt!r}")
+        model = model_map[mt]()
+
+        raw = nextstat.bayes.sample(
+            model,
+            n_chains=n_chains,
+            n_warmup=n_warmup,
+            n_samples=n_samples,
+            seed=seed,
+            target_accept=target_accept,
+            return_idata=False,
+        )
+        diag = raw.get("diagnostics", {})
+        return {
+            "model_type": mt,
+            "n_chains": n_chains,
+            "n_samples": n_samples,
+            "param_names": raw.get("param_names", []),
+            "diagnostics": diag,
+            "posterior_summary": {
+                k: {
+                    "mean": sum(sum(ch) for ch in chains) / max(1, sum(len(ch) for ch in chains)),
+                }
+                for k, chains in (raw.get("posterior") or {}).items()
+            },
+        }
+
+    if name == "nextstat_survival_fit":
+        x = arguments["x"]
+        time_arr = arguments["time"]
+        event_arr = arguments["event"]
+        model_name = arguments.get("model", "cox_ph")
+
+        model_map = {
+            "cox_ph": lambda: nextstat.CoxPhModel(x, time_arr, event_arr),
+            "weibull": lambda: nextstat.WeibullSurvivalModel(x, time_arr, event_arr),
+            "lognormal_aft": lambda: nextstat.LogNormalAftModel(x, time_arr, event_arr),
+            "exponential": lambda: nextstat.ExponentialSurvivalModel(x, time_arr, event_arr),
+        }
+        if model_name not in model_map:
+            raise ValueError(f"Unknown survival model: {model_name!r}")
+        model = model_map[model_name]()
+        result = nextstat.fit(model)
+        return {
+            "model": model_name,
+            "parameters": list(result.parameters),
+            "uncertainties": list(result.uncertainties),
+            "nll": result.nll,
+            "converged": result.converged,
+        }
+
+    if name == "nextstat_kaplan_meier":
+        time_arr = arguments["time"]
+        event_arr = arguments["event"]
+        group_arr = arguments.get("group")
+
+        km = nextstat.kaplan_meier(time_arr, event_arr)
+        out = dict(km)
+        if group_arr is not None:
+            lr = nextstat.log_rank_test(time_arr, event_arr, group_arr)
+            out["log_rank"] = dict(lr)
+        return out
+
+    if name == "nextstat_panel_fe":
+        from nextstat.panel import fit_fixed_effects
+
+        x = arguments["x"]
+        y = arguments["y"]
+        entity = arguments["entity"]
+        cluster = arguments.get("cluster", "entity")
+        if cluster == "none":
+            cluster = "entity"
+
+        fit = fit_fixed_effects(x, y, entity=entity, cluster=cluster)
+        return {
+            "coef": list(fit.coef),
+            "standard_errors": list(fit.standard_errors),
+            "n_obs": fit.n_obs,
+            "n_entities": fit.n_entities,
+            "cluster_kind": fit.cluster_kind,
+            "n_clusters": fit.n_clusters,
+        }
+
+    if name == "nextstat_did":
+        import nextstat.econometrics as econ
+
+        y = arguments["y"]
+        treat = arguments["treat"]
+        post = arguments["post"]
+        entity = arguments["entity"]
+        time_arr = arguments["time"]
+        x = arguments.get("x")
+        cluster = arguments.get("cluster", "entity")
+        if cluster == "none":
+            cluster = "entity"
+
+        did = econ.did_twfe_fit(x, y, treat=treat, post=post, entity=entity, time=time_arr, cluster=cluster)
+        return {
+            "att": did.att,
+            "att_se": did.att_se,
+            "coef": list(did.coef),
+            "standard_errors": list(did.standard_errors),
+            "n_obs": did.n_obs,
+        }
+
+    if name == "nextstat_iv_2sls":
+        import nextstat.econometrics as econ
+
+        y = arguments["y"]
+        endog = arguments["endog"]
+        instruments = arguments["instruments"]
+        exog = arguments.get("exog")
+        cov = arguments.get("cov", "hc1")
+
+        iv = econ.iv_2sls_fit(y, endog=endog, instruments=instruments, exog=exog, cov=cov)
+        out = {
+            "coef": list(iv.coef),
+            "standard_errors": list(iv.standard_errors),
+            "n_obs": iv.n_obs,
+        }
+        if hasattr(iv, "diagnostics") and iv.diagnostics is not None:
+            out["diagnostics"] = {
+                "first_stage_f": iv.diagnostics.first_stage_f,
+            }
+        return out
+
+    if name == "nextstat_aipw":
+        from nextstat.causal.aipw import aipw_fit
+
+        x = arguments["x"]
+        y = arguments["y"]
+        treatment = arguments["treatment"]
+        estimand = arguments.get("estimand", "ate")
+
+        result = aipw_fit(x, y, treatment, estimand=estimand)
+        return {
+            "estimand": result.estimand,
+            "estimate": result.estimate,
+            "standard_error": result.standard_error,
+            "n_obs": result.n_obs,
+        }
+
+    if name == "nextstat_meta_analysis":
+        effects = arguments["effects"]
+        ses = arguments["standard_errors"]
+        method = arguments.get("method", "random")
+
+        if method == "fixed":
+            result = nextstat.meta_fixed(effects, ses)
+        else:
+            result = nextstat.meta_random(effects, ses)
+        return dict(result)
+
+    if name == "nextstat_kalman":
+        F = arguments["F"]
+        H = arguments["H"]
+        Q = arguments["Q"]
+        R = arguments["R"]
+        x0 = arguments["x0"]
+        P0 = arguments["P0"]
+        y = arguments["y"]
+        operation = arguments.get("operation", "filter")
+        n_ahead = int(arguments.get("n_ahead", 10))
+
+        model = nextstat.KalmanModel(F=F, H=H, Q=Q, R=R, x0=x0, P0=P0, y=y)
+
+        if operation == "filter":
+            result = nextstat.kalman_filter(model)
+        elif operation == "smooth":
+            result = nextstat.kalman_smooth(model)
+        elif operation == "forecast":
+            result = nextstat.kalman_forecast(model, n_ahead=n_ahead)
+        else:
+            raise ValueError(f"Unknown kalman operation: {operation!r}")
+        return dict(result)
+
+    if name == "nextstat_churn_retention":
+        tenure = arguments["tenure"]
+        event = arguments["event"]
+        time_grid = arguments.get("time_grid", [30, 60, 90, 180, 365])
+
+        result = nextstat.churn_retention(tenure, event, time_grid=time_grid)
+        return dict(result)
+
+    if name == "nextstat_chain_ladder":
+        triangle = arguments["triangle"]
+        method = arguments.get("method", "mack")
+
+        if method == "mack":
+            result = nextstat.mack_chain_ladder(triangle)
+        else:
+            result = nextstat.chain_ladder(triangle)
         return dict(result)
 
     raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")

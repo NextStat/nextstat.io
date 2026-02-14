@@ -1,0 +1,171 @@
+{
+  "created_at": "2026-02-13",
+  "ess_per_leapfrog": {
+    "cases": {
+      "eight_schools_non_centered": {
+        "by_seed": {
+          "0": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.04620888553303178,
+              "min_ess_bulk": 5402.373225437811,
+              "total_leapfrog": 116912
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.05451607591597245,
+              "min_ess_bulk": 5897.2219961344035,
+              "total_leapfrog": 108174
+            }
+          },
+          "123": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.041680041827938955,
+              "min_ess_bulk": 4445.426541200657,
+              "total_leapfrog": 106656
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.04908241255237787,
+              "min_ess_bulk": 5172.991788545313,
+              "total_leapfrog": 105394
+            }
+          },
+          "42": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.04921727652315351,
+              "min_ess_bulk": 5498.652567719757,
+              "total_leapfrog": 111722
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.052876844026644255,
+              "min_ess_bulk": 5829.989315001689,
+              "total_leapfrog": 110256
+            }
+          }
+        },
+        "cmdstan": {
+          "mean": 0.04570206796137475,
+          "std": 0.0037940907673501647
+        },
+        "nextstat": {
+          "mean": 0.052158444164998194,
+          "std": 0.002787157720353711
+        },
+        "ratio": 1.1412709860105252
+      },
+      "glm_logistic_regression": {
+        "by_seed": {
+          "0": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.16109781858257136,
+              "min_ess_bulk": 8172.17014105668,
+              "total_leapfrog": 50728
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.19382060306752233,
+              "min_ess_bulk": 9581.327692039898,
+              "total_leapfrog": 49434
+            }
+          },
+          "123": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.16583710355118042,
+              "min_ess_bulk": 7986.714907024849,
+              "total_leapfrog": 48160
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.18443772401452982,
+              "min_ess_bulk": 9245.49422940035,
+              "total_leapfrog": 50128
+            }
+          },
+          "42": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.16438451988699215,
+              "min_ess_bulk": 7927.6078560700835,
+              "total_leapfrog": 48226
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.18314910093371767,
+              "min_ess_bulk": 9162.583221512028,
+              "total_leapfrog": 50028
+            }
+          }
+        },
+        "cmdstan": {
+          "mean": 0.16377314734024798,
+          "std": 0.0024280728565274357
+        },
+        "nextstat": {
+          "mean": 0.18713580933858995,
+          "std": 0.005824945301020501
+        },
+        "ratio": 1.1426525799727394
+      },
+      "hier_random_intercept_non_centered": {
+        "by_seed": {
+          "0": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.019631032119780595,
+              "min_ess_bulk": 2051.8354771594677,
+              "total_leapfrog": 104520
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.04082465969433161,
+              "min_ess_bulk": 2850.2144412194557,
+              "total_leapfrog": 69816
+            }
+          },
+          "123": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.029425532498337664,
+              "min_ess_bulk": 2774.4746082032616,
+              "total_leapfrog": 94288
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.03720255196035929,
+              "min_ess_bulk": 2914.447920574547,
+              "total_leapfrog": 78340
+            }
+          },
+          "42": {
+            "cmdstan": {
+              "ess_per_leapfrog": 0.023392441455202414,
+              "min_ess_bulk": 2169.695729852934,
+              "total_leapfrog": 92752
+            },
+            "nextstat": {
+              "ess_per_leapfrog": 0.05374721128377341,
+              "min_ess_bulk": 3670.0745753011834,
+              "total_leapfrog": 68284
+            }
+          }
+        },
+        "cmdstan": {
+          "mean": 0.02414966869110689,
+          "std": 0.004940961873105811
+        },
+        "nextstat": {
+          "mean": 0.04392480764615477,
+          "std": 0.00869710446208124
+        },
+        "ratio": 1.818857567281247
+      }
+    },
+    "config": {
+      "dataset_seed": 12345,
+      "init_jitter_rel": 0.1,
+      "max_treedepth": 10,
+      "metric": "diagonal",
+      "n_chains": 4,
+      "n_samples": 2000,
+      "n_warmup": 1000
+    },
+    "ess_method": "arviz_ess_bulk_min",
+    "seeds": [
+      0,
+      42,
+      123
+    ]
+  },
+  "schema_version": "nextstat.bayesian_derived_metrics.v2",
+  "source": "remote_recompute_arviz_ess_bulk_min"
+}

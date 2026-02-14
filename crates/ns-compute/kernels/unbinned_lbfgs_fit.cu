@@ -759,6 +759,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
     double* __restrict__ g_nll_out,        /* [n_toys] final NLL */
     unsigned int* __restrict__ g_status,   /* [n_toys] 0=max_iter, 1=converged, 2=failed */
     unsigned int* __restrict__ g_iters,    /* [n_toys] iterations used */
+    unsigned int* __restrict__ g_line_search_exhaust, /* [n_toys] line-search exhaustion count */
     /* Scalar configuration */
     unsigned int n_params,
     unsigned int n_channels,
@@ -802,6 +803,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
     /* Thread 0 local state */
     unsigned int n_stored = 0;
+    unsigned int line_search_exhaust = 0;
     int has_prev = 0;
     double fval = INFINITY;
     double prev_fval = INFINITY;
@@ -908,6 +910,9 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
         /* Early exit if converged — all threads see the shared flag */
         if (s_flag[0]) {
+            if (tid == 0) {
+                g_line_search_exhaust[toy] = line_search_exhaust;
+            }
             return;
         }
 
@@ -1060,6 +1065,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
         /* If not accepted after all backtracks, take the last trial */
         if (tid == 0 && !s_flag[1]) {
+            line_search_exhaust += 1u;
             for (unsigned int i = 0; i < n_params; i++) {
                 x[i] = s_params[i];
             }
@@ -1072,5 +1078,6 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
         g_nll_out[toy] = fval;
         g_status[toy] = 0u;
         g_iters[toy] = max_iter;
+        g_line_search_exhaust[toy] = line_search_exhaust;
     }
 }

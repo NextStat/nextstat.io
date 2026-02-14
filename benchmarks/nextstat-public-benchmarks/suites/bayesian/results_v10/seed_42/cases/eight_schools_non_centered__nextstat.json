@@ -1,0 +1,120 @@
+{
+  "backend": "nextstat",
+  "case": "eight_schools_non_centered",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 42,
+    "target_accept": 0.95
+  },
+  "dataset": {
+    "id": "eight_schools",
+    "sha256": "f0a70a7e839f0c402da002e67605d554600cbabeb997101df464ec511d513b67"
+  },
+  "deterministic": false,
+  "diagnostics": {
+    "divergence_rate": 0.0,
+    "ebfmi": [
+      0.9514189973078359,
+      0.9745886315388587,
+      0.9716648225893567,
+      1.0009440347136502
+    ],
+    "ess_bulk": {
+      "mu": 8000.0,
+      "tau": 5811.440805207181,
+      "theta_raw[0]": 8000.0,
+      "theta_raw[1]": 8000.0,
+      "theta_raw[2]": 8000.0,
+      "theta_raw[3]": 8000.0,
+      "theta_raw[4]": 8000.0,
+      "theta_raw[5]": 8000.0,
+      "theta_raw[6]": 8000.0,
+      "theta_raw[7]": 8000.0
+    },
+    "ess_tail": {
+      "mu": 5568.863731670147,
+      "tau": 4146.14755939963,
+      "theta_raw[0]": 5825.591626088294,
+      "theta_raw[1]": 5678.993966513123,
+      "theta_raw[2]": 5296.453621697657,
+      "theta_raw[3]": 5721.330172130377,
+      "theta_raw[4]": 5705.765318009384,
+      "theta_raw[5]": 6792.290074881979,
+      "theta_raw[6]": 6266.978476604483,
+      "theta_raw[7]": 5937.7822675074885
+    },
+    "max_treedepth_rate": 0.0,
+    "quality": {
+      "enabled": true,
+      "failures": [],
+      "max_r_hat": 1.0013756358978145,
+      "min_ebfmi": 0.9514189973078359,
+      "min_ess_bulk": 5811.440805207181,
+      "min_ess_tail": 4146.14755939963,
+      "status": "ok",
+      "total_draws": 8000,
+      "warnings": []
+    },
+    "r_hat": {
+      "mu": 1.000102219010857,
+      "tau": 1.0005906714867916,
+      "theta_raw[0]": 1.0006421591025847,
+      "theta_raw[1]": 1.0004618027203458,
+      "theta_raw[2]": 0.9996080109367396,
+      "theta_raw[3]": 1.0007133550481244,
+      "theta_raw[4]": 1.0002782621417659,
+      "theta_raw[5]": 1.0002506745200443,
+      "theta_raw[6]": 1.001001088072253,
+      "theta_raw[7]": 1.0013756358978145
+    }
+  },
+  "diagnostics_summary": {
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.0013756358978145,
+    "max_treedepth_rate": 0.0,
+    "min_ebfmi": 0.9514189973078359,
+    "min_ess_bulk": 5811.440805207181,
+    "min_ess_tail": 4146.14755939963
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "Eight Schools (non-centered, funnel geometry)",
+    "n_params": 10,
+    "param_names": [
+      "mu",
+      "tau",
+      "theta_raw[0]",
+      "theta_raw[1]",
+      "theta_raw[2]",
+      "theta_raw[3]",
+      "theta_raw[4]",
+      "theta_raw[5]",
+      "theta_raw[6]",
+      "theta_raw[7]"
+    ]
+  },
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "ok",
+  "suite": "bayesian",
+  "timing": {
+    "ess_bulk_per_sec": {
+      "median": 79048.65419014252,
+      "min": 57423.32181966324
+    },
+    "ess_tail_per_sec": {
+      "median": 56456.032487362194,
+      "min": 40968.4230805356
+    },
+    "wall_time_s": 0.10120349399949191
+  }
+}

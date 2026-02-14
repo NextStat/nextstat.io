@@ -42,7 +42,7 @@ share/python-wheels/
 MANIFEST
 
 # Virtual environments
-.venv/
+.venv*/
 venv/
 ENV/
 env/
@@ -108,7 +108,10 @@ coverage.xml
 criterion/
 *.bench
 benchmarks/unbinned/artifacts/
-benchmarks/nextstat-public-benchmarks/
+# nextstat-public-benchmarks contains both source (tracked) and generated outputs.
+# Do NOT ignore the whole tree, otherwise new benchmark code can be silently hidden.
+benchmarks/nextstat-public-benchmarks/artifacts/
+benchmarks/nextstat-public-benchmarks/manifests/snapshots/
 
 # Documentation
 target/doc/
@@ -152,3 +155,6 @@ flamegraph.svg
 
 # Maturin
 *.whl
+/target-pyo3/
+/target-pyo3-2/
+/target-metal-bench/

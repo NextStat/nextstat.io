@@ -1,39 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="320" viewBox="0 0 900 320">
 <style>
-  text { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: #111827; }
-  .muted { fill: #6b7280; }
-  .label { font-size: 14px; }
-  .title { font-size: 16px; font-weight: 700; }
+  text { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: #e2e0dc; }
+  .muted { fill: #8a8680; }
+  .label { font-size: 14px; fill: #e2e0dc; }
+  .title { font-size: 16px; font-weight: 700; fill: #d4af37; }
   .small { font-size: 12px; }
+  .ratio { font-size: 12px; fill: #d4af37; font-weight: 600; }
 </style>
 <text x="240" y="24" class="title">ESS/sec (min bulk) — NextStat vs CmdStan</text>
 <text x="240" y="38" class="small muted">Artifact-driven from results_v10 (avg across seeds)</text>
-<line x1="240" y1="280" x2="860" y2="280" stroke="#e5e7eb" />
-<line x1="240.0" y1="40" x2="240.0" y2="280" stroke="#f3f4f6" />
+<line x1="240" y1="280" x2="860" y2="280" stroke="rgba(255,255,255,0.08)" />
+<line x1="240.0" y1="40" x2="240.0" y2="280" stroke="rgba(255,255,255,0.05)" />
 <text x="240.0" y="296" class="small muted" text-anchor="middle">0</text>
-<line x1="395.0" y1="40" x2="395.0" y2="280" stroke="#f3f4f6" />
+<line x1="395.0" y1="40" x2="395.0" y2="280" stroke="rgba(255,255,255,0.05)" />
 <text x="395.0" y="296" class="small muted" text-anchor="middle">14,197</text>
-<line x1="550.0" y1="40" x2="550.0" y2="280" stroke="#f3f4f6" />
+<line x1="550.0" y1="40" x2="550.0" y2="280" stroke="rgba(255,255,255,0.05)" />
 <text x="550.0" y="296" class="small muted" text-anchor="middle">28,394</text>
-<line x1="705.0" y1="40" x2="705.0" y2="280" stroke="#f3f4f6" />
+<line x1="705.0" y1="40" x2="705.0" y2="280" stroke="rgba(255,255,255,0.05)" />
 <text x="705.0" y="296" class="small muted" text-anchor="middle">42,591</text>
-<line x1="860.0" y1="40" x2="860.0" y2="280" stroke="#f3f4f6" />
+<line x1="860.0" y1="40" x2="860.0" y2="280" stroke="rgba(255,255,255,0.05)" />
 <text x="860.0" y="296" class="small muted" text-anchor="middle">56,788</text>
 <text x="228" y="85.0" class="label" text-anchor="end">GLM logistic (6p)</text>
-<rect x="240" y="52.8" width="326.4" height="22.4" fill="#111827" rx="2" />
-<rect x="240" y="84.8" width="323.2" height="22.4" fill="#9ca3af" rx="2" />
-<text x="868" y="84.0" class="small muted">1.01x</text>
+<rect x="240" y="52.8" width="326.4" height="22.4" fill="#d4af37" rx="2" />
+<rect x="240" y="84.8" width="323.2" height="22.4" fill="#5a5550" rx="2" />
+<text x="868" y="84.0" class="ratio">1.01×</text>
 <text x="228" y="165.0" class="label" text-anchor="end">Hierarchical logistic RI (non-centered, 22p)</text>
-<rect x="240" y="132.8" width="35.5" height="22.4" fill="#111827" rx="2" />
-<rect x="240" y="164.8" width="11.1" height="22.4" fill="#9ca3af" rx="2" />
-<text x="868" y="164.0" class="small muted">3.21x</text>
+<rect x="240" y="132.8" width="35.5" height="22.4" fill="#d4af37" rx="2" />
+<rect x="240" y="164.8" width="11.1" height="22.4" fill="#5a5550" rx="2" />
+<text x="868" y="164.0" class="ratio">3.21×</text>
 <text x="228" y="245.0" class="label" text-anchor="end">Eight Schools (non-centered, 10p)</text>
-<rect x="240" y="212.8" width="590.5" height="22.4" fill="#111827" rx="2" />
-<rect x="240" y="244.8" width="290.9" height="22.4" fill="#9ca3af" rx="2" />
-<text x="868" y="244.0" class="small muted">2.03x</text>
-<rect x="240" y="300" width="12" height="12" fill="#111827" rx="2" />
+<rect x="240" y="212.8" width="590.5" height="22.4" fill="#d4af37" rx="2" />
+<rect x="240" y="244.8" width="290.9" height="22.4" fill="#5a5550" rx="2" />
+<text x="868" y="244.0" class="ratio">2.03×</text>
+<rect x="240" y="300" width="12" height="12" fill="#d4af37" rx="2" />
 <text x="258" y="310" class="small muted">NextStat</text>
-<rect x="330" y="300" width="12" height="12" fill="#9ca3af" rx="2" />
+<rect x="330" y="300" width="12" height="12" fill="#5a5550" rx="2" />
 <text x="348" y="310" class="small muted">CmdStan</text>
 </svg>

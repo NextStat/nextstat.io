@@ -1,0 +1,17 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf34_metal_preflight_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.4 Metal preflight result (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "ok", "reason", "probe_spec", "bin"],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf34_metal_preflight.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "ok": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "probe_spec": { "type": "string", "minLength": 1 },
+    "bin": { "type": "string", "minLength": 1 }
+  }
+}
+

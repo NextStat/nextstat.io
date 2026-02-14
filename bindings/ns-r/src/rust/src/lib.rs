@@ -489,6 +489,324 @@ fn nextstat_sv(y: Vec<f64>, log_eps: f64) -> extendr_api::Result<List> {
     ))
 }
 
+// ---------------------------------------------------------------------------
+// Pharma helpers
+// ---------------------------------------------------------------------------
+
+fn parse_error_model_r(error_model: &str, sigma: &[f64]) -> extendr_api::Result<ns_inference::pk::ErrorModel> {
+    use ns_inference::pk::ErrorModel;
+    match error_model {
+        "additive" => {
+            let s = sigma.first().copied().unwrap_or(1.0);
+            Ok(ErrorModel::Additive(s))
+        }
+        "proportional" => {
+            let s = sigma.first().copied().unwrap_or(0.1);
+            Ok(ErrorModel::Proportional(s))
+        }
+        "combined" => {
+            if sigma.len() < 2 {
+                return Err(Error::Other("combined error model requires sigma of length 2: c(sigma_add, sigma_prop)".into()));
+            }
+            Ok(ErrorModel::Combined { sigma_add: sigma[0], sigma_prop: sigma[1] })
+        }
+        _ => Err(Error::Other(format!("unknown error_model: {error_model}; expected additive/proportional/combined"))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ns_foce — FOCE/FOCEI population PK estimation
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_foce(
+    times: Vec<f64>,
+    dv: Vec<f64>,
+    id: Vec<i32>,
+    n_subjects: i32,
+    dose: f64,
+    bioav: f64,
+    error_model: &str,
+    sigma: Vec<f64>,
+    theta_init: Vec<f64>,
+    omega_init: Vec<f64>,
+    interaction: bool,
+    max_outer_iter: i32,
+    tol: f64,
+) -> extendr_api::Result<List> {
+    setup_runtime(1);
+    let em = parse_error_model_r(error_model, &sigma)?;
+    let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+
+    let config = ns_inference::foce::FoceConfig {
+        max_outer_iter: max_outer_iter as usize,
+        max_inner_iter: 20,
+        tol,
+        interaction,
+    };
+    let estimator = ns_inference::foce::FoceEstimator::new(config);
+    let result = estimator
+        .fit_1cpt_oral(&times, &dv, &subject_idx, n_subjects as usize, dose, bioav, em, &theta_init, &omega_init)
+        .map_err(|e| Error::Other(format!("FOCE failed: {e}")))?;
+
+    // Convert eta (Vec<Vec<f64>>) to flat matrix for R (n_subjects x 3).
+    let eta_flat: Vec<f64> = result.eta.iter().flat_map(|row| row.iter().copied()).collect();
+    let n_sub = result.eta.len();
+    let n_params = if n_sub > 0 { result.eta[0].len() } else { 3 };
+
+    // Correlation matrix → flat list of vectors.
+    let corr: List = List::from_values(
+        result.correlation.iter().map(|row| Robj::from(row.clone())).collect::<Vec<Robj>>(),
+    );
+
+    Ok(list!(
+        theta = result.theta,
+        omega = result.omega,
+        eta = RMatrix::new_matrix(n_sub, n_params, |r, c| eta_flat[r * n_params + c]),
+        ofv = result.ofv,
+        converged = result.converged,
+        n_iter = result.n_iter as i32,
+        correlation = corr
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// ns_saem — SAEM population PK estimation
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_saem(
+    times: Vec<f64>,
+    dv: Vec<f64>,
+    id: Vec<i32>,
+    n_subjects: i32,
+    dose: f64,
+    bioav: f64,
+    error_model: &str,
+    sigma: Vec<f64>,
+    theta_init: Vec<f64>,
+    omega_init: Vec<f64>,
+    n_burn: i32,
+    n_iter: i32,
+    n_chains: i32,
+    seed: i32,
+    tol: f64,
+) -> extendr_api::Result<List> {
+    setup_runtime(1);
+    let em = parse_error_model_r(error_model, &sigma)?;
+    let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+
+    let config = ns_inference::saem::SaemConfig {
+        n_burn: n_burn as usize,
+        n_iter: n_iter as usize,
+        n_chains: n_chains as usize,
+        seed: seed as u64,
+        tol,
+        ..ns_inference::saem::SaemConfig::default()
+    };
+    let estimator = ns_inference::saem::SaemEstimator::new(config);
+    let (result, diagnostics) = estimator
+        .fit_1cpt_oral(&times, &dv, &subject_idx, n_subjects as usize, dose, bioav, em, &theta_init, &omega_init)
+        .map_err(|e| Error::Other(format!("SAEM failed: {e}")))?;
+
+    let eta_flat: Vec<f64> = result.eta.iter().flat_map(|row| row.iter().copied()).collect();
+    let n_sub = result.eta.len();
+    let n_params = if n_sub > 0 { result.eta[0].len() } else { 3 };
+
+    Ok(list!(
+        theta = result.theta,
+        omega = result.omega,
+        eta = RMatrix::new_matrix(n_sub, n_params, |r, c| eta_flat[r * n_params + c]),
+        ofv = result.ofv,
+        converged = result.converged,
+        n_iter = result.n_iter as i32,
+        acceptance_rates = diagnostics.acceptance_rates,
+        ofv_trace = diagnostics.ofv_trace
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// ns_vpc — Visual Predictive Check
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_vpc(
+    times: Vec<f64>,
+    dv: Vec<f64>,
+    id: Vec<i32>,
+    n_subjects: i32,
+    dose: f64,
+    theta: Vec<f64>,
+    omega: Vec<f64>,
+    sigma: f64,
+    n_rep: i32,
+    n_bins: i32,
+) -> extendr_api::Result<List> {
+    setup_runtime(1);
+    let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+    let om = ns_inference::foce::OmegaMatrix::from_diagonal(&omega)
+        .map_err(|e| Error::Other(format!("omega: {e}")))?;
+    let em = ns_inference::pk::ErrorModel::Additive(sigma);
+    let config = ns_inference::VpcConfig {
+        n_sim: n_rep as usize,
+        n_bins: n_bins as usize,
+        quantiles: vec![0.05, 0.50, 0.95],
+        seed: 42,
+        pi_level: 0.90,
+    };
+    let result = ns_inference::vpc_1cpt_oral(
+        &times, &dv, &subject_idx, n_subjects as usize, dose, 1.0, &theta, &om, &em, &config,
+    )
+    .map_err(|e| Error::Other(format!("VPC failed: {e}")))?;
+
+    // Convert bins to R list of lists.
+    let bins: List = List::from_values(
+        result.bins.iter().map(|b| {
+            list!(
+                time = b.time,
+                n_obs = b.n_obs as i32,
+                obs_quantiles = b.obs_quantiles.clone(),
+                sim_pi_lower = b.sim_pi_lower.clone(),
+                sim_pi_median = b.sim_pi_median.clone(),
+                sim_pi_upper = b.sim_pi_upper.clone()
+            ).into_robj()
+        }).collect::<Vec<Robj>>(),
+    );
+
+    Ok(list!(
+        bins = bins,
+        quantiles = result.quantiles,
+        n_sim = result.n_sim as i32
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// ns_gof — Goodness-of-Fit diagnostics
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_gof(
+    times: Vec<f64>,
+    dv: Vec<f64>,
+    id: Vec<i32>,
+    _n_subjects: i32,
+    dose: f64,
+    theta: Vec<f64>,
+    _omega: Vec<f64>,
+    eta: RMatrix<f64>,
+    sigma: f64,
+) -> extendr_api::Result<List> {
+    setup_runtime(1);
+    let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+    let em = ns_inference::pk::ErrorModel::Additive(sigma);
+
+    // Convert R matrix to Vec<Vec<f64>>.
+    let n_sub = eta.nrows();
+    let n_par = eta.ncols();
+    let mut etas: Vec<Vec<f64>> = Vec::with_capacity(n_sub);
+    for i in 0..n_sub {
+        let mut row = Vec::with_capacity(n_par);
+        for j in 0..n_par {
+            row.push(eta[[i, j]]);
+        }
+        etas.push(row);
+    }
+
+    let records = ns_inference::gof_1cpt_oral(
+        &times, &dv, &subject_idx, dose, 1.0, &theta, &etas, &em,
+    )
+    .map_err(|e| Error::Other(format!("GOF failed: {e}")))?;
+
+    // Return as parallel vectors (R data.frame-friendly).
+    let mut r_time = Vec::with_capacity(records.len());
+    let mut r_dv = Vec::with_capacity(records.len());
+    let mut r_pred = Vec::with_capacity(records.len());
+    let mut r_ipred = Vec::with_capacity(records.len());
+    let mut r_iwres = Vec::with_capacity(records.len());
+    let mut r_cwres = Vec::with_capacity(records.len());
+    let mut r_subject = Vec::with_capacity(records.len());
+
+    for rec in &records {
+        r_subject.push(rec.subject as i32);
+        r_time.push(rec.time);
+        r_dv.push(rec.dv);
+        r_pred.push(rec.pred);
+        r_ipred.push(rec.ipred);
+        r_iwres.push(rec.iwres);
+        r_cwres.push(rec.cwres);
+    }
+
+    Ok(list!(
+        SUBJECT = r_subject,
+        TIME = r_time,
+        DV = r_dv,
+        PRED = r_pred,
+        IPRED = r_ipred,
+        IWRES = r_iwres,
+        CWRES = r_cwres
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// ns_idr — Indirect Response Model simulation
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_idr(
+    conc_times: Vec<f64>,
+    conc_values: Vec<f64>,
+    output_times: Vec<f64>,
+    idr_type: &str,
+    kin: f64,
+    kout: f64,
+    max_effect: f64,
+    c50: f64,
+    r0: f64,
+) -> extendr_api::Result<Vec<f64>> {
+    use ns_inference::pd::{IndirectResponseModel, IndirectResponseType};
+
+    let ty = match idr_type {
+        "inhibit_production" => IndirectResponseType::InhibitProduction,
+        "inhibit_loss" => IndirectResponseType::InhibitLoss,
+        "stimulate_production" => IndirectResponseType::StimulateProduction,
+        "stimulate_loss" => IndirectResponseType::StimulateLoss,
+        _ => return Err(Error::Other(format!("unknown IDR type: {idr_type}"))),
+    };
+
+    let model = IndirectResponseModel::new(ty, kin, kout, max_effect, c50)
+        .map_err(|e| Error::Other(format!("IDR model: {e}")))?;
+
+    let conc_profile: Vec<(f64, f64)> = conc_times
+        .into_iter()
+        .zip(conc_values.into_iter())
+        .collect();
+
+    model
+        .simulate(&conc_profile, &output_times, Some(r0), None)
+        .map_err(|e| Error::Other(format!("IDR simulate: {e}")))
+}
+
+// ---------------------------------------------------------------------------
+// ns_scm — Stepwise Covariate Modeling (stub — requires complex infrastructure)
+// ---------------------------------------------------------------------------
+
+#[extendr]
+fn ns_scm(
+    _times: Vec<f64>,
+    _dv: Vec<f64>,
+    _id: Vec<i32>,
+    _n_subjects: i32,
+    _dose: f64,
+    _theta: Vec<f64>,
+    _omega: Vec<f64>,
+    _sigma: f64,
+    _covariates: List,
+    _alpha_forward: f64,
+    _alpha_backward: f64,
+) -> extendr_api::Result<List> {
+    Err(Error::Other("ns_scm is not yet implemented in Rust. Use R-native SCM packages (e.g., Pmx, nlme) for covariate modeling.".into()))
+}
+
 extendr_module! {
     mod nextstat;
     fn ns_normal_logpdf;
@@ -502,6 +820,12 @@ extendr_module! {
     fn nextstat_kalman;
     fn nextstat_garch;
     fn nextstat_sv;
+    fn ns_foce;
+    fn ns_saem;
+    fn ns_vpc;
+    fn ns_gof;
+    fn ns_idr;
+    fn ns_scm;
 }
 
 /// R looks for `R_init_<package>` when loading a package shared library.

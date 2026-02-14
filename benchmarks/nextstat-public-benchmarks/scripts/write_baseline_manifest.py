@@ -89,55 +89,40 @@ def load_json(path: Path) -> dict[str, Any]:
 def collect_datasets_from_result(result_path: Path) -> list[dict[str, str]]:
     """Collect dataset ids + hashes from benchmark result JSONs.
 
-    Supports:
-    - benchmark_result_v1 (single-case): uses `dataset`
-    - benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
-    - pharma_benchmark_result_v1 (single-case): uses `dataset`
-    - pharma_benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
-    - bayesian_benchmark_result_v1 (single-case): uses `dataset`
-    - bayesian_benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
-    - ml_benchmark_result_v1 (single-case): uses `dataset`
-    - ml_benchmark_suite_result_v1 (suite index): opens each case JSON and uses its `dataset`
+    This is intentionally generic: any artifact containing `dataset.id` and
+    `dataset.sha256` contributes to the baseline manifest. Suite indexes are
+    expanded by opening each referenced case artifact.
     """
     obj = load_json(result_path)
-    sv = str(obj.get("schema_version", ""))
 
     out: list[dict[str, str]] = []
-    if sv in (
-        "nextstat.benchmark_result.v1",
-        "nextstat.pharma_benchmark_result.v1",
-        "nextstat.bayesian_benchmark_result.v1",
-        "nextstat.ml_benchmark_result.v1",
-        "nextstat.econometrics_benchmark_result.v1",
-    ):
-        ds = obj.get("dataset") or {}
+
+    def maybe_add_dataset(o: dict[str, Any]) -> None:
+        ds = o.get("dataset") or {}
+        if not isinstance(ds, dict):
+            return
         ds_id = ds.get("id")
         ds_sha = ds.get("sha256")
         if isinstance(ds_id, str) and isinstance(ds_sha, str):
             out.append({"id": ds_id, "sha256": ds_sha})
-        return out
 
-    if sv in (
-        "nextstat.benchmark_suite_result.v1",
-        "nextstat.pharma_benchmark_suite_result.v1",
-        "nextstat.bayesian_benchmark_suite_result.v1",
-        "nextstat.ml_benchmark_suite_result.v1",
-        "nextstat.econometrics_benchmark_suite_result.v1",
-    ):
+    maybe_add_dataset(obj)
+
+    cases = obj.get("cases")
+    if isinstance(cases, list):
         base = result_path.parent
-        for e in obj.get("cases", []):
+        for e in cases:
             try:
-                rel = e["path"]
+                if not isinstance(e, dict):
+                    continue
+                rel = e.get("path")
+                if not isinstance(rel, str) or not rel.strip():
+                    continue
                 case_obj = load_json((base / rel).resolve())
-                ds = case_obj.get("dataset") or {}
-                ds_id = ds.get("id")
-                ds_sha = ds.get("sha256")
-                if isinstance(ds_id, str) and isinstance(ds_sha, str):
-                    out.append({"id": ds_id, "sha256": ds_sha})
+                maybe_add_dataset(case_obj)
             except Exception:
                 # Ignore malformed entries; schema validation should catch this elsewhere.
                 pass
-        return out
 
     return out
 

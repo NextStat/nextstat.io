@@ -624,3 +624,94 @@ pub fn cmd_survival_log_rank(
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Interval-censored parametric fits
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct IntervalCensoredInput {
+    time_lower: Vec<f64>,
+    time_upper: Vec<f64>,
+    censor_type: Vec<String>,
+}
+
+fn fit_ic_model(
+    model: &impl LogDensityModel,
+    model_name: &str,
+    input: &std::path::Path,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let mle = ns_inference::MaximumLikelihoodEstimator::default();
+    let result = mle.fit(model)?;
+    let names = model.parameter_names();
+    let params: serde_json::Map<String, serde_json::Value> = names
+        .iter()
+        .zip(result.parameters.iter())
+        .map(|(n, v)| (n.clone(), serde_json::json!(v)))
+        .collect();
+
+    let output_json = serde_json::json!({
+        "model": model_name,
+        "params": params,
+        "nll": result.nll,
+        "converged": result.converged,
+        "n_iter": result.n_iter,
+    });
+    crate::write_json(output, &output_json)?;
+    if let Some(dir) = bundle {
+        crate::report::write_bundle(
+            dir,
+            model_name,
+            serde_json::json!({}),
+            input,
+            &output_json,
+            false,
+        )?;
+    }
+    Ok(())
+}
+
+fn parse_censor_types(strings: &[String]) -> Result<Vec<ns_inference::CensoringType>> {
+    strings
+        .iter()
+        .map(|s| ns_inference::CensoringType::from_str(s).map_err(|e| anyhow::anyhow!("{}", e)))
+        .collect()
+}
+
+pub fn cmd_interval_weibull_fit(
+    input: &std::path::Path,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let data: IntervalCensoredInput = serde_json::from_str(&std::fs::read_to_string(input)?)?;
+    let ct = parse_censor_types(&data.censor_type)?;
+    let model =
+        ns_inference::IntervalCensoredWeibullModel::new(data.time_lower, data.time_upper, ct)?;
+    fit_ic_model(&model, "interval_censored_weibull", input, output, bundle)
+}
+
+pub fn cmd_interval_lognormal_fit(
+    input: &std::path::Path,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let data: IntervalCensoredInput = serde_json::from_str(&std::fs::read_to_string(input)?)?;
+    let ct = parse_censor_types(&data.censor_type)?;
+    let model =
+        ns_inference::IntervalCensoredLogNormalModel::new(data.time_lower, data.time_upper, ct)?;
+    fit_ic_model(&model, "interval_censored_lognormal", input, output, bundle)
+}
+
+pub fn cmd_interval_exponential_fit(
+    input: &std::path::Path,
+    output: Option<&PathBuf>,
+    bundle: Option<&PathBuf>,
+) -> Result<()> {
+    let data: IntervalCensoredInput = serde_json::from_str(&std::fs::read_to_string(input)?)?;
+    let ct = parse_censor_types(&data.censor_type)?;
+    let model =
+        ns_inference::IntervalCensoredExponentialModel::new(data.time_lower, data.time_upper, ct)?;
+    fit_ic_model(&model, "interval_censored_exponential", input, output, bundle)
+}

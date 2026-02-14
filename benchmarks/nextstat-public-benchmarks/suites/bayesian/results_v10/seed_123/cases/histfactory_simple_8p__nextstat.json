@@ -1,0 +1,93 @@
+{
+  "backend": "nextstat",
+  "case": "histfactory_simple_8p",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 123,
+    "target_accept": 0.8
+  },
+  "dataset": {
+    "id": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "path": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "sha256": "e87594b9a23cc580a53a9d0b42df10218132bb8cd2401edf1cfdf020ad1d715d"
+  },
+  "deterministic": false,
+  "diagnostics": {
+    "divergence_rate": 0.0,
+    "ebfmi": [
+      1.0314498168343689,
+      1.00463341492036,
+      1.0206096866861154,
+      0.9237503441986223
+    ],
+    "ess_bulk": {
+      "mu": 4578.944754142823,
+      "uncorr_bkguncrt[0]": 5985.066564127516,
+      "uncorr_bkguncrt[1]": 5351.992285707337
+    },
+    "ess_tail": {
+      "mu": 3045.4279674261043,
+      "uncorr_bkguncrt[0]": 4483.6259926830135,
+      "uncorr_bkguncrt[1]": 4215.82319395107
+    },
+    "max_treedepth_rate": 0.0,
+    "quality": {
+      "enabled": true,
+      "failures": [],
+      "max_r_hat": 1.0009302143690566,
+      "min_ebfmi": 0.9237503441986223,
+      "min_ess_bulk": 4578.944754142823,
+      "min_ess_tail": 3045.4279674261043,
+      "status": "ok",
+      "total_draws": 8000,
+      "warnings": []
+    },
+    "r_hat": {
+      "mu": 1.000494250540575,
+      "uncorr_bkguncrt[0]": 1.0009302143690566,
+      "uncorr_bkguncrt[1]": 1.0005910083889773
+    }
+  },
+  "diagnostics_summary": {
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.0009302143690566,
+    "max_treedepth_rate": 0.0,
+    "min_ebfmi": 0.9237503441986223,
+    "min_ess_bulk": 4578.944754142823,
+    "min_ess_tail": 3045.4279674261043
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "HistFactoryModel(simple_workspace.json)",
+    "n_params": 3,
+    "param_names": [
+      "mu",
+      "uncorr_bkguncrt[0]",
+      "uncorr_bkguncrt[1]"
+    ]
+  },
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "ok",
+  "suite": "bayesian",
+  "timing": {
+    "ess_bulk_per_sec": {
+      "median": 66162.94103590671,
+      "min": 56606.29455391417
+    },
+    "ess_tail_per_sec": {
+      "median": 52117.27642883328,
+      "min": 37648.49803240783
+    },
+    "wall_time_s": 0.08089108800049871
+  }
+}

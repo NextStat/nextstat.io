@@ -2,7 +2,7 @@
 title: "Unbinned Benchmark Reproducibility"
 description: "Canonical runbook for reproducing the unbinned cross-framework benchmark suite (NextStat, RooFit, zfit, MoreFit), including exact commands and output JSON schema contract."
 status: published
-last_updated: 2026-02-12
+last_updated: 2026-02-13
 ---
 
 # Unbinned Benchmark Reproducibility
@@ -170,6 +170,42 @@ Notes:
 - `hosts.txt` supports per-host overrides: `weight=...`, `threads=...`, `user=...`, `port=...`.
 - For deterministic planning checks, run step (2) first with `--dry-run`.
 - The launcher stores full scheduling metadata (`toy_start`, shard seed, host, threads) in `manifest.json`.
+
+### 1.7 PF3.1 publication matrix (GPU/CPU, snapshot-grade bundle)
+
+For publication-grade PF3.1 runs use the dedicated orchestrator:
+
+- runbook: `docs/benchmarks/unbinned-publication-runbook.md`
+- matrix definition: `benchmarks/unbinned/matrices/pf31_publication_v1.json`
+- orchestrator: `scripts/benchmarks/pf31_publication_matrix.sh`
+
+Dry-run first (mandatory, no GPU spend):
+
+```bash
+PF31_DRY_RUN=1 \
+PF31_HOST=<gpu-host> \
+PF31_PORT=<ssh-port> \
+PF31_USER=root \
+PF31_KEY=~/.ssh/<key> \
+bash scripts/benchmarks/pf31_publication_matrix.sh
+```
+
+Real run:
+
+```bash
+PF31_DRY_RUN=0 \
+PF31_HOST=<gpu-host> \
+PF31_PORT=<ssh-port> \
+PF31_USER=root \
+PF31_KEY=~/.ssh/<key> \
+PF31_GPU_DEVICE_SETS="0;0,1" \
+bash scripts/benchmarks/pf31_publication_matrix.sh
+```
+
+Expected bundle outputs include:
+
+- `publication_summary.json` + `publication_summary.md` (gates and per-case metrics)
+- `snapshot_index.json` (hash inventory for audit/replication)
 
 ## 2) Output Contract
 

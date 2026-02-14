@@ -28,6 +28,11 @@ pub enum InitStrategy {
     /// Best for HistFactory/HEP models where the mode is well-defined and the
     /// posterior is nearly Gaussian.
     Mle,
+    /// Pathfinder initialization: run full L-BFGS fit with Hessian, then use
+    /// the diagonal of the covariance as initial inverse mass matrix.
+    /// This gives warmup a head-start on the preconditioner, allowing shorter
+    /// warmup (e.g. 200 instead of 1000).
+    Pathfinder,
 }
 
 /// Euclidean metric type for mass matrix adaptation.
@@ -424,6 +429,37 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     Ok(inner)
 }
 
+/// Pre-allocated scratch buffers for the `nuts_transition()` main loop.
+///
+/// Eliminates ~9 `Vec<f64>` allocations per tree-doubling iteration
+/// (up to ~90 per transition at max_treedepth=10).
+struct NutsTransitionScratch {
+    rho_existing: Vec<f64>,
+    p_existing_junction: Vec<f64>,
+    edge_state: HmcState,
+    p_subtree_junction: Vec<f64>,
+    rho_subtree: Vec<f64>,
+    rho_cross: Vec<f64>,
+}
+
+impl NutsTransitionScratch {
+    fn new(dim: usize) -> Self {
+        Self {
+            rho_existing: vec![0.0; dim],
+            p_existing_junction: vec![0.0; dim],
+            edge_state: HmcState {
+                q: vec![0.0; dim],
+                p: vec![0.0; dim],
+                potential: 0.0,
+                grad_potential: vec![0.0; dim],
+            },
+            p_subtree_junction: vec![0.0; dim],
+            rho_subtree: vec![0.0; dim],
+            rho_cross: vec![0.0; dim],
+        }
+    }
+}
+
 /// Run one NUTS transition from the given state.
 pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
     integrator: &LeapfrogIntegrator<'_, '_, M>,
@@ -443,6 +479,8 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
             "non-finite initial Hamiltonian in NUTS transition".to_string(),
         ));
     }
+
+    let dim = state.q.len();
 
     // Initialize tree with current point (multinomial: log_weight = 0 = log(1))
     let mut tree = NutsTree {
@@ -464,6 +502,9 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         sum_accept_prob: 0.0,
     };
 
+    // Pre-allocate scratch buffers for the tree-doubling loop.
+    let mut scratch = NutsTransitionScratch::new(dim);
+
     // Tree doubling (Stan convention): `depth` counts completed doublings.
     // At depth d, the tree has 2^d leaves (2^d leapfrog steps total).
     // `while depth < max_treedepth` ensures at most 2^max_treedepth leaves
@@ -477,33 +518,36 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
 
         // Save existing tree's momentum sum and junction momentum before merge
         // (needed for Stan-style cross-checks between subtrees).
-        let rho_existing = tree.p_sum.clone();
-        let p_existing_junction =
-            if direction > 0 { tree.p_right.clone() } else { tree.p_left.clone() };
+        scratch.rho_existing.copy_from_slice(&tree.p_sum);
+        if direction > 0 {
+            scratch.p_existing_junction.copy_from_slice(&tree.p_right);
+        } else {
+            scratch.p_existing_junction.copy_from_slice(&tree.p_left);
+        }
 
         // Build subtree in chosen direction
-        let edge_state = if direction > 0 {
-            HmcState {
-                q: tree.q_right.clone(),
-                p: tree.p_right.clone(),
-                potential: 0.0,
-                grad_potential: tree.grad_right.clone(),
-            }
+        if direction > 0 {
+            scratch.edge_state.q.copy_from_slice(&tree.q_right);
+            scratch.edge_state.p.copy_from_slice(&tree.p_right);
+            scratch.edge_state.potential = 0.0;
+            scratch.edge_state.grad_potential.copy_from_slice(&tree.grad_right);
         } else {
-            HmcState {
-                q: tree.q_left.clone(),
-                p: tree.p_left.clone(),
-                potential: 0.0,
-                grad_potential: tree.grad_left.clone(),
-            }
-        };
+            scratch.edge_state.q.copy_from_slice(&tree.q_left);
+            scratch.edge_state.p.copy_from_slice(&tree.p_left);
+            scratch.edge_state.potential = 0.0;
+            scratch.edge_state.grad_potential.copy_from_slice(&tree.grad_left);
+        }
 
-        let subtree = build_tree(integrator, &edge_state, depth, direction, h0, metric, rng)?;
+        let subtree =
+            build_tree(integrator, &scratch.edge_state, depth, direction, h0, metric, rng)?;
 
         // Save subtree's junction momentum and momentum sum
-        let p_subtree_junction =
-            if direction > 0 { subtree.p_left.clone() } else { subtree.p_right.clone() };
-        let rho_subtree = subtree.p_sum.clone();
+        if direction > 0 {
+            scratch.p_subtree_junction.copy_from_slice(&subtree.p_left);
+        } else {
+            scratch.p_subtree_junction.copy_from_slice(&subtree.p_right);
+        }
+        scratch.rho_subtree.copy_from_slice(&subtree.p_sum);
 
         // Multinomial merge: accept subtree proposal with probability
         // exp(subtree.log_sum_weight - log_sum_weight_existing) (Stan-style progressive sampling).
@@ -556,19 +600,31 @@ pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
         // Map existing/subtree to absolute left/right based on direction
         let (rho_left, rho_right, p_left_junction, p_right_junction) = if direction > 0 {
             // existing = left, subtree = right
-            (&rho_existing, &rho_subtree, &p_existing_junction, &p_subtree_junction)
+            (
+                &scratch.rho_existing,
+                &scratch.rho_subtree,
+                &scratch.p_existing_junction,
+                &scratch.p_subtree_junction,
+            )
         } else {
             // subtree = left, existing = right
-            (&rho_subtree, &rho_existing, &p_subtree_junction, &p_existing_junction)
+            (
+                &scratch.rho_subtree,
+                &scratch.rho_existing,
+                &scratch.p_subtree_junction,
+                &scratch.p_existing_junction,
+            )
         };
 
-        let rho_cross2: Vec<f64> =
-            rho_left.iter().zip(p_right_junction.iter()).map(|(&a, &b)| a + b).collect();
-        let turning2 = is_turning(&rho_cross2, &tree.p_left, p_right_junction, metric);
+        for j in 0..dim {
+            scratch.rho_cross[j] = rho_left[j] + p_right_junction[j];
+        }
+        let turning2 = is_turning(&scratch.rho_cross, &tree.p_left, p_right_junction, metric);
 
-        let rho_cross3: Vec<f64> =
-            rho_right.iter().zip(p_left_junction.iter()).map(|(&a, &b)| a + b).collect();
-        let turning3 = is_turning(&rho_cross3, p_left_junction, &tree.p_right, metric);
+        for j in 0..dim {
+            scratch.rho_cross[j] = rho_right[j] + p_left_junction[j];
+        }
+        let turning3 = is_turning(&scratch.rho_cross, p_left_junction, &tree.p_right, metric);
 
         if turning1 || turning2 || turning3 {
             tree.turning = true;
@@ -692,6 +748,8 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
     // ---------- Initialization strategy ----------
+    let mut pathfinder_inv_mass: Option<Vec<f64>> = None;
+
     let z_init: Vec<f64> = match config.init_strategy {
         InitStrategy::Random => {
             // Stan-style: Uniform(-2, 2) in unconstrained space, independent per chain.
@@ -813,13 +871,56 @@ pub fn sample_nuts<M: LogDensityModel>(
                 z
             }
         }
+        InitStrategy::Pathfinder => {
+            // Pathfinder: full MLE fit with Hessian → position + diagonal inv_mass.
+            // Falls back to random init on failure.
+            match crate::mams::pathfinder_init_nuts(model, &posterior, dim) {
+                Ok((z, mass)) => {
+                    pathfinder_inv_mass = Some(mass);
+                    z
+                }
+                Err(_) => {
+                    let mut z = vec![0.0; dim];
+                    let mut ok = false;
+                    for _ in 0..100 {
+                        for zi in z.iter_mut() {
+                            *zi = rng.random::<f64>() * 4.0 - 2.0;
+                        }
+                        let theta = match posterior.to_constrained(&z) {
+                            Ok(t) => t,
+                            Err(_) => continue,
+                        };
+                        match model.nll(&theta) {
+                            Ok(v) if v.is_finite() => {
+                                ok = true;
+                                break;
+                            }
+                            _ => continue,
+                        }
+                    }
+                    if !ok {
+                        let theta_init = model.parameter_init();
+                        let mut zf = posterior.to_unconstrained(&theta_init)?;
+                        clamp_non_finite(&mut zf);
+                        zf
+                    } else {
+                        z
+                    }
+                }
+            }
+        }
     };
 
-    let metric = crate::hmc::Metric::identity(dim);
+    let metric = if let Some(inv_mass) = pathfinder_inv_mass {
+        crate::hmc::Metric::Diag(inv_mass)
+    } else {
+        crate::hmc::Metric::identity(dim)
+    };
     let init_eps = find_reasonable_step_size(&posterior, &z_init, &metric, &mut rng);
 
     let mut adaptation =
         WindowedAdaptation::new(dim, n_warmup, config.target_accept, init_eps, config.metric_type);
+    adaptation.set_metric(metric.clone());
 
     let integrator = LeapfrogIntegrator::new(&posterior, init_eps, metric.clone());
 

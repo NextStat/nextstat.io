@@ -99,3 +99,258 @@ See `docs/tutorials/root-trexfitter-parity.md` for HTCondor job-array workflow, 
 
 Manual refresh (GitHub Actions, external runner):
 - Workflow: `.github/workflows/trex-baseline-refresh.yml` (workflow_dispatch only; requires a self-hosted runner with label `trex` and ROOT installed).
+
+---
+
+## RC-2: LLM Agent Surface Audit
+
+Before each release, verify that **all** verticals in the codebase are exposed to AI agents.
+
+### Checklist
+
+1. **tools.py** — every vertical has at least one tool definition + execution dispatch.
+   ```bash
+   python -c "from nextstat.tools import get_tool_names; names = get_tool_names(); print(f'{len(names)} tools: {names}')"
+   ```
+   Expected: tool count matches the number documented in `AgenticTools.tsx`.
+
+2. **llms-full.txt (EN)** — all verticals with real API examples, version header updated.
+   ```bash
+   grep -c "^##" public/llms-full.txt   # section count
+   head -5 public/llms-full.txt         # verify version/date
+   ```
+
+3. **llms.txt (EN)** — summary mentions all verticals, version in "Key facts" matches.
+   ```bash
+   grep "Version:" public/llms.txt
+   grep "Agentic tools:" public/llms.txt
+   ```
+
+4. **AgenticTools.tsx** — tool table row count matches `tools.py`.
+   ```bash
+   grep -c "nextstat_" src/pages/docs/AgenticTools.tsx
+   ```
+
+5. **Sync RU copies**:
+   ```bash
+   cp public/llms-full.txt /path/to/nextstat.ru/public/llms-full.txt
+   cp public/llms.txt /path/to/nextstat.ru/public/llms.txt
+   ```
+
+### When to run
+
+Every release that adds or changes a vertical, CLI subcommand, or Python API function.
+
+---
+
+## RC-3: Version Bump
+
+Bump version in **all** of these locations (must match):
+
+| File | Field |
+|------|-------|
+| `Cargo.toml` (workspace) | `version = "X.Y.Z"` |
+| `bindings/ns-py/pyproject.toml` | `version = "X.Y.Z"` |
+| `llms.txt` (EN + RU) | `- Version: X.Y.Z` |
+| `llms-full.txt` (EN + RU) | header comment |
+
+Verify:
+```bash
+grep '^version' Cargo.toml | head -1
+grep '^version' bindings/ns-py/pyproject.toml
+grep 'Version:' nextstat.io_web/ref/app/public/llms.txt
+```
+
+---
+
+## RC-4: Changelog Update
+
+Update `CHANGELOG.md` following the `/changelog` workflow:
+
+- New verticals / tools added
+- Breaking API changes
+- Performance improvements (with numbers if available)
+- Bug fixes
+- Dependency updates
+
+---
+
+## RC-5: Website Rebuild + Deploy (EN + RU)
+
+### Build
+
+```bash
+# EN
+cd /path/to/nextstat.io_web/ref/app
+npm run build
+# Expect: "Prerendered N/N pages (0 failed)"
+
+# RU
+cd /path/to/nextstat.ru
+npm run build
+# Expect: "Prerendered N/N pages (0 failed)"
+```
+
+### Verify prerendered output
+
+```bash
+# New tools appear in prerendered HTML
+grep -c "nextstat_glm_fit\|nextstat_bayesian_sample\|nextstat_survival_fit" \
+  dist/docs/agentic-tools/index.html
+
+# LLM files present in dist
+wc -l dist/llms.txt dist/llms-full.txt
+```
+
+### Deploy
+
+```bash
+# EN — Railway
+cd /path/to/nextstat.io_web/ref/app && railway up
+
+# RU — Railway
+cd /path/to/nextstat.ru && railway up
+```
+
+### Verify live
+
+```bash
+curl -s https://nextstat.io/llms.txt | head -10
+curl -s https://nextstat.ru/llms.txt | head -10
+```
+
+---
+
+## RC-6: PyPI Publish
+
+After all gates pass:
+
+```bash
+maturin build --release
+maturin publish
+
+# Verify from clean venv
+pip install nextstat==X.Y.Z
+python -c "import nextstat; print(nextstat.__version__)"
+```
+
+---
+
+## RC-7: WASM Playground Build
+
+### Build
+
+```bash
+make playground-build-wasm
+```
+
+This runs `scripts/playground_build_wasm.sh` which:
+1. `cargo build -p ns-wasm --target wasm32-unknown-unknown --profile release-wasm`
+2. `wasm-bindgen` → `playground/pkg/`
+
+### Critical: use `--profile release-wasm`, NOT `--release`
+
+| Parameter | `--release` (WRONG) | `--profile release-wasm` (CORRECT) |
+|-----------|--------------------|------------------------------------|
+| opt-level | 3 (speed) | **z** (size) |
+| LTO | thin | **fat** (better DCE) |
+| strip | false (1.8 MB debug info!) | **true** |
+| Binary size | **7.4 MB** | **521 KB** |
+
+The `release-wasm` profile is defined in the workspace `Cargo.toml`:
+
+```toml
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+strip = true
+```
+
+Using `--release` leaves all debug sections (`.debug_str`, `.debug_info`, `.debug_line` = 1.8 MB)
+and uses `opt-level = 3` which optimizes for speed, not size. Fat LTO is essential for
+dead-code elimination of unused ns-inference modules (survival, econometrics, timeseries, etc.).
+
+### wasm-opt post-processing (optional but recommended)
+
+```bash
+wasm-opt -Oz \
+  --enable-bulk-memory \
+  --enable-nontrapping-float-to-int \
+  --enable-reference-types \
+  playground/pkg/ns_wasm_bg.wasm \
+  -o playground/pkg/ns_wasm_bg.wasm
+```
+
+The `--enable-*` flags are required for Rust 1.93+ which emits `memory.copy`/`memory.fill`
+(bulk-memory) and `i64.trunc_sat_f64_s` (nontrapping-float-to-int) instructions.
+Without these flags, wasm-opt fails with "unexpected false: memory.copy operations require
+bulk memory operations".
+
+Final size: **~465 KB** (gzipped ~140 KB).
+
+### Copy to website repos
+
+```bash
+# Copy WASM binary + JS glue + worker to both sites
+for SITE in /path/to/nextstat.io_web/ref/app /path/to/nextstat.ru; do
+  cp playground/pkg/ns_wasm_bg.wasm "$SITE/public/wasm/ns_wasm_bg.wasm"
+  cp playground/pkg/ns_wasm.js      "$SITE/public/wasm/ns_wasm.js"
+done
+```
+
+The `worker.js` dispatch table in `public/wasm/worker.js` must include handlers for any
+new WASM exports (e.g. `bayes_sample(msg) { return wasm.run_bayes_sample(msg.inputJson); }`).
+
+### Debugging binary size
+
+```bash
+# Install twiggy (WASM binary profiler)
+cargo install twiggy
+
+# Analyze the PRE-wasm-bindgen binary (the one cargo produces)
+twiggy top target/wasm32-unknown-unknown/release-wasm/ns_wasm.wasm -n 30
+
+# IMPORTANT: Do NOT analyze the post-wasm-bindgen binary (playground/pkg/ns_wasm_bg.wasm)
+# wasm-bindgen injects JS glue that inflates size 2-3x and twiggy will show
+# phantom symbols (e.g. arrow_cast, parquet) that are NOT in the actual code.
+```
+
+### Feature isolation
+
+`ns-translate` has optional Arrow/Parquet support behind the `arrow-io` feature.
+Both `ns-wasm` and `ns-inference` depend on `ns-translate` with `default-features = false`,
+which disables `root-io` and `arrow-io`. Verify no feature leaks:
+
+```bash
+cargo tree -p ns-wasm --target wasm32-unknown-unknown -e normal -i parquet 2>&1
+# Expected: "package ID specification `parquet` did not match any packages"
+```
+
+### Supported WASM exports
+
+| Function | Purpose |
+|----------|---------|
+| `run_asymptotic_upper_limits` | Brazil band CLs limits |
+| `run_fit` | MLE fit |
+| `run_profile_scan` | Profile likelihood scan |
+| `run_hypotest` | Single-point CLs test |
+| `run_glm` | GLM regression (linear/logistic/Poisson) |
+| `run_bayes_sample` | NUTS/MAMS Bayesian sampling |
+| `workspace_from_histogram_rows_json` | Histogram → pyhf workspace |
+
+---
+
+## Full Pre-Release Checklist (summary)
+
+| # | Gate | Command / Action | Blocking? |
+|---|------|-----------------|-----------|
+| RC-1 | Apex2 Baseline Gate | `make apex2-pre-release-gate` | YES |
+| RC-2 | LLM Agent Surface Audit | Manual: tools.py ↔ llms*.txt ↔ AgenticTools.tsx | YES |
+| RC-3 | Version Bump | Cargo.toml + pyproject.toml + llms*.txt | YES |
+| RC-4 | Changelog | Update CHANGELOG.md | YES |
+| RC-5 | Website Rebuild + Deploy | `npm run build` + `railway up` (EN + RU) | YES |
+| RC-6 | PyPI Publish | `maturin publish` | YES |
+| RC-7 | WASM Playground Build | `make playground-build-wasm` + copy to sites | If playground changed |
+
+**BMCP epic:** `eb8c74ad-5b16-4d95-b523-f9a495fac8da` (Pre-Release Checklist — Recurring Gate)

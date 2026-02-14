@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="300" viewBox="0 0 920 300">
+  <style>
+    text { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill: #e2e0dc; }
+    .title { font-size: 18px; font-weight: 700; fill: #d4af37; }
+    .small { font-size: 12px; fill: #8a8680; }
+    .label { font-size: 14px; fill: #e2e0dc; }
+    .panel { fill: rgba(255,255,255,0.03); stroke: rgba(255,255,255,0.08); stroke-width: 1; rx: 8; ry: 8; }
+    .chip { fill: rgba(255,255,255,0.05); stroke: rgba(255,255,255,0.10); stroke-width: 1; rx: 6; ry: 6; }
+    .rule { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; fill: #d4af37; }
+    .arrow { stroke: #d4af37; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .plabel { font-size: 12px; fill: #d4af37; font-weight: 600; }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d4af37"/>
+    </marker>
+  </defs>
+
+  <text x="24" y="32" class="title">Top-level join in tree doubling: multinomial vs progressive</text>
+  <text x="24" y="52" class="small">Within-tree selection stays multinomial; only the outer doubling-loop join differs.</text>
+
+  <!-- Left: Multinomial join -->
+  <rect x="24" y="72" width="420" height="200" class="panel"/>
+  <text x="44" y="100" class="label" font-weight="600">Multinomial join (top level)</text>
+  <text x="44" y="122" class="small">Equal-weight regime: W_sub ≈ W_exist</text>
+
+  <rect x="44" y="142" width="150" height="44" class="chip"/>
+  <text x="84" y="170" class="label">keep old</text>
+
+  <rect x="270" y="142" width="150" height="44" class="chip"/>
+  <text x="306" y="170" class="label">take new</text>
+
+  <path d="M 200 164 C 220 164, 240 164, 262 164" class="arrow"/>
+  <text x="208" y="154" class="plabel">P ≈ 0.5</text>
+
+  <text x="44" y="220" class="rule">P(select new) = W_sub / (W_exist + W_sub)</text>
+  <text x="44" y="244" class="small">Result: the current sample often survives the join,</text>
+  <text x="44" y="260" class="small">increasing autocorrelation.</text>
+
+  <!-- Right: Progressive join -->
+  <rect x="476" y="72" width="420" height="200" class="panel"/>
+  <text x="496" y="100" class="label" font-weight="600">Progressive join (top level)</text>
+  <text x="496" y="122" class="small">Equal-weight regime: W_sub ≈ W_exist</text>
+
+  <rect x="496" y="142" width="150" height="44" class="chip"/>
+  <text x="536" y="170" class="label">keep old</text>
+
+  <rect x="722" y="142" width="150" height="44" class="chip"/>
+  <text x="758" y="170" class="label">take new</text>
+
+  <path d="M 652 164 C 672 164, 692 164, 714 164" class="arrow"/>
+  <text x="664" y="154" class="plabel">P → 1</text>
+
+  <text x="496" y="220" class="rule">P(select new) = min(1, W_sub / W_exist)</text>
+  <text x="496" y="244" class="small">Result: proposals move forward as the pool grows,</text>
+  <text x="496" y="260" class="small">reducing autocorrelation.</text>
+</svg>
+
