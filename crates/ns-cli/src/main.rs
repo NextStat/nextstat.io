@@ -961,6 +961,33 @@ enum Commands {
         command: SurvivalCommands,
     },
 
+    /// Monte Carlo fault-tree simulation (aviation reliability)
+    FaultTreeMc {
+        /// Input JSON config with fault tree spec.
+        #[arg(short, long)]
+        config: PathBuf,
+
+        /// Number of MC scenarios.
+        #[arg(long, default_value = "10000000")]
+        n_scenarios: usize,
+
+        /// RNG seed.
+        #[arg(long, default_value = "42")]
+        seed: u64,
+
+        /// Device: "cpu" or "cuda".
+        #[arg(long, default_value = "cpu")]
+        device: String,
+
+        /// Scenarios per chunk (0 = auto).
+        #[arg(long, default_value = "0")]
+        chunk_size: usize,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// Subscription / churn analysis workflows
     Churn {
         #[command(subcommand)]
@@ -1736,6 +1763,39 @@ enum SurvivalCommands {
         input: PathBuf,
 
         /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Interval-censored Weibull fit
+    IntervalWeibullFit {
+        /// Input JSON: {"time_lower": [...], "time_upper": [...], "censor_type": ["exact","right","left","interval",...]}
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Interval-censored LogNormal fit
+    IntervalLognormalFit {
+        /// Input JSON: {"time_lower": [...], "time_upper": [...], "censor_type": [...]}
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Interval-censored Exponential fit
+    IntervalExponentialFit {
+        /// Input JSON: {"time_lower": [...], "time_upper": [...], "censor_type": [...]}
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -2790,7 +2850,35 @@ fn main() -> Result<()> {
             SurvivalCommands::LogRankTest { input, output } => {
                 survival::cmd_survival_log_rank(&input, output.as_ref(), bundle.as_ref())
             }
+            SurvivalCommands::IntervalWeibullFit { input, output } => {
+                survival::cmd_interval_weibull_fit(&input, output.as_ref(), bundle.as_ref())
+            }
+            SurvivalCommands::IntervalLognormalFit { input, output } => {
+                survival::cmd_interval_lognormal_fit(&input, output.as_ref(), bundle.as_ref())
+            }
+            SurvivalCommands::IntervalExponentialFit { input, output } => {
+                survival::cmd_interval_exponential_fit(&input, output.as_ref(), bundle.as_ref())
+            }
         },
+        Commands::FaultTreeMc { config, n_scenarios, seed, device, chunk_size, output } => {
+            let spec_json = std::fs::read_to_string(&config)?;
+            let spec: ns_inference::FaultTreeSpec = serde_json::from_str(&spec_json)?;
+
+            let result = match device.as_str() {
+                "cpu" => ns_inference::fault_tree_mc_cpu(&spec, n_scenarios, seed, chunk_size)?,
+                #[cfg(feature = "cuda")]
+                "cuda" => ns_inference::fault_tree_mc_cuda(&spec, n_scenarios, seed, chunk_size)?,
+                other => anyhow::bail!("unsupported device: '{other}'"),
+            };
+
+            let json = serde_json::to_string_pretty(&result)?;
+            if let Some(path) = &output {
+                std::fs::write(path, &json)?;
+            } else {
+                println!("{json}");
+            }
+            Ok(())
+        }
         Commands::Churn { command } => match command {
             ChurnCommands::GenerateData {
                 n_customers,
@@ -3788,6 +3876,7 @@ fn cmd_fit(
         "final_grad_norm": if result.final_grad_norm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.final_grad_norm) },
         "initial_nll": if result.initial_nll.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.initial_nll) },
         "n_active_bounds": result.n_active_bounds,
+        "edm": if result.edm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.edm) },
         "fit_regions": if fit_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(fit_regions) },
         "validation_regions": if validation_regions.is_empty() { serde_json::Value::Null } else { serde_json::json!(validation_regions) },
     });
@@ -3933,6 +4022,7 @@ fn cmd_unbinned_fit(
         "final_grad_norm": if result.final_grad_norm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.final_grad_norm) },
         "initial_nll": if result.initial_nll.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.initial_nll) },
         "n_active_bounds": result.n_active_bounds,
+        "edm": if result.edm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.edm) },
     });
 
     write_json(output, &output_json)?;
@@ -4071,6 +4161,7 @@ fn cmd_hybrid_fit(
         "final_grad_norm": if result.final_grad_norm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.final_grad_norm) },
         "initial_nll": if result.initial_nll.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.initial_nll) },
         "n_active_bounds": result.n_active_bounds,
+        "edm": if result.edm.is_nan() { serde_json::Value::Null } else { serde_json::json!(result.edm) },
     });
 
     write_json(output, &output_json)?;
@@ -4701,15 +4792,24 @@ fn cmd_unbinned_hypotest_toys(
     // PF3.1-OPT4: estimate VRAM per toy from expected yields (not observed data size).
     // For hypotest-toys we conservatively take the maximum of the B-only (mu=0) and
     // S+B (mu=mu_test) expected yields to avoid under-sharding in large-yield studies.
-    let estimated_bytes_per_toy: usize = {
+    let (estimated_bytes_per_toy, estimated_events_per_toy): (usize, usize) = {
         let mut params_b: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
         let mut params_sb = params_b.clone();
         if poi_idx < params_b.len() {
             params_b[poi_idx] = 0.0;
             params_sb[poi_idx] = mu_test.max(0.0);
         }
-        estimate_unbinned_expected_bytes_per_toy(&model, &params_b)?
-            .max(estimate_unbinned_expected_bytes_per_toy(&model, &params_sb)?)
+        let bytes = estimate_unbinned_expected_bytes_per_toy(&model, &params_b)?
+            .max(estimate_unbinned_expected_bytes_per_toy(&model, &params_sb)?);
+        let events = estimate_unbinned_expected_events_per_toy(&model, &params_b)?
+            .max(estimate_unbinned_expected_events_per_toy(&model, &params_sb)?);
+        (bytes, events)
+    };
+
+    let metal_max_toys_per_batch = if gpu == Some("metal") {
+        metal_max_toys_per_batch_for_u32_offsets(n_toys, estimated_events_per_toy)?
+    } else {
+        n_toys.max(1)
     };
 
     #[cfg(feature = "cuda")]
@@ -4720,6 +4820,7 @@ fn cmd_unbinned_hypotest_toys(
         gpu_shards,
         n_toys,
         estimated_bytes_per_toy,
+        estimated_events_per_toy,
     )?;
     #[cfg(not(feature = "cuda"))]
     let _cuda_device_shard_plan = normalize_cuda_device_shard_plan(
@@ -4729,6 +4830,7 @@ fn cmd_unbinned_hypotest_toys(
         gpu_shards,
         n_toys,
         estimated_bytes_per_toy,
+        estimated_events_per_toy,
     )?;
 
     let start = std::time::Instant::now();
@@ -4850,6 +4952,11 @@ fn cmd_unbinned_hypotest_toys(
                 bounds_fixed[poi_idx] = (mu_test, mu_test);
                 let mut bounds_mu0 = bounds.clone();
                 bounds_mu0[poi_idx] = (0.0, 0.0);
+                let toy_fixed_fit_cfg = ns_inference::OptimizerConfig {
+                    max_iter: 400,
+                    tol: 3e-6,
+                    ..ns_inference::OptimizerConfig::default()
+                };
 
                 let fixed_mu_model = model.with_fixed_param(poi_idx, mu_test);
                 let mut warm_mu = free_obs.parameters.clone();
@@ -4883,6 +4990,10 @@ fn cmd_unbinned_hypotest_toys(
 
                 // Phase B: CPU toy generation + GPU batch fits
                 let n_channels = static_models.len();
+                let metal_batches = contiguous_toy_batches(n_toys, metal_max_toys_per_batch);
+                if metal_batches.is_empty() {
+                    anyhow::bail!("internal error: empty Metal toy batch plan");
+                }
 
                 let metal_samplers = if gpu_sample_toys {
                     if static_models.is_empty() {
@@ -4901,82 +5012,103 @@ fn cmd_unbinned_hypotest_toys(
                     None
                 };
 
-                let sample_flat = |gen_params: &[f64],
-                                   seed0: u64|
-                 -> Result<(Vec<Vec<u32>>, Vec<Vec<f64>>)> {
-                    if let Some(samplers) = metal_samplers.as_ref() {
-                        // GPU toy sampling (Metal): per-channel sampling into flat arrays.
-                        let mut toy_offsets_by_channel =
-                            Vec::<Vec<u32>>::with_capacity(samplers.len());
-                        let mut obs_flat_by_channel =
-                            Vec::<Vec<f64>>::with_capacity(samplers.len());
-                        for (ch_i, sampler) in samplers.iter().enumerate() {
-                            let seed_ch =
-                                seed0.wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
-                            let (offs, obs) =
-                                sampler.sample_toys_1d(gen_params, n_toys, seed_ch)?;
-                            toy_offsets_by_channel.push(offs);
-                            obs_flat_by_channel.push(obs);
-                        }
-                        Ok((toy_offsets_by_channel, obs_flat_by_channel))
-                    } else {
-                        // CPU sampling (exact semantics), then fit in lockstep on GPU.
-                        let per_toy: Vec<Result<Vec<Vec<f64>>>> = (0..n_toys)
-                                .into_par_iter()
-                                .with_min_len(16)
-                                .map(|toy_idx| {
-                                    let toy_seed = seed0.wrapping_add(toy_idx as u64);
-                                    let toy_model = model.sample_poisson_toy(gen_params, toy_seed)?;
-                                    let mut out = Vec::<Vec<f64>>::with_capacity(n_channels);
-                                    for (out_idx, &ch_idx) in included_channels.iter().enumerate() {
-                                        let ch = toy_model.channels().get(ch_idx).ok_or_else(|| {
-                                            anyhow::anyhow!(
-                                                "toy model missing channel index {} (unexpected)",
-                                                ch_idx
-                                            )
-                                        })?;
-                                        let obs_name = obs_names.get(out_idx).ok_or_else(|| {
-                                            anyhow::anyhow!(
-                                                "internal error: missing obs_names[{out_idx}]"
-                                            )
-                                        })?;
-                                        let xs = ch.data.column(obs_name.as_str()).ok_or_else(|| {
-                                            anyhow::anyhow!(
-                                                "toy channel '{}' data missing observable column '{}'",
-                                                ch.name,
-                                                obs_name
-                                            )
-                                        })?;
-                                        out.push(xs.to_vec());
-                                    }
-                                    Ok(out)
-                                })
-                                .collect();
-
-                        let mut toy_offsets_by_channel: Vec<Vec<u32>> =
-                            (0..n_channels).map(|_| Vec::with_capacity(n_toys + 1)).collect();
-                        for offs in &mut toy_offsets_by_channel {
-                            offs.push(0u32);
-                        }
-                        let mut obs_flat_by_channel: Vec<Vec<f64>> =
-                            (0..n_channels).map(|_| Vec::new()).collect();
-
-                        for r in per_toy {
-                            let xs_by_ch = r?;
-                            if xs_by_ch.len() != n_channels {
-                                anyhow::bail!(
-                                    "internal error: per-toy channel count mismatch: expected {n_channels}, got {}",
-                                    xs_by_ch.len()
-                                );
-                            }
-                            for (ch_i, xs) in xs_by_ch.into_iter().enumerate() {
-                                obs_flat_by_channel[ch_i].extend_from_slice(&xs);
-                                toy_offsets_by_channel[ch_i]
-                                    .push(obs_flat_by_channel[ch_i].len() as u32);
-                            }
-                        }
-                        Ok((toy_offsets_by_channel, obs_flat_by_channel))
+                let sample_device = |gen_params: &[f64],
+                                     seed0: u64,
+                                     n_toys_local: usize|
+                 -> Result<(
+                    Vec<Vec<u32>>,
+                    Vec<ns_compute::metal_rs::Buffer>,
+                    Vec<ns_compute::metal_rs::Buffer>,
+                )> {
+                    let samplers = metal_samplers.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "internal error: sample_device called without Metal samplers"
+                        )
+                    })?;
+                    let mut toy_offsets_by_channel = Vec::<Vec<u32>>::with_capacity(samplers.len());
+                    let mut buf_toy_offsets_by_channel =
+                        Vec::<ns_compute::metal_rs::Buffer>::with_capacity(samplers.len());
+                    let mut buf_obs_flat_by_channel =
+                        Vec::<ns_compute::metal_rs::Buffer>::with_capacity(samplers.len());
+                    for (ch_i, sampler) in samplers.iter().enumerate() {
+                        let seed_ch =
+                            seed0.wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
+                        let (offs, offs_buf, buf) = sampler.sample_toys_1d_device_with_offsets(
+                            gen_params,
+                            n_toys_local,
+                            seed_ch,
+                        )?;
+                        toy_offsets_by_channel.push(offs);
+                        buf_toy_offsets_by_channel.push(offs_buf);
+                        buf_obs_flat_by_channel.push(buf);
                     }
+                    Ok((
+                        toy_offsets_by_channel,
+                        buf_toy_offsets_by_channel,
+                        buf_obs_flat_by_channel,
+                    ))
+                };
+
+                let sample_flat = |gen_params: &[f64],
+                                   seed0: u64,
+                                   n_toys_local: usize|
+                 -> Result<(Vec<Vec<u32>>, Vec<Vec<f64>>)> {
+                    // CPU sampling (exact semantics), then fit in lockstep on GPU.
+                    let per_toy: Vec<Result<Vec<Vec<f64>>>> = (0..n_toys_local)
+                        .into_par_iter()
+                        .with_min_len(16)
+                        .map(|toy_idx| {
+                            let toy_seed = seed0.wrapping_add(toy_idx as u64);
+                            let toy_model = model.sample_poisson_toy(gen_params, toy_seed)?;
+                            let mut out = Vec::<Vec<f64>>::with_capacity(n_channels);
+                            for (out_idx, &ch_idx) in included_channels.iter().enumerate() {
+                                let ch = toy_model.channels().get(ch_idx).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "toy model missing channel index {} (unexpected)",
+                                        ch_idx
+                                    )
+                                })?;
+                                let obs_name = obs_names.get(out_idx).ok_or_else(|| {
+                                    anyhow::anyhow!("internal error: missing obs_names[{out_idx}]")
+                                })?;
+                                let xs = ch.data.column(obs_name.as_str()).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "toy channel '{}' data missing observable column '{}'",
+                                        ch.name,
+                                        obs_name
+                                    )
+                                })?;
+                                out.push(xs.to_vec());
+                            }
+                            Ok(out)
+                        })
+                        .collect();
+
+                    let mut toy_offsets_by_channel: Vec<Vec<u32>> =
+                        (0..n_channels).map(|_| Vec::with_capacity(n_toys_local + 1)).collect();
+                    for offs in &mut toy_offsets_by_channel {
+                        offs.push(0u32);
+                    }
+                    let mut obs_flat_by_channel: Vec<Vec<f64>> =
+                        (0..n_channels).map(|_| Vec::new()).collect();
+
+                    for r in per_toy {
+                        let xs_by_ch = r?;
+                        if xs_by_ch.len() != n_channels {
+                            anyhow::bail!(
+                                "internal error: per-toy channel count mismatch: expected {n_channels}, got {}",
+                                xs_by_ch.len()
+                            );
+                        }
+                        for (ch_i, xs) in xs_by_ch.into_iter().enumerate() {
+                            obs_flat_by_channel[ch_i].extend_from_slice(&xs);
+                            toy_offsets_by_channel[ch_i].push(checked_len_to_u32(
+                                obs_flat_by_channel[ch_i].len(),
+                                "cpu toy sampling offset overflow (hypotest metal path)",
+                            )?);
+                        }
+                    }
+                    Ok((toy_offsets_by_channel, obs_flat_by_channel))
                 };
 
                 #[derive(Clone, Copy)]
@@ -4985,6 +5117,13 @@ fn cmd_unbinned_hypotest_toys(
                     n_valid: usize,
                     n_error: usize,
                     n_nonconverged: usize,
+                }
+
+                #[derive(Default, Clone, Copy)]
+                struct BatchTiming {
+                    build_s: f64,
+                    free_fit_s: f64,
+                    fixed_fit_s: f64,
                 }
 
                 fn count_q_ge_ensemble_metal(
@@ -4997,32 +5136,47 @@ fn cmd_unbinned_hypotest_toys(
                     init_free: &[f64],
                     bounds: &[(f64, f64)],
                     bounds_fixed: &[(f64, f64)],
-                ) -> Result<ToyCounts> {
+                    fixed_fit_cfg: &ns_inference::OptimizerConfig,
+                ) -> Result<(ToyCounts, BatchTiming)> {
                     let n_toys = toy_offsets_by_channel
                         .first()
                         .map(|o| o.len().saturating_sub(1))
                         .unwrap_or(0);
 
+                    let t_build0 = std::time::Instant::now();
+                    let mut accels = Vec::with_capacity(static_models.len());
+                    for (i, ((m, offs), obs)) in static_models
+                        .iter()
+                        .zip(toy_offsets_by_channel.iter())
+                        .zip(obs_flat_by_channel.iter())
+                        .enumerate()
+                    {
+                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
+                            m, offs, obs, n_toys,
+                        )
+                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                        accels.push(accel);
+                    }
+                    let build_s = t_build0.elapsed().as_secs_f64();
+
+                    let t_free0 = std::time::Instant::now();
                     let (free_fits, accels) =
-                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_multi(
-                            static_models,
-                            toy_offsets_by_channel,
-                            obs_flat_by_channel,
-                            n_toys,
-                            init_free,
-                            bounds,
-                            None,
+                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                            accels, init_free, bounds, None,
                         )?;
+                    let free_fit_s = t_free0.elapsed().as_secs_f64();
 
                     let mut init_fixed = init_free.to_vec();
                     init_fixed[poi] = mu_test;
+                    let t_fixed0 = std::time::Instant::now();
                     let (fixed_fits, _accels) =
                         ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
                             accels,
                             &init_fixed,
                             bounds_fixed,
-                            None,
+                            Some(fixed_fit_cfg.clone()),
                         )?;
+                    let fixed_fit_s = t_fixed0.elapsed().as_secs_f64();
 
                     let mut n_ge = 0usize;
                     let mut n_valid = 0usize;
@@ -5061,7 +5215,10 @@ fn cmd_unbinned_hypotest_toys(
                         }
                     }
 
-                    Ok(ToyCounts { n_ge, n_valid, n_error, n_nonconverged })
+                    Ok((
+                        ToyCounts { n_ge, n_valid, n_error, n_nonconverged },
+                        BatchTiming { build_s, free_fit_s, fixed_fit_s },
+                    ))
                 }
 
                 #[derive(Debug, Clone)]
@@ -5080,32 +5237,47 @@ fn cmd_unbinned_hypotest_toys(
                     init_free: &[f64],
                     bounds: &[(f64, f64)],
                     bounds_fixed: &[(f64, f64)],
-                ) -> Result<QEnsemble> {
+                    fixed_fit_cfg: &ns_inference::OptimizerConfig,
+                ) -> Result<(QEnsemble, BatchTiming)> {
                     let n_toys = toy_offsets_by_channel
                         .first()
                         .map(|o| o.len().saturating_sub(1))
                         .unwrap_or(0);
 
+                    let t_build0 = std::time::Instant::now();
+                    let mut accels = Vec::with_capacity(static_models.len());
+                    for (i, ((m, offs), obs)) in static_models
+                        .iter()
+                        .zip(toy_offsets_by_channel.iter())
+                        .zip(obs_flat_by_channel.iter())
+                        .enumerate()
+                    {
+                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
+                            m, offs, obs, n_toys,
+                        )
+                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                        accels.push(accel);
+                    }
+                    let build_s = t_build0.elapsed().as_secs_f64();
+
+                    let t_free0 = std::time::Instant::now();
                     let (free_fits, accels) =
-                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_multi(
-                            static_models,
-                            toy_offsets_by_channel,
-                            obs_flat_by_channel,
-                            n_toys,
-                            init_free,
-                            bounds,
-                            None,
+                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                            accels, init_free, bounds, None,
                         )?;
+                    let free_fit_s = t_free0.elapsed().as_secs_f64();
 
                     let mut init_fixed = init_free.to_vec();
                     init_fixed[poi] = mu_test;
+                    let t_fixed0 = std::time::Instant::now();
                     let (fixed_fits, _accels) =
                         ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
                             accels,
                             &init_fixed,
                             bounds_fixed,
-                            None,
+                            Some(fixed_fit_cfg.clone()),
                         )?;
+                    let fixed_fit_s = t_fixed0.elapsed().as_secs_f64();
 
                     let mut q = Vec::with_capacity(n_toys);
                     let mut n_error = 0usize;
@@ -5140,12 +5312,16 @@ fn cmd_unbinned_hypotest_toys(
                         }
                     }
 
-                    Ok(QEnsemble { q, n_error, n_nonconverged })
+                    Ok((
+                        QEnsemble { q, n_error, n_nonconverged },
+                        BatchTiming { build_s, free_fit_s, fixed_fit_s },
+                    ))
                 }
 
                 fn count_q_ge_ensemble_metal_device(
                     static_models: &[ns_compute::unbinned_types::UnbinnedGpuModelData],
                     toy_offsets_by_channel: &[Vec<u32>],
+                    buf_toy_offsets_by_channel: Vec<ns_compute::metal_rs::Buffer>,
                     buf_obs_flat_by_channel: Vec<ns_compute::metal_rs::Buffer>,
                     poi: usize,
                     mu_test: f64,
@@ -5153,32 +5329,51 @@ fn cmd_unbinned_hypotest_toys(
                     init_free: &[f64],
                     bounds: &[(f64, f64)],
                     bounds_fixed: &[(f64, f64)],
-                ) -> Result<ToyCounts> {
+                    fixed_fit_cfg: &ns_inference::OptimizerConfig,
+                ) -> Result<(ToyCounts, BatchTiming)> {
                     let n_toys = toy_offsets_by_channel
                         .first()
                         .map(|o| o.len().saturating_sub(1))
                         .unwrap_or(0);
 
+                    let t_build0 = std::time::Instant::now();
+                    let mut accels = Vec::with_capacity(static_models.len());
+                    for (i, (m, ((offs, offs_buf), buf_obs))) in static_models
+                        .iter()
+                        .zip(
+                            toy_offsets_by_channel
+                                .iter()
+                                .zip(buf_toy_offsets_by_channel.into_iter())
+                                .zip(buf_obs_flat_by_channel.into_iter()),
+                        )
+                        .enumerate()
+                    {
+                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys_device_with_offsets(
+                            m, offs, offs_buf, buf_obs, n_toys,
+                        )
+                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                        accels.push(accel);
+                    }
+                    let build_s = t_build0.elapsed().as_secs_f64();
+
+                    let t_free0 = std::time::Instant::now();
                     let (free_fits, accels) =
-                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_device_multi(
-                            static_models,
-                            toy_offsets_by_channel,
-                            buf_obs_flat_by_channel,
-                            n_toys,
-                            init_free,
-                            bounds,
-                            None,
+                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                            accels, init_free, bounds, None,
                         )?;
+                    let free_fit_s = t_free0.elapsed().as_secs_f64();
 
                     let mut init_fixed = init_free.to_vec();
                     init_fixed[poi] = mu_test;
+                    let t_fixed0 = std::time::Instant::now();
                     let (fixed_fits, _accels) =
                         ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
                             accels,
                             &init_fixed,
                             bounds_fixed,
-                            None,
+                            Some(fixed_fit_cfg.clone()),
                         )?;
+                    let fixed_fit_s = t_fixed0.elapsed().as_secs_f64();
 
                     let mut n_ge = 0usize;
                     let mut n_valid = 0usize;
@@ -5217,44 +5412,67 @@ fn cmd_unbinned_hypotest_toys(
                         }
                     }
 
-                    Ok(ToyCounts { n_ge, n_valid, n_error, n_nonconverged })
+                    Ok((
+                        ToyCounts { n_ge, n_valid, n_error, n_nonconverged },
+                        BatchTiming { build_s, free_fit_s, fixed_fit_s },
+                    ))
                 }
 
                 fn generate_q_ensemble_metal_device(
                     static_models: &[ns_compute::unbinned_types::UnbinnedGpuModelData],
                     toy_offsets_by_channel: &[Vec<u32>],
+                    buf_toy_offsets_by_channel: Vec<ns_compute::metal_rs::Buffer>,
                     buf_obs_flat_by_channel: Vec<ns_compute::metal_rs::Buffer>,
                     poi: usize,
                     mu_test: f64,
                     init_free: &[f64],
                     bounds: &[(f64, f64)],
                     bounds_fixed: &[(f64, f64)],
-                ) -> Result<QEnsemble> {
+                    fixed_fit_cfg: &ns_inference::OptimizerConfig,
+                ) -> Result<(QEnsemble, BatchTiming)> {
                     let n_toys = toy_offsets_by_channel
                         .first()
                         .map(|o| o.len().saturating_sub(1))
                         .unwrap_or(0);
 
+                    let t_build0 = std::time::Instant::now();
+                    let mut accels = Vec::with_capacity(static_models.len());
+                    for (i, (m, ((offs, offs_buf), buf_obs))) in static_models
+                        .iter()
+                        .zip(
+                            toy_offsets_by_channel
+                                .iter()
+                                .zip(buf_toy_offsets_by_channel.into_iter())
+                                .zip(buf_obs_flat_by_channel.into_iter()),
+                        )
+                        .enumerate()
+                    {
+                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys_device_with_offsets(
+                            m, offs, offs_buf, buf_obs, n_toys,
+                        )
+                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                        accels.push(accel);
+                    }
+                    let build_s = t_build0.elapsed().as_secs_f64();
+
+                    let t_free0 = std::time::Instant::now();
                     let (free_fits, accels) =
-                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_device_multi(
-                            static_models,
-                            toy_offsets_by_channel,
-                            buf_obs_flat_by_channel,
-                            n_toys,
-                            init_free,
-                            bounds,
-                            None,
+                        ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                            accels, init_free, bounds, None,
                         )?;
+                    let free_fit_s = t_free0.elapsed().as_secs_f64();
 
                     let mut init_fixed = init_free.to_vec();
                     init_fixed[poi] = mu_test;
+                    let t_fixed0 = std::time::Instant::now();
                     let (fixed_fits, _accels) =
                         ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
                             accels,
                             &init_fixed,
                             bounds_fixed,
-                            None,
+                            Some(fixed_fit_cfg.clone()),
                         )?;
+                    let fixed_fit_s = t_fixed0.elapsed().as_secs_f64();
 
                     let mut q = Vec::with_capacity(n_toys);
                     let mut n_error = 0usize;
@@ -5289,95 +5507,185 @@ fn cmd_unbinned_hypotest_toys(
                         }
                     }
 
-                    Ok(QEnsemble { q, n_error, n_nonconverged })
+                    Ok((
+                        QEnsemble { q, n_error, n_nonconverged },
+                        BatchTiming { build_s, free_fit_s, fixed_fit_s },
+                    ))
                 }
+
+                let run_count_ensemble =
+                    |seed0: u64,
+                     gen_params: &[f64],
+                     init_free: &[f64]|
+                     -> Result<(ToyCounts, BatchTiming, f64, f64)> {
+                        let mut counts =
+                            ToyCounts { n_ge: 0, n_valid: 0, n_error: 0, n_nonconverged: 0 };
+                        let mut timing = BatchTiming::default();
+                        let mut sample_s_total = 0.0f64;
+                        let mut ensemble_s_total = 0.0f64;
+
+                        for (toy_start, toy_end) in metal_batches.iter().copied() {
+                            let batch_n_toys = toy_end - toy_start;
+                            let t_sample0 = std::time::Instant::now();
+                            let (c, t) = if gpu_sample_toys {
+                                let (toy_offsets, toy_offs_bufs, bufs) = sample_device(
+                                    gen_params,
+                                    seed0.wrapping_add(toy_start as u64),
+                                    batch_n_toys,
+                                )?;
+                                sample_s_total += t_sample0.elapsed().as_secs_f64();
+                                let t_ensemble0 = std::time::Instant::now();
+                                let out = count_q_ge_ensemble_metal_device(
+                                    &static_models,
+                                    &toy_offsets,
+                                    toy_offs_bufs,
+                                    bufs,
+                                    poi_idx,
+                                    mu_test,
+                                    q_obs,
+                                    init_free,
+                                    &bounds,
+                                    &bounds_fixed,
+                                    &toy_fixed_fit_cfg,
+                                )?;
+                                ensemble_s_total += t_ensemble0.elapsed().as_secs_f64();
+                                out
+                            } else {
+                                let (toy_offsets, obs_flat) = sample_flat(
+                                    gen_params,
+                                    seed0.wrapping_add(toy_start as u64),
+                                    batch_n_toys,
+                                )?;
+                                sample_s_total += t_sample0.elapsed().as_secs_f64();
+                                let t_ensemble0 = std::time::Instant::now();
+                                let out = count_q_ge_ensemble_metal(
+                                    &static_models,
+                                    &toy_offsets,
+                                    &obs_flat,
+                                    poi_idx,
+                                    mu_test,
+                                    q_obs,
+                                    init_free,
+                                    &bounds,
+                                    &bounds_fixed,
+                                    &toy_fixed_fit_cfg,
+                                )?;
+                                ensemble_s_total += t_ensemble0.elapsed().as_secs_f64();
+                                out
+                            };
+
+                            counts.n_ge += c.n_ge;
+                            counts.n_valid += c.n_valid;
+                            counts.n_error += c.n_error;
+                            counts.n_nonconverged += c.n_nonconverged;
+                            timing.build_s += t.build_s;
+                            timing.free_fit_s += t.free_fit_s;
+                            timing.fixed_fit_s += t.fixed_fit_s;
+                        }
+
+                        Ok((counts, timing, sample_s_total, ensemble_s_total))
+                    };
+
+                let run_generate_ensemble =
+                    |seed0: u64,
+                     gen_params: &[f64],
+                     init_free: &[f64]|
+                     -> Result<(QEnsemble, BatchTiming, f64, f64)> {
+                        let mut q_all = Vec::<f64>::with_capacity(n_toys);
+                        let mut n_error = 0usize;
+                        let mut n_nonconverged = 0usize;
+                        let mut timing = BatchTiming::default();
+                        let mut sample_s_total = 0.0f64;
+                        let mut ensemble_s_total = 0.0f64;
+
+                        for (toy_start, toy_end) in metal_batches.iter().copied() {
+                            let batch_n_toys = toy_end - toy_start;
+                            let t_sample0 = std::time::Instant::now();
+                            let (q, t) = if gpu_sample_toys {
+                                let (toy_offsets, toy_offs_bufs, bufs) = sample_device(
+                                    gen_params,
+                                    seed0.wrapping_add(toy_start as u64),
+                                    batch_n_toys,
+                                )?;
+                                sample_s_total += t_sample0.elapsed().as_secs_f64();
+                                let t_ensemble0 = std::time::Instant::now();
+                                let out = generate_q_ensemble_metal_device(
+                                    &static_models,
+                                    &toy_offsets,
+                                    toy_offs_bufs,
+                                    bufs,
+                                    poi_idx,
+                                    mu_test,
+                                    init_free,
+                                    &bounds,
+                                    &bounds_fixed,
+                                    &toy_fixed_fit_cfg,
+                                )?;
+                                ensemble_s_total += t_ensemble0.elapsed().as_secs_f64();
+                                out
+                            } else {
+                                let (toy_offsets, obs_flat) = sample_flat(
+                                    gen_params,
+                                    seed0.wrapping_add(toy_start as u64),
+                                    batch_n_toys,
+                                )?;
+                                sample_s_total += t_sample0.elapsed().as_secs_f64();
+                                let t_ensemble0 = std::time::Instant::now();
+                                let out = generate_q_ensemble_metal(
+                                    &static_models,
+                                    &toy_offsets,
+                                    &obs_flat,
+                                    poi_idx,
+                                    mu_test,
+                                    init_free,
+                                    &bounds,
+                                    &bounds_fixed,
+                                    &toy_fixed_fit_cfg,
+                                )?;
+                                ensemble_s_total += t_ensemble0.elapsed().as_secs_f64();
+                                out
+                            };
+
+                            q_all.extend(q.q);
+                            n_error += q.n_error;
+                            n_nonconverged += q.n_nonconverged;
+                            timing.build_s += t.build_s;
+                            timing.free_fit_s += t.free_fit_s;
+                            timing.fixed_fit_s += t.fixed_fit_s;
+                        }
+
+                        Ok((
+                            QEnsemble { q: q_all, n_error, n_nonconverged },
+                            timing,
+                            sample_s_total,
+                            ensemble_s_total,
+                        ))
+                    };
 
                 let seed_b = seed;
                 let seed_sb = seed.wrapping_add(1_000_000_000u64);
+                let metal_pipeline = if gpu_sample_toys { "metal_device" } else { "metal_host" };
 
                 if !expected_set {
-                    let (eb, esb) = if gpu_sample_toys {
-                        let samplers: Vec<ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler> =
-                            static_models
-                                .iter()
-                                .map(|m| {
-                                    ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler::from_unbinned_static(m)
-                                        .map_err(|e| anyhow::anyhow!("{e}"))
-                                })
-                                .collect::<Result<Vec<_>>>()?;
-                        let sample_device = |gen_params: &[f64],
-                                             seed0: u64|
-                         -> Result<(
-                            Vec<Vec<u32>>,
-                            Vec<ns_compute::metal_rs::Buffer>,
-                        )> {
-                            let mut toy_offsets_by_channel =
-                                Vec::<Vec<u32>>::with_capacity(samplers.len());
-                            let mut buf_obs_flat_by_channel =
-                                Vec::<ns_compute::metal_rs::Buffer>::with_capacity(samplers.len());
-                            for (ch_i, sampler) in samplers.iter().enumerate() {
-                                let seed_ch =
-                                    seed0.wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
-                                let (offs, buf) =
-                                    sampler.sample_toys_1d_device(gen_params, n_toys, seed_ch)?;
-                                toy_offsets_by_channel.push(offs);
-                                buf_obs_flat_by_channel.push(buf);
-                            }
-                            Ok((toy_offsets_by_channel, buf_obs_flat_by_channel))
-                        };
-                        let (toy_offsets_b, bufs_b) = sample_device(&fixed_0.parameters, seed_b)?;
-                        let (toy_offsets_sb, bufs_sb) =
-                            sample_device(&fixed_mu.parameters, seed_sb)?;
-                        let eb = count_q_ge_ensemble_metal_device(
-                            &static_models,
-                            &toy_offsets_b,
-                            bufs_b,
-                            poi_idx,
-                            mu_test,
-                            q_obs,
-                            &fixed_0.parameters,
-                            &bounds,
-                            &bounds_fixed,
-                        )?;
-                        let esb = count_q_ge_ensemble_metal_device(
-                            &static_models,
-                            &toy_offsets_sb,
-                            bufs_sb,
-                            poi_idx,
-                            mu_test,
-                            q_obs,
+                    let t_phase_b0 = std::time::Instant::now();
+                    let (
+                        eb,
+                        esb,
+                        bt_b,
+                        bt_sb,
+                        sample_b_s,
+                        sample_sb_s,
+                        ensemble_b_s,
+                        ensemble_sb_s,
+                    ) = {
+                        let (eb, bt_b, sample_b_s, ensemble_b_s) =
+                            run_count_ensemble(seed_b, &fixed_0.parameters, &fixed_0.parameters)?;
+                        let (esb, bt_sb, sample_sb_s, ensemble_sb_s) = run_count_ensemble(
+                            seed_sb,
                             &fixed_mu.parameters,
-                            &bounds,
-                            &bounds_fixed,
-                        )?;
-                        (eb, esb)
-                    } else {
-                        let (toy_offsets_b, obs_flat_b) = sample_flat(&fixed_0.parameters, seed_b)?;
-                        let (toy_offsets_sb, obs_flat_sb) =
-                            sample_flat(&fixed_mu.parameters, seed_sb)?;
-                        let eb = count_q_ge_ensemble_metal(
-                            &static_models,
-                            &toy_offsets_b,
-                            &obs_flat_b,
-                            poi_idx,
-                            mu_test,
-                            q_obs,
-                            &fixed_0.parameters,
-                            &bounds,
-                            &bounds_fixed,
-                        )?;
-                        let esb = count_q_ge_ensemble_metal(
-                            &static_models,
-                            &toy_offsets_sb,
-                            &obs_flat_sb,
-                            poi_idx,
-                            mu_test,
-                            q_obs,
                             &fixed_mu.parameters,
-                            &bounds,
-                            &bounds_fixed,
                         )?;
-                        (eb, esb)
+                        (eb, esb, bt_b, bt_sb, sample_b_s, sample_sb_s, ensemble_b_s, ensemble_sb_s)
                     };
 
                     if eb.n_valid == 0 || esb.n_valid == 0 {
@@ -5391,6 +5699,30 @@ fn cmd_unbinned_hypotest_toys(
                     let clsb = tail_prob_counts(esb.n_ge, esb.n_valid);
                     let clb = tail_prob_counts(eb.n_ge, eb.n_valid);
                     let cls = safe_cls(clsb, clb);
+                    timing_breakdown.insert(
+                        "toys".into(),
+                        serde_json::json!({
+                            "pipeline": metal_pipeline,
+                            "expected_set": false,
+                            "n_batches": metal_batches.len(),
+                            "max_toys_per_batch": metal_max_toys_per_batch,
+                            "phase_b_s": t_phase_b0.elapsed().as_secs_f64(),
+                            "b": {
+                                "sample_s": sample_b_s,
+                                "ensemble_s": ensemble_b_s,
+                                "build_s": bt_b.build_s,
+                                "free_fit_s": bt_b.free_fit_s,
+                                "fixed_fit_s": bt_b.fixed_fit_s,
+                            },
+                            "sb": {
+                                "sample_s": sample_sb_s,
+                                "ensemble_s": ensemble_sb_s,
+                                "build_s": bt_sb.build_s,
+                                "free_fit_s": bt_sb.free_fit_s,
+                                "fixed_fit_s": bt_sb.fixed_fit_s,
+                            },
+                        }),
+                    );
 
                     serde_json::json!({
                         "input_schema_version": spec.schema_version,
@@ -5408,84 +5740,28 @@ fn cmd_unbinned_hypotest_toys(
                         "expected_set": serde_json::Value::Null,
                     })
                 } else {
-                    let (eb, esb) = if gpu_sample_toys {
-                        let samplers: Vec<ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler> =
-                            static_models
-                                .iter()
-                                .map(|m| {
-                                    ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler::from_unbinned_static(m)
-                                        .map_err(|e| anyhow::anyhow!("{e}"))
-                                })
-                                .collect::<Result<Vec<_>>>()?;
-                        let sample_device = |gen_params: &[f64],
-                                             seed0: u64|
-                         -> Result<(
-                            Vec<Vec<u32>>,
-                            Vec<ns_compute::metal_rs::Buffer>,
-                        )> {
-                            let mut toy_offsets_by_channel =
-                                Vec::<Vec<u32>>::with_capacity(samplers.len());
-                            let mut buf_obs_flat_by_channel =
-                                Vec::<ns_compute::metal_rs::Buffer>::with_capacity(samplers.len());
-                            for (ch_i, sampler) in samplers.iter().enumerate() {
-                                let seed_ch =
-                                    seed0.wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
-                                let (offs, buf) =
-                                    sampler.sample_toys_1d_device(gen_params, n_toys, seed_ch)?;
-                                toy_offsets_by_channel.push(offs);
-                                buf_obs_flat_by_channel.push(buf);
-                            }
-                            Ok((toy_offsets_by_channel, buf_obs_flat_by_channel))
-                        };
-                        let (toy_offsets_b, bufs_b) = sample_device(&fixed_0.parameters, seed_b)?;
-                        let (toy_offsets_sb, bufs_sb) =
-                            sample_device(&fixed_mu.parameters, seed_sb)?;
-                        let eb = generate_q_ensemble_metal_device(
-                            &static_models,
-                            &toy_offsets_b,
-                            bufs_b,
-                            poi_idx,
-                            mu_test,
+                    let t_phase_b0 = std::time::Instant::now();
+                    let (
+                        eb,
+                        esb,
+                        bt_b,
+                        bt_sb,
+                        sample_b_s,
+                        sample_sb_s,
+                        ensemble_b_s,
+                        ensemble_sb_s,
+                    ) = {
+                        let (eb, bt_b, sample_b_s, ensemble_b_s) = run_generate_ensemble(
+                            seed_b,
                             &fixed_0.parameters,
-                            &bounds,
-                            &bounds_fixed,
-                        )?;
-                        let esb = generate_q_ensemble_metal_device(
-                            &static_models,
-                            &toy_offsets_sb,
-                            bufs_sb,
-                            poi_idx,
-                            mu_test,
-                            &fixed_mu.parameters,
-                            &bounds,
-                            &bounds_fixed,
-                        )?;
-                        (eb, esb)
-                    } else {
-                        let (toy_offsets_b, obs_flat_b) = sample_flat(&fixed_0.parameters, seed_b)?;
-                        let (toy_offsets_sb, obs_flat_sb) =
-                            sample_flat(&fixed_mu.parameters, seed_sb)?;
-                        let eb = generate_q_ensemble_metal(
-                            &static_models,
-                            &toy_offsets_b,
-                            &obs_flat_b,
-                            poi_idx,
-                            mu_test,
                             &fixed_0.parameters,
-                            &bounds,
-                            &bounds_fixed,
                         )?;
-                        let esb = generate_q_ensemble_metal(
-                            &static_models,
-                            &toy_offsets_sb,
-                            &obs_flat_sb,
-                            poi_idx,
-                            mu_test,
+                        let (esb, bt_sb, sample_sb_s, ensemble_sb_s) = run_generate_ensemble(
+                            seed_sb,
                             &fixed_mu.parameters,
-                            &bounds,
-                            &bounds_fixed,
+                            &fixed_mu.parameters,
                         )?;
-                        (eb, esb)
+                        (eb, esb, bt_b, bt_sb, sample_b_s, sample_sb_s, ensemble_b_s, ensemble_sb_s)
                     };
 
                     if eb.q.is_empty() || esb.q.is_empty() {
@@ -5519,6 +5795,30 @@ fn cmd_unbinned_hypotest_toys(
                         let p = normal_cdf(-t);
                         expected[i] = quantile_sorted(&cls_vals, p);
                     }
+                    timing_breakdown.insert(
+                        "toys".into(),
+                        serde_json::json!({
+                            "pipeline": metal_pipeline,
+                            "expected_set": true,
+                            "n_batches": metal_batches.len(),
+                            "max_toys_per_batch": metal_max_toys_per_batch,
+                            "phase_b_s": t_phase_b0.elapsed().as_secs_f64(),
+                            "b": {
+                                "sample_s": sample_b_s,
+                                "ensemble_s": ensemble_b_s,
+                                "build_s": bt_b.build_s,
+                                "free_fit_s": bt_b.free_fit_s,
+                                "fixed_fit_s": bt_b.fixed_fit_s,
+                            },
+                            "sb": {
+                                "sample_s": sample_sb_s,
+                                "ensemble_s": ensemble_sb_s,
+                                "build_s": bt_sb.build_s,
+                                "free_fit_s": bt_sb.free_fit_s,
+                                "fixed_fit_s": bt_sb.fixed_fit_s,
+                            },
+                        }),
+                    );
 
                     serde_json::json!({
                         "input_schema_version": spec.schema_version,
@@ -5713,7 +6013,10 @@ fn cmd_unbinned_hypotest_toys(
                                 if let Some(col) = toy_ch.data.column(obs_name) {
                                     xs_flat.extend_from_slice(col);
                                 }
-                                toy_offsets.push(xs_flat.len() as u32);
+                                toy_offsets.push(checked_len_to_u32(
+                                    xs_flat.len(),
+                                    "cpu flow toy sampling offset overflow (hypotest)",
+                                )?);
                             }
                             let total_events = xs_flat.len();
                             let sample_s = t_sample0.elapsed().as_secs_f64();
@@ -6037,8 +6340,10 @@ fn cmd_unbinned_hypotest_toys(
                         }
                         for (ch_i, xs) in xs_by_ch.into_iter().enumerate() {
                             obs_flat_by_channel[ch_i].extend_from_slice(&xs);
-                            toy_offsets_by_channel[ch_i]
-                                .push(obs_flat_by_channel[ch_i].len() as u32);
+                            toy_offsets_by_channel[ch_i].push(checked_len_to_u32(
+                                obs_flat_by_channel[ch_i].len(),
+                                "cpu toy sampling offset overflow (hypotest cuda path)",
+                            )?);
                         }
                     }
                     Ok((toy_offsets_by_channel, obs_flat_by_channel))
@@ -7495,6 +7800,13 @@ fn cmd_unbinned_fit_toys(
 
     // PF3.1-OPT4: estimate VRAM per toy from expected yields at the toy generation point.
     let estimated_bytes_per_toy = estimate_unbinned_expected_bytes_per_toy(&model, &gen_params)?;
+    let estimated_events_per_toy = estimate_unbinned_expected_events_per_toy(&model, &gen_params)?;
+
+    let metal_max_toys_per_batch = if gpu == Some("metal") {
+        metal_max_toys_per_batch_for_u32_offsets(n_toys, estimated_events_per_toy)?
+    } else {
+        n_toys.max(1)
+    };
 
     #[cfg(feature = "cuda")]
     let cuda_device_shard_plan = normalize_cuda_device_shard_plan(
@@ -7504,6 +7816,7 @@ fn cmd_unbinned_fit_toys(
         gpu_shards,
         n_toys,
         estimated_bytes_per_toy,
+        estimated_events_per_toy,
     )?;
     #[cfg(not(feature = "cuda"))]
     let _cuda_device_shard_plan = normalize_cuda_device_shard_plan(
@@ -7513,6 +7826,7 @@ fn cmd_unbinned_fit_toys(
         gpu_shards,
         n_toys,
         estimated_bytes_per_toy,
+        estimated_events_per_toy,
     )?;
 
     let poi_true = gen_params[poi_idx];
@@ -7533,6 +7847,7 @@ fn cmd_unbinned_fit_toys(
             );
         }
     }
+    let need_poi_sigma = max_abs_poi_pull_mean.is_some() || poi_pull_std_range.is_some();
 
     let mut n_validation_error = 0usize;
     let mut n_computation_error = 0usize;
@@ -7554,9 +7869,8 @@ fn cmd_unbinned_fit_toys(
                 UnbinnedToyGenPoint::Init => mle.fit(&model).ok().map(|r| r.parameters),
             };
 
-            let need_hessian = max_abs_poi_pull_mean.is_some() || poi_pull_std_range.is_some();
             let toy_config = ns_inference::ToyFitConfig {
-                compute_hessian: need_hessian,
+                compute_hessian: need_poi_sigma,
                 ..ns_inference::ToyFitConfig::default()
             };
 
@@ -7669,22 +7983,107 @@ fn cmd_unbinned_fit_toys(
 
                 let pipeline = if gpu_sample_toys { "metal_device" } else { "metal_host" };
 
-                // Generate toys, then fit in lockstep on GPU.
-                let toy_sample_s: f64;
-                let batch_build_s: f64;
-                let batch_fit_s: f64;
+                // Generate toys and fit in lockstep on GPU, chunked for large toy workloads
+                // to keep 32-bit toy offsets within range on Metal.
                 let n_channels = static_models.len();
-
                 let init_params: Vec<f64> = model.parameters().iter().map(|p| p.init).collect();
                 let bounds: Vec<(f64, f64)> = model.parameters().iter().map(|p| p.bounds).collect();
                 let n_params = init_params.len();
+                let metal_batches = contiguous_toy_batches(n_toys, metal_max_toys_per_batch);
+                if metal_batches.is_empty() {
+                    anyhow::bail!("internal error: empty Metal toy batch plan");
+                }
 
-                let accels: Vec<ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator>;
+                let mut toy_sample_s = 0.0f64;
+                let mut batch_build_s = 0.0f64;
+                let mut batch_fit_s = 0.0f64;
+                let mut sampler_init_s = 0.0f64;
+                let mut sample_phase_detail = serde_json::Value::Null;
+                let mut poi_sigma_s = 0.0f64;
+                let mut fit_results_all: Vec<ns_core::Result<ns_core::FitResult>> =
+                    Vec::with_capacity(n_toys);
+                let mut poi_sigmas: Vec<Option<f64>> = Vec::with_capacity(n_toys);
+
+                let estimate_poi_sigma_batch = |
+                    fit_results_batch: &[ns_core::Result<ns_core::FitResult>],
+                    accels_batch: &mut [ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator],
+                | -> Result<Vec<Option<f64>>> {
+                    let batch_n_toys = fit_results_batch.len();
+                    let mut out = vec![None; batch_n_toys];
+                    if !(need_poi_sigma && poi_idx < n_params) {
+                        return Ok(out);
+                    }
+
+                    let (lo, hi) = bounds[poi_idx];
+                    let span = (hi - lo).abs();
+                    if !(span.is_finite() && span > 0.0) {
+                        return Ok(out);
+                    }
+                    let eps = (span * 1e-3).max(1e-6);
+                    let mut hat_flat = vec![0.0f64; batch_n_toys * n_params];
+                    let mut nll0 = vec![f64::NAN; batch_n_toys];
+                    let mut ok_fit = vec![false; batch_n_toys];
+                    for t in 0..batch_n_toys {
+                        let Ok(r) = fit_results_batch
+                            .get(t)
+                            .ok_or_else(|| anyhow::anyhow!("missing fit result for batch toy {t}"))?
+                            .as_ref()
+                        else {
+                            continue;
+                        };
+                        if r.parameters.len() == n_params {
+                            hat_flat[t * n_params..(t + 1) * n_params].copy_from_slice(&r.parameters);
+                        }
+                        nll0[t] = r.nll;
+                        ok_fit[t] = r.converged && r.nll.is_finite();
+                    }
+
+                    let mut plus = hat_flat.clone();
+                    let mut minus = hat_flat.clone();
+                    for t in 0..batch_n_toys {
+                        let idx = t * n_params + poi_idx;
+                        let mu_hat = hat_flat[idx];
+                        if !mu_hat.is_finite() {
+                            continue;
+                        }
+                        plus[idx] = (mu_hat + eps).clamp(lo, hi);
+                        minus[idx] = (mu_hat - eps).clamp(lo, hi);
+                    }
+
+                    let mut nll_plus = vec![0.0f64; batch_n_toys];
+                    let mut nll_minus = vec![0.0f64; batch_n_toys];
+                    for a in accels_batch.iter_mut() {
+                        let v_plus = a.batch_nll(&plus)?;
+                        let v_minus = a.batch_nll(&minus)?;
+                        for (dst, x) in nll_plus.iter_mut().zip(v_plus.into_iter()) {
+                            *dst += x;
+                        }
+                        for (dst, x) in nll_minus.iter_mut().zip(v_minus.into_iter()) {
+                            *dst += x;
+                        }
+                    }
+                    for t in 0..batch_n_toys {
+                        if !ok_fit[t] {
+                            continue;
+                        }
+                        let idx = t * n_params + poi_idx;
+                        let mu_hat = hat_flat[idx];
+                        if !mu_hat.is_finite() || plus[idx] == mu_hat || minus[idx] == mu_hat {
+                            continue;
+                        }
+                        let d2 = (nll_plus[t] - 2.0 * nll0[t] + nll_minus[t]) / (eps * eps);
+                        if d2.is_finite() && d2 > 0.0 {
+                            out[t] = Some(1.0 / d2.sqrt());
+                        }
+                    }
+                    Ok(out)
+                };
 
                 if gpu_sample_toys {
                     if static_models.is_empty() {
                         anyhow::bail!("--gpu-sample-toys requires at least one included channel");
                     }
+                    let t_sampler_init0 = std::time::Instant::now();
                     let samplers: Vec<ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler> =
                         static_models
                             .iter()
@@ -7693,181 +8092,242 @@ fn cmd_unbinned_fit_toys(
                                     .map_err(|e| anyhow::anyhow!("{e}"))
                             })
                             .collect::<Result<Vec<_>>>()?;
+                    sampler_init_s = t_sampler_init0.elapsed().as_secs_f64();
 
-                    let t_sample0 = std::time::Instant::now();
-                    let mut offs_by_ch = Vec::<Vec<u32>>::with_capacity(n_channels);
-                    let mut bufs_by_ch =
-                        Vec::<ns_compute::metal_rs::Buffer>::with_capacity(n_channels);
-                    for (ch_i, sampler) in samplers.iter().enumerate() {
-                        let seed_ch = seed.wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
-                        let (offs, buf) =
-                            sampler.sample_toys_1d_device(&gen_params, n_toys, seed_ch)?;
-                        offs_by_ch.push(offs);
-                        bufs_by_ch.push(buf);
+                    let mut sample_prepare_s = 0.0f64;
+                    let mut sample_counts_kernel_s = 0.0f64;
+                    let mut sample_counts_readback_s = 0.0f64;
+                    let mut sample_prefix_sum_s = 0.0f64;
+                    let mut sample_kernel_s = 0.0f64;
+                    let mut sample_host_convert_s = 0.0f64;
+                    let mut sample_channel_phase =
+                        vec![(0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64); n_channels];
+
+                    for (batch_start, batch_end) in metal_batches.iter().copied() {
+                        let batch_n_toys = batch_end - batch_start;
+                        let t_sample0 = std::time::Instant::now();
+                        let mut offs_by_ch = Vec::<Vec<u32>>::with_capacity(n_channels);
+                        let mut offs_bufs_by_ch =
+                            Vec::<ns_compute::metal_rs::Buffer>::with_capacity(n_channels);
+                        let mut bufs_by_ch =
+                            Vec::<ns_compute::metal_rs::Buffer>::with_capacity(n_channels);
+                        for (ch_i, sampler) in samplers.iter().enumerate() {
+                            let seed_ch = seed
+                                .wrapping_add(batch_start as u64)
+                                .wrapping_add(1_000_000_003u64.wrapping_mul(ch_i as u64));
+                            let (offs, offs_buf, buf, st) = sampler
+                                .sample_toys_1d_device_timed_with_offsets(
+                                    &gen_params,
+                                    batch_n_toys,
+                                    seed_ch,
+                                )?;
+                            offs_by_ch.push(offs);
+                            offs_bufs_by_ch.push(offs_buf);
+                            bufs_by_ch.push(buf);
+                            sample_prepare_s += st.prepare_s;
+                            sample_counts_kernel_s += st.counts_kernel_s;
+                            sample_counts_readback_s += st.counts_readback_s;
+                            sample_prefix_sum_s += st.prefix_sum_s;
+                            sample_kernel_s += st.sample_kernel_s;
+                            sample_host_convert_s += st.host_convert_s;
+                            sample_channel_phase[ch_i].0 += st.prepare_s;
+                            sample_channel_phase[ch_i].1 += st.counts_kernel_s;
+                            sample_channel_phase[ch_i].2 += st.counts_readback_s;
+                            sample_channel_phase[ch_i].3 += st.prefix_sum_s;
+                            sample_channel_phase[ch_i].4 += st.sample_kernel_s;
+                            sample_channel_phase[ch_i].5 += st.host_convert_s;
+                        }
+                        toy_sample_s += t_sample0.elapsed().as_secs_f64();
+
+                        let t_build0 = std::time::Instant::now();
+                        let mut accels_batch = Vec::with_capacity(n_channels);
+                        for (i, (m, ((offs, offs_buf), buf))) in static_models
+                            .iter()
+                            .zip(
+                                offs_by_ch
+                                    .iter()
+                                    .zip(offs_bufs_by_ch.into_iter())
+                                    .zip(bufs_by_ch.into_iter()),
+                            )
+                            .enumerate()
+                        {
+                            let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys_device_with_offsets(
+                                m, offs, offs_buf, buf, batch_n_toys,
+                            )
+                            .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                            accels_batch.push(accel);
+                        }
+                        batch_build_s += t_build0.elapsed().as_secs_f64();
+
+                        let t_fit0 = std::time::Instant::now();
+                        let (fit_results_batch, mut accels_batch) =
+                            ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                                accels_batch,
+                                &init_params,
+                                &bounds,
+                                None,
+                            )?;
+                        batch_fit_s += t_fit0.elapsed().as_secs_f64();
+                        if fit_results_batch.len() != batch_n_toys {
+                            anyhow::bail!(
+                                "internal error: Metal batch fit length mismatch: expected {batch_n_toys}, got {}",
+                                fit_results_batch.len()
+                            );
+                        }
+
+                        let t_sigma0 = std::time::Instant::now();
+                        let batch_sigmas =
+                            estimate_poi_sigma_batch(&fit_results_batch, &mut accels_batch)?;
+                        poi_sigma_s += t_sigma0.elapsed().as_secs_f64();
+                        poi_sigmas.extend(batch_sigmas);
+                        fit_results_all.extend(fit_results_batch);
                     }
-                    toy_sample_s = t_sample0.elapsed().as_secs_f64();
 
-                    let t_build0 = std::time::Instant::now();
-                    let mut a = Vec::with_capacity(n_channels);
-                    for (i, (m, (offs, buf))) in static_models
-                        .iter()
-                        .zip(offs_by_ch.iter().zip(bufs_by_ch.into_iter()))
+                    let sample_channel_detail: Vec<serde_json::Value> = sample_channel_phase
+                        .into_iter()
                         .enumerate()
-                    {
-                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys_device(
-                            m, offs, buf, n_toys,
+                        .map(
+                            |(
+                                ch_i,
+                                (
+                                    prepare_s,
+                                    counts_kernel_s,
+                                    counts_readback_s,
+                                    prefix_sum_s,
+                                    sample_kernel_s,
+                                    host_convert_s,
+                                ),
+                            )| {
+                                serde_json::json!({
+                                    "channel_index": ch_i,
+                                    "prepare_s": prepare_s,
+                                    "counts_kernel_s": counts_kernel_s,
+                                    "counts_readback_s": counts_readback_s,
+                                    "prefix_sum_s": prefix_sum_s,
+                                    "sample_kernel_s": sample_kernel_s,
+                                    "host_convert_s": host_convert_s,
+                                })
+                            },
                         )
-                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
-                        a.push(accel);
-                    }
-                    accels = a;
-                    batch_build_s = t_build0.elapsed().as_secs_f64();
+                        .collect();
+                    sample_phase_detail = serde_json::json!({
+                        "prepare_s": sample_prepare_s,
+                        "counts_kernel_s": sample_counts_kernel_s,
+                        "counts_readback_s": sample_counts_readback_s,
+                        "prefix_sum_s": sample_prefix_sum_s,
+                        "sample_kernel_s": sample_kernel_s,
+                        "host_convert_s": sample_host_convert_s,
+                        "channels": sample_channel_detail,
+                    });
                 } else {
-                    let t_sample0 = std::time::Instant::now();
-                    let mut offs_by_ch: Vec<Vec<u32>> =
-                        (0..n_channels).map(|_| Vec::with_capacity(n_toys + 1)).collect();
-                    for offs in &mut offs_by_ch {
-                        offs.push(0u32);
-                    }
-                    let mut obs_by_ch: Vec<Vec<f64>> =
-                        (0..n_channels).map(|_| Vec::new()).collect();
-
-                    for toy_idx in 0..n_toys {
-                        let toy_seed = seed.wrapping_add(toy_idx as u64);
-                        let toy_model = model.sample_poisson_toy(&gen_params, toy_seed)?;
-                        for (out_idx, &ch_idx) in included_channels.iter().enumerate() {
-                            let ch = toy_model.channels().get(ch_idx).ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "toy model missing channel index {} (unexpected)",
-                                    ch_idx
-                                )
-                            })?;
-                            let obs_name = obs_names.get(out_idx).ok_or_else(|| {
-                                anyhow::anyhow!("internal error: missing obs_names[{out_idx}]")
-                            })?;
-                            let xs = ch.data.column(obs_name.as_str()).ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "toy channel '{}' data missing observable column '{}'",
-                                    ch.name,
-                                    obs_name
-                                )
-                            })?;
-                            obs_by_ch[out_idx].extend_from_slice(xs);
-                            offs_by_ch[out_idx].push(obs_by_ch[out_idx].len() as u32);
+                    for (batch_start, batch_end) in metal_batches.iter().copied() {
+                        let batch_n_toys = batch_end - batch_start;
+                        let t_sample0 = std::time::Instant::now();
+                        let mut offs_by_ch: Vec<Vec<u32>> =
+                            (0..n_channels).map(|_| Vec::with_capacity(batch_n_toys + 1)).collect();
+                        for offs in &mut offs_by_ch {
+                            offs.push(0u32);
                         }
-                    }
-                    toy_sample_s = t_sample0.elapsed().as_secs_f64();
+                        let mut obs_by_ch: Vec<Vec<f64>> =
+                            (0..n_channels).map(|_| Vec::new()).collect();
 
-                    let t_build0 = std::time::Instant::now();
-                    let mut a = Vec::with_capacity(static_models.len());
-                    for (i, ((m, offs), obs)) in static_models
-                        .iter()
-                        .zip(offs_by_ch.iter())
-                        .zip(obs_by_ch.iter())
-                        .enumerate()
-                    {
-                        let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
-                            m, offs, obs, n_toys,
-                        )
-                        .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
-                        a.push(accel);
+                        for toy_idx in 0..batch_n_toys {
+                            let toy_seed =
+                                seed.wrapping_add(batch_start as u64).wrapping_add(toy_idx as u64);
+                            let toy_model = model.sample_poisson_toy(&gen_params, toy_seed)?;
+                            for (out_idx, &ch_idx) in included_channels.iter().enumerate() {
+                                let ch = toy_model.channels().get(ch_idx).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "toy model missing channel index {} (unexpected)",
+                                        ch_idx
+                                    )
+                                })?;
+                                let obs_name = obs_names.get(out_idx).ok_or_else(|| {
+                                    anyhow::anyhow!("internal error: missing obs_names[{out_idx}]")
+                                })?;
+                                let xs = ch.data.column(obs_name.as_str()).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "toy channel '{}' data missing observable column '{}'",
+                                        ch.name,
+                                        obs_name
+                                    )
+                                })?;
+                                obs_by_ch[out_idx].extend_from_slice(xs);
+                                offs_by_ch[out_idx].push(checked_len_to_u32(
+                                    obs_by_ch[out_idx].len(),
+                                    "cpu toy sampling offset overflow (fit metal path)",
+                                )?);
+                            }
+                        }
+                        toy_sample_s += t_sample0.elapsed().as_secs_f64();
+
+                        let t_build0 = std::time::Instant::now();
+                        let mut accels_batch = Vec::with_capacity(static_models.len());
+                        for (i, ((m, offs), obs)) in static_models
+                            .iter()
+                            .zip(offs_by_ch.iter())
+                            .zip(obs_by_ch.iter())
+                            .enumerate()
+                        {
+                            let accel = ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
+                                m, offs, obs, batch_n_toys,
+                            )
+                            .map_err(|e| anyhow::anyhow!("channel {i}: {e}"))?;
+                            accels_batch.push(accel);
+                        }
+                        batch_build_s += t_build0.elapsed().as_secs_f64();
+
+                        let t_fit0 = std::time::Instant::now();
+                        let (fit_results_batch, mut accels_batch) =
+                            ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
+                                accels_batch,
+                                &init_params,
+                                &bounds,
+                                None,
+                            )?;
+                        batch_fit_s += t_fit0.elapsed().as_secs_f64();
+                        if fit_results_batch.len() != batch_n_toys {
+                            anyhow::bail!(
+                                "internal error: Metal batch fit length mismatch: expected {batch_n_toys}, got {}",
+                                fit_results_batch.len()
+                            );
+                        }
+
+                        let t_sigma0 = std::time::Instant::now();
+                        let batch_sigmas =
+                            estimate_poi_sigma_batch(&fit_results_batch, &mut accels_batch)?;
+                        poi_sigma_s += t_sigma0.elapsed().as_secs_f64();
+                        poi_sigmas.extend(batch_sigmas);
+                        fit_results_all.extend(fit_results_batch);
                     }
-                    accels = a;
-                    batch_build_s = t_build0.elapsed().as_secs_f64();
                 }
 
-                let t_fit0 = std::time::Instant::now();
-                let (fit_results, mut accels) =
-                    ns_inference::unbinned_gpu_batch::fit_unbinned_toys_batch_metal_with_accels(
-                        accels,
-                        &init_params,
-                        &bounds,
-                        None,
-                    )?;
-                batch_fit_s = t_fit0.elapsed().as_secs_f64();
-
-                // Build a flattened bestfit buffer for curvature-based POI sigma estimation.
-                let mut hat_flat = vec![0.0f64; n_toys * n_params];
-                let mut nll0 = vec![f64::NAN; n_toys];
-                let mut ok_fit = vec![false; n_toys];
-                for t in 0..n_toys {
-                    let Ok(r) = fit_results
-                        .get(t)
-                        .ok_or_else(|| anyhow::anyhow!("missing fit result for toy {t}"))?
-                        .as_ref()
-                    else {
-                        continue;
-                    };
-                    if r.parameters.len() == n_params {
-                        hat_flat[t * n_params..(t + 1) * n_params].copy_from_slice(&r.parameters);
-                    }
-                    nll0[t] = r.nll;
-                    ok_fit[t] = r.converged && r.nll.is_finite();
-                }
-
-                // Estimate POI sigma via 1D curvature (NLL second derivative) holding other params fixed.
-                let mut poi_sigma_s = 0.0f64;
-                let mut poi_sigmas: Vec<Option<f64>> = vec![None; n_toys];
-                if poi_idx < n_params {
-                    let t_poi_sigma0 = std::time::Instant::now();
-                    let (lo, hi) = bounds[poi_idx];
-                    let span = (hi - lo).abs();
-                    if span.is_finite() && span > 0.0 {
-                        let eps = (span * 1e-3).max(1e-6);
-                        let mut plus = hat_flat.clone();
-                        let mut minus = hat_flat.clone();
-                        for t in 0..n_toys {
-                            let idx = t * n_params + poi_idx;
-                            let mu_hat = hat_flat[idx];
-                            if !mu_hat.is_finite() {
-                                continue;
-                            }
-                            plus[idx] = (mu_hat + eps).clamp(lo, hi);
-                            minus[idx] = (mu_hat - eps).clamp(lo, hi);
-                        }
-                        let mut nll_plus = vec![0.0f64; n_toys];
-                        let mut nll_minus = vec![0.0f64; n_toys];
-                        for a in accels.iter_mut() {
-                            let v_plus = a.batch_nll(&plus)?;
-                            let v_minus = a.batch_nll(&minus)?;
-                            for (dst, x) in nll_plus.iter_mut().zip(v_plus.into_iter()) {
-                                *dst += x;
-                            }
-                            for (dst, x) in nll_minus.iter_mut().zip(v_minus.into_iter()) {
-                                *dst += x;
-                            }
-                        }
-                        for t in 0..n_toys {
-                            if !ok_fit[t] {
-                                continue;
-                            }
-                            let idx = t * n_params + poi_idx;
-                            let mu_hat = hat_flat[idx];
-                            if !mu_hat.is_finite() || plus[idx] == mu_hat || minus[idx] == mu_hat {
-                                continue;
-                            }
-                            let d2 = (nll_plus[t] - 2.0 * nll0[t] + nll_minus[t]) / (eps * eps);
-                            if d2.is_finite() && d2 > 0.0 {
-                                poi_sigmas[t] = Some(1.0 / d2.sqrt());
-                            }
-                        }
-                    }
-                    poi_sigma_s = t_poi_sigma0.elapsed().as_secs_f64();
+                if fit_results_all.len() != n_toys || poi_sigmas.len() != n_toys {
+                    anyhow::bail!(
+                        "internal error: Metal merged toy result length mismatch: fits={} sigmas={} expected={n_toys}",
+                        fit_results_all.len(),
+                        poi_sigmas.len()
+                    );
                 }
 
                 timing_breakdown.insert(
                     "toys".into(),
                     serde_json::json!({
                         "pipeline": pipeline,
+                        "sampler_init_s": sampler_init_s,
                         "sample_s": toy_sample_s,
                         "batch_build_s": batch_build_s,
                         "batch_fit_s": batch_fit_s,
+                        "n_batches": metal_batches.len(),
+                        "max_toys_per_batch": metal_max_toys_per_batch,
+                        "poi_sigma_enabled": need_poi_sigma,
                         "poi_sigma_s": poi_sigma_s,
+                        "sample_phase_detail": sample_phase_detail,
                     }),
                 );
 
                 for t in 0..n_toys {
-                    match fit_results
+                    match fit_results_all
                         .get(t)
                         .ok_or_else(|| anyhow::anyhow!("missing fit result for toy {t}"))?
                     {
@@ -7977,7 +8437,10 @@ fn cmd_unbinned_fit_toys(
                         if let Some(col) = toy_ch.data.column(obs_name) {
                             xs_flat.extend_from_slice(col);
                         }
-                        toy_offsets.push(xs_flat.len() as u32);
+                        toy_offsets.push(checked_len_to_u32(
+                            xs_flat.len(),
+                            "cpu flow toy sampling offset overflow (fit)",
+                        )?);
                     }
                     let total_events = xs_flat.len();
                     let toy_sample_s = t_sample0.elapsed().as_secs_f64();
@@ -8494,7 +8957,10 @@ fn cmd_unbinned_fit_toys(
                                 })?;
                                     obs_flat_by_channel[out_idx].extend_from_slice(xs);
                                     toy_offsets_by_channel[out_idx]
-                                        .push(obs_flat_by_channel[out_idx].len() as u32);
+                                        .push(checked_len_to_u32(
+                                            obs_flat_by_channel[out_idx].len(),
+                                            "cpu toy sampling offset overflow (fit cuda host-sharded path)",
+                                        )?);
                                 }
                             }
                             toy_sample_s_total += t_sample0.elapsed().as_secs_f64();
@@ -8571,8 +9037,10 @@ fn cmd_unbinned_fit_toys(
                                     )
                                 })?;
                                 obs_flat_by_channel[out_idx].extend_from_slice(xs);
-                                toy_offsets_by_channel[out_idx]
-                                    .push(obs_flat_by_channel[out_idx].len() as u32);
+                                toy_offsets_by_channel[out_idx].push(checked_len_to_u32(
+                                    obs_flat_by_channel[out_idx].len(),
+                                    "cpu toy sampling offset overflow (fit cuda host path)",
+                                )?);
                             }
                         }
                         toy_sample_s = t_sample0.elapsed().as_secs_f64();
@@ -8673,7 +9141,8 @@ fn cmd_unbinned_fit_toys(
 
                     let mut poi_sigma_s = 0.0f64;
                     let mut poi_sigmas: Vec<Option<f64>> = vec![None; n_toys];
-                    if poi_idx < n_params
+                    if need_poi_sigma
+                        && poi_idx < n_params
                         && let Some(accels) = accels_opt.as_mut()
                     {
                         let t_poi_sigma0 = std::time::Instant::now();
@@ -8733,9 +9202,12 @@ fn cmd_unbinned_fit_toys(
                             "device_ids": if gpu == Some("cuda") { serde_json::json!(&cuda_device_ids) } else { serde_json::Value::Null },
                             "device_shard_plan": if gpu == Some("cuda") && !cuda_device_shard_plan.is_empty() { serde_json::json!(&cuda_device_shard_plan) } else { serde_json::Value::Null },
                             "warm_start": cuda_warm_start,
+                            "retry_max_retries": ns_inference::unbinned_gpu_batch::CUDA_TOY_FIT_MAX_RETRIES,
+                            "retry_jitter_scale": ns_inference::unbinned_gpu_batch::CUDA_TOY_FIT_JITTER_SCALE,
                             "sample_s": toy_sample_s,
                             "batch_build_s": batch_build_s,
                             "batch_fit_s": batch_fit_s,
+                            "poi_sigma_enabled": need_poi_sigma,
                             "poi_sigma_s": poi_sigma_s,
                         });
                         if !shard_detail.is_empty() {
@@ -9259,6 +9731,66 @@ fn normalize_cuda_device_ids(gpu: Option<&str>, gpu_devices: &[usize]) -> Result
     Ok(out)
 }
 
+#[inline]
+fn checked_len_to_u32(len: usize, context: &str) -> Result<u32> {
+    u32::try_from(len).map_err(|_| {
+        anyhow::anyhow!("{context}: value {len} exceeds 32-bit toy-offset limit ({})", u32::MAX)
+    })
+}
+
+fn min_shards_for_u32_toy_offsets(
+    n_toys: usize,
+    estimated_events_per_toy: usize,
+) -> Result<Option<(usize, usize)>> {
+    if n_toys == 0 || estimated_events_per_toy == 0 {
+        return Ok(None);
+    }
+
+    // Keep a small headroom below u32::MAX to absorb Poisson fluctuations.
+    const U32_EVENTS_HEADROOM: f64 = 0.95;
+    let max_events_per_shard = ((u32::MAX as f64) * U32_EVENTS_HEADROOM).floor() as usize;
+    if max_events_per_shard == 0 {
+        anyhow::bail!("internal error: invalid 32-bit shard event headroom");
+    }
+    if estimated_events_per_toy > max_events_per_shard {
+        anyhow::bail!(
+            "estimated events per toy ({estimated_events_per_toy}) exceed safe 32-bit \
+             shard budget ({max_events_per_shard}); current GPU toy-offset kernels use u32"
+        );
+    }
+
+    let max_toys_per_shard = (max_events_per_shard / estimated_events_per_toy).max(1);
+    let min_shards = n_toys.div_ceil(max_toys_per_shard);
+    Ok(Some((min_shards, max_toys_per_shard)))
+}
+
+fn metal_max_toys_per_batch_for_u32_offsets(
+    n_toys: usize,
+    estimated_events_per_toy: usize,
+) -> Result<usize> {
+    if n_toys == 0 {
+        return Ok(1);
+    }
+    let max_toys = min_shards_for_u32_toy_offsets(n_toys, estimated_events_per_toy)?
+        .map(|(_, max_toys_per_shard)| max_toys_per_shard.max(1))
+        .unwrap_or(n_toys.max(1));
+    Ok(max_toys.max(1))
+}
+
+fn contiguous_toy_batches(n_toys: usize, max_toys_per_batch: usize) -> Vec<(usize, usize)> {
+    if n_toys == 0 || max_toys_per_batch == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(n_toys.div_ceil(max_toys_per_batch));
+    let mut toy_start = 0usize;
+    while toy_start < n_toys {
+        let toy_end = (toy_start + max_toys_per_batch).min(n_toys);
+        out.push((toy_start, toy_end));
+        toy_start = toy_end;
+    }
+    out
+}
+
 fn normalize_cuda_device_shard_plan(
     gpu: Option<&str>,
     gpu_sample_toys: bool,
@@ -9266,6 +9798,7 @@ fn normalize_cuda_device_shard_plan(
     gpu_shards: Option<usize>,
     n_toys: usize,
     estimated_bytes_per_toy: usize,
+    estimated_events_per_toy: usize,
 ) -> Result<Vec<usize>> {
     if gpu_shards.is_some() && gpu != Some("cuda") {
         anyhow::bail!("--gpu-shards currently requires --gpu cuda");
@@ -9277,7 +9810,8 @@ fn normalize_cuda_device_shard_plan(
         anyhow::bail!("internal error: CUDA device list is empty for toy sharding");
     }
 
-    let n_shards = if let Some(v) = gpu_shards {
+    let u32_guard = min_shards_for_u32_toy_offsets(n_toys, estimated_events_per_toy)?;
+    let mut n_shards = if let Some(v) = gpu_shards {
         v
     } else if gpu_sample_toys && estimated_bytes_per_toy > 0 && n_toys > 0 {
         // PF3.1-OPT4: VRAM-aware auto-shard computation.
@@ -9292,7 +9826,15 @@ fn normalize_cuda_device_shard_plan(
                 .unwrap_or(0);
             if min_vram > 0 {
                 let usable = (min_vram as f64 * 0.70) as usize;
-                let max_toys_per_device = (usable / estimated_bytes_per_toy).max(1);
+                // `estimated_bytes_per_toy` tracks only the raw event payload, which tends to
+                // *underestimate* peak VRAM during CUDA toy sampling + batch fitting.
+                // Cap the per-device toy count to avoid OOMs on realistic workloads.
+                //
+                // Rationale: in PF3.1, unsharded CUDA sampling can OOM for n_toys=10k on 20GB GPUs,
+                // while 2+ shards succeeds. A conservative cap keeps the publication matrix robust.
+                const CUDA_AUTO_MAX_TOYS_PER_DEVICE: usize = 4096;
+                let max_toys_per_device =
+                    (usable / estimated_bytes_per_toy).max(1).min(CUDA_AUTO_MAX_TOYS_PER_DEVICE);
                 let shards_needed = n_toys.div_ceil(max_toys_per_device);
                 let n = shards_needed.max(cuda_device_ids.len());
                 tracing::info!(
@@ -9311,10 +9853,41 @@ fn normalize_cuda_device_shard_plan(
     } else if gpu_sample_toys {
         cuda_device_ids.len()
     } else {
-        return Ok(Vec::new());
+        // Host-toy path: keep legacy behavior (no sharding) unless a u32 toy-offset
+        // overflow is predicted for the requested workload.
+        if let Some((min_shards, _)) = u32_guard {
+            if min_shards > 1 {
+                let n = min_shards.max(cuda_device_ids.len());
+                tracing::info!(
+                    "auto-shard: enabling CUDA host sharding ({n} shards) to satisfy 32-bit toy-offset budget"
+                );
+                n
+            } else {
+                return Ok(Vec::new());
+            }
+        } else {
+            return Ok(Vec::new());
+        }
     };
     if n_shards == 0 {
         anyhow::bail!("--gpu-shards must be > 0");
+    }
+
+    if let Some((min_shards, max_toys_per_shard)) = u32_guard {
+        if n_shards < min_shards {
+            if gpu_shards.is_some() {
+                anyhow::bail!(
+                    "--gpu-shards={n_shards} is too small for 32-bit toy offsets: \
+                     estimated_events_per_toy={estimated_events_per_toy}, \
+                     max_toys_per_shard={max_toys_per_shard}, required_shards={min_shards}"
+                );
+            }
+            tracing::warn!(
+                "auto-shard: increasing shards from {n_shards} to {min_shards} \
+                 to satisfy 32-bit toy-offset budget"
+            );
+            n_shards = min_shards;
+        }
     }
 
     let mut plan = Vec::with_capacity(n_shards);
@@ -9357,6 +9930,26 @@ fn estimate_unbinned_expected_bytes_per_toy(
     // f64 event payload is 8 bytes per observable.
     let bytes = total_expected_events_x_obs * 8.0 * SAFETY;
     Ok(bytes.min(usize::MAX as f64) as usize)
+}
+
+fn estimate_unbinned_expected_events_per_toy(
+    model: &ns_unbinned::UnbinnedModel,
+    params: &[f64],
+) -> Result<usize> {
+    let mut total_expected_events = 0.0f64;
+    for ch in model.channels().iter().filter(|ch| ch.include_in_fit) {
+        let mut nu_total = 0.0f64;
+        for proc in &ch.processes {
+            let nu = proc.yield_expr.value(params)?;
+            nu_total += nu.max(0.0);
+        }
+        total_expected_events += nu_total;
+    }
+
+    if !total_expected_events.is_finite() || total_expected_events <= 0.0 {
+        return Ok(0);
+    }
+    Ok(total_expected_events.min(usize::MAX as f64) as usize)
 }
 
 fn contiguous_toy_shards(n_toys: usize, shard_device_plan: &[usize]) -> Vec<(usize, usize, usize)> {
@@ -12838,4 +13431,76 @@ fn cmd_viz_corr(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cuda_shard_plan_rejects_too_few_shards_for_u32_offsets() {
+        let err = normalize_cuda_device_shard_plan(
+            Some("cuda"),
+            true,
+            &[0],
+            Some(4),
+            10_000,
+            0,
+            2_000_000,
+        )
+        .expect_err("expected u32 offset guard to reject undersharded plan");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("too small for 32-bit toy offsets"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn cuda_shard_plan_auto_enables_host_sharding_for_large_event_budget() {
+        let plan = normalize_cuda_device_shard_plan(
+            Some("cuda"),
+            false,
+            &[0, 1],
+            None,
+            10_000,
+            0,
+            2_000_000,
+        )
+        .expect("auto host sharding should be computed");
+        assert!(
+            !plan.is_empty(),
+            "expected non-empty shard plan when u32 offset guard requires sharding"
+        );
+        assert!(
+            plan.len() >= 5,
+            "expected at least 5 shards for this event budget, got {}",
+            plan.len()
+        );
+    }
+
+    #[test]
+    fn cuda_shard_plan_keeps_host_path_unsharded_when_safe() {
+        let plan =
+            normalize_cuda_device_shard_plan(Some("cuda"), false, &[0, 1], None, 100, 0, 10_000)
+                .expect("safe host path should not require auto-sharding");
+        assert!(plan.is_empty(), "expected empty plan for safe host workload, got {plan:?}");
+    }
+
+    #[test]
+    fn metal_u32_guard_rejects_predicted_overflow() {
+        let max_toys = metal_max_toys_per_batch_for_u32_offsets(10_000, 2_000_000)
+            .expect("batch planner must compute max toys for Metal");
+        assert!(
+            max_toys < 10_000,
+            "expected chunking to be required for oversized workload, max_toys={max_toys}"
+        );
+    }
+
+    #[test]
+    fn metal_u32_guard_allows_safe_workload() {
+        let max_toys = metal_max_toys_per_batch_for_u32_offsets(100, 10_000)
+            .expect("batch planner should accept safe workload");
+        assert!(max_toys >= 100, "safe workload should fit in one batch, max_toys={max_toys}");
+    }
 }

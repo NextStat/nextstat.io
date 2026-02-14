@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/mams_benchmark_result_v1.schema.json",
+  "title": "NextStat MAMS Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "case",
+    "backend",
+    "deterministic",
+    "status",
+    "meta",
+    "dataset",
+    "config",
+    "timing",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.mams_benchmark_result.v1" },
+    "suite": { "const": "mams" },
+    "case": { "type": "string", "minLength": 1 },
+    "backend": { "type": "string", "enum": ["nextstat_mams", "nextstat_nuts", "blackjax_mclmc"] },
+    "deterministic": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+    "reason": { "type": "string" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["python", "platform", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "config": { "type": "object", "additionalProperties": true },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_time_s"],
+      "properties": {
+        "wall_time_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "metrics": { "type": "object", "additionalProperties": true }
+  }
+}
+

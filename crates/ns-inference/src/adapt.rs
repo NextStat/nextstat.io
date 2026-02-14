@@ -362,6 +362,11 @@ impl WindowedAdaptation {
     pub fn metric(&self) -> &crate::hmc::Metric {
         &self.metric
     }
+
+    /// Override the initial metric (e.g. from Pathfinder's Hessian estimate).
+    pub fn set_metric(&mut self, metric: crate::hmc::Metric) {
+        self.metric = metric;
+    }
 }
 
 /// Compute Stan-style adaptation windows.

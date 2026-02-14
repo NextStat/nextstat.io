@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_run_suite_result_v1.schema.json",
+  "title": "Unbinned Cross-Framework Run Suite Result v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "suite", "seed", "n_events", "availability", "cases"],
+  "properties": {
+    "schema_version": { "const": "nextstat.unbinned_run_suite_result.v1" },
+    "suite": { "type": "string", "minLength": 1 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "n_events": { "type": "integer", "minimum": 1 },
+    "availability": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["root", "zfit", "morefit"],
+      "properties": {
+        "root": { "type": "boolean" },
+        "zfit": { "type": "boolean" },
+        "morefit": { "type": "boolean" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["case", "kind", "nextstat", "roofit", "zfit", "morefit"],
+        "properties": {
+          "case": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "nextstat": { "type": "object", "additionalProperties": true },
+          "roofit": { "type": "object", "additionalProperties": true },
+          "zfit": { "type": "object", "additionalProperties": true },
+          "morefit": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}
+

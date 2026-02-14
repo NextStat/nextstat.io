@@ -1,0 +1,39 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/snapshot_index_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Benchmark snapshot index (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "snapshot_id", "suite", "git", "workflow", "artifacts"],
+  "properties": {
+    "schema_version": { "const": "nextstat.snapshot_index.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "suite": { "type": "string", "minLength": 1 },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "ref", "repository"],
+      "properties": {
+        "sha": { "type": "string" },
+        "ref": { "type": "string" },
+        "repository": { "type": "string" }
+      }
+    },
+    "workflow": { "type": "object", "additionalProperties": true },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    }
+  }
+}
+

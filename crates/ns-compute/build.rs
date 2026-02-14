@@ -191,5 +191,69 @@ fn main() {
             Err(e) => panic!("failed to spawn nvcc for {}: {}", flow_src, e),
         }
         println!("cargo:rustc-env=CUDA_FLOW_PTX_PATH={}", flow_ptx);
+
+        // --- fault_tree_mc.cu ---
+        let ft_src = format!("{}/fault_tree_mc.cu", kernel_dir);
+        println!("cargo:rerun-if-changed={}", ft_src);
+        let ft_ptx = format!("{}/fault_tree_mc.ptx", out_dir);
+
+        // Use --use_fast_math: MC throughput > numerical parity.
+        let status = std::process::Command::new("nvcc")
+            .args([
+                "--ptx",
+                "-arch=sm_70",
+                "-O3",
+                "--use_fast_math",
+                "-I",
+                kernel_dir,
+                "-o",
+                &ft_ptx,
+                &ft_src,
+            ])
+            .status();
+        match status {
+            Ok(st) if st.success() => {}
+            Ok(st) => panic!("nvcc failed to compile {} (exit={})", ft_src, st),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "cargo:warning=ns-compute: nvcc not found; writing stub PTX for fault_tree_mc (CUDA will not work at runtime)"
+                );
+                write_stub_ptx(&ft_ptx, "fault_tree_mc", "nvcc not found");
+            }
+            Err(e) => panic!("failed to spawn nvcc for {}: {}", ft_src, e),
+        }
+        println!("cargo:rustc-env=CUDA_FAULT_TREE_MC_PTX_PATH={}", ft_ptx);
+
+        // --- mams_engine.cuh (shared engine header for LAPS, used by build-time + JIT) ---
+        let mams_engine = format!("{}/mams_engine.cuh", kernel_dir);
+        println!("cargo:rerun-if-changed={}", mams_engine);
+
+        // Expose the engine header path so nvrtc_mams.rs can include_str! it for JIT compilation
+        let mams_engine_abs = std::fs::canonicalize(&mams_engine)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&mams_engine));
+        println!("cargo:rustc-env=CUDA_MAMS_ENGINE_PATH={}", mams_engine_abs.display());
+
+        // --- mams_leapfrog.cu (LAPS: GPU MAMS sampler) ---
+        let mams_src = format!("{}/mams_leapfrog.cu", kernel_dir);
+        println!("cargo:rerun-if-changed={}", mams_src);
+        let mams_ptx = format!("{}/mams_leapfrog.ptx", out_dir);
+
+        // NOTE: No --use_fast_math — MAMS energy conservation requires precise
+        // exp/log/sqrt for MH detailed balance.
+        let status = std::process::Command::new("nvcc")
+            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &mams_ptx, &mams_src])
+            .status();
+        match status {
+            Ok(st) if st.success() => {}
+            Ok(st) => panic!("nvcc failed to compile {} (exit={})", mams_src, st),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "cargo:warning=ns-compute: nvcc not found; writing stub PTX for mams_leapfrog (CUDA will not work at runtime)"
+                );
+                write_stub_ptx(&mams_ptx, "mams_leapfrog", "nvcc not found");
+            }
+            Err(e) => panic!("failed to spawn nvcc for {}: {}", mams_src, e),
+        }
+        println!("cargo:rustc-env=CUDA_MAMS_PTX_PATH={}", mams_ptx);
     }
 }

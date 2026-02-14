@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/nextstat_metrics_v0.schema.json",
+  "title": "NextStat CLI Metrics v0",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "status", "timing"],
+  "properties": {
+    "schema_version": { "const": "nextstat_metrics_v0" },
+    "status": { "type": "object", "additionalProperties": true },
+    "timing": { "type": "object", "additionalProperties": true }
+  }
+}
+

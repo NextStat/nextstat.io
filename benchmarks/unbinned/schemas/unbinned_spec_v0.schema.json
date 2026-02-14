@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_spec_v0.schema.json",
+  "title": "NextStat Unbinned Spec v0",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "model", "channels"],
+  "properties": {
+    "schema_version": { "const": "nextstat_unbinned_spec_v0" },
+    "model": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["poi", "parameters"],
+      "properties": {
+        "poi": { "type": "string", "minLength": 1 },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["name", "init", "bounds"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "init": { "type": "number" },
+              "bounds": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  }
+}
+

@@ -16,9 +16,16 @@ echo "Building ns-wasm (release, wasm32-unknown-unknown)…"
 # explicitly enabled via `RUSTFLAGS` for the wasm target, otherwise
 # wasm-bindgen-cli fails during transform.
 WASM_RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+reference-types"
-RUSTFLAGS="$WASM_RUSTFLAGS" cargo build -p ns-wasm --target wasm32-unknown-unknown --release
+RUSTFLAGS="$WASM_RUSTFLAGS" cargo build -p ns-wasm --target wasm32-unknown-unknown --profile release-wasm
 
-IN_WASM="target/wasm32-unknown-unknown/release/ns_wasm.wasm"
+# Resolve actual target-dir (may be overridden in .cargo/config.toml)
+TARGET_DIR="$(cargo metadata --format-version 1 --no-deps 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])')"
+IN_WASM="$TARGET_DIR/wasm32-unknown-unknown/release-wasm/ns_wasm.wasm"
+
+if [ ! -f "$IN_WASM" ]; then
+  echo "ERROR: WASM binary not found at $IN_WASM" >&2
+  exit 1
+fi
 OUT_DIR="playground/pkg"
 
 rm -rf "$OUT_DIR"

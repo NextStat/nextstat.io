@@ -6,9 +6,51 @@ the PyO3 module in `bindings/ns-py/src/lib.rs`.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, TypedDict, Union, overload
 
 __version__: str
+
+
+# ---------------------------------------------------------------------------
+# Structured return types for sampling results
+# ---------------------------------------------------------------------------
+
+class QualitySummary(TypedDict):
+    status: str
+    enabled: bool
+    warnings: List[str]
+    failures: List[str]
+    total_draws: int
+    max_r_hat: float
+    min_ess_bulk: float
+    min_ess_tail: float
+    min_ebfmi: float
+
+class SampleStats(TypedDict):
+    diverging: List[List[bool]]
+    tree_depth: List[List[int]]
+    accept_prob: List[List[float]]
+    energy: List[List[float]]
+    step_size: List[float]
+    n_leapfrog: List[List[int]]
+
+class Diagnostics(TypedDict):
+    r_hat: Dict[str, float]
+    ess_bulk: Dict[str, float]
+    ess_tail: Dict[str, float]
+    divergence_rate: float
+    max_treedepth_rate: float
+    ebfmi: List[float]
+    quality: QualitySummary
+
+class SamplerResult(TypedDict):
+    posterior: Dict[str, List[List[float]]]
+    sample_stats: SampleStats
+    diagnostics: Diagnostics
+    param_names: List[str]
+    n_chains: int
+    n_warmup: int
+    n_samples: int
 
 # `HistFactoryModel` accepts Python sequences (list/tuple/array('d')) and also
 # buffer-protocol objects for performance. Type stubs stay conservative and
@@ -182,7 +224,7 @@ class GaussianMeanModel:
 
 
 class FunnelModel:
-    def __init__(self) -> None: ...
+    def __init__(self, dim: int = 2) -> None: ...
 
     def n_params(self) -> int: ...
     def dim(self) -> int: ...
@@ -338,6 +380,79 @@ class CoxPhModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class IntervalCensoredWeibullModel:
+    def __init__(
+        self,
+        time_lower: List[float],
+        time_upper: List[float],
+        censor_type: List[str],
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class IntervalCensoredWeibullAftModel:
+    def __init__(
+        self,
+        time_lower: List[float],
+        time_upper: List[float],
+        censor_type: List[str],
+        covariates: List[List[float]],
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class IntervalCensoredExponentialModel:
+    def __init__(
+        self,
+        time_lower: List[float],
+        time_upper: List[float],
+        censor_type: List[str],
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class IntervalCensoredLogNormalModel:
+    def __init__(
+        self,
+        time_lower: List[float],
+        time_upper: List[float],
+        censor_type: List[str],
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class OneCompartmentOralPkModel:
     def __init__(
         self,
@@ -381,6 +496,57 @@ class OneCompartmentOralPkNlmeModel:
     def dim(self) -> int: ...
     def nll(self, params: List[float]) -> float: ...
     def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class TwoCompartmentIvPkModel:
+    def __init__(
+        self,
+        times: List[float],
+        y: List[float],
+        *,
+        dose: float,
+        error_model: Literal["additive", "proportional", "combined"] = ...,
+        sigma: float = ...,
+        sigma_add: Optional[float] = ...,
+        lloq: Optional[float] = ...,
+        lloq_policy: Literal["ignore", "replace_half", "censored"] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+    def predict(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class TwoCompartmentOralPkModel:
+    def __init__(
+        self,
+        times: List[float],
+        y: List[float],
+        *,
+        dose: float,
+        bioavailability: float = ...,
+        error_model: Literal["additive", "proportional", "combined"] = ...,
+        sigma: float = ...,
+        sigma_add: Optional[float] = ...,
+        lloq: Optional[float] = ...,
+        lloq_policy: Literal["ignore", "replace_half", "censored"] = ...,
+    ) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+    def predict(self, params: List[float]) -> List[float]: ...
 
     def parameter_names(self) -> List[str]: ...
     def suggested_init(self) -> List[float]: ...
@@ -524,6 +690,8 @@ class FitResult:
     final_grad_norm: float
     initial_nll: float
     n_active_bounds: int
+    edm: float
+    warnings: List[str]
 
     @property
     def bestfit(self) -> List[float]: ...
@@ -545,6 +713,7 @@ class FitMinimumResult:
     message: str
     initial_nll: float
     final_gradient: Optional[List[float]]
+    edm: float
 
     @property
     def bestfit(self) -> List[float]: ...
@@ -576,8 +745,13 @@ class Posterior:
             WeibullSurvivalModel,
             LogNormalAftModel,
             CoxPhModel,
+            IntervalCensoredWeibullModel,
+            IntervalCensoredExponentialModel,
+            IntervalCensoredLogNormalModel,
             OneCompartmentOralPkModel,
             OneCompartmentOralPkNlmeModel,
+            TwoCompartmentIvPkModel,
+            TwoCompartmentOralPkModel,
             GevModel,
             GpdModel,
         ],
@@ -623,8 +797,13 @@ class MaximumLikelihoodEstimator:
             WeibullSurvivalModel,
             LogNormalAftModel,
             CoxPhModel,
+            IntervalCensoredWeibullModel,
+            IntervalCensoredExponentialModel,
+            IntervalCensoredLogNormalModel,
             OneCompartmentOralPkModel,
             OneCompartmentOralPkNlmeModel,
+            TwoCompartmentIvPkModel,
+            TwoCompartmentOralPkModel,
             GammaRegressionModel,
             TweedieRegressionModel,
             GevModel,
@@ -660,8 +839,13 @@ class MaximumLikelihoodEstimator:
             WeibullSurvivalModel,
             LogNormalAftModel,
             CoxPhModel,
+            IntervalCensoredWeibullModel,
+            IntervalCensoredExponentialModel,
+            IntervalCensoredLogNormalModel,
             OneCompartmentOralPkModel,
             OneCompartmentOralPkNlmeModel,
+            TwoCompartmentIvPkModel,
+            TwoCompartmentOralPkModel,
         ],
         *,
         data: Literal[None] = ...,
@@ -767,6 +951,18 @@ class MaximumLikelihoodEstimator:
     @overload
     def fit_batch(
         self,
+        models_or_model: List[TwoCompartmentIvPkModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[TwoCompartmentOralPkModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
         models_or_model: HistFactoryModel,
         datasets: List[List[float]],
     ) -> List[FitResult]: ...
@@ -809,6 +1005,45 @@ def apply_patchset(
     patchset_json: str,
     *,
     patch_name: Optional[str] = ...,
+) -> str: ...
+def workspace_combine(
+    workspace_json_1: str,
+    workspace_json_2: str,
+    *,
+    join: str = "none",
+) -> str: ...
+def workspace_prune(
+    workspace_json: str,
+    *,
+    channels: List[str] = ...,
+    samples: List[str] = ...,
+    modifiers: List[str] = ...,
+    measurements: List[str] = ...,
+) -> str: ...
+def workspace_rename(
+    workspace_json: str,
+    *,
+    channels: Optional[Dict[str, str]] = ...,
+    samples: Optional[Dict[str, str]] = ...,
+    modifiers: Optional[Dict[str, str]] = ...,
+    measurements: Optional[Dict[str, str]] = ...,
+) -> str: ...
+def workspace_sorted(workspace_json: str) -> str: ...
+def workspace_digest(workspace_json: str) -> str: ...
+def workspace_to_xml(
+    workspace_json: str,
+    output_prefix: str = "output",
+) -> List[Tuple[str, str]]: ...
+def simplemodel_uncorrelated(
+    signal: List[float],
+    bkg: List[float],
+    bkg_uncertainty: List[float],
+) -> str: ...
+def simplemodel_correlated(
+    signal: List[float],
+    bkg: List[float],
+    bkg_up: List[float],
+    bkg_down: List[float],
 ) -> str: ...
 def meta_fixed(
     estimates: List[float],
@@ -924,6 +1159,16 @@ def fit_batch(
 @overload
 def fit_batch(
     models_or_model: List[OneCompartmentOralPkNlmeModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[TwoCompartmentIvPkModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[TwoCompartmentOralPkModel],
     datasets: Literal[None] = ...,
 ) -> List[FitResult]: ...
 @overload
@@ -1079,11 +1324,12 @@ def sample(
     seed: int = ...,
     max_treedepth: int = ...,
     target_accept: float = ...,
+    init_strategy: str = ...,
     init_jitter: float = ...,
     init_jitter_rel: Optional[float] = ...,
     init_overdispersed_rel: Optional[float] = ...,
     data: Optional[List[float]] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
 @overload
 def sample(
     model: Posterior,
@@ -1094,11 +1340,12 @@ def sample(
     seed: int = ...,
     max_treedepth: int = ...,
     target_accept: float = ...,
+    init_strategy: str = ...,
     init_jitter: float = ...,
     init_jitter_rel: Optional[float] = ...,
     init_overdispersed_rel: Optional[float] = ...,
     data: Literal[None] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
 @overload
 def sample(
     model: Union[
@@ -1130,11 +1377,12 @@ def sample(
     seed: int = ...,
     max_treedepth: int = ...,
     target_accept: float = ...,
+    init_strategy: str = ...,
     init_jitter: float = ...,
     init_jitter_rel: Optional[float] = ...,
     init_overdispersed_rel: Optional[float] = ...,
     data: Literal[None] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
 
 
 @overload
@@ -1153,7 +1401,7 @@ def sample_mams(
     max_leapfrog: int = ...,
     diagonal_precond: bool = ...,
     data: Optional[List[float]] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
 @overload
 def sample_mams(
     model: Posterior,
@@ -1170,7 +1418,7 @@ def sample_mams(
     max_leapfrog: int = ...,
     diagonal_precond: bool = ...,
     data: Literal[None] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
 @overload
 def sample_mams(
     model: Union[
@@ -1208,7 +1456,39 @@ def sample_mams(
     max_leapfrog: int = ...,
     diagonal_precond: bool = ...,
     data: Literal[None] = ...,
-) -> Dict[str, Any]: ...
+) -> SamplerResult: ...
+
+
+class RawCudaModel:
+    """User-defined CUDA model for GPU LAPS sampling via NVRTC JIT compilation.
+
+    The ``cuda_src`` must define ``user_nll()`` and ``user_grad()`` device functions.
+    """
+    dim: int
+    cuda_src: str
+    def __init__(
+        self,
+        dim: int,
+        cuda_src: str,
+        *,
+        data: Optional[List[float]] = ...,
+        param_names: Optional[List[str]] = ...,
+    ) -> None: ...
+
+def sample_laps(
+    model: Union[str, RawCudaModel],
+    *,
+    model_data: Optional[Dict[str, Any]] = ...,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    target_accept: float = ...,
+    init_step_size: float = ...,
+    init_l: float = ...,
+    max_leapfrog: int = ...,
+    device_ids: Optional[List[int]] = ...,
+) -> SamplerResult: ...
 
 
 def cls_curve(
@@ -1355,6 +1635,86 @@ def rosenbaum_bounds(
 ) -> Dict[str, Any]: ...
 
 
+def nlme_foce(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    n_subjects: int,
+    *,
+    dose: float,
+    bioavailability: float = ...,
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+    theta_init: List[float],
+    omega_init: List[float],
+    max_outer_iter: int = ...,
+    max_inner_iter: int = ...,
+    tol: float = ...,
+    interaction: bool = ...,
+) -> Dict[str, Any]: ...
+
+
+def nlme_saem(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    n_subjects: int,
+    *,
+    dose: float,
+    bioavailability: float = ...,
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+    theta_init: List[float],
+    omega_init: List[float],
+    n_burn: int = ...,
+    n_iter: int = ...,
+    n_chains: int = ...,
+    seed: int = ...,
+    tol: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def pk_vpc(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    n_subjects: int,
+    *,
+    dose: float,
+    bioavailability: float = ...,
+    theta: List[float],
+    omega_matrix: List[List[float]],
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+    n_sim: int = ...,
+    quantiles: Optional[List[float]] = ...,
+    n_bins: int = ...,
+    seed: int = ...,
+    pi_level: float = ...,
+) -> Dict[str, Any]: ...
+
+
+def pk_gof(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    *,
+    dose: float,
+    bioavailability: float = ...,
+    theta: List[float],
+    eta: List[List[float]],
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+) -> List[Dict[str, Any]]: ...
+
+
+def read_nonmem(csv_text: str) -> Dict[str, Any]: ...
+
+
 def kaplan_meier(
     times: List[float],
     events: List[bool],
@@ -1368,6 +1728,37 @@ def log_rank_test(
     events: List[bool],
     groups: List[int],
 ) -> Dict[str, Any]: ...
+
+
+def fault_tree_mc(
+    spec: Dict[str, Any],
+    n_scenarios: int,
+    *,
+    seed: int = ...,
+    device: str = ...,
+    chunk_size: int = ...,
+) -> Dict[str, Any]: ...
+
+
+def fault_tree_mc_ce_is(
+    spec: Dict[str, Any],
+    *,
+    n_per_level: int = ...,
+    elite_fraction: float = ...,
+    max_levels: int = ...,
+    q_max: float = ...,
+    seed: int = ...,
+) -> Dict[str, Any]: ...
+
+
+def profile_ci_py(
+    model: Any,
+    fit_result: FitResult,
+    *,
+    param_idx: Optional[int] = ...,
+    chi2_level: float = ...,
+    tol: float = ...,
+) -> Any: ...
 
 
 def churn_generate_data(

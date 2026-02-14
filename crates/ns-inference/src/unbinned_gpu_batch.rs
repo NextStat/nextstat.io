@@ -6,6 +6,14 @@
 use crate::lbfgs::LbfgsState;
 use crate::optimizer::OptimizerConfig;
 use ns_core::{FitResult, Result};
+use rand::SeedableRng;
+use rand::distr::Uniform;
+use rand::prelude::Distribution;
+
+/// CUDA lockstep retry policy: match CPU toy-fit defaults for non-converged toys.
+pub const CUDA_TOY_FIT_MAX_RETRIES: usize = 3;
+/// Retry init jitter scale (fraction of parameter range), matching CPU default.
+pub const CUDA_TOY_FIT_JITTER_SCALE: f64 = 0.10;
 
 trait UnbinnedBatchAccel {
     fn n_params(&self) -> usize;
@@ -14,43 +22,79 @@ trait UnbinnedBatchAccel {
     fn batch_nll(&mut self, params_flat: &[f64]) -> Result<Vec<f64>>;
 }
 
-fn fit_lockstep<A: UnbinnedBatchAccel>(
-    mut accel: A,
-    init_params: &[f64],
+#[derive(Clone)]
+struct LockstepToySnapshot {
+    x: Vec<f64>,
+    fval: f64,
+    iter: usize,
+    n_fev: usize,
+    n_gev: usize,
+    converged: bool,
+    failed: bool,
+}
+
+#[derive(Clone, Copy)]
+struct LockstepRetryPolicy {
+    max_retries: usize,
+    jitter_scale: f64,
+}
+
+fn snapshot_from_state(state: &LbfgsState) -> LockstepToySnapshot {
+    LockstepToySnapshot {
+        x: state.x.clone(),
+        fval: state.fval,
+        iter: state.iter,
+        n_fev: state.n_fev,
+        n_gev: state.n_gev,
+        converged: state.converged,
+        failed: state.failed,
+    }
+}
+
+fn retry_seed(toy_idx: usize, retry_idx: usize) -> u64 {
+    // SplitMix-like deterministic mix, stable across runs/hosts.
+    let mut z = 0x9E37_79B9_7F4A_7C15u64
+        ^ (toy_idx as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ (retry_idx as u64).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+fn jitter_params(
+    init: &[f64],
     bounds: &[(f64, f64)],
-    config: Option<OptimizerConfig>,
-) -> Result<(Vec<Result<FitResult>>, A)> {
-    let config = config.unwrap_or_default();
-    let n_params = accel.n_params();
-    let n_toys = accel.n_toys();
+    jitter_scale: f64,
+    rng: &mut impl rand::Rng,
+) -> Vec<f64> {
+    let uniform = Uniform::new(-1.0_f64, 1.0).unwrap();
+    init.iter()
+        .zip(bounds.iter())
+        .map(|(&x, &(lo, hi))| {
+            let range = hi - lo;
+            if !range.is_finite() || range <= 0.0 {
+                return x;
+            }
+            let delta = jitter_scale * range * uniform.sample(rng);
+            (x + delta).clamp(lo, hi)
+        })
+        .collect()
+}
 
-    if init_params.len() != n_params {
-        return Err(ns_core::Error::Validation(format!(
-            "init_params length mismatch: expected {}, got {}",
-            n_params,
-            init_params.len()
-        )));
-    }
-    if bounds.len() != n_params {
-        return Err(ns_core::Error::Validation(format!(
-            "bounds length mismatch: expected {}, got {}",
-            n_params,
-            bounds.len()
-        )));
-    }
-
-    let effective_m = config.effective_m(n_params);
-    let mut states: Vec<LbfgsState> = (0..n_toys)
-        .map(|_| LbfgsState::new(init_params.to_vec(), bounds.to_vec(), effective_m, config.tol))
-        .collect();
-
+fn run_lockstep_iterations<A: UnbinnedBatchAccel>(
+    accel: &mut A,
+    states: &mut [LbfgsState],
+    n_params: usize,
+    max_iter: u64,
+) -> Result<()> {
+    let n_toys = states.len();
     let mut params_flat = vec![0.0f64; n_toys * n_params];
     let mut params_trial = vec![0.0f64; n_toys * n_params];
     let mut directions: Vec<Option<Vec<f64>>> = vec![None; n_toys];
     let mut step_sizes: Vec<f64> = vec![0.0; n_toys];
     let mut accepted: Vec<bool> = vec![false; n_toys];
 
-    for _outer_iter in 0..config.max_iter {
+    for _outer_iter in 0..max_iter {
         let mut any_active = false;
         for t in 0..n_toys {
             let dst = &mut params_flat[t * n_params..(t + 1) * n_params];
@@ -141,28 +185,132 @@ fn fit_lockstep<A: UnbinnedBatchAccel>(
         }
     }
 
+    Ok(())
+}
+
+fn fit_lockstep_impl<A: UnbinnedBatchAccel>(
+    mut accel: A,
+    init_params: &[f64],
+    bounds: &[(f64, f64)],
+    config: Option<OptimizerConfig>,
+    retry_policy: Option<LockstepRetryPolicy>,
+) -> Result<(Vec<Result<FitResult>>, A)> {
+    let config = config.unwrap_or_default();
+    let n_params = accel.n_params();
+    let n_toys = accel.n_toys();
+
+    if init_params.len() != n_params {
+        return Err(ns_core::Error::Validation(format!(
+            "init_params length mismatch: expected {}, got {}",
+            n_params,
+            init_params.len()
+        )));
+    }
+    if bounds.len() != n_params {
+        return Err(ns_core::Error::Validation(format!(
+            "bounds length mismatch: expected {}, got {}",
+            n_params,
+            bounds.len()
+        )));
+    }
+
+    let effective_m = config.effective_m(n_params);
+    let mut states: Vec<LbfgsState> = (0..n_toys)
+        .map(|_| LbfgsState::new(init_params.to_vec(), bounds.to_vec(), effective_m, config.tol))
+        .collect();
+
+    // Keep best attempt (lowest finite NLL) so non-converged toys still return
+    // the strongest point found across warm-start + jitter retries.
+    let mut best: Vec<LockstepToySnapshot> = states.iter().map(snapshot_from_state).collect();
+
+    run_lockstep_iterations(&mut accel, &mut states, n_params, config.max_iter)?;
+    for (t, state) in states.iter().enumerate() {
+        if state.fval.is_finite() && (!best[t].fval.is_finite() || state.fval < best[t].fval) {
+            best[t] = snapshot_from_state(state);
+        }
+    }
+
+    if let Some(retry_policy) = retry_policy {
+        for retry_idx in 0..retry_policy.max_retries {
+            let retry_toys: Vec<usize> = states
+                .iter()
+                .enumerate()
+                .filter_map(|(t, s)| (!s.converged && !s.failed).then_some(t))
+                .collect();
+            if retry_toys.is_empty() {
+                break;
+            }
+
+            for toy_idx in retry_toys {
+                let mut rng = rand::rngs::StdRng::seed_from_u64(retry_seed(toy_idx, retry_idx + 1));
+                let jittered =
+                    jitter_params(init_params, bounds, retry_policy.jitter_scale, &mut rng);
+                states[toy_idx] =
+                    LbfgsState::new(jittered, bounds.to_vec(), effective_m, config.tol);
+            }
+
+            run_lockstep_iterations(&mut accel, &mut states, n_params, config.max_iter)?;
+            for (t, state) in states.iter().enumerate() {
+                if state.fval.is_finite()
+                    && (!best[t].fval.is_finite() || state.fval < best[t].fval)
+                {
+                    best[t] = snapshot_from_state(state);
+                }
+            }
+        }
+    }
+
     let results: Vec<Result<FitResult>> = states
-        .into_iter()
-        .map(|state| {
-            if state.failed {
+        .iter()
+        .enumerate()
+        .map(|(toy_idx, state)| {
+            let snap = if state.converged {
+                snapshot_from_state(state)
+            } else {
+                best.get(toy_idx).cloned().unwrap_or_else(|| snapshot_from_state(state))
+            };
+
+            if snap.failed {
                 Err(ns_core::Error::Computation(
                     "L-BFGS-B lockstep optimizer failed (non-finite NLL/gradient)".into(),
                 ))
             } else {
                 Ok(FitResult::new(
-                    state.x,
+                    snap.x,
                     vec![0.0; n_params], // uncertainties not computed in batch toy fits
-                    state.fval,
-                    state.converged,
-                    state.iter,
-                    state.n_fev,
-                    state.n_gev,
+                    snap.fval,
+                    snap.converged,
+                    snap.iter,
+                    snap.n_fev,
+                    snap.n_gev,
                 ))
             }
         })
         .collect();
 
     Ok((results, accel))
+}
+
+fn fit_lockstep<A: UnbinnedBatchAccel>(
+    accel: A,
+    init_params: &[f64],
+    bounds: &[(f64, f64)],
+    config: Option<OptimizerConfig>,
+) -> Result<(Vec<Result<FitResult>>, A)> {
+    fit_lockstep_impl(accel, init_params, bounds, config, None)
+}
+
+fn fit_lockstep_cuda_retry<A: UnbinnedBatchAccel>(
+    accel: A,
+    init_params: &[f64],
+    bounds: &[(f64, f64)],
+    config: Option<OptimizerConfig>,
+) -> Result<(Vec<Result<FitResult>>, A)> {
+    let retry_policy = LockstepRetryPolicy {
+        max_retries: CUDA_TOY_FIT_MAX_RETRIES,
+        jitter_scale: CUDA_TOY_FIT_JITTER_SCALE,
+    };
+    fit_lockstep_impl(accel, init_params, bounds, config, Some(retry_policy))
 }
 
 /// Fit toy datasets on Metal GPU in batch/lockstep mode.
@@ -1118,7 +1266,7 @@ fn fit_lockstep_flow_cuda_f32(
     }
 
     let wrap = WrapF32 { accel, ptr: d_logp_flat_ptr };
-    let (results, wrap) = fit_lockstep(wrap, init_params, bounds, config)?;
+    let (results, wrap) = fit_lockstep_cuda_retry(wrap, init_params, bounds, config)?;
     Ok((results, wrap.accel))
 }
 
@@ -1145,7 +1293,7 @@ fn fit_lockstep_flow_cuda(
         }
     }
 
-    let (results, wrap) = fit_lockstep(Wrap(accel), init_params, bounds, config)?;
+    let (results, wrap) = fit_lockstep_cuda_retry(Wrap(accel), init_params, bounds, config)?;
     Ok((results, wrap.0))
 }
 
@@ -1173,8 +1321,74 @@ fn fit_lockstep_cuda(
         }
     }
 
-    let (results, wrap) = fit_lockstep(Wrap(accel), init_params, bounds, config)?;
+    let (results, wrap) = fit_lockstep_cuda_retry(Wrap(accel), init_params, bounds, config)?;
     Ok((results, wrap.0))
+}
+
+#[cfg(test)]
+mod lockstep_retry_tests {
+    use super::{UnbinnedBatchAccel, fit_lockstep_cuda_retry};
+    use crate::optimizer::OptimizerConfig;
+    use ns_core::Result;
+
+    struct RetryToyAccel {
+        n_toys: usize,
+    }
+
+    impl UnbinnedBatchAccel for RetryToyAccel {
+        fn n_params(&self) -> usize {
+            1
+        }
+
+        fn n_toys(&self) -> usize {
+            self.n_toys
+        }
+
+        fn batch_nll_grad(&mut self, params_flat: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
+            let mut nll = Vec::with_capacity(self.n_toys);
+            let mut grad = Vec::with_capacity(self.n_toys);
+            for t in 0..self.n_toys {
+                let x = params_flat[t];
+                if x.abs() > 1e-12 {
+                    nll.push(0.0);
+                    grad.push(0.0);
+                } else {
+                    // Warm-start at x=0 cannot converge in one lockstep iteration.
+                    nll.push(1.0);
+                    grad.push(1.0);
+                }
+            }
+            Ok((nll, grad))
+        }
+
+        fn batch_nll(&mut self, params_flat: &[f64]) -> Result<Vec<f64>> {
+            let mut nll = Vec::with_capacity(self.n_toys);
+            for t in 0..self.n_toys {
+                let x = params_flat[t];
+                if x.abs() > 1e-12 {
+                    nll.push(0.0);
+                } else {
+                    nll.push(1.0);
+                }
+            }
+            Ok(nll)
+        }
+    }
+
+    #[test]
+    fn lockstep_retries_recover_nonconverged_toys() {
+        let accel = RetryToyAccel { n_toys: 8 };
+        let init = vec![0.0];
+        let bounds = vec![(-1.0, 1.0)];
+        let cfg = OptimizerConfig { max_iter: 1, ..OptimizerConfig::default() };
+
+        let (results, _accel) = fit_lockstep_cuda_retry(accel, &init, &bounds, Some(cfg)).unwrap();
+        assert_eq!(results.len(), 8);
+        assert!(
+            results.iter().all(|r| r.as_ref().map(|x| x.converged).unwrap_or(false)),
+            "expected retries to recover all toys"
+        );
+    }
 }
 
 #[cfg(all(test, feature = "cuda"))]

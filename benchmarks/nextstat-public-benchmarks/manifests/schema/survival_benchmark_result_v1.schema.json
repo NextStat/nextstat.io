@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/survival_benchmark_result_v1.schema.json",
+  "title": "NextStat Survival Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "case",
+    "deterministic",
+    "status",
+    "meta",
+    "dataset",
+    "config",
+    "timing",
+    "parity",
+    "results"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.survival_benchmark_result.v1" },
+    "suite": { "const": "survival" },
+    "case": { "type": "string", "minLength": 1 },
+    "deterministic": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+    "reason": { "type": ["string", "null"] },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["python", "platform", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "path": { "type": "string" },
+        "spec": { "type": "object" }
+      }
+    },
+    "config": { "type": "object", "additionalProperties": true },
+    "truth_recovery": { "type": "object", "additionalProperties": true },
+    "timing": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["wall_time_s"],
+      "properties": {
+        "wall_time_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "median", "p95"],
+          "properties": {
+            "min": { "type": "number", "minimum": 0 },
+            "median": { "type": "number", "minimum": 0 },
+            "p95": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "timing_baseline": { "type": "object", "additionalProperties": true },
+    "parity": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "reference", "metrics"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "warn", "skipped"] },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        },
+        "metrics": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "results": { "type": "object", "additionalProperties": true }
+  }
+}
+

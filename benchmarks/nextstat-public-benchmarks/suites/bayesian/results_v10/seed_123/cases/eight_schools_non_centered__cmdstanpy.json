@@ -1,0 +1,116 @@
+{
+  "backend": "cmdstanpy",
+  "backend_meta": {
+    "cmdstan_version": "(2, 38)",
+    "cmdstanpy_version": "1.3.0"
+  },
+  "case": "eight_schools_non_centered",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 123,
+    "target_accept": 0.95
+  },
+  "dataset": {
+    "id": "eight_schools",
+    "sha256": "f0a70a7e839f0c402da002e67605d554600cbabeb997101df464ec511d513b67"
+  },
+  "deterministic": false,
+  "diagnostics": {
+    "ess_bulk": {
+      "mu": 9262.46,
+      "tau": 4445.43,
+      "theta[1]": 8355.65,
+      "theta[2]": 10648.6,
+      "theta[3]": 8865.99,
+      "theta[4]": 10933.0,
+      "theta[5]": 9339.09,
+      "theta[6]": 9510.15,
+      "theta[7]": 8959.82,
+      "theta[8]": 9084.91,
+      "theta_raw[1]": 8203.71,
+      "theta_raw[2]": 9656.26,
+      "theta_raw[3]": 9163.03,
+      "theta_raw[4]": 11257.2,
+      "theta_raw[5]": 8443.48,
+      "theta_raw[6]": 9963.7,
+      "theta_raw[7]": 9037.04,
+      "theta_raw[8]": 9388.58
+    },
+    "ess_tail": {
+      "mu": 5465.42,
+      "tau": 3109.95,
+      "theta[1]": 6442.55,
+      "theta[2]": 6985.09,
+      "theta[3]": 6322.76,
+      "theta[4]": 6781.82,
+      "theta[5]": 6552.37,
+      "theta[6]": 7167.89,
+      "theta[7]": 7031.32,
+      "theta[8]": 6570.33,
+      "theta_raw[1]": 5779.19,
+      "theta_raw[2]": 5600.02,
+      "theta_raw[3]": 6074.19,
+      "theta_raw[4]": 5082.74,
+      "theta_raw[5]": 6103.73,
+      "theta_raw[6]": 5849.62,
+      "theta_raw[7]": 5893.12,
+      "theta_raw[8]": 5795.23
+    },
+    "r_hat": {
+      "mu": 0.99989,
+      "tau": 1.00056,
+      "theta[1]": 1.00066,
+      "theta[2]": 1.00058,
+      "theta[3]": 1.00065,
+      "theta[4]": 0.999824,
+      "theta[5]": 1.0003,
+      "theta[6]": 1.00052,
+      "theta[7]": 1.0001,
+      "theta[8]": 1.00113,
+      "theta_raw[1]": 1.00002,
+      "theta_raw[2]": 1.00087,
+      "theta_raw[3]": 1.00005,
+      "theta_raw[4]": 1.00008,
+      "theta_raw[5]": 1.00011,
+      "theta_raw[6]": 1.00001,
+      "theta_raw[7]": 1.00074,
+      "theta_raw[8]": 1.0005
+    }
+  },
+  "diagnostics_summary": {
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.00113,
+    "max_treedepth_rate": 0.0,
+    "min_ebfmi": null,
+    "min_ess_bulk": 4445.43,
+    "min_ess_tail": 3109.95
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "Eight Schools (non-centered, funnel geometry)"
+  },
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "ok",
+  "suite": "bayesian",
+  "timing": {
+    "ess_bulk_per_sec": {
+      "median": 50914.77504540558,
+      "min": 24567.929366339496
+    },
+    "ess_tail_per_sec": {
+      "median": 33650.994210788725,
+      "min": 17187.320896481895
+    },
+    "wall_time_s": 0.1809444309983519
+  }
+}

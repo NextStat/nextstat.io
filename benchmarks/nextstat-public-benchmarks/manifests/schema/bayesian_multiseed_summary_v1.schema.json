@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/bayesian_multiseed_summary_v1.schema.json",
+  "title": "NextStat Bayesian Multi-Seed Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "cases"],
+  "properties": {
+    "schema_version": { "const": "nextstat.bayesian_multiseed_summary.v1" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "suite": { "const": "bayesian" },
+    "seeds": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+    "backends": { "type": "string", "minLength": 1 },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_chains", "n_warmup", "n_samples", "max_treedepth", "target_accept", "init_jitter_rel", "deterministic"],
+      "properties": {
+        "n_chains": { "type": "integer", "minimum": 1 },
+        "n_warmup": { "type": "integer", "minimum": 0 },
+        "n_samples": { "type": "integer", "minimum": 1 },
+        "max_treedepth": { "type": "integer", "minimum": 1 },
+        "target_accept": { "type": "number", "minimum": 0, "maximum": 1 },
+        "init_jitter_rel": { "type": "number", "minimum": 0 },
+        "deterministic": { "type": "boolean" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case", "backend", "statuses", "min_ess_bulk_per_sec", "wall_time_s", "min_ess_bulk", "max_r_hat", "configs"],
+        "properties": {
+          "case": { "type": "string", "minLength": 1 },
+          "backend": { "type": "string", "minLength": 1 },
+          "statuses": { "type": "array", "items": { "type": "string" } },
+          "min_ess_bulk_per_sec": { "type": "array", "items": { "type": "number" } },
+          "wall_time_s": { "type": "array", "items": { "type": "number" } },
+          "min_ess_bulk": { "type": "array", "items": { "type": "number" } },
+          "max_r_hat": { "type": "array", "items": { "type": "number" } },
+          "configs": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    }
+  }
+}

@@ -4,8 +4,9 @@
 //! `q_mu` / `qtilde_mu` in pyhf terminology (Cowan et al., arXiv:1007.1727).
 
 use crate::MaximumLikelihoodEstimator;
+use crate::optimizer::OptimizerConfig;
 use ns_core::traits::{FixedParamModel, LogDensityModel, PoiModel};
-use ns_core::{Error, Result};
+use ns_core::{Error, FitResult, Result};
 #[cfg(any(feature = "cuda", feature = "metal"))]
 use ns_translate::pyhf::HistFactoryModel;
 
@@ -509,6 +510,243 @@ pub fn scan_metal(
     Ok(ProfileLikelihoodScan { poi_index: poi, mu_hat, nll_hat, points })
 }
 
+// ---------------------------------------------------------------------------
+// Generic Profile Likelihood CI (any LogDensityModel)
+// ---------------------------------------------------------------------------
+
+/// Result of a profile likelihood confidence interval for one parameter.
+#[derive(Debug, Clone)]
+pub struct ProfileCiResult {
+    pub param_idx: usize,
+    pub mle: f64,
+    pub ci_lower: f64,
+    pub ci_upper: f64,
+    pub n_evals: usize,
+}
+
+/// Wrapper that fixes one parameter and optimizes the rest.
+///
+/// Reduces dimension by 1: the fixed parameter is removed from the parameter vector.
+struct FixedParamWrapper<'a, M: LogDensityModel> {
+    inner: &'a M,
+    fix_idx: usize,
+    fix_value: f64,
+}
+
+impl<M: LogDensityModel> FixedParamWrapper<'_, M> {
+    /// Reconstruct the full parameter vector by inserting the fixed value.
+    fn full_params(&self, reduced: &[f64]) -> Vec<f64> {
+        let mut full = Vec::with_capacity(reduced.len() + 1);
+        full.extend_from_slice(&reduced[..self.fix_idx]);
+        full.push(self.fix_value);
+        full.extend_from_slice(&reduced[self.fix_idx..]);
+        full
+    }
+}
+
+impl<M: LogDensityModel> LogDensityModel for FixedParamWrapper<'_, M> {
+    type Prepared<'b>
+        = ns_core::traits::PreparedModelRef<'b, Self>
+    where
+        Self: 'b;
+
+    fn dim(&self) -> usize {
+        self.inner.dim() - 1
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let mut names = self.inner.parameter_names();
+        names.remove(self.fix_idx);
+        names
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        let mut bounds = self.inner.parameter_bounds();
+        bounds.remove(self.fix_idx);
+        bounds
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        let mut init = self.inner.parameter_init();
+        init.remove(self.fix_idx);
+        init
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        let full = self.full_params(params);
+        self.inner.nll(&full)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        let full = self.full_params(params);
+        let full_grad = self.inner.grad_nll(&full)?;
+        // Remove fixed index from gradient.
+        let mut grad = Vec::with_capacity(full_grad.len().saturating_sub(1));
+        for (j, g) in full_grad.iter().enumerate() {
+            if j == self.fix_idx {
+                continue;
+            }
+            grad.push(*g);
+        }
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        ns_core::traits::PreparedModelRef::new(self)
+    }
+}
+
+/// Compute profile likelihood CI for a single parameter via bisection.
+///
+/// The CI is defined as `{θ : 2*(NLL(θ) - NLL_min) ≤ chi2_level}`.
+/// Default `chi2_level = 3.841` corresponds to 95% CI for 1 DOF.
+pub fn profile_ci<M: LogDensityModel>(
+    model: &M,
+    mle_params: &[f64],
+    mle_nll: f64,
+    param_idx: usize,
+    bounds: (f64, f64),
+    chi2_level: f64,
+    tol: f64,
+    config: &OptimizerConfig,
+) -> Result<ProfileCiResult> {
+    if param_idx >= model.dim() {
+        return Err(Error::Validation(format!(
+            "param_idx {} out of range (dim={})",
+            param_idx,
+            model.dim()
+        )));
+    }
+
+    let mle_val = mle_params[param_idx];
+    let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+    let mut n_evals = 0usize;
+
+    // Reduced init from MLE params (remove fixed parameter).
+    let mut reduced_init: Vec<f64> = mle_params.to_vec();
+    reduced_init.remove(param_idx);
+
+    // Profile NLL at a given fixed value, warm-started from `init`.
+    // Returns (nll, optimized_params) so caller can carry forward.
+    let profile_nll_warm =
+        |value: f64, init: &[f64], n_evals: &mut usize| -> Result<(f64, Vec<f64>)> {
+            let wrapper = FixedParamWrapper { inner: model, fix_idx: param_idx, fix_value: value };
+            let opt = mle_est.fit_minimum_from(&wrapper, init)?;
+            *n_evals += opt.n_fev;
+            Ok((opt.fval, opt.parameters))
+        };
+
+    // Warm-start states for lower and upper bisection.
+    let mut warm_lo = reduced_init.clone();
+    let mut warm_hi = reduced_init;
+
+    // --- Lower bound ---
+    let (b_lo, b_hi) = bounds;
+    // Check if boundary is already past the CI.
+    // Do NOT carry forward boundary params — they can be far from the CI crossing region.
+    let (nll_boundary_lo, _params_lo) = profile_nll_warm(b_lo, &warm_lo, &mut n_evals)?;
+    let delta_boundary_lo = 2.0 * (nll_boundary_lo - mle_nll) - chi2_level;
+    let ci_lower = if delta_boundary_lo <= 0.0 {
+        // Entire lower range is within CI — boundary is the lower CI.
+        b_lo
+    } else {
+        // Bisect between b_lo and mle_val.
+        let mut lo_outer = b_lo;
+        let mut lo_search = mle_val;
+        let mut iter = 0;
+        while iter < 100 {
+            let mid = 0.5 * (lo_outer + lo_search);
+            if (lo_search - lo_outer).abs() < tol {
+                break;
+            }
+            let (nll, params) = profile_nll_warm(mid, &warm_lo, &mut n_evals)?;
+            warm_lo = params;
+            let d = 2.0 * (nll - mle_nll) - chi2_level;
+            if d > 0.0 {
+                lo_outer = mid;
+            } else {
+                lo_search = mid;
+            }
+            iter += 1;
+        }
+        0.5 * (lo_outer + lo_search)
+    };
+
+    // --- Upper bound ---
+    // Note: do NOT carry forward boundary params into bisection warm-start.
+    // When b_hi is very far from MLE (e.g. 100 vs MLE=1.05 on 277p models),
+    // nuisance params optimized at boundary are in a totally different regime
+    // and can trap the bisection optimizer in local minima.
+    let (nll_boundary_hi, _params_hi) = profile_nll_warm(b_hi, &warm_hi, &mut n_evals)?;
+    let delta_boundary_hi = 2.0 * (nll_boundary_hi - mle_nll) - chi2_level;
+    let ci_upper = if delta_boundary_hi <= 0.0 {
+        b_hi
+    } else {
+        let mut hi_outer = b_hi;
+        let mut hi_search = mle_val;
+        let mut iter = 0;
+        while iter < 100 {
+            let mid = 0.5 * (hi_outer + hi_search);
+            if (hi_outer - hi_search).abs() < tol {
+                break;
+            }
+            let (nll, params) = profile_nll_warm(mid, &warm_hi, &mut n_evals)?;
+            warm_hi = params;
+            let d = 2.0 * (nll - mle_nll) - chi2_level;
+            if d > 0.0 {
+                hi_outer = mid;
+            } else {
+                hi_search = mid;
+            }
+            iter += 1;
+        }
+        0.5 * (hi_outer + hi_search)
+    };
+
+    Ok(ProfileCiResult { param_idx, mle: mle_val, ci_lower, ci_upper, n_evals })
+}
+
+/// Compute profile likelihood CI for all parameters.
+pub fn profile_ci_all<M: LogDensityModel>(
+    model: &M,
+    fit_result: &FitResult,
+    config: &OptimizerConfig,
+) -> Vec<ProfileCiResult> {
+    let n = model.dim();
+    let chi2_95 = 3.841; // χ²(1, 0.95)
+    let tol = 1e-4;
+
+    let model_bounds = model.parameter_bounds();
+
+    (0..n)
+        .filter_map(|i| {
+            // Use model bounds, widened if needed for search.
+            let (lo, hi) = model_bounds[i];
+            let lo = if lo.is_finite() {
+                lo
+            } else {
+                fit_result.parameters[i] - 10.0 * fit_result.uncertainties[i].max(1.0)
+            };
+            let hi = if hi.is_finite() {
+                hi
+            } else {
+                fit_result.parameters[i] + 10.0 * fit_result.uncertainties[i].max(1.0)
+            };
+            profile_ci(
+                model,
+                &fit_result.parameters,
+                fit_result.nll,
+                i,
+                (lo, hi),
+                chi2_95,
+                tol,
+                config,
+            )
+            .ok()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,5 +1007,338 @@ mod tests {
             t_generic.as_secs_f64() / t_optimized.as_secs_f64()
         );
         println!("  iter reduction:      {:.1}x", n_iter_generic as f64 / n_iter_optimized as f64);
+    }
+
+    // -----------------------------------------------------------------------
+    // Profile CI tests (generic LogDensityModel)
+    // -----------------------------------------------------------------------
+
+    /// Simple quadratic model: NLL = 0.5 * sum((x_i - center_i)^2 / sigma_i^2)
+    /// Known analytical CI: center_i ± sigma_i * sqrt(chi2_level).
+    struct QuadraticModel {
+        centers: Vec<f64>,
+        sigmas: Vec<f64>,
+    }
+
+    impl LogDensityModel for QuadraticModel {
+        type Prepared<'a>
+            = ns_core::traits::PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            self.centers.len()
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            (0..self.centers.len()).map(|i| format!("x{}", i)).collect()
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            self.centers.iter().map(|c| (c - 20.0, c + 20.0)).collect()
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            self.centers.iter().map(|c| c + 0.1).collect()
+        }
+
+        fn nll(&self, params: &[f64]) -> Result<f64> {
+            let mut nll = 0.0;
+            for i in 0..params.len() {
+                let d = (params[i] - self.centers[i]) / self.sigmas[i];
+                nll += 0.5 * d * d;
+            }
+            Ok(nll)
+        }
+
+        fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+            let mut grad = vec![0.0; params.len()];
+            for i in 0..params.len() {
+                let d = (params[i] - self.centers[i]) / self.sigmas[i];
+                grad[i] = d / self.sigmas[i];
+            }
+            Ok(grad)
+        }
+
+        fn prepared(&self) -> Self::Prepared<'_> {
+            ns_core::traits::PreparedModelRef::new(self)
+        }
+    }
+
+    #[test]
+    fn test_profile_ci_quadratic_matches_wald() {
+        // For a quadratic NLL, profile CI should match Wald CI exactly.
+        let model = QuadraticModel { centers: vec![2.0, 5.0], sigmas: vec![0.5, 1.0] };
+        let config = OptimizerConfig::default();
+        let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+        let fr = mle_est.fit(&model).unwrap();
+
+        let chi2_95 = 3.841;
+        for i in 0..2 {
+            let ci = profile_ci(
+                &model,
+                &fr.parameters,
+                fr.nll,
+                i,
+                (model.centers[i] - 20.0, model.centers[i] + 20.0),
+                chi2_95,
+                1e-5,
+                &config,
+            )
+            .unwrap();
+
+            let expected_half = model.sigmas[i] * chi2_95.sqrt();
+            let expected_lo = model.centers[i] - expected_half;
+            let expected_hi = model.centers[i] + expected_half;
+
+            assert!(
+                (ci.ci_lower - expected_lo).abs() < 0.01,
+                "param {}: ci_lower={:.4} expected={:.4}",
+                i,
+                ci.ci_lower,
+                expected_lo
+            );
+            assert!(
+                (ci.ci_upper - expected_hi).abs() < 0.01,
+                "param {}: ci_upper={:.4} expected={:.4}",
+                i,
+                ci.ci_upper,
+                expected_hi
+            );
+        }
+    }
+
+    #[test]
+    fn test_profile_ci_covers_true_value() {
+        let model = QuadraticModel { centers: vec![3.0], sigmas: vec![2.0] };
+        let config = OptimizerConfig::default();
+        let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+        let fr = mle_est.fit(&model).unwrap();
+
+        let ci = profile_ci(&model, &fr.parameters, fr.nll, 0, (-20.0, 20.0), 3.841, 1e-5, &config)
+            .unwrap();
+
+        assert!(ci.ci_lower < 3.0, "lower={} should be < 3.0", ci.ci_lower);
+        assert!(ci.ci_upper > 3.0, "upper={} should be > 3.0", ci.ci_upper);
+    }
+
+    #[test]
+    fn test_profile_ci_all_quadratic() {
+        let model = QuadraticModel { centers: vec![1.0, 2.0, 3.0], sigmas: vec![0.5, 1.0, 2.0] };
+        let config = OptimizerConfig::default();
+        let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+        let fr = mle_est.fit(&model).unwrap();
+
+        let cis = profile_ci_all(&model, &fr, &config);
+        assert_eq!(cis.len(), 3);
+
+        for ci in &cis {
+            let true_val = model.centers[ci.param_idx];
+            assert!(
+                ci.ci_lower < true_val && ci.ci_upper > true_val,
+                "param {}: [{:.3}, {:.3}] should contain {:.3}",
+                ci.param_idx,
+                ci.ci_lower,
+                ci.ci_upper,
+                true_val
+            );
+        }
+    }
+
+    #[test]
+    fn test_profile_ci_param_at_boundary() {
+        // If search bounds clip the CI, lower/upper should be at the boundary.
+        let model = QuadraticModel { centers: vec![0.0], sigmas: vec![1.0] };
+        let config = OptimizerConfig::default();
+        let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+        let fr = mle_est.fit(&model).unwrap();
+
+        // Narrow bounds so the CI is clipped on the lower side.
+        let ci = profile_ci(
+            &model,
+            &fr.parameters,
+            fr.nll,
+            0,
+            (-0.5, 10.0), // lower bound clips the natural CI
+            3.841,
+            1e-5,
+            &config,
+        )
+        .unwrap();
+
+        assert!(
+            (ci.ci_lower - (-0.5)).abs() < 0.01,
+            "lower should be at boundary -0.5, got {}",
+            ci.ci_lower
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Profile CI benchmarks (warm vs cold, reproducible)
+    // Results recorded in docs/benchmarks/phase2_5_benchmarks.md
+    // -----------------------------------------------------------------------
+
+    /// Cold-start profile CI: always restart from MLE projection (no warm-start carry-forward).
+    fn profile_ci_cold<M: LogDensityModel>(
+        model: &M,
+        mle_params: &[f64],
+        mle_nll: f64,
+        param_idx: usize,
+        bounds: (f64, f64),
+        chi2_level: f64,
+        tol: f64,
+        config: &OptimizerConfig,
+    ) -> Result<ProfileCiResult> {
+        if param_idx >= model.dim() {
+            return Err(Error::Validation(format!(
+                "param_idx {} out of range (dim={})",
+                param_idx,
+                model.dim()
+            )));
+        }
+        let mle_val = mle_params[param_idx];
+        let mle_est = MaximumLikelihoodEstimator::with_config(config.clone());
+        let mut n_evals = 0usize;
+
+        let mut reduced_init: Vec<f64> = mle_params.to_vec();
+        reduced_init.remove(param_idx);
+
+        // Always cold-start from reduced_init (NO carry-forward).
+        let profile_nll = |value: f64, n_evals: &mut usize| -> Result<f64> {
+            let wrapper = FixedParamWrapper { inner: model, fix_idx: param_idx, fix_value: value };
+            let opt = mle_est.fit_minimum_from(&wrapper, &reduced_init)?;
+            *n_evals += opt.n_fev;
+            Ok(opt.fval)
+        };
+
+        let (b_lo, b_hi) = bounds;
+        let nll_lo = profile_nll(b_lo, &mut n_evals)?;
+        let delta_lo = 2.0 * (nll_lo - mle_nll) - chi2_level;
+        let ci_lower = if delta_lo <= 0.0 {
+            b_lo
+        } else {
+            let mut lo_outer = b_lo;
+            let mut lo_search = mle_val;
+            for _ in 0..100 {
+                let mid = 0.5 * (lo_outer + lo_search);
+                if (lo_search - lo_outer).abs() < tol {
+                    break;
+                }
+                let nll = profile_nll(mid, &mut n_evals)?;
+                let d = 2.0 * (nll - mle_nll) - chi2_level;
+                if d > 0.0 {
+                    lo_outer = mid;
+                } else {
+                    lo_search = mid;
+                }
+            }
+            0.5 * (lo_outer + lo_search)
+        };
+
+        let nll_hi = profile_nll(b_hi, &mut n_evals)?;
+        let delta_hi = 2.0 * (nll_hi - mle_nll) - chi2_level;
+        let ci_upper = if delta_hi <= 0.0 {
+            b_hi
+        } else {
+            let mut hi_outer = b_hi;
+            let mut hi_search = mle_val;
+            for _ in 0..100 {
+                let mid = 0.5 * (hi_outer + hi_search);
+                if (hi_outer - hi_search).abs() < tol {
+                    break;
+                }
+                let nll = profile_nll(mid, &mut n_evals)?;
+                let d = 2.0 * (nll - mle_nll) - chi2_level;
+                if d > 0.0 {
+                    hi_outer = mid;
+                } else {
+                    hi_search = mid;
+                }
+            }
+            0.5 * (hi_outer + hi_search)
+        };
+
+        Ok(ProfileCiResult { param_idx, mle: mle_val, ci_lower, ci_upper, n_evals })
+    }
+
+    #[test]
+    #[ignore = "benchmark; run with `cargo test -p ns-inference --release bench_profile_ci_tchannel -- --ignored --nocapture`"]
+    fn bench_profile_ci_tchannel() {
+        let model = load_workspace(include_str!("../../../tests/fixtures/tchannel_workspace.json"));
+        let config = OptimizerConfig::default();
+        let mle = MaximumLikelihoodEstimator::with_config(config.clone());
+        let fr = mle.fit(&model).unwrap();
+
+        let poi = model.poi_index().expect("tchannel has POI");
+        let model_bounds = model.parameter_bounds()[poi];
+        let chi2_95 = 3.841;
+        let tol = 1e-4;
+
+        // Tighten bounds like profile_ci_all: MLE ± 10 * uncertainty.
+        let unc = fr.uncertainties[poi].max(0.1);
+        let b_lo = if model_bounds.0.is_finite() {
+            model_bounds.0.max(fr.parameters[poi] - 10.0 * unc)
+        } else {
+            fr.parameters[poi] - 10.0 * unc
+        };
+        let b_hi = if model_bounds.1.is_finite() {
+            model_bounds.1.min(fr.parameters[poi] + 10.0 * unc)
+        } else {
+            fr.parameters[poi] + 10.0 * unc
+        };
+        let bounds = (b_lo, b_hi);
+
+        eprintln!("\n=== Profile CI Benchmark: tchannel ({} params) ===", model.n_params());
+        eprintln!("  POI index: {} (\"{}\")", poi, model.parameter_names()[poi]);
+        eprintln!("  MLE: {:.6}, NLL: {:.6}", fr.parameters[poi], fr.nll);
+        eprintln!("  Bounds: ({:.2}, {:.2})", bounds.0, bounds.1);
+
+        // Warm-start (current implementation).
+        let t0 = std::time::Instant::now();
+        let ci_warm =
+            profile_ci(&model, &fr.parameters, fr.nll, poi, bounds, chi2_95, tol, &config).unwrap();
+        let t_warm = t0.elapsed();
+
+        // Cold-start (always restart from MLE projection).
+        let t0 = std::time::Instant::now();
+        let ci_cold =
+            profile_ci_cold(&model, &fr.parameters, fr.nll, poi, bounds, chi2_95, tol, &config)
+                .unwrap();
+        let t_cold = t0.elapsed();
+
+        eprintln!("\n  --- Warm-start ---");
+        eprintln!("    CI: [{:.6}, {:.6}]", ci_warm.ci_lower, ci_warm.ci_upper);
+        eprintln!("    n_evals: {}", ci_warm.n_evals);
+        eprintln!("    time: {:.1}ms", t_warm.as_secs_f64() * 1000.0);
+
+        eprintln!("  --- Cold-start ---");
+        eprintln!("    CI: [{:.6}, {:.6}]", ci_cold.ci_lower, ci_cold.ci_upper);
+        eprintln!("    n_evals: {}", ci_cold.n_evals);
+        eprintln!("    time: {:.1}ms", t_cold.as_secs_f64() * 1000.0);
+
+        let ci_lo_diff = (ci_warm.ci_lower - ci_cold.ci_lower).abs();
+        let ci_hi_diff = (ci_warm.ci_upper - ci_cold.ci_upper).abs();
+        let eval_reduction = 1.0 - (ci_warm.n_evals as f64 / ci_cold.n_evals as f64);
+        let speedup = t_cold.as_secs_f64() / t_warm.as_secs_f64();
+
+        eprintln!("\n  --- Comparison ---");
+        eprintln!("    CI lower diff: {:.2e}", ci_lo_diff);
+        eprintln!("    CI upper diff: {:.2e}", ci_hi_diff);
+        eprintln!("    Eval reduction: {:.1}%", eval_reduction * 100.0);
+        eprintln!("    Speedup: {:.2}x", speedup);
+
+        // CI values should agree within tolerance.
+        assert!(
+            ci_lo_diff < 0.01,
+            "CI lower mismatch: warm={} cold={}",
+            ci_warm.ci_lower,
+            ci_cold.ci_lower
+        );
+        assert!(
+            ci_hi_diff < 0.01,
+            "CI upper mismatch: warm={} cold={}",
+            ci_warm.ci_upper,
+            ci_cold.ci_upper
+        );
     }
 }

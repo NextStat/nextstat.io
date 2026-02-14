@@ -13,6 +13,7 @@ struct OptDiagnostics {
     grad_norm: f64,
     initial_nll: f64,
     n_active: usize,
+    edm: f64,
 }
 
 /// Compute diagnostics from an `OptimizationResult` and parameter bounds.
@@ -36,12 +37,66 @@ fn diagnostics_from_opt(
         grad_norm,
         initial_nll: opt.initial_cost,
         n_active,
+        edm: opt.edm,
     }
 }
 
 /// Apply diagnostics to a `FitResult`.
 fn apply_diagnostics(fr: FitResult, d: OptDiagnostics) -> FitResult {
-    fr.with_diagnostics(d.reason, d.grad_norm, d.initial_nll, d.n_active)
+    fr.with_diagnostics(d.reason, d.grad_norm, d.initial_nll, d.n_active).with_edm(d.edm)
+}
+
+/// Check for identifiability issues based on the Hessian and uncertainties.
+///
+/// Returns a list of human-readable warning strings (empty if model is well-identified).
+pub fn identifiability_warnings(
+    hessian: &DMatrix<f64>,
+    n: usize,
+    param_names: &[String],
+    uncertainties: &[f64],
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // 1. Near-singular Hessian: condition number via SVD
+    if n > 0 {
+        let svd = hessian.clone().svd(false, false);
+        let svals = &svd.singular_values;
+        let s_max = svals.iter().fold(0.0_f64, |a, &b| a.max(b));
+        let s_min = svals.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+        if s_min > 0.0 {
+            let cond = s_max / s_min;
+            if cond > 1e8 {
+                warnings.push(format!(
+                    "Hessian condition number = {:.1e}: model may be poorly identified",
+                    cond
+                ));
+            }
+        } else {
+            warnings.push("Hessian is singular: model is not identifiable".into());
+        }
+    }
+
+    // 2. Individual parameter: NaN/Inf uncertainty
+    for i in 0..n.min(param_names.len()).min(uncertainties.len()) {
+        if uncertainties[i].is_nan() || uncertainties[i].is_infinite() {
+            warnings.push(format!(
+                "Parameter '{}': uncertainty is {}",
+                param_names[i], uncertainties[i]
+            ));
+        }
+    }
+
+    // 3. Near-zero Hessian diagonal → parameter not identifiable
+    for i in 0..n.min(param_names.len()) {
+        if hessian[(i, i)].abs() < 1e-12 {
+            warnings.push(format!(
+                "Parameter '{}': near-zero Hessian diagonal — not identifiable",
+                param_names[i]
+            ));
+        }
+    }
+
+    warnings
 }
 
 /// Maximum Likelihood Estimator
@@ -142,7 +197,14 @@ impl MaximumLikelihoodEstimator {
                 )
             }
         };
-        Ok(apply_diagnostics(fr, diag))
+        let mut fr = apply_diagnostics(fr, diag);
+
+        // Identifiability warnings
+        let param_names = model.parameter_names();
+        let warns = identifiability_warnings(&hessian, n, &param_names, &fr.uncertainties);
+        fr.warnings = warns;
+
+        Ok(fr)
     }
 
     /// Fit from an explicit starting point (warm-start) with full Hessian/covariance.
@@ -213,7 +275,13 @@ impl MaximumLikelihoodEstimator {
                 )
             }
         };
-        Ok(apply_diagnostics(fr, diag))
+        let mut fr = apply_diagnostics(fr, diag);
+
+        let param_names = model.parameter_names();
+        let warns = identifiability_warnings(&hessian, n, &param_names, &fr.uncertainties);
+        fr.warnings = warns;
+
+        Ok(fr)
     }
 
     /// Minimize NLL and return the optimizer result.
@@ -2526,6 +2594,45 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn identifiability_warnings_well_identified() {
+        // A well-conditioned Hessian should produce no warnings.
+        let h = DMatrix::from_row_slice(2, 2, &[10.0, 0.1, 0.1, 8.0]);
+        let names = vec!["a".into(), "b".into()];
+        let unc = vec![0.316, 0.354]; // sqrt(1/10), sqrt(1/8) approx
+        let w = super::identifiability_warnings(&h, 2, &names, &unc);
+        assert!(w.is_empty(), "expected no warnings, got: {:?}", w);
+    }
+
+    #[test]
+    fn identifiability_warnings_singular_hessian() {
+        // Singular Hessian → warning.
+        let h = DMatrix::from_row_slice(2, 2, &[1.0, 1.0, 1.0, 1.0]);
+        let names = vec!["a".into(), "b".into()];
+        let unc = vec![1.0, 1.0];
+        let w = super::identifiability_warnings(&h, 2, &names, &unc);
+        assert!(!w.is_empty(), "expected warnings for singular Hessian");
+        assert!(w.iter().any(|s| s.contains("condition number") || s.contains("singular")));
+    }
+
+    #[test]
+    fn identifiability_warnings_nan_uncertainty() {
+        let h = DMatrix::from_row_slice(2, 2, &[10.0, 0.0, 0.0, 0.0]);
+        let names = vec!["a".into(), "b".into()];
+        let unc = vec![0.316, f64::NAN];
+        let w = super::identifiability_warnings(&h, 2, &names, &unc);
+        assert!(w.iter().any(|s| s.contains("'b'") && s.contains("NaN")));
+    }
+
+    #[test]
+    fn identifiability_warnings_zero_diagonal() {
+        let h = DMatrix::from_row_slice(2, 2, &[10.0, 0.0, 0.0, 1e-15]);
+        let names = vec!["a".into(), "b".into()];
+        let unc = vec![0.316, 1e6];
+        let w = super::identifiability_warnings(&h, 2, &names, &unc);
+        assert!(w.iter().any(|s| s.contains("'b'") && s.contains("not identifiable")));
     }
 
     #[cfg(feature = "metal")]

@@ -17,7 +17,7 @@
 //!   `ΔK = (d-1)·[δ − ln2 + ln((1−e·u) + ζ(1+e·u))]` where `ζ = exp(−2δ)`.
 //!   This log-sum-exp form avoids `cosh`/`sinh` overflow for large gradients.
 
-use crate::adapt::WelfordVariance;
+use crate::adapt::{DualAveraging, WelfordVariance};
 use crate::nuts::{InitStrategy, MetricType};
 use crate::posterior::Posterior;
 use ns_core::Result;
@@ -41,7 +41,7 @@ pub struct MamsConfig {
     pub init_step_size: f64,
     /// Initial decoherence length L; 0 = auto-tune (default: 0).
     pub init_l: f64,
-    /// Maximum leapfrog steps per trajectory (default: 1024).
+    /// Maximum leapfrog steps per trajectory (default: 32768).
     pub max_leapfrog: usize,
     /// Use diagonal preconditioning (default: true).
     pub diagonal_precond: bool,
@@ -59,7 +59,7 @@ impl Default for MamsConfig {
             target_accept: 0.9,
             init_step_size: 0.0,
             init_l: 0.0,
-            max_leapfrog: 1024,
+            max_leapfrog: 32768,
             diagonal_precond: true,
             init_strategy: InitStrategy::Random,
             metric_type: MetricType::Diagonal,
@@ -203,13 +203,16 @@ fn isokinetic_leapfrog_step(
 /// Computes the preconditioned gradient: g_tilde_i = sqrt(inv_mass_i) * grad_i
 /// Then projects onto tangent plane of u and exponential-maps.
 ///
+/// Uses `exp_m1`/`ln_1p` for full mantissa precision at both extremes:
+/// - Large δ (funnel bottom): `ζ_m1 ≈ -1`, same stability as old ζ formulation.
+/// - Small δ (well-behaved): `exp_m1` avoids catastrophic cancellation in `1 − exp(−2δ)`.
+///
 /// Returns ΔK contribution from this half-step.
 fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1: f64) -> f64 {
     let dim = state.x.len();
 
     // Preconditioned gradient: g̃_i = √(inv_mass_i) · grad_potential_i.
     let mut g_norm_sq = 0.0;
-    let mut e_dot_u = 0.0;
     for i in 0..dim {
         let gi = inv_mass[i].sqrt() * state.grad_potential[i];
         g_norm_sq += gi * gi;
@@ -221,6 +224,7 @@ fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1:
     }
 
     // e = g̃/|g̃|  (unit gradient direction — UP the potential).
+    let mut e_dot_u = 0.0;
     for i in 0..dim {
         let ei = inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
         e_dot_u += ei * state.u[i];
@@ -230,55 +234,102 @@ fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1:
     // δ = half_eps · |g̃| / (d−1).
     let delta = half_eps * g_norm / dm1;
 
-    // --- Numerically stable formulation via ζ = exp(−2δ) ---
+    // --- Full-precision formulation via ζ_m1 = exp(−2δ) − 1 ---
     //
-    // The naive cosh(δ)/sinh(δ) overflows to Infinity when δ > ~710.
-    // Instead we factor out exp(δ) from both hyperbolic functions:
-    //   cosh δ = exp(δ)(1 + ζ)/2,   sinh δ = exp(δ)(1 − ζ)/2.
+    // ζ = exp(−2δ),  ζ_m1 = ζ − 1 = exp_m1(−2δ).
+    // cosh δ ∝ (2 + ζ_m1),  sinh δ ∝ (−ζ_m1).
     //
-    // Velocity update:  u_new ∝ u·cosh δ − e·sinh δ  ∝  u(1+ζ) − e(1−ζ).
-    // ΔK = (d−1)·ln(cosh δ − (e·u)sinh δ)
-    //     = (d−1)·[δ − ln 2 + ln((1 − e·u) + ζ(1 + e·u))].
-    // When δ → ∞, ζ → 0, and the ln-argument → (1 − e·u) ∈ [0, 2] — no overflow.
-    let zeta = (-2.0 * delta).exp(); // 0 < ζ ≤ 1
+    // Small δ: exp_m1(−2δ) ≈ −2δ + 2δ²/2 − ...  (no cancellation in 1−exp).
+    // Large δ: ζ_m1 → −1.
+    let zeta_m1 = (-2.0 * delta).exp_m1(); // = exp(−2δ) − 1
 
-    let c_u = 1.0 + zeta; // proportional to cosh δ
-    let c_e = 1.0 - zeta; // proportional to sinh δ
+    let c_u = 2.0 + zeta_m1; // = 1 + ζ, proportional to cosh δ
+    let c_e = -zeta_m1; // = 1 − ζ, proportional to sinh δ
 
+    // u_new ∝ u·cosh δ − e·sinh δ  ∝  u·c_u − e·c_e
+    let mut u_new_norm_sq = 0.0;
     for i in 0..dim {
         let ei = inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
         state.u[i] = state.u[i] * c_u - ei * c_e;
+        u_new_norm_sq += state.u[i] * state.u[i];
     }
-    normalize(&mut state.u);
+    let u_new_norm = u_new_norm_sq.sqrt();
+    if u_new_norm > 1e-12 {
+        let inv = 1.0 / u_new_norm;
+        for ui in state.u.iter_mut() {
+            *ui *= inv;
+        }
+    } else {
+        // Degenerate: velocity collapsed to zero → point along −e (down the potential)
+        for i in 0..dim {
+            state.u[i] = -inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
+        }
+    }
 
-    // ΔK — stable even for δ > 710 (where cosh/sinh would be ±Inf).
-    let term = (1.0 - e_dot_u) + zeta * (1.0 + e_dot_u);
-    dm1 * (delta - std::f64::consts::LN_2 + term.max(1e-300).ln())
+    // ΔK = (d−1) · [δ + ln(1 + 0.5·ζ_m1·(1 + e·u))]
+    //
+    // Derivation: (d−1)·ln(cosh δ − (e·u)·sinh δ)
+    //   = (d−1)·[δ − ln2 + ln((1−e·u) + ζ(1+e·u))]
+    //   = (d−1)·[δ − ln2 + ln(2 + ζ_m1·(1+e·u))]
+    //   = (d−1)·[δ + ln(1 + 0.5·ζ_m1·(1+e·u))]
+    //
+    // ln_1p avoids cancellation when δ is small (arg ≈ 0).
+    let arg = 0.5 * zeta_m1 * (1.0 + e_dot_u);
+    dm1 * (delta + arg.max(-1.0 + 1e-50).ln_1p())
 }
 
 // ---------------------------------------------------------------------------
 // Partial velocity refresh on the unit sphere
 // ---------------------------------------------------------------------------
 
-/// Partial velocity refresh: mix current u with fresh Gaussian noise, renormalize.
+/// Partial velocity refresh via exact spherical rotation (Gram-Schmidt).
 ///
-///   u ← normalize(c₁·u + c₂·z/√d)
+/// Rotates `u` by angle `θ = ε/L` towards a random direction orthogonal to `u`:
+///   1. Sample z ~ N(0, I)
+///   2. Gram-Schmidt: z_perp = z - (u·z)u, then normalize to unit
+///   3. u_new = u·cos(θ) + z_perp_hat·sin(θ)
 ///
-/// where c₁ = exp(-ε/L), c₂ = √(1 - c₁²), z ~ N(0, I).
+/// This preserves |u| = 1 exactly (up to floating point) and avoids the
+/// `normalize(c₁u + c₂z/√d)` formulation which distorts the rotation angle
+/// in low dimensions.
 fn partial_velocity_refresh_sphere(u: &mut [f64], eps: f64, l: f64, rng: &mut impl Rng) {
     use rand_distr::{Distribution, StandardNormal};
 
     let dim = u.len();
-    let d = dim as f64;
-    let c1 = (-eps / l).exp();
-    let c2 = (1.0 - c1 * c1).sqrt();
-    let inv_sqrt_d = 1.0 / d.sqrt();
+    let angle = eps / l;
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
 
+    // Sample random direction and project out u-component (Gram-Schmidt)
+    let mut z = vec![0.0; dim];
+    let mut u_dot_z = 0.0;
     for i in 0..dim {
-        let z: f64 = StandardNormal.sample(rng);
-        u[i] = c1 * u[i] + c2 * z * inv_sqrt_d;
+        z[i] = StandardNormal.sample(rng);
+        u_dot_z += u[i] * z[i];
     }
-    normalize(u);
+
+    let mut z_perp_norm_sq = 0.0;
+    for i in 0..dim {
+        z[i] -= u_dot_z * u[i];
+        z_perp_norm_sq += z[i] * z[i];
+    }
+    let z_perp_norm = z_perp_norm_sq.sqrt();
+
+    if z_perp_norm > 1e-12 {
+        let inv_norm = 1.0 / z_perp_norm;
+        let mut u_new_norm_sq = 0.0;
+        for i in 0..dim {
+            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
+            u_new_norm_sq += u[i] * u[i];
+        }
+        // Renormalize to compensate for floating-point drift
+        let u_new_norm = u_new_norm_sq.sqrt();
+        let inv = 1.0 / u_new_norm;
+        for ui in u.iter_mut() {
+            *ui *= inv;
+        }
+    }
+    // If z_perp_norm ≈ 0, z was parallel to u — skip rotation (no fresh direction).
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +362,11 @@ fn mams_transition(
     let potential_old = proposal.potential;
     let grad_old = proposal.grad_potential.clone();
 
-    // 2. Isokinetic leapfrog integration
+    // 2. Isokinetic leapfrog integration with early termination.
+    //
+    // Check total energy error (ΔV + ΔK) after each step — not just ΔV.
+    // This saves gradient evaluations on trajectories that are already doomed
+    // (e.g. in the narrow neck of a funnel).
     let mut n_leapfrog = 0;
     let mut divergent = false;
     let mut total_delta_k = 0.0;
@@ -326,8 +381,9 @@ fn mams_transition(
                 break;
             }
         }
-        // Divergence check
-        if !proposal.potential.is_finite() || proposal.potential > potential_old + 1000.0 {
+        // Early termination: total energy error ΔV + ΔK
+        let current_w = (proposal.potential - potential_old) + total_delta_k;
+        if !current_w.is_finite() || current_w > 1000.0 {
             divergent = true;
             break;
         }
@@ -538,6 +594,39 @@ fn clamp_non_finite(z: &mut [f64]) {
 }
 
 // ---------------------------------------------------------------------------
+// Pathfinder initialization: MLE mode + diagonal inverse Hessian → inv_mass
+// ---------------------------------------------------------------------------
+
+/// Run Pathfinder initialization: L-BFGS to mode + diagonal inverse Hessian.
+/// Returns `(z_init, inv_mass_diag)` in unconstrained space.
+///
+/// Used by both MAMS and NUTS init strategies.
+pub(crate) fn pathfinder_init_nuts<M: LogDensityModel>(
+    model: &M,
+    posterior: &Posterior<M>,
+    dim: usize,
+) -> Result<(Vec<f64>, Vec<f64>)> {
+    let mle = crate::mle::MaximumLikelihoodEstimator::new();
+    let fr = mle.fit(model)?; // Full fit with Hessian → uncertainties
+
+    // Position: constrained → unconstrained
+    let mut z = posterior.to_unconstrained(&fr.parameters)?;
+    clamp_non_finite(&mut z);
+
+    // inv_mass from uncertainties: var[i] = uncertainty[i]^2
+    // This is a constrained-space approximation; Welford Phase 2 will refine it.
+    let mut inv_mass = vec![1.0; dim];
+    for i in 0..dim.min(fr.uncertainties.len()) {
+        let var = fr.uncertainties[i] * fr.uncertainties[i];
+        if var.is_finite() && var > 1e-10 {
+            inv_mass[i] = var;
+        }
+    }
+
+    Ok((z, inv_mass))
+}
+
+// ---------------------------------------------------------------------------
 // Main API
 // ---------------------------------------------------------------------------
 
@@ -557,6 +646,9 @@ pub fn sample_mams<M: LogDensityModel>(
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
     // ---------- Initialization ----------
+    let mut inv_mass = vec![1.0; dim];
+    let mut pathfinder_metric = false;
+
     let z_init: Vec<f64> = match config.init_strategy {
         InitStrategy::Random => {
             let mut z = vec![0.0; dim];
@@ -598,6 +690,44 @@ pub fn sample_mams<M: LogDensityModel>(
             clamp_non_finite(&mut z);
             z
         }
+        InitStrategy::Pathfinder => {
+            match pathfinder_init_nuts(model, &posterior, dim) {
+                Ok((z, mass)) => {
+                    inv_mass = mass;
+                    pathfinder_metric = true;
+                    z
+                }
+                Err(_) => {
+                    // Fallback to random init on Pathfinder failure
+                    let mut z = vec![0.0; dim];
+                    let mut ok = false;
+                    for _ in 0..100 {
+                        for zi in z.iter_mut() {
+                            *zi = rng.random::<f64>() * 4.0 - 2.0;
+                        }
+                        let theta = match posterior.to_constrained(&z) {
+                            Ok(t) => t,
+                            Err(_) => continue,
+                        };
+                        match model.nll(&theta) {
+                            Ok(v) if v.is_finite() => {
+                                ok = true;
+                                break;
+                            }
+                            _ => continue,
+                        }
+                    }
+                    if !ok {
+                        let theta_init = model.parameter_init();
+                        let mut zf = posterior.to_unconstrained(&theta_init)?;
+                        clamp_non_finite(&mut zf);
+                        zf
+                    } else {
+                        z
+                    }
+                }
+            }
+        }
     };
 
     // Compute initial potential + gradient
@@ -616,9 +746,6 @@ pub fn sample_mams<M: LogDensityModel>(
         grad_potential: init_grad,
     };
 
-    // ---------- Preconditioner ----------
-    let mut inv_mass = vec![1.0; dim];
-
     // ---------- Trajectory length L ----------
     // L is an absolute trajectory length, not relative to ε.
     // Default: π·√d — the standard quarter-period of a d-dimensional oscillator.
@@ -628,13 +755,30 @@ pub fn sample_mams<M: LogDensityModel>(
         std::f64::consts::PI * (dim as f64).sqrt()
     };
 
-    // ---------- Warmup Phase 1: Find ε + estimate preconditioner ----------
-    // MAMS acceptance is nearly always ~1.0 for reasonable ε, so we do NOT use
-    // dual averaging (which diverges). Instead: binary search for ε, then
-    // Welford for preconditioner.
-    let phase1_iters = (config.n_warmup as f64 * 0.2) as usize;
-    let phase2_iters = (config.n_warmup as f64 * 0.1) as usize;
-    let phase_final_iters = config.n_warmup.saturating_sub(phase1_iters + phase2_iters);
+    // ---------- Stan-style 4-phase warmup with DualAveraging ----------
+    //
+    // Phase 1: Fast DA — adapt step size only.
+    // Phase 2: DA + Welford — adapt step size, collect mass matrix.
+    // Phase 3: DA with new metric — re-adapt step size after mass update.
+    // Phase 4: Tune L + equilibrate — no adaptation.
+    //
+    // When Pathfinder provided a Hessian-derived inverse mass matrix, Phase 2
+    // (Welford variance collection) can be shortened since the diagonal metric
+    // is already a good approximation.  The freed budget goes to Phase 4
+    // (equilibration), letting the chain settle with the refined metric.
+    //
+    //   Default:    15% / 40% / 15% / 30%
+    //   Pathfinder: 10% / 15% / 10% / 65%
+    //
+    // DualAveraging is essential for multi-scale geometry (funnels) where the
+    // optimal ε varies as the chain explores different curvature regions.
+    // Binary search alone picks ε from the startup position and gets stuck.
+    let (p1, p2, p3) = if pathfinder_metric { (0.10, 0.15, 0.10) } else { (0.15, 0.40, 0.15) };
+    let phase1_iters = (config.n_warmup as f64 * p1) as usize;
+    let phase2_iters = (config.n_warmup as f64 * p2) as usize;
+    let phase3_iters = (config.n_warmup as f64 * p3) as usize;
+    let phase_final_iters =
+        config.n_warmup.saturating_sub(phase1_iters + phase2_iters + phase3_iters);
 
     let mut eps = if config.init_step_size > 0.0 {
         config.init_step_size
@@ -642,11 +786,32 @@ pub fn sample_mams<M: LogDensityModel>(
         find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng)
     };
 
-    // Run phase 1 with initial ε, collecting Welford statistics
-    let mut welford = WelfordVariance::new(dim);
+    let mut da = DualAveraging::new(config.target_accept, eps);
+
+    // --- Phase 1: Fast DA — adapt ε only ---
     for _ in 0..phase1_iters {
         let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
         if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+            let ap =
+                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            da.update(ap);
+            eps = da.current_step_size();
+            state.x = r.x;
+            state.u = r.u;
+            state.potential = r.potential;
+            state.grad_potential = r.grad_potential;
+        }
+    }
+
+    // --- Phase 2: DA + Welford — adapt ε, collect mass matrix ---
+    let mut welford = WelfordVariance::new(dim);
+    for _ in 0..phase2_iters {
+        let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
+        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+            let ap =
+                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            da.update(ap);
+            eps = da.current_step_size();
             state.x = r.x;
             state.u = r.u;
             state.potential = r.potential;
@@ -665,18 +830,31 @@ pub fn sample_mams<M: LogDensityModel>(
         for i in 0..dim {
             inv_mass[i] = (alpha * var[i] + 1e-3 * (1.0 - alpha)).max(1e-10);
         }
-        // Re-tune step size after mass matrix update
+        // Reset DA with new step size for new metric
         eps = find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng);
+        da = DualAveraging::new(config.target_accept, eps);
     }
 
-    // ---------- Warmup Phase 2: Tune decoherence length L ----------
-    if config.init_l <= 0.0 && phase2_iters > 0 {
+    // --- Phase 3: DA with new metric — re-adapt ε ---
+    for _ in 0..phase3_iters {
+        let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
+        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+            let ap =
+                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            da.update(ap);
+            eps = da.current_step_size();
+            state.x = r.x;
+            state.u = r.u;
+            state.potential = r.potential;
+            state.grad_potential = r.grad_potential;
+        }
+    }
+    eps = da.adapted_step_size();
+
+    // --- Phase 4: Tune L + equilibrate ---
+    if config.init_l <= 0.0 {
         l = tune_decoherence_length(&state, eps, &posterior, &inv_mass, &mut rng);
-        // Re-tune ε for the new L
-        eps = find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng);
     }
-
-    // ---------- Final warmup: equilibrate with tuned params ----------
     for _ in 0..phase_final_iters {
         let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
         if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {

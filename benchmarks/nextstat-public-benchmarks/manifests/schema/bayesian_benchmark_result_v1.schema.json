@@ -20,7 +20,7 @@
     "schema_version": { "const": "nextstat.bayesian_benchmark_result.v1" },
     "suite": { "const": "bayesian" },
     "case": { "type": "string", "minLength": 1 },
-    "backend": { "type": "string", "enum": ["nextstat", "cmdstanpy", "pymc"] },
+    "backend": { "type": "string", "enum": ["nextstat", "nextstat_dense", "cmdstanpy", "pymc"] },
     "deterministic": { "type": "boolean" },
     "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
     "reason": { "type": "string" },
@@ -68,6 +68,7 @@
         "n_samples": { "type": "integer", "minimum": 1 },
         "seed": { "type": "integer", "minimum": 0 },
         "dataset_seed": { "type": "integer", "minimum": 0 },
+        "metric": { "type": "string" },
         "max_treedepth": { "type": "integer", "minimum": 1 },
         "target_accept": { "type": "number", "minimum": 0, "maximum": 1 },
         "init_jitter_rel": { "type": "number", "minimum": 0 }

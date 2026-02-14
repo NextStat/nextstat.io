@@ -23,6 +23,14 @@ Notes:
 - `nextstat.unbinned.from_config(path) -> nextstat.unbinned.UnbinnedAnalysis` — high-level unbinned workflow wrapper (compile + fit/fit_toys/scan/hypotest/toys/ranking helpers).
 - `nextstat.workspace_audit(json_str) -> dict` — audit pyhf workspace for compatibility (counts channels, samples, modifiers; flags unsupported features).
 - `nextstat.apply_patchset(workspace_json, patchset_json, *, patch_name=None) -> str` — apply a pyhf patchset.
+- `nextstat.workspace_combine(ws1_json, ws2_json, *, join="none") -> str` — combine two pyhf workspace JSON strings. Join modes: `"none"` (error on conflict), `"outer"` (union), `"left_outer"`, `"right_outer"`.
+- `nextstat.workspace_prune(ws_json, *, channels=[], samples=[], modifiers=[], measurements=[]) -> str` — remove channels, samples, modifiers, and/or measurements from a workspace.
+- `nextstat.workspace_rename(ws_json, *, channels=None, samples=None, modifiers=None, measurements=None) -> str` — rename workspace elements. Each argument is an `{old: new}` dict.
+- `nextstat.workspace_sorted(ws_json) -> str` — return workspace with all components in canonical (sorted) order.
+- `nextstat.workspace_digest(ws_json) -> str` — compute SHA-256 digest of the canonical workspace.
+- `nextstat.workspace_to_xml(ws_json, output_prefix="output") -> list[tuple[str, str]]` — export workspace to HistFactory XML. Returns `[(filename, xml_content), ...]`.
+- `nextstat.simplemodel_uncorrelated(signal, bkg, bkg_uncertainty) -> str` — build workspace with uncorrelated background (shapesys). pyhf-compatible.
+- `nextstat.simplemodel_correlated(signal, bkg, bkg_up, bkg_down) -> str` — build workspace with correlated background (histosys). pyhf-compatible.
 - `nextstat.read_root_histogram(root_path, hist_path) -> dict` — read a TH1 histogram from a ROOT file. Returns `{name, title, bin_edges, bin_content, sumw2, underflow, overflow, underflow_sumw2, overflow_sumw2}`.
 - `nextstat.histfactory_bin_edges_by_channel(xml_path) -> dict[str, list[float]]` — extract bin edges per channel from HistFactory XML.
 
@@ -77,8 +85,14 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 - `nextstat.unbinned_hypotest(mu_test, model) -> dict` — compute unbinned `q_mu` (and `q0` if `mu=0` is within bounds).
 - `nextstat.unbinned_hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, return_tail_probs=False, return_meta=False) -> float | tuple | dict` — toy-based CLs (qtilde) for unbinned models.
 
+### Monte Carlo / Safety
+
+- `nextstat.fault_tree_mc_ce_is(spec, *, n_per_level=10000, elite_fraction=0.01, max_levels=20, q_max=0.99, seed=42) -> dict` — Cross-Entropy Importance Sampling for rare-event fault tree probability estimation with multi-level adaptive biasing. Handles probabilities down to ~1e-16 via soft importance function when no TOP failures are observed. Returns `{p_failure, se, ci_lower, ci_upper, n_levels, n_total_scenarios, final_proposal, coefficient_of_variation, wall_time_s}`. Supports all failure modes: Bernoulli, WeibullMission, BernoulliUncertain.
+- `nextstat.fault_tree_mc(spec, n_scenarios, seed=42, device='cpu', chunk_size=0) -> dict` — Monte Carlo fault tree simulation. `device`: `'cpu'`, `'cuda'`, `'metal'`.
+
 ### Profile likelihood
 
+- `nextstat.profile_ci(model, fit_result, *, param_idx=None, chi2_level=3.841, tol=1e-4) -> dict | list[dict]` — profile likelihood confidence intervals for any `LogDensityModel`. If `param_idx` is given, returns a single dict; otherwise returns CI for all parameters. Each dict: `{param_idx, mle, ci_lower, ci_upper, n_evals}`.
 - `nextstat.profile_scan(model, mu_values, *, data=None, device="cpu", return_params=False) -> dict` — profile likelihood scan.
 - `nextstat.unbinned_profile_scan(model, mu_values) -> dict` — unbinned profile likelihood scan (q_mu) over POI values.
 - `nextstat.upper_limit(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> float` — upper limit via bisection.
@@ -87,8 +101,60 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 
 ### Sampling
 
-- `nextstat.sample(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None) -> dict` — NUTS (No-U-Turn Sampler). Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`.
-- `nextstat.sample_nuts(...)` — alias for `nextstat.sample(...)`.
+- `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
+- `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + diagonal inverse Hessian as initial mass matrix for faster warmup).
+- `nextstat.sample_mams(model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, target_accept=0.9, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when Pathfinder provides a Hessian-derived mass matrix, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (recommended for well-conditioned posteriors; avoid on funnel-like geometries).
+- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Two-phase warmup: Phase 1 (unadjusted MCLMC) + Phase 2 (exact MH). `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"glm_logistic"`, or a `RawCudaModel` instance. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` feature and NVIDIA GPU at runtime.
+- `nextstat.RawCudaModel(dim, cuda_src, *, data=None, param_names=None)` — User-defined CUDA model for LAPS JIT compilation via NVRTC. The `cuda_src` must define `__device__ double user_nll(const double* x, int dim, const double* model_data)` and `__device__ void user_grad(const double* x, double* grad, int dim, const double* model_data)`. The `data` array is uploaded to GPU as `model_data`. PTX is cached to disk (`~/.cache/nextstat/ptx/`) keyed by SHA-256(source + GPU arch). Requires `cuda` feature.
+- `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all three methods (nuts/mams/laps).
+- `nextstat.bayes.to_inferencedata(raw) -> InferenceData` — convert a raw sampling dict into ArviZ `InferenceData`.
+
+#### Sampling quick start
+
+```python
+import nextstat as ns
+
+# 1. Eight Schools — NUTS (3 lines)
+model = ns.EightSchoolsModel([28,8,-3,7,-1,1,18,12], [15,10,16,11,9,11,10,18])
+idata = ns.sample(model, method="nuts", n_samples=2000, return_idata=True)
+
+# 2. Same model — MAMS (typically better ESS/grad on hierarchical models)
+idata = ns.sample(model, method="mams", n_samples=2000, return_idata=True)
+
+# 3. ArviZ diagnostics and plots
+import arviz as az
+az.summary(idata)          # R-hat, ESS, posterior summary
+az.plot_trace(idata)       # trace + density plots
+az.plot_pair(idata)        # pairwise scatter
+
+# 4. Save to disk
+idata = ns.sample(model, n_samples=2000, return_idata=True, out="trace.json")
+
+# 5. GPU sampling with LAPS (requires CUDA build)
+result = ns.sample("eight_schools", method="laps",
+                   model_data={"y": [28,8,-3,7,-1,1,18,12],
+                               "sigma": [15,10,16,11,9,11,10,18]},
+                   n_chains=4096, n_samples=2000)
+
+# 6. User-defined GPU model (NVRTC JIT, requires CUDA)
+model = ns.RawCudaModel(dim=10, cuda_src=r'''
+    __device__ double user_nll(const double* x, int dim, const double* data) {
+        double v = data[0];
+        double nll = 0.0;
+        for (int i = 0; i < dim; i++) nll += 0.5 * x[i] * x[i] / v;
+        return nll;
+    }
+    __device__ void user_grad(const double* x, double* grad, int dim, const double* data) {
+        double v = data[0];
+        for (int i = 0; i < dim; i++) grad[i] = x[i] / v;
+    }
+''', data=[1.0])
+result = ns.sample_laps(model, n_chains=4096, n_samples=2000)
+
+# 7. Raw dict (no ArviZ dependency needed)
+raw = ns.sample(model, method="nuts", n_samples=1000)
+print(raw["diagnostics"]["quality"]["status"])  # "ok" / "warn" / "fail"
+```
 
 ### Toy data
 
@@ -140,6 +206,8 @@ Fields:
 - `final_grad_norm: float` — L2 norm (Euclidean) of the gradient at minimum
 - `initial_nll: float` — NLL at the starting point
 - `n_active_bounds: int` — number of parameters at their box constraint boundary
+- `edm: float` — Estimated Distance to Minimum (EDM = g^T H^{-1} g). Uses the L-BFGS inverse Hessian approximation. `NaN` if unavailable (gradient-free paths). Minuit-compatible convergence metric.
+- `warnings: list[str]` — identifiability warnings (near-singular Hessian, non-finite uncertainties, near-zero Hessian diagonal). Empty list when model is well-identified.
 
 Compatibility aliases:
 - `bestfit` (same as `parameters`)
@@ -160,6 +228,7 @@ Fields:
 - `message: str`
 - `initial_nll: float`
 - `final_gradient: list[float] | None`
+- `edm: float` — Estimated Distance to Minimum (EDM = g^T H^{-1} g). `NaN` if unavailable.
 
 Compatibility aliases:
 - `bestfit` (same as `parameters`)
@@ -336,6 +405,10 @@ print(f"Shared params: {hybrid.n_shared()}, Total: {hybrid.n_params()}")
 - `WeibullSurvivalModel(times, events)`
 - `LogNormalAftModel(times, events)`
 - `CoxPhModel(times, events, x, *, ties="efron")` — Cox proportional hazards model (partial likelihood).
+- `IntervalCensoredWeibullModel(time_lower, time_upper, censor_type)` — Weibull model with interval censoring (exact, right, left, interval).
+- `IntervalCensoredWeibullAftModel(time_lower, time_upper, censor_type, covariates)` — Weibull AFT with covariates and interval censoring. Parameters: `[log_k, beta_0, ..., beta_{p-1}]`. `log(λ_i) = x_i^T β`.
+- `IntervalCensoredExponentialModel(time_lower, time_upper, censor_type)` — Exponential model (Weibull k=1) with interval censoring.
+- `IntervalCensoredLogNormalModel(time_lower, time_upper, censor_type)` — LogNormal model with interval censoring.
  
 High-level helpers (recommended for most users):
  
@@ -394,14 +467,39 @@ print(f"Smoothed sigma: {s['smoothed_sigma'][:5]}")
 
 ### Pharmacometrics
 
-- `OneCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, sigma=1.0, lloq=None, lloq_policy="ignore")` — oral dosing, first-order absorption.
+#### Individual PK Models
+
+- `OneCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, sigma=0.05, lloq=None, lloq_policy="censored")` — 1-compartment oral PK (3 params: CL, V, Ka).
   - `predict(params) -> list[float]` — predicted concentrations.
-- `OneCompartmentOralPkNlmeModel(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, sigma=1.0, lloq=None, lloq_policy="ignore")` — population PK (NLME with per-subject random effects).
+- `TwoCompartmentIvPkModel(times, y, *, dose, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored")` — 2-compartment IV bolus PK (4 params: CL, V1, V2, Q). Supports additive/proportional/combined error models.
+  - `predict(params) -> list[float]` — predicted concentrations.
+- `TwoCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored")` — 2-compartment oral PK (5 params: CL, V1, V2, Q, Ka). Supports additive/proportional/combined error models.
+  - `predict(params) -> list[float]` — predicted concentrations.
+
+All PK models implement the `LogDensityModel` interface: `nll(params)`, `grad_nll(params)`, `parameter_names()`, `suggested_init()`, `suggested_bounds()`, `n_params()`, `dim()`.
+
+#### Population PK (NLME)
+
+- `OneCompartmentOralPkNlmeModel(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, sigma=0.05, lloq=None, lloq_policy="censored")` — population PK (NLME with per-subject random effects). `LogDensityModel` interface.
+
+- `nextstat.nlme_foce(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, max_outer_iter=100, max_inner_iter=20, tol=1e-4, interaction=True) -> dict` — FOCE/FOCEI population estimation (1-cpt oral). Returns `theta`, `omega`, `omega_matrix`, `correlation`, `eta`, `ofv`, `converged`, `n_iter`.
+
+- `nextstat.nlme_saem(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4) -> dict` — SAEM population estimation (1-cpt oral). Returns FOCE-result dict plus `saem` sub-dict with `acceptance_rates`, `ofv_trace`, `burn_in_only`.
+
+#### Model Diagnostics
+
+- `nextstat.pk_vpc(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=200, quantiles=None, n_bins=10, seed=42, pi_level=0.90) -> dict` — Visual Predictive Check (1-cpt oral). Returns `bins` (list of per-bin quantile comparisons), `quantiles`, `n_sim`.
+
+- `nextstat.pk_gof(times, y, subject_idx, *, dose, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None) -> list[dict]` — Goodness of Fit (1-cpt oral). Returns per-observation records with `subject`, `time`, `dv`, `pred`, `ipred`, `iwres`, `cwres`.
+
+#### Data I/O
+
+- `nextstat.read_nonmem(csv_text) -> dict` — parse NONMEM-format CSV. Returns `n_subjects`, `subject_ids`, `times`, `dv`, `subject_idx`.
 
 ### Test / utility models
 
 - `GaussianMeanModel(y, sigma)` — simple Gaussian mean estimation.
-- `FunnelModel()` — Neal's funnel (sampler stress test).
+- `FunnelModel(dim=2)` — Neal's funnel (sampler stress test). `dim` controls dimensionality: `y ~ N(0,3)`, `x_i|y ~ N(0, exp(y/2))` for `i = 1..dim-1`.
 - `StdNormalModel(dim=2)` — standard normal (sampler validation).
 
 ---
