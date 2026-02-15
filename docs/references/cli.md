@@ -90,13 +90,18 @@ HEP / Hybrid (binned + unbinned) (Phase 4):
 
 - `nextstat unbinned-scan --config unbinned.json --start 0 --stop 5 --points 21 [--threads 0] [--gpu cuda|metal]`
   - Requires `model.poi` in the spec (POI is scanned).
-- `nextstat unbinned-fit-toys --config unbinned.json --n-toys 100 --seed 42 [--gen init|mle] [--set name=value ...] [--threads 0] [--gpu cuda|metal|auto] [--gpu-devices 0,1,...] [--gpu-sample-toys] [--gpu-native] [--gpu-shards N] [--shard INDEX/TOTAL]`
+- `nextstat unbinned-fit-toys --config unbinned.json --n-toys 100 --seed 42 [--gen init|mle] [--set name=value ...] [--threads 0] [--gpu cuda|metal|auto] [--gpu-devices 0,1,...] [--gpu-sample-toys] [--gpu-native] [--gpu-shards N] [--shard INDEX/TOTAL] [--summary-ci-method percentile|bca --summary-ci-level 0.68 --summary-ci-bootstrap 1000]`
   - Requires `model.poi` in the spec (POI is summarized across toys).
   - Output includes per-toy convergence flags (`results.converged[]`) and pull summaries (from converged toys only).
   - CPU toy fitting uses warm-start (MLE θ̂), retry with jitter (up to 3 attempts), smooth bounds escalation on last retry, and Rayon parallel iteration. Hessian is skipped by default — only computed when pull guardrails are active (`--max-abs-poi-pull-mean` / `--poi-pull-std-range`).
   - `--gpu auto` is a policy-gated mode: it selects CPU vs CUDA based on model topology and estimated events/toy and prints the decision reason. It must not be combined with `--gpu-devices/--gpu-shards/--gpu-sample-toys/--gpu-native` (use `--gpu cuda|metal` for explicit control).
   - **Hessian skip policy**: Hessian adds ~40-50% compute per toy. For HEP CLs, only q̃(μ) = 2·ΔNLL is needed (no Hessian). For pharma, pulls are optional diagnostics. Hessian is auto-enabled by the CLI when pull guardrails are specified; otherwise it is skipped for throughput.
   - Error metrics are split: `results.n_validation_error` (PDF/spec constraint violations), `results.n_computation_error` (numeric failures), `results.n_nonconverged` (optimizer did not converge). `n_error = n_validation_error + n_computation_error`.
+  - Optional summary CI (`summary.mean_ci`, opt-in):
+    - `--summary-ci-method percentile|bca` enables an additional CI block for `summary.mean` computed from converged finite `poi_hat`.
+    - `--summary-ci-level` sets confidence level (must be in `(0,1)`), default `0.68`.
+    - `--summary-ci-bootstrap` sets bootstrap resample count, default `1000`.
+    - If `bca` is requested but BCa prerequisites fail, output falls back to percentile and records `summary.mean_ci.diagnostics.fallback_reason`.
   - **CPU farm mode** (`--shard INDEX/TOTAL`): runs only a deterministic slice of the toy range.
     Each shard `k` of `M` total runs toys `[start_k .. start_k + count_k)` with `seed + start_k` as the base seed.
     This enables linear scale-out across cluster nodes. Combine results with `unbinned-merge-toys`.

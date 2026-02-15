@@ -4620,6 +4620,93 @@ fn unbinned_fit_toys_smoke_on_fixture_tree() {
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
     assert_unbinned_fit_toys_contract(&v, 5);
+    if let Some(summary) = v.get("summary").and_then(|x| x.as_object()) {
+        assert!(
+            summary.get("mean_ci").is_none(),
+            "summary.mean_ci should be absent unless --summary-ci-method is set"
+        );
+    }
+
+    let _ = std::fs::remove_file(&config);
+}
+
+#[test]
+fn unbinned_fit_toys_summary_mean_ci_bca_opt_in() {
+    let root = fixture_path("simple_tree.root");
+    if !root.exists() {
+        return;
+    }
+
+    let config = tmp_path("unbinned_spec_toys_summary_mean_ci_bca.json");
+    write_smoke_unbinned_toys_config(&config, &root);
+
+    let out = run(&[
+        "unbinned-fit-toys",
+        "--config",
+        config.to_string_lossy().as_ref(),
+        "--n-toys",
+        "8",
+        "--seed",
+        "123",
+        "--threads",
+        "1",
+        "--summary-ci-method",
+        "bca",
+        "--summary-ci-level",
+        "0.68",
+        "--summary-ci-bootstrap",
+        "32",
+    ]);
+    assert!(
+        out.status.success(),
+        "unbinned-fit-toys --summary-ci-method bca should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    assert_unbinned_fit_toys_contract(&v, 8);
+
+    let summary = v.get("summary").and_then(|x| x.as_object()).expect("summary should be object");
+    let mean_ci = summary
+        .get("mean_ci")
+        .and_then(|x| x.as_object())
+        .expect("summary.mean_ci should be object");
+    assert_eq!(
+        mean_ci.get("requested_method").and_then(|x| x.as_str()),
+        Some("bca"),
+        "requested_method should be bca"
+    );
+    assert!(
+        matches!(mean_ci.get("method").and_then(|x| x.as_str()), Some("bca" | "percentile")),
+        "mean_ci.method should be bca or percentile fallback"
+    );
+    assert_eq!(mean_ci.get("target").and_then(|x| x.as_str()), Some("mean"));
+
+    let conf_level = mean_ci
+        .get("conf_level")
+        .and_then(|x| x.as_f64())
+        .expect("mean_ci.conf_level should be number");
+    assert!((conf_level - 0.68).abs() < 1e-12, "unexpected conf level: {conf_level}");
+
+    let lower =
+        mean_ci.get("lower").and_then(|x| x.as_f64()).expect("mean_ci.lower should be number");
+    let upper =
+        mean_ci.get("upper").and_then(|x| x.as_f64()).expect("mean_ci.upper should be number");
+    assert!(lower.is_finite() && upper.is_finite() && lower <= upper, "invalid mean_ci bounds");
+
+    let diagnostics = mean_ci
+        .get("diagnostics")
+        .and_then(|x| x.as_object())
+        .expect("mean_ci.diagnostics should be object");
+    assert!(
+        diagnostics.get("n_bootstrap").and_then(|x| x.as_u64()).is_some(),
+        "diagnostics.n_bootstrap should be present"
+    );
+    assert!(
+        diagnostics.get("fallback_reason").is_some(),
+        "diagnostics.fallback_reason should be present"
+    );
 
     let _ = std::fs::remove_file(&config);
 }

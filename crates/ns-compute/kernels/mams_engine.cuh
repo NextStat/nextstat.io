@@ -575,7 +575,7 @@ extern "C" __global__ void mams_transition_fused(
  * Shared memory:
  *   - Cooperative load of model data matrix in column-major layout
  *   - Host passes shared_mem_bytes = (n*p + n) * sizeof(double)
- *   - Transpose: row-major global → column-major shared (coalesced reads)
+ *   - Copy: precomputed column-major global → column-major shared
  *
  * Launch config: total_threads = n_chains * 32, block_dim = 256 (8 chains/block)
  */
@@ -595,6 +595,21 @@ __device__ void user_grad_warp(
     int /*n_obs*/, int /*n_feat*/, int /*lane_id*/, int /*use_shmem*/)
 {
     user_grad(x, grad, dim, model_data);
+}
+#endif
+
+/* Optional fused warp callback:
+ * compute grad and potential in one pass.
+ * Default fallback calls separate callbacks to preserve behavior.
+ */
+#ifndef MAMS_WARP_FUSED_DEFINED
+__device__ double user_grad_nll_warp(
+    const double* x, double* grad, int dim, const double* model_data,
+    const double* s_X_col, const double* s_y,
+    int n_obs, int n_feat, int lane_id, int use_shmem)
+{
+    user_grad_warp(x, grad, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, use_shmem);
+    return user_nll_warp(x, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, use_shmem);
 }
 #endif
 
@@ -646,21 +661,21 @@ extern "C" __global__ void mams_transition_warp(
     int chain = global_thread / 32;
     int lane_id = threadIdx.x % 32;
 
-    // --- Optional cooperative shared memory load: transpose X to column-major ---
+    // --- Optional cooperative shared memory load ---
+    // For GLM, host layout is [n, p, X_row(n*p), y(n), X_col(n*p)].
+    // Shared memory receives X_col directly (no runtime transpose).
     extern __shared__ double s_data[];
     double* s_X_col = s_data;               // [n_feat × n_obs] column-major
     double* s_y = s_data + n_obs * n_feat;  // [n_obs]
 
     if (warp_use_shmem && n_obs > 0 && n_feat > 0) {
-        const double* X_row = model_data + 2;         // row-major source
+        const double* X_col = model_data + 2 + n_obs * n_feat + n_obs;
         const double* y_src = model_data + 2 + n_obs * n_feat;
 
-        // Cooperative transpose: all threads in block participate
+        // Cooperative copy: all threads in block participate
         int n_total = n_obs * n_feat;
         for (int idx = threadIdx.x; idx < n_total; idx += blockDim.x) {
-            int row = idx / n_feat;   // observation index
-            int col = idx % n_feat;   // feature index
-            s_X_col[col * n_obs + row] = X_row[row * n_feat + col];
+            s_X_col[idx] = X_col[idx];
         }
         for (int idx = threadIdx.x; idx < n_obs; idx += blockDim.x) {
             s_y[idx] = y_src[idx];
@@ -746,9 +761,9 @@ extern "C" __global__ void mams_transition_warp(
         total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
         // a_step: identical across all lanes
         a_step(x, u, inv_mass, eps, dim);
-        // Warp-cooperative grad + nll (distributes observation loop)
-        user_grad_warp(x, grad_reg, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, warp_use_shmem);
-        potential = user_nll_warp(x, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, warp_use_shmem);
+        // Warp-cooperative grad + nll (single fused callback)
+        potential = user_grad_nll_warp(
+            x, grad_reg, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, warp_use_shmem);
         // b_step again
         total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
 

@@ -36,6 +36,8 @@ pub mod adapt;
 pub mod artifacts;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+/// Bootstrap confidence interval utilities (percentile + BCa).
+pub mod bootstrap_ci;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;
 /// MCMC chain storage + I/O.
@@ -167,6 +169,11 @@ pub use artifacts::{
     ReferenceToolVersion, RunBundle, SCHEMA_VERSION, ScmArtifact,
 };
 pub use batch::{fit_toys_batch, is_accelerate_available};
+pub use bootstrap_ci::{
+    BcaDiagnostics, BootstrapCiMethod, bca_adjusted_alpha, bca_interval,
+    estimate_acceleration_from_jackknife, estimate_bias_correction_z0, percentile_interval,
+    quantile_linear, quantile_linear_sorted,
+};
 pub use builder::{ComposedGlmModel, ModelBuilder};
 pub use chain::{SamplerResult, sample_nuts_multichain};
 pub use chain_ladder::{
