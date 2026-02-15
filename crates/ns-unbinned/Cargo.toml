@@ -34,7 +34,7 @@ bytes = { version = "1", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # `rand` pulls `getrandom`; for wasm32-unknown-unknown this backend must be explicitly enabled.
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 approx.workspace = true

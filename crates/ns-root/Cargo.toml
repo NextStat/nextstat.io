@@ -15,7 +15,7 @@ description = "Native ROOT file reader for NextStat (TH1D/TH1F histograms, TTree
 thiserror.workspace = true
 log.workspace = true
 flate2 = "1.1"
-lz4_flex = "0.11"
+lz4_flex = "0.12"
 ns-zstd = { path = "../ns-zstd" }
 lzma-rs = "0.3"
 memmap2 = "0.9"
