@@ -64,7 +64,9 @@ pub mod injection;
 pub use cls::{ClsCurveArtifact, ClsCurvePoint, NsSigmaOrder};
 pub use contour::{ContourArtifact, ContourGridPoint, ContourLine};
 pub use corr::CorrArtifact;
-pub use distributions::{DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy};
+pub use distributions::{
+    BandEnvelope, DistributionsArtifact, DistributionsChannelArtifact, RatioPolicy,
+};
 pub use gammas::GammasArtifact;
 pub use injection::{InjectionArtifact, InjectionPoint};
 pub use morphing::{MorphingArtifact, MorphingTemplate};

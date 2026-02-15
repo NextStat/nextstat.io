@@ -1,0 +1,69 @@
+{
+  "route": "route_a",
+  "generated_at_utc": "2026-02-15T22:29:57+00:00",
+  "status": "pass",
+  "checks": [
+    {
+      "name": "fit_result_present",
+      "pass": true
+    },
+    {
+      "name": "scan_points_present",
+      "pass": true
+    },
+    {
+      "name": "corr_present",
+      "pass": true
+    },
+    {
+      "name": "reference_plot_present",
+      "pass": true
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cls_curve.json",
+      "sha256": "96ddfea93204f3322400238cedf60c9d7ef64114aea2650bf3962050eabdbee1"
+    },
+    {
+      "path": "corr.json",
+      "sha256": "d409a55773436b52fef95229bcb094375d519820c9b7367e871d762cea4c671b"
+    },
+    {
+      "path": "fit_result.json",
+      "sha256": "a2d5f4049537c99dc9dd66761760750c53a68201a48da4a5dab6cd7c3cc7fd8f"
+    },
+    {
+      "path": "hypotest_mu1.json",
+      "sha256": "d0d469196c3c6a6c33faa8a4b38bb9e512b869db82fd1aa2fdc84ffed032011c"
+    },
+    {
+      "path": "profile_curve.json",
+      "sha256": "9c66f720635041800cf08715ac83f7ab05e660d37d02e21845aabda9ac98d903"
+    },
+    {
+      "path": "pulls.json",
+      "sha256": "e02e230633f8330405a724864d0fc8bb845c203c980eafb8cbbf2a31fc29c1be"
+    },
+    {
+      "path": "reference_plot.png",
+      "sha256": "d5a80cd966b9729ee7cef20c0dc1e1cf6bd59f7b1d8e91bc32847e8715246d91"
+    },
+    {
+      "path": "scan_points.csv",
+      "sha256": "4c52b0694e1409e3350b91b46dca4047f0bcf397f330cca08c78cbfd0cf03bbe"
+    },
+    {
+      "path": "scan_points.json",
+      "sha256": "3f20c13c25ba55ab8493950bca505b6ae204d85359ecc42d08b4814fa9ec0b4c"
+    },
+    {
+      "path": "upper_limit_scan.json",
+      "sha256": "6e0ffba2581d123ad7ef13c729cf10629bff473543243f154d801a94332ba6b1"
+    },
+    {
+      "path": "validation_report_snippet.json",
+      "sha256": "fe093fe7fdc274ed8a03185e47c0341dc7624b4641f3ce36df8d5113deec916c"
+    }
+  ]
+}

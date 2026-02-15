@@ -430,12 +430,69 @@ pub struct BootstrapHrResult {
     pub hr_ci_lower: Vec<f64>,
     /// Bootstrap 97.5th percentile HR (upper CI).
     pub hr_ci_upper: Vec<f64>,
+    /// Requested CI method.
+    pub ci_method_requested: crate::bootstrap_ci::BootstrapCiMethod,
+    /// Effective CI method per coefficient (may fallback to percentile).
+    pub ci_method_effective: Vec<crate::bootstrap_ci::BootstrapCiMethod>,
+    /// Per-coefficient CI diagnostics.
+    pub ci_diagnostics: Vec<BootstrapHrCoefficientDiagnostics>,
     /// Number of bootstrap resamples requested.
     pub n_bootstrap: usize,
+    /// Number of jackknife leave-one-out refits requested (BCa only).
+    pub n_jackknife_requested: usize,
+    /// Number of jackknife leave-one-out refits attempted (BCa only).
+    pub n_jackknife_attempted: usize,
     /// Number of resamples that converged.
     pub n_converged: usize,
     /// Wall-clock seconds for the bootstrap loop.
     pub elapsed_s: f64,
+}
+
+/// Per-coefficient bootstrap CI diagnostics for churn hazard ratios.
+#[derive(Debug, Clone)]
+pub struct BootstrapHrCoefficientDiagnostics {
+    /// Requested CI method.
+    pub requested_method: crate::bootstrap_ci::BootstrapCiMethod,
+    /// Effective CI method used for this coefficient.
+    pub effective_method: crate::bootstrap_ci::BootstrapCiMethod,
+    /// BCa bias-correction constant (`z0`), if BCa succeeded.
+    pub z0: Option<f64>,
+    /// BCa acceleration constant (`a`), if BCa succeeded.
+    pub acceleration: Option<f64>,
+    /// Requested lower alpha.
+    pub alpha_low: f64,
+    /// Requested upper alpha.
+    pub alpha_high: f64,
+    /// BCa-adjusted lower alpha, if BCa succeeded.
+    pub alpha_low_adj: Option<f64>,
+    /// BCa-adjusted upper alpha, if BCa succeeded.
+    pub alpha_high_adj: Option<f64>,
+    /// Number of bootstrap samples used for this coefficient CI.
+    pub n_bootstrap: usize,
+    /// Number of jackknife estimates used for this coefficient CI.
+    pub n_jackknife: usize,
+    /// Fallback reason when requested method could not be applied.
+    pub fallback_reason: Option<String>,
+}
+
+#[inline]
+fn default_bca_jackknife_count(n: usize) -> usize {
+    n.min(200)
+}
+
+fn select_jackknife_indices(n: usize, requested: usize, seed: u64) -> Vec<usize> {
+    if n == 0 || requested == 0 {
+        return Vec::new();
+    }
+    if requested >= n {
+        return (0..n).collect();
+    }
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0xA5A5_5A5A_D3C1_BEEF_u64);
+    let mut picked = std::collections::BTreeSet::<usize>::new();
+    while picked.len() < requested {
+        picked.insert(rng.random_range(0..n));
+    }
+    picked.into_iter().collect()
 }
 
 /// Bootstrap hazard ratios via Rayon-parallel Cox PH refitting.
@@ -452,11 +509,49 @@ pub fn bootstrap_hazard_ratios(
     seed: u64,
     conf_level: f64,
 ) -> Result<BootstrapHrResult> {
+    bootstrap_hazard_ratios_with_method(
+        times,
+        events,
+        x,
+        names,
+        n_bootstrap,
+        seed,
+        conf_level,
+        crate::bootstrap_ci::BootstrapCiMethod::Percentile,
+        0,
+    )
+}
+
+/// Bootstrap hazard ratios with explicit CI method selection.
+///
+/// - `ci_method=Percentile`: percentile interval on bootstrap HR samples.
+/// - `ci_method=Bca`: BCa interval on log-HR with percentile fallback.
+/// - `n_jackknife`: number of leave-one-out refits sampled for BCa acceleration.
+///   `0` means automatic default (`min(n, 200)`).
+pub fn bootstrap_hazard_ratios_with_method(
+    times: &[f64],
+    events: &[bool],
+    x: &[Vec<f64>],
+    names: &[String],
+    n_bootstrap: usize,
+    seed: u64,
+    conf_level: f64,
+    ci_method: crate::bootstrap_ci::BootstrapCiMethod,
+    n_jackknife: usize,
+) -> Result<BootstrapHrResult> {
     use rayon::prelude::*;
 
     let n = times.len();
     if n == 0 {
         return Err(Error::Validation("times must be non-empty".into()));
+    }
+    if !(conf_level.is_finite() && conf_level > 0.0 && conf_level < 1.0) {
+        return Err(Error::Validation(format!("conf_level must be in (0,1), got {conf_level}")));
+    }
+    if n_bootstrap < 2 {
+        return Err(Error::Validation(format!(
+            "n_bootstrap must be >= 2 for CI estimation, got {n_bootstrap}"
+        )));
     }
     let p = x.first().map_or(0, |row| row.len());
     if p == 0 {
@@ -501,18 +596,135 @@ pub fn bootstrap_hazard_ratios(
         return Err(Error::Computation("Fewer than 2 bootstrap resamples converged".into()));
     }
 
-    // Percentile CIs.
+    // BCa jackknife leave-one-out fits (requested only for BCa).
+    let n_jackknife_requested = if ci_method == crate::bootstrap_ci::BootstrapCiMethod::Bca {
+        if n_jackknife == 0 { default_bca_jackknife_count(n) } else { n_jackknife.min(n) }
+    } else {
+        0
+    };
+    let jackknife_indices = if n_jackknife_requested > 0 {
+        select_jackknife_indices(n, n_jackknife_requested, seed)
+    } else {
+        Vec::new()
+    };
+    let n_jackknife_attempted = jackknife_indices.len();
+
+    let jackknife_hr: Vec<Option<Vec<f64>>> = if jackknife_indices.is_empty() {
+        Vec::new()
+    } else {
+        jackknife_indices
+            .par_iter()
+            .map(|&drop_i| {
+                let mut jk_times = Vec::with_capacity(n.saturating_sub(1));
+                let mut jk_events = Vec::with_capacity(n.saturating_sub(1));
+                let mut jk_x = Vec::with_capacity(n.saturating_sub(1));
+                for i in 0..n {
+                    if i == drop_i {
+                        continue;
+                    }
+                    jk_times.push(times[i]);
+                    jk_events.push(events[i]);
+                    jk_x.push(x[i].clone());
+                }
+                match churn_risk_model(&jk_times, &jk_events, &jk_x, names, conf_level) {
+                    Ok(r) => Some(r.hazard_ratios),
+                    Err(_) => None,
+                }
+            })
+            .collect()
+    };
+
+    // CI computation.
     let alpha_half = (1.0 - conf_level) / 2.0;
     let mut hr_ci_lower = Vec::with_capacity(p);
     let mut hr_ci_upper = Vec::with_capacity(p);
+    let mut ci_method_effective = Vec::with_capacity(p);
+    let mut ci_diagnostics = Vec::with_capacity(p);
 
     for j in 0..p {
-        let mut vals: Vec<f64> = converged.iter().map(|hr| hr[j]).collect();
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let lo_idx = ((alpha_half * vals.len() as f64).floor() as usize).min(vals.len() - 1);
-        let hi_idx = (((1.0 - alpha_half) * vals.len() as f64).ceil() as usize).min(vals.len() - 1);
-        hr_ci_lower.push(vals[lo_idx]);
-        hr_ci_upper.push(vals[hi_idx]);
+        let vals: Vec<f64> =
+            converged.iter().map(|hr| hr[j]).filter(|v| v.is_finite() && *v > 0.0).collect();
+        if vals.len() < 2 {
+            return Err(Error::Computation(format!(
+                "Fewer than 2 finite positive bootstrap HR samples for coefficient index {j}"
+            )));
+        }
+
+        let (p_lo, p_hi) = crate::bootstrap_ci::percentile_interval(&vals, conf_level)?;
+        let mut lower = p_lo;
+        let mut upper = p_hi;
+        let mut effective = crate::bootstrap_ci::BootstrapCiMethod::Percentile;
+        let mut z0 = None;
+        let mut acceleration = None;
+        let mut alpha_low_adj = None;
+        let mut alpha_high_adj = None;
+        let mut n_jk_used = 0usize;
+        let mut fallback_reason = None::<String>;
+
+        if ci_method == crate::bootstrap_ci::BootstrapCiMethod::Bca {
+            if point.hazard_ratios[j].is_finite() && point.hazard_ratios[j] > 0.0 {
+                let theta_hat_log = point.hazard_ratios[j].ln();
+                let bootstrap_log: Vec<f64> = vals.iter().map(|v| v.ln()).collect();
+                let jackknife_log: Vec<f64> = jackknife_hr
+                    .iter()
+                    .filter_map(|v| v.as_ref())
+                    .filter_map(|hr| hr.get(j).copied())
+                    .filter(|v| v.is_finite() && *v > 0.0)
+                    .map(f64::ln)
+                    .collect();
+                n_jk_used = jackknife_log.len();
+
+                if jackknife_log.len() >= 3 {
+                    match crate::bootstrap_ci::bca_interval(
+                        theta_hat_log,
+                        &bootstrap_log,
+                        &jackknife_log,
+                        conf_level,
+                    ) {
+                        Ok(((lo_log, hi_log), diag)) => {
+                            lower = lo_log.exp();
+                            upper = hi_log.exp();
+                            effective = crate::bootstrap_ci::BootstrapCiMethod::Bca;
+                            z0 = Some(diag.z0);
+                            acceleration = Some(diag.acceleration);
+                            alpha_low_adj = Some(diag.alpha_low_adj);
+                            alpha_high_adj = Some(diag.alpha_high_adj);
+                        }
+                        Err(e) => {
+                            fallback_reason = Some(e.to_string());
+                        }
+                    }
+                } else {
+                    fallback_reason = Some(format!(
+                        "insufficient jackknife convergence for BCa (need >=3, got {})",
+                        jackknife_log.len()
+                    ));
+                }
+            } else {
+                fallback_reason = Some("point hazard ratio is non-finite or non-positive".into());
+            }
+        }
+
+        if lower > upper {
+            std::mem::swap(&mut lower, &mut upper);
+        }
+
+        hr_ci_lower.push(lower);
+        hr_ci_upper.push(upper);
+        ci_method_effective.push(effective);
+        ci_diagnostics.push(BootstrapHrCoefficientDiagnostics {
+            requested_method: ci_method,
+            effective_method: effective,
+            z0,
+            acceleration,
+            alpha_low: alpha_half,
+            alpha_high: 1.0 - alpha_half,
+            alpha_low_adj,
+            alpha_high_adj,
+            n_bootstrap: vals.len(),
+            n_jackknife: n_jk_used,
+            fallback_reason,
+        });
     }
 
     Ok(BootstrapHrResult {
@@ -520,7 +732,12 @@ pub fn bootstrap_hazard_ratios(
         hr_point: point.hazard_ratios,
         hr_ci_lower,
         hr_ci_upper,
+        ci_method_requested: ci_method,
+        ci_method_effective,
+        ci_diagnostics,
         n_bootstrap,
+        n_jackknife_requested,
+        n_jackknife_attempted,
         n_converged,
         elapsed_s,
     })
@@ -2118,6 +2335,86 @@ mod tests {
             result.ate
         );
         assert!(result.se > 0.0);
+    }
+
+    #[test]
+    fn bootstrap_hazard_ratios_percentile_runs() {
+        let config = ChurnDataConfig { n_customers: 240, seed: 17, ..Default::default() };
+        let ds = generate_churn_dataset(&config).unwrap();
+        let names: Vec<String> = vec![
+            "plan_basic".into(),
+            "plan_premium".into(),
+            "usage_score".into(),
+            "support_tickets".into(),
+        ];
+
+        let r = bootstrap_hazard_ratios_with_method(
+            &ds.times,
+            &ds.events,
+            &ds.covariates,
+            &names,
+            30,
+            123,
+            0.95,
+            crate::bootstrap_ci::BootstrapCiMethod::Percentile,
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(r.ci_method_requested, crate::bootstrap_ci::BootstrapCiMethod::Percentile);
+        assert_eq!(r.names.len(), names.len());
+        assert_eq!(r.hr_point.len(), names.len());
+        assert_eq!(r.hr_ci_lower.len(), names.len());
+        assert_eq!(r.hr_ci_upper.len(), names.len());
+        assert_eq!(r.ci_diagnostics.len(), names.len());
+        assert_eq!(r.ci_method_effective.len(), names.len());
+        assert!(r.n_converged >= 2);
+    }
+
+    #[test]
+    fn bootstrap_hazard_ratios_bca_runs_with_diagnostics() {
+        let config = ChurnDataConfig { n_customers: 260, seed: 101, ..Default::default() };
+        let ds = generate_churn_dataset(&config).unwrap();
+        let names: Vec<String> = vec![
+            "plan_basic".into(),
+            "plan_premium".into(),
+            "usage_score".into(),
+            "support_tickets".into(),
+        ];
+
+        let r = bootstrap_hazard_ratios_with_method(
+            &ds.times,
+            &ds.events,
+            &ds.covariates,
+            &names,
+            32,
+            321,
+            0.95,
+            crate::bootstrap_ci::BootstrapCiMethod::Bca,
+            20,
+        )
+        .unwrap();
+
+        assert_eq!(r.ci_method_requested, crate::bootstrap_ci::BootstrapCiMethod::Bca);
+        assert_eq!(r.n_jackknife_requested, 20);
+        assert_eq!(r.n_jackknife_attempted, 20);
+        assert_eq!(r.ci_diagnostics.len(), names.len());
+
+        for j in 0..names.len() {
+            assert!(r.hr_ci_lower[j].is_finite());
+            assert!(r.hr_ci_upper[j].is_finite());
+            assert!(r.hr_ci_lower[j] <= r.hr_ci_upper[j]);
+            assert_eq!(
+                r.ci_diagnostics[j].requested_method,
+                crate::bootstrap_ci::BootstrapCiMethod::Bca
+            );
+            // Effective method can fallback to percentile on difficult coefficients.
+            assert!(matches!(
+                r.ci_method_effective[j],
+                crate::bootstrap_ci::BootstrapCiMethod::Bca
+                    | crate::bootstrap_ci::BootstrapCiMethod::Percentile
+            ));
+        }
     }
 
     // -----------------------------------------------------------------------

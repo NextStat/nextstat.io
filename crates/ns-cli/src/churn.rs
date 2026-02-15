@@ -252,6 +252,8 @@ pub fn cmd_churn_bootstrap_hr(
     n_bootstrap: usize,
     seed: u64,
     conf_level: f64,
+    ci_method: crate::ChurnCiMethod,
+    n_jackknife: usize,
     output: Option<&PathBuf>,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
@@ -259,7 +261,12 @@ pub fn cmd_churn_bootstrap_hr(
     let data: RiskModelInputJson = serde_json::from_str(&raw)?;
 
     let names_owned: Vec<String> = data.covariate_names.clone();
-    let result = ns_inference::churn::bootstrap_hazard_ratios(
+    let ci_method = match ci_method {
+        crate::ChurnCiMethod::Percentile => ns_inference::BootstrapCiMethod::Percentile,
+        crate::ChurnCiMethod::Bca => ns_inference::BootstrapCiMethod::Bca,
+    };
+
+    let result = ns_inference::churn::bootstrap_hazard_ratios_with_method(
         &data.times,
         &data.events,
         &data.covariates,
@@ -267,24 +274,57 @@ pub fn cmd_churn_bootstrap_hr(
         n_bootstrap,
         seed,
         conf_level,
+        ci_method,
+        n_jackknife,
     )?;
 
     let coefs_json: Vec<serde_json::Value> = (0..result.names.len())
         .map(|j| {
+            let effective_method = match result.ci_method_effective[j] {
+                ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                ns_inference::BootstrapCiMethod::Bca => "bca",
+            };
+            let d = &result.ci_diagnostics[j];
             serde_json::json!({
                 "name": result.names[j],
                 "hr_point": result.hr_point[j],
                 "hr_ci_lower": result.hr_ci_lower[j],
                 "hr_ci_upper": result.hr_ci_upper[j],
+                "ci_method": effective_method,
+                "ci_diagnostics": {
+                    "requested_method": match d.requested_method {
+                        ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                        ns_inference::BootstrapCiMethod::Bca => "bca",
+                    },
+                    "effective_method": match d.effective_method {
+                        ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                        ns_inference::BootstrapCiMethod::Bca => "bca",
+                    },
+                    "z0": d.z0,
+                    "acceleration": d.acceleration,
+                    "alpha_low": d.alpha_low,
+                    "alpha_high": d.alpha_high,
+                    "alpha_low_adj": d.alpha_low_adj,
+                    "alpha_high_adj": d.alpha_high_adj,
+                    "n_bootstrap": d.n_bootstrap,
+                    "n_jackknife": d.n_jackknife,
+                    "fallback_reason": d.fallback_reason,
+                },
             })
         })
         .collect();
 
     let output_json = serde_json::json!({
         "n_bootstrap": result.n_bootstrap,
+        "n_jackknife_requested": result.n_jackknife_requested,
+        "n_jackknife_attempted": result.n_jackknife_attempted,
         "n_converged": result.n_converged,
         "elapsed_s": result.elapsed_s,
         "conf_level": conf_level,
+        "ci_method_requested": match result.ci_method_requested {
+            ns_inference::BootstrapCiMethod::Percentile => "percentile",
+            ns_inference::BootstrapCiMethod::Bca => "bca",
+        },
         "coefficients": coefs_json,
     });
 
@@ -293,7 +333,16 @@ pub fn cmd_churn_bootstrap_hr(
         crate::report::write_bundle(
             dir,
             "churn_bootstrap_hr",
-            serde_json::json!({ "n_bootstrap": n_bootstrap, "seed": seed, "conf_level": conf_level }),
+            serde_json::json!({
+                "n_bootstrap": n_bootstrap,
+                "seed": seed,
+                "conf_level": conf_level,
+                "ci_method": match ci_method {
+                    ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                    ns_inference::BootstrapCiMethod::Bca => "bca",
+                },
+                "n_jackknife": n_jackknife,
+            }),
             input,
             &output_json,
             false,

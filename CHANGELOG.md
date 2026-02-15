@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+### Added
+
+- **BCa confidence interval engine** — reusable bootstrap CI utilities in `ns-inference` (`percentile` + `bca`) with diagnostics (`z0`, acceleration, adjusted alphas, sample counts).
+- **HEP toy-summary CI controls** — `nextstat unbinned-fit-toys` now supports opt-in summary CI computation for `summary.mean`:
+  - `--summary-ci-method percentile|bca`
+  - `--summary-ci-level`
+  - `--summary-ci-bootstrap`
+  Output includes `summary.mean_ci` with requested/effective method and fallback diagnostics.
+- **Churn bootstrap CI method selection** — `nextstat churn bootstrap-hr` now supports:
+  - `--ci-method percentile|bca` (default `percentile`)
+  - `--n-jackknife` for BCa acceleration estimation.
+  Output includes method metadata and per-coefficient diagnostics (`ci_diagnostics`) with fallback reason.
+- **Python churn parity for CI methods** — `nextstat.churn_bootstrap_hr(...)` now accepts `ci_method` and `n_jackknife` and returns per-coefficient effective method/diagnostics.
+- **BCa benchmark harnesses**:
+  - `scripts/benchmarks/bench_unbinned_summary_ci.py` (HEP `unbinned-fit-toys`)
+  - `scripts/benchmarks/bench_churn_bootstrap_ci_methods.py` (churn `bootstrap-hr`)
+  - runbook: `docs/benchmarks/bca-hep-churn-ci-methods.md`.
+
 ## [0.9.5] — 2026-02-15
 
 ### Fixed

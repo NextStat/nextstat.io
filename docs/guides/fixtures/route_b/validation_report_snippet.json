@@ -1,0 +1,69 @@
+{
+  "route": "route_b",
+  "generated_at_utc": "2026-02-15T22:29:57+00:00",
+  "status": "pass",
+  "checks": [
+    {
+      "name": "fit_result_present",
+      "pass": true
+    },
+    {
+      "name": "scan_points_present",
+      "pass": true
+    },
+    {
+      "name": "corr_present",
+      "pass": true
+    },
+    {
+      "name": "reference_plot_present",
+      "pass": true
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cls_curve.json",
+      "sha256": "5e9b2a88175b847d0314330d2dcff9216cfa9b989530e8da70f2d68813b4abc9"
+    },
+    {
+      "path": "corr.json",
+      "sha256": "4af666ee1be0c0ef7eb13e728a5bc6fc2141b2e440d29af02edfe1237a77bc30"
+    },
+    {
+      "path": "fit_result.json",
+      "sha256": "fdddb5e1d97917283c672eb05aab4093f5af3516b99b51251fdfe2007bf9d2ee"
+    },
+    {
+      "path": "pulls.json",
+      "sha256": "1b1f293746405c9bef30f7021e8b83f1882badbdae8812a3b25728ab321d79f0"
+    },
+    {
+      "path": "reference_plot.png",
+      "sha256": "c4ba72708c06c77d0bba48d9774c458ac759fbff79f5763f66a4a4c857781705"
+    },
+    {
+      "path": "scan_points.csv",
+      "sha256": "89506d713469801439fc536b3aa8d38855ab4c75c71e17f1249b3c01ec6d98e0"
+    },
+    {
+      "path": "scan_points.json",
+      "sha256": "7fef6537643c0738b1cd028bb3d2e8285632013b387d91a0f97a91aa474af08b"
+    },
+    {
+      "path": "upper_limit_scan.json",
+      "sha256": "607df935c013c0a6ec2a760244238d4ff43c28a6253b011fb06bdf8464c3d5c8"
+    },
+    {
+      "path": "validation_report_snippet.json",
+      "sha256": "12dccd2921687a46fefa1b631250f0a0677dcefcb3f478800a4926f018fbea49"
+    },
+    {
+      "path": "workspace_from_import_trex_config.json",
+      "sha256": "386c92526fe2dc0d61ed4791bd0d39cf40df23154c023b82fceb355dda9a88fe"
+    },
+    {
+      "path": "workspace_from_trex_config.json",
+      "sha256": "386c92526fe2dc0d61ed4791bd0d39cf40df23154c023b82fceb355dda9a88fe"
+    }
+  ]
+}

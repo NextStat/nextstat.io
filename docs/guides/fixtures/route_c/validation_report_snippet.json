@@ -1,0 +1,65 @@
+{
+  "route": "route_c",
+  "generated_at_utc": "2026-02-15T22:29:57+00:00",
+  "status": "pass",
+  "checks": [
+    {
+      "name": "fit_result_present",
+      "pass": true
+    },
+    {
+      "name": "scan_points_present",
+      "pass": true
+    },
+    {
+      "name": "corr_present",
+      "pass": true
+    },
+    {
+      "name": "reference_plot_present",
+      "pass": true
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cls_curve.json",
+      "sha256": "96ddfea93204f3322400238cedf60c9d7ef64114aea2650bf3962050eabdbee1"
+    },
+    {
+      "path": "corr.json",
+      "sha256": "0955bf58e60a0002207823165e84a217a093ce0c6dc6ea9a1e7d0075c88009d4"
+    },
+    {
+      "path": "fit_result.json",
+      "sha256": "a2d5f4049537c99dc9dd66761760750c53a68201a48da4a5dab6cd7c3cc7fd8f"
+    },
+    {
+      "path": "histograms_table.example.csv",
+      "sha256": "b056d45aa26ab7343b5a9b725a45ff61fcbf373fea010bb5a620f69e7df7b620"
+    },
+    {
+      "path": "pulls.json",
+      "sha256": "b8b15dd90301b77191ca591497d5bf102d52c3da024061aa12653871d37ac982"
+    },
+    {
+      "path": "reference_plot.png",
+      "sha256": "d5a80cd966b9729ee7cef20c0dc1e1cf6bd59f7b1d8e91bc32847e8715246d91"
+    },
+    {
+      "path": "scan_points.csv",
+      "sha256": "4c52b0694e1409e3350b91b46dca4047f0bcf397f330cca08c78cbfd0cf03bbe"
+    },
+    {
+      "path": "scan_points.json",
+      "sha256": "3f20c13c25ba55ab8493950bca505b6ae204d85359ecc42d08b4814fa9ec0b4c"
+    },
+    {
+      "path": "upper_limit_scan.json",
+      "sha256": "6e0ffba2581d123ad7ef13c729cf10629bff473543243f154d801a94332ba6b1"
+    },
+    {
+      "path": "validation_report_snippet.json",
+      "sha256": "7f28b67640077588df47f1b556bc98b589ec74fd96d8de5bb118da1a13368117"
+    }
+  ]
+}

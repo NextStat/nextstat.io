@@ -68,7 +68,9 @@ CLI `nextstat churn bootstrap-hr`. lifelines uses sequential Python loop.
 - Speedup increases with B: 50× at B=250, 94× at B=2,500 (better Rayon work-stealing saturation).
 - lifelines is prohibitively slow at B≥5,000 on 100K observations (~2.3s per resample).
 
-Script: `scripts/benchmarks/bench_bootstrap_ci.py`
+Scripts:
+- `scripts/benchmarks/bench_bootstrap_ci.py` (NextStat vs lifelines baseline)
+- `scripts/benchmarks/bench_churn_bootstrap_ci_methods.py` (NextStat percentile vs BCa method overhead/diagnostics)
 
 ---
 
