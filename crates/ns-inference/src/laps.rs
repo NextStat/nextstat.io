@@ -294,11 +294,22 @@ fn generate_init_state(
 
 /// Compute initial trajectory length and step size.
 #[cfg(feature = "cuda")]
-fn compute_initial_params(dim: usize, config: &LapsConfig) -> (f64, f64) {
+fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64) {
+    let dim = model.dim();
+    let l_default = std::f64::consts::PI * (dim as f64).sqrt();
     let l = if config.init_l > 0.0 {
         config.init_l
     } else {
-        std::f64::consts::PI * (dim as f64).sqrt()
+        match model {
+            // Data-aware default for logistic GLM:
+            // posterior scale per coefficient is roughly O(1/sqrt(n)).
+            // Use sigma_post ≈ 2/sqrt(n), so L = pi*sqrt(dim)*sigma_post.
+            LapsModel::GlmLogistic { n, .. } => {
+                let sigma_post = 2.0 / (*n as f64).sqrt();
+                (l_default * sigma_post).clamp(0.25, l_default)
+            }
+            _ => l_default,
+        }
     };
     let eps = if config.init_step_size > 0.0 { config.init_step_size } else { l / 10.0 };
     (l, eps)
@@ -625,7 +636,7 @@ fn sample_laps_single_gpu(
 
     let mut accel = create_accelerator(model, n_chains, dim, &model_data, config.seed, device_id)?;
 
-    let (l, _init_eps) = compute_initial_params(dim, &config);
+    let (l, _init_eps) = compute_initial_params(model, &config);
     // Scale chain initialization: init_scale ≈ posterior_std from init_l.
     // Puts chains within ~2 posterior σ of the origin instead of U(-2,2).
     let init_scale = l / (std::f64::consts::PI * (dim as f64).sqrt());
@@ -869,7 +880,7 @@ fn sample_laps_multi_gpu(
         })
         .collect();
 
-    let (l, init_eps) = compute_initial_params(dim, &config);
+    let (l, init_eps) = compute_initial_params(model, &config);
     let init_scale = l / (std::f64::consts::PI * (dim as f64).sqrt());
 
     // Shared state: inv_mass (from Welford), L (from tuning), init_eps (from binary search)
