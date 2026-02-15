@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-02-15
+
+### Fixed
+
+- **PyPI wheel coverage** — `pip install nextstat` now works out of the box on all major platforms without requiring Rust. Pre-built wheels are published for:
+  - Linux x86_64 (manylinux_2_17): Python 3.11, 3.12, 3.13
+  - Linux aarch64 (manylinux_2_17): Python 3.11, 3.12, 3.13
+  - macOS arm64 (Apple Silicon): Python 3.11, 3.12, 3.13
+  - macOS x86_64 (Intel): Python 3.11, 3.12, 3.13
+  - Windows x86_64: Python 3.11, 3.12, 3.13
+- **Linux x86_64 glibc compatibility** — wheels now target manylinux_2_17 (glibc 2.17+) instead of manylinux_2_35, fixing installation on CentOS 7/8, RHEL 7+, Ubuntu 18.04+, and most CI/Docker images.
+- **macOS Intel support** — added `x86_64-apple-darwin` target to the release matrix. Intel Mac users no longer fall back to source builds.
+- **Multi-interpreter wheel builds** — Linux wheels are built inside the manylinux Docker container (all interpreters pre-installed); macOS/Windows use explicit `setup-python` with 3.11/3.12/3.13 before `--find-interpreter`.
+
+### Added
+
+- **HEP Full Workflow Tutorial** — comprehensive 1200-line tutorial (`docs/tutorials/hep-full-workflow.md`) covering workspace construction, all modifier types, MLE fitting, CLs hypothesis testing, upper limits (Brazil band), NP ranking, pulls, correlation matrix, profile likelihood scans, workspace combination, mass scans, GPU acceleration, preprocessing, and automated reports. Available on both English and Russian documentation sites.
+- **Detailed Installation & Quickstart guides** — rewritten with step-by-step instructions, expected outputs, troubleshooting sections, and GPU acceleration flags.
+
 ## [0.9.4] — 2026-02-15
 
 ### Added

@@ -89,11 +89,21 @@ impl LapsModel {
             }
             LapsModel::NealFunnel { .. } => vec![],
             LapsModel::GlmLogistic { x_data, y_data, n, p } => {
-                let mut data = Vec::with_capacity(2 + n * p + n);
+                let np = n * p;
+                let mut x_col = vec![0.0f64; np];
+                for row in 0..*n {
+                    for col in 0..*p {
+                        x_col[col * *n + row] = x_data[row * *p + col];
+                    }
+                }
+                // Layout:
+                // [n, p, X_row(n*p), y(n), X_col(n*p)]
+                let mut data = Vec::with_capacity(2 + np + n + np);
                 data.push(*n as f64);
                 data.push(*p as f64);
                 data.extend_from_slice(x_data);
                 data.extend_from_slice(y_data);
+                data.extend_from_slice(&x_col);
                 data
             }
             LapsModel::Custom { model_data, .. } => model_data.clone(),
@@ -543,6 +553,25 @@ fn compute_report_chains(config: &LapsConfig, n_chains: usize) -> usize {
     n_chains.min(config.report_chains.max(1))
 }
 
+/// Decide whether to use fused multi-step kernel in sampling.
+///
+/// Empirically, for large-n GLM logistic with warp support, the fused path can
+/// be slower than warp batch launches despite fewer kernel launches.
+#[cfg(feature = "cuda")]
+fn should_use_fused_sampling(
+    model: &LapsModel,
+    accel: &ns_compute::cuda_mams::CudaMamsAccelerator,
+    config: &LapsConfig,
+) -> bool {
+    if config.fused_transitions == 0 || !accel.supports_fused() {
+        return false;
+    }
+    match model {
+        LapsModel::GlmLogistic { n, .. } if *n >= 1024 && accel.supports_warp() => false,
+        _ => true,
+    }
+}
+
 /// Per-chain DA warmup helper: update DA instances from energy errors
 /// and upload new per-chain eps to GPU.
 #[cfg(feature = "cuda")]
@@ -727,7 +756,7 @@ fn sample_laps_single_gpu(
 
     // ---------- Sampling (batched or fused GPU accumulation) ----------
     let n_report_chains = compute_report_chains(&config, n_chains);
-    let use_fused = config.fused_transitions > 0 && accel.supports_fused();
+    let use_fused = should_use_fused_sampling(model, &accel, &config);
     let batch_size =
         if use_fused { config.fused_transitions.min(config.batch_size) } else { config.batch_size };
     accel.configure_batch(batch_size, n_report_chains)?;
@@ -1154,7 +1183,7 @@ fn sample_laps_multi_gpu(
                     // ===== Sampling (independent, batched or fused, per-chain eps) =====
                     let n_steps_median =
                         ((l / eps_median).round() as usize).clamp(1, config.max_leapfrog);
-                    let use_fused = config.fused_transitions > 0 && accel.supports_fused();
+                    let use_fused = should_use_fused_sampling(model, &accel, config);
                     let batch_size = if use_fused {
                         config.fused_transitions.min(config.batch_size)
                     } else {
