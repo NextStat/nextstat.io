@@ -128,25 +128,19 @@ impl MetalUnbinnedAccelerator {
         let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
         let queue = device.new_command_queue();
 
-        // Compile MSL source at runtime.
-        let options = CompileOptions::new();
-        let library = device
-            .new_library_with_source(MSL_SRC, &options)
-            .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
-
-        let fn_nll_grad = library
-            .get_function("unbinned_nll_grad", None)
-            .map_err(|e| metal_err(format!("get unbinned_nll_grad: {e}")))?;
-        let fn_nll_only = library
-            .get_function("unbinned_nll_only", None)
-            .map_err(|e| metal_err(format!("get unbinned_nll_only: {e}")))?;
-
-        let pipeline_nll_grad = device
-            .new_compute_pipeline_state_with_function(&fn_nll_grad)
-            .map_err(|e| metal_err(format!("pipeline unbinned_nll_grad: {e}")))?;
-        let pipeline_nll_only = device
-            .new_compute_pipeline_state_with_function(&fn_nll_only)
-            .map_err(|e| metal_err(format!("pipeline unbinned_nll_only: {e}")))?;
+        // Compile/load MSL pipelines via thread-local cache.
+        let pipeline_nll_grad = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_single",
+            MSL_SRC,
+            "unbinned_nll_grad",
+        )?;
+        let pipeline_nll_only = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_single",
+            MSL_SRC,
+            "unbinned_nll_only",
+        )?;
 
         let opts = MTLResourceOptions::StorageModeShared;
 

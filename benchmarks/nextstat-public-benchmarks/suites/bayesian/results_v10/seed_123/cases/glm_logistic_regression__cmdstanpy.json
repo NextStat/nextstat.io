@@ -1,0 +1,80 @@
+{
+  "backend": "cmdstanpy",
+  "backend_meta": {
+    "cmdstan_version": "(2, 38)",
+    "cmdstanpy_version": "1.3.0"
+  },
+  "case": "glm_logistic_regression",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 123,
+    "target_accept": 0.8
+  },
+  "dataset": {
+    "id": "generated:glm_logistic_n=200_p=5_seed=12345",
+    "sha256": "04117bfe1f5c2af45e84f7150872c10aa96ded80ad0c7ad4dfd72f6dba94c540"
+  },
+  "deterministic": false,
+  "diagnostics": {
+    "ess_bulk": {
+      "alpha": 10271.4,
+      "beta[1]": 9747.22,
+      "beta[2]": 7986.71,
+      "beta[3]": 10280.8,
+      "beta[4]": 8951.92,
+      "beta[5]": 8053.66
+    },
+    "ess_tail": {
+      "alpha": 6106.13,
+      "beta[1]": 6341.97,
+      "beta[2]": 6547.96,
+      "beta[3]": 6614.32,
+      "beta[4]": 6357.82,
+      "beta[5]": 6524.15
+    },
+    "r_hat": {
+      "alpha": 1.00043,
+      "beta[1]": 1.00019,
+      "beta[2]": 1.00003,
+      "beta[3]": 1.00042,
+      "beta[4]": 1.0,
+      "beta[5]": 1.00034
+    }
+  },
+  "diagnostics_summary": {
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.00043,
+    "max_treedepth_rate": 0.0,
+    "min_ebfmi": null,
+    "min_ess_bulk": 7986.71,
+    "min_ess_tail": 6106.13
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "ComposedGlmModel.logistic_regression"
+  },
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "ok",
+  "suite": "bayesian",
+  "timing": {
+    "ess_bulk_per_sec": {
+      "median": 35955.419090589996,
+      "min": 30714.30078656088
+    },
+    "ess_tail_per_sec": {
+      "median": 24769.942899106994,
+      "min": 23482.198985795527
+    },
+    "wall_time_s": 0.2600322910002433
+  }
+}

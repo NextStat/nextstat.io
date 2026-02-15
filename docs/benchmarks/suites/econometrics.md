@@ -2,7 +2,7 @@
 title: "Benchmark Suite: Econometrics (Panel / Causal Inference)"
 description: "Econometrics benchmark suite for NextStat: Panel FE fit scaling, DiD TWFE + event study wall-time, IV/2SLS two-stage cost, and AIPW doubly-robust estimator performance with cluster-count scaling."
 status: draft
-last_updated: 2026-02-08
+last_updated: 2026-02-15
 keywords:
   - panel fixed effects benchmark
   - difference-in-differences performance
@@ -18,9 +18,10 @@ keywords:
 
 This suite benchmarks NextStat's econometrics and causal inference infrastructure:
 
-- Panel fixed effects (1-way cluster SE)
-- Difference-in-Differences (TWFE + event study)
-- Instrumental Variables (2SLS)
+- Panel fixed effects (1-way / 2-way cluster SE)
+- Difference-in-Differences (TWFE + event study + staggered-adoption DiD)
+- Wild cluster bootstrap inference for DiD TWFE (Webb 6-point)
+- Instrumental Variables (2SLS; HC1 + HAC/Newey-West)
 - AIPW doubly-robust estimator
 
 This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
@@ -29,9 +30,10 @@ This page is a **runbook + methodology**. Results are published as benchmark sna
 
 Planned comparisons include:
 
-- **NextStat (Rust core)** vs **statsmodels** (`PanelOLS`, `IV2SLS`)
-- Optional: **linearmodels** (Python) for panel FE and IV
-- Optional: **R fixest** for high-dimensional FE benchmarks
+- **NextStat (Rust core)** vs **statsmodels** (OLS/cluster robust on transformed designs)
+- **NextStat** vs **linearmodels** (`PanelOLS`, `IV2SLS`, kernel/HAC covariance)
+- **NextStat** vs **pyfixest** (`feols`, `lpdid`, `wildboottest`)
+- Optional external parity: **R fixest** / **R did** for extended staggered-adoption sensitivity
 
 ## What is measured
 
@@ -51,6 +53,11 @@ Measures:
 - event study dynamic effects computation cost
 - pre-trend test overhead
 
+Additional case:
+
+- staggered-adoption DiD (group-time ATT with not-yet-treated controls)
+- wild cluster bootstrap on ATT (Webb 6-point weights) for few-cluster robustness
+
 ### 3) IV/2SLS two-stage cost
 
 Measures:
@@ -59,6 +66,7 @@ Measures:
 - second-stage fit wall-time
 - total IV estimator wall-time vs OLS baseline
 - Hausman test overhead
+- HAC/Newey-West covariance overhead vs HC1
 
 ### 4) AIPW doubly-robust estimator
 

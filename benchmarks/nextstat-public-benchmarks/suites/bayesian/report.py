@@ -78,6 +78,31 @@ def main() -> int:
         )
     lines.append("")
 
+    # -- Posterior parity (NextStat dense vs diagonal) --
+    parity = obj.get("parity") if isinstance(obj.get("parity"), dict) else {}
+    parity_rows = parity.get("rows") if isinstance(parity.get("rows"), list) else []
+    if parity_rows:
+        lines.append("## Posterior parity: dense vs diagonal (mean z-scores)")
+        lines.append("")
+        lines.append(f"Thresholds: warn z ≥ `{parity.get('warn_z', '—')}`, fail z ≥ `{parity.get('fail_z', '—')}`")
+        lines.append("")
+        lines.append("| Case | Status | max z | Worst params (z) |")
+        lines.append("|---|---|---:|---|")
+        for r in parity_rows:
+            worst = r.get("worst") if isinstance(r.get("worst"), list) else []
+            worst_s = ", ".join(
+                f"{w.get('param','?')}({_fmt(w.get('z'), digits=2)})" for w in worst if isinstance(w, dict)
+            ) or "—"
+            lines.append(
+                "| {case} | {status} | {maxz} | {worst} |".format(
+                    case=str(r.get("case") or "unknown"),
+                    status=str(r.get("status") or "unknown"),
+                    maxz=_fmt(r.get("max_z"), digits=2),
+                    worst=worst_s,
+                )
+            )
+        lines.append("")
+
     # -- Per-case ranking table --
     # Group by case, rank backends by ESS_bulk/sec
     by_case: dict[str, list[dict]] = defaultdict(list)

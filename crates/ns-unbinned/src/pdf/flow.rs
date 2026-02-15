@@ -716,6 +716,24 @@ impl FlowPdf {
         self.context_param_indices.iter().map(|&i| params[i]).collect()
     }
 
+    /// Human-readable capability flags for actionable NotImplemented errors.
+    fn capability_hint(&self) -> String {
+        let has_sample_model = self.session_sample.is_some();
+        let has_analytical_grad = self.session_logprob_grad.is_some();
+        #[cfg(any(feature = "neural-cuda", feature = "neural-tensorrt"))]
+        let has_gpu_logprob = self.gpu_logprob.is_some();
+        #[cfg(not(any(feature = "neural-cuda", feature = "neural-tensorrt")))]
+        let has_gpu_logprob = false;
+        #[cfg(any(feature = "neural-cuda", feature = "neural-tensorrt"))]
+        let has_gpu_grad = self.gpu_logprob_grad.is_some();
+        #[cfg(not(any(feature = "neural-cuda", feature = "neural-tensorrt")))]
+        let has_gpu_grad = false;
+
+        format!(
+            "capabilities: sample_model={has_sample_model}, analytical_grad_model={has_analytical_grad}, gpu_logprob_ep={has_gpu_logprob}, gpu_grad_ep={has_gpu_grad}"
+        )
+    }
+
     /// Run the ONNX log_prob session.
     ///
     /// `x` is `[batch, features]` as a flat row-major array.
@@ -781,7 +799,10 @@ impl FlowPdf {
     ) -> Result<(Vec<f64>, Vec<f64>)> {
         let session_mutex = self.session_logprob_grad.as_ref().ok_or_else(|| {
             Error::NotImplemented(
-                "FlowPdf::run_logprob_with_grad requires a log_prob_grad ONNX model in the manifest".into(),
+                format!(
+                    "FlowPdf::run_logprob_with_grad requires a log_prob_grad ONNX model in the manifest; {}",
+                    self.capability_hint()
+                ),
             )
         })?;
 
@@ -850,6 +871,17 @@ impl FlowPdf {
         self.session_logprob_grad.is_some()
     }
 
+    /// Whether a `sample` ONNX model is available.
+    pub fn has_sample_model(&self) -> bool {
+        self.session_sample.is_some()
+    }
+
+    /// Whether a GPU EP path for `log_prob` is available.
+    #[cfg(any(feature = "neural-cuda", feature = "neural-tensorrt"))]
+    pub fn has_gpu_logprob(&self) -> bool {
+        self.gpu_logprob.is_some()
+    }
+
     /// Run the ONNX `log_prob` model on CUDA EP and keep the output tensor device-resident.
     ///
     /// The normalization correction is **not applied** here. If needed, incorporate it
@@ -869,8 +901,10 @@ impl FlowPdf {
 
         let state = self.gpu_logprob.as_ref().ok_or_else(|| {
             Error::NotImplemented(
-                "FlowPdf GPU EP path not available (build with --features neural-cuda or neural-tensorrt and ensure EP loads)"
-                    .into(),
+                format!(
+                    "FlowPdf GPU EP log_prob path not available (build with --features neural-cuda or neural-tensorrt and ensure EP loads); {}",
+                    self.capability_hint()
+                ),
             )
         })?;
 
@@ -987,8 +1021,10 @@ impl FlowPdf {
 
         let state = self.gpu_logprob_grad.as_ref().ok_or_else(|| {
             Error::NotImplemented(
-                "FlowPdf GPU EP grad path not available (no log_prob_grad model in manifest or CUDA EP failed to load)"
-                    .into(),
+                format!(
+                    "FlowPdf GPU EP grad path not available (missing log_prob_grad model in manifest or CUDA EP failed to load); {}",
+                    self.capability_hint()
+                ),
             )
         })?;
 
@@ -1117,9 +1153,10 @@ impl FlowPdf {
     /// Returns sampled `x` as `[batch, features]`.
     fn run_sample(&self, z_flat: &[f32], batch_size: usize, context: &[f64]) -> Result<Vec<f64>> {
         let session_mutex = self.session_sample.as_ref().ok_or_else(|| {
-            Error::NotImplemented(
-                "FlowPdf::sample requires a sample ONNX model in the manifest".into(),
-            )
+            Error::NotImplemented(format!(
+                "FlowPdf::sample requires a sample ONNX model in the manifest; {}",
+                self.capability_hint()
+            ))
         })?;
 
         let features = self.observable_names.len();
@@ -1305,9 +1342,10 @@ impl UnbinnedPdf for FlowPdf {
         rng: &mut dyn RngCore,
     ) -> Result<EventStore> {
         if self.session_sample.is_none() {
-            return Err(Error::NotImplemented(
-                "FlowPdf::sample requires a sample ONNX model in the manifest".into(),
-            ));
+            return Err(Error::NotImplemented(format!(
+                "FlowPdf::sample requires a sample ONNX model in the manifest; {}",
+                self.capability_hint()
+            )));
         }
 
         let features = self.observable_names.len();

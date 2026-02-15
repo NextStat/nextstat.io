@@ -43,3 +43,19 @@ def test_panel_fixed_effects_cluster_time_requires_time():
     with pytest.raises(ValueError, match="requires time"):
         nextstat.panel.fit_fixed_effects(x, y, entity=entity, cluster="time")
 
+
+def test_econometrics_panel_fe_supports_two_way_clustering():
+    x = [[0.0], [1.0], [2.0], [0.0], [1.0], [2.0]]
+    y = [1.0, 0.0, 5.0, 0.0, 5.0, 4.0]
+    entity = ["A", "A", "A", "B", "B", "B"]
+    time = [0, 1, 2, 0, 1, 2]
+
+    fit = nextstat.econometrics.panel_fe_fit(
+        x,
+        y,
+        entity=entity,
+        time=time,
+        cluster="two_way",
+    )
+    assert fit.cluster == "two_way"
+    assert len(fit.standard_errors) == 1

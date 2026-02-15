@@ -138,34 +138,31 @@ pub struct UnbinnedGpuModelData {
 /// Per-channel descriptor for multi-channel GPU-native L-BFGS.
 ///
 /// Must match `struct GpuChannelDesc` in `unbinned_common.cuh`.
-/// Offsets are into the concatenated flat arrays passed to the kernel.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GpuChannelDesc {
-    /// Offset into concatenated `obs_flat` for this channel's events.
-    pub obs_base: u32,
-    /// Offset into concatenated `toy_offsets` (= channel_index * (n_toys + 1)).
-    pub toy_offsets_base: u32,
-    /// Offset into concatenated `procs` array.
-    pub proc_base: u32,
+    /// Device pointer to flattened event buffer for this channel.
+    pub obs_flat: *const f64,
+    /// Device pointer to toy offsets (prefix sums), length `n_toys + 1`.
+    pub toy_offsets: *const u32,
+    /// Device pointer to process descriptors, length `n_procs`.
+    pub procs: *const GpuUnbinnedProcessDesc,
+    /// Device pointer to rate modifier descriptors, length `total_rate_mods`.
+    pub rate_mods: *const GpuUnbinnedRateModifierDesc,
+    /// Device pointer to shape param index list, length `total_shape_params`.
+    pub shape_pidx: *const u32,
+    /// Device pointer to PDF aux buffer.
+    pub pdf_aux_f64: *const f64,
+    /// Device pointer to Gaussian constraints (channel 0 only); `n_gauss=0` for other channels.
+    pub gauss: *const GpuUnbinnedGaussConstraintEntry,
     /// Number of processes in this channel.
     pub n_procs: u32,
-    /// Offset into concatenated `rate_mods` array.
-    pub rate_mod_base: u32,
     /// Total rate modifiers for this channel.
     pub total_rate_mods: u32,
-    /// Offset into concatenated `shape_pidx` array.
-    pub shape_base: u32,
     /// Total shape param indices for this channel.
     pub total_shape_params: u32,
-    /// Offset into concatenated `pdf_aux_f64` array.
-    pub pdf_aux_base: u32,
-    /// Offset into concatenated `gauss` array.
-    pub gauss_base: u32,
     /// Number of Gaussian constraints for this channel.
     pub n_gauss: u32,
-    /// Padding for 8-byte alignment.
-    pub _pad: u32,
     /// Observable lower bound for this channel.
     pub obs_lo: f64,
     /// Observable upper bound for this channel.

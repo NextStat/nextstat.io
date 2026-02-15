@@ -906,7 +906,6 @@ mod tests {
     /// simple workspace.  This validates R-hat, ESS, divergence rate, E-BFMI,
     /// and posterior mean proximity to MLE.
     #[test]
-    #[ignore = "slow (~10s); run with `cargo test -p ns-inference test_nuts_quality_gate -- --ignored`"]
     fn test_nuts_quality_gate() {
         use crate::chain::sample_nuts_multichain;
         use crate::diagnostics::compute_diagnostics;
@@ -974,11 +973,7 @@ mod tests {
 
     /// Stress gate: Neal's funnel (pathological geometry) should not produce
     /// exploding energy or catastrophic divergence/treedepth behavior.
-    ///
-    /// This is intentionally ignored by default (slow-ish) and is meant as a
-    /// manual/nightly regression check.
     #[test]
-    #[ignore = "slow; run with `cargo test -p ns-inference test_nuts_funnel_stress_gate -- --ignored`"]
     fn test_nuts_funnel_stress_gate() {
         use crate::chain::sample_nuts_multichain;
         use crate::diagnostics::compute_diagnostics;
@@ -1249,7 +1244,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_normal_mean -- --ignored`"]
     fn test_sbc_normal_mean() {
         use statrs::distribution::{ChiSquared, ContinuousCDF};
 
@@ -1447,7 +1441,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_normal_2d_mean -- --ignored`"]
     fn test_sbc_normal_2d_mean() {
         use statrs::distribution::{ChiSquared, ContinuousCDF};
 
@@ -1736,7 +1729,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow; run with `cargo test -p ns-inference test_sbc_hier_intercept -- --ignored`"]
     fn test_sbc_hier_intercept() {
         use statrs::distribution::{ChiSquared, ContinuousCDF};
 

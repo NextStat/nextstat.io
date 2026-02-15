@@ -40,7 +40,11 @@ pub fn softplus(x: f64) -> f64 {
 /// searches; clamping keeps the objective finite so optimizers can recover.
 #[inline]
 pub fn exp_clamped(x: f64) -> f64 {
-    x.min(700.0).exp()
+    // Clamp both sides:
+    // - upper bound prevents exp overflow to +inf
+    // - lower bound prevents exp underflow to 0, which can turn log(mu) into -inf and
+    //   break line searches in count-model objectives (Poisson / NegBin).
+    x.clamp(-700.0, 700.0).exp()
 }
 
 #[cfg(test)]

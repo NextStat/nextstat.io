@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/evt_benchmark_suite_result_v1.schema.json",
+  "title": "NextStat EVT Benchmark Suite Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite", "deterministic", "meta", "cases", "summary"],
+  "properties": {
+    "schema_version": { "const": "nextstat.evt_benchmark_suite_result.v1" },
+    "suite": { "const": "evt" },
+    "deterministic": { "type": "boolean" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["python", "platform", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case", "path", "sha256", "status", "model", "n", "fit_time_median_s_nextstat", "parity_status"],
+        "properties": {
+          "case": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+          "model": { "type": "string", "minLength": 1 },
+          "n": { "type": "integer", "minimum": 0 },
+          "fit_time_median_s_nextstat": { "type": "number", "minimum": 0 },
+          "speedup_scipy_over_nextstat": { "type": ["number", "null"] },
+          "parity_status": { "type": "string", "enum": ["ok", "warn", "skipped"] },
+          "param_max_abs_diff": { "type": ["number", "null"] },
+          "nll_abs_diff": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_cases", "n_ok", "n_warn", "n_failed", "worst_case"],
+      "properties": {
+        "n_cases": { "type": "integer", "minimum": 0 },
+        "n_ok": { "type": "integer", "minimum": 0 },
+        "n_warn": { "type": "integer", "minimum": 0 },
+        "n_failed": { "type": "integer", "minimum": 0 },
+        "worst_case": { "type": "string" }
+      }
+    }
+  }
+}
+

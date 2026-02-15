@@ -61,6 +61,23 @@ fn metal_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("Metal (unbinned toy): {msg}"))
 }
 
+/// Fine-grained timing for one Metal toy-sampling call.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MetalToySampleTiming {
+    /// Host-side preparation (param conversion + dynamic buffer setup).
+    pub prepare_s: f64,
+    /// Counts kernel wall time (enqueue + wait).
+    pub counts_kernel_s: f64,
+    /// Host readback of per-toy counts buffer.
+    pub counts_readback_s: f64,
+    /// CPU prefix-sum time for `toy_offsets`.
+    pub prefix_sum_s: f64,
+    /// Sampling kernel wall time (enqueue + wait).
+    pub sample_kernel_s: f64,
+    /// f32->f64 host conversion time (`sample_toys_1d_timed` only).
+    pub host_convert_s: f64,
+}
+
 /// Metal toy sampler for unbinned 1D models.
 #[allow(dead_code)]
 pub struct MetalUnbinnedToySampler {
@@ -262,24 +279,18 @@ impl MetalUnbinnedToySampler {
         let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
         let queue = device.new_command_queue();
 
-        let options = CompileOptions::new();
-        let library = device
-            .new_library_with_source(MSL_SRC, &options)
-            .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
-
-        let fn_counts = library
-            .get_function("unbinned_toy_counts", None)
-            .map_err(|e| metal_err(format!("get unbinned_toy_counts: {e}")))?;
-        let fn_sample = library
-            .get_function("unbinned_toy_sample_obs_1d", None)
-            .map_err(|e| metal_err(format!("get unbinned_toy_sample_obs_1d: {e}")))?;
-
-        let pipeline_counts = device
-            .new_compute_pipeline_state_with_function(&fn_counts)
-            .map_err(|e| metal_err(format!("pipeline unbinned_toy_counts: {e}")))?;
-        let pipeline_sample = device
-            .new_compute_pipeline_state_with_function(&fn_sample)
-            .map_err(|e| metal_err(format!("pipeline unbinned_toy_sample_obs_1d: {e}")))?;
+        let pipeline_counts = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_toy",
+            MSL_SRC,
+            "unbinned_toy_counts",
+        )?;
+        let pipeline_sample = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_toy",
+            MSL_SRC,
+            "unbinned_toy_sample_obs_1d",
+        )?;
 
         let opts = MTLResourceOptions::StorageModeShared;
 
@@ -414,14 +425,17 @@ impl MetalUnbinnedToySampler {
 
     /// Run Kernel A (Poisson counts) + host prefix sum + Kernel B (sample observables).
     ///
-    /// Returns `(toy_offsets, Option<buf_obs_flat_f32>)` where `buf_obs_flat_f32` is a
-    /// Metal shared buffer containing f32 observed values. `None` when total events == 0.
+    /// Returns `(toy_offsets, buf_toy_offsets, Option<buf_obs_flat_f32>)` where:
+    /// - `toy_offsets` are host prefix sums;
+    /// - `buf_toy_offsets` is the corresponding device buffer (for downstream reuse);
+    /// - `buf_obs_flat_f32` is a Metal shared buffer containing f32 observed values (`None` when total events == 0).
     fn sample_toys_1d_inner(
         &self,
         params: &[f64],
         n_toys: usize,
         seed: u64,
-    ) -> ns_core::Result<(Vec<u32>, Option<Buffer>)> {
+    ) -> ns_core::Result<(Vec<u32>, Buffer, Option<Buffer>, MetalToySampleTiming)> {
+        let mut timing = MetalToySampleTiming::default();
         if n_toys == 0 {
             return Err(ns_core::Error::Validation("n_toys must be > 0".into()));
         }
@@ -435,15 +449,22 @@ impl MetalUnbinnedToySampler {
 
         let opts = MTLResourceOptions::StorageModeShared;
 
-        let params_f32: Vec<f32> = params.iter().map(|&v| v as f32).collect();
-        let buf_params = self.device.new_buffer_with_data(
-            params_f32.as_ptr() as *const _,
-            (params_f32.len() * mem::size_of::<f32>()) as u64,
-            opts,
-        );
+        let t_prepare0 = std::time::Instant::now();
+        let params_bytes = (self.n_params * mem::size_of::<f32>()).max(4) as u64;
+        let buf_params = self.device.new_buffer(params_bytes, opts);
+        // SAFETY: `buf_params` has capacity for `n_params` f32 values; pointer is valid while buffer lives.
+        unsafe {
+            let ptr = buf_params.contents() as *mut f32;
+            for (i, &v) in params.iter().enumerate() {
+                ptr.add(i).write(v as f32);
+            }
+        }
+        buf_params
+            .did_modify_range(NSRange::new(0, (self.n_params * mem::size_of::<f32>()) as u64));
 
         let buf_counts =
             self.device.new_buffer((n_toys * mem::size_of::<u32>()).max(1) as u64, opts);
+        timing.prepare_s = t_prepare0.elapsed().as_secs_f64();
 
         let scalar = ToyScalarArgs {
             n_procs: self.n_procs as u32,
@@ -457,6 +478,7 @@ impl MetalUnbinnedToySampler {
         };
 
         // --- counts kernel ---
+        let t_counts0 = std::time::Instant::now();
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&self.pipeline_counts);
@@ -478,38 +500,44 @@ impl MetalUnbinnedToySampler {
         encoder.end_encoding();
         cmd_buffer.commit();
         cmd_buffer.wait_until_completed();
+        timing.counts_kernel_s = t_counts0.elapsed().as_secs_f64();
 
+        let t_read0 = std::time::Instant::now();
         // SAFETY: `buf_counts` is a shared Metal buffer we just wrote to via the counts kernel.
-        // Length is `n_toys` u32 elements.
-        let counts: Vec<u32> = unsafe {
+        // Length is `n_toys` u32 elements; we only read it while `buf_counts` is alive.
+        let counts: &[u32] = unsafe {
             let ptr = buf_counts.contents() as *const u32;
-            std::slice::from_raw_parts(ptr, n_toys).to_vec()
+            std::slice::from_raw_parts(ptr, n_toys)
         };
+        timing.counts_readback_s = t_read0.elapsed().as_secs_f64();
 
         // Prefix sum on CPU (small buffer).
+        let t_prefix0 = std::time::Instant::now();
         let mut toy_offsets = Vec::with_capacity(n_toys + 1);
         toy_offsets.push(0u32);
         let mut cur = 0u32;
-        for &c in &counts {
+        for &c in counts {
             cur = cur
                 .checked_add(c)
                 .ok_or_else(|| ns_core::Error::Validation("toy offset overflow (u32)".into()))?;
             toy_offsets.push(cur);
         }
-        let n_events = cur as usize;
-        if n_events == 0 {
-            return Ok((toy_offsets, None));
-        }
+        timing.prefix_sum_s = t_prefix0.elapsed().as_secs_f64();
 
         let buf_toy_offsets = self.device.new_buffer_with_data(
             toy_offsets.as_ptr() as *const _,
             (toy_offsets.len() * mem::size_of::<u32>()) as u64,
             opts,
         );
+        let n_events = cur as usize;
+        if n_events == 0 {
+            return Ok((toy_offsets, buf_toy_offsets, None, timing));
+        }
         let buf_obs_out =
             self.device.new_buffer((n_events * mem::size_of::<f32>()).max(1) as u64, opts);
 
         // --- sample kernel ---
+        let t_sample0 = std::time::Instant::now();
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&self.pipeline_sample);
@@ -536,8 +564,9 @@ impl MetalUnbinnedToySampler {
         encoder.end_encoding();
         cmd_buffer.commit();
         cmd_buffer.wait_until_completed();
+        timing.sample_kernel_s = t_sample0.elapsed().as_secs_f64();
 
-        Ok((toy_offsets, Some(buf_obs_out)))
+        Ok((toy_offsets, buf_toy_offsets, Some(buf_obs_out), timing))
     }
 
     /// Sample toys on Metal GPU, returning all data on the host.
@@ -551,7 +580,8 @@ impl MetalUnbinnedToySampler {
         n_toys: usize,
         seed: u64,
     ) -> ns_core::Result<(Vec<u32>, Vec<f64>)> {
-        let (toy_offsets, buf_obs_opt) = self.sample_toys_1d_inner(params, n_toys, seed)?;
+        let (toy_offsets, _buf_toy_offsets, buf_obs_opt, _timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
 
         let n_events = *toy_offsets.last().unwrap_or(&0) as usize;
         let obs_flat = match buf_obs_opt {
@@ -569,6 +599,35 @@ impl MetalUnbinnedToySampler {
         Ok((toy_offsets, obs_flat))
     }
 
+    /// Timed variant of [`sample_toys_1d`].
+    pub fn sample_toys_1d_timed(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Vec<f64>, MetalToySampleTiming)> {
+        let (toy_offsets, _buf_toy_offsets, buf_obs_opt, mut timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
+
+        let n_events = *toy_offsets.last().unwrap_or(&0) as usize;
+        let obs_flat = match buf_obs_opt {
+            Some(buf) => {
+                let t_conv0 = std::time::Instant::now();
+                // SAFETY: `buf` is a shared Metal buffer with `n_events` f32 elements.
+                let obs_f32: &[f32] = unsafe {
+                    let ptr = buf.contents() as *const f32;
+                    std::slice::from_raw_parts(ptr, n_events)
+                };
+                let out: Vec<f64> = obs_f32.iter().map(|&v| v as f64).collect();
+                timing.host_convert_s = t_conv0.elapsed().as_secs_f64();
+                out
+            }
+            None => Vec::new(),
+        };
+
+        Ok((toy_offsets, obs_flat, timing))
+    }
+
     /// Sample toys on Metal GPU, keeping `obs_flat` as a device-resident Metal Buffer (f32).
     ///
     /// This avoids the f32→f64 host conversion. The returned `Buffer` can be passed directly
@@ -584,7 +643,8 @@ impl MetalUnbinnedToySampler {
         n_toys: usize,
         seed: u64,
     ) -> ns_core::Result<(Vec<u32>, Buffer)> {
-        let (toy_offsets, buf_obs_opt) = self.sample_toys_1d_inner(params, n_toys, seed)?;
+        let (toy_offsets, _buf_toy_offsets, buf_obs_opt, _timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
 
         let buf_obs = match buf_obs_opt {
             Some(buf) => buf,
@@ -596,5 +656,72 @@ impl MetalUnbinnedToySampler {
         };
 
         Ok((toy_offsets, buf_obs))
+    }
+
+    /// Timed variant of [`sample_toys_1d_device`].
+    pub fn sample_toys_1d_device_timed(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Buffer, MetalToySampleTiming)> {
+        let (toy_offsets, _buf_toy_offsets, buf_obs_opt, timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
+
+        let buf_obs = match buf_obs_opt {
+            Some(buf) => buf,
+            None => {
+                // Empty: allocate a minimal dummy buffer (Metal requires non-zero length).
+                let opts = MTLResourceOptions::StorageModeShared;
+                self.device.new_buffer(4, opts)
+            }
+        };
+
+        Ok((toy_offsets, buf_obs, timing))
+    }
+
+    /// Sample toys on Metal GPU and return both device-resident observables and toy-offset buffer.
+    ///
+    /// Returns:
+    /// - `toy_offsets`: host prefix sums (length `n_toys+1`)
+    /// - `buf_toy_offsets`: device buffer with the same offsets (u32)
+    /// - `buf_obs_flat`: device buffer with sampled observables (f32)
+    pub fn sample_toys_1d_device_with_offsets(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Buffer, Buffer)> {
+        let (toy_offsets, buf_toy_offsets, buf_obs_opt, _timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
+        let buf_obs = match buf_obs_opt {
+            Some(buf) => buf,
+            None => {
+                // Empty: allocate a minimal dummy buffer (Metal requires non-zero length).
+                let opts = MTLResourceOptions::StorageModeShared;
+                self.device.new_buffer(4, opts)
+            }
+        };
+        Ok((toy_offsets, buf_toy_offsets, buf_obs))
+    }
+
+    /// Timed variant of [`sample_toys_1d_device_with_offsets`].
+    pub fn sample_toys_1d_device_timed_with_offsets(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Buffer, Buffer, MetalToySampleTiming)> {
+        let (toy_offsets, buf_toy_offsets, buf_obs_opt, timing) =
+            self.sample_toys_1d_inner(params, n_toys, seed)?;
+        let buf_obs = match buf_obs_opt {
+            Some(buf) => buf,
+            None => {
+                // Empty: allocate a minimal dummy buffer (Metal requires non-zero length).
+                let opts = MTLResourceOptions::StorageModeShared;
+                self.device.new_buffer(4, opts)
+            }
+        };
+        Ok((toy_offsets, buf_toy_offsets, buf_obs, timing))
     }
 }

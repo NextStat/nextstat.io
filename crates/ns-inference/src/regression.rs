@@ -469,7 +469,17 @@ impl LogDensityModel for PoissonRegressionModel {
     }
 
     fn parameter_init(&self) -> Vec<f64> {
-        vec![0.0; self.dim_internal()]
+        let mut out = vec![0.0; self.dim_internal()];
+        // Moment-style init: start intercept at log(mean(y)) to keep the first line-search
+        // step in a sane region for count data.
+        if self.include_intercept {
+            let n = self.y.len().max(1) as f64;
+            let mean_y = self.y.iter().map(|&v| v as f64).sum::<f64>() / n;
+            if mean_y.is_finite() && mean_y > 0.0 {
+                out[0] = mean_y.max(1e-12).ln();
+            }
+        }
+        out
     }
 
     fn nll(&self, params: &[f64]) -> Result<f64> {
@@ -481,14 +491,19 @@ impl LogDensityModel for PoissonRegressionModel {
             )));
         }
         if params.iter().any(|v| !v.is_finite()) {
-            return Err(Error::Validation("params must contain only finite values".to_string()));
+            return Ok(1e300);
         }
 
         let mut nll = 0.0;
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
-            let mu = exp_clamped(eta);
-            nll += mu - (self.y[i] as f64) * eta;
+            // Clamp eta more aggressively than `exp_clamped` to avoid generating enormous
+            // mu/gradients during line search, which can overflow internal L-BFGS dot-products.
+            let mu = (eta.clamp(-50.0, 50.0)).exp();
+            // Use ln(mu) (which is clamped by `exp_clamped`) instead of raw `eta` to avoid
+            // NaN/Inf during line search when proposals momentarily push eta out of range.
+            // When eta is in range, `mu.ln() == eta` and this is exactly equivalent.
+            nll += mu - (self.y[i] as f64) * mu.ln();
         }
         Ok(nll)
     }
@@ -502,13 +517,13 @@ impl LogDensityModel for PoissonRegressionModel {
             )));
         }
         if params.iter().any(|v| !v.is_finite()) {
-            return Err(Error::Validation("params must contain only finite values".to_string()));
+            return Ok(vec![0.0; self.dim_internal()]);
         }
 
         let mut grad = vec![0.0; self.dim_internal()];
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
-            let mu = exp_clamped(eta);
+            let mu = (eta.clamp(-50.0, 50.0)).exp();
             let err = mu - (self.y[i] as f64);
             if self.include_intercept {
                 grad[0] += err;
@@ -591,9 +606,6 @@ impl NegativeBinomialRegressionModel {
                 params.len()
             )));
         }
-        if params.iter().any(|v| !v.is_finite()) {
-            return Err(Error::Validation("params must contain only finite values".to_string()));
-        }
         let (beta, log_alpha) = params.split_at(params.len() - 1);
         Ok((beta, log_alpha[0]))
     }
@@ -633,23 +645,68 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
     }
 
     fn parameter_bounds(&self) -> Vec<(f64, f64)> {
-        vec![(f64::NEG_INFINITY, f64::INFINITY); self.dim_internal()]
+        // Bound log_alpha to avoid pathological theta=1/alpha behavior during line-search steps:
+        // alpha -> +inf implies theta -> 0 (Gamma singularities), which can produce NaNs/Infs.
+        // This keeps optimization stable while remaining effectively uninformative for real fits.
+        let mut b = vec![(f64::NEG_INFINITY, f64::INFINITY); self.dim_internal()];
+        // Avoid theta = 1/alpha becoming so small that Gamma(theta) overflows and we hit inf-inf
+        // cancellation for y=0 terms during line search. This bound is still extremely wide in
+        // practice (alpha up to ~3e3).
+        // Also avoid alpha -> 0 (theta -> +inf) which can overflow ln_gamma(y+theta).
+        b[self.dim_internal() - 1] = (-10.0, 8.0);
+        b
     }
 
     fn parameter_init(&self) -> Vec<f64> {
         let mut out = vec![0.0; self.dim_internal()];
-        // log_alpha defaults to 0 => alpha=1
-        out[self.dim_internal() - 1] = 0.0;
+
+        // Robust moment-style init so the very first line-search step doesn't walk into
+        // invalid Gamma/digamma territory for NB dispersion.
+        //
+        // NB2: Var(Y) = mu + alpha * mu^2  =>  alpha ≈ (Var - mu) / mu^2
+        let n = self.y.len().max(1) as f64;
+        let mean_y = self.y.iter().map(|&v| v as f64).sum::<f64>() / n;
+        let var_y = self
+            .y
+            .iter()
+            .map(|&v| {
+                let d = v as f64 - mean_y;
+                d * d
+            })
+            .sum::<f64>()
+            / n;
+
+        // Initialize intercept at log(mean_y) for a reasonable mu scale.
+        if self.include_intercept && mean_y.is_finite() && mean_y > 0.0 {
+            out[0] = mean_y.max(1e-12).ln();
+        }
+
+        let alpha = if mean_y.is_finite() && mean_y > 0.0 && var_y.is_finite() {
+            ((var_y - mean_y) / (mean_y * mean_y)).max(1e-6)
+        } else {
+            0.2
+        };
+        out[self.dim_internal() - 1] = alpha.ln().clamp(-10.0, 8.0);
+
         out
     }
 
     fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.iter().any(|v| !v.is_finite()) {
+            return Ok(1e300);
+        }
         let (beta, log_alpha) = self.split_params(params)?;
+        const LOG_ALPHA_LO: f64 = -10.0;
+        const LOG_ALPHA_HI: f64 = 8.0;
+        let log_alpha = log_alpha.clamp(LOG_ALPHA_LO, LOG_ALPHA_HI);
         let alpha = log_alpha.exp();
         if !alpha.is_finite() || alpha <= 0.0 {
-            return Err(Error::Validation(format!("alpha must be finite and > 0, got {}", alpha)));
+            return Ok(1e300);
         }
         let theta = 1.0 / alpha;
+        if !theta.is_finite() || theta <= 0.0 {
+            return Ok(1e300);
+        }
 
         let mut nll = 0.0;
         for i in 0..self.x.n {
@@ -664,16 +721,25 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
                 + y * (mu.ln() - (theta + mu).ln());
             nll -= ln_p;
         }
-        Ok(nll)
+        Ok(if nll.is_finite() { nll } else { 1e300 })
     }
 
     fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
-        let (beta, log_alpha) = self.split_params(params)?;
+        if params.iter().any(|v| !v.is_finite()) {
+            return Ok(vec![0.0; self.dim_internal()]);
+        }
+        let (beta, log_alpha_raw) = self.split_params(params)?;
+        const LOG_ALPHA_LO: f64 = -10.0;
+        const LOG_ALPHA_HI: f64 = 8.0;
+        let log_alpha = log_alpha_raw.clamp(LOG_ALPHA_LO, LOG_ALPHA_HI);
         let alpha = log_alpha.exp();
         if !alpha.is_finite() || alpha <= 0.0 {
-            return Err(Error::Validation(format!("alpha must be finite and > 0, got {}", alpha)));
+            return Ok(vec![0.0; self.dim_internal()]);
         }
         let theta = 1.0 / alpha;
+        if !theta.is_finite() || theta <= 0.0 {
+            return Ok(vec![0.0; self.dim_internal()]);
+        }
 
         let n_beta = beta.len();
         let mut grad_beta = vec![0.0; n_beta];
@@ -705,9 +771,26 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
             let d_logp_d_theta = digamma(y + theta) - digamma(theta) + theta.ln() + 1.0
                 - (theta + mu).ln()
                 - (theta + y) / (theta + mu);
+            if !d_logp_d_theta.is_finite() {
+                continue;
+            }
             let d_nll_d_theta = -d_logp_d_theta;
             // theta = 1/alpha, so d/d log_alpha = -theta * d/dtheta
             grad_log_alpha += -theta * d_nll_d_theta;
+        }
+
+        // If the optimizer proposes values outside the clamp range, the objective is
+        // locally flat in log_alpha (projection), so report zero sensitivity.
+        if log_alpha_raw <= LOG_ALPHA_LO || log_alpha_raw >= LOG_ALPHA_HI {
+            grad_log_alpha = 0.0;
+        }
+        if !grad_log_alpha.is_finite() {
+            grad_log_alpha = 0.0;
+        }
+        for g in &mut grad_beta {
+            if !g.is_finite() {
+                *g = 0.0;
+            }
         }
 
         let mut out = Vec::with_capacity(self.dim_internal());
@@ -724,6 +807,9 @@ impl LogDensityModel for NegativeBinomialRegressionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use rand_distr::{Distribution, Gamma, StandardNormal};
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]
@@ -930,6 +1016,126 @@ mod tests {
             "nll mismatch: got {}, expected {}",
             r.nll,
             fx.nll_at_hat
+        );
+    }
+
+    fn make_negbin_benchmark_like_dataset(
+        n: usize,
+        p: usize,
+        seed: u64,
+    ) -> (Vec<Vec<f64>>, Vec<u64>, bool) {
+        let mut rng = StdRng::seed_from_u64(seed);
+
+        let mut x = vec![vec![0.0; p]; n];
+        for row in &mut x {
+            for v in row {
+                *v = StandardNormal.sample(&mut rng);
+            }
+        }
+
+        let mut beta = vec![0.0; p];
+        if p == 1 {
+            beta[0] = 0.5;
+        } else {
+            let denom = (p - 1) as f64;
+            for (j, b) in beta.iter_mut().enumerate() {
+                *b = 0.5 - (j as f64) * (1.0 / denom);
+            }
+        }
+        let intercept = 0.5;
+        let alpha = 1.0 / 5.0;
+        let k = 1.0 / alpha;
+
+        let mut y = Vec::with_capacity(n);
+        for row in &x {
+            let mut eta = intercept;
+            for (xj, bj) in row.iter().zip(&beta) {
+                eta += xj * bj;
+            }
+            let mu = eta.clamp(-10.0, 10.0).exp();
+            let gamma = Gamma::new(k, alpha * mu).unwrap();
+            let lambda = gamma.sample(&mut rng);
+            let dist = rand_distr::Poisson::new(lambda.max(1e-12)).unwrap();
+            y.push(dist.sample(&mut rng) as u64);
+        }
+
+        (x, y, true)
+    }
+
+    fn make_poisson_benchmark_like_dataset(
+        n: usize,
+        p: usize,
+        seed: u64,
+    ) -> (Vec<Vec<f64>>, Vec<u64>, bool) {
+        let mut rng = StdRng::seed_from_u64(seed);
+
+        let mut x = vec![vec![0.0; p]; n];
+        for row in &mut x {
+            for v in row {
+                *v = StandardNormal.sample(&mut rng);
+            }
+        }
+
+        let mut beta = vec![0.0; p];
+        if p == 1 {
+            beta[0] = 0.5;
+        } else {
+            let denom = (p - 1) as f64;
+            for (j, b) in beta.iter_mut().enumerate() {
+                *b = 0.5 - (j as f64) * (1.0 / denom);
+            }
+        }
+        let intercept = 0.5;
+
+        let mut y = Vec::with_capacity(n);
+        for row in &x {
+            let mut eta = intercept;
+            for (xj, bj) in row.iter().zip(&beta) {
+                eta += xj * bj;
+            }
+            let mu = eta.clamp(-10.0, 10.0).exp();
+            let dist = rand_distr::Poisson::new(mu.max(1e-12)).unwrap();
+            y.push(dist.sample(&mut rng) as u64);
+        }
+
+        (x, y, true)
+    }
+
+    #[test]
+    fn test_mle_poisson_benchmark_like_dataset_converges() {
+        let (x, y, include_intercept) = make_poisson_benchmark_like_dataset(1_000, 10, 42);
+        let m = PoissonRegressionModel::new(x, y, include_intercept, None).unwrap();
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(
+            r.converged,
+            "expected convergence on benchmark-like poisson data; reason={}",
+            r.termination_reason
+        );
+        assert!(r.n_iter > 0, "optimizer should perform at least one iteration");
+        assert!(r.nll.is_finite(), "nll should be finite");
+        assert!(
+            r.parameters.iter().all(|v| v.is_finite()),
+            "all fitted parameters should be finite"
+        );
+    }
+
+    #[test]
+    fn test_mle_negbin_benchmark_like_dataset_converges() {
+        let (x, y, include_intercept) = make_negbin_benchmark_like_dataset(1_000, 10, 42);
+        let m = NegativeBinomialRegressionModel::new(x, y, include_intercept, None).unwrap();
+        let mle = crate::mle::MaximumLikelihoodEstimator::new();
+        let r = mle.fit(&m).unwrap();
+        assert!(
+            r.converged,
+            "expected convergence on benchmark-like negbin data; reason={}",
+            r.termination_reason
+        );
+        assert!(r.n_iter > 0, "optimizer should perform at least one iteration");
+        assert!(r.nll.is_finite(), "nll should be finite");
+        assert!(
+            r.parameters.iter().all(|v| v.is_finite()),
+            "all fitted parameters should be finite"
         );
     }
 }

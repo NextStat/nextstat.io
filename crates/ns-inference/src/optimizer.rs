@@ -229,6 +229,8 @@ pub struct OptimizationResult {
     pub final_gradient: Option<Vec<f64>>,
     /// Objective value at the initial point (before optimisation).
     pub initial_cost: f64,
+    /// Estimated Distance to Minimum (g^T H^{-1} g). `NAN` if unavailable.
+    pub edm: f64,
 }
 
 impl fmt::Display for OptimizationResult {
@@ -456,6 +458,7 @@ impl LbfgsbOptimizer {
                         message: "all bounds degenerate".to_string(),
                         final_gradient: None,
                         initial_cost: fval,
+                        edm: f64::NAN,
                     });
                 }
 
@@ -495,6 +498,7 @@ impl LbfgsbOptimizer {
                     message: "1D bounds degenerate".to_string(),
                     final_gradient: None,
                     initial_cost: fval,
+                    edm: f64::NAN,
                 });
             }
 
@@ -559,6 +563,7 @@ impl LbfgsbOptimizer {
                 message: "1D golden-section search".to_string(),
                 final_gradient: None,
                 initial_cost,
+                edm: f64::NAN,
             });
         }
 
@@ -633,6 +638,7 @@ impl LbfgsbOptimizer {
                 message,
                 final_gradient,
                 initial_cost,
+                edm: f64::NAN,
             });
         }
 
@@ -700,6 +706,7 @@ impl LbfgsbOptimizer {
             message,
             final_gradient,
             initial_cost,
+            edm: f64::NAN,
         })
     }
 }

@@ -185,6 +185,8 @@ jobs:
 
       - name: Build CLI binary
         run: cargo build --release -p ns-cli
+        env:
+          CARGO_TARGET_DIR: target
 
       - name: Package binary
         shell: bash

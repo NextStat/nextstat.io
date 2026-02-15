@@ -26,6 +26,7 @@ wide.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cudarc = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = { workspace = true, optional = true }
@@ -62,7 +63,7 @@ required-features = ["cuda"]
 default = ["cpu"]
 cpu = []
 metal = ["dep:metal", "dep:objc", "dep:block"]
-cuda = ["cudarc"]
+cuda = ["cudarc", "sha2"]
 flow-ort-cuda = ["ns-unbinned/neural-cuda"]
 flow-ort-tensorrt = ["ns-unbinned/neural-tensorrt"]
 accelerate = []  # Apple Accelerate (vDSP/vForce) - macOS only

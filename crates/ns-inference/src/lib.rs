@@ -56,6 +56,8 @@ pub mod econometrics;
 pub mod eight_schools;
 /// Extreme Value Theory: GEV (block maxima) and GPD (peaks over threshold).
 pub mod evt;
+/// Monte Carlo fault-tree engine for aviation reliability analysis.
+pub mod fault_tree_mc;
 /// FOCE/FOCEI estimation for population PK models (Phase 13).
 pub mod foce;
 /// HMC leapfrog integrator.
@@ -66,6 +68,9 @@ pub mod hybrid;
 pub mod hypotest;
 /// Laplace approximation utilities (generic).
 pub mod laplace;
+/// LAPS: Late-Adjusted Parallel Sampler — GPU MAMS on CUDA.
+#[cfg(feature = "cuda")]
+pub mod laps;
 /// Shared L-BFGS-B state machine for GPU lockstep optimization.
 pub(crate) mod lbfgs;
 /// Linear mixed models (marginal likelihood baseline).
@@ -193,6 +198,14 @@ pub use econometrics::{
 };
 pub use eight_schools::EightSchoolsModel;
 pub use evt::{GevModel, GpdModel};
+#[cfg(feature = "cuda")]
+pub use fault_tree_mc::fault_tree_mc_cuda;
+#[cfg(feature = "metal")]
+pub use fault_tree_mc::fault_tree_mc_metal;
+pub use fault_tree_mc::{
+    DEFAULT_CHUNK_SIZE, FailureMode, FaultTreeCeIsConfig, FaultTreeCeIsResult, FaultTreeMcResult,
+    FaultTreeNode, FaultTreeSpec, Gate, fault_tree_mc_ce_is, fault_tree_mc_cpu,
+};
 pub use foce::{FoceConfig, FoceEstimator, FoceResult, OmegaMatrix};
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_available};
@@ -203,6 +216,8 @@ pub use gpu_session::{MetalGpuSession, is_metal_single_available, metal_session}
 pub use hybrid::{HybridLikelihood, SharedParameterMap};
 pub use hypotest::{AsymptoticCLsContext, HypotestResult};
 pub use laplace::{LaplaceResult, laplace_log_marginal};
+#[cfg(feature = "cuda")]
+pub use laps::{LapsConfig, LapsModel, LapsResult, sample_laps};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mams::{MamsConfig, sample_mams, sample_mams_multichain};
 pub use meta_analysis::{
@@ -238,8 +253,8 @@ pub use profile_likelihood::scan_histfactory_diag;
 #[cfg(feature = "metal")]
 pub use profile_likelihood::scan_metal;
 pub use profile_likelihood::{
-    ProfileLikelihoodScan, ProfilePoint, TestStatistic, compute_test_statistic, scan,
-    scan_histfactory,
+    ProfileCiResult, ProfileLikelihoodScan, ProfilePoint, TestStatistic, compute_test_statistic,
+    profile_ci, profile_ci_all, scan, scan_histfactory,
 };
 pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, NegativeBinomialRegressionModel,
@@ -254,8 +269,10 @@ pub use sequential::{
     alpha_spending_design, group_sequential_design, sequential_test,
 };
 pub use survival::{
-    CoxPhModel, CoxTies, ExponentialSurvivalModel, KaplanMeierEstimate, KaplanMeierStep,
-    LogNormalAftModel, LogRankResult, WeibullSurvivalModel, kaplan_meier, log_rank_test,
+    CensoringType, CoxPhModel, CoxTies, ExponentialSurvivalModel, IntervalCensoredExponentialModel,
+    IntervalCensoredLogNormalModel, IntervalCensoredWeibullAftModel, IntervalCensoredWeibullModel,
+    KaplanMeierEstimate, KaplanMeierStep, LogNormalAftModel, LogRankResult, WeibullSurvivalModel,
+    kaplan_meier, log_rank_test,
 };
 pub use toybased::{
     ToyHypotestExpectedSet, ToyHypotestResult, hypotest_qtilde_toys,

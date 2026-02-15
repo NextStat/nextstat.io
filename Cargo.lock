@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "ns-ad"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "criterion",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "ns-cli"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1680,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "ns-compute"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "block",
@@ -1695,6 +1695,7 @@ dependencies = [
  "objc",
  "proptest",
  "rayon",
+ "sha2",
  "statrs",
  "thiserror 2.0.18",
  "wide 1.1.1",
@@ -1702,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "ns-core"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "criterion",
@@ -1716,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "ns-inference"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "argmin",
@@ -1743,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "ns-prob"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "criterion",
@@ -1754,7 +1755,7 @@ dependencies = [
 
 [[package]]
 name = "ns-py"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "nalgebra",
  "ns-ad",
@@ -1772,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "ns-root"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "criterion",
@@ -1791,7 +1792,7 @@ dependencies = [
 
 [[package]]
 name = "ns-server"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -1816,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "ns-translate"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "arrow",
@@ -1843,7 +1844,7 @@ dependencies = [
 
 [[package]]
 name = "ns-unbinned"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "approx",
@@ -1869,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "ns-viz"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "approx",
  "ns-core",
@@ -1883,13 +1884,15 @@ dependencies = [
 
 [[package]]
 name = "ns-wasm"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "ns-core",
  "ns-inference",
  "ns-translate",
+ "rand",
+ "rand_distr",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

@@ -26,6 +26,8 @@ ndarray.workspace = true
 rayon.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 statrs.workspace = true
 
 [features]

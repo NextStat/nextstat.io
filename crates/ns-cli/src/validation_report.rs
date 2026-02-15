@@ -383,6 +383,65 @@ fn suite_summary(master: &Value, key: &str) -> Option<Value> {
                 }
             }
         }
+        "pharma_reference" => {
+            // Pharma reference suite: structured cases with ok/max_abs_err/max_abs_param_err.
+            let cases = master
+                .get(key)
+                .and_then(|v| v.get("report"))
+                .and_then(|v| v.get("cases"))
+                .and_then(|v| v.as_array());
+            if let Some(cases) = cases {
+                out.insert("n_cases".to_string(), Value::Number((cases.len() as u64).into()));
+                let n_ok = cases
+                    .iter()
+                    .filter(|c| c.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+                    .count();
+                out.insert("n_ok".to_string(), Value::Number((n_ok as u64).into()));
+                map_push_highlight(&mut out, format!("cases ok: {}/{}", n_ok, cases.len()));
+
+                let mut by_param_err: Vec<(f64, String)> = Vec::new();
+                let mut by_pred_err: Vec<(f64, String)> = Vec::new();
+                for c in cases {
+                    let name =
+                        c.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                    if let Some(v) = c.get("max_abs_param_err").and_then(|v| v.as_f64())
+                        && v.is_finite()
+                    {
+                        by_param_err.push((v, name.clone()));
+                    }
+                    if let Some(v) = c.get("max_abs_err").and_then(|v| v.as_f64())
+                        && v.is_finite()
+                    {
+                        by_pred_err.push((v, name.clone()));
+                    }
+                }
+
+                by_param_err
+                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                by_pred_err
+                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+                if let Some((worst, case)) = by_param_err.first() {
+                    map_push_highlight(
+                        &mut out,
+                        format!("worst param recovery = {:.3e} ({})", worst, case),
+                    );
+                }
+                if let Some((worst, case)) = by_pred_err.first() {
+                    map_push_highlight(
+                        &mut out,
+                        format!("worst prediction err = {:.3e} ({})", worst, case),
+                    );
+                }
+
+                for (v, name) in by_param_err.into_iter().take(5) {
+                    map_push_worst_case(&mut out, name, "max_abs_param_err", v, None);
+                }
+                for (v, name) in by_pred_err.into_iter().take(5) {
+                    map_push_worst_case(&mut out, name, "max_abs_err", v, None);
+                }
+            }
+        }
         _ => {}
     }
 
@@ -548,6 +607,8 @@ pub fn cmd_validation_report(
         "bias_pulls",
         "sbc",
         "root",
+        "pharma",
+        "pharma_reference",
     ] {
         if let Some(v) = suite_summary(&apex2_master, k) {
             suites.insert(k.to_string(), v);

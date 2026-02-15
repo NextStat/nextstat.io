@@ -310,22 +310,41 @@ ns_gof <- function(times, dv, id, n_subjects, dose,
 #' @param alpha_forward Forward selection threshold (default 0.05).
 #' @param alpha_backward Backward elimination threshold (default 0.01).
 #'
-#' @return A named list describing selected covariates.
+#' @return A named list with selected covariate effects and SCM traces.
 #'
 #' @export
 ns_scm <- function(times, dv, id, n_subjects, dose,
                    theta, omega, sigma, covariates,
                    alpha_forward = 0.05, alpha_backward = 0.01) {
   stopifnot(
-    is.numeric(times), is.numeric(dv),
-    is.data.frame(covariates), nrow(covariates) == n_subjects
+    is.numeric(times), is.numeric(dv), is.numeric(id),
+    length(times) == length(dv), length(times) == length(id),
+    is.data.frame(covariates), nrow(covariates) == n_subjects,
+    is.numeric(theta), length(theta) == 3,
+    is.numeric(omega), length(omega) == 3,
+    is.numeric(sigma), length(sigma) == 1, sigma > 0,
+    is.numeric(alpha_forward), length(alpha_forward) == 1,
+    is.numeric(alpha_backward), length(alpha_backward) == 1
   )
+
+  cov_mat <- as.matrix(covariates)
+  if (!is.numeric(cov_mat)) {
+    stop("covariates must be numeric", call. = FALSE)
+  }
+  if (any(!is.finite(cov_mat))) {
+    stop("covariates must contain only finite values", call. = FALSE)
+  }
+  cov_names <- colnames(cov_mat)
+  if (is.null(cov_names)) {
+    cov_names <- paste0("cov", seq_len(ncol(cov_mat)))
+  }
+
   .Call(
     "wrap__ns_scm",
     as.numeric(times), as.numeric(dv), as.integer(id),
     as.integer(n_subjects), as.numeric(dose),
     as.numeric(theta), as.numeric(omega), as.numeric(sigma),
-    covariates,
+    cov_mat, as.character(cov_names),
     as.numeric(alpha_forward), as.numeric(alpha_backward),
     PACKAGE = "nextstat"
   )

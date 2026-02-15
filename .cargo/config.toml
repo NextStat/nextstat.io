@@ -1,6 +1,11 @@
 [build]
 # Don't set `target-cpu` globally: it breaks cross builds (e.g. wasm32) with a warning spam like
 # "'apple-m4' is not a recognized processor for this target".
+#
+# Keep build artifacts out of the repo tree to avoid creating ~1M files under `target/`
+# (bad for IDEs, FS watchers, and GitHub UX). You can always override this per-session:
+# `CARGO_TARGET_DIR=/some/fast/disk cargo build`.
+target-dir = "../.nextstat-cargo-target"
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "target-cpu=native"]

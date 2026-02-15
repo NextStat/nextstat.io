@@ -1,0 +1,115 @@
+{
+  "cases": [
+    {
+      "backend": "nextstat",
+      "case": "histfactory_simple_8p",
+      "max_r_hat": 1.0009302143690566,
+      "min_ess_bulk": 4578.944754142823,
+      "min_ess_bulk_per_sec": 56606.29455391417,
+      "min_ess_tail": 3045.4279674261043,
+      "path": "cases/histfactory_simple_8p__nextstat.json",
+      "sha256": "53697510050b2052d1dc46009c37e4b694dc5d826b673c0ab6080e52313ca400",
+      "status": "ok",
+      "wall_time_s": 0.08089108800049871
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "histfactory_simple_8p",
+      "max_r_hat": null,
+      "min_ess_bulk": null,
+      "min_ess_bulk_per_sec": null,
+      "min_ess_tail": null,
+      "path": "cases/histfactory_simple_8p__cmdstanpy.json",
+      "sha256": "9ff8a948cf35a583b48a8185d0e0ef1e2842c065d2497600b472a1915c4d6b26",
+      "status": "warn",
+      "wall_time_s": 0.0
+    },
+    {
+      "backend": "nextstat",
+      "case": "glm_logistic_regression",
+      "max_r_hat": 1.000730207921698,
+      "min_ess_bulk": 8000.0,
+      "min_ess_bulk_per_sec": 29472.298096786497,
+      "min_ess_tail": 5641.959144444397,
+      "path": "cases/glm_logistic_regression__nextstat.json",
+      "sha256": "de084a76ec0807d2bb941a0ce08aa614c1ab277641a1137183dbf1ec9822edbc",
+      "status": "ok",
+      "wall_time_s": 0.2714413370049442
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "glm_logistic_regression",
+      "max_r_hat": 1.00043,
+      "min_ess_bulk": 7986.71,
+      "min_ess_bulk_per_sec": 30714.30078656088,
+      "min_ess_tail": 6106.13,
+      "path": "cases/glm_logistic_regression__cmdstanpy.json",
+      "sha256": "f83f724f7a817a62582638a379d14c2fc3a49b7f34111636da65616238f7f8f7",
+      "status": "ok",
+      "wall_time_s": 0.2600322910002433
+    },
+    {
+      "backend": "nextstat",
+      "case": "hier_random_intercept_non_centered",
+      "max_r_hat": 1.004183709531767,
+      "min_ess_bulk": 2871.7688026837363,
+      "min_ess_bulk_per_sec": 2855.009991105378,
+      "min_ess_tail": 4220.027501915963,
+      "path": "cases/hier_random_intercept_non_centered__nextstat.json",
+      "sha256": "20cf2bb00b6075fe00359ed09b08b9ba23cd60c047d7102ade7eac1c9ba22c88",
+      "status": "ok",
+      "wall_time_s": 1.0058699660003185
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "hier_random_intercept_non_centered",
+      "max_r_hat": 1.00177,
+      "min_ess_bulk": 2774.47,
+      "min_ess_bulk_per_sec": 1226.478992861721,
+      "min_ess_tail": 2611.68,
+      "path": "cases/hier_random_intercept_non_centered__cmdstanpy.json",
+      "sha256": "5007c169c74166825866f92ce9e632b6415ae4cd945f7d308a317894044bef0c",
+      "status": "ok",
+      "wall_time_s": 2.262142291998316
+    },
+    {
+      "backend": "nextstat",
+      "case": "eight_schools_non_centered",
+      "max_r_hat": 1.002153386873301,
+      "min_ess_bulk": 5068.23075494287,
+      "min_ess_bulk_per_sec": 48455.30928855399,
+      "min_ess_tail": 3279.499488649543,
+      "path": "cases/eight_schools_non_centered__nextstat.json",
+      "sha256": "f3003e05508f66898449a6c1dc49eb94206927502778745bd453103f074e6e7b",
+      "status": "ok",
+      "wall_time_s": 0.10459598399756942
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "eight_schools_non_centered",
+      "max_r_hat": 1.00113,
+      "min_ess_bulk": 4445.43,
+      "min_ess_bulk_per_sec": 24567.929366339496,
+      "min_ess_tail": 3109.95,
+      "path": "cases/eight_schools_non_centered__cmdstanpy.json",
+      "sha256": "1c75eeacc2990cdb525b9b58d1e4b6e4b7fa2ed7e5a760da9a84a0db522fb6b7",
+      "status": "ok",
+      "wall_time_s": 0.1809444309983519
+    }
+  ],
+  "deterministic": false,
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "schema_version": "nextstat.bayesian_benchmark_suite_result.v1",
+  "suite": "bayesian",
+  "summary": {
+    "n_cases": 8,
+    "n_failed": 0,
+    "n_ok": 7,
+    "n_warn": 1,
+    "worst_case": "hier_random_intercept_non_centered::cmdstanpy"
+  }
+}

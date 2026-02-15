@@ -6,7 +6,8 @@ operations. A pure-Python fallback is always available.
 
 Notes
 - OLS HC0-HC3 match the classic White/MacKinnon formulas.
-- Cluster-robust is 1-way (CR0 with optional finite-sample correction).
+- Cluster-robust supports 1-way and 2-way (Cameron-Gelbach-Miller combine rule).
+- Newey-West HAC is available for ordered samples.
 - For GLMs we provide a baseline sandwich estimator using canonical-link score
   contributions and the Fisher information approximation (X' W X).
   This is a starting point and does not cover penalized/MAP fits rigorously.
@@ -111,6 +112,82 @@ def _encode_groups_np(cluster: Sequence[Any]) -> tuple:
     return _np.array([idx[v] for v in labels], dtype=_np.intp), len(levels)
 
 
+def _cluster_meat_np(
+    x: Any,
+    residuals: Any,
+    cluster: Sequence[Any],
+    *,
+    df_correction: bool,
+    n_params: int,
+) -> tuple[Any, int]:
+    """Return cluster meat matrix and number of groups (numpy path)."""
+    X = _np.asarray(x, dtype=_np.float64)
+    u = _np.asarray(residuals, dtype=_np.float64)
+    n = int(X.shape[0])
+    k = int(X.shape[1])
+    if len(u) != n:
+        raise ValueError("length mismatch between inputs")
+
+    g, n_cl = _encode_groups_np(cluster)
+    if n_cl < 2:
+        raise ValueError("cluster must have at least 2 distinct groups")
+
+    zu = X * u[:, None]  # (n, k)
+    sg = _np.zeros((n_cl, k), dtype=_np.float64)
+    for j in range(k):
+        sg[:, j] = _np.bincount(g, weights=zu[:, j], minlength=n_cl)
+
+    meat = sg.T @ sg
+    if df_correction and n > n_params:
+        scale = (float(n_cl) / float(n_cl - 1)) * ((float(n) - 1.0) / float(n - n_params))
+        meat *= scale
+    return meat, int(n_cl)
+
+
+def _cluster_meat_py(
+    xd: Sequence[Sequence[float]],
+    residuals: Sequence[float],
+    cluster: Sequence[Any],
+    *,
+    df_correction: bool,
+    n_params: int,
+) -> tuple[Matrix, int]:
+    """Return cluster meat matrix and number of groups (pure Python path)."""
+    n = len(xd)
+    k = len(xd[0]) if xd else 0
+    _validate_lengths(n, residuals, cluster)
+
+    by_g: dict[Any, Vector] = {}
+    for xi, ui, gi in zip(xd, residuals, cluster):
+        s = by_g.get(gi)
+        if s is None:
+            by_g[gi] = [float(v) * float(ui) for v in xi]
+        else:
+            for j in range(k):
+                s[j] += float(xi[j]) * float(ui)
+
+    g = len(by_g)
+    if g < 2:
+        raise ValueError("cluster must have at least 2 distinct groups")
+
+    meat: Matrix = [[0.0] * k for _ in range(k)]
+    for s in by_g.values():
+        _mat_add_inplace(meat, _outer(s))
+
+    if df_correction and n > n_params:
+        scale = (float(g) / float(g - 1)) * ((float(n) - 1.0) / float(n - n_params))
+        _mat_scale_inplace(meat, scale)
+    return meat, int(g)
+
+
+def _stable_sort_order(values: Sequence[Any]) -> list[int]:
+    """Return stable sort order for potentially mixed-type labels."""
+    try:
+        return sorted(range(len(values)), key=lambda i: (values[i], i))
+    except TypeError:
+        return sorted(range(len(values)), key=lambda i: (str(values[i]), i))
+
+
 def ols_hc_covariance(
     x: Sequence[Sequence[float]],
     residuals: Sequence[float],
@@ -204,20 +281,7 @@ def _ols_cluster_covariance_np(
 
     xtx_inv = _np.linalg.inv(X.T @ X)
 
-    g, n_cl = _encode_groups_np(cluster)
-    if n_cl < 2:
-        raise ValueError("cluster must have at least 2 distinct groups")
-
-    # Score per observation, then sum within cluster.
-    zu = X * u[:, None]                              # (n, k)
-    sg = _np.zeros((n_cl, k), dtype=_np.float64)
-    for j in range(k):
-        sg[:, j] = _np.bincount(g, weights=zu[:, j], minlength=n_cl)
-
-    meat = sg.T @ sg                                  # (k, k)
-    if df_correction and n > k:
-        scale = (float(n_cl) / float(n_cl - 1)) * ((float(n) - 1.0) / float(n - k))
-        meat *= scale
+    meat, _ = _cluster_meat_np(X, u, cluster, df_correction=df_correction, n_params=k)
 
     return (xtx_inv @ meat @ xtx_inv).tolist()
 
@@ -249,28 +313,174 @@ def _ols_cluster_covariance_py(
     xt = mat_t(xd)
     xtx_inv = mat_inv(mat_mul(xt, xd))
 
-    # s_g = sum_{i in g} x_i * u_i (k-vector)
-    by_g: dict[Any, Vector] = {}
-    for xi, ui, gi in zip(xd, u, cluster):
-        s = by_g.get(gi)
-        if s is None:
-            by_g[gi] = [float(v) * float(ui) for v in xi]
-        else:
-            for j in range(k):
-                s[j] += float(xi[j]) * float(ui)
+    meat, _ = _cluster_meat_py(xd, u, cluster, df_correction=df_correction, n_params=k)
 
-    g = len(by_g)
-    if g < 2:
-        raise ValueError("cluster must have at least 2 distinct groups")
+    return mat_mul(mat_mul(xtx_inv, meat), xtx_inv)
 
+
+def ols_two_way_cluster_covariance(
+    x: Any,
+    residuals: Any,
+    cluster_a: Sequence[Any],
+    cluster_b: Sequence[Any],
+    *,
+    include_intercept: bool,
+    df_correction: bool = True,
+) -> Matrix:
+    """Compute 2-way clustered OLS covariance via Cameron-Gelbach-Miller.
+
+    Uses the multiway combine rule:
+    V = V_a + V_b - V_ab
+    where V_ab is the covariance clustered on intersection cells.
+    """
+    if _HAS_NP:
+        X = _np.asarray(x, dtype=_np.float64)
+        if include_intercept:
+            X = _np.column_stack([_np.ones(X.shape[0], dtype=_np.float64), X])
+        n, k = X.shape
+        if n == 0:
+            raise ValueError("x must have at least 1 row")
+        if k == 0:
+            raise ValueError("x must have at least 1 column")
+        u = _np.asarray(residuals, dtype=_np.float64)
+        _validate_lengths(n, u, cluster_a, cluster_b)
+        if n <= k:
+            raise ValueError("Need n > n_params for cluster-robust covariance")
+
+        xtx_inv = _np.linalg.inv(X.T @ X)
+        meat_a, _ = _cluster_meat_np(X, u, cluster_a, df_correction=df_correction, n_params=k)
+        meat_b, _ = _cluster_meat_np(X, u, cluster_b, df_correction=df_correction, n_params=k)
+
+        ga, _ = _encode_groups_np(cluster_a)
+        gb, _ = _encode_groups_np(cluster_b)
+        pair = _np.column_stack([ga, gb])
+        _u, gab = _np.unique(pair, axis=0, return_inverse=True)
+        meat_ab, _ = _cluster_meat_np(
+            X,
+            u,
+            gab.tolist(),
+            df_correction=df_correction,
+            n_params=k,
+        )
+        meat = meat_a + meat_b - meat_ab
+        return (xtx_inv @ meat @ xtx_inv).tolist()
+
+    xd = _design_matrix(x, include_intercept=include_intercept)
+    n = len(xd)
+    if n == 0:
+        raise ValueError("x must have at least 1 row")
+    u = [float(v) for v in residuals]
+    _validate_lengths(n, u, cluster_a, cluster_b)
+
+    k = len(xd[0]) if xd else 0
+    if any(len(row) != k for row in xd):
+        raise ValueError("x must be rectangular")
+    if k == 0:
+        raise ValueError("x must have at least 1 column (add intercept or features)")
+    if n <= k:
+        raise ValueError("Need n > n_params for cluster-robust covariance")
+
+    xt = mat_t(xd)
+    xtx_inv = mat_inv(mat_mul(xt, xd))
+
+    meat_a, _ = _cluster_meat_py(xd, u, cluster_a, df_correction=df_correction, n_params=k)
+    meat_b, _ = _cluster_meat_py(xd, u, cluster_b, df_correction=df_correction, n_params=k)
+    pair = list(zip(cluster_a, cluster_b))
+    meat_ab, _ = _cluster_meat_py(xd, u, pair, df_correction=df_correction, n_params=k)
+
+    meat = [[meat_a[i][j] + meat_b[i][j] - meat_ab[i][j] for j in range(k)] for i in range(k)]
+    return mat_mul(mat_mul(xtx_inv, meat), xtx_inv)
+
+
+def ols_newey_west_covariance(
+    x: Any,
+    residuals: Any,
+    *,
+    include_intercept: bool,
+    max_lag: Optional[int] = None,
+    time_index: Optional[Sequence[Any]] = None,
+    df_correction: bool = True,
+) -> Matrix:
+    """Compute Newey-West HAC covariance for OLS with Bartlett kernel."""
+    if _HAS_NP:
+        X = _np.asarray(x, dtype=_np.float64)
+        if include_intercept:
+            X = _np.column_stack([_np.ones(X.shape[0], dtype=_np.float64), X])
+        n, k = X.shape
+        if n == 0:
+            raise ValueError("x must have at least 1 row")
+        if k == 0:
+            raise ValueError("x must have at least 1 column")
+        u = _np.asarray(residuals, dtype=_np.float64)
+        _validate_lengths(n, u)
+        if n <= k:
+            raise ValueError("Need n > n_params for HAC covariance")
+
+        if time_index is not None:
+            _validate_lengths(n, time_index)
+            order = _np.asarray(_stable_sort_order(time_index), dtype=_np.intp)
+            X = X[order]
+            u = u[order]
+
+        L = int(math.floor(4.0 * (float(n) / 100.0) ** (2.0 / 9.0))) if max_lag is None else int(max_lag)
+        L = max(0, min(L, n - 1))
+
+        xtx_inv = _np.linalg.inv(X.T @ X)
+        zu = X * u[:, None]
+        meat = zu.T @ zu
+        for ell in range(1, L + 1):
+            w = 1.0 - (float(ell) / float(L + 1))
+            gamma = zu[ell:, :].T @ zu[:-ell, :]
+            meat += w * (gamma + gamma.T)
+
+        if df_correction and n > k:
+            meat *= float(n) / float(n - k)
+        return (xtx_inv @ meat @ xtx_inv).tolist()
+
+    xd = _design_matrix(x, include_intercept=include_intercept)
+    n = len(xd)
+    if n == 0:
+        raise ValueError("x must have at least 1 row")
+    u = [float(v) for v in residuals]
+    _validate_lengths(n, u)
+    if time_index is not None:
+        _validate_lengths(n, time_index)
+        ord_idx = _stable_sort_order(time_index)
+        xd = [xd[i] for i in ord_idx]
+        u = [u[i] for i in ord_idx]
+
+    k = len(xd[0]) if xd else 0
+    if any(len(row) != k for row in xd):
+        raise ValueError("x must be rectangular")
+    if k == 0:
+        raise ValueError("x must have at least 1 column (add intercept or features)")
+    if n <= k:
+        raise ValueError("Need n > n_params for HAC covariance")
+
+    L = int(math.floor(4.0 * (float(n) / 100.0) ** (2.0 / 9.0))) if max_lag is None else int(max_lag)
+    L = max(0, min(L, n - 1))
+
+    xt = mat_t(xd)
+    xtx_inv = mat_inv(mat_mul(xt, xd))
+    zu = [[float(xij) * float(ui) for xij in xi] for xi, ui in zip(xd, u)]
     meat: Matrix = [[0.0] * k for _ in range(k)]
-    for s in by_g.values():
-        _mat_add_inplace(meat, _outer(s))
+    for zi in zu:
+        _mat_add_inplace(meat, _outer(zi))
+    for ell in range(1, L + 1):
+        w = 1.0 - (float(ell) / float(L + 1))
+        g: Matrix = [[0.0] * k for _ in range(k)]
+        for t in range(ell, n):
+            zt = zu[t]
+            zlag = zu[t - ell]
+            for i in range(k):
+                for j in range(k):
+                    g[i][j] += float(zt[i]) * float(zlag[j])
+        for i in range(k):
+            for j in range(k):
+                meat[i][j] += w * (g[i][j] + g[j][i])
 
-    if df_correction:
-        scale = (float(g) / float(g - 1)) * ((float(n) - 1.0) / float(n - k))
-        _mat_scale_inplace(meat, scale)
-
+    if df_correction and n > k:
+        _mat_scale_inplace(meat, float(n) / float(n - k))
     return mat_mul(mat_mul(xtx_inv, meat), xtx_inv)
 
 
@@ -522,6 +732,8 @@ __all__ = [
     "cov_to_se",
     "ols_hc_covariance",
     "ols_cluster_covariance",
+    "ols_two_way_cluster_covariance",
+    "ols_newey_west_covariance",
     "ols_hc_from_fit",
     "ols_cluster_from_fit",
     "logistic_sandwich_covariance",

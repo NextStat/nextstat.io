@@ -65,8 +65,10 @@ pub struct MetalBatchAccelerator {
     max_batch: usize,
 
     // --- CPU scratch buffers (preallocated for max_batch, reused per call) ---
-    scratch_params_f32: Vec<f32>, // max_batch * n_params
-    scratch_zeros_f32: Vec<f32>,  // max_batch * n_params
+    scratch_params_f32: Vec<f32>,   // max_batch * n_params
+    scratch_observed_f32: Vec<f32>, // max_batch * n_main_bins
+    scratch_ln_facts_f32: Vec<f32>, // max_batch * n_main_bins
+    scratch_obs_mask_f32: Vec<f32>, // max_batch * n_main_bins
 }
 
 impl MetalBatchAccelerator {
@@ -83,25 +85,11 @@ impl MetalBatchAccelerator {
         let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
         let queue = device.new_command_queue();
 
-        // Compile MSL source at runtime
-        let options = CompileOptions::new();
-        let library = device
-            .new_library_with_source(MSL_SRC, &options)
-            .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
-
-        let fn_nll_grad = library
-            .get_function("batch_nll_grad", None)
-            .map_err(|e| metal_err(format!("get batch_nll_grad: {e}")))?;
-        let fn_nll_only = library
-            .get_function("batch_nll_only", None)
-            .map_err(|e| metal_err(format!("get batch_nll_only: {e}")))?;
-
-        let pipeline_nll_grad = device
-            .new_compute_pipeline_state_with_function(&fn_nll_grad)
-            .map_err(|e| metal_err(format!("pipeline batch_nll_grad: {e}")))?;
-        let pipeline_nll_only = device
-            .new_compute_pipeline_state_with_function(&fn_nll_only)
-            .map_err(|e| metal_err(format!("pipeline batch_nll_only: {e}")))?;
+        // Compile/load MSL pipelines via thread-local cache.
+        let pipeline_nll_grad =
+            crate::metal_kernel_cache::get_pipeline(&device, "batch", MSL_SRC, "batch_nll_grad")?;
+        let pipeline_nll_only =
+            crate::metal_kernel_cache::get_pipeline(&device, "batch", MSL_SRC, "batch_nll_only")?;
 
         let opts = MTLResourceOptions::StorageModeShared;
 
@@ -144,7 +132,10 @@ impl MetalBatchAccelerator {
         // Pre-allocate CPU scratch buffers for f64→f32 conversion (avoids per-call allocation)
         let scratch_size = max_batch * data.n_params;
         let scratch_params_f32 = vec![0.0f32; scratch_size];
-        let scratch_zeros_f32 = vec![0.0f32; scratch_size];
+        let scratch_obs_size = max_batch * data.n_main_bins;
+        let scratch_observed_f32 = vec![0.0f32; scratch_obs_size];
+        let scratch_ln_facts_f32 = vec![0.0f32; scratch_obs_size];
+        let scratch_obs_mask_f32 = vec![0.0f32; scratch_obs_size];
 
         Ok(Self {
             device,
@@ -170,7 +161,9 @@ impl MetalBatchAccelerator {
             scalar_args,
             max_batch,
             scratch_params_f32,
-            scratch_zeros_f32,
+            scratch_observed_f32,
+            scratch_ln_facts_f32,
+            scratch_obs_mask_f32,
         })
     }
 
@@ -190,14 +183,20 @@ impl MetalBatchAccelerator {
         assert_eq!(ln_facts.len(), n);
         assert_eq!(obs_mask.len(), n);
 
-        // Convert f64 → f32 and memcpy to shared buffers
-        let obs_f32: Vec<f32> = observed_flat.iter().map(|&v| v as f32).collect();
-        let lnf_f32: Vec<f32> = ln_facts.iter().map(|&v| v as f32).collect();
-        let mask_f32: Vec<f32> = obs_mask.iter().map(|&v| v as f32).collect();
+        // Convert f64 → f32 into preallocated scratch and memcpy to shared buffers.
+        for (i, &v) in observed_flat.iter().enumerate() {
+            self.scratch_observed_f32[i] = v as f32;
+        }
+        for (i, &v) in ln_facts.iter().enumerate() {
+            self.scratch_ln_facts_f32[i] = v as f32;
+        }
+        for (i, &v) in obs_mask.iter().enumerate() {
+            self.scratch_obs_mask_f32[i] = v as f32;
+        }
 
-        Self::copy_to_buffer(&self.buf_observed, &obs_f32);
-        Self::copy_to_buffer(&self.buf_ln_facts, &lnf_f32);
-        Self::copy_to_buffer(&self.buf_obs_mask, &mask_f32);
+        Self::copy_to_buffer(&self.buf_observed, &self.scratch_observed_f32[..n]);
+        Self::copy_to_buffer(&self.buf_ln_facts, &self.scratch_ln_facts_f32[..n]);
+        Self::copy_to_buffer(&self.buf_obs_mask, &self.scratch_obs_mask_f32[..n]);
 
         Ok(())
     }
@@ -221,12 +220,8 @@ impl MetalBatchAccelerator {
         }
         Self::copy_to_buffer(&self.buf_params, &self.scratch_params_f32[..count]);
 
-        // Zero gradient output — reuse preallocated scratch buffer
-        // scratch_zeros_f32 is always zeroed; we just need to ensure the right length
-        for i in 0..count {
-            self.scratch_zeros_f32[i] = 0.0;
-        }
-        Self::copy_to_buffer(&self.buf_grad_out, &self.scratch_zeros_f32[..count]);
+        // Zero gradient output directly in shared memory.
+        Self::zero_buffer_f32(&self.buf_grad_out, count);
 
         // Dispatch kernel
         //
@@ -389,6 +384,19 @@ impl MetalBatchAccelerator {
         unsafe {
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
         }
+    }
+
+    fn zero_buffer_f32(buffer: &Buffer, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let bytes = (count * mem::size_of::<f32>()) as u64;
+        let ptr = buffer.contents() as *mut u8;
+        // SAFETY: buffer capacity >= `bytes` for this call site; pointer is valid for buffer lifetime.
+        unsafe {
+            std::ptr::write_bytes(ptr, 0, bytes as usize);
+        }
+        buffer.did_modify_range(NSRange::new(0, bytes));
     }
 
     fn read_buffer_f32_to_f64(buffer: &Buffer, count: usize) -> Vec<f64> {

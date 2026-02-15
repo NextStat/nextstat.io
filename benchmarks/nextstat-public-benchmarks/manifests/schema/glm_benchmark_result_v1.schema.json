@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/glm_benchmark_result_v1.schema.json",
+  "title": "NextStat GLM Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "case",
+    "deterministic",
+    "status",
+    "meta",
+    "dataset",
+    "config",
+    "parity",
+    "timing",
+    "results"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.glm_benchmark_result.v1" },
+    "suite": { "const": "glm" },
+    "case": { "type": "string", "minLength": 1 },
+    "deterministic": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+    "reason": { "type": ["string", "null"] },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "platform", "nextstat_version", "numpy_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" },
+        "numpy_version": { "type": "string" },
+        "statsmodels_version": { "type": ["string", "null"] },
+        "sklearn_version": { "type": ["string", "null"] },
+        "glum_version": { "type": ["string", "null"] }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "spec": { "type": "object" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["family", "n", "p"],
+      "properties": {
+        "family": { "type": "string", "enum": ["linear", "logistic", "poisson", "negbin"] },
+        "n": { "type": "integer", "minimum": 1 },
+        "p": { "type": "integer", "minimum": 1 },
+        "n_coefficients": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["status", "reference", "metrics"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "warn", "skipped"] },
+          "reference": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          },
+          "metrics": { "type": "object", "additionalProperties": true },
+          "error": { "type": "string" }
+        }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_time_s", "raw"],
+      "properties": {
+        "wall_time_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "median", "p95"],
+          "properties": {
+            "min": { "type": "number", "minimum": 0 },
+            "median": { "type": "number", "minimum": 0 },
+            "p95": { "type": "number", "minimum": 0 }
+          }
+        },
+        "raw": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repeat", "policy", "runs_s"],
+          "properties": {
+            "repeat": { "type": "integer", "minimum": 1 },
+            "policy": { "type": "string", "enum": ["min", "median"] },
+            "runs_s": { "type": "array", "items": { "type": "number", "minimum": 0 } }
+          }
+        }
+      }
+    },
+    "timing_baselines": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nextstat", "baselines"],
+      "properties": {
+        "nextstat": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["coef", "nll", "converged", "extra"],
+          "properties": {
+            "coef": { "type": "array", "items": { "type": "number" } },
+            "nll": { "type": "number" },
+            "converged": { "type": "boolean" },
+            "extra": { "type": "object", "additionalProperties": true }
+          }
+        },
+        "baselines": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}
+

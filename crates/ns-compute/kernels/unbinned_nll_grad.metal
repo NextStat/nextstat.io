@@ -32,6 +32,9 @@ constant uint RATE_WEIGHT_SYS = 1;
 
 constant uint INTERP_CODE0  = 0;
 constant uint INTERP_CODE4P = 1;
+constant uint BATCH_LOCAL_GRAD_CAP = 24;
+constant uint BATCH_PROC_CACHE_CAP = 256;
+constant uint BATCH_RATE_MOD_DNU_CAP = 256;
 
 /* ---------- Struct mirrors of Rust #[repr(C)] types ---------------------- */
 
@@ -84,6 +87,7 @@ struct BatchScalarArgs {
     uint total_shape_params;
     uint n_gauss;
     uint n_toys;
+    uint local_grad_cols;
     float constraint_const;
 };
 
@@ -1007,6 +1011,18 @@ inline void rate_modifier_factor_dlogf(
     out_dlogf = 0.0f;
 }
 
+inline float rate_modifier_factor_only_tg(
+    const device MetalUnbinnedRateModifierDesc* mods,
+    uint midx,
+    const threadgroup float* params
+) {
+    float f = 1.0f;
+    float dlogf = 0.0f;
+    rate_modifier_factor_dlogf(mods, midx, params, f, dlogf);
+    (void)dlogf;
+    return f;
+}
+
 /* ---------- Kernels ------------------------------------------------------ */
 
 kernel void unbinned_nll_grad(
@@ -1081,10 +1097,7 @@ kernel void unbinned_nll_grad(
                 nmods = 0u;
             }
             for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
+                nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
             }
             // Important: allow `nu == 0` in the gradient path so yield-parameter derivatives
             // remain non-zero at the boundary (e.g. mu=0 for scaled yields). The log-likelihood
@@ -1254,10 +1267,7 @@ kernel void unbinned_nll_grad(
             }
             float mod_factor = 1.0f;
             for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                mod_factor *= f;
+                mod_factor *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
             }
             nu *= mod_factor;
             dnu *= mod_factor;
@@ -1624,10 +1634,7 @@ kernel void unbinned_nll_grad(
             }
             float mod_factor = 1.0f;
             for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                mod_factor *= f;
+                mod_factor *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
             }
             nu *= mod_factor;
             dnu *= mod_factor;
@@ -1743,10 +1750,7 @@ kernel void unbinned_nll_only(
                 nmods = 0u;
             }
             for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
+                nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
             }
             // See note above: allow `nu == 0` so yield derivatives remain defined.
             if (!isfinite(nu) || nu < 0.0f) {
@@ -1911,10 +1915,7 @@ kernel void unbinned_nll_only(
                 nmods = 0u;
             }
             for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
+                nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
             }
             if (isfinite(nu) && nu > 0.0f) {
                 nu_tot += nu;
@@ -1936,6 +1937,45 @@ kernel void unbinned_nll_only(
 }
 
 /* ---------- Batch kernels: 1 threadgroup = 1 toy dataset ------------------ */
+
+inline void batch_grad_add(
+    threadgroup float* local_grad,
+    uint local_grad_cols,
+    device atomic_float* grad_out,
+    uint idx,
+    uint n_params,
+    float value
+) {
+    if (idx >= n_params || !isfinite(value) || value == 0.0f) {
+        return;
+    }
+    if (idx < local_grad_cols) {
+        local_grad[idx] += value;
+    } else {
+        atomic_fetch_add_explicit(&grad_out[idx], value, memory_order_relaxed);
+    }
+}
+
+inline float batch_rate_mod_dnu(
+    const device MetalUnbinnedRateModifierDesc* mods,
+    const threadgroup float* params,
+    const threadgroup float* cached_dnu,
+    bool use_cache,
+    uint midx,
+    float nu
+) {
+    if (use_cache) {
+        return cached_dnu[midx];
+    }
+    float f, dlogf;
+    rate_modifier_factor_dlogf(mods, midx, params, f, dlogf);
+    (void)f;
+    float dnu_m = nu * dlogf;
+    if (!isfinite(dnu_m)) {
+        return 0.0f;
+    }
+    return dnu_m;
+}
 
 kernel void unbinned_batch_nll_grad(
     const device float* g_params_flat              [[buffer(0)]],  /* [n_toys × n_params] */
@@ -1968,6 +2008,7 @@ kernel void unbinned_batch_nll_grad(
     uint total_rate_mods = args.total_rate_mods;
     uint total_shape_params = args.total_shape_params;
     uint n_gauss = args.n_gauss;
+    uint local_grad_cols = min(min(args.local_grad_cols, n_params), BATCH_LOCAL_GRAD_CAP);
     float constraint_const = args.constraint_const;
 
     uint start = g_toy_offsets[toy];
@@ -1979,12 +2020,91 @@ kernel void unbinned_batch_nll_grad(
 
     threadgroup float* s_params = shared;
     threadgroup float* s_scratch = shared + n_params;
+    threadgroup float* s_grad_partial = s_scratch + block_size;
+    threadgroup float* s_proc_nu = s_grad_partial + block_size * local_grad_cols;
+    threadgroup float* s_proc_log_nu = s_proc_nu + BATCH_PROC_CACHE_CAP;
+    threadgroup float* s_proc_dnu = s_proc_log_nu + BATCH_PROC_CACHE_CAP;
+    threadgroup float* s_rate_mod_dnu = s_proc_dnu + BATCH_PROC_CACHE_CAP;
+    threadgroup uint* s_proc_mod_off =
+        reinterpret_cast<threadgroup uint*>(s_rate_mod_dnu + BATCH_RATE_MOD_DNU_CAP);
+    threadgroup uint* s_proc_nmods = s_proc_mod_off + BATCH_PROC_CACHE_CAP;
+    bool use_proc_cache = (n_procs <= BATCH_PROC_CACHE_CAP);
+    bool use_rate_mod_dnu_cache = use_proc_cache && (total_rate_mods <= BATCH_RATE_MOD_DNU_CAP);
 
     const device float* params = g_params_flat + toy * n_params;
     device atomic_float* grad_out = g_grad_out + toy * n_params;
+    threadgroup float* local_grad = s_grad_partial + tid * local_grad_cols;
 
     for (uint i = tid; i < n_params; i += block_size) {
         s_params[i] = params[i];
+    }
+    for (uint i = 0; i < local_grad_cols; i++) {
+        local_grad[i] = 0.0f;
+    }
+    if (use_proc_cache) {
+        for (uint p = tid; p < n_procs; p += block_size) {
+            MetalUnbinnedProcessDesc proc = g_procs[p];
+            float nu = 0.0f;
+            float dnu = 0.0f;
+            uint mod_off = proc.rate_mod_offset;
+            uint nmods = proc.n_rate_mods;
+            if (mod_off + nmods > total_rate_mods) {
+                nmods = 0u;
+            }
+            s_proc_mod_off[p] = mod_off;
+            s_proc_nmods[p] = nmods;
+            if (proc.obs_index == 0u) {
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[proc.yield_param_idx];
+                    dnu = 1.0f;
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[proc.yield_param_idx];
+                    dnu = proc.base_yield;
+                }
+                float mod_factor = 1.0f;
+                for (uint m = 0; m < nmods; m++) {
+                    mod_factor *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+                nu *= mod_factor;
+                dnu *= mod_factor;
+            }
+            if (isfinite(nu) && nu > 0.0f) {
+                s_proc_nu[p] = nu;
+                s_proc_log_nu[p] = log(nu);
+                s_proc_dnu[p] = dnu;
+            } else {
+                s_proc_nu[p] = 0.0f;
+                s_proc_log_nu[p] = -INFINITY;
+                s_proc_dnu[p] = 0.0f;
+            }
+        }
+    }
+    if (use_rate_mod_dnu_cache) {
+        for (uint midx = tid; midx < total_rate_mods; midx += block_size) {
+            s_rate_mod_dnu[midx] = 0.0f;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint p = tid; p < n_procs; p += block_size) {
+            float nu = s_proc_nu[p];
+            if (!(nu > 0.0f) || !isfinite(nu)) {
+                continue;
+            }
+            uint mod_off = s_proc_mod_off[p];
+            uint nmods = s_proc_nmods[p];
+            for (uint m = 0; m < nmods; m++) {
+                uint midx = mod_off + m;
+                float f, dlogf;
+                rate_modifier_factor_dlogf(g_rate_mods, midx, s_params, f, dlogf);
+                (void)f;
+                float dnu_m = nu * dlogf;
+                if (!isfinite(dnu_m)) {
+                    dnu_m = 0.0f;
+                }
+                s_rate_mod_dnu[midx] = dnu_m;
+            }
+        }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -2006,28 +2126,35 @@ kernel void unbinned_batch_nll_grad(
             }
 
             float nu = 0.0f;
-            if (proc.yield_kind == YIELD_FIXED) {
-                nu = proc.base_yield;
-            } else if (proc.yield_kind == YIELD_PARAMETER) {
-                nu = s_params[proc.yield_param_idx];
-            } else if (proc.yield_kind == YIELD_SCALED) {
-                nu = proc.base_yield * s_params[proc.yield_param_idx];
+            float log_nu = -INFINITY;
+            if (use_proc_cache) {
+                nu = s_proc_nu[p];
+                log_nu = s_proc_log_nu[p];
+                if (!isfinite(log_nu)) {
+                    continue;
+                }
             } else {
-                continue;
-            }
-            uint mod_off = proc.rate_mod_offset;
-            uint nmods = proc.n_rate_mods;
-            if (mod_off + nmods > total_rate_mods) {
-                nmods = 0u;
-            }
-            for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
-            }
-            if (!(nu > 0.0f) || !isfinite(nu)) {
-                continue;
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[proc.yield_param_idx];
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[proc.yield_param_idx];
+                } else {
+                    continue;
+                }
+                uint mod_off = proc.rate_mod_offset;
+                uint nmods = proc.n_rate_mods;
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                for (uint m = 0; m < nmods; m++) {
+                    nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+                if (!(nu > 0.0f) || !isfinite(nu)) {
+                    continue;
+                }
+                log_nu = log(nu);
             }
 
             float logp = -INFINITY;
@@ -2137,7 +2264,7 @@ kernel void unbinned_batch_nll_grad(
                 continue;
             }
 
-            float term = log(nu) + logp;
+            float term = log_nu + logp;
             if (!isfinite(term)) {
                 continue;
             }
@@ -2166,33 +2293,40 @@ kernel void unbinned_batch_nll_grad(
             float dnu = 0.0f;
             uint y_idx = proc.yield_param_idx;
             uint has_yield_param = 0u;
-            if (proc.yield_kind == YIELD_FIXED) {
-                nu = proc.base_yield;
-            } else if (proc.yield_kind == YIELD_PARAMETER) {
-                nu = s_params[y_idx];
-                dnu = 1.0f;
-                has_yield_param = 1u;
-            } else if (proc.yield_kind == YIELD_SCALED) {
-                nu = proc.base_yield * s_params[y_idx];
-                dnu = proc.base_yield;
-                has_yield_param = 1u;
+            uint mod_off = 0u;
+            uint nmods = 0u;
+            if (use_proc_cache) {
+                mod_off = s_proc_mod_off[p];
+                nmods = s_proc_nmods[p];
+                nu = s_proc_nu[p];
+                dnu = s_proc_dnu[p];
+                has_yield_param = (dnu != 0.0f) ? 1u : 0u;
             } else {
-                continue;
+                mod_off = proc.rate_mod_offset;
+                nmods = proc.n_rate_mods;
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[y_idx];
+                    dnu = 1.0f;
+                    has_yield_param = 1u;
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[y_idx];
+                    dnu = proc.base_yield;
+                    has_yield_param = 1u;
+                } else {
+                    continue;
+                }
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                float mod_factor = 1.0f;
+                for (uint m = 0; m < nmods; m++) {
+                    mod_factor *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+                nu *= mod_factor;
+                dnu *= mod_factor;
             }
-            uint mod_off = proc.rate_mod_offset;
-            uint nmods = proc.n_rate_mods;
-            if (mod_off + nmods > total_rate_mods) {
-                nmods = 0u;
-            }
-            float mod_factor = 1.0f;
-            for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                mod_factor *= f;
-            }
-            nu *= mod_factor;
-            dnu *= mod_factor;
             if (!(nu > 0.0f) || !isfinite(nu)) {
                 continue;
             }
@@ -2219,26 +2353,27 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
 
                 float r = nu * p_over_f;
-                atomic_fetch_add_explicit(&grad_out[mu_idx], -r * dmu, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[sig_idx], -r * ds, memory_order_relaxed);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, mu_idx, n_params, -r * dmu);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, sig_idx, n_params, -r * ds);
             } else if (proc.pdf_kind == PDF_EXPONENTIAL) {
                 uint off = proc.shape_param_offset;
                 if (proc.n_shape_params != 1u || off >= total_shape_params) {
@@ -2259,25 +2394,26 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
 
                 float r = nu * p_over_f;
-                atomic_fetch_add_explicit(&grad_out[lam_idx], -r * dl, memory_order_relaxed);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, lam_idx, n_params, -r * dl);
             } else if (proc.pdf_kind == PDF_CRYSTAL_BALL) {
                 uint off = proc.shape_param_offset;
                 if (proc.n_shape_params != 4u || off + 3u >= total_shape_params) {
@@ -2303,28 +2439,29 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
 
                 float r = nu * p_over_f;
-                atomic_fetch_add_explicit(&grad_out[mu_idx], -r * dmu, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[sig_idx], -r * ds, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[alpha_idx], -r * da, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[n_idx], -r * dn, memory_order_relaxed);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, mu_idx, n_params, -r * dmu);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, sig_idx, n_params, -r * ds);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, alpha_idx, n_params, -r * da);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, n_idx, n_params, -r * dn);
             } else if (proc.pdf_kind == PDF_DOUBLE_CRYSTAL_BALL) {
                 uint off = proc.shape_param_offset;
                 if (proc.n_shape_params != 6u || off + 5u >= total_shape_params) {
@@ -2357,30 +2494,31 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
 
                 float r = nu * p_over_f;
-                atomic_fetch_add_explicit(&grad_out[mu_idx], -r * dmu, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[sig_idx], -r * ds, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[alpha_l_idx], -r * da_l, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[n_l_idx], -r * dn_l, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[alpha_r_idx], -r * da_r, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grad_out[n_r_idx], -r * dn_r, memory_order_relaxed);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, mu_idx, n_params, -r * dmu);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, sig_idx, n_params, -r * ds);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, alpha_l_idx, n_params, -r * da_l);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, n_l_idx, n_params, -r * dn_l);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, alpha_r_idx, n_params, -r * da_r);
+                batch_grad_add(local_grad, local_grad_cols, grad_out, n_r_idx, n_params, -r * dn_r);
             } else if (proc.pdf_kind == PDF_CHEBYSHEV) {
                 uint off = proc.shape_param_offset;
                 uint order = proc.n_shape_params;
@@ -2438,20 +2576,21 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
 
@@ -2479,7 +2618,7 @@ kernel void unbinned_batch_nll_grad(
                     }
                     float dlogp_dc = tval * inv_f0 - dlogi;
                     uint c_idx = g_shape_pidx[off + j];
-                    atomic_fetch_add_explicit(&grad_out[c_idx], -r * dlogp_dc, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, c_idx, n_params, -r * dlogp_dc);
                 }
             }
             else if (proc.pdf_kind == PDF_HISTOGRAM) {
@@ -2496,25 +2635,38 @@ kernel void unbinned_batch_nll_grad(
                 }
 
                 if (has_yield_param) {
-                    atomic_fetch_add_explicit(&grad_out[y_idx], -dnu * p_over_f, memory_order_relaxed);
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
-                        atomic_fetch_add_explicit(&grad_out[aidx], -dnu_m * p_over_f, memory_order_relaxed);
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
                     }
                 }
             }
         }
     }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint p = tid; p < local_grad_cols; p += block_size) {
+        float acc = 0.0f;
+        for (uint t = 0; t < block_size; t++) {
+            acc += s_grad_partial[t * local_grad_cols + p];
+        }
+        if (isfinite(acc) && acc != 0.0f) {
+            atomic_fetch_add_explicit(&grad_out[p], acc, memory_order_relaxed);
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     s_scratch[tid] = local_sum_logf;
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -2535,48 +2687,56 @@ kernel void unbinned_batch_nll_grad(
             float dnu = 0.0f;
             uint y_idx = proc.yield_param_idx;
             uint has_yield_param = 0u;
-            if (proc.yield_kind == YIELD_FIXED) {
-                nu = proc.base_yield;
-            } else if (proc.yield_kind == YIELD_PARAMETER) {
-                nu = s_params[y_idx];
-                dnu = 1.0f;
-                has_yield_param = 1u;
-            } else if (proc.yield_kind == YIELD_SCALED) {
-                nu = proc.base_yield * s_params[y_idx];
-                dnu = proc.base_yield;
-                has_yield_param = 1u;
+            uint mod_off = 0u;
+            uint nmods = 0u;
+            if (use_proc_cache) {
+                mod_off = s_proc_mod_off[p];
+                nmods = s_proc_nmods[p];
+                nu = s_proc_nu[p];
+                dnu = s_proc_dnu[p];
+                has_yield_param = (dnu != 0.0f) ? 1u : 0u;
             } else {
-                continue;
+                mod_off = proc.rate_mod_offset;
+                nmods = proc.n_rate_mods;
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[y_idx];
+                    dnu = 1.0f;
+                    has_yield_param = 1u;
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[y_idx];
+                    dnu = proc.base_yield;
+                    has_yield_param = 1u;
+                } else {
+                    continue;
+                }
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                float mod_factor = 1.0f;
+                for (uint m = 0; m < nmods; m++) {
+                    mod_factor *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+                nu *= mod_factor;
+                dnu *= mod_factor;
             }
-            uint mod_off = proc.rate_mod_offset;
-            uint nmods = proc.n_rate_mods;
-            if (mod_off + nmods > total_rate_mods) {
-                nmods = 0u;
-            }
-            float mod_factor = 1.0f;
-            for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                mod_factor *= f;
-            }
-            nu *= mod_factor;
-            dnu *= mod_factor;
             if (isfinite(nu) && nu >= 0.0f) {
                 nu_tot += nu;
                 if (has_yield_param && isfinite(dnu) && dnu != 0.0f) {
                     atomic_fetch_add_explicit(&grad_out[y_idx], dnu, memory_order_relaxed);
                 }
                 for (uint m = 0; m < nmods; m++) {
-                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[mod_off + m];
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
                     uint aidx = rm.alpha_param_idx;
                     if (aidx >= n_params) {
                         continue;
                     }
-                    float f, dlogf;
-                    rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                    (void)f;
-                    float dnu_m = nu * dlogf;
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
                     if (isfinite(dnu_m) && dnu_m != 0.0f) {
                         atomic_fetch_add_explicit(&grad_out[aidx], dnu_m, memory_order_relaxed);
                     }
@@ -2615,6 +2775,8 @@ struct ToyScalarArgs {
     uint _pad0;
     uint _pad1;
 };
+
+constant uint TOY_MAX_PROC_CACHE = 256u;
 
 constant float TOY_LOG_FACTORIAL_SMALL[21] = {
     0.0f,
@@ -2924,8 +3086,6 @@ kernel void unbinned_toy_counts(
 }
 
 /// Sample 1D toy observables for many toys into a flattened array.
-///
-/// Requires `toy_offsets` prefix sums (length `n_toys+1`) computed on the host.
 kernel void unbinned_toy_sample_obs_1d(
     const device float* g_params [[buffer(0)]],
     const device float* g_obs_lo [[buffer(1)]],
@@ -2953,10 +3113,37 @@ kernel void unbinned_toy_sample_obs_1d(
     float a = g_obs_lo[0];
     float b = g_obs_hi[0];
 
-    float nu_tot = 0.0f;
-    for (uint p = 0; p < s.n_procs; p++) {
-        nu_tot += proc_yield(g_procs[p], g_rate_mods, s.total_rate_mods, g_params);
+    threadgroup float s_proc_cdf[TOY_MAX_PROC_CACHE];
+    threadgroup float s_nu_tot;
+    threadgroup uint s_cached_n_procs;
+
+    if (tid == 0u) {
+        float cum = 0.0f;
+        if (s.n_procs <= TOY_MAX_PROC_CACHE) {
+            uint cached_n = s.n_procs;
+            for (uint p = 0u; p < cached_n; p++) {
+                float nu = proc_yield(g_procs[p], g_rate_mods, s.total_rate_mods, g_params);
+                if (!isfinite(nu) || nu < 0.0f) {
+                    nu = 0.0f;
+                }
+                cum += nu;
+                s_proc_cdf[p] = cum;
+            }
+            s_cached_n_procs = cached_n;
+        } else {
+            for (uint p = 0u; p < s.n_procs; p++) {
+                float nu = proc_yield(g_procs[p], g_rate_mods, s.total_rate_mods, g_params);
+                if (isfinite(nu) && nu > 0.0f) {
+                    cum += nu;
+                }
+            }
+            s_cached_n_procs = 0u;
+        }
+        s_nu_tot = cum;
     }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float nu_tot = s_nu_tot;
     if (!(nu_tot > 0.0f) || !isfinite(nu_tot)) {
         return;
     }
@@ -2968,13 +3155,24 @@ kernel void unbinned_toy_sample_obs_1d(
             (0x9e3779b97f4a7c15ULL * ((ulong)i + 1ULL));
 
         float u = u01_open(&state) * nu_tot;
-        float cum = 0.0f;
         uint chosen = 0u;
-        for (uint p = 0; p < s.n_procs; p++) {
-            cum += proc_yield(g_procs[p], g_rate_mods, s.total_rate_mods, g_params);
-            if (u <= cum) {
-                chosen = p;
-                break;
+        if (s_cached_n_procs == s.n_procs && s_cached_n_procs > 0u) {
+            chosen = s_cached_n_procs - 1u;
+            for (uint p = 0u; p < s_cached_n_procs; p++) {
+                if (u <= s_proc_cdf[p]) {
+                    chosen = p;
+                    break;
+                }
+            }
+        } else {
+            float cum = 0.0f;
+            chosen = (s.n_procs > 0u) ? (s.n_procs - 1u) : 0u;
+            for (uint p = 0u; p < s.n_procs; p++) {
+                cum += proc_yield(g_procs[p], g_rate_mods, s.total_rate_mods, g_params);
+                if (u <= cum) {
+                    chosen = p;
+                    break;
+                }
             }
         }
 
@@ -3191,10 +3389,43 @@ kernel void unbinned_batch_nll_only(
 
     threadgroup float* s_params = shared;
     threadgroup float* s_scratch = shared + n_params;
+    threadgroup float* s_proc_nu = s_scratch + block_size;
+    threadgroup float* s_proc_log_nu = s_proc_nu + BATCH_PROC_CACHE_CAP;
+    bool use_proc_cache = (n_procs <= BATCH_PROC_CACHE_CAP);
 
     const device float* params = g_params_flat + toy * n_params;
     for (uint i = tid; i < n_params; i += block_size) {
         s_params[i] = params[i];
+    }
+    if (use_proc_cache) {
+        for (uint p = tid; p < n_procs; p += block_size) {
+            MetalUnbinnedProcessDesc proc = g_procs[p];
+            float nu = 0.0f;
+            if (proc.obs_index == 0u) {
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[proc.yield_param_idx];
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[proc.yield_param_idx];
+                }
+                uint mod_off = proc.rate_mod_offset;
+                uint nmods = proc.n_rate_mods;
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                for (uint m = 0; m < nmods; m++) {
+                    nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+            }
+            if (isfinite(nu) && nu > 0.0f) {
+                s_proc_nu[p] = nu;
+                s_proc_log_nu[p] = log(nu);
+            } else {
+                s_proc_nu[p] = 0.0f;
+                s_proc_log_nu[p] = -INFINITY;
+            }
+        }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -3216,28 +3447,35 @@ kernel void unbinned_batch_nll_only(
             }
 
             float nu = 0.0f;
-            if (proc.yield_kind == YIELD_FIXED) {
-                nu = proc.base_yield;
-            } else if (proc.yield_kind == YIELD_PARAMETER) {
-                nu = s_params[proc.yield_param_idx];
-            } else if (proc.yield_kind == YIELD_SCALED) {
-                nu = proc.base_yield * s_params[proc.yield_param_idx];
+            float log_nu = -INFINITY;
+            if (use_proc_cache) {
+                nu = s_proc_nu[p];
+                log_nu = s_proc_log_nu[p];
+                if (!isfinite(log_nu)) {
+                    continue;
+                }
             } else {
-                continue;
-            }
-            uint mod_off = proc.rate_mod_offset;
-            uint nmods = proc.n_rate_mods;
-            if (mod_off + nmods > total_rate_mods) {
-                nmods = 0u;
-            }
-            for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
-            }
-            if (!(nu > 0.0f) || !isfinite(nu)) {
-                continue;
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[proc.yield_param_idx];
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[proc.yield_param_idx];
+                } else {
+                    continue;
+                }
+                uint mod_off = proc.rate_mod_offset;
+                uint nmods = proc.n_rate_mods;
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                for (uint m = 0; m < nmods; m++) {
+                    nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
+                if (!(nu > 0.0f) || !isfinite(nu)) {
+                    continue;
+                }
+                log_nu = log(nu);
             }
 
             float logp = -INFINITY;
@@ -3347,7 +3585,7 @@ kernel void unbinned_batch_nll_only(
                 continue;
             }
 
-            float term = log(nu) + logp;
+            float term = log_nu + logp;
             if (!isfinite(term)) {
                 continue;
             }
@@ -3383,25 +3621,26 @@ kernel void unbinned_batch_nll_only(
         for (uint p = 0; p < n_procs; p++) {
             MetalUnbinnedProcessDesc proc = g_procs[p];
             float nu = 0.0f;
-            if (proc.yield_kind == YIELD_FIXED) {
-                nu = proc.base_yield;
-            } else if (proc.yield_kind == YIELD_PARAMETER) {
-                nu = s_params[proc.yield_param_idx];
-            } else if (proc.yield_kind == YIELD_SCALED) {
-                nu = proc.base_yield * s_params[proc.yield_param_idx];
+            if (use_proc_cache) {
+                nu = s_proc_nu[p];
             } else {
-                continue;
-            }
-            uint mod_off = proc.rate_mod_offset;
-            uint nmods = proc.n_rate_mods;
-            if (mod_off + nmods > total_rate_mods) {
-                nmods = 0u;
-            }
-            for (uint m = 0; m < nmods; m++) {
-                float f, dlogf;
-                rate_modifier_factor_dlogf(g_rate_mods, mod_off + m, s_params, f, dlogf);
-                (void)dlogf;
-                nu *= f;
+                if (proc.yield_kind == YIELD_FIXED) {
+                    nu = proc.base_yield;
+                } else if (proc.yield_kind == YIELD_PARAMETER) {
+                    nu = s_params[proc.yield_param_idx];
+                } else if (proc.yield_kind == YIELD_SCALED) {
+                    nu = proc.base_yield * s_params[proc.yield_param_idx];
+                } else {
+                    continue;
+                }
+                uint mod_off = proc.rate_mod_offset;
+                uint nmods = proc.n_rate_mods;
+                if (mod_off + nmods > total_rate_mods) {
+                    nmods = 0u;
+                }
+                for (uint m = 0; m < nmods; m++) {
+                    nu *= rate_modifier_factor_only_tg(g_rate_mods, mod_off + m, s_params);
+                }
             }
             if (isfinite(nu) && nu > 0.0f) {
                 nu_tot += nu;

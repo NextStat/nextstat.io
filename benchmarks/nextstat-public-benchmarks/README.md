@@ -77,6 +77,18 @@ Optional: also benchmark full MLE fits (more expensive):
 python suites/hep/run.py --deterministic --fit --fit-repeat 3 --out out/hep_simple_nll_fit.json
 ```
 
+## Smoke runs
+
+Some suites support `--smoke` to reduce runtime (useful for GPU/Metal sanity checks and CI).
+
+Example: Monte Carlo safety suite (CPU+CUDA in the same output directory):
+
+```bash
+python suites/montecarlo_safety/suite.py --out-dir out/mc_safety --deterministic --smoke --device cpu
+python suites/montecarlo_safety/suite.py --out-dir out/mc_safety --deterministic --smoke --device cuda
+python suites/montecarlo_safety/report.py out/mc_safety > out/mc_safety/report.md
+```
+
 ## Export to a standalone repo (from the monorepo seed)
 
 If you are starting from the `nextstat.io` monorepo and want a clean standalone repo directory
@@ -154,6 +166,23 @@ Suites:
 - `bayesian/` (NextStat-only seed: NUTS diagnostics + ESS/sec proxies; only when `--bayesian` is passed)
 - `ml/` (NextStat-only seed: cold-start TTFR vs warm-call throughput; optional JAX cases)
 - `econometrics/` (NextStat seed + optional parity vs statsmodels/linearmodels; only when `--econometrics` is passed)
+- `glm/` (GLM parity vs statsmodels/sklearn/glum; only when `--glm` is passed)
+- `survival/` (survival + truth-recovery modes; only when `--survival` is passed)
+- `timeseries/` (Kalman + GARCH; only when `--timeseries` is passed)
+- `evt/` (GEV/GPD; only when `--evt` is passed)
+- `insurance/` (loss reserving; only when `--insurance` is passed)
+- `meta_analysis/` (fixed/random effects; only when `--meta-analysis` is passed)
+- `mams/` (MAMS/NUTS/MCLMC comparisons; only when `--mams` is passed)
+- `montecarlo_safety/` (fault-tree MC throughput; only when `--montecarlo-safety` is passed)
+
+## Validate Artifacts
+
+Validate any produced artifacts (suite indexes validate their referenced case JSONs):
+
+```bash
+python scripts/validate_artifacts.py --strict out
+python scripts/validate_artifacts.py --strict manifests/snapshots
+```
 
 ## DOI Publishing (Template)
 
@@ -164,7 +193,7 @@ For Zenodo/DOI publishing guidance and metadata templates, see `zenodo/`.
 - `env/` pinned environment scaffolding (Python + Rust + Docker templates)
 - `CITATION.cff` citation metadata template (fill DOI/version on release)
 - `manifests/schema/` JSON Schemas for results + baseline manifests
-- `suites/` suite layout (currently runnable: `hep`, `pharma`, `bayesian`, `ml`)
+- `suites/` suite layout (runnable: `hep`, `pharma`, `bayesian`, `ml`, `econometrics`, `glm`, `survival`, `timeseries`, `evt`, `insurance`, `meta_analysis`, `mams`, `montecarlo_safety`)
 - `ci/` workflow templates for verify/publish (standalone repo)
 
 ## Notes

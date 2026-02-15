@@ -67,30 +67,25 @@ struct GpuUnbinnedRateModifierDesc {
 /**
  * Per-channel descriptor for multi-channel GPU-native L-BFGS.
  *
- * When n_channels > 1, each channel's data (obs, procs, rate_mods, etc.)
- * is concatenated into flat arrays. Offsets in this struct locate each
- * channel's slice within the concatenated buffers.
- *
- * Process descriptors must have their internal offsets (rate_mod_offset,
- * shape_param_offset, pdf_aux_offset) pre-adjusted to be global offsets
- * into the concatenated arrays.
+ * Holds device pointers to channel-local static buffers. This avoids any
+ * host-side download/re-upload when launching the persistent optimizer in
+ * multi-channel mode.
  *
  * Gaussian constraints and constraint_const should be assigned to only one
  * channel (typically channel 0) to avoid double-counting.
  */
 struct GpuChannelDesc {
-    unsigned int obs_base;            /* offset into g_obs_flat */
-    unsigned int toy_offsets_base;    /* offset into g_toy_offsets (= ch * (n_toys+1)) */
-    unsigned int proc_base;           /* offset into g_procs */
+    const double* obs_flat;                           /* flattened events for this channel */
+    const unsigned int* toy_offsets;                  /* [n_toys+1] prefix sums */
+    const struct GpuUnbinnedProcessDesc* procs;        /* [n_procs] */
+    const struct GpuUnbinnedRateModifierDesc* rate_mods; /* [total_rate_mods] */
+    const unsigned int* shape_pidx;                   /* [total_shape_params] */
+    const double* pdf_aux_f64;                        /* [pdf_aux_len] */
+    const struct GpuUnbinnedGaussConstraintEntry* gauss; /* [n_gauss] (channel 0 only) */
     unsigned int n_procs;
-    unsigned int rate_mod_base;       /* offset into g_rate_mods */
     unsigned int total_rate_mods;
-    unsigned int shape_base;          /* offset into g_shape_pidx */
     unsigned int total_shape_params;
-    unsigned int pdf_aux_base;        /* offset into g_pdf_aux_f64 */
-    unsigned int gauss_base;          /* offset into g_gauss */
     unsigned int n_gauss;
-    unsigned int _pad;
     double obs_lo;
     double obs_hi;
     double constraint_const;

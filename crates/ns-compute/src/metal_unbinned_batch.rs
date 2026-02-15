@@ -13,6 +13,10 @@ use std::mem;
 ///
 /// Contains both single-dataset and batch toy entry points.
 const MSL_SRC: &str = include_str!("../kernels/unbinned_nll_grad.metal");
+const METAL_LOCAL_GRAD_CAP: usize = 24;
+const METAL_BATCH_PROC_CACHE_CAP: usize = 256;
+const METAL_BATCH_RATE_MOD_DNU_CAP: usize = 256;
+const METAL_BATCH_PROC_META_CAP: usize = 2 * METAL_BATCH_PROC_CACHE_CAP;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -23,6 +27,7 @@ struct BatchScalarArgs {
     total_shape_params: u32,
     n_gauss: u32,
     n_toys: u32,
+    local_grad_cols: u32,
     constraint_const: f32,
 }
 
@@ -97,7 +102,6 @@ pub struct MetalUnbinnedBatchAccelerator {
 
     // --- CPU scratch ---
     scratch_params_f32: Vec<f32>,
-    scratch_zeros_f32: Vec<f32>,
 }
 
 impl MetalUnbinnedBatchAccelerator {
@@ -195,6 +199,44 @@ impl MetalUnbinnedBatchAccelerator {
         Self::build(device, queue, data, buf_obs_flat_f32, buf_toy_offsets, n_toys)
     }
 
+    /// Create batch accelerator from device-resident toy data and device-resident toy offsets.
+    ///
+    /// This avoids re-uploading `toy_offsets` when an upstream sampler already materialized
+    /// the offsets buffer on the same Metal device.
+    pub fn from_unbinned_static_and_toys_device_with_offsets(
+        data: &UnbinnedGpuModelData,
+        toy_offsets: &[u32],
+        buf_toy_offsets: Buffer,
+        buf_obs_flat_f32: Buffer,
+        n_toys: usize,
+    ) -> ns_core::Result<Self> {
+        if data.n_obs != 1 {
+            return Err(ns_core::Error::Validation(format!(
+                "Metal unbinned batch currently supports n_obs=1, got {}",
+                data.n_obs
+            )));
+        }
+        if data.processes.is_empty() {
+            return Err(ns_core::Error::Validation(
+                "UnbinnedGpuModelData requires at least one process".into(),
+            ));
+        }
+        if n_toys == 0 {
+            return Err(ns_core::Error::Validation("n_toys must be > 0".into()));
+        }
+        if toy_offsets.len() != n_toys + 1 {
+            return Err(ns_core::Error::Validation(format!(
+                "toy_offsets length mismatch: expected {}, got {}",
+                n_toys + 1,
+                toy_offsets.len()
+            )));
+        }
+
+        let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
+        let queue = device.new_command_queue();
+        Self::build(device, queue, data, buf_obs_flat_f32, buf_toy_offsets, n_toys)
+    }
+
     /// Shared builder: compiles MSL, uploads model-descriptor buffers, allocates work buffers.
     fn build(
         device: Device,
@@ -204,24 +246,18 @@ impl MetalUnbinnedBatchAccelerator {
         buf_toy_offsets: Buffer,
         n_toys: usize,
     ) -> ns_core::Result<Self> {
-        let options = CompileOptions::new();
-        let library = device
-            .new_library_with_source(MSL_SRC, &options)
-            .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
-
-        let fn_nll_grad = library
-            .get_function("unbinned_batch_nll_grad", None)
-            .map_err(|e| metal_err(format!("get unbinned_batch_nll_grad: {e}")))?;
-        let fn_nll_only = library
-            .get_function("unbinned_batch_nll_only", None)
-            .map_err(|e| metal_err(format!("get unbinned_batch_nll_only: {e}")))?;
-
-        let pipeline_nll_grad = device
-            .new_compute_pipeline_state_with_function(&fn_nll_grad)
-            .map_err(|e| metal_err(format!("pipeline unbinned_batch_nll_grad: {e}")))?;
-        let pipeline_nll_only = device
-            .new_compute_pipeline_state_with_function(&fn_nll_only)
-            .map_err(|e| metal_err(format!("pipeline unbinned_batch_nll_only: {e}")))?;
+        let pipeline_nll_grad = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_batch",
+            MSL_SRC,
+            "unbinned_batch_nll_grad",
+        )?;
+        let pipeline_nll_only = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_batch",
+            MSL_SRC,
+            "unbinned_batch_nll_only",
+        )?;
 
         let (lo, hi) = data
             .obs_bounds
@@ -300,6 +336,7 @@ impl MetalUnbinnedBatchAccelerator {
             total_shape_params: data.shape_param_indices.len() as u32,
             n_gauss: data.gauss_constraints.len() as u32,
             n_toys: n_toys as u32,
+            local_grad_cols: data.n_params.min(METAL_LOCAL_GRAD_CAP) as u32,
             constraint_const: data.constraint_const as f32,
         };
 
@@ -324,7 +361,6 @@ impl MetalUnbinnedBatchAccelerator {
             n_toys,
             scalar_args,
             scratch_params_f32: vec![0.0f32; n_toys * data.n_params],
-            scratch_zeros_f32: vec![0.0f32; n_toys * data.n_params],
         })
     }
 
@@ -345,13 +381,19 @@ impl MetalUnbinnedBatchAccelerator {
 
         for (i, &v) in params_flat.iter().enumerate() {
             self.scratch_params_f32[i] = v as f32;
-            self.scratch_zeros_f32[i] = 0.0f32;
         }
         Self::copy_to_buffer(&self.buf_params_flat, &self.scratch_params_f32);
-        Self::copy_to_buffer(&self.buf_grad_out, &self.scratch_zeros_f32);
+        Self::zero_buffer_f32(&self.buf_grad_out, self.n_toys * self.n_params);
 
         let block_size = self.block_size();
-        let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
+        let local_grad_cols = self.scalar_args.local_grad_cols as usize;
+        let shared_bytes = (self.n_params
+            + block_size
+            + (block_size * local_grad_cols)
+            + (3 * METAL_BATCH_PROC_CACHE_CAP)
+            + METAL_BATCH_RATE_MOD_DNU_CAP
+            + METAL_BATCH_PROC_META_CAP)
+            * mem::size_of::<f32>();
 
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
@@ -405,7 +447,8 @@ impl MetalUnbinnedBatchAccelerator {
         Self::copy_to_buffer(&self.buf_params_flat, &self.scratch_params_f32);
 
         let block_size = self.block_size();
-        let shared_bytes = (self.n_params + block_size) * mem::size_of::<f32>();
+        let shared_bytes =
+            (self.n_params + block_size + (2 * METAL_BATCH_PROC_CACHE_CAP)) * mem::size_of::<f32>();
 
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
@@ -482,6 +525,19 @@ impl MetalUnbinnedBatchAccelerator {
         // SAFETY: `buf` capacity >= `bytes`; `contents()` is valid; no overlap with `data`.
         unsafe {
             ptr.copy_from_nonoverlapping(data.as_ptr(), data.len());
+        }
+        buf.did_modify_range(NSRange::new(0, bytes));
+    }
+
+    fn zero_buffer_f32(buf: &Buffer, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let bytes = (count * mem::size_of::<f32>()) as u64;
+        let ptr = buf.contents() as *mut u8;
+        // SAFETY: `buf` capacity >= `bytes`; `contents()` is valid for buffer lifetime.
+        unsafe {
+            std::ptr::write_bytes(ptr, 0, bytes as usize);
         }
         buf.did_modify_range(NSRange::new(0, bytes));
     }

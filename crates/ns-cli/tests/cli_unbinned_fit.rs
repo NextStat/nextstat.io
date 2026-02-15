@@ -271,6 +271,36 @@ fn assert_close(name: &str, a: f64, b: f64, tol: f64) {
     assert!((a - b).abs() <= tol, "{name} mismatch: |{a} - {b}| = {} > {tol}", (a - b).abs());
 }
 
+fn write_smoke_unbinned_toys_config(config: &PathBuf, root: &PathBuf) {
+    let spec = serde_json::json!({
+        "schema_version": "nextstat_unbinned_spec_v0",
+        "model": {
+            "poi": "mu",
+            "parameters": [
+                { "name": "mu", "init": 1.0, "bounds": [0.0, 5.0] },
+                { "name": "gauss_mu", "init": 125.0, "bounds": [125.0, 125.0] },
+                { "name": "gauss_sigma", "init": 30.0, "bounds": [30.0, 30.0] }
+            ]
+        },
+        "channels": [
+            {
+                "name": "SR",
+                "include_in_fit": true,
+                "data": { "file": root, "tree": "events" },
+                "observables": [ { "name": "mbb", "bounds": [0.0, 500.0] } ],
+                "processes": [
+                    {
+                        "name": "p",
+                        "pdf": { "type": "gaussian", "observable": "mbb", "params": ["gauss_mu", "gauss_sigma"] },
+                        "yield": { "type": "scaled", "base_yield": 1000.0, "scale": "mu" }
+                    }
+                ]
+            }
+        ]
+    });
+    std::fs::write(config, serde_json::to_string_pretty(&spec).unwrap()).unwrap();
+}
+
 #[test]
 fn unbinned_fit_toys_gpu_sample_toys_requires_gpu_cuda_or_metal() {
     let out = run(&[
@@ -321,10 +351,17 @@ fn unbinned_hypotest_toys_gpu_sample_toys_requires_gpu_cuda_or_metal() {
 
 #[test]
 fn unbinned_fit_toys_gpu_devices_requires_gpu_cuda() {
+    let root = fixture_path("simple_tree.root");
+    if !root.exists() {
+        return;
+    }
+    let config = tmp_path("unbinned_spec_fit_toys_gpu_devices_requires_gpu_cuda.json");
+    write_smoke_unbinned_toys_config(&config, &root);
+    let config_arg = config.to_string_lossy().into_owned();
     let out = run(&[
         "unbinned-fit-toys",
         "--config",
-        "does_not_exist.json",
+        config_arg.as_str(),
         "--n-toys",
         "10",
         "--gpu-devices",
@@ -341,14 +378,22 @@ fn unbinned_fit_toys_gpu_devices_requires_gpu_cuda() {
         stderr.contains("--gpu-devices requires --gpu cuda"),
         "stderr did not mention flag constraint: {stderr}"
     );
+    let _ = std::fs::remove_file(&config);
 }
 
 #[test]
 fn unbinned_hypotest_toys_gpu_devices_requires_gpu_cuda() {
+    let root = fixture_path("simple_tree.root");
+    if !root.exists() {
+        return;
+    }
+    let config = tmp_path("unbinned_spec_hypotest_toys_gpu_devices_requires_gpu_cuda.json");
+    write_smoke_unbinned_toys_config(&config, &root);
+    let config_arg = config.to_string_lossy().into_owned();
     let out = run(&[
         "unbinned-hypotest-toys",
         "--config",
-        "does_not_exist.json",
+        config_arg.as_str(),
         "--mu",
         "1.0",
         "--n-toys",
@@ -367,6 +412,7 @@ fn unbinned_hypotest_toys_gpu_devices_requires_gpu_cuda() {
         stderr.contains("--gpu-devices requires --gpu cuda"),
         "stderr did not mention flag constraint: {stderr}"
     );
+    let _ = std::fs::remove_file(&config);
 }
 
 #[test]

@@ -335,7 +335,7 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
         }
 
     # Fixed report structure. If you add/remove pages, update this number.
-    total_pages = 7
+    total_pages = 8
     page = 1
 
     with PdfPages(targets.pdf, metadata=metadata) as pages:
@@ -682,7 +682,91 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
         pages.savefig(fig)
         page += 1
 
-        # Page 6: dataset fingerprint (full hashes and counts)
+        # Page 6: Pharma PK/NLME validation
+        fig, ax = _new_page()
+        _add_title(ax, "Key Suite: Pharma PK/NLME", subtitle="Parameter recovery and population estimation (Apex2)")
+
+        pharma_smoke = _get_suite(report, "pharma")
+        pharma_ref_name, pharma_ref = _pick_suite(report, ["pharma_reference"])
+
+        ax.text(
+            0.0,
+            0.88,
+            f"Pharma smoke: {pharma_smoke.get('status', 'not present')}    "
+            f"Pharma reference ({pharma_ref_name}): {pharma_ref.get('status', 'not present')}",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["muted2"],
+            transform=ax.transAxes,
+        )
+
+        pref_n = pharma_ref.get("n_cases", "-")
+        pref_ok = pharma_ref.get("n_ok", "-")
+        ax.text(
+            0.0,
+            0.84,
+            f"Reference cases: {pref_ok}/{pref_n} ok",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color=_COL["ink"],
+            transform=ax.transAxes,
+        )
+
+        ph_hl = pharma_ref.get("highlights") if isinstance(pharma_ref.get("highlights"), list) else []
+        if ph_hl:
+            ax.text(
+                0.0,
+                0.80,
+                "\n".join(f"- {str(x)}" for x in ph_hl[:5]),
+                ha="left",
+                va="top",
+                fontsize=9,
+                color=_COL["ink"],
+                transform=ax.transAxes,
+            )
+
+        param_rows = _get_worst_cases(pharma_ref, "max_abs_param_err")[:5]
+        pred_rows = _get_worst_cases(pharma_ref, "max_abs_err")[:5]
+
+        def _pharma_table(rows: Sequence[Mapping[str, Any]], *, title: str, y_top: float):
+            ax.text(0.0, y_top, title, ha="left", va="top", fontsize=11, weight="bold", transform=ax.transAxes)
+            data = []
+            for r in rows:
+                data.append(
+                    [
+                        str(r.get("case") or "unknown"),
+                        _fmt_sci(r.get("value")),
+                        str(r.get("notes") or ""),
+                    ]
+                )
+            if not data:
+                data = [["(not available)", "-", ""]]
+            tbl = ax.table(
+                cellText=data,
+                colLabels=["Case", "Value", "Notes"],
+                colColours=[_COL["border"], _COL["border"], _COL["border"]],
+                loc="upper left",
+                bbox=[0.0, y_top - 0.30, 1.0, 0.24],
+            )
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(9)
+            for (r, c), cell in tbl.get_celld().items():
+                cell.set_edgecolor(_COL["border"])
+                if r == 0:
+                    cell.get_text().set_weight("bold")
+                if r > 0 and c == 0:
+                    cell.get_text().set_ha("left")
+
+        _pharma_table(param_rows, title="Worst parameter recovery error", y_top=0.72)
+        _pharma_table(pred_rows, title="Worst prediction error (analytic)", y_top=0.38)
+
+        _add_footer(ax, page, total_pages, ws_sha=ws_sha, apex_sha=apex_sha)
+        pages.savefig(fig)
+        page += 1
+
+        # Page 7: dataset fingerprint (full hashes and counts)  [was page 6]
         fig, ax = _new_page()
         _add_title(ax, "Dataset Fingerprint", subtitle="Workspace hash and structure summary")
         channels = ds.get("channels") or []
@@ -708,7 +792,7 @@ def _render_pdf(report: Mapping[str, Any], targets: _Targets):
         pages.savefig(fig)
         page += 1
 
-        # Page 7: environment
+        # Page 8: environment  [was page 7]
         fig, ax = _new_page()
         _add_title(ax, "Environment", subtitle="Reproducibility metadata")
         det_settings = env.get("determinism_settings") or {}

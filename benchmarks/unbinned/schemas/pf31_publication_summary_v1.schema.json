@@ -1,0 +1,52 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf31_publication_summary_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.1 publication benchmark summary (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "run_root",
+    "matrix_path",
+    "gates",
+    "overall_pass",
+    "overall",
+    "gate_failures",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf31_publication_summary.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "run_root": { "type": "string", "minLength": 1 },
+    "matrix_path": { "type": "string", "minLength": 1 },
+    "gates": { "type": "object", "additionalProperties": true },
+    "overall_pass": { "type": "boolean" },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_cases", "n_runs", "n_rc_fail", "n_gate_failures"],
+      "properties": {
+        "n_cases": { "type": "integer", "minimum": 0 },
+        "n_runs": { "type": "integer", "minimum": 0 },
+        "n_rc_fail": { "type": "integer", "minimum": 0 },
+        "n_gate_failures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gate_failures": { "type": "array", "items": { "type": "string" } },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "missing", "rows"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "missing": { "type": "boolean" },
+          "rows": { "type": "array" }
+        }
+      }
+    }
+  }
+}
+

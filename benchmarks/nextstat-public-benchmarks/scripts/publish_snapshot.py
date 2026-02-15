@@ -35,12 +35,12 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-def validate_json(instance_path: Path, schema_path: Path) -> None:
-    import jsonschema  # type: ignore
-
-    schema = load_json(schema_path)
-    inst = load_json(instance_path)
-    jsonschema.validate(inst, schema)
+def validate_artifact(path: Path, repo_root: Path, env: dict[str, str]) -> None:
+    subprocess.check_call(
+        [sys.executable, "scripts/validate_artifacts.py", "--strict", str(path)],
+        cwd=str(repo_root),
+        env=env,
+    )
 
 
 def main() -> int:
@@ -48,6 +48,7 @@ def main() -> int:
     ap.add_argument("--snapshot-id", default="", help="Snapshot id (default: auto-generated).")
     ap.add_argument("--out-root", default="manifests/snapshots", help="Root directory for snapshots.")
     ap.add_argument("--deterministic", action="store_true")
+    ap.add_argument("--smoke", action="store_true", help="Fast mode for expensive suites (where supported).")
     ap.add_argument(
         "--suite",
         default="public-benchmarks-seed",
@@ -62,10 +63,23 @@ def main() -> int:
     ap.add_argument("--pharma", action="store_true", help="Run pharma suite.")
     ap.add_argument("--econometrics", action="store_true", help="Run econometrics suite.")
     ap.add_argument("--bayesian", action="store_true", help="Run Bayesian suite.")
+    ap.add_argument("--glm", action="store_true", help="Run GLM suite.")
+    ap.add_argument("--survival", action="store_true", help="Run survival suite.")
+    ap.add_argument("--timeseries", action="store_true", help="Run timeseries suite.")
+    ap.add_argument("--evt", action="store_true", help="Run EVT suite.")
+    ap.add_argument("--insurance", action="store_true", help="Run insurance suite.")
+    ap.add_argument("--meta-analysis", action="store_true", help="Run meta-analysis suite.")
+    ap.add_argument("--mams", action="store_true", help="Run MAMS suite.")
+    ap.add_argument("--montecarlo-safety", action="store_true", help="Run Monte Carlo safety suite.")
+    ap.add_argument(
+        "--montecarlo-device",
+        default="cpu",
+        help="Monte Carlo safety device(s): cpu, cuda, or comma-separated (e.g. cpu,cuda).",
+    )
     ap.add_argument(
         "--bayesian-backends",
-        default="nextstat",
-        help="Bayesian suite backends (comma-separated): nextstat,cmdstanpy,pymc (optional).",
+        default="nextstat,nextstat_dense",
+        help="Bayesian suite backends (comma-separated): nextstat,nextstat_dense,cmdstanpy,pymc (optional).",
     )
     ap.add_argument("--bayesian-n-chains", type=int, default=4)
     ap.add_argument("--bayesian-warmup", type=int, default=500)
@@ -124,12 +138,34 @@ def main() -> int:
     results: list[Path] = []
 
     # Defaults: keep the seed publisher lightweight (HEP + pharma) unless a suite is explicitly requested.
-    run_any = bool(args.hep or args.pharma or args.econometrics or args.bayesian or args.ml)
+    run_any = bool(
+        args.hep
+        or args.pharma
+        or args.econometrics
+        or args.bayesian
+        or args.ml
+        or args.glm
+        or args.survival
+        or args.timeseries
+        or args.evt
+        or args.insurance
+        or args.meta_analysis
+        or args.mams
+        or args.montecarlo_safety
+    )
     run_hep = bool(args.hep or (not run_any))
     run_pharma = bool(args.pharma or (not run_any))
     run_econometrics = bool(args.econometrics)
     run_bayesian = bool(args.bayesian)
     run_ml = bool(args.ml)
+    run_glm = bool(args.glm)
+    run_survival = bool(args.survival)
+    run_timeseries = bool(args.timeseries)
+    run_evt = bool(args.evt)
+    run_insurance = bool(args.insurance)
+    run_meta = bool(args.meta_analysis)
+    run_mams = bool(args.mams)
+    run_mc = bool(args.montecarlo_safety)
 
     if run_hep:
         hep_out = snap_dir / "hep"
@@ -281,50 +317,109 @@ def main() -> int:
             env=env,
         )
 
+    if run_glm:
+        glm_out = snap_dir / "glm"
+        cmd = [sys.executable, "suites/glm/suite.py", "--out-dir", str(glm_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(glm_out / "glm_suite.json")
+
+    if run_survival:
+        surv_out = snap_dir / "survival"
+        cmd = [sys.executable, "suites/survival/suite.py", "--out-dir", str(surv_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        if args.smoke:
+            cmd.append("--smoke")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(surv_out / "survival_suite.json")
+
+    if run_timeseries:
+        ts_out = snap_dir / "timeseries"
+        cmd = [sys.executable, "suites/timeseries/suite.py", "--out-dir", str(ts_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        if args.smoke:
+            cmd.append("--smoke")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(ts_out / "timeseries_suite.json")
+
+    if run_evt:
+        evt_out = snap_dir / "evt"
+        cmd = [sys.executable, "suites/evt/suite.py", "--out-dir", str(evt_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(evt_out / "evt_suite.json")
+
+    if run_insurance:
+        ins_out = snap_dir / "insurance"
+        cmd = [sys.executable, "suites/insurance/suite.py", "--out-dir", str(ins_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(ins_out / "insurance_suite.json")
+
+    if run_meta:
+        meta_out = snap_dir / "meta_analysis"
+        cmd = [sys.executable, "suites/meta_analysis/suite.py", "--out-dir", str(meta_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(meta_out / "meta_analysis_suite.json")
+
+    if run_mams:
+        mams_out = snap_dir / "mams"
+        cmd = [sys.executable, "suites/mams/suite.py", "--out-dir", str(mams_out)]
+        if args.deterministic:
+            cmd.append("--deterministic")
+        if args.smoke:
+            cmd.append("--smoke")
+            # Smoke snapshots should be fast and baseline-optional. BlackJAX can be very slow
+            # on CPU runners due to JIT + dependency weight, so keep smoke MAMS to NextStat-only.
+            cmd.extend(["--backends", "nextstat_mams,nextstat_nuts"])
+        subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+        results.append(mams_out / "mams_suite.json")
+
+    if run_mc:
+        mc_out = snap_dir / "montecarlo_safety"
+        devices = [x.strip() for x in str(args.montecarlo_device).split(",") if x.strip()]
+        for dev in devices:
+            if dev not in {"cpu", "cuda"}:
+                raise SystemExit(f"unsupported montecarlo device: {dev!r} (expected cpu|cuda)")
+            cmd = [
+                sys.executable,
+                "suites/montecarlo_safety/suite.py",
+                "--out-dir",
+                str(mc_out),
+                "--device",
+                dev,
+            ]
+            if args.deterministic:
+                cmd.append("--deterministic")
+            if args.smoke:
+                cmd.append("--smoke")
+            subprocess.check_call(cmd, cwd=str(repo_root), env=env)
+            if dev == "cpu":
+                results.append(mc_out / "montecarlo_safety_suite.json")
+            else:
+                results.append(mc_out / f"montecarlo_safety_suite_{dev}.json")
+
+        # Human-facing report (optional; does not participate in schema validation).
+        subprocess.check_call(
+            [
+                sys.executable,
+                "suites/montecarlo_safety/report.py",
+                str(mc_out),
+            ],
+            cwd=str(repo_root),
+            env=env,
+        )
+
     # Validate suite + case schemas.
-    schema_case = repo_root / "manifests/schema/benchmark_result_v1.schema.json"
-    schema_suite = repo_root / "manifests/schema/benchmark_suite_result_v1.schema.json"
-    schema_pharma_case = repo_root / "manifests/schema/pharma_benchmark_result_v1.schema.json"
-    schema_pharma_suite = repo_root / "manifests/schema/pharma_benchmark_suite_result_v1.schema.json"
-    schema_bayes_case = repo_root / "manifests/schema/bayesian_benchmark_result_v1.schema.json"
-    schema_bayes_suite = repo_root / "manifests/schema/bayesian_benchmark_suite_result_v1.schema.json"
-    schema_ml_case = repo_root / "manifests/schema/ml_benchmark_result_v1.schema.json"
-    schema_ml_suite = repo_root / "manifests/schema/ml_benchmark_suite_result_v1.schema.json"
-    schema_econ_case = repo_root / "manifests/schema/econometrics_benchmark_result_v1.schema.json"
-    schema_econ_suite = repo_root / "manifests/schema/econometrics_benchmark_suite_result_v1.schema.json"
     for r in results:
-        obj = load_json(r)
-        sv = str(obj.get("schema_version", ""))
-        if sv == "nextstat.benchmark_suite_result.v1":
-            validate_json(r, schema_suite)
-            for e in obj.get("cases", []):
-                validate_json((r.parent / e["path"]).resolve(), schema_case)
-        elif sv == "nextstat.pharma_benchmark_suite_result.v1":
-            validate_json(r, schema_pharma_suite)
-            for e in obj.get("cases", []):
-                validate_json((r.parent / e["path"]).resolve(), schema_pharma_case)
-        elif sv == "nextstat.bayesian_benchmark_suite_result.v1":
-            validate_json(r, schema_bayes_suite)
-            for e in obj.get("cases", []):
-                validate_json((r.parent / e["path"]).resolve(), schema_bayes_case)
-        elif sv == "nextstat.ml_benchmark_suite_result.v1":
-            validate_json(r, schema_ml_suite)
-            for e in obj.get("cases", []):
-                validate_json((r.parent / e["path"]).resolve(), schema_ml_case)
-        elif sv == "nextstat.econometrics_benchmark_suite_result.v1":
-            validate_json(r, schema_econ_suite)
-            for e in obj.get("cases", []):
-                validate_json((r.parent / e["path"]).resolve(), schema_econ_case)
-        elif sv == "nextstat.benchmark_result.v1":
-            validate_json(r, schema_case)
-        elif sv == "nextstat.pharma_benchmark_result.v1":
-            validate_json(r, schema_pharma_case)
-        elif sv == "nextstat.bayesian_benchmark_result.v1":
-            validate_json(r, schema_bayes_case)
-        elif sv == "nextstat.ml_benchmark_result.v1":
-            validate_json(r, schema_ml_case)
-        elif sv == "nextstat.econometrics_benchmark_result.v1":
-            validate_json(r, schema_econ_case)
+        validate_artifact(r, repo_root, env)
 
     # Write baseline manifest referencing produced results; dataset list will be derived from results.
     baseline_path = snap_dir / "baseline_manifest.json"
@@ -343,8 +438,7 @@ def main() -> int:
     for r in results:
         cmd.extend(["--result", str(r)])
     subprocess.check_call(cmd, cwd=str(repo_root), env=env)
-
-    validate_json(baseline_path, repo_root / "manifests/schema/baseline_manifest_v1.schema.json")
+    validate_artifact(baseline_path, repo_root, env)
 
     # Write an index for the full snapshot artifact set (hash inventory).
     index_path = snap_dir / "snapshot_index.json"
@@ -364,7 +458,7 @@ def main() -> int:
         cwd=str(repo_root),
         env=env,
     )
-    validate_json(index_path, repo_root / "manifests/schema/snapshot_index_v1.schema.json")
+    validate_artifact(index_path, repo_root, env)
 
     print(f"snapshot ready: {snap_dir}")
     return 0

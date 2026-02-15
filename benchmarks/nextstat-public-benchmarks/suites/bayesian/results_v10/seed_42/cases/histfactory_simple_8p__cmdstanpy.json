@@ -1,0 +1,44 @@
+{
+  "backend": "cmdstanpy",
+  "case": "histfactory_simple_8p",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 42,
+    "target_accept": 0.8
+  },
+  "dataset": {
+    "id": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "path": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "sha256": "e87594b9a23cc580a53a9d0b42df10218132bb8cd2401edf1cfdf020ad1d715d"
+  },
+  "deterministic": false,
+  "diagnostics_summary": {
+    "divergence_rate": null,
+    "max_r_hat": null,
+    "max_treedepth_rate": null,
+    "min_ebfmi": null,
+    "min_ess_bulk": null,
+    "min_ess_tail": null
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "HistFactoryModel(simple_workspace.json)"
+  },
+  "reason": "backend_not_supported_for_model:cmdstanpy:histfactory_simple",
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "warn",
+  "suite": "bayesian",
+  "timing": {
+    "wall_time_s": 0.0
+  }
+}

@@ -2,7 +2,7 @@
 title: "Public Benchmarks"
 description: "Canonical specification for NextStat's public benchmark program: protocols, correctness gates, environment pinning, artifacts, and suite structure for reproducible performance evidence across HEP, pharma, Bayesian, ML, time series, and econometrics."
 status: shipped
-last_updated: 2026-02-08
+last_updated: 2026-02-13
 keywords:
   - public benchmarks
   - reproducible benchmarks
@@ -118,6 +118,7 @@ Each benchmark snapshot should publish:
 Suite doc: [HEP Benchmark Suite](/docs/benchmarks/suites/hep).
 Unbinned cross-framework tables: [Unbinned Likelihood Benchmark Suite](/docs/benchmarks/unbinned-benchmark-suite).
 Reproducibility runbook + JSON contract: [Unbinned Benchmark Reproducibility](/docs/benchmarks/unbinned-reproducibility).
+Publication matrix runbook (PF3.1 GPU): [Unbinned GPU Publication Runbook (PF3.1)](/docs/benchmarks/unbinned-publication-runbook).
 
 Measurements:
 

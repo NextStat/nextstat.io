@@ -504,6 +504,45 @@ optimizer stabilization pass in both CUDA-native and lockstep codepaths:
 This pass targets pathological "run to max_iter" tails. Quantitative impact is
 measured in the next GEX44 rerun matrix (10k/100k toy scale).
 
+### 8.13 4x A40 large-scale snapshot (2026-02-13): `2M events/toy × 10k toys`
+
+Artifact:
+
+- `benchmarks/unbinned/artifacts/2026-02-13/pf31_2m10k_multigpu_20260213T125921Z/summary.json`
+
+Device-sharded path (`--gpu-sample-toys`):
+
+| Case | Wall (s) | Throughput (toys/s) | Scaling vs 1 GPU |
+|---|---:|---:|---:|
+| 1 GPU (`--gpu-devices 0 --gpu-shards 8`) | 210.78 | 47.44 | 1.00× |
+| 2 GPU (`--gpu-devices 0,1 --gpu-shards 8`) | 106.72 | 93.70 | 1.97× |
+| 4 GPU (`--gpu-devices 0,1,2,3 --gpu-shards 16`) | 58.79 | 170.09 | 3.58× |
+
+Native-sharded path (`--gpu-native`):
+
+| Case | Wall (s) | Throughput (toys/s) | Scaling vs 1 GPU |
+|---|---:|---:|---:|
+| 1 GPU (`--gpu-devices 0 --gpu-native`) | 479.09 | 20.87 | 1.00× |
+| 2 GPU (`--gpu-devices 0,1 --gpu-native`) | 238.42 | 41.94 | 2.01× |
+| 4 GPU (`--gpu-devices 0,1,2,3 --gpu-native`) | 121.49 | 82.31 | 3.94× |
+
+Observed:
+
+- All successful runs converged `10000/10000` with `n_error=0`.
+- On this workload, `cuda_device_sharded` is materially faster than
+  `cuda_gpu_native_sharded` at the same GPU count.
+- Single-GPU `cuda_device_sharded` with `--gpu-shards 4` fails fast due
+  offset overflow (`total toy events overflow u32`); using `--gpu-shards 8`
+  avoids the overflow by reducing events per shard.
+- P0 guardrail update: `nextstat` now preflights estimated events-per-toy
+  against 32-bit toy-offset limits and auto-raises shard count when needed
+  (or fails early for explicit undersharded `--gpu-shards`), preventing this
+  overflow class before GPU sampling starts.
+- Post-fix verification run (fresh 2x A40 session):
+  - `benchmarks/unbinned/artifacts/2026-02-13/pf31_p0_2gpu_2m10k_20260213T143409Z/summary.json`
+  - `pipeline=cuda_device_sharded`, `wall=106.711s`, `10000/10000` converged,
+    `n_error=0`, shard plan `[0,1,0,1,0,1,0,1]`.
+
 ---
 
 ## 9. Limitations and future work

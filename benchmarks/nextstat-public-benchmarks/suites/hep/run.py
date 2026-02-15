@@ -21,6 +21,9 @@ import pyhf
 
 import nextstat
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from scripts.bench_env import collect_environment
+
 
 NLL_SANITY_ATOL = 1e-8
 NLL_SANITY_RTOL = 1e-12
@@ -172,6 +175,7 @@ def main() -> int:
         "suite": "hep",
         "case": str(args.case),
         "deterministic": bool(args.deterministic),
+        "environment": collect_environment(),
         "meta": {
             "python": sys.version.split()[0],
             "platform": platform.platform(),

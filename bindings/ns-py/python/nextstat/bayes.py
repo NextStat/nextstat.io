@@ -94,66 +94,44 @@ def save(idata, path: str | Path, *, format: str = "json") -> Path:
 def sample(
     model,
     *,
-    n_chains: int = 4,
-    n_warmup: int = 500,
-    n_samples: int = 1000,
-    seed: int = 42,
-    max_treedepth: int = 10,
-    target_accept: float = 0.8,
-    init_jitter: float = 0.0,
-    init_jitter_rel: float | None = None,
-    init_overdispersed_rel: float | None = None,
-    data: Optional[list[float]] = None,
+    method: str = "nuts",
     return_idata: bool = True,
     out: str | Path | None = None,
     out_format: str = "json",
+    **kwargs,
 ):
-    """Run NUTS sampling.
+    """Run MCMC sampling and return ArviZ ``InferenceData`` by default.
 
-    Notes:
-    - Multi-chain seeding is deterministic: chain `i` uses `seed + i`.
-    - Initialization options are mutually exclusive (set at most one):
-      `init_jitter`, `init_jitter_rel`, `init_overdispersed_rel`.
+    This is a convenience wrapper around :func:`nextstat.sample` that defaults
+    to ``return_idata=True``.
 
-    Parameters:
-    - `init_jitter`: add Normal jitter in unconstrained space (`z`).
-    - `init_jitter_rel`: jitter scale relative to parameter bounds / magnitude
-      (mapped to `z` via a local Jacobian).
-    - `init_overdispersed_rel`: like `init_jitter_rel` but allows larger
-      excursions; useful for overdispersed initializations across chains.
-    - `data`: only supported for `HistFactoryModel` (overrides observed data).
+    Args:
+        model: A NextStat model instance, or a string name for LAPS.
+        method: ``"nuts"`` (default), ``"mams"``, or ``"laps"`` (GPU).
+        return_idata: If ``True`` (default), return ArviZ ``InferenceData``.
+        out: Optional path to save results.
+        out_format: ``"json"`` (default) or ``"netcdf"``.
+        **kwargs: Sampler-specific parameters (see :func:`nextstat.sample`).
 
-    By default returns ArviZ `InferenceData` if dependencies are available.
-    If `return_idata=False`, returns the raw dict from `_core.sample(...)`.
+    Returns:
+        ``InferenceData`` (default) or raw dict if ``return_idata=False``.
+
+    Examples:
+        >>> import nextstat.bayes as bayes
+        >>> model = nextstat.EightSchoolsModel(...)
+        >>> idata = bayes.sample(model, method="mams", n_samples=2000)
+        >>> az.plot_trace(idata)
     """
+    from . import sample as _unified_sample
 
-    from . import _core  # local import to keep import-time light
-
-    raw = _core.sample(
+    return _unified_sample(
         model,
-        n_chains=n_chains,
-        n_warmup=n_warmup,
-        n_samples=n_samples,
-        seed=seed,
-        max_treedepth=max_treedepth,
-        target_accept=target_accept,
-        init_jitter=init_jitter,
-        init_jitter_rel=init_jitter_rel,
-        init_overdispersed_rel=init_overdispersed_rel,
-        data=data,
+        method=method,
+        return_idata=return_idata,
+        out=out,
+        out_format=out_format,
+        **kwargs,
     )
-
-    if not return_idata:
-        if out is not None:
-            import json
-
-            Path(out).write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
-        return raw
-
-    idata = to_inferencedata(raw)
-    if out is not None:
-        save(idata, out, format=out_format)
-    return idata
 
 
 __all__ = [

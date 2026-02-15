@@ -203,7 +203,7 @@ Integration benchmarks:
 
 ### R package (ns-r)
 
-R wrappers for all pharma functions in `bindings/ns-r/R/pharma.R`:
+R wrappers for pharma functions in `bindings/ns-r/R/pharma.R`:
 - `ns_foce()`, `ns_saem()` — NLME estimation
 - `ns_emax()`, `ns_sigmoid_emax()`, `ns_idr()` — PD models
 - `ns_vpc()`, `ns_gof()`, `ns_scm()` — diagnostics

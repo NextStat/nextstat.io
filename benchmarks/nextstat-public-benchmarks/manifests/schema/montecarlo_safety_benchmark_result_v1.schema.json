@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/montecarlo_safety_benchmark_result_v1.schema.json",
+  "title": "NextStat Monte Carlo Safety Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "case",
+    "deterministic",
+    "status",
+    "meta",
+    "dataset",
+    "config",
+    "results",
+    "timing",
+    "baselines",
+    "reproducibility"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.montecarlo_safety_benchmark_result.v1" },
+    "suite": { "const": "montecarlo_safety" },
+    "case": { "type": "string", "minLength": 1 },
+    "deterministic": { "type": "boolean" },
+    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+    "reason": { "type": ["string", "null"] },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["python", "platform", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "spec": { "type": "object" }
+      }
+    },
+    "config": { "type": "object", "additionalProperties": true },
+    "results": { "type": "object", "additionalProperties": true },
+    "timing": { "type": "object", "additionalProperties": true },
+    "baselines": { "type": "object", "additionalProperties": true },
+    "reproducibility": { "type": "object", "additionalProperties": true }
+  }
+}
+

@@ -14,6 +14,7 @@ NextStat is a production-ready statistical inference framework with:
 - **Regression/GLM** — linear, logistic, Poisson, negative binomial, ordinal, LMM, survival (Cox PH).
 - **Pharmacometrics** — 1-compartment oral PK (individual + population NLME), LLOQ handling, Laplace approximation.
 - **Causal inference** — propensity scores, IPW (ATE/ATT/ATC), balance diagnostics.
+- **Visualization** — full TRExFitter plot parity (18 plot types): distributions, pulls, correlations, ranking, CLs, profile, yields, separation, pie, summary, uncertainty, gammas, Brazil band, significance scan, 2D contours, unfolding, morphing, injection.
 - **Bindings** — Python (PyO3), R (extendr, experimental), WASM (browser playground).
 - **Differentiable analysis** — zero-copy PyTorch integration for NN → signal → profiled CLs → loss.
 
@@ -145,6 +146,30 @@ capability.
 - HistFactory XML v2 (native, no ROOT dependency).
 - HS3 roundtrip fidelity improvements.
 - Broader TRExFitter config coverage.
+
+### TRExFitter visualization parity ✅
+
+Full plot-type coverage matching all TRExFitter output types (`ns-viz` crate):
+
+| Plot Type | Module | TRExFitter Step |
+|-----------|--------|-----------------|
+| Pre/post-fit distributions | `distributions` | `d` |
+| NP pulls + constraints | `pulls` | `p` |
+| Correlation matrix | `corr` | `p` |
+| NP ranking (impact on POI) | `ranking` | `r` |
+| CLs upper limit (Brazil band) | `cls` | `l` |
+| 1D likelihood profile | `profile` | `l`/`s` |
+| Yield tables | `yields` | `w`/`d` |
+| Separation (S vs B) | `separation` | `d` |
+| Pie charts (composition) | `pie` | `d` |
+| Summary / multi-fit | `summary` | `m` |
+| Uncertainty breakdown | `uncertainty` | `i` |
+| Gammas / staterror | `gammas` | `p` |
+| Significance scan (p₀ vs parameter) | `significance` | `s` |
+| 2D likelihood contours (2-POI) | `contour` | `l` (2D) |
+| Unfolding (response matrix + spectrum) | `unfolding` | `x` |
+| Morphing validation | `morphing` | config |
+| Signal injection / linearity | `injection` | config |
 
 ## GPU Acceleration Roadmap
 

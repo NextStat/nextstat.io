@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/mams_benchmark_suite_result_v1.schema.json",
+  "title": "NextStat MAMS Benchmark Suite Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite", "deterministic", "meta", "config", "cases", "summary"],
+  "properties": {
+    "schema_version": { "const": "nextstat.mams_benchmark_suite_result.v1" },
+    "suite": { "const": "mams" },
+    "deterministic": { "type": "boolean" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["python", "platform", "nextstat_version"],
+      "properties": {
+        "python": { "type": "string" },
+        "platform": { "type": "string" },
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "config": { "type": "object", "additionalProperties": true },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case", "backend", "seed", "path", "sha256", "status"],
+        "properties": {
+          "case": { "type": "string", "minLength": 1 },
+          "backend": { "type": "string", "enum": ["nextstat_mams", "nextstat_nuts", "blackjax_mclmc"] },
+          "seed": { "type": "integer", "minimum": 0 },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+          "wall_time_s": { "type": ["number", "null"], "minimum": 0 },
+          "n_grad_evals": { "type": ["integer", "null"], "minimum": 0 },
+          "min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },
+          "ess_per_grad": { "type": ["number", "null"], "minimum": 0 },
+          "ess_per_sec": { "type": ["number", "null"], "minimum": 0 },
+          "max_r_hat": { "type": ["number", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_total", "n_ok", "n_warn", "n_failed"],
+      "properties": {
+        "n_total": { "type": "integer", "minimum": 0 },
+        "n_ok": { "type": "integer", "minimum": 0 },
+        "n_warn": { "type": "integer", "minimum": 0 },
+        "n_failed": { "type": "integer", "minimum": 0 },
+        "n_parity_warn": { "type": "integer", "minimum": 0 },
+        "n_parity_fail": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "warn_z", "fail_z", "rows"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "warn_z": { "type": "number", "minimum": 0 },
+        "fail_z": { "type": "number", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "seed", "status", "max_z", "worst"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "seed": { "type": "integer", "minimum": 0 },
+              "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+              "reason": { "type": "string" },
+              "max_z": { "type": ["number", "null"], "minimum": 0 },
+              "worst": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["param", "z"],
+                  "properties": {
+                    "param": { "type": "string", "minLength": 1 },
+                    "z": { "type": "number", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -369,21 +369,23 @@ def _render_autogen_markdown(*, rows: list[RunRow], results_dir: Path) -> str:
     lines.append("")
     lines.append("| Model | NextStat ESS/sec | CmdStan ESS/sec | Ratio |")
     lines.append("|---|---:|---:|---:|")
+    esssec_ratio_by_case: dict[str, float | None] = {}
     for case in case_ids:
         ns = [r.min_ess_bulk_per_sec for r in by_key.get((case, "nextstat"), []) if r.min_ess_bulk_per_sec is not None]
         st = [r.min_ess_bulk_per_sec for r in by_key.get((case, "cmdstanpy"), []) if r.min_ess_bulk_per_sec is not None]
         m_ns, s_ns = _mean_std([float(x) for x in ns])
         m_st, s_st = _mean_std([float(x) for x in st])
         ratio = (m_ns / m_st) if (m_ns is not None and m_st is not None and m_st > 0) else None
+        esssec_ratio_by_case[case] = ratio
         lines.append(
             f"| {CASE_LABEL.get(case, case)} | {_fmt_pm(m_ns, s_ns)} | {_fmt_pm(m_st, s_st)} | {_fmt(ratio, digits=2)}x |"
         )
     lines.append("")
     lines.append("Figures (generated):")
     lines.append("")
-    lines.append(f"![ESS/sec bar chart](../assets/nuts-v10/ess_sec_bar.svg)")
+    lines.append(f"![ESS/sec bar chart](./assets/nuts-v10/ess_sec_bar.svg)")
     lines.append("")
-    lines.append(f"![ESS/sec per-seed scatter](../assets/nuts-v10/ess_sec_seed_scatter.svg)")
+    lines.append(f"![ESS/sec per-seed scatter](./assets/nuts-v10/ess_sec_seed_scatter.svg)")
     lines.append("")
     lines.append("### 7.2 Health gates (worst across seeds)")
     lines.append("")
@@ -409,23 +411,65 @@ def _render_autogen_markdown(*, rows: list[RunRow], results_dir: Path) -> str:
         except Exception:
             d = {}
         esslf = d.get("ess_per_leapfrog") if isinstance(d.get("ess_per_leapfrog"), dict) else {}
-        if esslf:
+        cases_obj = esslf.get("cases") if isinstance(esslf.get("cases"), dict) else None
+        # Back-compat: v1 stored a single case payload.
+        v1_single = esslf if (cases_obj is None and isinstance(esslf.get("case"), str)) else None
+
+        if cases_obj or v1_single:
             lines.append("### 7.3 ESS/leapfrog (algorithmic efficiency)")
             lines.append("")
             lines.append("This diagnostic isolates sampler efficiency per unit of Hamiltonian integration.")
             lines.append("")
             lines.append("| Case | NextStat | CmdStan | Ratio |")
             lines.append("|---|---:|---:|---:|")
-            case = str(esslf.get("case") or "glm_logistic_regression")
-            ns = _safe_float(esslf.get("nextstat"))
-            st = _safe_float(esslf.get("cmdstan"))
-            ratio = (ns / st) if (ns is not None and st is not None and st > 0) else None
-            lines.append(f"| {CASE_LABEL.get(case, case)} | {_fmt(ns)} | {_fmt(st)} | {_fmt(ratio, digits=2)}x |")
-            lines.append("")
-            note = esslf.get("note")
-            if isinstance(note, str) and note.strip():
-                lines.append(f"Note: {note.strip()}")
+            if cases_obj:
+                esslf_ratio_by_case: dict[str, float | None] = {}
+                for case in case_ids:
+                    row = cases_obj.get(case) if isinstance(cases_obj.get(case), dict) else {}
+                    ns_obj = row.get("nextstat") if isinstance(row.get("nextstat"), dict) else {}
+                    st_obj = row.get("cmdstan") if isinstance(row.get("cmdstan"), dict) else {}
+                    ns_mean = _safe_float(ns_obj.get("mean"))
+                    ns_std = _safe_float(ns_obj.get("std"))
+                    st_mean = _safe_float(st_obj.get("mean"))
+                    st_std = _safe_float(st_obj.get("std"))
+                    ratio = (ns_mean / st_mean) if (ns_mean is not None and st_mean is not None and st_mean > 0) else None
+                    esslf_ratio_by_case[case] = ratio
+                    lines.append(
+                        f"| {CASE_LABEL.get(case, case)} | {_fmt_pm(ns_mean, ns_std)} | {_fmt_pm(st_mean, st_std)} | {_fmt(ratio, digits=2)}x |"
+                    )
                 lines.append("")
+                method = esslf.get("ess_method")
+                if isinstance(method, str) and method.strip():
+                    lines.append(f"Note: ESS is computed via `{method.strip()}` (supplementary; not part of v1 public schemas).")
+                    lines.append("Note: Leapfrog totals are summed over post-warmup draws (`n_leapfrog__` / `sample_stats.n_leapfrog`).")
+                    lines.append("")
+
+                # Optional: decompose wall-time ratio into algorithmic vs implied per-LF throughput.
+                lines.append("### 7.4 ESS/sec decomposition (implied)")
+                lines.append("")
+                lines.append("Using the identity: (ESS/sec ratio) ≈ (ESS/LF ratio) × (LF/sec ratio).")
+                lines.append("")
+                lines.append("| Case | ESS/sec ratio | ESS/LF ratio | Implied LF/sec ratio |")
+                lines.append("|---|---:|---:|---:|")
+                for case in case_ids:
+                    r_sec = esssec_ratio_by_case.get(case)
+                    r_lf = esslf_ratio_by_case.get(case)
+                    implied = (r_sec / r_lf) if (r_sec is not None and r_lf is not None and r_lf != 0.0) else None
+                    lines.append(
+                        f"| {CASE_LABEL.get(case, case)} | {_fmt(r_sec, digits=2)}x | {_fmt(r_lf, digits=2)}x | {_fmt(implied, digits=2)}x |"
+                    )
+                lines.append("")
+            else:
+                case = str(v1_single.get("case") or "glm_logistic_regression")  # type: ignore[union-attr]
+                ns = _safe_float(v1_single.get("nextstat"))  # type: ignore[union-attr]
+                st = _safe_float(v1_single.get("cmdstan"))  # type: ignore[union-attr]
+                ratio = (ns / st) if (ns is not None and st is not None and st > 0) else None
+                lines.append(f"| {CASE_LABEL.get(case, case)} | {_fmt(ns)} | {_fmt(st)} | {_fmt(ratio, digits=2)}x |")
+                lines.append("")
+                note = v1_single.get("note")  # type: ignore[union-attr]
+                if isinstance(note, str) and note.strip():
+                    lines.append(f"Note: {note.strip()}")
+                    lines.append("")
 
     lines.append("<!-- AUTOGEN:V10_RESULTS_END -->")
     return "\n".join(lines) + "\n"

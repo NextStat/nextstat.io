@@ -362,6 +362,11 @@ impl WindowedAdaptation {
     pub fn metric(&self) -> &crate::hmc::Metric {
         &self.metric
     }
+
+    /// Override the initial metric (e.g. from Pathfinder's Hessian estimate).
+    pub fn set_metric(&mut self, metric: crate::hmc::Metric) {
+        self.metric = metric;
+    }
 }
 
 /// Compute Stan-style adaptation windows.
@@ -492,6 +497,46 @@ pub fn find_reasonable_step_size(
     }
 
     eps.clamp(1e-8, 1e3)
+}
+
+/// Compute percentile of a slice (0.0 = min, 0.5 = median, 1.0 = max).
+pub(crate) fn percentile(data: &[f64], q: f64) -> f64 {
+    assert!(!data.is_empty());
+    let mut sorted = data.to_vec();
+    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((sorted.len() as f64 - 1.0) * q).round() as usize;
+    sorted[idx.min(sorted.len() - 1)]
+}
+
+/// Estimate ESS from a sequence of scalar draws using the initial positive
+/// sequence estimator (Geyer 1992, simplified).
+pub(crate) fn estimate_ess_simple(draws: &[f64]) -> f64 {
+    let n = draws.len();
+    if n < 4 {
+        return n as f64;
+    }
+
+    let mean: f64 = draws.iter().sum::<f64>() / n as f64;
+    let var: f64 = draws.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / (n as f64 - 1.0);
+    if var < 1e-30 {
+        return n as f64;
+    }
+
+    // Autocorrelation at lag k
+    let mut tau = 1.0_f64;
+    let max_lag = n / 2;
+    for k in 1..max_lag {
+        let mut c = 0.0;
+        for t in 0..(n - k) {
+            c += (draws[t] - mean) * (draws[t + k] - mean);
+        }
+        let rho = c / ((n - k) as f64 * var);
+        if rho < 0.05 {
+            break;
+        }
+        tau += 2.0 * rho;
+    }
+    (n as f64 / tau).max(1.0)
 }
 
 #[cfg(test)]

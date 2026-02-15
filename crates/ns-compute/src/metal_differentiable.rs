@@ -103,17 +103,13 @@ impl MetalDifferentiableAccelerator {
         let device = Device::system_default().ok_or_else(|| metal_err("no Metal device found"))?;
         let queue = device.new_command_queue();
 
-        // Compile MSL at runtime
-        let options = CompileOptions::new();
-        let library = device
-            .new_library_with_source(DIFF_MSL_SRC, &options)
-            .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
-        let function = library
-            .get_function("differentiable_nll_grad", None)
-            .map_err(|e| metal_err(format!("get function: {e}")))?;
-        let pipeline = device
-            .new_compute_pipeline_state_with_function(&function)
-            .map_err(|e| metal_err(format!("pipeline: {e}")))?;
+        // Compile/load MSL pipeline via thread-local cache.
+        let pipeline = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "differentiable",
+            DIFF_MSL_SRC,
+            "differentiable_nll_grad",
+        )?;
 
         let opts = MTLResourceOptions::StorageModeShared;
 

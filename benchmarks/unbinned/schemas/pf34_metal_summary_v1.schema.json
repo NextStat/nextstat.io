@@ -1,0 +1,95 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf34_metal_summary_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.4 Metal aggregate summary (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "run_root", "overall", "rows"],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf34_metal_summary.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "run_root": { "type": "string", "minLength": 1 },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_runs", "n_rc_fail"],
+      "properties": {
+        "n_runs": { "type": "integer", "minimum": 0 },
+        "n_rc_fail": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "case_id", "mode", "n_toys", "rc", "elapsed_s", "wall_time_s", "pipeline"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "case_id": { "type": "string", "minLength": 1 },
+          "mode": {
+            "type": "string",
+            "enum": ["fit_host", "fit_device", "hypotest_host", "hypotest_device"]
+          },
+          "n_toys": { "type": "integer", "minimum": 1 },
+          "rc": { "type": "integer" },
+          "elapsed_s": { "type": "number", "minimum": 0 },
+          "wall_time_s": { "type": "number", "minimum": 0 },
+          "pipeline": { "type": "string", "minLength": 1 },
+
+          "sample_s": { "type": ["number", "null"], "minimum": 0 },
+          "batch_build_s": { "type": ["number", "null"], "minimum": 0 },
+          "batch_fit_s": { "type": ["number", "null"], "minimum": 0 },
+          "poi_sigma_s": { "type": ["number", "null"], "minimum": 0 },
+          "sampler_init_s": { "type": ["number", "null"], "minimum": 0 },
+
+          "sample_phase_detail": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["channels", "counts_kernel_s", "counts_readback_s", "host_convert_s", "prefix_sum_s", "prepare_s", "sample_kernel_s"],
+            "properties": {
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["channel_index", "counts_kernel_s", "counts_readback_s", "host_convert_s", "prefix_sum_s", "prepare_s", "sample_kernel_s"],
+                  "properties": {
+                    "channel_index": { "type": "integer", "minimum": 0 },
+                    "counts_kernel_s": { "type": "number", "minimum": 0 },
+                    "counts_readback_s": { "type": "number", "minimum": 0 },
+                    "host_convert_s": { "type": "number", "minimum": 0 },
+                    "prefix_sum_s": { "type": "number", "minimum": 0 },
+                    "prepare_s": { "type": "number", "minimum": 0 },
+                    "sample_kernel_s": { "type": "number", "minimum": 0 }
+                  }
+                }
+              },
+              "counts_kernel_s": { "type": "number", "minimum": 0 },
+              "counts_readback_s": { "type": "number", "minimum": 0 },
+              "host_convert_s": { "type": "number", "minimum": 0 },
+              "prefix_sum_s": { "type": "number", "minimum": 0 },
+              "prepare_s": { "type": "number", "minimum": 0 },
+              "sample_kernel_s": { "type": "number", "minimum": 0 }
+            }
+          },
+
+          "n_converged": { "type": ["integer", "null"], "minimum": 0 },
+          "n_error": { "type": ["integer", "null"], "minimum": 0 },
+          "n_validation_error": { "type": ["integer", "null"], "minimum": 0 },
+          "n_computation_error": { "type": ["integer", "null"], "minimum": 0 },
+          "n_nonconverged": { "type": ["integer", "null"], "minimum": 0 },
+
+          "cls": { "type": ["number", "null"] },
+          "clsb": { "type": ["number", "null"] },
+          "clb": { "type": ["number", "null"] },
+          "n_error_b": { "type": ["integer", "null"], "minimum": 0 },
+          "n_error_sb": { "type": ["integer", "null"], "minimum": 0 },
+          "n_nonconverged_b": { "type": ["integer", "null"], "minimum": 0 },
+          "n_nonconverged_sb": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    }
+  }
+}
+

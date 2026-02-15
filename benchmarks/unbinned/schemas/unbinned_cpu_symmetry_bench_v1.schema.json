@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/unbinned_cpu_symmetry_bench_v1.schema.json",
+  "title": "Unbinned CPU Symmetry Benchmark v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "timestamp_utc",
+    "host",
+    "threads_config",
+    "n_list",
+    "seeds",
+    "records"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.unbinned_cpu_symmetry_bench.v1" },
+    "timestamp_utc": { "type": "string", "minLength": 1 },
+    "host": { "type": "string", "minLength": 1 },
+    "cpu_lscpu": { "type": "string" },
+    "threads_config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["nextstat_threads", "rayon_num_threads"],
+      "properties": {
+        "nextstat_threads": { "type": "integer", "minimum": 1 },
+        "rayon_num_threads": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "n_list": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+    "seeds": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+    "records": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  }
+}
+

@@ -1,0 +1,48 @@
+{
+  "schema_version": "nextstat.pf31_publication_matrix.v1",
+  "title": "PF3.1 unbinned publication benchmark matrix",
+  "notes": [
+    "Designed for publication-grade snapshot runs on isolated GPU stands.",
+    "Includes both scale-realistic (~2M events/toy) and model-diversity (Gauss/CB/DCB) workloads.",
+    "Use PF31_DRY_RUN=1 first to validate command expansion without spending GPU time."
+  ],
+  "cases": [
+    {
+      "id": "gauss_exp_2m",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_gauss_exp_2m.json",
+      "toys": "10000",
+      "shards": "8,16",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 0
+    },
+    {
+      "id": "gauss_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_gauss_exp_10k.json",
+      "toys": "10000,50000",
+      "shards": "2,4,8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 1
+    },
+    {
+      "id": "cb_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_cb_exp_10k.json",
+      "toys": "10000",
+      "shards": "2,4,8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 1
+    },
+    {
+      "id": "dcb_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_dcb_exp_10k.json",
+      "toys": "10000",
+      "shards": "2,4,8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 1
+    }
+  ],
+  "publication_gates": {
+    "require_all_rc_zero": true,
+    "min_convergence_rate": 1.0,
+    "max_n_error": 0
+  }
+}

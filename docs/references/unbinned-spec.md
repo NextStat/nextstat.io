@@ -460,6 +460,8 @@ nextstat unbinned-fit-toys --config model.yaml --n-toys 1000 --gpu cuda --gpu-sa
 
 `--gpu-sample-toys` samples toys on the GPU (Gaussian, Exponential, CrystalBall, DoubleCrystalBall, Chebyshev, Histogram; 1D channels only).
 
+- `--gpu auto` (policy-gated) selects CPU vs CUDA based on model topology and estimated events/toy and logs the decision reason. Use `--gpu cuda|metal` for explicit control.
+
 - **CUDA:** device-resident toy→fit pipeline keeps `obs_flat` on the GPU between sampling and batch fitting (eliminates the D2H+H2D round-trip).
 - **CUDA multi-GPU (host toys):** `--gpu-devices 0,1,...` shards CPU-sampled toys across selected devices and merges toy results in original order.
 - **CUDA sharded host-toy pipeline:** `--gpu-shards N` (without `--gpu-sample-toys`) shards host-sampled toys into `N` logical shards (`pipeline = cuda_host_sharded`), assigned to `--gpu-devices` round-robin.
