@@ -276,7 +276,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          WHEEL="$(find dist -name '*.whl' | head -n 1)"
+          WHEEL="$(find dist -name '*cp312*.whl' | head -n 1)"
           if [[ -z "${WHEEL}" ]]; then
             echo "::error::No .whl found under dist/"
             exit 1
