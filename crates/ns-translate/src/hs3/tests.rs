@@ -210,6 +210,22 @@ fn test_ptv_domains() {
 }
 
 #[test]
+fn test_domain_axis_missing_max_defaults() {
+    let json = r#"{
+        "distributions":[{"name":"ch","type":"histfactory_dist","axes":[{"name":"obs_x","min":0.0,"max":1.0,"nbins":1}],"samples":[{"name":"signal","data":{"contents":[1.0]},"modifiers":[{"name":"mu","type":"normfactor","parameter":"mu"}]}]}],
+        "data":[{"name":"obs","type":"binned","axes":[{"name":"obs_x","min":0.0,"max":1.0,"nbins":1}],"contents":[1.0]}],
+        "domains":[{"name":"analysis_nuisance_parameters","type":"product_domain","axes":[{"name":"mu","min":0.0}]}],
+        "parameter_points":[{"name":"default_values","parameters":[{"name":"mu","value":1.0}]}],
+        "analyses":[{"name":"analysis","likelihood":"likelihood","parameters_of_interest":["mu"],"domains":["analysis_nuisance_parameters"]}],
+        "likelihoods":[{"name":"likelihood","distributions":["ch"],"data":["obs"]}],
+        "metadata":{"hs3_version":"0.2"}
+    }"#;
+
+    let ws: Hs3Workspace = serde_json::from_str(json).expect("missing max should be tolerated");
+    assert_eq!(ws.domains[0].axes[0].max, 10.0);
+}
+
+#[test]
 fn test_ptv_parameter_points() {
     let json = include_str!("../../../../tests/fixtures/workspace-postFit_PTV.json");
     let ws: Hs3Workspace = serde_json::from_str(json).unwrap();

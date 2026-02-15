@@ -54,6 +54,17 @@ pub struct FitResult {
     /// Number of parameters sitting at their bound at the solution.
     #[serde(default)]
     pub n_active_bounds: usize,
+
+    /// Estimated Distance to Minimum (EDM = g^T H^{-1} g).
+    ///
+    /// Measures how far the optimizer is from the true minimum, using the L-BFGS
+    /// inverse Hessian approximation. `NAN` if unavailable (e.g. gradient-free paths).
+    #[serde(default = "default_nan")]
+    pub edm: f64,
+
+    /// Identifiability / model diagnostic warnings (empty when model is well-identified).
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 fn default_nan() -> f64 {
@@ -84,6 +95,8 @@ impl FitResult {
             final_grad_norm: f64::NAN,
             initial_nll: f64::NAN,
             n_active_bounds: 0,
+            edm: f64::NAN,
+            warnings: Vec::new(),
         }
     }
 
@@ -112,6 +125,8 @@ impl FitResult {
             final_grad_norm: f64::NAN,
             initial_nll: f64::NAN,
             n_active_bounds: 0,
+            edm: f64::NAN,
+            warnings: Vec::new(),
         }
     }
 
@@ -127,6 +142,12 @@ impl FitResult {
         self.final_grad_norm = final_grad_norm;
         self.initial_nll = initial_nll;
         self.n_active_bounds = n_active_bounds;
+        self
+    }
+
+    /// Set the EDM (Estimated Distance to Minimum) value.
+    pub fn with_edm(mut self, edm: f64) -> Self {
+        self.edm = edm;
         self
     }
 

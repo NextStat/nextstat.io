@@ -1,0 +1,52 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf34_metal_run_manifest_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.4 Metal run manifest (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "matrix",
+    "bin",
+    "threads",
+    "log_level",
+    "timeout",
+    "dry_run",
+    "n_runs",
+    "runs"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf34_metal_run_manifest.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "matrix": { "type": "string", "minLength": 1 },
+    "bin": { "type": "string", "minLength": 1 },
+    "threads": { "type": "integer", "minimum": 1 },
+    "log_level": { "type": "string", "minLength": 1 },
+    "timeout": { "type": "integer", "minimum": 1 },
+    "dry_run": { "type": "boolean" },
+    "n_runs": { "type": "integer", "minimum": 0 },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "case_id", "mode", "n_toys", "mu", "seed", "expected_set", "spec"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "case_id": { "type": "string", "minLength": 1 },
+          "mode": {
+            "type": "string",
+            "enum": ["fit_host", "fit_device", "hypotest_host", "hypotest_device"]
+          },
+          "n_toys": { "type": "integer", "minimum": 1 },
+          "mu": { "type": "number" },
+          "seed": { "type": "integer", "minimum": 0 },
+          "expected_set": { "type": "boolean" },
+          "spec": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
+

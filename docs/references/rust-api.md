@@ -40,6 +40,8 @@ Key exports:
 - `final_grad_norm: f64` — final gradient norm
 - `initial_nll: f64` — NLL at start
 - `n_active_bounds: usize` — number of active box constraints
+- `edm: f64` — Estimated Distance to Minimum (g^T H^{-1} g). L-BFGS inverse Hessian approximation. `NAN` if unavailable.
+- `warnings: Vec<String>` — identifiability warnings (near-singular Hessian, non-finite uncertainties, near-zero diagonal)
 
 The stable integration point for new models is `LogDensityModel` (NLL + gradient + metadata).
 
@@ -103,19 +105,24 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - MLE: `MaximumLikelihoodEstimator`, `OptimizerConfig`, `OptimizationResult`, `RankingEntry`
 - Posterior + priors: `Posterior`, `Prior`
 - NUTS: `NutsConfig`, `sample_nuts`, `sample_nuts_multichain`
+- MAMS: `MamsConfig`, `sample_mams`, `sample_mams_multichain` — Metropolis-Adjusted Microcanonical Sampler (arXiv:2503.01707). Isokinetic dynamics on S^{d-1}, 4-phase DualAveraging warmup with adaptive phase durations (when Pathfinder init provides Hessian metric: 10%/15%/10%/65%, default: 15%/40%/15%/30%), exp_m1/ln_1p stable b-step.
+- LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`). 4096+ chains in parallel, 1 thread = 1 chain, zero warp divergence. Two-phase warmup (unadjusted MCLMC → exact MH). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `GlmLogistic`. User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching. Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (barrier every 50 iters for global step size + mass matrix) and independent sampling. Auto-detects all GPUs when `device_ids: None`.
+- NVRTC JIT: `MamsJitCompiler` (ns-compute, feature `cuda`) — compiles user CUDA C (`user_nll` + `user_grad`) with the MAMS engine header into PTX at runtime. Per-device GPU arch auto-detect via `new_for_device(device_id)`, SHA-256 disk cache at `~/.cache/nextstat/ptx/`. `CudaMamsAccelerator::new_jit_on_device()` / `new_on_device()` load on a specific GPU device.
+- `InitStrategy`: `Random` (Stan-style Uniform(-2,2)), `Mle` (L-BFGS mode), `Pathfinder` (full L-BFGS + diagonal inverse Hessian as initial mass matrix). Used by both NUTS and MAMS.
 - Frequentist: `AsymptoticCLsContext`, `HypotestResult`
 - Toy-based: `hypotest_qtilde_toys`, `hypotest_qtilde_toys_expected_set`, `ToyHypotestResult`
 - Toy-based GPU: `hypotest_qtilde_toys_gpu`, `hypotest_qtilde_toys_expected_set_gpu` (feature `cuda` or `metal`)
 - Profile likelihood: `ProfileLikelihoodScan`, `ProfilePoint`, `scan_histfactory`, `scan_histfactory_diag`
+- Profile CI: `ProfileCiResult`, `profile_ci`, `profile_ci_all` — generic bisection-based profile confidence intervals for any `LogDensityModel`
 - Profile GPU: `scan_gpu` (feature `cuda`), `scan_metal` (feature `metal`)
 - Laplace: `laplace_log_marginal`, `LaplaceResult`
 - Model builder: `ModelBuilder`, `ComposedGlmModel` (hierarchical GLMs)
 - Regression: `LinearRegressionModel`, `LogisticRegressionModel`, `PoissonRegressionModel`, `ols_fit`
 - Ordinal: `OrderedLogitModel`, `OrderedProbitModel`
 - LMM: `LmmMarginalModel`, `LmmRandomEffects`
-- Survival: `ExponentialSurvivalModel`, `WeibullSurvivalModel`, `LogNormalAftModel`, `CoxPhModel`
+- Survival: `ExponentialSurvivalModel`, `WeibullSurvivalModel`, `LogNormalAftModel`, `CoxPhModel`, `IntervalCensoredWeibullModel`, `IntervalCensoredWeibullAftModel`, `IntervalCensoredExponentialModel`, `IntervalCensoredLogNormalModel`
 - Time series: Kalman / EM / forecasting utilities (see `ns_inference::timeseries::*`)
-- PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `LloqPolicy`
+- PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel`, `LloqPolicy`
 - ODE: `rk4_linear`, `OdeSolution`
 - Optimizer: `LbfgsbOptimizer`, `ObjectiveFunction`
 - Batch: `fit_toys_batch`, `is_accelerate_available`
@@ -134,6 +141,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Sequential: `group_sequential_design`, `alpha_spending_design`, `sequential_test`, `SequentialDesign`
 - Chain ladder: `chain_ladder_fit`, `mack_chain_ladder`, `bootstrap_reserves`, `ChainLadderResult`, `MackResult`
 - Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `cohort_retention_matrix`, and 15+ types
+- Fault tree MC: `FaultTreeSpec`, `FaultTreeNode`, `FailureMode`, `fault_tree_mc_cpu`, `fault_tree_mc_cuda` (CUDA), `fault_tree_mc_metal` (Metal), `FaultTreeCeIsConfig`, `FaultTreeCeIsResult`, `fault_tree_mc_ce_is` — GPU-accelerated MC and Cross-Entropy Importance Sampling for rare-event fault tree estimation (all failure modes: Bernoulli, WeibullMission, BernoulliUncertain)
 - Econometrics: `panel_fe_fit`, `did_canonical`, `event_study`, `iv_2sls`, `aipw_ate`, `rosenbaum_bounds`, `cluster_robust_se`
 - PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel` (analytical gradients)
 - PD: `EmaxModel`, `SigmoidEmaxModel`, `IndirectResponseModel`, `PkPdLink`
@@ -295,6 +303,14 @@ Key exports:
 - `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples -> HistFactory `Workspace`.
 - `ns_translate::ntuple::{ChannelConfig, SampleConfig, NtupleModifier}` — configuration types.
 - `ns_translate::pyhf::audit::workspace_audit(json) -> Result<WorkspaceAudit>` — inspect a workspace: channel/sample/modifier counts, unsupported features.
+- `Workspace::combine(&self, other, join) -> Result<Workspace>` — combine two workspaces. `CombineJoin::{None, Outer, LeftOuter, RightOuter}`.
+- `Workspace::prune(&self, channels, samples, modifiers, measurements) -> Workspace` — remove specified elements.
+- `Workspace::rename(&self, channels, samples, modifiers, measurements) -> Workspace` — rename elements via `HashMap<String,String>` maps.
+- `Workspace::sorted(&self) -> Workspace` — canonical (sorted) ordering of all components.
+- `Workspace::digest(&self) -> String` — SHA-256 digest of the canonical workspace.
+- `ns_translate::pyhf::xml_export::workspace_to_xml(ws, prefix) -> XmlExportSet` — export workspace to HistFactory XML files (returns `XmlExportSet { files: Vec<(String, String)> }`).
+- `ns_translate::pyhf::simplemodels::uncorrelated_background(signal, bkg, bkg_uncertainty) -> Workspace` — build workspace with shapesys uncertainties.
+- `ns_translate::pyhf::simplemodels::correlated_background(signal, bkg, bkg_up, bkg_down) -> Workspace` — build workspace with histosys uncertainties.
 - `ns_translate::hs3` — HS3 (HEP Statistics Serialization Standard) v0.2 format. See below.
 
 ### HS3 module (`ns_translate::hs3`)

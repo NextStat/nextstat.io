@@ -27,7 +27,7 @@
         "required": ["case", "path", "sha256", "status"],
         "properties": {
           "case": { "type": "string", "minLength": 1 },
-          "backend": { "type": "string", "enum": ["nextstat", "cmdstanpy", "pymc"] },
+          "backend": { "type": "string", "enum": ["nextstat", "nextstat_dense", "cmdstanpy", "pymc", "numpyro"] },
           "path": { "type": "string", "minLength": 1 },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
@@ -48,7 +48,46 @@
         "n_ok": { "type": "integer", "minimum": 0 },
         "n_warn": { "type": "integer", "minimum": 0 },
         "n_failed": { "type": "integer", "minimum": 0 },
-        "worst_case": { "type": "string" }
+        "worst_case": { "type": "string" },
+        "n_parity_warn": { "type": "integer", "minimum": 0 },
+        "n_parity_fail": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "compare", "warn_z", "fail_z", "rows"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "compare": { "type": "string", "minLength": 1 },
+        "warn_z": { "type": "number", "minimum": 0 },
+        "fail_z": { "type": "number", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "status", "max_z", "worst"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+              "reason": { "type": "string" },
+              "max_z": { "type": ["number", "null"], "minimum": 0 },
+              "worst": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["param", "z"],
+                  "properties": {
+                    "param": { "type": "string", "minLength": 1 },
+                    "z": { "type": "number", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -1,0 +1,49 @@
+{
+  "schema_version": "nextstat.pf33_gate_matrix.v1",
+  "title": "PF3.3 unbinned gate benchmark matrix (CPU vs CUDA)",
+  "notes": [
+    "Gate-oriented matrix for choosing CPU vs CUDA execution policy.",
+    "Designed for GEX44-like single-GPU benches; multi-GPU can be enabled via PF31_GPU_DEVICE_SETS.",
+    "Use PF31_DRY_RUN=1 first to validate command expansion."
+  ],
+  "cases": [
+    {
+      "id": "gauss_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_gauss_exp_10k.json",
+      "toys": "1000,10000",
+      "shards": "8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 0
+    },
+    {
+      "id": "gauss_exp_100k",
+      "spec_rel": "benchmarks/unbinned/specs/pf33_gauss_exp_100k.json",
+      "toys": "1000,10000",
+      "shards": "8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 0
+    },
+    {
+      "id": "cb_exp_10k",
+      "spec_rel": "benchmarks/unbinned/specs/pf31_cb_exp_10k.json",
+      "toys": "1000,10000",
+      "shards": "8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 0
+    },
+    {
+      "id": "cb_exp_100k",
+      "spec_rel": "benchmarks/unbinned/specs/pf33_cb_exp_100k.json",
+      "toys": "1000,10000",
+      "shards": "8",
+      "host_fit_modes": "host,native",
+      "include_host_sharded": 0
+    }
+  ],
+  "publication_gates": {
+    "require_all_rc_zero": true,
+    "min_convergence_rate": 1.0,
+    "max_n_error": 0
+  }
+}
+

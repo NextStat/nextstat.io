@@ -22,6 +22,9 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from scripts.bench_env import collect_environment
+
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -79,6 +82,53 @@ def _diag_summary_nextstat(diag: Mapping[str, Any]) -> dict[str, float | None]:
     }
 
 
+def _posterior_summary_nextstat(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Summarize posterior draws (mean/sd + ESS_bulk) for parity checks.
+
+    Keeps artifacts small by storing only summary stats, not the full draw arrays.
+    """
+    posterior = raw.get("posterior")
+    param_names = raw.get("param_names")
+    diag = raw.get("diagnostics") if isinstance(raw.get("diagnostics"), dict) else {}
+    ess_bulk = diag.get("ess_bulk") if isinstance(diag.get("ess_bulk"), dict) else {}
+
+    if not isinstance(posterior, Mapping) or not isinstance(param_names, list):
+        return {"status": "missing"}
+
+    params: list[dict[str, Any]] = []
+    for name_any in param_names:
+        name = str(name_any)
+        chains = posterior.get(name)
+        if not isinstance(chains, list) or not chains:
+            continue
+
+        flat: list[float] = []
+        for c in chains:
+            if isinstance(c, list):
+                flat.extend(float(v) for v in c)
+        if not flat:
+            continue
+
+        n = len(flat)
+        mean = sum(flat) / n
+        if n > 1:
+            var = sum((x - mean) ** 2 for x in flat) / (n - 1)
+            sd = math.sqrt(var) if var >= 0 else None
+        else:
+            sd = None
+
+        params.append(
+            {
+                "name": name,
+                "mean": mean,
+                "sd": sd,
+                "ess_bulk": _safe_float(ess_bulk.get(name)),
+            }
+        )
+
+    return {"status": "ok", "params": params}
+
+
 def _ess_per_sec(*, ess_vals: list[float], wall_time_s: float) -> dict[str, float]:
     eps = 1e-12
     out: dict[str, float] = {}
@@ -134,6 +184,7 @@ def _base_doc(*, args: argparse.Namespace, nextstat_version: str, dataset: dict[
         "case": str(args.case),
         "backend": str(args.backend),
         "deterministic": bool(args.deterministic),
+        "environment": collect_environment(),
         "meta": {
             "python": sys.version.split()[0],
             "platform": platform.platform(),
@@ -280,7 +331,7 @@ def main() -> int:
     ap.add_argument(
         "--backend",
         default="nextstat",
-        choices=["nextstat", "cmdstanpy", "pymc", "numpyro"],
+        choices=["nextstat", "nextstat_dense", "cmdstanpy", "pymc", "numpyro"],
         help="Which NUTS backend to run (optional).",
     )
 
@@ -338,6 +389,7 @@ def main() -> int:
             "case": str(args.case),
             "backend": str(args.backend),
             "deterministic": bool(args.deterministic),
+            "environment": collect_environment(),
             "status": "failed",
             "reason": f"import_nextstat_failed:{type(e).__name__}:{e}",
             "meta": {
@@ -421,7 +473,7 @@ def main() -> int:
         model_type = "Eight Schools (non-centered, funnel geometry)"
         dataset = {"id": dataset_id, "sha256": dataset_sha}
 
-    if args.backend == "nextstat":
+    if args.backend in ("nextstat", "nextstat_dense"):
         t0 = time.perf_counter()
         try:
             r = nextstat.sample(
@@ -432,7 +484,7 @@ def main() -> int:
                 seed=cfg["seed"],
                 max_treedepth=cfg["max_treedepth"],
                 target_accept=cfg["target_accept"],
-                metric=cfg["metric"],
+                metric=("dense" if args.backend == "nextstat_dense" else cfg["metric"]),
                 init_jitter_rel=cfg["init_jitter_rel"],
             )
             wall = time.perf_counter() - t0
@@ -490,6 +542,7 @@ def main() -> int:
             "ess_tail": diag.get("ess_tail"),
             "ebfmi": diag.get("ebfmi"),
             "quality": diag.get("quality"),
+            "posterior_summary": _posterior_summary_nextstat(r),
         }
         _write_json(out_path, doc)
         return 0 if status != "failed" else 2

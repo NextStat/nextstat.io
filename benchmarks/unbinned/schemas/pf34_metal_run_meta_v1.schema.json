@@ -1,0 +1,55 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf34_metal_run_meta_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.4 Metal per-run metadata (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "case_id",
+    "mode",
+    "n_toys",
+    "mu_test",
+    "seed",
+    "expected_set",
+    "spec",
+    "rc",
+    "elapsed_s",
+    "timeout_s",
+    "threads",
+    "log_level",
+    "ts_unix",
+    "command",
+    "command_str",
+    "dry_run"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf34_metal_run_meta.v1" },
+    "name": { "type": "string", "minLength": 1 },
+    "case_id": { "type": "string", "minLength": 1 },
+    "mode": {
+      "type": "string",
+      "enum": ["fit_host", "fit_device", "hypotest_host", "hypotest_device"]
+    },
+    "n_toys": { "type": "integer", "minimum": 1 },
+    "mu_test": { "type": "number" },
+    "seed": { "type": "integer", "minimum": 0 },
+    "expected_set": { "type": "boolean" },
+    "spec": { "type": "string", "minLength": 1 },
+    "rc": { "type": "integer" },
+    "elapsed_s": { "type": "number", "minimum": 0 },
+    "timeout_s": { "type": "integer", "minimum": 1 },
+    "threads": { "type": "integer", "minimum": 1 },
+    "log_level": { "type": "string", "minLength": 1 },
+    "ts_unix": { "type": "integer", "minimum": 0 },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "command_str": { "type": "string", "minLength": 1 },
+    "dry_run": { "type": "boolean" }
+  }
+}
+

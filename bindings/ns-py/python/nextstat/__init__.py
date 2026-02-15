@@ -27,7 +27,10 @@ map_fit = _get("map_fit")
 fit_batch = _get("fit_batch")
 hypotest = _get("hypotest")
 hypotest_toys = _get("hypotest_toys")
-sample = _get("sample")
+_sample_nuts = _get("sample")
+_sample_mams = _get("sample_mams")
+_sample_laps = _get("sample_laps")  # None if not built with cuda
+RawCudaModel = _get("RawCudaModel")  # None if not built with cuda
 from_pyhf = _get("from_pyhf")
 apply_patchset = _get("apply_patchset")
 profile_scan = _get("profile_scan")
@@ -62,8 +65,18 @@ ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
 LogNormalAftModel = _get("LogNormalAftModel")
 CoxPhModel = _get("CoxPhModel")
+IntervalCensoredWeibullModel = _get("IntervalCensoredWeibullModel")
+IntervalCensoredExponentialModel = _get("IntervalCensoredExponentialModel")
+IntervalCensoredLogNormalModel = _get("IntervalCensoredLogNormalModel")
 OneCompartmentOralPkModel = _get("OneCompartmentOralPkModel")
 OneCompartmentOralPkNlmeModel = _get("OneCompartmentOralPkNlmeModel")
+TwoCompartmentIvPkModel = _get("TwoCompartmentIvPkModel")
+TwoCompartmentOralPkModel = _get("TwoCompartmentOralPkModel")
+nlme_foce = _get("nlme_foce")
+nlme_saem = _get("nlme_saem")
+pk_vpc = _get("pk_vpc")
+pk_gof = _get("pk_gof")
+read_nonmem = _get("read_nonmem")
 GammaRegressionModel = _get("GammaRegressionModel")
 TweedieRegressionModel = _get("TweedieRegressionModel")
 GevModel = _get("GevModel")
@@ -116,6 +129,7 @@ churn_ingest = _get("churn_ingest")
 from_arrow_ipc = _get("from_arrow_ipc")
 from_parquet = _get("from_parquet")
 from_parquet_with_modifiers = _get("from_parquet_with_modifiers")
+fault_tree_mc = _get("fault_tree_mc")
 to_arrow_yields_ipc = _get("to_arrow_yields_ipc")
 to_arrow_params_ipc = _get("to_arrow_params_ipc")
 
@@ -167,9 +181,111 @@ def __getattr__(name: str):
         return importlib.import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-# Back-compat alias: make the sampler intent explicit without breaking `sample`.
-sample_nuts = sample
-sample_mams = _get("sample_mams")
+def sample(
+    model,
+    *,
+    method: str = "nuts",
+    return_idata: bool = False,
+    out: str | Path | None = None,
+    out_format: str = "json",
+    **kwargs,
+):
+    """Unified sampling interface for all MCMC methods.
+
+    Args:
+        model: A NextStat model instance, or a string model name for LAPS
+            (``"std_normal"``, ``"eight_schools"``, ``"neal_funnel"``, ``"glm_logistic"``).
+        method: Sampling algorithm — ``"nuts"`` (default), ``"mams"``, or ``"laps"`` (GPU).
+        return_idata: If ``True``, return an ArviZ ``InferenceData`` object instead
+            of a raw dict. Requires ``arviz`` and ``numpy``.
+        out: Optional path to save results (JSON or NetCDF).
+        out_format: ``"json"`` (default) or ``"netcdf"`` — used when *out* is set.
+        **kwargs: Method-specific parameters forwarded to the underlying sampler.
+
+    Common kwargs (all methods):
+        n_chains (int): Number of parallel chains. Default: 4 (NUTS/MAMS), 4096 (LAPS).
+        n_warmup (int): Warmup iterations. Default: 500.
+        n_samples (int): Sampling iterations. Default: 1000 (NUTS/MAMS), 2000 (LAPS).
+        seed (int): Random seed. Default: 42.
+        target_accept (float): Target acceptance rate. Default: 0.8 (NUTS), 0.9 (MAMS/LAPS).
+
+    NUTS-specific kwargs:
+        max_treedepth (int): Max tree depth. Default: 10.
+        init_strategy (str): ``"random"``, ``"mle"``, or ``"pathfinder"``. Default: ``"random"``.
+        metric (str): ``"diagonal"``, ``"dense"``, or ``"auto"``. Default: ``"diagonal"``.
+        stepsize_jitter (float): Step size jitter. Default: 0.0.
+
+    MAMS-specific kwargs:
+        init_strategy (str): ``"random"``, ``"mle"``, or ``"pathfinder"``. Default: ``"random"``.
+        metric (str): ``"diagonal"`` or ``"dense"``. Default: ``"diagonal"``.
+        init_step_size (float): Initial step size. Default: 0.0 (auto).
+        init_l (float): Initial trajectory length. Default: 0.0 (auto).
+        max_leapfrog (int): Max leapfrog steps. Default: 1024.
+        diagonal_precond (bool): Use diagonal preconditioning. Default: True.
+
+    LAPS-specific kwargs (GPU, requires CUDA build):
+        model_data (dict): Model-specific data (e.g. ``{"y": [...], "sigma": [...]}``)
+        init_step_size (float): Initial step size. Default: 0.0 (auto).
+        init_l (float): Initial trajectory length. Default: 0.0 (auto).
+        max_leapfrog (int): Max leapfrog steps. Default: 8192.
+        report_chains (int): Number of chains retained for diagnostics. Default: 32.
+
+    Returns:
+        dict or InferenceData: Sampling results. When ``return_idata=False`` (default),
+        returns a dict with keys ``"posterior"``, ``"sample_stats"``,
+        ``"diagnostics"``, ``"param_names"``, ``"n_chains"``, ``"n_warmup"``,
+        ``"n_samples"``. When ``return_idata=True``, returns an ArviZ ``InferenceData``.
+
+    Examples:
+        >>> import nextstat as ns
+        >>> model = ns.EightSchoolsModel([28,8,-3,7,-1,1,18,12], [15,10,16,11,9,11,10,18])
+        >>> result = ns.sample(model, method="nuts", n_samples=2000)
+        >>> idata = ns.sample(model, method="mams", n_samples=2000, return_idata=True)
+    """
+    if _core is None:
+        raise ImportError("nextstat._core is not available (native extension not built/installed).")
+
+    if method == "nuts":
+        if _sample_nuts is None:
+            raise RuntimeError("NUTS sampler not available in this build.")
+        raw = _sample_nuts(model, **kwargs)
+    elif method == "mams":
+        if _sample_mams is None:
+            raise RuntimeError("MAMS sampler not available in this build.")
+        raw = _sample_mams(model, **kwargs)
+    elif method == "laps":
+        if _sample_laps is None:
+            _has = has_cuda() if has_cuda is not None else False
+            if not _has:
+                raise RuntimeError(
+                    "LAPS requires CUDA. Build with `maturin develop --features cuda` "
+                    "or use method='mams' for CPU sampling."
+                )
+            raise RuntimeError("LAPS sampler not available in this build.")
+        raw = _sample_laps(model, **kwargs)
+    else:
+        raise ValueError(
+            f"Unknown method: {method!r}. Use 'nuts', 'mams', or 'laps'."
+        )
+
+    if not return_idata:
+        if out is not None:
+            import json as _json
+            Path(out).write_text(_json.dumps(raw, indent=2, sort_keys=True) + "\n")
+        return raw
+
+    from .bayes import to_inferencedata, save as _save_idata
+
+    idata = to_inferencedata(raw)
+    if out is not None:
+        _save_idata(idata, out, format=out_format)
+    return idata
+
+
+# Explicit per-method aliases for direct access.
+sample_nuts = _sample_nuts
+sample_mams = _sample_mams
+sample_laps = _sample_laps
 
 # Aliases used throughout docs/plans.
 PyModel = HistFactoryModel
@@ -259,6 +375,8 @@ __all__ = [
     "sample",
     "sample_nuts",
     "sample_mams",
+    "sample_laps",
+    "RawCudaModel",
     "bayes",
     "viz",
     "data",
@@ -300,6 +418,9 @@ __all__ = [
     "WeibullSurvivalModel",
     "LogNormalAftModel",
     "CoxPhModel",
+    "IntervalCensoredWeibullModel",
+    "IntervalCensoredExponentialModel",
+    "IntervalCensoredLogNormalModel",
     "OneCompartmentOralPkModel",
     "OneCompartmentOralPkNlmeModel",
     "GammaRegressionModel",

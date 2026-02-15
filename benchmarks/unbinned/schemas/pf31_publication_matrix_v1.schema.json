@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/pf31_publication_matrix_v1.schema.json",
+  "title": "PF3.1 Publication Matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "title", "cases", "publication_gates"],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf31_publication_matrix.v1" },
+    "title": { "type": "string", "minLength": 1 },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "spec_rel", "toys", "shards", "host_fit_modes", "include_host_sharded"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "spec_rel": { "type": "string", "minLength": 1 },
+          "toys": { "type": "string", "minLength": 1 },
+          "shards": { "type": "string", "minLength": 1 },
+          "host_fit_modes": { "type": "string", "minLength": 1 },
+          "include_host_sharded": { "type": "integer", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "publication_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["require_all_rc_zero", "min_convergence_rate", "max_n_error"],
+      "properties": {
+        "require_all_rc_zero": { "type": "boolean" },
+        "min_convergence_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_n_error": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
+

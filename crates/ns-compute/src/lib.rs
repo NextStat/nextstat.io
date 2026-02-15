@@ -131,9 +131,29 @@ pub mod cuda_parquet;
 #[cfg(feature = "cuda")]
 pub mod differentiable;
 
+/// CUDA Monte Carlo fault-tree accelerator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod fault_tree_cuda;
+
+/// CUDA MAMS (Metropolis-Adjusted Microcanonical Sampler) accelerator for LAPS (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_mams;
+
+/// NVRTC JIT compiler for user-defined MAMS models on GPU (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod nvrtc_mams;
+
+/// Metal Monte Carlo fault-tree accelerator (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod fault_tree_metal;
+
 /// Metal batch NLL+gradient accelerator (requires `metal` feature + Apple Silicon at runtime).
 #[cfg(feature = "metal")]
 pub mod metal_batch;
+
+/// Shared runtime MSL/pipeline cache for Metal accelerators (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_kernel_cache;
 
 /// Metal unbinned (event-level) NLL+gradient accelerator (requires `metal` feature).
 #[cfg(feature = "metal")]

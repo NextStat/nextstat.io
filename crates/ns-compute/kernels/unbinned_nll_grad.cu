@@ -912,10 +912,11 @@ extern "C" __global__ void unbinned_nll_only(
 
 extern "C" __global__ void unbinned_batch_nll_grad(
     /* Dynamic per-iteration buffers */
-    const double* __restrict__ g_params_flat, /* [n_toys × n_params] */
+    const double* __restrict__ g_params_flat, /* [n_eval × n_params] */
     /* Toy observed data (Phase 1: 1 observable) */
     const double* __restrict__ g_obs_flat,    /* [total_events] */
-    const unsigned int* __restrict__ g_toy_offsets, /* [n_toys + 1] */
+    const unsigned int* __restrict__ g_toy_offsets, /* [n_toys_total + 1] */
+    const unsigned int* __restrict__ g_eval_to_toy, /* [n_eval] */
     /* Observable bounds */
     const double* __restrict__ g_obs_lo,      /* [1] */
     const double* __restrict__ g_obs_hi,      /* [1] */
@@ -935,10 +936,15 @@ extern "C" __global__ void unbinned_batch_nll_grad(
     unsigned int total_shape_params,
     unsigned int n_gauss,
     double constraint_const,
-    unsigned int n_toys
+    unsigned int n_toys_total,
+    unsigned int n_eval
 ) {
-    unsigned int toy = blockIdx.x;
-    if (toy >= n_toys) {
+    unsigned int eval_idx = blockIdx.x;
+    if (eval_idx >= n_eval) {
+        return;
+    }
+    unsigned int toy = g_eval_to_toy[eval_idx];
+    if (toy >= n_toys_total) {
         return;
     }
 
@@ -952,8 +958,8 @@ extern "C" __global__ void unbinned_batch_nll_grad(
     unsigned int tid = threadIdx.x;
     unsigned int block_size = blockDim.x;
 
-    const double* __restrict__ g_params = g_params_flat + (size_t)toy * n_params;
-    double* __restrict__ grad_out = g_grad_out + (size_t)toy * n_params;
+    const double* __restrict__ g_params = g_params_flat + (size_t)eval_idx * n_params;
+    double* __restrict__ grad_out = g_grad_out + (size_t)eval_idx * n_params;
 
     /* Shared memory layout: params[n_params] | scratch[block_size] */
     extern __shared__ double shared[];
@@ -1538,14 +1544,15 @@ extern "C" __global__ void unbinned_batch_nll_grad(
         }
 
         nll += constraint_const;
-        g_nll_out[toy] = nll;
+        g_nll_out[eval_idx] = nll;
     }
 }
 
 extern "C" __global__ void unbinned_batch_nll_only(
-    const double* __restrict__ g_params_flat, /* [n_toys × n_params] */
+    const double* __restrict__ g_params_flat, /* [n_eval × n_params] */
     const double* __restrict__ g_obs_flat,    /* [total_events] */
-    const unsigned int* __restrict__ g_toy_offsets, /* [n_toys + 1] */
+    const unsigned int* __restrict__ g_toy_offsets, /* [n_toys_total + 1] */
+    const unsigned int* __restrict__ g_eval_to_toy, /* [n_eval] */
     const double* __restrict__ g_obs_lo,      /* [1] */
     const double* __restrict__ g_obs_hi,      /* [1] */
     const struct GpuUnbinnedProcessDesc* __restrict__ g_procs, /* [n_procs] */
@@ -1553,17 +1560,22 @@ extern "C" __global__ void unbinned_batch_nll_only(
     const unsigned int* __restrict__ g_shape_pidx, /* [total_shape_params] */
     const double* __restrict__ g_pdf_aux_f64, /* [total_pdf_aux_f64] */
     const struct GpuUnbinnedGaussConstraintEntry* __restrict__ g_gauss, /* [n_gauss] */
-    double* __restrict__ g_nll_out,           /* [n_toys] */
+    double* __restrict__ g_nll_out,           /* [n_eval] */
     unsigned int n_params,
     unsigned int n_procs,
     unsigned int total_rate_mods,
     unsigned int total_shape_params,
     unsigned int n_gauss,
     double constraint_const,
-    unsigned int n_toys
+    unsigned int n_toys_total,
+    unsigned int n_eval
 ) {
-    unsigned int toy = blockIdx.x;
-    if (toy >= n_toys) {
+    unsigned int eval_idx = blockIdx.x;
+    if (eval_idx >= n_eval) {
+        return;
+    }
+    unsigned int toy = g_eval_to_toy[eval_idx];
+    if (toy >= n_toys_total) {
         return;
     }
 
@@ -1577,7 +1589,7 @@ extern "C" __global__ void unbinned_batch_nll_only(
     unsigned int tid = threadIdx.x;
     unsigned int block_size = blockDim.x;
 
-    const double* __restrict__ g_params = g_params_flat + (size_t)toy * n_params;
+    const double* __restrict__ g_params = g_params_flat + (size_t)eval_idx * n_params;
 
     extern __shared__ double shared[];
     double* s_params = shared;
@@ -1769,7 +1781,7 @@ extern "C" __global__ void unbinned_batch_nll_only(
         }
 
         nll += constraint_const;
-        g_nll_out[toy] = nll;
+        g_nll_out[eval_idx] = nll;
     }
 }
 

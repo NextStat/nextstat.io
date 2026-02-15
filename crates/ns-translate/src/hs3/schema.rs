@@ -673,7 +673,14 @@ pub struct Hs3Domain {
 pub struct Hs3DomainAxis {
     pub name: String,
     pub min: f64,
+    // ROOT 6.36 HS3 exports can omit `max` for unconstrained gamma-like axes.
+    // Keep parser backward-compatible by defaulting to a finite upper bound.
+    #[serde(default = "default_hs3_domain_axis_max")]
     pub max: f64,
+}
+
+fn default_hs3_domain_axis_max() -> f64 {
+    10.0
 }
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,16 @@ and run outputs) to enable third-party replication.
 
 ---
 
+> **TL;DR**
+> - NextStat NUTS v10 keeps standard within-tree multinomial selection, but fixes the *top-level join* in the doubling loop via **progressive sampling**.
+> - This change materially improves algorithmic efficiency (**ESS/leapfrog**) and translates into strong wall-time ESS/sec gains (up to **3.21x** on a hierarchical non-centered posterior).
+> - Benchmarks are reproducible: fixed seeds, strict health gates, and published machine-readable artifacts.
+>
+> **Try NextStat**
+> - WASM Playground: `/playground`
+> - Python: `pip install nextstat` (docs: `/docs/installation`)
+> - Source: https://github.com/NextStat/nextstat.io
+
 ## 1. Introduction
 
 Bayesian performance claims are only meaningful when the *posterior* and the
@@ -59,7 +69,7 @@ This paper makes three practical contributions:
 
 ---
 
-## 2. Background: NUTS With Multinomial Trajectory Sampling
+## 2. Background: Standard NUTS (Within-Tree Multinomial; Top-Level Join)
 
 We assume Euclidean-metric HMC with position $q \in \mathbb{R}^D$ and momentum
 $p \in \mathbb{R}^D$, with Hamiltonian
@@ -113,8 +123,8 @@ $$
 \Pr(\text{select right subtree}) = \frac{W_\mathrm{right}}{W_\mathrm{left} + W_\mathrm{right}}.
 $$
 
-At the **top level** (the outer doubling loop), we use **progressive sampling**
-for the join step:
+Within-tree selection stays **multinomial**.  At the **top level** (the outer
+doubling loop), we use **progressive sampling** for the join step:
 
 $$
 \Pr(z_\mathrm{sample} \leftarrow z_\mathrm{propose})
@@ -140,6 +150,14 @@ $W_\mathrm{sub} \approx W_\mathrm{exist}$:
 Empirically, this difference can dominate **ESS/leapfrog** while leaving other
 trajectory-level diagnostics unchanged (step sizes, accept rates, tree depths,
 total leapfrog counts).
+
+![Top-level join: multinomial vs progressive](./assets/nuts-v10/progressive_vs_multinomial.svg)
+
+Intuition: if the sampler repeatedly keeps the current sample at the top-level
+join, it effectively reduces net displacement per iteration even when it
+integrates a similar Hamiltonian path length; progressive joining pushes the
+proposal forward as new trajectory mass is explored, reducing lag
+autocorrelation.
 
 ---
 
@@ -207,6 +225,20 @@ builds on:
 For numerical stability, subtree joins are implemented in log-space with a
 NaN-safe `log_sum_exp` and stable selection probability computation.
 
+### 5.1 Code sketch (top-level join)
+
+The key change is localized: the *within-tree* merge uses the standard
+multinomial update, while the *outer* join uses progressive selection:
+
+```rust
+// crates/ns-inference/src/nuts.rs
+// exp(logW_sub - logW_exist) clamped to [0,1] (progressive sampling).
+let p = prob_select_outer_progressive(tree.log_sum_weight, subtree.log_sum_weight);
+if rng.random::<f64>() < p {
+    tree.q = subtree.q;
+}
+```
+
 ---
 
 ## 6. Benchmark Protocol
@@ -271,9 +303,9 @@ This section is generated from checked-in benchmark artifacts:
 
 Figures (generated):
 
-![ESS/sec bar chart](../assets/nuts-v10/ess_sec_bar.svg)
+![ESS/sec bar chart](./assets/nuts-v10/ess_sec_bar.svg)
 
-![ESS/sec per-seed scatter](../assets/nuts-v10/ess_sec_seed_scatter.svg)
+![ESS/sec per-seed scatter](./assets/nuts-v10/ess_sec_seed_scatter.svg)
 
 ### 7.2 Health gates (worst across seeds)
 
@@ -292,11 +324,28 @@ This diagnostic isolates sampler efficiency per unit of Hamiltonian integration.
 
 | Case | NextStat | CmdStan | Ratio |
 |---|---:|---:|---:|
-| GLM logistic (6p) | 0.228 | 0.195 | 1.17x |
+| GLM logistic (6p) | 0.187 ± 0.006 | 0.164 ± 0.002 | 1.14x |
+| Hierarchical logistic RI (non-centered, 22p) | 0.044 ± 0.009 | 0.024 ± 0.005 | 1.82x |
+| Eight Schools (non-centered, 10p) | 0.052 ± 0.003 | 0.046 ± 0.004 | 1.14x |
 
-Note: Measured on GLM logistic under the v10 sampler with progressive sampling enabled. This metric is reported as a supplementary diagnostic (not part of the v1 public schemas).
+Note: ESS is computed via `arviz_ess_bulk_min` (supplementary; not part of v1 public schemas).
+Note: Leapfrog totals are summed over post-warmup draws (`n_leapfrog__` / `sample_stats.n_leapfrog`).
+
+### 7.4 ESS/sec decomposition (implied)
+
+Using the identity: (ESS/sec ratio) ≈ (ESS/LF ratio) × (LF/sec ratio).
+
+| Case | ESS/sec ratio | ESS/LF ratio | Implied LF/sec ratio |
+|---|---:|---:|---:|
+| GLM logistic (6p) | 1.01x | 1.14x | 0.88x |
+| Hierarchical logistic RI (non-centered, 22p) | 3.21x | 1.82x | 1.76x |
+| Eight Schools (non-centered, 10p) | 2.03x | 1.14x | 1.78x |
 
 <!-- AUTOGEN:V10_RESULTS_END -->
+
+
+
+
 
 
 
@@ -316,7 +365,28 @@ pinpointed a proposal-selection issue rather than an integration or adaptation
 issue.  Switching the top-level join to progressive sampling substantially
 improved ESS/leapfrog and improved ESS/sec across all tested geometries.
 
-### 8.2 Threats to validity
+### 8.2 Decomposing performance: algorithm vs wall-time
+
+ESS/sec is the user-facing metric, but it mixes two effects:
+
+- algorithmic efficiency: ESS/leapfrog (Table 7.3), and
+- implementation cost per leapfrog (autodiff, vectorization, orchestration).
+
+Concretely, for a fixed benchmark protocol:
+
+$$
+\frac{\mathrm{ESS/sec}_{NS}}{\mathrm{ESS/sec}_{Stan}} \approx
+\frac{\mathrm{ESS/LF}_{NS}}{\mathrm{ESS/LF}_{Stan}} \times
+\frac{\mathrm{LF/sec}_{NS}}{\mathrm{LF/sec}_{Stan}}.
+$$
+
+Table 7.3 supplies the first factor directly; the remaining gap (if any) is the
+implied per-leapfrog throughput difference.  This is why it is essential to
+report both ESS/sec and ESS/leapfrog: the former answers "how fast is it on this
+setup", while the latter answers "is the sampler doing better HMC per unit of
+integration".
+
+### 8.3 Threats to validity
 
 Even with a pinned protocol, cross-framework comparisons remain sensitive to:
 
@@ -339,6 +409,12 @@ substantially improved sampler efficiency and yields strong ESS/sec results on
 hierarchical posteriors.
 
 ---
+
+## Call to Action
+
+- Try the interactive WASM Playground: `/playground`
+- Install NextStat for Python: `pip install nextstat` (installation guide: `/docs/installation`)
+- Star the repo / inspect the artifacts: https://github.com/NextStat/nextstat.io
 
 ## References
 

@@ -7,7 +7,7 @@
 
 use crate::unbinned_types::*;
 use cudarc::driver::{
-    CudaContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
+    CudaContext, CudaFunction, CudaSlice, CudaStream, DevicePtr, LaunchConfig, PushKernelArg,
 };
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
@@ -21,6 +21,19 @@ const PTX_SRC: &str = include_str!(env!("CUDA_UNBINNED_PTX_PATH"));
 ///
 /// Contains the persistent GPU-native L-BFGS optimizer kernel.
 const LBFGS_PTX_SRC: &str = include_str!(env!("CUDA_LBFGS_PTX_PATH"));
+
+const CUDA_LBFGS_STATUS_MAX_ITER: u32 = 0;
+const CUDA_LBFGS_STATUS_CONVERGED: u32 = 1;
+const CUDA_LBFGS_STATUS_FAILED: u32 = 2;
+
+fn cuda_lbfgs_status_reason(status: u32) -> &'static str {
+    match status {
+        CUDA_LBFGS_STATUS_MAX_ITER => "MaxIterReached",
+        CUDA_LBFGS_STATUS_CONVERGED => "Converged",
+        CUDA_LBFGS_STATUS_FAILED => "ComputationFailed",
+        _ => "UnknownKernelStatus",
+    }
+}
 
 fn cuda_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("CUDA (unbinned batch): {msg}"))
@@ -49,6 +62,7 @@ pub struct CudaUnbinnedBatchAccelerator {
     d_params_flat: CudaSlice<f64>,
     d_nll_out: CudaSlice<f64>,
     d_grad_out: CudaSlice<f64>,
+    d_eval_to_toy: CudaSlice<u32>,
 
     // --- Metadata ---
     n_params: usize,
@@ -61,6 +75,8 @@ pub struct CudaUnbinnedBatchAccelerator {
 
     // --- CPU scratch (reused per call) ---
     scratch_zeros: Vec<f64>,
+    scratch_eval_to_toy: Vec<u32>,
+    eval_to_toy_identity: Vec<u32>,
 }
 
 impl CudaUnbinnedBatchAccelerator {
@@ -179,6 +195,52 @@ impl CudaUnbinnedBatchAccelerator {
         Self::build(ctx, stream, data, d_obs_flat, d_toy_offsets, n_toys)
     }
 
+    /// Create batch accelerator in an existing CUDA context/stream from host-resident toy data.
+    ///
+    /// This is the multi-channel-friendly constructor: callers can build all channel accelerators
+    /// in the same CUDA context to allow device-pointer interoperability without D2H/H2D bounce.
+    pub fn from_unbinned_static_and_toys_in_ctx(
+        ctx: Arc<CudaContext>,
+        stream: Arc<CudaStream>,
+        data: &UnbinnedGpuModelData,
+        toy_offsets: &[u32],
+        obs_flat: &[f64],
+        n_toys: usize,
+    ) -> ns_core::Result<Self> {
+        if data.n_obs != 1 {
+            return Err(ns_core::Error::Validation(format!(
+                "CUDA unbinned batch currently supports n_obs=1, got {}",
+                data.n_obs
+            )));
+        }
+        if data.processes.is_empty() {
+            return Err(ns_core::Error::Validation(
+                "UnbinnedGpuModelData requires at least one process".into(),
+            ));
+        }
+        if n_toys == 0 {
+            return Err(ns_core::Error::Validation("n_toys must be > 0".into()));
+        }
+        if toy_offsets.len() != n_toys + 1 {
+            return Err(ns_core::Error::Validation(format!(
+                "toy_offsets length mismatch: expected {}, got {}",
+                n_toys + 1,
+                toy_offsets.len()
+            )));
+        }
+        let last = *toy_offsets.last().unwrap_or(&0) as usize;
+        if last != obs_flat.len() {
+            return Err(ns_core::Error::Validation(format!(
+                "toy_offsets last entry must equal obs_flat.len(): got {last}, obs_flat.len()={}",
+                obs_flat.len()
+            )));
+        }
+
+        let d_obs_flat = stream.clone_htod(obs_flat).map_err(cuda_err)?;
+        let d_toy_offsets = stream.clone_htod(toy_offsets).map_err(cuda_err)?;
+        Self::build(ctx, stream, data, d_obs_flat, d_toy_offsets, n_toys)
+    }
+
     /// Shared builder: loads PTX, uploads model-descriptor buffers, allocates work buffers.
     fn build(
         ctx: Arc<CudaContext>,
@@ -216,6 +278,9 @@ impl CudaUnbinnedBatchAccelerator {
         let d_params_flat = stream.alloc_zeros::<f64>(n_toys * data.n_params).map_err(cuda_err)?;
         let d_nll_out = stream.alloc_zeros::<f64>(n_toys).map_err(cuda_err)?;
         let d_grad_out = stream.alloc_zeros::<f64>(n_toys * data.n_params).map_err(cuda_err)?;
+        let mut d_eval_to_toy = stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
+        let eval_to_toy_identity: Vec<u32> = (0..n_toys as u32).collect();
+        stream.memcpy_htod(&eval_to_toy_identity, &mut d_eval_to_toy).map_err(cuda_err)?;
 
         Ok(Self {
             ctx,
@@ -234,6 +299,7 @@ impl CudaUnbinnedBatchAccelerator {
             d_params_flat,
             d_nll_out,
             d_grad_out,
+            d_eval_to_toy,
             n_params: data.n_params,
             n_toys,
             n_procs: data.processes.len(),
@@ -242,37 +308,61 @@ impl CudaUnbinnedBatchAccelerator {
             n_gauss: data.gauss_constraints.len(),
             constraint_const: data.constraint_const,
             scratch_zeros: vec![0.0; n_toys * data.n_params],
+            scratch_eval_to_toy: vec![0u32; n_toys],
+            eval_to_toy_identity,
         })
     }
 
-    fn launch_config(&self) -> LaunchConfig {
+    fn launch_config(&self, n_eval: usize) -> LaunchConfig {
         // Use a fixed, power-of-two block size; toys have variable event counts.
         let block_size = 256u32;
         let shared_bytes =
             ((self.n_params + block_size as usize) * std::mem::size_of::<f64>()) as u32;
         LaunchConfig {
-            grid_dim: (self.n_toys as u32, 1, 1),
+            grid_dim: (n_eval as u32, 1, 1),
             block_dim: (block_size, 1, 1),
             shared_mem_bytes: shared_bytes,
         }
     }
 
-    /// Fused NLL + analytical gradient for all toys.
-    ///
-    /// `params_flat` is `[n_toys × n_params]` row-major.
-    pub fn batch_nll_grad(&mut self, params_flat: &[f64]) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
-        if params_flat.len() != self.n_toys * self.n_params {
+    fn upload_eval_to_toy_map(&mut self, active_toys: &[usize]) -> ns_core::Result<()> {
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            if toy_idx >= self.n_toys {
+                return Err(ns_core::Error::Validation(format!(
+                    "active toy index out of range at slot {slot}: toy_idx={toy_idx}, n_toys={}",
+                    self.n_toys
+                )));
+            }
+            self.scratch_eval_to_toy[slot] = toy_idx as u32;
+        }
+        self.stream
+            .memcpy_htod(&self.scratch_eval_to_toy[..active_toys.len()], &mut self.d_eval_to_toy)
+            .map_err(cuda_err)?;
+        Ok(())
+    }
+
+    fn eval_batch_nll_grad(
+        &mut self,
+        params_flat: &[f64],
+        n_eval: usize,
+    ) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params_flat.len() != n_eval * self.n_params {
             return Err(ns_core::Error::Validation(format!(
                 "params_flat length mismatch: expected {}, got {}",
-                self.n_toys * self.n_params,
+                n_eval * self.n_params,
                 params_flat.len()
             )));
         }
+        if n_eval == 0 {
+            return Ok((Vec::new(), Vec::new()));
+        }
 
         self.stream.memcpy_htod(params_flat, &mut self.d_params_flat).map_err(cuda_err)?;
-        self.stream.memcpy_htod(&self.scratch_zeros, &mut self.d_grad_out).map_err(cuda_err)?;
+        self.stream
+            .memcpy_htod(&self.scratch_zeros[..n_eval * self.n_params], &mut self.d_grad_out)
+            .map_err(cuda_err)?;
 
-        let config = self.launch_config();
+        let config = self.launch_config(n_eval);
 
         let np = self.n_params as u32;
         let nprocs = self.n_procs as u32;
@@ -280,12 +370,14 @@ impl CudaUnbinnedBatchAccelerator {
         let tshape = self.total_shape_params as u32;
         let ng = self.n_gauss as u32;
         let cc = self.constraint_const;
-        let ntoys = self.n_toys as u32;
+        let ntoys_total = self.n_toys as u32;
+        let neval = n_eval as u32;
 
         let mut builder = self.stream.launch_builder(&self.kernel_nll_grad);
         builder.arg(&self.d_params_flat);
         builder.arg(&self.d_obs_flat);
         builder.arg(&self.d_toy_offsets);
+        builder.arg(&self.d_eval_to_toy);
         builder.arg(&self.d_obs_lo);
         builder.arg(&self.d_obs_hi);
         builder.arg(&self.d_procs);
@@ -301,7 +393,8 @@ impl CudaUnbinnedBatchAccelerator {
         builder.arg(&tshape);
         builder.arg(&ng);
         builder.arg(&cc);
-        builder.arg(&ntoys);
+        builder.arg(&ntoys_total);
+        builder.arg(&neval);
 
         // SAFETY: All device pointers are valid CudaSlice allocations owned by `self`,
         // scalar args match the compiled kernel signature, launch config is within limits.
@@ -317,24 +410,26 @@ impl CudaUnbinnedBatchAccelerator {
         self.stream.memcpy_dtoh(&self.d_grad_out, &mut grad_out).map_err(cuda_err)?;
         self.stream.synchronize().map_err(cuda_err)?;
 
+        nll_out.truncate(n_eval);
+        grad_out.truncate(n_eval * self.n_params);
         Ok((nll_out, grad_out))
     }
 
-    /// NLL-only evaluation for all toys.
-    ///
-    /// `params_flat` is `[n_toys × n_params]` row-major.
-    pub fn batch_nll(&mut self, params_flat: &[f64]) -> ns_core::Result<Vec<f64>> {
-        if params_flat.len() != self.n_toys * self.n_params {
+    fn eval_batch_nll(&mut self, params_flat: &[f64], n_eval: usize) -> ns_core::Result<Vec<f64>> {
+        if params_flat.len() != n_eval * self.n_params {
             return Err(ns_core::Error::Validation(format!(
                 "params_flat length mismatch: expected {}, got {}",
-                self.n_toys * self.n_params,
+                n_eval * self.n_params,
                 params_flat.len()
             )));
+        }
+        if n_eval == 0 {
+            return Ok(Vec::new());
         }
 
         self.stream.memcpy_htod(params_flat, &mut self.d_params_flat).map_err(cuda_err)?;
 
-        let config = self.launch_config();
+        let config = self.launch_config(n_eval);
 
         let np = self.n_params as u32;
         let nprocs = self.n_procs as u32;
@@ -342,12 +437,14 @@ impl CudaUnbinnedBatchAccelerator {
         let tshape = self.total_shape_params as u32;
         let ng = self.n_gauss as u32;
         let cc = self.constraint_const;
-        let ntoys = self.n_toys as u32;
+        let ntoys_total = self.n_toys as u32;
+        let neval = n_eval as u32;
 
         let mut builder = self.stream.launch_builder(&self.kernel_nll_only);
         builder.arg(&self.d_params_flat);
         builder.arg(&self.d_obs_flat);
         builder.arg(&self.d_toy_offsets);
+        builder.arg(&self.d_eval_to_toy);
         builder.arg(&self.d_obs_lo);
         builder.arg(&self.d_obs_hi);
         builder.arg(&self.d_procs);
@@ -362,7 +459,8 @@ impl CudaUnbinnedBatchAccelerator {
         builder.arg(&tshape);
         builder.arg(&ng);
         builder.arg(&cc);
-        builder.arg(&ntoys);
+        builder.arg(&ntoys_total);
+        builder.arg(&neval);
 
         // SAFETY: Same invariants as batch_nll_grad launch — valid device pointers,
         // matching scalar args, launch config within hardware limits.
@@ -375,7 +473,86 @@ impl CudaUnbinnedBatchAccelerator {
         let mut nll_out = vec![0.0f64; self.n_toys];
         self.stream.memcpy_dtoh(&self.d_nll_out, &mut nll_out).map_err(cuda_err)?;
         self.stream.synchronize().map_err(cuda_err)?;
+        nll_out.truncate(n_eval);
         Ok(nll_out)
+    }
+
+    /// Fused NLL + analytical gradient for all toys.
+    ///
+    /// `params_flat` is `[n_toys × n_params]` row-major.
+    pub fn batch_nll_grad(&mut self, params_flat: &[f64]) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params_flat.len() != self.n_toys * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat length mismatch: expected {}, got {}",
+                self.n_toys * self.n_params,
+                params_flat.len()
+            )));
+        }
+        self.stream
+            .memcpy_htod(&self.eval_to_toy_identity, &mut self.d_eval_to_toy)
+            .map_err(cuda_err)?;
+        self.eval_batch_nll_grad(params_flat, self.n_toys)
+    }
+
+    /// Fused NLL + analytical gradient for active toy subset.
+    ///
+    /// `params_flat` is `[n_active × n_params]` in active toy order.
+    pub fn batch_nll_grad_active(
+        &mut self,
+        params_flat: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params_flat.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat length mismatch for active toys: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        self.upload_eval_to_toy_map(active_toys)?;
+        self.eval_batch_nll_grad(params_flat, active_toys.len())
+    }
+
+    /// NLL-only evaluation for all toys.
+    ///
+    /// `params_flat` is `[n_toys × n_params]` row-major.
+    pub fn batch_nll(&mut self, params_flat: &[f64]) -> ns_core::Result<Vec<f64>> {
+        if params_flat.len() != self.n_toys * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat length mismatch: expected {}, got {}",
+                self.n_toys * self.n_params,
+                params_flat.len()
+            )));
+        }
+        self.stream
+            .memcpy_htod(&self.eval_to_toy_identity, &mut self.d_eval_to_toy)
+            .map_err(cuda_err)?;
+        self.eval_batch_nll(params_flat, self.n_toys)
+    }
+
+    /// NLL-only evaluation for active toy subset.
+    ///
+    /// `params_flat` is `[n_active × n_params]` in active toy order.
+    pub fn batch_nll_active(
+        &mut self,
+        params_flat: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<Vec<f64>> {
+        if params_flat.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat length mismatch for active toys: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.upload_eval_to_toy_map(active_toys)?;
+        self.eval_batch_nll(params_flat, active_toys.len())
     }
 
     /// Number of parameters.
@@ -581,12 +758,13 @@ impl CudaUnbinnedBatchAccelerator {
         let mut d_nll_out = self.stream.alloc_zeros::<f64>(n_toys).map_err(cuda_err)?;
         let mut d_status = self.stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
         let mut d_iters = self.stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
+        let mut d_line_search_exhaust = self.stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
 
         // Launch config: 1 block = 1 toy, 256 threads
         let block_size = 256u32;
-        // Shared memory: params[n_params] + scratch[block_size] + 1 extra double for flags
+        // Shared memory: params[n_params] + grad[n_params] + scratch[block_size] + 1 extra double for flags
         let shared_bytes =
-            ((n_params + block_size as usize + 1) * std::mem::size_of::<f64>()) as u32;
+            ((2 * n_params + block_size as usize + 1) * std::mem::size_of::<f64>()) as u32;
         let config = LaunchConfig {
             grid_dim: (n_toys as u32, 1, 1),
             block_dim: (block_size, 1, 1),
@@ -600,19 +778,33 @@ impl CudaUnbinnedBatchAccelerator {
         self.stream.memcpy_dtoh(&self.d_obs_hi, &mut obs_hi_h).map_err(cuda_err)?;
         self.stream.synchronize().map_err(cuda_err)?;
 
+        // Channel-local device pointers (avoid any host-side static concatenation in multi-channel mode).
+        let stream_ref = self.stream.as_ref();
+        let (obs_ptr, _g_obs) = self.d_obs_flat.device_ptr(stream_ref);
+        let (offs_ptr, _g_offs) = self.d_toy_offsets.device_ptr(stream_ref);
+        let (procs_ptr, _g_procs) = self.d_procs.device_ptr(stream_ref);
+        let (rmods_ptr, _g_rmods) = self.d_rate_mods.device_ptr(stream_ref);
+        let (shape_ptr, _g_shape) = self.d_shape_pidx.device_ptr(stream_ref);
+        let (aux_ptr, _g_aux) = self.d_pdf_aux_f64.device_ptr(stream_ref);
+        let gauss_ptr = if self.n_gauss == 0 {
+            std::ptr::null()
+        } else {
+            let (p, _g) = self.d_gauss.device_ptr(stream_ref);
+            p as *const GpuUnbinnedGaussConstraintEntry
+        };
+
         let channel_desc = GpuChannelDesc {
-            obs_base: 0,
-            toy_offsets_base: 0,
-            proc_base: 0,
+            obs_flat: obs_ptr as *const f64,
+            toy_offsets: offs_ptr as *const u32,
+            procs: procs_ptr as *const GpuUnbinnedProcessDesc,
+            rate_mods: rmods_ptr as *const GpuUnbinnedRateModifierDesc,
+            shape_pidx: shape_ptr as *const u32,
+            pdf_aux_f64: aux_ptr as *const f64,
+            gauss: gauss_ptr,
             n_procs: self.n_procs as u32,
-            rate_mod_base: 0,
             total_rate_mods: self.total_rate_mods as u32,
-            shape_base: 0,
             total_shape_params: self.total_shape_params as u32,
-            pdf_aux_base: 0,
-            gauss_base: 0,
             n_gauss: self.n_gauss as u32,
-            _pad: 0,
             obs_lo: obs_lo_h[0],
             obs_hi: obs_hi_h[0],
             constraint_const: self.constraint_const,
@@ -634,17 +826,11 @@ impl CudaUnbinnedBatchAccelerator {
         builder.arg(&mut d_direction);
         builder.arg(&d_bounds_lo);
         builder.arg(&d_bounds_hi);
-        builder.arg(&self.d_obs_flat);
-        builder.arg(&self.d_toy_offsets);
-        builder.arg(&self.d_procs);
-        builder.arg(&self.d_rate_mods);
-        builder.arg(&self.d_shape_pidx);
-        builder.arg(&self.d_pdf_aux_f64);
-        builder.arg(&self.d_gauss);
         builder.arg(&d_channels);
         builder.arg(&mut d_nll_out);
         builder.arg(&mut d_status);
         builder.arg(&mut d_iters);
+        builder.arg(&mut d_line_search_exhaust);
         builder.arg(&np);
         builder.arg(&nch);
         builder.arg(&ntoys);
@@ -666,11 +852,15 @@ impl CudaUnbinnedBatchAccelerator {
         let mut nll_out = vec![0.0f64; n_toys];
         let mut status_out = vec![0u32; n_toys];
         let mut iters_out = vec![0u32; n_toys];
+        let mut line_search_exhaust_out = vec![0u32; n_toys];
 
         self.stream.memcpy_dtoh(&d_x, &mut x_out).map_err(cuda_err)?;
         self.stream.memcpy_dtoh(&d_nll_out, &mut nll_out).map_err(cuda_err)?;
         self.stream.memcpy_dtoh(&d_status, &mut status_out).map_err(cuda_err)?;
         self.stream.memcpy_dtoh(&d_iters, &mut iters_out).map_err(cuda_err)?;
+        self.stream
+            .memcpy_dtoh(&d_line_search_exhaust, &mut line_search_exhaust_out)
+            .map_err(cuda_err)?;
         self.stream.synchronize().map_err(cuda_err)?;
 
         // Convert to FitResults
@@ -680,15 +870,19 @@ impl CudaUnbinnedBatchAccelerator {
                 let nll = nll_out[t];
                 let status = status_out[t];
                 let iters = iters_out[t] as usize;
-                let converged = status == 1;
-                let failed = status == 2;
+                let ls_exhaust = line_search_exhaust_out[t];
+                let converged = status == CUDA_LBFGS_STATUS_CONVERGED;
+                let failed = status == CUDA_LBFGS_STATUS_FAILED
+                    || (status != CUDA_LBFGS_STATUS_MAX_ITER && !converged);
 
                 if failed {
-                    Err(ns_core::Error::Computation(
-                        "GPU L-BFGS optimizer failed (invalid toy data)".into(),
-                    ))
+                    Err(ns_core::Error::Computation(format!(
+                        "GPU L-BFGS optimizer failed (status={}, reason={})",
+                        status,
+                        cuda_lbfgs_status_reason(status)
+                    )))
                 } else {
-                    Ok(ns_core::FitResult::new(
+                    let mut fit = ns_core::FitResult::new(
                         params,
                         vec![0.0; n_params],
                         nll,
@@ -696,7 +890,17 @@ impl CudaUnbinnedBatchAccelerator {
                         iters,
                         iters + 1,
                         iters,
-                    ))
+                    )
+                    .with_diagnostics(
+                        cuda_lbfgs_status_reason(status).to_string(),
+                        f64::NAN,
+                        f64::NAN,
+                        0,
+                    );
+                    fit.warnings.push(format!("cuda_status={status}"));
+                    fit.warnings.push("retry_attempts_used=0".to_string());
+                    fit.warnings.push(format!("line_search_exhaustions={ls_exhaust}"));
+                    Ok(fit)
                 }
             })
             .collect();
@@ -753,99 +957,63 @@ pub fn batch_fit_multi_channel_on_device(
         return Err(ns_core::Error::Validation(format!("lbfgs_m must be <= 16, got {lbfgs_m}")));
     }
 
-    // Use first accelerator's context/stream
-    let ctx = &accels[0].ctx;
+    // Use first accelerator's context/stream for the kernel launch.
+    //
+    // IMPORTANT: device pointers are only valid within the CUDA context that allocated them.
+    // Require all accelerators to share the same `CudaContext` to avoid an expensive D2H/H2D bounce.
+    let ctx0 = &accels[0].ctx;
+    for (i, a) in accels.iter().enumerate().skip(1) {
+        if !Arc::ptr_eq(&a.ctx, ctx0) {
+            return Err(ns_core::Error::Validation(format!(
+                "multi-channel gpu-native requires all accelerators to share the same CUDA context; channel {i} differs"
+            )));
+        }
+    }
+    let ctx = ctx0;
     let stream = &accels[0].stream;
 
-    // Download static data from each channel and concatenate
-    let mut all_obs: Vec<f64> = Vec::new();
-    let mut all_offsets: Vec<u32> = Vec::new();
-    let mut all_procs: Vec<GpuUnbinnedProcessDesc> = Vec::new();
-    let mut all_rmods: Vec<GpuUnbinnedRateModifierDesc> = Vec::new();
-    let mut all_shape: Vec<u32> = Vec::new();
-    let mut all_aux: Vec<f64> = Vec::new();
-    let mut all_gauss: Vec<GpuUnbinnedGaussConstraintEntry> = Vec::new();
+    // Build per-channel descriptors using channel-local device pointers (no host static download).
     let mut channel_descs: Vec<GpuChannelDesc> = Vec::with_capacity(n_channels);
-
     for (ch_idx, accel) in accels.iter().enumerate() {
-        let (obs, offsets, mut procs, rmods, shape, aux, gauss) =
-            accel.download_static_buffers()?;
         let (obs_lo, obs_hi) = accel.download_obs_bounds()?;
 
-        let obs_base = all_obs.len() as u32;
-        let toy_offsets_base = all_offsets.len() as u32;
-        let proc_base = all_procs.len() as u32;
-        let rate_mod_base = all_rmods.len() as u32;
-        let shape_base = all_shape.len() as u32;
-        let pdf_aux_base = all_aux.len() as u32;
-        let gauss_base = all_gauss.len() as u32;
+        let stream_ref = accel.stream.as_ref();
+        let (obs_ptr, _g_obs) = accel.d_obs_flat.device_ptr(stream_ref);
+        let (offs_ptr, _g_offs) = accel.d_toy_offsets.device_ptr(stream_ref);
+        let (procs_ptr, _g_procs) = accel.d_procs.device_ptr(stream_ref);
+        let (rmods_ptr, _g_rmods) = accel.d_rate_mods.device_ptr(stream_ref);
+        let (shape_ptr, _g_shape) = accel.d_shape_pidx.device_ptr(stream_ref);
+        let (aux_ptr, _g_aux) = accel.d_pdf_aux_f64.device_ptr(stream_ref);
 
-        // Note: process descriptor internal offsets (rate_mod_offset,
-        // shape_param_offset, pdf_aux_offset) remain channel-relative because
-        // the kernel passes channel-offset pointers (g_rate_mods + cd.rate_mod_base,
-        // g_shape_pidx + cd.shape_base, g_pdf_aux_f64 + cd.pdf_aux_base) to
-        // compute_nll_and_grad, so no adjustment is needed here.
-
-        // Gaussian constraints only on channel 0 to avoid double-counting
-        let (ch_n_gauss, ch_constraint_const) = if ch_idx == 0 {
-            (accel.n_gauss() as u32, accel.constraint_const())
+        // Gaussian constraints only on channel 0 to avoid double-counting.
+        let (gauss_ptr, n_gauss, constraint_const) = if ch_idx == 0 && accel.n_gauss() > 0 {
+            let (p, _g) = accel.d_gauss.device_ptr(stream_ref);
+            (
+                p as *const GpuUnbinnedGaussConstraintEntry,
+                accel.n_gauss() as u32,
+                accel.constraint_const(),
+            )
         } else {
-            (0u32, 0.0)
+            (std::ptr::null(), 0u32, 0.0)
         };
 
         channel_descs.push(GpuChannelDesc {
-            obs_base,
-            toy_offsets_base,
-            proc_base,
+            obs_flat: obs_ptr as *const f64,
+            toy_offsets: offs_ptr as *const u32,
+            procs: procs_ptr as *const GpuUnbinnedProcessDesc,
+            rate_mods: rmods_ptr as *const GpuUnbinnedRateModifierDesc,
+            shape_pidx: shape_ptr as *const u32,
+            pdf_aux_f64: aux_ptr as *const f64,
+            gauss: gauss_ptr,
             n_procs: accel.n_procs() as u32,
-            rate_mod_base,
             total_rate_mods: accel.total_rate_mods() as u32,
-            shape_base,
             total_shape_params: accel.total_shape_params() as u32,
-            pdf_aux_base,
-            gauss_base,
-            n_gauss: ch_n_gauss,
-            _pad: 0,
+            n_gauss,
             obs_lo,
             obs_hi,
-            constraint_const: ch_constraint_const,
+            constraint_const,
         });
-
-        all_obs.extend_from_slice(&obs);
-        all_offsets.extend_from_slice(&offsets);
-        all_procs.extend(procs);
-        all_rmods.extend(rmods);
-        all_shape.extend_from_slice(&shape);
-        all_aux.extend_from_slice(&aux);
-        if ch_idx == 0 {
-            all_gauss.extend(gauss);
-        }
     }
-
-    // Upload concatenated data to device
-    let d_obs_flat = stream.clone_htod(&all_obs).map_err(cuda_err)?;
-    let d_toy_offsets = stream.clone_htod(&all_offsets).map_err(cuda_err)?;
-    let d_procs = stream.clone_htod(&all_procs).map_err(cuda_err)?;
-    let d_rate_mods = if all_rmods.is_empty() {
-        stream.alloc_zeros::<GpuUnbinnedRateModifierDesc>(1).map_err(cuda_err)?
-    } else {
-        stream.clone_htod(&all_rmods).map_err(cuda_err)?
-    };
-    let d_shape_pidx = if all_shape.is_empty() {
-        stream.alloc_zeros::<u32>(1).map_err(cuda_err)?
-    } else {
-        stream.clone_htod(&all_shape).map_err(cuda_err)?
-    };
-    let d_pdf_aux = if all_aux.is_empty() {
-        stream.alloc_zeros::<f64>(1).map_err(cuda_err)?
-    } else {
-        stream.clone_htod(&all_aux).map_err(cuda_err)?
-    };
-    let d_gauss = if all_gauss.is_empty() {
-        stream.alloc_zeros::<GpuUnbinnedGaussConstraintEntry>(1).map_err(cuda_err)?
-    } else {
-        stream.clone_htod(&all_gauss).map_err(cuda_err)?
-    };
     let d_channels = stream.clone_htod(&channel_descs).map_err(cuda_err)?;
 
     // Load L-BFGS kernel
@@ -883,10 +1051,13 @@ pub fn batch_fit_multi_channel_on_device(
     let mut d_nll_out = stream.alloc_zeros::<f64>(n_toys).map_err(cuda_err)?;
     let mut d_status = stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
     let mut d_iters = stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
+    let mut d_line_search_exhaust = stream.alloc_zeros::<u32>(n_toys).map_err(cuda_err)?;
 
     // Launch config
     let block_size = 256u32;
-    let shared_bytes = ((n_params + block_size as usize + 1) * std::mem::size_of::<f64>()) as u32;
+    // Shared memory: params[n_params] + grad[n_params] + scratch[block_size] + 1 extra double for flags
+    let shared_bytes =
+        ((2 * n_params + block_size as usize + 1) * std::mem::size_of::<f64>()) as u32;
     let config = LaunchConfig {
         grid_dim: (n_toys as u32, 1, 1),
         block_dim: (block_size, 1, 1),
@@ -908,17 +1079,11 @@ pub fn batch_fit_multi_channel_on_device(
     builder.arg(&mut d_direction);
     builder.arg(&d_bounds_lo);
     builder.arg(&d_bounds_hi);
-    builder.arg(&d_obs_flat);
-    builder.arg(&d_toy_offsets);
-    builder.arg(&d_procs);
-    builder.arg(&d_rate_mods);
-    builder.arg(&d_shape_pidx);
-    builder.arg(&d_pdf_aux);
-    builder.arg(&d_gauss);
     builder.arg(&d_channels);
     builder.arg(&mut d_nll_out);
     builder.arg(&mut d_status);
     builder.arg(&mut d_iters);
+    builder.arg(&mut d_line_search_exhaust);
     builder.arg(&np);
     builder.arg(&nch);
     builder.arg(&ntoys);
@@ -938,11 +1103,13 @@ pub fn batch_fit_multi_channel_on_device(
     let mut nll_out = vec![0.0f64; n_toys];
     let mut status_out = vec![0u32; n_toys];
     let mut iters_out = vec![0u32; n_toys];
+    let mut line_search_exhaust_out = vec![0u32; n_toys];
 
     stream.memcpy_dtoh(&d_x, &mut x_out).map_err(cuda_err)?;
     stream.memcpy_dtoh(&d_nll_out, &mut nll_out).map_err(cuda_err)?;
     stream.memcpy_dtoh(&d_status, &mut status_out).map_err(cuda_err)?;
     stream.memcpy_dtoh(&d_iters, &mut iters_out).map_err(cuda_err)?;
+    stream.memcpy_dtoh(&d_line_search_exhaust, &mut line_search_exhaust_out).map_err(cuda_err)?;
     stream.synchronize().map_err(cuda_err)?;
 
     let results: Vec<ns_core::Result<ns_core::FitResult>> = (0..n_toys)
@@ -951,15 +1118,19 @@ pub fn batch_fit_multi_channel_on_device(
             let nll = nll_out[t];
             let status = status_out[t];
             let iters = iters_out[t] as usize;
-            let converged = status == 1;
-            let failed = status == 2;
+            let ls_exhaust = line_search_exhaust_out[t];
+            let converged = status == CUDA_LBFGS_STATUS_CONVERGED;
+            let failed = status == CUDA_LBFGS_STATUS_FAILED
+                || (status != CUDA_LBFGS_STATUS_MAX_ITER && !converged);
 
             if failed {
-                Err(ns_core::Error::Computation(
-                    "GPU L-BFGS optimizer failed (invalid toy data)".into(),
-                ))
+                Err(ns_core::Error::Computation(format!(
+                    "GPU L-BFGS optimizer failed (status={}, reason={})",
+                    status,
+                    cuda_lbfgs_status_reason(status)
+                )))
             } else {
-                Ok(ns_core::FitResult::new(
+                let mut fit = ns_core::FitResult::new(
                     params,
                     vec![0.0; n_params],
                     nll,
@@ -967,7 +1138,17 @@ pub fn batch_fit_multi_channel_on_device(
                     iters,
                     iters + 1,
                     iters,
-                ))
+                )
+                .with_diagnostics(
+                    cuda_lbfgs_status_reason(status).to_string(),
+                    f64::NAN,
+                    f64::NAN,
+                    0,
+                );
+                fit.warnings.push(format!("cuda_status={status}"));
+                fit.warnings.push("retry_attempts_used=0".to_string());
+                fit.warnings.push(format!("line_search_exhaustions={ls_exhaust}"));
+                Ok(fit)
             }
         })
         .collect();

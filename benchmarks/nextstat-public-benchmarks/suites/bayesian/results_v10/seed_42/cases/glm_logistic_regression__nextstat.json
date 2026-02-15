@@ -1,0 +1,104 @@
+{
+  "backend": "nextstat",
+  "case": "glm_logistic_regression",
+  "config": {
+    "dataset_seed": 12345,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "metric": "diagonal",
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "seed": 42,
+    "target_accept": 0.8
+  },
+  "dataset": {
+    "id": "generated:glm_logistic_n=200_p=5_seed=12345",
+    "sha256": "04117bfe1f5c2af45e84f7150872c10aa96ded80ad0c7ad4dfd72f6dba94c540"
+  },
+  "deterministic": false,
+  "diagnostics": {
+    "divergence_rate": 0.0,
+    "ebfmi": [
+      1.022486058220067,
+      1.0228709982660578,
+      1.0781682549173097,
+      1.061933434443435
+    ],
+    "ess_bulk": {
+      "beta1": 8000.0,
+      "beta2": 8000.0,
+      "beta3": 8000.0,
+      "beta4": 8000.0,
+      "beta5": 8000.0,
+      "intercept": 8000.0
+    },
+    "ess_tail": {
+      "beta1": 5497.5930373720885,
+      "beta2": 6017.417570971012,
+      "beta3": 5901.060707169452,
+      "beta4": 6118.476310595779,
+      "beta5": 6059.930904148441,
+      "intercept": 6007.699723142429
+    },
+    "max_treedepth_rate": 0.0,
+    "quality": {
+      "enabled": true,
+      "failures": [],
+      "max_r_hat": 1.0012901842669246,
+      "min_ebfmi": 1.022486058220067,
+      "min_ess_bulk": 8000.0,
+      "min_ess_tail": 5497.5930373720885,
+      "status": "ok",
+      "total_draws": 8000,
+      "warnings": []
+    },
+    "r_hat": {
+      "beta1": 1.00039034957421,
+      "beta2": 1.0000997289114908,
+      "beta3": 1.0012901842669246,
+      "beta4": 1.0001585877171901,
+      "beta5": 1.001283956222194,
+      "intercept": 1.0002044054278596
+    }
+  },
+  "diagnostics_summary": {
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.0012901842669246,
+    "max_treedepth_rate": 0.0,
+    "min_ebfmi": 1.022486058220067,
+    "min_ess_bulk": 8000.0,
+    "min_ess_tail": 5497.5930373720885
+  },
+  "meta": {
+    "nextstat_version": "0.9.0",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "model": {
+    "model_type": "ComposedGlmModel.logistic_regression",
+    "n_params": 6,
+    "param_names": [
+      "intercept",
+      "beta1",
+      "beta2",
+      "beta3",
+      "beta4",
+      "beta5"
+    ]
+  },
+  "schema_version": "nextstat.bayesian_benchmark_result.v1",
+  "status": "ok",
+  "suite": "bayesian",
+  "timing": {
+    "ess_bulk_per_sec": {
+      "median": 29547.244033727984,
+      "min": 29547.244033727984
+    },
+    "ess_tail_per_sec": {
+      "median": 22206.817201460784,
+      "min": 20304.84038416962
+    },
+    "wall_time_s": 0.27075283200247213
+  }
+}

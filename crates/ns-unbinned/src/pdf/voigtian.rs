@@ -1,4 +1,4 @@
-use crate::event_store::EventStore;
+use crate::event_store::{EventStore, ObservableSpec};
 use crate::pdf::UnbinnedPdf;
 use ns_core::{Error, Result};
 
@@ -234,5 +234,101 @@ impl UnbinnedPdf for VoigtianPdf {
         }
 
         Ok(())
+    }
+
+    fn sample(
+        &self,
+        params: &[f64],
+        n_events: usize,
+        support: &[(f64, f64)],
+        rng: &mut dyn rand::RngCore,
+    ) -> Result<EventStore> {
+        if params.len() != 3 {
+            return Err(Error::Validation(format!(
+                "VoigtianPdf expects 3 params (mu, sigma, gamma), got {}",
+                params.len()
+            )));
+        }
+        if support.len() != 1 {
+            return Err(Error::Validation(format!(
+                "VoigtianPdf sample expects 1D support, got {}D",
+                support.len()
+            )));
+        }
+
+        let mu = params[0];
+        let sigma = params[1];
+        let gamma = params[2];
+        if !mu.is_finite() || !sigma.is_finite() || !gamma.is_finite() {
+            return Err(Error::Validation(format!(
+                "VoigtianPdf: all params must be finite, got mu={mu}, sigma={sigma}, gamma={gamma}"
+            )));
+        }
+        if sigma <= 0.0 || gamma <= 0.0 {
+            return Err(Error::Validation(format!(
+                "VoigtianPdf: sigma and gamma must be > 0, got sigma={sigma}, gamma={gamma}"
+            )));
+        }
+
+        let (a, b) = support[0];
+        if !a.is_finite() || !b.is_finite() || a >= b {
+            return Err(Error::Validation(format!(
+                "VoigtianPdf sample requires finite support with low < high, got ({a}, {b})"
+            )));
+        }
+
+        #[inline]
+        fn u01(rng: &mut dyn rand::RngCore) -> f64 {
+            (rng.next_u64() as f64 + 0.5) * (1.0 / 18446744073709551616.0_f64)
+        }
+
+        // Numerical inverse-CDF sampling on finite support.
+        const N_GRID: usize = 4096;
+        let dx = (b - a) / (N_GRID as f64 - 1.0);
+        let mut x_grid = vec![0.0; N_GRID];
+        let mut pdf_grid = vec![0.0; N_GRID];
+        for i in 0..N_GRID {
+            let x = a + dx * i as f64;
+            x_grid[i] = x;
+            let v = Self::voigt_unnorm(x, mu, sigma, gamma);
+            pdf_grid[i] = if v.is_finite() && v > 0.0 { v } else { 0.0 };
+        }
+
+        let mut cdf = vec![0.0; N_GRID];
+        for i in 1..N_GRID {
+            let area = 0.5 * (pdf_grid[i - 1] + pdf_grid[i]) * dx;
+            cdf[i] = cdf[i - 1] + area.max(0.0);
+        }
+
+        let total = *cdf.last().unwrap_or(&0.0);
+        if !total.is_finite() || total <= 0.0 {
+            return Err(Error::Computation(
+                "VoigtianPdf::sample failed: numerical integral is non-positive".into(),
+            ));
+        }
+        for v in &mut cdf {
+            *v /= total;
+        }
+
+        let mut xs = Vec::with_capacity(n_events);
+        for _ in 0..n_events {
+            let u = u01(rng);
+            let idx = cdf.partition_point(|&v| v < u);
+            let x = if idx == 0 {
+                x_grid[0]
+            } else if idx >= N_GRID {
+                x_grid[N_GRID - 1]
+            } else {
+                let c0 = cdf[idx - 1];
+                let c1 = cdf[idx];
+                let x0 = x_grid[idx - 1];
+                let x1 = x_grid[idx];
+                if c1 > c0 { x0 + (u - c0) * (x1 - x0) / (c1 - c0) } else { x0 }
+            };
+            xs.push(x.clamp(a, b));
+        }
+
+        let obs = ObservableSpec::branch(self.observable[0].clone(), (a, b));
+        EventStore::from_columns(vec![obs], vec![(self.observable[0].clone(), xs)], None)
     }
 }

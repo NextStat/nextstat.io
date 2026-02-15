@@ -1197,6 +1197,22 @@ fn test_argus_pdf_grad() {
     }
 }
 
+#[test]
+fn test_argus_pdf_sample_within_support() {
+    let pdf = ArgusPdf::new("m");
+    let support = [(0.0, 5.29)];
+    let mut rng = StdRng::seed_from_u64(42);
+
+    let sampled = pdf.sample(&[-2.0, 0.5], 2000, &support, &mut rng).unwrap();
+    assert_eq!(sampled.n_events(), 2000);
+
+    let col = sampled.column("m").unwrap();
+    assert!(col.iter().all(|&x| (0.0..=5.29).contains(&x)));
+
+    let mean = col.iter().sum::<f64>() / col.len() as f64;
+    assert!(mean > 1.0 && mean < 4.8, "unexpected sample mean for ARGUS: {mean}");
+}
+
 // ── A4: VoigtianPdf ────────────────────────────────────────────────────
 
 #[test]
@@ -1244,6 +1260,22 @@ fn test_voigtian_pdf_grad() {
     for i in 0..n * np {
         assert_relative_eq!(grad[i], fd[i], epsilon = 1e-3);
     }
+}
+
+#[test]
+fn test_voigtian_pdf_sample_within_support() {
+    let pdf = VoigtianPdf::new("m");
+    let support = [(80.0, 100.0)];
+    let mut rng = StdRng::seed_from_u64(7);
+
+    let sampled = pdf.sample(&[91.2, 2.0, 2.5], 2000, &support, &mut rng).unwrap();
+    assert_eq!(sampled.n_events(), 2000);
+
+    let col = sampled.column("m").unwrap();
+    assert!(col.iter().all(|&x| (80.0..=100.0).contains(&x)));
+
+    let mean = col.iter().sum::<f64>() / col.len() as f64;
+    assert!(mean > 89.0 && mean < 93.5, "unexpected sample mean for Voigtian: {mean}");
 }
 
 // ── A5: Normalization quadrature gradient ───────────────────────────────

@@ -1,0 +1,519 @@
+{
+  "backends": "nextstat,cmdstanpy",
+  "cases": [
+    {
+      "backend": "cmdstanpy",
+      "case": "eight_schools_non_centered",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.95
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.95
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.95
+        }
+      ],
+      "max_r_hat": [
+        1.00173,
+        1.00099,
+        1.00113
+      ],
+      "min_ess_bulk": [
+        5498.65,
+        5402.37,
+        4445.43
+      ],
+      "min_ess_bulk_per_sec": [
+        26376.57210290722,
+        28986.30880301305,
+        24567.929366339496
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.20846719499968458,
+        0.18637661099637626,
+        0.1809444309983519
+      ]
+    },
+    {
+      "backend": "nextstat",
+      "case": "eight_schools_non_centered",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.95
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.95
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.95
+        }
+      ],
+      "max_r_hat": [
+        1.0013756358978145,
+        1.002514508230863,
+        1.002153386873301
+      ],
+      "min_ess_bulk": [
+        5811.440805207181,
+        5798.537583314046,
+        5068.23075494287
+      ],
+      "min_ess_bulk_per_sec": [
+        57423.32181966324,
+        56371.68998462743,
+        48455.30928855399
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.10120349399949191,
+        0.10286258199630538,
+        0.10459598399756942
+      ]
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "glm_logistic_regression",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [
+        1.00164,
+        1.00038,
+        1.00043
+      ],
+      "min_ess_bulk": [
+        7927.61,
+        8172.17,
+        7986.71
+      ],
+      "min_ess_bulk_per_sec": [
+        27323.32751492527,
+        30761.03239953458,
+        30714.30078656088
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.2901407230019686,
+        0.26566631099558435,
+        0.2600322910002433
+      ]
+    },
+    {
+      "backend": "nextstat",
+      "case": "glm_logistic_regression",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [
+        1.0012901842669246,
+        1.0008228986866796,
+        1.000730207921698
+      ],
+      "min_ess_bulk": [
+        8000.0,
+        8000.0,
+        8000.0
+      ],
+      "min_ess_bulk_per_sec": [
+        29547.244033727984,
+        30664.50158963533,
+        29472.298096786497
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.27075283200247213,
+        0.260887983997236,
+        0.2714413370049442
+      ]
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "hier_random_intercept_non_centered",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [
+        1.00204,
+        1.00218,
+        1.00177
+      ],
+      "min_ess_bulk": [
+        2169.7,
+        2051.84,
+        2774.47
+      ],
+      "min_ess_bulk_per_sec": [
+        951.5400151076731,
+        865.6544127392624,
+        1226.478992861721
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        2.2801983789977385,
+        2.370276139998168,
+        2.262142291998316
+      ]
+    },
+    {
+      "backend": "nextstat",
+      "case": "hier_random_intercept_non_centered",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [
+        1.0018511054618806,
+        1.003459646156175,
+        1.004183709531767
+      ],
+      "min_ess_bulk": [
+        3646.767278509822,
+        3058.820651557932,
+        2871.7688026837363
+      ],
+      "min_ess_bulk_per_sec": [
+        3553.6183454553257,
+        3356.511513869677,
+        2855.009991105378
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        1.026212419004878,
+        0.9113094470012584,
+        1.0058699660003185
+      ]
+    },
+    {
+      "backend": "cmdstanpy",
+      "case": "histfactory_simple_8p",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [],
+      "min_ess_bulk": [],
+      "min_ess_bulk_per_sec": [],
+      "statuses": [
+        "warn",
+        "warn",
+        "warn"
+      ],
+      "wall_time_s": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "backend": "nextstat",
+      "case": "histfactory_simple_8p",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 42,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 0,
+          "target_accept": 0.8
+        },
+        {
+          "dataset_seed": 12345,
+          "init_jitter_rel": 0.1,
+          "max_treedepth": 10,
+          "metric": "diagonal",
+          "n_chains": 4,
+          "n_samples": 2000,
+          "n_warmup": 1000,
+          "seed": 123,
+          "target_accept": 0.8
+        }
+      ],
+      "max_r_hat": [
+        1.0005399380138549,
+        1.0012406054677707,
+        1.0009302143690566
+      ],
+      "min_ess_bulk": [
+        4539.7865096412625,
+        4708.0386837308,
+        4578.944754142823
+      ],
+      "min_ess_bulk_per_sec": [
+        68291.00154572933,
+        70242.74941973659,
+        56606.29455391417
+      ],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.06647708200034685,
+        0.06702526200388093,
+        0.08089108800049871
+      ]
+    }
+  ],
+  "config": {
+    "deterministic": false,
+    "init_jitter_rel": 0.1,
+    "max_treedepth": 10,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 1000,
+    "target_accept": 0.8
+  },
+  "seeds": [
+    42,
+    0,
+    123
+  ]
+}

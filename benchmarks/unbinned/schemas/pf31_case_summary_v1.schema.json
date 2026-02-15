@@ -1,0 +1,29 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/pf31_case_summary_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PF3.1 per-case aggregate summary (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "run_root", "rows"],
+  "properties": {
+    "schema_version": { "const": "nextstat.pf31_case_summary.v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "run_root": { "type": "string", "minLength": 1 },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "spec", "n_toys", "rc", "elapsed_s"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "spec": { "type": "string", "minLength": 1 },
+          "n_toys": { "type": "integer", "minimum": 1 },
+          "rc": { "type": "integer" },
+          "elapsed_s": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
+

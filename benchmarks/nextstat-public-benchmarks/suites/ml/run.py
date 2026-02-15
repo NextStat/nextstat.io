@@ -24,6 +24,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from scripts.bench_env import collect_environment
+
 
 @dataclass
 class RunTiming:
@@ -216,6 +219,7 @@ def main() -> int:
         )
         doc: dict[str, Any] = {
             "status": "ok",
+            "environment": collect_environment(),
             "timing": asdict(timing),
             "meta": meta,
             "cache_hint": cache_hint,
@@ -225,6 +229,7 @@ def main() -> int:
     except Exception as e:
         doc = {
             "status": "failed",
+            "environment": collect_environment(),
             "reason": f"{type(e).__name__}: {e}",
             "meta": {
                 "python": sys.version.split()[0],

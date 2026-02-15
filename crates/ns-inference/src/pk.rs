@@ -423,6 +423,33 @@ fn conc_oral_2cpt_and_grad(
     (c, dc_dcl, dc_dv1, dc_dv2, dc_dq, dc_dka)
 }
 
+/// Concentration at time `t` for 2-compartment IV bolus using macro-parameters.
+///
+/// Parameters: `(CL, V1, V2, Q)`.
+#[inline]
+pub fn conc_iv_2cpt_macro(dose: f64, cl: f64, v1: f64, v2: f64, q: f64, t: f64) -> f64 {
+    let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+    conc_iv_2cpt(dose, v1, &micro, t)
+}
+
+/// Concentration at time `t` for 2-compartment oral using macro-parameters.
+///
+/// Parameters: `(CL, V1, V2, Q, Ka)`.
+#[inline]
+pub fn conc_oral_2cpt_macro(
+    dose: f64,
+    bioav: f64,
+    cl: f64,
+    v1: f64,
+    v2: f64,
+    q: f64,
+    ka: f64,
+    t: f64,
+) -> f64 {
+    let micro = TwoCptMicro::from_macro(cl, v1, v2, q);
+    conc_oral_2cpt(dose, bioav, v1, ka, &micro, t)
+}
+
 /// Policy for handling observations below LLOQ.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LloqPolicy {

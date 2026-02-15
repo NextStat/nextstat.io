@@ -92,3 +92,16 @@ def test_iv_2sls_underidentified_raises():
             instruments=["z"],
         )
 
+
+def test_iv_2sls_hac_smoke():
+    data = _make_iv_data(300, seed=4, pi=1.0, rho_uv=0.4)
+    fit = nextstat.econometrics.iv_2sls_from_formula(
+        "y ~ 1 + x",
+        data,
+        endog="d",
+        instruments=["z"],
+        cov="hac",
+        time_index=list(range(300)),
+        max_lag=4,
+    )
+    assert math.isfinite(float(fit.standard_errors[0]))

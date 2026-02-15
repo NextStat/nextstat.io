@@ -745,20 +745,13 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
     /* Parameter bounds */
     const double* __restrict__ g_bounds_lo, /* [n_params] */
     const double* __restrict__ g_bounds_hi, /* [n_params] */
-    /* Multi-channel data: all channels concatenated in flat arrays */
-    const double* __restrict__ g_obs_flat,
-    const unsigned int* __restrict__ g_toy_offsets,
-    const struct GpuUnbinnedProcessDesc* __restrict__ g_procs,
-    const struct GpuUnbinnedRateModifierDesc* __restrict__ g_rate_mods,
-    const unsigned int* __restrict__ g_shape_pidx,
-    const double* __restrict__ g_pdf_aux_f64,
-    const struct GpuUnbinnedGaussConstraintEntry* __restrict__ g_gauss,
-    /* Per-channel descriptors (offsets into above arrays) */
+    /* Per-channel descriptors (device pointers to channel-local buffers) */
     const struct GpuChannelDesc* __restrict__ g_channels,
     /* Output */
     double* __restrict__ g_nll_out,        /* [n_toys] final NLL */
     unsigned int* __restrict__ g_status,   /* [n_toys] 0=max_iter, 1=converged, 2=failed */
     unsigned int* __restrict__ g_iters,    /* [n_toys] iterations used */
+    unsigned int* __restrict__ g_line_search_exhaust, /* [n_toys] line-search exhaustion count */
     /* Scalar configuration */
     unsigned int n_params,
     unsigned int n_channels,
@@ -786,10 +779,11 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
     double* y_hist    = g_y_hist    + (size_t)toy * lbfgs_m * n_params;
     double* rho_hist  = g_rho_hist  + (size_t)toy * lbfgs_m;
 
-    /* Shared memory layout: params[n_params] + scratch[block_size] + 2 int flags */
+    /* Shared memory layout: params[n_params] + grad[n_params] + scratch[block_size] + 2 int flags */
     extern __shared__ double shared[];
     double* s_params  = shared;
-    double* s_scratch = shared + n_params;
+    double* s_grad    = shared + n_params;
+    double* s_scratch = s_grad + n_params;
     /* Borrow 2 ints (8 bytes = 1 double) at the end of scratch for flags */
     volatile int* s_flag = (volatile int*)(s_scratch + block_size);
     /* s_flag[0] = converged/exit, s_flag[1] = accepted (line search) */
@@ -802,9 +796,11 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
     /* Thread 0 local state */
     unsigned int n_stored = 0;
+    unsigned int line_search_exhaust = 0;
     int has_prev = 0;
     double fval = INFINITY;
     double prev_fval = INFINITY;
+    // Directional derivative for Armijo uses the actual projected step delta = trial - prev_x.
     double g_dot_d = 0.0;
     double step_val = 1.0;
 
@@ -815,9 +811,9 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
         }
         __syncthreads();
 
-        /* ---- Phase B: Zero gradient ---- */
+        /* ---- Phase B: Zero gradient (shared) ---- */
         for (unsigned int i = tid; i < n_params; i += block_size) {
-            grad[i] = 0.0;
+            s_grad[i] = 0.0;
         }
         __syncthreads();
 
@@ -825,20 +821,20 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
         double nll_tmp = 0.0;
         for (unsigned int ch = 0; ch < n_channels; ch++) {
             struct GpuChannelDesc cd = g_channels[ch];
-            unsigned int ev_start = g_toy_offsets[cd.toy_offsets_base + toy];
-            unsigned int ev_end   = g_toy_offsets[cd.toy_offsets_base + toy + 1u];
+            unsigned int ev_start = cd.toy_offsets[toy];
+            unsigned int ev_end   = cd.toy_offsets[toy + 1u];
             unsigned int n_events_ch = (ev_end > ev_start) ? (ev_end - ev_start) : 0u;
-            const double* obs_ch = g_obs_flat + cd.obs_base + ev_start;
+            const double* obs_ch = cd.obs_flat + ev_start;
 
             double nll_ch;
             compute_nll_and_grad(
                 s_params, obs_ch, n_events_ch, cd.obs_lo, cd.obs_hi,
-                g_procs + cd.proc_base,
-                g_rate_mods + cd.rate_mod_base,
-                g_shape_pidx + cd.shape_base,
-                g_pdf_aux_f64 + cd.pdf_aux_base,
-                g_gauss + cd.gauss_base,
-                &nll_ch, grad, s_scratch,
+                cd.procs,
+                cd.rate_mods,
+                cd.shape_pidx,
+                cd.pdf_aux_f64,
+                cd.gauss,
+                &nll_ch, s_grad, s_scratch,
                 n_params, cd.n_procs, cd.total_rate_mods, cd.total_shape_params,
                 cd.n_gauss, cd.constraint_const
             );
@@ -864,7 +860,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
             double pg_norm = 0.0;
             int grad_is_finite = 1;
             for (unsigned int i = 0; i < n_params; i++) {
-                double gi = grad[i];
+                double gi = s_grad[i];
                 double xi = x[i];
                 if (!isfinite(gi) || !isfinite(xi)) {
                     grad_is_finite = 0;
@@ -908,6 +904,9 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
         /* Early exit if converged — all threads see the shared flag */
         if (s_flag[0]) {
+            if (tid == 0) {
+                g_line_search_exhaust[toy] = line_search_exhaust;
+            }
             return;
         }
 
@@ -919,7 +918,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
                 double ys = 0.0;
                 for (unsigned int i = 0; i < n_params; i++) {
                     double si = x[i] - prev_x[i];
-                    double yi = grad[i] - prev_grad[i];
+                    double yi = s_grad[i] - prev_grad[i];
                     s_hist[write_slot * n_params + i] = si;
                     y_hist[write_slot * n_params + i] = yi;
                     ys += yi * si;
@@ -933,7 +932,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
             /* Save current x and grad for next history update */
             for (unsigned int i = 0; i < n_params; i++) {
                 prev_x[i] = x[i];
-                prev_grad[i] = grad[i];
+                prev_grad[i] = s_grad[i];
             }
             has_prev = 1;
 
@@ -942,7 +941,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
             /* q = -grad */
             for (unsigned int i = 0; i < n_params; i++) {
-                dir[i] = -grad[i];
+                dir[i] = -s_grad[i];
             }
 
             double alpha_tmp[MAX_LBFGS_M];
@@ -989,19 +988,35 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
                 }
             }
 
-            /* Directional derivative for Armijo */
-            g_dot_d = 0.0;
-            for (unsigned int i = 0; i < n_params; i++) {
-                g_dot_d += grad[i] * dir[i];
-            }
-
-            /* Initial trial: x + 1.0 * dir, clamped to bounds */
+            /* Initial trial: prev_x + 1.0 * dir, clamped to bounds */
             step_val = 1.0;
             for (unsigned int i = 0; i < n_params; i++) {
-                double trial = x[i] + dir[i];
+                double trial = prev_x[i] + dir[i];
                 trial = fmax(trial, g_bounds_lo[i]);
                 trial = fmin(trial, g_bounds_hi[i]);
                 s_params[i] = trial;
+            }
+            // Armijo uses actual projected step delta, not the unclamped direction.
+            g_dot_d = 0.0;
+            for (unsigned int i = 0; i < n_params; i++) {
+                g_dot_d += s_grad[i] * (s_params[i] - prev_x[i]);
+            }
+            // If the projected step is not a descent direction, fall back to steepest descent
+            // and drop L-BFGS history (it produced a bad direction).
+            if (!isfinite(g_dot_d) || g_dot_d >= 0.0) {
+                n_stored = 0;
+                step_val = 1.0;
+                for (unsigned int i = 0; i < n_params; i++) {
+                    dir[i] = -s_grad[i];
+                    double trial = prev_x[i] + dir[i];
+                    trial = fmax(trial, g_bounds_lo[i]);
+                    trial = fmin(trial, g_bounds_hi[i]);
+                    s_params[i] = trial;
+                }
+                g_dot_d = 0.0;
+                for (unsigned int i = 0; i < n_params; i++) {
+                    g_dot_d += s_grad[i] * (s_params[i] - prev_x[i]);
+                }
             }
             s_flag[1] = 0;
         }
@@ -1013,18 +1028,18 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
             double trial_nll = 0.0;
             for (unsigned int ch = 0; ch < n_channels; ch++) {
                 struct GpuChannelDesc cd = g_channels[ch];
-                unsigned int ev_s = g_toy_offsets[cd.toy_offsets_base + toy];
-                unsigned int ev_e = g_toy_offsets[cd.toy_offsets_base + toy + 1u];
+                unsigned int ev_s = cd.toy_offsets[toy];
+                unsigned int ev_e = cd.toy_offsets[toy + 1u];
                 unsigned int n_ev = (ev_e > ev_s) ? (ev_e - ev_s) : 0u;
-                const double* obs_ch = g_obs_flat + cd.obs_base + ev_s;
+                const double* obs_ch = cd.obs_flat + ev_s;
 
                 double nll_ch = compute_nll_only(
                     s_params, obs_ch, n_ev, cd.obs_lo, cd.obs_hi,
-                    g_procs + cd.proc_base,
-                    g_rate_mods + cd.rate_mod_base,
-                    g_shape_pidx + cd.shape_base,
-                    g_pdf_aux_f64 + cd.pdf_aux_base,
-                    g_gauss + cd.gauss_base,
+                    cd.procs,
+                    cd.rate_mods,
+                    cd.shape_pidx,
+                    cd.pdf_aux_f64,
+                    cd.gauss,
                     s_scratch,
                     n_params, cd.n_procs, cd.total_rate_mods, cd.total_shape_params,
                     cd.n_gauss, cd.constraint_const
@@ -1035,7 +1050,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
             }
 
             if (tid == 0) {
-                if (trial_nll <= fval + ARMIJO_C1 * step_val * g_dot_d) {
+                if (trial_nll <= fval + ARMIJO_C1 * g_dot_d) {
                     s_flag[1] = 1;
                     for (unsigned int i = 0; i < n_params; i++) {
                         x[i] = s_params[i];
@@ -1049,6 +1064,10 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
                         trial = fmin(trial, g_bounds_hi[i]);
                         s_params[i] = trial;
                     }
+                    g_dot_d = 0.0;
+                    for (unsigned int i = 0; i < n_params; i++) {
+                        g_dot_d += s_grad[i] * (s_params[i] - prev_x[i]);
+                    }
                 }
             }
             __syncthreads();
@@ -1060,6 +1079,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
 
         /* If not accepted after all backtracks, take the last trial */
         if (tid == 0 && !s_flag[1]) {
+            line_search_exhaust += 1u;
             for (unsigned int i = 0; i < n_params; i++) {
                 x[i] = s_params[i];
             }
@@ -1072,5 +1092,6 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
         g_nll_out[toy] = fval;
         g_status[toy] = 0u;
         g_iters[toy] = max_iter;
+        g_line_search_exhaust[toy] = line_search_exhaust;
     }
 }

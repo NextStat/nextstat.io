@@ -127,3 +127,52 @@ stopifnot(is.finite(sv$log_likelihood))
 stopifnot(length(sv$smoothed_sigma) == length(rets))
 
 cat("OK (timeseries)\n")
+
+# -------------------------------------------------------------------------
+# SCM wrapper (R6)
+# -------------------------------------------------------------------------
+set.seed(7)
+n_subjects <- 8L
+dose <- 100
+times_per <- c(0.5, 1, 2, 4)
+n_per <- length(times_per)
+id <- rep(0:(n_subjects - 1L), each = n_per)
+times <- rep(times_per, times = n_subjects)
+
+wt <- seq(55, 95, length.out = n_subjects)
+cl_pop <- 1.2
+v_pop <- 10.0
+ka_pop <- 1.6
+sigma_add <- 0.05
+
+dv <- numeric(length(times))
+for (sid in seq_len(n_subjects)) {
+  idx <- ((sid - 1L) * n_per + 1L):(sid * n_per)
+  cl_i <- cl_pop * (wt[sid] / 70)^0.75
+  kel_i <- cl_i / v_pop
+  conc <- (dose / v_pop) * (ka_pop / (ka_pop - kel_i)) *
+    (exp(-kel_i * times_per) - exp(-ka_pop * times_per))
+  dv[idx] <- pmax(conc + rnorm(n_per, sd = sigma_add), 0)
+}
+
+scm <- ns_scm(
+  times = times,
+  dv = dv,
+  id = id,
+  n_subjects = n_subjects,
+  dose = dose,
+  theta = c(1.0, 10.0, 1.5),
+  omega = c(0.3, 0.3, 0.3),
+  sigma = 0.1,
+  covariates = data.frame(WT = wt),
+  alpha_forward = 0.05,
+  alpha_backward = 0.01
+)
+
+stopifnot(is.list(scm))
+stopifnot(is.finite(scm$ofv))
+stopifnot(is.finite(scm$base_ofv))
+stopifnot(is.numeric(scm$theta))
+stopifnot(!is.null(scm$selected_names))
+
+cat("OK (scm)\n")

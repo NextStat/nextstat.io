@@ -232,7 +232,8 @@ pub fn resolve(
         if let Some(domain) = domain_map.get(domain_name.as_str()) {
             let is_global_obs = domain_name.contains("global_observables");
             for axis in &domain.axes {
-                param_bounds.insert(axis.name.clone(), (axis.min, axis.max));
+                let axis_max = if axis.max > axis.min { axis.max } else { axis.min + 10.0 };
+                param_bounds.insert(axis.name.clone(), (axis.min, axis_max));
                 if is_global_obs {
                     global_obs_names.insert(axis.name.clone());
                 }
