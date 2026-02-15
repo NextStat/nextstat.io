@@ -39,7 +39,7 @@ jobs:
       - name: Find baseline (previous successful run artifact)
         if: always()
         id: baseline
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;
@@ -88,7 +88,7 @@ jobs:
 
       - name: Download baseline criterion artifact
         if: steps.baseline.outputs.found == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
