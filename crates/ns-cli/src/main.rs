@@ -17,6 +17,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use nalgebra::{DMatrix, DVector};
+use rand::{Rng, SeedableRng};
 use serde::Deserialize;
 use statrs::distribution::ContinuousCDF;
 use std::path::{Path, PathBuf};
@@ -85,6 +86,12 @@ enum UnbinnedToyGenPoint {
     Init,
     /// Generate toys at the best fit of the observed data.
     Mle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum SummaryCiMethod {
+    Percentile,
+    Bca,
 }
 
 #[derive(Parser)]
@@ -401,6 +408,20 @@ enum Commands {
         /// Fail if pull(POI) std is outside [LOW, HIGH] (computed from converged toys only).
         #[arg(long, num_args = 2, value_names = ["LOW", "HIGH"])]
         poi_pull_std_range: Option<Vec<f64>>,
+
+        /// Optional CI method for `summary.mean` based on toy `poi_hat` values.
+        ///
+        /// When omitted, no additional CI block is computed.
+        #[arg(long, value_enum)]
+        summary_ci_method: Option<SummaryCiMethod>,
+
+        /// Confidence level for `--summary-ci-method`.
+        #[arg(long, default_value_t = 0.68)]
+        summary_ci_level: f64,
+
+        /// Number of bootstrap resamples for `--summary-ci-method`.
+        #[arg(long, default_value_t = 1000)]
+        summary_ci_bootstrap: usize,
     },
 
     /// Merge multiple shard outputs from `unbinned-fit-toys --shard` into a single result.
@@ -2204,6 +2225,9 @@ fn main() -> Result<()> {
             require_all_converged,
             max_abs_poi_pull_mean,
             poi_pull_std_range,
+            summary_ci_method,
+            summary_ci_level,
+            summary_ci_bootstrap,
         } => {
             if let Some(ref dev) = gpu {
                 match dev.as_str() {
@@ -2244,6 +2268,9 @@ fn main() -> Result<()> {
                 require_all_converged,
                 max_abs_poi_pull_mean,
                 poi_pull_std_range,
+                summary_ci_method,
+                summary_ci_level,
+                summary_ci_bootstrap,
                 bundle.as_ref(),
             )
         }
@@ -7726,6 +7753,140 @@ fn cmd_unbinned_hypotest_toys(
     Ok(())
 }
 
+fn summary_ci_method_name(method: SummaryCiMethod) -> &'static str {
+    match method {
+        SummaryCiMethod::Percentile => "percentile",
+        SummaryCiMethod::Bca => "bca",
+    }
+}
+
+fn bootstrap_mean_estimates(samples: &[f64], n_bootstrap: usize, seed: u64) -> Result<Vec<f64>> {
+    if samples.len() < 2 {
+        anyhow::bail!("summary CI requires at least 2 finite poi_hat samples");
+    }
+    if n_bootstrap < 2 {
+        anyhow::bail!("summary CI requires at least 2 bootstrap resamples");
+    }
+    if samples.iter().any(|v| !v.is_finite()) {
+        anyhow::bail!("summary CI received non-finite samples");
+    }
+
+    let n = samples.len();
+    let n_f = n as f64;
+    let mut out = Vec::with_capacity(n_bootstrap);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    for _ in 0..n_bootstrap {
+        let mut sum = 0.0;
+        for _ in 0..n {
+            sum += samples[rng.random_range(0..n)];
+        }
+        out.push(sum / n_f);
+    }
+    Ok(out)
+}
+
+fn jackknife_leave_one_out_means(samples: &[f64]) -> Result<Vec<f64>> {
+    if samples.len() < 2 {
+        anyhow::bail!("summary CI jackknife requires at least 2 samples");
+    }
+    if samples.iter().any(|v| !v.is_finite()) {
+        anyhow::bail!("summary CI jackknife received non-finite samples");
+    }
+    let n = samples.len();
+    let total = samples.iter().sum::<f64>();
+    let denom = (n - 1) as f64;
+    let mut out = Vec::with_capacity(n);
+    for &x in samples {
+        out.push((total - x) / denom);
+    }
+    Ok(out)
+}
+
+fn compute_toy_summary_mean_ci(
+    samples: &[f64],
+    requested_method: SummaryCiMethod,
+    conf_level: f64,
+    n_bootstrap: usize,
+    seed: u64,
+) -> Result<serde_json::Value> {
+    if !(conf_level.is_finite() && conf_level > 0.0 && conf_level < 1.0) {
+        anyhow::bail!("--summary-ci-level must be in (0,1), got {conf_level}");
+    }
+    let theta_hat = samples.iter().sum::<f64>() / samples.len() as f64;
+    let bootstrap_estimates = bootstrap_mean_estimates(samples, n_bootstrap, seed)?;
+    let alpha_low = (1.0 - conf_level) / 2.0;
+    let alpha_high = 1.0 - alpha_low;
+
+    let (p_lo, p_hi) = ns_inference::percentile_interval(&bootstrap_estimates, conf_level)
+        .map_err(|e| {
+            anyhow::anyhow!("failed to compute percentile summary CI from bootstrap estimates: {e}")
+        })?;
+
+    if requested_method == SummaryCiMethod::Percentile {
+        return Ok(serde_json::json!({
+            "target": "mean",
+            "requested_method": "percentile",
+            "method": "percentile",
+            "conf_level": conf_level,
+            "lower": p_lo,
+            "upper": p_hi,
+            "diagnostics": {
+                "z0": serde_json::Value::Null,
+                "acceleration": serde_json::Value::Null,
+                "alpha_low": alpha_low,
+                "alpha_high": alpha_high,
+                "alpha_low_adj": serde_json::Value::Null,
+                "alpha_high_adj": serde_json::Value::Null,
+                "n_bootstrap": bootstrap_estimates.len(),
+                "n_jackknife": 0usize,
+                "fallback_reason": serde_json::Value::Null,
+            }
+        }));
+    }
+
+    let jackknife = jackknife_leave_one_out_means(samples)?;
+    match ns_inference::bca_interval(theta_hat, &bootstrap_estimates, &jackknife, conf_level) {
+        Ok(((lo, hi), diag)) => Ok(serde_json::json!({
+            "target": "mean",
+            "requested_method": "bca",
+            "method": "bca",
+            "conf_level": conf_level,
+            "lower": lo,
+            "upper": hi,
+            "diagnostics": {
+                "z0": diag.z0,
+                "acceleration": diag.acceleration,
+                "alpha_low": diag.alpha_low,
+                "alpha_high": diag.alpha_high,
+                "alpha_low_adj": diag.alpha_low_adj,
+                "alpha_high_adj": diag.alpha_high_adj,
+                "n_bootstrap": diag.n_bootstrap,
+                "n_jackknife": diag.n_jackknife,
+                "fallback_reason": serde_json::Value::Null,
+            }
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "target": "mean",
+            "requested_method": "bca",
+            "method": "percentile",
+            "conf_level": conf_level,
+            "lower": p_lo,
+            "upper": p_hi,
+            "diagnostics": {
+                "z0": serde_json::Value::Null,
+                "acceleration": serde_json::Value::Null,
+                "alpha_low": alpha_low,
+                "alpha_high": alpha_high,
+                "alpha_low_adj": serde_json::Value::Null,
+                "alpha_high_adj": serde_json::Value::Null,
+                "n_bootstrap": bootstrap_estimates.len(),
+                "n_jackknife": jackknife.len(),
+                "fallback_reason": e.to_string(),
+            }
+        })),
+    }
+}
+
 fn cmd_unbinned_fit_toys(
     config: &PathBuf,
     n_toys: usize,
@@ -7744,6 +7905,9 @@ fn cmd_unbinned_fit_toys(
     require_all_converged: bool,
     max_abs_poi_pull_mean: Option<f64>,
     poi_pull_std_range: Option<Vec<f64>>,
+    summary_ci_method: Option<SummaryCiMethod>,
+    summary_ci_level: f64,
+    summary_ci_bootstrap: usize,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
     use ns_core::traits::PoiModel;
@@ -7978,6 +8142,16 @@ fn cmd_unbinned_fit_toys(
         if !(low.is_finite() && high.is_finite() && low >= 0.0 && high >= 0.0 && low <= high) {
             anyhow::bail!(
                 "--poi-pull-std-range expects finite LOW,HIGH with 0 <= LOW <= HIGH, got [{low}, {high}]"
+            );
+        }
+    }
+    if summary_ci_method.is_some() {
+        if !(summary_ci_level.is_finite() && summary_ci_level > 0.0 && summary_ci_level < 1.0) {
+            anyhow::bail!("--summary-ci-level must be finite and in (0,1), got {summary_ci_level}");
+        }
+        if summary_ci_bootstrap < 2 {
+            anyhow::bail!(
+                "--summary-ci-bootstrap must be >= 2 when --summary-ci-method is set, got {summary_ci_bootstrap}"
             );
         }
     }
@@ -9616,6 +9790,41 @@ fn cmd_unbinned_fit_toys(
         })
     };
 
+    let mean_ci = if let Some(requested_ci_method) = summary_ci_method {
+        if poi_hat_ok.len() < 2 {
+            Some(serde_json::json!({
+                "target": "mean",
+                "requested_method": summary_ci_method_name(requested_ci_method),
+                "method": "percentile",
+                "conf_level": summary_ci_level,
+                "lower": serde_json::Value::Null,
+                "upper": serde_json::Value::Null,
+                "diagnostics": {
+                    "z0": serde_json::Value::Null,
+                    "acceleration": serde_json::Value::Null,
+                    "alpha_low": (1.0 - summary_ci_level) / 2.0,
+                    "alpha_high": 1.0 - (1.0 - summary_ci_level) / 2.0,
+                    "alpha_low_adj": serde_json::Value::Null,
+                    "alpha_high_adj": serde_json::Value::Null,
+                    "n_bootstrap": 0usize,
+                    "n_jackknife": 0usize,
+                    "fallback_reason": "summary CI requires at least 2 converged finite poi_hat values",
+                }
+            }))
+        } else {
+            let ci_seed = seed ^ 0x9E37_79B9_7F4A_7C15_u64;
+            Some(compute_toy_summary_mean_ci(
+                &poi_hat_ok,
+                requested_ci_method,
+                summary_ci_level,
+                summary_ci_bootstrap,
+                ci_seed,
+            )?)
+        }
+    } else {
+        None
+    };
+
     let summary = if poi_hat_ok.is_empty() {
         serde_json::Value::Null
     } else {
@@ -9666,7 +9875,7 @@ fn cmd_unbinned_fit_toys(
             })
         };
 
-        serde_json::json!({
+        let mut summary_json = serde_json::json!({
             "n_ok": poi_hat_ok.len(),
             "mean": mean,
             "std": std,
@@ -9675,7 +9884,11 @@ fn cmd_unbinned_fit_toys(
             "q84": pct(0.84),
             "pull": pull_summary,
             "pulls_by_param": pull_summary_by_param,
-        })
+        });
+        if let Some(ci) = mean_ci {
+            summary_json["mean_ci"] = ci;
+        }
+        summary_json
     };
 
     let passed = failures.is_empty();
@@ -9778,6 +9991,11 @@ fn cmd_unbinned_fit_toys(
                 "seed": seed,
                 "gen": match gen_point { UnbinnedToyGenPoint::Init => "init", UnbinnedToyGenPoint::Mle => "mle" },
                 "set": overrides_json,
+                "summary_ci": {
+                    "method": summary_ci_method.map(summary_ci_method_name),
+                    "conf_level": if summary_ci_method.is_some() { Some(summary_ci_level) } else { None },
+                    "n_bootstrap": if summary_ci_method.is_some() { Some(summary_ci_bootstrap) } else { None },
+                },
                 "threads": threads,
                 "gpu": gpu.unwrap_or("cpu"),
             }),

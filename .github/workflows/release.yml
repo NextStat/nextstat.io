@@ -98,6 +98,9 @@ jobs:
           publish ns-cli
 
   # ── Python wheels (multi-arch) ───────────────────────────────
+  # Builds wheels for every supported Python (3.11-3.14) on every platform.
+  # Linux: manylinux_2_17 Docker container (has all interpreters pre-installed).
+  # macOS/Windows: setup-python installs interpreters, --find-interpreter finds them.
   wheels:
     name: Wheel (${{ matrix.target }})
     needs: [test]
@@ -108,19 +111,26 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            maturin_extra_args: --find-interpreter
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            maturin_extra_args: --find-interpreter
-          - os: macos-latest
+          - os: macos-14
             target: aarch64-apple-darwin
-            maturin_extra_args: --find-interpreter
+          - os: macos-14
+            target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            maturin_extra_args: --find-interpreter
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python interpreters
+        if: runner.os != 'Linux'
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.11
+            3.12
+            3.13
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
@@ -128,7 +138,8 @@ jobs:
           working-directory: bindings/ns-py
           target: ${{ matrix.target }}
           command: build
-          args: --release --out dist ${{ matrix.maturin_extra_args || '' }}
+          args: --release --out dist --find-interpreter
+          manylinux: "2_17"
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
@@ -169,8 +180,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
+          - os: macos-14
             target: aarch64-apple-darwin
+          - os: macos-14
+            target: x86_64-apple-darwin
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -179,12 +192,13 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.93.0"
+          targets: ${{ matrix.target }}
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Build CLI binary
-        run: cargo build --release -p ns-cli
+        run: cargo build --release -p ns-cli --target ${{ matrix.target }}
         env:
           CARGO_TARGET_DIR: target
 
@@ -192,7 +206,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp target/release/nextstat dist/nextstat-${{ matrix.target }}
+          BIN="target/${{ matrix.target }}/release/nextstat"
+          if [ ! -f "$BIN" ]; then
+            BIN="target/release/nextstat"
+          fi
+          cp "$BIN" dist/nextstat-${{ matrix.target }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -258,7 +276,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          WHEEL="$(find dist -name '*.whl' | head -n 1)"
+          WHEEL="$(find dist -name '*cp312*.whl' | head -n 1)"
           if [[ -z "${WHEEL}" ]]; then
             echo "::error::No .whl found under dist/"
             exit 1

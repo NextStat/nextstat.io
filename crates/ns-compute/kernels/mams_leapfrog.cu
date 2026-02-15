@@ -141,7 +141,7 @@ __device__ double nll_neal_funnel(
 
 // Model 3: GLM logistic regression with N(0,1) prior on beta.
 // params: [beta_0, beta_1, ..., beta_{p-1}]
-// model_data: [n, p, X_{n*p row-major}, y_n]
+// model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
 // NLL = sum_i [ log(1 + exp(eta_i)) - y_i * eta_i ] + 0.5 * sum_j(beta_j^2)
 __device__ void grad_glm_logistic(
     const double* beta, double* grad, int dim,
@@ -325,9 +325,9 @@ __device__ double nll_glm_logistic_warp_shmem(
     return nll + prior;
 }
 
-// Warp-cooperative GLM logistic gradient (global memory row-major X).
+// Warp-cooperative GLM logistic gradient (global memory column-major X).
 // For large n*p when shared memory is unavailable.
-// model_data: [n, p, X(n*p), y(n)]
+// model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
 __device__ void grad_glm_logistic_warp_global(
     const double* beta, double* grad, int dim,
     const double* model_data, int n, int p, int lane_id)
@@ -336,13 +336,13 @@ __device__ void grad_glm_logistic_warp_global(
         grad[j] = 0.0;
     }
 
-    const double* X = model_data + 2;
+    const double* X_col = model_data + 2 + n * p + n;
     const double* y = model_data + 2 + n * p;
 
     for (int i = lane_id; i < n; i += 32) {
         double eta = 0.0;
         for (int j = 0; j < p; j++) {
-            eta += X[(size_t)i * p + j] * beta[j];
+            eta += X_col[(size_t)j * n + i] * beta[j];
         }
 
         double prob;
@@ -356,7 +356,7 @@ __device__ void grad_glm_logistic_warp_global(
 
         double diff = prob - y[i];
         for (int j = 0; j < p; j++) {
-            grad[j] += diff * X[(size_t)i * p + j];
+            grad[j] += diff * X_col[(size_t)j * n + i];
         }
     }
 
@@ -373,8 +373,8 @@ __device__ void grad_glm_logistic_warp_global(
     }
 }
 
-// Warp-cooperative GLM logistic NLL (global memory row-major X).
-// model_data: [n, p, X(n*p), y(n)]
+// Warp-cooperative GLM logistic NLL (global memory column-major X).
+// model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
 __device__ double nll_glm_logistic_warp_global(
     const double* beta, int dim,
     const double* model_data, int n, int p, int lane_id)
@@ -382,13 +382,13 @@ __device__ double nll_glm_logistic_warp_global(
     (void)dim;
 
     double nll = 0.0;
-    const double* X = model_data + 2;
+    const double* X_col = model_data + 2 + n * p + n;
     const double* y = model_data + 2 + n * p;
 
     for (int i = lane_id; i < n; i += 32) {
         double eta = 0.0;
         for (int j = 0; j < p; j++) {
-            eta += X[(size_t)i * p + j] * beta[j];
+            eta += X_col[(size_t)j * n + i] * beta[j];
         }
 
         double abs_eta = fabs(eta);
@@ -400,6 +400,128 @@ __device__ double nll_glm_logistic_warp_global(
         nll += __shfl_down_sync(0xffffffff, nll, offset);
     }
     nll = __shfl_sync(0xffffffff, nll, 0);
+
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) {
+        prior += 0.5 * beta[j] * beta[j];
+    }
+    return nll + prior;
+}
+
+// Fused warp-cooperative GLM logistic: compute gradient and NLL in one pass.
+// Shared-memory path (column-major X).
+__device__ double grad_nll_glm_logistic_warp_shmem(
+    const double* beta, double* grad, int dim,
+    const double* s_X_col, const double* s_y,
+    int n, int p, int lane_id)
+{
+    (void)dim;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = 0.0;
+    }
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += s_X_col[j * n + i] * beta[j];
+        }
+
+        double prob;
+        if (eta >= 0.0) {
+            double e = exp(-eta);
+            prob = 1.0 / (1.0 + e);
+        } else {
+            double e = exp(eta);
+            prob = e / (1.0 + e);
+        }
+
+        double abs_eta = fabs(eta);
+        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - s_y[i] * eta;
+
+        double diff = prob - s_y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * s_X_col[j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) {
+        prior += 0.5 * beta[j] * beta[j];
+    }
+    return nll + prior;
+}
+
+// Fused warp-cooperative GLM logistic: compute gradient and NLL in one pass.
+// Global-memory path (precomputed column-major X in model_data).
+__device__ double grad_nll_glm_logistic_warp_global(
+    const double* beta, double* grad, int dim,
+    const double* model_data, int n, int p, int lane_id)
+{
+    (void)dim;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = 0.0;
+    }
+    double nll = 0.0;
+
+    const double* X_col = model_data + 2 + n * p + n;
+    const double* y = model_data + 2 + n * p;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+
+        double prob;
+        if (eta >= 0.0) {
+            double e = exp(-eta);
+            prob = 1.0 / (1.0 + e);
+        } else {
+            double e = exp(eta);
+            prob = e / (1.0 + e);
+        }
+
+        double abs_eta = fabs(eta);
+        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
+
+        double diff = prob - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X_col[(size_t)j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
 
     double prior = 0.0;
     for (int j = 0; j < p; j++) {
@@ -441,6 +563,26 @@ __device__ void user_grad_warp(
             }
             break;
         default: user_grad(x, grad, dim, model_data); break;
+    }
+}
+
+#define MAMS_WARP_FUSED_DEFINED
+__device__ double user_grad_nll_warp(
+    const double* x, double* grad, int dim, const double* model_data,
+    const double* s_X_col, const double* s_y,
+    int n_obs, int n_feat, int lane_id, int use_shmem)
+{
+    switch (__mams_model_id) {
+        case 3:
+            if (use_shmem) {
+                return grad_nll_glm_logistic_warp_shmem(
+                    x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
+            }
+            return grad_nll_glm_logistic_warp_global(
+                x, grad, dim, model_data, n_obs, n_feat, lane_id);
+        default:
+            user_grad(x, grad, dim, model_data);
+            return user_nll(x, dim, model_data);
     }
 }
 

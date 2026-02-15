@@ -89,11 +89,21 @@ impl LapsModel {
             }
             LapsModel::NealFunnel { .. } => vec![],
             LapsModel::GlmLogistic { x_data, y_data, n, p } => {
-                let mut data = Vec::with_capacity(2 + n * p + n);
+                let np = n * p;
+                let mut x_col = vec![0.0f64; np];
+                for row in 0..*n {
+                    for col in 0..*p {
+                        x_col[col * *n + row] = x_data[row * *p + col];
+                    }
+                }
+                // Layout:
+                // [n, p, X_row(n*p), y(n), X_col(n*p)]
+                let mut data = Vec::with_capacity(2 + np + n + np);
                 data.push(*n as f64);
                 data.push(*p as f64);
                 data.extend_from_slice(x_data);
                 data.extend_from_slice(y_data);
+                data.extend_from_slice(&x_col);
                 data
             }
             LapsModel::Custom { model_data, .. } => model_data.clone(),
@@ -284,11 +294,22 @@ fn generate_init_state(
 
 /// Compute initial trajectory length and step size.
 #[cfg(feature = "cuda")]
-fn compute_initial_params(dim: usize, config: &LapsConfig) -> (f64, f64) {
+fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64) {
+    let dim = model.dim();
+    let l_default = std::f64::consts::PI * (dim as f64).sqrt();
     let l = if config.init_l > 0.0 {
         config.init_l
     } else {
-        std::f64::consts::PI * (dim as f64).sqrt()
+        match model {
+            // Data-aware default for logistic GLM:
+            // posterior scale per coefficient is roughly O(1/sqrt(n)).
+            // Use sigma_post ≈ 2/sqrt(n), so L = pi*sqrt(dim)*sigma_post.
+            LapsModel::GlmLogistic { n, .. } => {
+                let sigma_post = 2.0 / (*n as f64).sqrt();
+                (l_default * sigma_post).clamp(0.25, l_default)
+            }
+            _ => l_default,
+        }
     };
     let eps = if config.init_step_size > 0.0 { config.init_step_size } else { l / 10.0 };
     (l, eps)
@@ -543,6 +564,25 @@ fn compute_report_chains(config: &LapsConfig, n_chains: usize) -> usize {
     n_chains.min(config.report_chains.max(1))
 }
 
+/// Decide whether to use fused multi-step kernel in sampling.
+///
+/// Empirically, for large-n GLM logistic with warp support, the fused path can
+/// be slower than warp batch launches despite fewer kernel launches.
+#[cfg(feature = "cuda")]
+fn should_use_fused_sampling(
+    model: &LapsModel,
+    accel: &ns_compute::cuda_mams::CudaMamsAccelerator,
+    config: &LapsConfig,
+) -> bool {
+    if config.fused_transitions == 0 || !accel.supports_fused() {
+        return false;
+    }
+    match model {
+        LapsModel::GlmLogistic { n, .. } if *n >= 1024 && accel.supports_warp() => false,
+        _ => true,
+    }
+}
+
 /// Per-chain DA warmup helper: update DA instances from energy errors
 /// and upload new per-chain eps to GPU.
 #[cfg(feature = "cuda")]
@@ -596,7 +636,7 @@ fn sample_laps_single_gpu(
 
     let mut accel = create_accelerator(model, n_chains, dim, &model_data, config.seed, device_id)?;
 
-    let (l, _init_eps) = compute_initial_params(dim, &config);
+    let (mut l, _init_eps) = compute_initial_params(model, &config);
     // Scale chain initialization: init_scale ≈ posterior_std from init_l.
     // Puts chains within ~2 posterior σ of the origin instead of U(-2,2).
     let init_scale = l / (std::f64::consts::PI * (dim as f64).sqrt());
@@ -616,8 +656,9 @@ fn sample_laps_single_gpu(
 
     // Initial ε binary search (uniform across chains)
     // Cold start: ~8 stability probes + 200 burn-in + up to 20*3 = 60 search ≈ 270
-    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, true)?;
-    n_kernel_launches += 270;
+    let cold_start = config.n_warmup > 0;
+    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, cold_start)?;
+    n_kernel_launches += if cold_start { 270 } else { 70 };
 
     // Per-chain DA: one DualAveraging instance per chain
     let mut da_vec: Vec<DualAveraging> =
@@ -672,62 +713,67 @@ fn sample_laps_single_gpu(
         }
     }
 
-    // Mass update + reset per-chain DA + find new ε
-    if config.use_diagonal_precond {
-        if let Some(new_mass) = regularize_inv_mass(&welford, dim) {
-            inv_mass = new_mass;
-            accel.set_inv_mass(&inv_mass)?;
+    let final_eps: Vec<f64>;
+    if config.n_warmup > 0 {
+        // Mass update + reset per-chain DA + find new ε
+        if config.use_diagonal_precond {
+            if let Some(new_mass) = regularize_inv_mass(&welford, dim) {
+                inv_mass = new_mass;
+                accel.set_inv_mass(&inv_mass)?;
+            }
         }
-    }
-    // Warm search (no burn-in): ~8 stability + up to 20*3 = 60 search ≈ 70
-    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, false)?;
-    da_vec = (0..n_chains).map(|_| DualAveraging::new(config.target_accept, eps)).collect();
-    accel.set_uniform_eps(eps)?;
-    n_kernel_launches += 70;
+        // Warm search (no burn-in): ~8 stability + up to 20*3 = 60 search ≈ 70
+        let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, false)?;
+        da_vec = (0..n_chains).map(|_| DualAveraging::new(config.target_accept, eps)).collect();
+        accel.set_uniform_eps(eps)?;
+        n_kernel_launches += 70;
 
-    // ---------- Phase 3: Per-chain DA with new metric ----------
-    let p3_sync = config.sync_interval.min(phase3_iters.max(1) / 3).max(1);
-    for iter in 0..phase3_iters {
-        let eps_vec: Vec<f64> = da_vec.iter().map(|da| da.current_step_size()).collect();
-        let max_lf = compute_max_leapfrog(&eps_vec, l, config.max_leapfrog);
-        accel.transition_auto(l, max_lf, true)?;
-        n_kernel_launches += 1;
+        // ---------- Phase 3: Per-chain DA with new metric ----------
+        let p3_sync = config.sync_interval.min(phase3_iters.max(1) / 3).max(1);
+        for iter in 0..phase3_iters {
+            let eps_vec: Vec<f64> = da_vec.iter().map(|da| da.current_step_size()).collect();
+            let max_lf = compute_max_leapfrog(&eps_vec, l, config.max_leapfrog);
+            accel.transition_auto(l, max_lf, true)?;
+            n_kernel_launches += 1;
 
-        if (iter + 1) % p3_sync == 0 || iter == phase3_iters - 1 {
-            let diag = accel.download_diagnostics()?;
-            update_per_chain_da(
-                &mut da_vec,
-                &diag.energy_error,
-                &mut accel,
-                n_chains,
-                l,
-                config.max_leapfrog,
-            )?;
+            if (iter + 1) % p3_sync == 0 || iter == phase3_iters - 1 {
+                let diag = accel.download_diagnostics()?;
+                update_per_chain_da(
+                    &mut da_vec,
+                    &diag.energy_error,
+                    &mut accel,
+                    n_chains,
+                    l,
+                    config.max_leapfrog,
+                )?;
+            }
         }
-    }
 
-    // Finalize per-chain eps (smoothed adapted step sizes)
-    let final_eps: Vec<f64> =
-        da_vec.iter().map(|da| da.adapted_step_size().min(l * 0.5).max(1e-6)).collect();
-    let eps_median = percentile(&final_eps, 0.5);
-    accel.set_per_chain_eps(&final_eps)?;
+        // Finalize per-chain eps (smoothed adapted step sizes)
+        final_eps = da_vec.iter().map(|da| da.adapted_step_size().min(l * 0.5).max(1e-6)).collect();
+        let eps_median = percentile(&final_eps, 0.5);
+        accel.set_per_chain_eps(&final_eps)?;
 
-    // ---------- Phase 4: L tuning + equilibrate ----------
-    let (tuned_l, l_launches) = tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config)?;
-    let l = tuned_l;
-    n_kernel_launches += l_launches;
+        // ---------- Phase 4: L tuning + equilibrate ----------
+        let (tuned_l, l_launches) = tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config)?;
+        l = tuned_l;
+        n_kernel_launches += l_launches;
 
-    let max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
-    for _iter in 0..phase_final_iters {
-        accel.transition_auto(l, max_lf, true)?;
-        n_kernel_launches += 1;
+        let max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
+        for _iter in 0..phase_final_iters {
+            accel.transition_auto(l, max_lf, true)?;
+            n_kernel_launches += 1;
+        }
+    } else {
+        final_eps = vec![eps.min(l * 0.5).max(1e-6); n_chains];
+        accel.set_per_chain_eps(&final_eps)?;
     }
 
     let t_warmup = start.elapsed().as_secs_f64() - t_init;
 
     // ---------- Sampling (batched or fused GPU accumulation) ----------
     let n_report_chains = compute_report_chains(&config, n_chains);
-    let use_fused = config.fused_transitions > 0 && accel.supports_fused();
+    let use_fused = should_use_fused_sampling(model, &accel, &config);
     let batch_size =
         if use_fused { config.fused_transitions.min(config.batch_size) } else { config.batch_size };
     accel.configure_batch(batch_size, n_report_chains)?;
@@ -840,7 +886,7 @@ fn sample_laps_multi_gpu(
         })
         .collect();
 
-    let (l, init_eps) = compute_initial_params(dim, &config);
+    let (l, init_eps) = compute_initial_params(model, &config);
     let init_scale = l / (std::f64::consts::PI * (dim as f64).sqrt());
 
     // Shared state: inv_mass (from Welford), L (from tuning), init_eps (from binary search)
@@ -1154,7 +1200,7 @@ fn sample_laps_multi_gpu(
                     // ===== Sampling (independent, batched or fused, per-chain eps) =====
                     let n_steps_median =
                         ((l / eps_median).round() as usize).clamp(1, config.max_leapfrog);
-                    let use_fused = config.fused_transitions > 0 && accel.supports_fused();
+                    let use_fused = should_use_fused_sampling(model, &accel, config);
                     let batch_size = if use_fused {
                         config.fused_transitions.min(config.batch_size)
                     } else {
