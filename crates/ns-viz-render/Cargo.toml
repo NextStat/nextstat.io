@@ -1,0 +1,44 @@
+[package]
+name = "ns-viz-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Pure Rust SVG/PDF/PNG visualization renderer for NextStat"
+
+[dependencies]
+ns-core = { workspace = true }
+ns-viz = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+thiserror = { workspace = true }
+ab_glyph = "0.2"
+base64 = "0.22"
+
+[dependencies.resvg]
+version = "0.43"
+optional = true
+
+[dependencies.usvg]
+version = "0.43"
+optional = true
+
+[dependencies.tiny-skia]
+version = "0.11"
+optional = true
+
+[dependencies.svg2pdf]
+version = "0.12"
+optional = true
+
+[features]
+default = ["png", "pdf"]
+png = ["dep:resvg", "dep:usvg", "dep:tiny-skia"]
+pdf = ["dep:svg2pdf", "dep:usvg"]
+
+[dev-dependencies]
+approx = { workspace = true }

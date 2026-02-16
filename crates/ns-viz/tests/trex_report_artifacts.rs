@@ -40,6 +40,8 @@ fn trex_report_distributions_artifact_contract_smoke() {
         &edges,
         &params_prefit,
         &params_postfit,
+        None,
+        None,
         1,
         None,
     )
@@ -58,6 +60,16 @@ fn trex_report_distributions_artifact_contract_smoke() {
         assert_eq!(ch.ratio_y.len(), n_bins);
         assert_eq!(ch.ratio_yerr_lo.len(), n_bins);
         assert_eq!(ch.ratio_yerr_hi.len(), n_bins);
+        assert_eq!(ch.mc_band_prefit.as_ref().map(|b| b.lo.len()), Some(n_bins));
+        assert_eq!(ch.mc_band_prefit.as_ref().map(|b| b.hi.len()), Some(n_bins));
+        assert_eq!(ch.mc_band_postfit.as_ref().map(|b| b.lo.len()), Some(n_bins));
+        assert_eq!(ch.mc_band_postfit.as_ref().map(|b| b.hi.len()), Some(n_bins));
+        assert_eq!(ch.mc_band_postfit_stat.as_ref().map(|b| b.lo.len()), Some(n_bins));
+        assert_eq!(ch.mc_band_postfit_stat.as_ref().map(|b| b.hi.len()), Some(n_bins));
+        assert_eq!(ch.ratio_band.as_ref().map(|b| b.lo.len()), Some(n_bins));
+        assert_eq!(ch.ratio_band.as_ref().map(|b| b.hi.len()), Some(n_bins));
+        assert_eq!(ch.ratio_band_stat.as_ref().map(|b| b.lo.len()), Some(n_bins));
+        assert_eq!(ch.ratio_band_stat.as_ref().map(|b| b.hi.len()), Some(n_bins));
 
         // Ratio should be data / total_postfit where denom is finite and non-zero.
         for i in 0..n_bins.min(5) {
@@ -96,6 +108,8 @@ fn trex_report_distributions_supports_blinding() {
         &edges,
         &params_prefit,
         &params_postfit,
+        None,
+        None,
         1,
         Some(&blinded),
     )

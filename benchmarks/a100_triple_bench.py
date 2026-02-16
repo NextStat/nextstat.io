@@ -57,11 +57,34 @@ def _make_glm_data(n=5000, p=20, seed=42):
     return X, y, n, p
 
 
+def _extract_stats(sample_stats):
+    """Extract gradient eval count from NextStat sample_stats."""
+    if not isinstance(sample_stats, dict):
+        return None
+    n_leapfrog = sample_stats.get("n_leapfrog")
+    if not isinstance(n_leapfrog, list) or not n_leapfrog:
+        return None
+    if isinstance(n_leapfrog[0], list):
+        return sum(int(v) for chain in n_leapfrog for v in chain)
+    return sum(int(v) for v in n_leapfrog)
+
+
 # ---------------------------------------------------------------------------
 # NS LAPS GPU
 # ---------------------------------------------------------------------------
 
-def bench_ns_laps(model_name, n_chains, n_warmup, n_samples, seed):
+def bench_ns_laps(
+    model_name,
+    n_chains,
+    n_warmup,
+    n_samples,
+    seed,
+    report_chains,
+    glm_warmup_floor=200,
+    glm_target_accept=0.95,
+    funnel_warmup_floor=500,
+    funnel_target_accept=0.9,
+):
     import nextstat
 
     if model_name == "std_normal_10d":
@@ -81,21 +104,39 @@ def bench_ns_laps(model_name, n_chains, n_warmup, n_samples, seed):
     else:
         raise ValueError(model_name)
 
-    # Hard geometries need more frequent DA sync + longer allowed trajectories.
-    is_hard = model_name in ("neal_funnel_10d", "glm_logistic")
-    sync_interval = 25 if is_hard else 50
-    max_leapfrog = 16384 if is_hard else 8192
-    report_chains = min(64, n_chains)
+    # Geometry-specific controls.
+    #
+    # Quality-speed policy:
+    # - GLM: enforce a warmup floor and slightly stricter target_accept to
+    #   reduce R-hat drift in short benchmark runs.
+    # - Funnel: R-hat-first tuning for short benchmark budgets.
+    if model_name == "neal_funnel_10d":
+        sync_interval = 50
+        max_leapfrog = 16384
+        target_accept = funnel_target_accept
+        n_warmup_eff = max(n_warmup, funnel_warmup_floor)
+    elif model_name == "glm_logistic":
+        sync_interval = 50
+        max_leapfrog = 8192
+        target_accept = glm_target_accept
+        n_warmup_eff = max(n_warmup, glm_warmup_floor)
+    else:
+        sync_interval = 50
+        max_leapfrog = 8192
+        target_accept = 0.9
+        n_warmup_eff = n_warmup
+    report_chains = min(report_chains, n_chains)
 
     t0 = time.perf_counter()
-    result = nextstat.sample_laps(
+    result = nextstat.sample(
         laps_model,
+        method="laps",
         model_data=laps_data,
         n_chains=n_chains,
-        n_warmup=n_warmup,
+        n_warmup=n_warmup_eff,
         n_samples=n_samples,
         seed=seed,
-        target_accept=0.9,
+        target_accept=target_accept,
         max_leapfrog=max_leapfrog,
         device_ids=[0],
         sync_interval=sync_interval,
@@ -123,12 +164,19 @@ def bench_ns_laps(model_name, n_chains, n_warmup, n_samples, seed):
     quality_status = quality.get("status") if isinstance(quality, dict) else None
     quality_failures = quality.get("failures", []) if isinstance(quality, dict) else []
     n_report_chains = result.get("n_report_chains", result.get("n_chains"))
+    n_grad_evals = _extract_stats(result.get("sample_stats", {}))
+    ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
 
     return {"engine": "NS_LAPS_GPU", "model": model_name, "wall_s": wall_s,
             "wall_warm": wall_s, "min_ess": min_ess, "max_rhat": max_rhat,
             "quality_status": quality_status, "quality_failures": quality_failures,
             "n_report_chains": n_report_chains,
-            "n_chains": n_chains, "n_samples": n_samples}
+            "effective_n_warmup": n_warmup_eff,
+            "effective_target_accept": target_accept,
+            "effective_sync_interval": sync_interval,
+            "effective_max_leapfrog": max_leapfrog,
+            "n_chains": n_chains, "n_samples": n_samples,
+            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +204,9 @@ def bench_ns_cpu_mams(model_name, n_chains, n_warmup, n_samples, seed):
         raise ValueError(model_name)
 
     t0 = time.perf_counter()
-    result = nextstat.sample_mams(
+    result = nextstat.sample(
         model_obj,
+        method="mams",
         n_chains=n_chains,
         n_warmup=n_warmup,
         n_samples=n_samples,
@@ -178,9 +227,13 @@ def bench_ns_cpu_mams(model_name, n_chains, n_warmup, n_samples, seed):
         vals = [float(v) for v in r_hat.values() if v is not None and math.isfinite(float(v))]
         max_rhat = max(vals) if vals else None
 
+    n_grad_evals = _extract_stats(result.get("sample_stats", {}))
+    ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
+
     return {"engine": "NS_CPU_MAMS", "model": model_name, "wall_s": wall_s,
             "wall_warm": wall_s, "min_ess": min_ess, "max_rhat": max_rhat,
-            "n_chains": n_chains, "n_samples": n_samples}
+            "n_chains": n_chains, "n_samples": n_samples,
+            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +341,7 @@ def _blackjax_manual_warmup(logdensity, dim, n_warmup, key, target_accept=0.9):
     return state, step_size, n_steps
 
 
-def bench_blackjax(model_name, n_chains, n_warmup, n_samples, seed):
+def bench_blackjax(model_name, n_chains, n_warmup, n_samples, seed, report_chains):
     import jax
     import jax.numpy as jnp
     import blackjax
@@ -351,16 +404,20 @@ def bench_blackjax(model_name, n_chains, n_warmup, n_samples, seed):
     draws_host = jax.device_get(all_positions2)  # host transfer for fair timing
     wall_warm = time.perf_counter() - t0_warm
 
-    # ESS (sample 16 chains for comparability with NS report)
-    n_report = min(n_chains, 16)
+    # ESS/R-hat should use the same report-chains budget as NS LAPS.
+    n_report = min(n_chains, report_chains)
     draws_np = np.array(draws_host[:n_report])  # (n_report, n_samples, dim)
     min_ess, max_rhat = _ess_rhat(draws_np)
+    n_grad_evals = int(n_steps * n_chains * n_samples)
+    ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
 
     return {"engine": "BlackJAX_GPU", "model": model_name,
             "wall_s": wall_cold, "wall_warm": wall_warm,
             "min_ess": min_ess, "max_rhat": max_rhat,
             "n_chains": n_chains, "n_samples": n_samples,
-            "tuned_step_size": step_size, "tuned_n_steps": n_steps}
+            "n_report_chains": n_report,
+            "tuned_step_size": step_size, "tuned_n_steps": n_steps,
+            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +448,16 @@ def main():
     ap.add_argument("--skip-cpu", action="store_true", help="Skip NS CPU MAMS")
     ap.add_argument("--skip-blackjax", action="store_true", help="Skip BlackJAX GPU")
     ap.add_argument("--skip-laps", action="store_true", help="Skip NS LAPS GPU")
+    ap.add_argument("--report-chains", type=int, default=64,
+                    help="Number of chains used for ESS/R-hat for both GPU engines.")
+    ap.add_argument("--laps-glm-warmup-floor", type=int, default=200,
+                    help="Minimum warmup used for LAPS glm_logistic (quality-speed guardrail).")
+    ap.add_argument("--laps-glm-target-accept", type=float, default=0.95,
+                    help="target_accept used for LAPS glm_logistic.")
+    ap.add_argument("--laps-funnel-warmup-floor", type=int, default=500,
+                    help="Minimum warmup used for LAPS neal_funnel_10d.")
+    ap.add_argument("--laps-funnel-target-accept", type=float, default=0.9,
+                    help="target_accept used for LAPS neal_funnel_10d.")
     args = ap.parse_args()
 
     models = args.models.split(",")
@@ -411,10 +478,18 @@ def main():
         if not args.skip_laps:
             print(f"\n  [NS LAPS GPU] {args.n_chains_gpu} chains, {args.n_samples} samples...")
             try:
-                r = bench_ns_laps(model, args.n_chains_gpu, args.n_warmup, args.n_samples, args.seed)
+                r = bench_ns_laps(
+                    model, args.n_chains_gpu, args.n_warmup, args.n_samples, args.seed,
+                    args.report_chains,
+                    args.laps_glm_warmup_floor,
+                    args.laps_glm_target_accept,
+                    args.laps_funnel_warmup_floor,
+                    args.laps_funnel_target_accept,
+                )
                 ess_s = r['min_ess'] / r['wall_warm'] if r['min_ess'] and r['wall_warm'] else None
                 print(
                     f"    wall={r['wall_s']:.2f}s  min_ESS={fmt(r['min_ess'])}  ESS/s={fmt(ess_s)}  "
+                    f"ESS/grad={fmt(r.get('ess_per_grad'),4)}  "
                     f"R-hat={fmt(r['max_rhat'],4)}  quality={r.get('quality_status','n/a')}  "
                     f"report={r.get('n_report_chains','?')}"
                 )
@@ -429,7 +504,10 @@ def main():
             try:
                 r = bench_ns_cpu_mams(model, args.n_chains_cpu, args.n_warmup, args.n_samples, args.seed)
                 ess_s = r['min_ess'] / r['wall_warm'] if r['min_ess'] and r['wall_warm'] else None
-                print(f"    wall={r['wall_s']:.2f}s  min_ESS={fmt(r['min_ess'])}  ESS/s={fmt(ess_s)}  R-hat={fmt(r['max_rhat'],4)}")
+                print(
+                    f"    wall={r['wall_s']:.2f}s  min_ESS={fmt(r['min_ess'])}  ESS/s={fmt(ess_s)}  "
+                    f"ESS/grad={fmt(r.get('ess_per_grad'),4)}  R-hat={fmt(r['max_rhat'],4)}"
+                )
                 results.append(r)
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -439,13 +517,20 @@ def main():
         if not args.skip_blackjax:
             print(f"\n  [BlackJAX GPU] {args.n_chains_gpu} chains, {args.n_samples} samples...")
             try:
-                r = bench_blackjax(model, args.n_chains_gpu, args.n_warmup, args.n_samples, args.seed)
+                r = bench_blackjax(
+                    model, args.n_chains_gpu, args.n_warmup, args.n_samples, args.seed,
+                    args.report_chains,
+                )
                 ess_s_cold = r['min_ess'] / r['wall_s'] if r['min_ess'] and r['wall_s'] else None
                 ess_s_warm = r['min_ess'] / r['wall_warm'] if r['min_ess'] and r['wall_warm'] else None
                 extra = ""
                 if "tuned_step_size" in r:
                     extra = f"  eps={r['tuned_step_size']:.4f}  n_steps={r['tuned_n_steps']}"
-                print(f"    cold={r['wall_s']:.2f}s  warm={r['wall_warm']:.2f}s  min_ESS={fmt(r['min_ess'])}  ESS/s(warm)={fmt(ess_s_warm)}  R-hat={fmt(r['max_rhat'],4)}{extra}")
+                print(
+                    f"    cold={r['wall_s']:.2f}s  warm={r['wall_warm']:.2f}s  min_ESS={fmt(r['min_ess'])}  "
+                    f"ESS/s(warm)={fmt(ess_s_warm)}  ESS/grad={fmt(r.get('ess_per_grad'),4)}  "
+                    f"R-hat={fmt(r['max_rhat'],4)}  report={r.get('n_report_chains','?')}{extra}"
+                )
                 results.append(r)
             except Exception as e:
                 print(f"    FAILED: {e}")
@@ -455,7 +540,11 @@ def main():
     print(f"\n\n{'='*128}")
     print(f"  A100-SXM4-80GB BENCHMARK — GPU: {args.n_chains_gpu} chains | CPU: {args.n_chains_cpu} chains | {args.n_samples} samples | warmup: {args.n_warmup}")
     print(f"{'='*128}")
-    header = f"{'Model':<18} | {'Engine':<16} | {'Cold(s)':<9} | {'Warm(s)':<9} | {'min_ESS':<11} | {'ESS/s(warm)':<12} | {'R-hat':<8} | {'Q':<5} | {'Rpt':>4} | {'Chains':>6}"
+    header = (
+        f"{'Model':<18} | {'Engine':<16} | {'Cold(s)':<9} | {'Warm(s)':<9} | "
+        f"{'min_ESS':<11} | {'ESS/s(warm)':<12} | {'ESS/grad':<10} | {'R-hat':<8} | "
+        f"{'Q':<5} | {'Rpt':>4} | {'Chains':>6}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -471,11 +560,12 @@ def main():
         quality = r.get("quality_status", "")
         n_report = r.get("n_report_chains", "")
         ess_per_s = min_ess / wall_warm if min_ess and wall_warm and wall_warm > 0 else None
+        ess_per_grad = r.get("ess_per_grad")
         n_ch = r.get("n_chains", "?")
 
         print(
             f"{r['model']:<18} | {r['engine']:<16} | {wall_cold:<9.2f} | {wall_warm:<9.2f} | "
-            f"{fmt(min_ess):<11} | {fmt(ess_per_s):<12} | {fmt(max_rhat,4):<8} | "
+            f"{fmt(min_ess):<11} | {fmt(ess_per_s):<12} | {fmt(ess_per_grad,4):<10} | {fmt(max_rhat,4):<8} | "
             f"{str(quality):<5} | {str(n_report):>4} | {n_ch:>6}"
         )
 
@@ -489,6 +579,7 @@ def main():
             "n_warmup": args.n_warmup,
             "n_samples": args.n_samples,
             "seed": args.seed,
+            "report_chains": args.report_chains,
             "models": models,
         },
         "results": results,

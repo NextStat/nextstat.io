@@ -10,8 +10,19 @@ fn main() {
     {
         use std::io::Write as _;
 
+        println!("cargo:rerun-if-env-changed=NS_COMPUTE_FORCE_STUB_PTX");
+        println!("cargo:rerun-if-env-changed=NS_COMPUTE_MAMS_PTX_OVERRIDE");
+        let force_stub_ptx = std::env::var("NS_COMPUTE_FORCE_STUB_PTX")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
         // Find nvcc: check CUDA_PATH/CUDA_HOME, then /usr/local/cuda, then PATH.
-        let nvcc = {
+        let nvcc = if force_stub_ptx {
+            // Make Command::new() fail with NotFound so each kernel path
+            // falls back to stub PTX generation.
+            String::from("__ns_compute_force_stub_nvcc__")
+        } else {
             let candidates = [
                 std::env::var("CUDA_PATH").ok().map(|p| format!("{}/bin/nvcc", p)),
                 std::env::var("CUDA_HOME").ok().map(|p| format!("{}/bin/nvcc", p)),
@@ -26,6 +37,11 @@ fn main() {
             }
             found
         };
+        if force_stub_ptx {
+            println!(
+                "cargo:warning=ns-compute: NS_COMPUTE_FORCE_STUB_PTX=1, writing stub PTX for CUDA kernels"
+            );
+        }
 
         let kernel_dir = "kernels";
         let common_header = format!("{}/common.cuh", kernel_dir);
@@ -55,7 +71,7 @@ fn main() {
         let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
-                "-arch=sm_70", // Volta minimum, forward-compatible via JIT
+                "-arch=compute_70", // PTX target for Volta; works with newer nvcc toolchains
                 "-O3",
                 "--use_fast_math",
                 "-I",
@@ -88,7 +104,16 @@ fn main() {
         // gradient noise that hurts NN training convergence. Batch toy kernel
         // keeps --use_fast_math since convergence tolerance is already 1e-3.
         let status = std::process::Command::new(&nvcc)
-            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &diff_ptx, &diff_src])
+            .args([
+                "--ptx",
+                "-arch=compute_70",
+                "-O3",
+                "-I",
+                kernel_dir,
+                "-o",
+                &diff_ptx,
+                &diff_src,
+            ])
             .status();
         match status {
             Ok(st) if st.success() => {}
@@ -113,7 +138,7 @@ fn main() {
         let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
-                "-arch=sm_70", // Volta minimum, forward-compatible via JIT
+                "-arch=compute_70", // PTX target for Volta; works with newer nvcc toolchains
                 "-O3",
                 "-I",
                 kernel_dir,
@@ -141,7 +166,16 @@ fn main() {
         let lbfgs_ptx = format!("{}/unbinned_lbfgs_fit.ptx", out_dir);
 
         let status = std::process::Command::new(&nvcc)
-            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &lbfgs_ptx, &lbfgs_src])
+            .args([
+                "--ptx",
+                "-arch=compute_70",
+                "-O3",
+                "-I",
+                kernel_dir,
+                "-o",
+                &lbfgs_ptx,
+                &lbfgs_src,
+            ])
             .status();
         match status {
             Ok(st) if st.success() => {}
@@ -166,7 +200,7 @@ fn main() {
         let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
-                "-arch=sm_70",
+                "-arch=compute_70",
                 "-O3",
                 "-I",
                 kernel_dir,
@@ -194,7 +228,16 @@ fn main() {
         let flow_ptx = format!("{}/flow_nll_reduce.ptx", out_dir);
 
         let status = std::process::Command::new(&nvcc)
-            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &flow_ptx, &flow_src])
+            .args([
+                "--ptx",
+                "-arch=compute_70",
+                "-O3",
+                "-I",
+                kernel_dir,
+                "-o",
+                &flow_ptx,
+                &flow_src,
+            ])
             .status();
         match status {
             Ok(st) if st.success() => {}
@@ -218,7 +261,7 @@ fn main() {
         let status = std::process::Command::new(&nvcc)
             .args([
                 "--ptx",
-                "-arch=sm_70",
+                "-arch=compute_70",
                 "-O3",
                 "--use_fast_math",
                 "-I",
@@ -254,11 +297,37 @@ fn main() {
         let mams_src = format!("{}/mams_leapfrog.cu", kernel_dir);
         println!("cargo:rerun-if-changed={}", mams_src);
         let mams_ptx = format!("{}/mams_leapfrog.ptx", out_dir);
+        if let Ok(override_ptx) = std::env::var("NS_COMPUTE_MAMS_PTX_OVERRIDE")
+            && !override_ptx.trim().is_empty()
+        {
+            println!("cargo:rerun-if-changed={}", override_ptx);
+            std::fs::copy(&override_ptx, &mams_ptx).unwrap_or_else(|e| {
+                panic!(
+                    "failed to copy NS_COMPUTE_MAMS_PTX_OVERRIDE {} -> {}: {}",
+                    override_ptx, mams_ptx, e
+                )
+            });
+            println!(
+                "cargo:warning=ns-compute: using NS_COMPUTE_MAMS_PTX_OVERRIDE={}",
+                override_ptx
+            );
+            println!("cargo:rustc-env=CUDA_MAMS_PTX_PATH={}", mams_ptx);
+            return;
+        }
 
         // NOTE: No --use_fast_math — MAMS energy conservation requires precise
         // exp/log/sqrt for MH detailed balance.
         let status = std::process::Command::new(&nvcc)
-            .args(["--ptx", "-arch=sm_70", "-O3", "-I", kernel_dir, "-o", &mams_ptx, &mams_src])
+            .args([
+                "--ptx",
+                "-arch=compute_70",
+                "-O3",
+                "-I",
+                kernel_dir,
+                "-o",
+                &mams_ptx,
+                &mams_src,
+            ])
             .status();
         match status {
             Ok(st) if st.success() => {}
@@ -272,5 +341,7 @@ fn main() {
             Err(e) => panic!("failed to spawn nvcc for {}: {}", mams_src, e),
         }
         println!("cargo:rustc-env=CUDA_MAMS_PTX_PATH={}", mams_ptx);
+
+        // glm_cublas_aux is NVRTC-JIT compiled at runtime (see cuda_glm_cublas.rs).
     }
 }

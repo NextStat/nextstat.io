@@ -80,10 +80,8 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 
 ### Hypothesis testing
 
-- `nextstat.hypotest(poi_test, model, *, data=None, return_tail_probs=False) -> float | (float, list[float])` — asymptotic CLs.
-- `nextstat.hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, data=None, return_tail_probs=False, return_meta=False) -> float | tuple | dict` — toy-based CLs.
-- `nextstat.unbinned_hypotest(mu_test, model) -> dict` — compute unbinned `q_mu` (and `q0` if `mu=0` is within bounds).
-- `nextstat.unbinned_hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, return_tail_probs=False, return_meta=False) -> float | tuple | dict` — toy-based CLs (qtilde) for unbinned models.
+- `nextstat.hypotest(poi_test, model, *, data=None, return_tail_probs=False) -> float | (float, list[float])` — asymptotic CLs. Dispatches on model type: `HistFactoryModel` (binned) or `UnbinnedModel` (unbinned q_mu).
+- `nextstat.hypotest_toys(poi_test, model, *, n_toys=1000, seed=42, expected_set=False, data=None, return_tail_probs=False, return_meta=False) -> float | tuple | dict` — toy-based CLs. Dispatches on model type: `HistFactoryModel` or `UnbinnedModel` (qtilde).
 
 ### Monte Carlo / Safety
 
@@ -93,18 +91,16 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 ### Profile likelihood
 
 - `nextstat.profile_ci(model, fit_result, *, param_idx=None, chi2_level=3.841, tol=1e-4) -> dict | list[dict]` — profile likelihood confidence intervals for any `LogDensityModel`. If `param_idx` is given, returns a single dict; otherwise returns CI for all parameters. Each dict: `{param_idx, mle, ci_lower, ci_upper, n_evals}`.
-- `nextstat.profile_scan(model, mu_values, *, data=None, device="cpu", return_params=False) -> dict` — profile likelihood scan.
-- `nextstat.unbinned_profile_scan(model, mu_values) -> dict` — unbinned profile likelihood scan (q_mu) over POI values.
-- `nextstat.upper_limit(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> float` — upper limit via bisection.
+- `nextstat.profile_scan(model, mu_values, *, data=None, device="cpu", return_params=False, return_curve=False) -> dict` — profile likelihood scan. Dispatches on model type: `HistFactoryModel` or `UnbinnedModel`. When `return_curve=True`, adds `mu_values`, `q_mu_values`, `twice_delta_nll` arrays (replaces the old `profile_curve` function).
+- `nextstat.upper_limit(model, *, method="bisect", alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> float | (float, list[float])` — upper limit. `method="bisect"` (observed only) or `method="root"` (observed + 5 expected bands).
 - `nextstat.upper_limits(model, scan, *, alpha=0.05, data=None) -> (float, list[float])` — observed + expected limits from scan.
-- `nextstat.upper_limits_root(model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None) -> (float, list[float])` — ROOT-style limits.
 
 ### Sampling
 
 - `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
 - `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + diagonal inverse Hessian as initial mass matrix for faster warmup).
 - `nextstat.sample_mams(model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, target_accept=0.9, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when Pathfinder provides a Hessian-derived mass matrix, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (recommended for well-conditioned posteriors; avoid on funnel-like geometries).
-- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Two-phase warmup: Phase 1 (unadjusted MCLMC) + Phase 2 (exact MH). `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"glm_logistic"`, or a `RawCudaModel` instance. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` feature and NVIDIA GPU at runtime.
+- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Two-phase warmup: Phase 1 (unadjusted MCLMC) + Phase 2 (exact MH). `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, or a `RawCudaModel` instance. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
 - `nextstat.RawCudaModel(dim, cuda_src, *, data=None, param_names=None)` — User-defined CUDA model for LAPS JIT compilation via NVRTC. The `cuda_src` must define `__device__ double user_nll(const double* x, int dim, const double* model_data)` and `__device__ void user_grad(const double* x, double* grad, int dim, const double* model_data)`. The `data` array is uploaded to GPU as `model_data`. PTX is cached to disk (`~/.cache/nextstat/ptx/`) keyed by SHA-256(source + GPU arch). Requires `cuda` feature.
 - `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all three methods (nuts/mams/laps).
 - `nextstat.bayes.to_inferencedata(raw) -> InferenceData` — convert a raw sampling dict into ArviZ `InferenceData`.
@@ -160,22 +156,27 @@ print(raw["diagnostics"]["quality"]["status"])  # "ok" / "warn" / "fail"
 
 - `nextstat.asimov_data(model, params) -> list[float]` — Asimov dataset (expected counts).
 - `nextstat.poisson_toys(model, params, *, n_toys=1000, seed=42) -> list[list[float]]` — Poisson fluctuated toy datasets.
-- `nextstat.fit_toys(model, params, *, n_toys=1000, seed=42) -> list[FitResult]` — CPU parallel toy fitting (Rayon; tape reuse).
-- `nextstat.unbinned_fit_toys(model, params, *, n_toys=1000, seed=42, init_params=None, max_retries=3, max_iter=5000, compute_hessian=False) -> list[FitResult]` — generate and fit Poisson-fluctuated toys for unbinned models (CPU parallel path). Uses warm-start from MLE θ̂, retry with jitter, and smooth bounds escalation. Hessian is skipped by default (uncertainties=0) for throughput; set `compute_hessian=True` when parameter pulls are needed.
-- `nextstat.fit_toys_batch(model, params, *, n_toys=1000, seed=42) -> list[FitResult]` — CPU parallel batch toy fitting (fast-path: no Hessian/covariance; `uncertainties = 0`).
-- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]` — GPU-accelerated batch toy fitting (see GPU section below).
+- `nextstat.fit_toys(model, params, *, n_toys=1000, seed=42, device="cpu", batch=True, compute_hessian=False, max_retries=3) -> list[FitResult]` — unified toy fitting. Dispatches on model type (`HistFactoryModel` or `UnbinnedModel`) and device (`"cpu"`, `"cuda"`, `"metal"`). CPU path uses Rayon parallelism; GPU paths use lockstep L-BFGS-B kernels. `batch=True` (default) skips Hessian/covariance for throughput; `compute_hessian=True` when parameter pulls are needed.
 
 ### Visualization artifacts
 
 - `nextstat.cls_curve(model, scan, *, alpha=0.05, data=None) -> dict` — asymptotic CLs exclusion curve. Returns `{alpha, nsigma_order, obs_limit, exp_limits, mu_values, cls_obs, cls_exp, points}`.
-- `nextstat.profile_curve(model, mu_values, *, data=None) -> dict` — profile likelihood curve. Returns `{poi_index, mu_hat, nll_hat, mu_values, q_mu_values, twice_delta_nll, points}`.
+- `nextstat.viz.profile_curve(model, mu_values, *, data=None) -> dict` — profile likelihood curve (convenience wrapper calling `profile_scan(return_curve=True)`). Returns `{poi_index, mu_hat, nll_hat, mu_values, q_mu_values, twice_delta_nll, points}`.
+- `nextstat.viz.ranking_artifact(model, *, top_n=None) -> dict` — ranking artifact with `entries`.
+- `nextstat.viz.ranking_arrays(artifact_or_entries) -> dict` — normalized ranking arrays `{names, delta_mu_up, delta_mu_down, pull, constraint}`.
+- `nextstat.viz.corr_arrays(artifact) -> dict` — normalized corr arrays `{parameter_names, corr}`.
+- `nextstat.viz.corr_subset(artifact, *, include=None, exclude=None, top_n=None, order="input"|"max_abs_corr"|"group_base") -> dict` — filtered/reordered matrix view.
+- Plotting helpers (require matplotlib): `plot_cls_curve`, `plot_brazil_limits`, `plot_profile_curve`, `plot_pulls`, `plot_ranking`, `plot_corr_matrix`.
+
+### Native Rust rendering (no matplotlib required)
+
+- `nextstat.viz.render_svg(artifact, kind, *, config=None) -> str` — render artifact dict to SVG string using the native Rust renderer. Supports all 17 artifact kinds. `config` is an optional dict with VizConfig overrides (theme, colors, experiment label, etc.).
+- `nextstat.viz.render_to_file(artifact, kind, path, *, config=None, dpi=None) -> None` — render artifact to file. Format inferred from extension (`.svg`, `.pdf`, `.png`). `dpi` applies to PNG output (default 220).
+- `nextstat._core.render_viz(artifact_json, kind, format="svg", *, config_yaml=None, dpi=None) -> bytes` — low-level: render artifact JSON string to bytes.
 
 ### Parameter ranking
 
-- `nextstat.ranking(model) -> list[dict]` — nuisance parameter ranking (impact on POI).
-- `nextstat.unbinned_ranking(model) -> list[dict]` — nuisance parameter ranking (impact on POI) for unbinned models.
-- `nextstat._core.ranking_gpu(model) -> list[dict]` — CUDA-only nuisance parameter ranking for `HistFactoryModel`. Requires building with `--features cuda` (`maturin develop --release --features cuda`). Not available in non-CUDA builds (function will not exist in `_core`). Returns same format as `ranking()`.
-- `nextstat._core.ranking_metal(model) -> list[dict]` — Metal-only nuisance parameter ranking for `HistFactoryModel`. Requires building with `--features metal`. Same API as `ranking_gpu` but f32 precision.
+- `nextstat.ranking(model, *, device="cpu") -> list[dict]` — nuisance parameter ranking (impact on POI). Dispatches on model type: `HistFactoryModel` or `UnbinnedModel`. `device="cuda"` or `device="metal"` for GPU-accelerated ranking (requires corresponding build feature).
 
 ### Utilities
 
@@ -309,7 +310,7 @@ All models implement a shared minimal contract:
   - `UnbinnedAnalysis.from_config(path) -> UnbinnedAnalysis`
   - `fit(*, init_pars=None) -> FitResult`
   - `fit_toys(params=None, *, n_toys=1000, seed=42) -> list[FitResult]`
-  - `scan(mu_values) -> dict` (delegates to `unbinned_profile_scan`)
+  - `scan(mu_values) -> dict` (delegates to `profile_scan`)
   - `hypotest(mu_test) -> dict`
   - `hypotest_toys(poi_test, *, n_toys=1000, seed=42, expected_set=False, return_tail_probs=False, return_meta=False) -> float | tuple | dict`
   - `ranking() -> list[dict]`
@@ -325,8 +326,8 @@ import nextstat
 model = nextstat.UnbinnedModel.from_config("spec.json")
 params = model.suggested_init()
 
-# CPU batch: Rayon-parallel unbinned toy fits
-results = nextstat.unbinned_fit_toys(model, params, n_toys=100, seed=42)
+# CPU batch: Rayon-parallel toy fits (dispatches on model type)
+results = nextstat.fit_toys(model, params, n_toys=100, seed=42)
 
 # Each result has: .parameters, .nll, .converged, .n_iter, .n_fev, .n_gev
 converged = sum(1 for r in results if r.converged)
@@ -508,7 +509,7 @@ All PK models implement the `LogDensityModel` interface: `nll(params)`, `grad_nl
 
 These modules live under `nextstat.*` as convenience helpers. Some require optional dependencies.
 
-- `nextstat.viz` — plot-friendly artifacts for CLs curves and profile scans.
+- `nextstat.viz` — plot-friendly artifacts + plotting helpers (CLs/profile/pulls/ranking/corr).
 - `nextstat.bayes` — Bayesian helpers (ArviZ integration).
 - `nextstat.torch` — PyTorch differentiable wrappers (see below).
 - `nextstat.timeseries` — higher-level time series helpers and plotting.
@@ -530,12 +531,13 @@ These modules live under `nextstat.*` as convenience helpers. Some require optio
 - `nextstat.audit` — reproducible local run bundles (no optional deps).
 - `nextstat.report` — render report artifacts to PDF/SVG (requires `matplotlib`).
 - `nextstat.validation_report` — render `validation_report.json` to PDF (requires `matplotlib`).
+- `nextstat.viz_render` — render one artifact JSON (`pulls`/`corr`/`ranking`) directly to PNG/SVG/PDF (requires `matplotlib`).
 
 ### `nextstat.econometrics` (core functions)
 
 Low-level econometrics functions exposed via `nextstat._core`:
 
-- `nextstat._core.panel_fe(entity_ids, x, y, p, *, cluster_ids=None) -> dict` — panel fixed-effects regression. Returns `coefficients`, `se_ols`, `se_cluster`, `r_squared_within`, `n_obs`, `n_entities`, `n_regressors`, `rss`.
+- `nextstat._core.panel_fe(y, x, entity_ids, p, *, cluster_ids=None) -> dict` — panel fixed-effects regression. Returns `coefficients`, `se_ols`, `se_cluster`, `r_squared_within`, `n_obs`, `n_entities`, `n_regressors`, `rss`.
 - `nextstat._core.did(y, treat, post, cluster_ids) -> dict` — difference-in-differences estimator. Returns `att`, `se`, `se_cluster`, `t_stat`, `mean_treated_post`, `mean_treated_pre`, `mean_control_post`, `mean_control_pre`, `n_obs`.
 - `nextstat._core.event_study(y, entity_ids, time_ids, relative_time, min_lag, max_lag, reference_period, cluster_ids) -> dict` — event study with dynamic treatment effects. Returns `relative_times`, `coefficients`, `se_cluster`, `ci_lower`, `ci_upper`, `n_obs`, `reference_period`.
 - `nextstat._core.iv_2sls(y, x_exog, k_exog, x_endog, k_endog, z, m, *, exog_names=None, endog_names=None, cluster_ids=None) -> dict` — instrumental variables / 2SLS. Returns `coefficients`, `names`, `se`, `se_cluster`, `n_obs`, `n_instruments`, `first_stage`.
@@ -620,6 +622,12 @@ Dataclasses: `BundleMeta`, `BundleInputMeta`.
 - `nextstat.report.render_report(input_dir, *, pdf, svg_dir, corr_include=None, corr_exclude=None, corr_top_n=None) -> None` — render a report PDF (+ optional per-plot SVG) from an artifacts directory (requires `matplotlib`).
 
 CLI entry: `python -m nextstat.report render --input-dir ... --pdf ... [--svg-dir ...]`.
+
+### `nextstat.viz_render` (single-artifact rendering, matplotlib)
+
+- `nextstat.viz_render.render_artifact(kind, artifact, output, *, title=None, dpi=220, corr_include=None, corr_exclude=None, corr_top_n=None) -> None` — render one artifact dict (`pulls`/`corr`/`ranking`) to a file.
+
+CLI entry: `python -m nextstat.viz_render render --kind pulls|corr|ranking --input artifact.json --output out.png`.
 
 ### `nextstat.validation_report` (rendering, matplotlib)
 
@@ -710,7 +718,7 @@ Full 7-tier tolerance hierarchy: `tests/python/_tolerances.py`.
 
 **Measured overhead:** <5% (Kahan vs naive at same thread count).
 
-## Batch Toy Fitting (CPU)
+## Batch Toy Fitting
 
 ```python
 import nextstat
@@ -719,21 +727,26 @@ model = nextstat.UnbinnedModel.from_config("spec.json")
 params = model.suggested_init()
 
 # CPU parallel: Rayon parallel
-results = nextstat.unbinned_fit_toys(model, params, n_toys=100, seed=42)
+results = nextstat.fit_toys(model, params, n_toys=100, seed=42)
 
 # Each result has: .parameters, .nll, .converged, .n_iter, .n_fev, .n_gev
 converged = sum(1 for r in results if r.converged)
 print(f"{converged}/{len(results)} toys converged")
+
+# GPU: CUDA (f64) or Metal (f32)
+results = nextstat.fit_toys(model, params, n_toys=1000, seed=42, device="cuda")
 ```
 
 ## GPU acceleration
 
 - `nextstat.has_cuda() -> bool` — check CUDA availability.
 - `nextstat.has_metal() -> bool` — check Metal availability (Apple Silicon).
-- `nextstat.fit_toys_batch_gpu(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]`:
+- `nextstat.fit_toys(model, params, *, n_toys=1000, seed=42, device="cpu") -> list[FitResult]`:
   - `device="cuda"` — NVIDIA GPU, f64 precision, lockstep L-BFGS-B with fused NLL+gradient kernel.
   - `device="metal"` — Apple Silicon GPU, f32 precision, lockstep L-BFGS-B with Metal kernel. Tolerance relaxed to 1e-3.
-  - `device="cpu"` (default) — falls back to CPU (Rayon parallel, f64).
+  - `device="cpu"` (default) — CPU Rayon parallel, f64.
+- `nextstat.ranking(model, *, device="cpu")` — GPU-accelerated ranking with `device="cuda"` or `device="metal"`.
+- `nextstat.profile_scan(model, mu_values, *, device="cpu")` — GPU-accelerated profile scan with `device="cuda"`.
 
 Build with GPU support:
 
@@ -1003,11 +1016,18 @@ Survival-native causal uplift: RMST, IPW-weighted Kaplan-Meier, and ΔS(t) at sp
 - `survival_diffs` — list of `{horizon, survival_treated, survival_control, delta_survival}`
 - `overlap` — `{n_total, n_after_trim, n_trimmed, mean_propensity, min_propensity, max_propensity, ess_treated, ess_control}`
 
-### `nextstat.churn_bootstrap_hr(times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95) -> dict`
+### `nextstat.churn_bootstrap_hr(times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95, ci_method="percentile", n_jackknife=200) -> dict`
 
-Bootstrap hazard ratios via parallel Cox PH refitting. Returns percentile-based CIs.
+Bootstrap hazard ratios via parallel Cox PH refitting.
 
-**Returns** a dict with keys: `names`, `hr_point`, `hr_ci_lower`, `hr_ci_upper`, `n_bootstrap`, `n_converged`, `elapsed_s`.
+- `ci_method`: `"percentile"` (default) or `"bca"`.
+- `n_jackknife`: number of leave-one-out fits for BCa acceleration (used when `ci_method="bca"`).
+
+**Returns** a dict with keys:
+- `names`, `hr_point`, `hr_ci_lower`, `hr_ci_upper`
+- `n_bootstrap`, `n_jackknife_requested`, `n_jackknife_attempted`, `n_converged`, `elapsed_s`
+- `ci_method_requested`, `ci_method_effective`
+- `ci_diagnostics` (per coefficient): `requested_method`, `effective_method`, `z0`, `acceleration`, alpha fields, counts, and `fallback_reason`.
 
 ### `nextstat.churn_ingest(times, events, *, groups=None, treated=None, covariates=[], covariate_names=[], observation_end=None) -> dict`
 

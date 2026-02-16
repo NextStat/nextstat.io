@@ -35,6 +35,20 @@ constant uint INTERP_CODE4P = 1;
 constant uint BATCH_LOCAL_GRAD_CAP = 24;
 constant uint BATCH_PROC_CACHE_CAP = 256;
 constant uint BATCH_RATE_MOD_DNU_CAP = 256;
+/* Preprocessor guard: ENABLE_FUSED is set to 0 or 1 by the Rust host
+   prepending `#define ENABLE_FUSED 1` before MSL compilation.
+   When 0 (default), the fused single-pass event loop is physically absent
+   from the compiled shader, eliminating register pressure from the fused
+   arrays (c_logp, c_grad, c_pidx, c_ng) that cause a catastrophic GPU
+   occupancy cliff at >300 threadgroups on small models. */
+#ifndef ENABLE_FUSED
+#define ENABLE_FUSED 0
+#endif
+
+#if ENABLE_FUSED
+constant uint FUSED_PROC_CAP = 4;
+constant uint FUSED_GRAD_STRIDE = 8;
+#endif
 
 /* ---------- Struct mirrors of Rust #[repr(C)] types ---------------------- */
 
@@ -89,6 +103,7 @@ struct BatchScalarArgs {
     uint n_toys;
     uint local_grad_cols;
     float constraint_const;
+    uint toy_offset;  /* chunk offset: toy = tg_pos.x + toy_offset */
 };
 
 /* ---------- Helpers: standard normal ------------------------------------ */
@@ -125,6 +140,27 @@ inline float stdnorm_cdf(float z) {
     // Metal does not provide `erf`/`erfc` on all targets, so we use an approximation.
     const float inv_sqrt2 = 0.7071067811865475f;
     return 0.5f * (1.0f + erf_approx(z * inv_sqrt2));
+}
+
+/// Fused CDF + PDF: computes both Phi(z) and phi(z) with a single exp(-z²/2),
+/// saving one exp call vs separate stdnorm_cdf + stdnorm_pdf.
+inline void stdnorm_cdf_pdf(float z, thread float& out_cdf, thread float& out_pdf) {
+    const float inv_sqrt2 = 0.7071067811865475f;
+    const float inv_sqrt_2pi = 0.3989422804014327f;
+    const float p = 0.3275911f;
+    const float a1 = 0.254829592f;
+    const float a2 = -0.284496736f;
+    const float a3 = 1.421413741f;
+    const float a4 = -1.453152027f;
+    const float a5 = 1.061405429f;
+
+    float ax = fabs(z * inv_sqrt2);
+    float t = 1.0f / (1.0f + p * ax);
+    float exp_neg_z2_half = exp(-0.5f * z * z);
+    float y = 1.0f - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * exp_neg_z2_half;
+    float sign = (z >= 0.0f) ? 1.0f : -1.0f;
+    out_cdf = 0.5f * (1.0f + sign * y);
+    out_pdf = exp_neg_z2_half * inv_sqrt_2pi;
 }
 
 /* ---------- Helpers: PDFs (logp + dlogp) --------------------------------- */
@@ -168,14 +204,17 @@ inline void gaussian_logp_grad(
     float z_b = (b - mu) * inv_sigma;
     float z_x = (x - mu) * inv_sigma;
 
-    float z = stdnorm_cdf(z_b) - stdnorm_cdf(z_a);
+    float cdf_a, phi_a;
+    float cdf_b, phi_b;
+    stdnorm_cdf_pdf(z_a, cdf_a, phi_a);
+    stdnorm_cdf_pdf(z_b, cdf_b, phi_b);
+
+    float z = cdf_b - cdf_a;
     if (!isfinite(z) || z <= 0.0f) {
         z = FLT_MIN;
     }
     float log_z = log(z);
 
-    float phi_a = stdnorm_pdf(z_a);
-    float phi_b = stdnorm_pdf(z_b);
     float dlogz_dmu = (phi_a - phi_b) * inv_sigma / z;
     float dlogz_dsigma = (z_a * phi_a - z_b * phi_b) * inv_sigma / z;
 
@@ -1998,7 +2037,7 @@ kernel void unbinned_batch_nll_grad(
 ) {
     uint tid = tid3.x;
     uint block_size = tptg.x;
-    uint toy = tg_pos.x;
+    uint toy = tg_pos.x + args.toy_offset;
     if (toy >= args.n_toys) {
         return;
     }
@@ -2113,6 +2152,205 @@ kernel void unbinned_batch_nll_grad(
     float a = g_obs_lo[0];
     float b = g_obs_hi[0];
 
+#if ENABLE_FUSED
+    /* -------------------------------------------------------------------
+     * Fused single-pass event loop: computes logp + gradients together,
+     * caches per-process results, and accumulates gradients from cache.
+     * Eliminates redundant PDF evaluations — ~50% fewer exp() calls for
+     * Gaussian/Exponential PDFs.  Falls back to 2-pass when n_procs >
+     * FUSED_PROC_CAP or any Chebyshev order exceeds FUSED_GRAD_STRIDE.
+     * ----------------------------------------------------------------- */
+    bool can_fuse = (n_procs <= FUSED_PROC_CAP);
+    if (can_fuse) {
+        for (uint fp = 0; fp < n_procs; fp++) {
+            MetalUnbinnedProcessDesc fproc = g_procs[fp];
+            if (fproc.pdf_kind == PDF_CHEBYSHEV && fproc.n_shape_params > FUSED_GRAD_STRIDE) {
+                can_fuse = false;
+                break;
+            }
+        }
+    }
+    if (can_fuse) {
+        float c_logp[FUSED_PROC_CAP];
+        float c_grad[FUSED_PROC_CAP * FUSED_GRAD_STRIDE];
+        uint  c_pidx[FUSED_PROC_CAP * FUSED_GRAD_STRIDE];
+        uint  c_ng[FUSED_PROC_CAP];
+
+        // Precompute shape param indices (constant across events).
+        for (uint fp = 0; fp < n_procs; fp++) {
+            MetalUnbinnedProcessDesc fproc = g_procs[fp];
+            uint foff = fproc.shape_param_offset;
+            uint fgb = fp * FUSED_GRAD_STRIDE;
+            uint fns = fproc.n_shape_params;
+            for (uint fj = 0; fj < fns && fj < FUSED_GRAD_STRIDE; fj++) {
+                c_pidx[fgb + fj] = (foff + fj < total_shape_params) ? g_shape_pidx[foff + fj] : 0u;
+            }
+        }
+
+        for (uint i = tid; i < n_events; i += block_size) {
+            float x = g_obs_flat[start + i];
+            float max_term = -INFINITY;
+            float sum_exp = 0.0f;
+
+            // Phase 1: compute logp + grads per process, accumulate logsumexp.
+            for (uint p = 0; p < n_procs; p++) {
+                MetalUnbinnedProcessDesc proc = g_procs[p];
+                if (proc.obs_index != 0u) {
+                    c_logp[p] = -INFINITY; c_ng[p] = 0; continue;
+                }
+                float log_nu = s_proc_log_nu[p];
+                if (!isfinite(log_nu)) {
+                    c_logp[p] = -INFINITY; c_ng[p] = 0; continue;
+                }
+
+                float logp = -INFINITY;
+                uint ng = 0;
+                uint gbase = p * FUSED_GRAD_STRIDE;
+
+                if (proc.pdf_kind == PDF_GAUSSIAN) {
+                    if (proc.n_shape_params != 2u) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float dmu, ds;
+                    gaussian_logp_grad(x, s_params[c_pidx[gbase]], s_params[c_pidx[gbase + 1u]],
+                                       a, b, logp, dmu, ds);
+                    c_grad[gbase] = dmu; c_grad[gbase + 1] = ds;
+                    ng = 2;
+                } else if (proc.pdf_kind == PDF_EXPONENTIAL) {
+                    if (proc.n_shape_params != 1u) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float dl;
+                    exponential_logp_grad(x, s_params[c_pidx[gbase]], a, b, logp, dl);
+                    c_grad[gbase] = dl;
+                    ng = 1;
+                } else if (proc.pdf_kind == PDF_CRYSTAL_BALL) {
+                    if (proc.n_shape_params != 4u) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float dmu, ds, da, dn;
+                    crystal_ball_logp_grad(x,
+                        s_params[c_pidx[gbase]], s_params[c_pidx[gbase + 1u]],
+                        s_params[c_pidx[gbase + 2u]], s_params[c_pidx[gbase + 3u]],
+                        a, b, logp, dmu, ds, da, dn);
+                    c_grad[gbase] = dmu; c_grad[gbase + 1] = ds;
+                    c_grad[gbase + 2] = da; c_grad[gbase + 3] = dn;
+                    ng = 4;
+                } else if (proc.pdf_kind == PDF_DOUBLE_CRYSTAL_BALL) {
+                    if (proc.n_shape_params != 6u) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float dmu, ds, da_l, dn_l, da_r, dn_r;
+                    double_crystal_ball_logp_grad(x,
+                        s_params[c_pidx[gbase]], s_params[c_pidx[gbase + 1u]],
+                        s_params[c_pidx[gbase + 2u]], s_params[c_pidx[gbase + 3u]],
+                        s_params[c_pidx[gbase + 4u]], s_params[c_pidx[gbase + 5u]],
+                        a, b, logp, dmu, ds, da_l, dn_l, da_r, dn_r);
+                    c_grad[gbase] = dmu; c_grad[gbase + 1] = ds;
+                    c_grad[gbase + 2] = da_l; c_grad[gbase + 3] = dn_l;
+                    c_grad[gbase + 4] = da_r; c_grad[gbase + 5] = dn_r;
+                    ng = 6;
+                } else if (proc.pdf_kind == PDF_CHEBYSHEV) {
+                    uint order = proc.n_shape_params;
+                    if (order == 0u) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float w = b - a;
+                    if (!isfinite(w) || !(w > 0.0f)) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float i0 = w;
+                    for (uint j = 0; j < order; j++) {
+                        uint k = j + 1u;
+                        if ((k & 1u) == 0u) {
+                            float c = s_params[c_pidx[gbase + j]];
+                            float denom = 1.0f - (float)k * (float)k;
+                            i0 += w * c / denom;
+                        }
+                    }
+                    if (!isfinite(i0) || !(i0 > 0.0f)) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    float xp = chebyshev_xprime(x, a, b);
+                    float f0 = 1.0f;
+                    float tkm1 = 1.0f, tk = xp;
+                    for (uint j = 0; j < order; j++) {
+                        uint k = j + 1u;
+                        float tval;
+                        if (k == 1u) { tval = tk; }
+                        else { float tkp1 = 2.0f * xp * tk - tkm1; tval = tkp1; tkm1 = tk; tk = tkp1; }
+                        f0 += s_params[c_pidx[gbase + j]] * tval;
+                    }
+                    if (!isfinite(f0) || !(f0 > 0.0f)) { c_logp[p] = -INFINITY; c_ng[p] = 0; continue; }
+                    logp = log(f0) - log(i0);
+                    float inv_f0 = 1.0f / f0, inv_i0 = 1.0f / i0;
+                    tkm1 = 1.0f; tk = xp;
+                    for (uint j = 0; j < order; j++) {
+                        uint k = j + 1u;
+                        float tval;
+                        if (k == 1u) { tval = tk; }
+                        else { float tkp1 = 2.0f * xp * tk - tkm1; tval = tkp1; tkm1 = tk; tk = tkp1; }
+                        float dlogi = 0.0f;
+                        if ((k & 1u) == 0u) {
+                            float denom = 1.0f - (float)k * (float)k;
+                            dlogi = (w / denom) * inv_i0;
+                        }
+                        c_grad[gbase + j] = tval * inv_f0 - dlogi;
+                    }
+                    ng = order;
+                } else if (proc.pdf_kind == PDF_HISTOGRAM) {
+                    logp = histogram_logp_only(x, g_pdf_aux_f32, proc.pdf_aux_offset, proc.pdf_aux_len);
+                    ng = 0;
+                } else {
+                    c_logp[p] = -INFINITY; c_ng[p] = 0; continue;
+                }
+
+                c_logp[p] = logp;
+                c_ng[p] = ng;
+
+                float term = log_nu + logp;
+                if (!isfinite(term)) { continue; }
+                if (term > max_term) {
+                    sum_exp = sum_exp * exp(max_term - term) + 1.0f;
+                    max_term = term;
+                } else {
+                    sum_exp += exp(term - max_term);
+                }
+            }
+
+            float logf = max_term + log(sum_exp);
+            if (!isfinite(logf)) { logf = log(FLT_MIN); }
+            local_sum_logf += logf;
+
+            // Phase 2: gradient accumulation from cached logp + grads.
+            for (uint p = 0; p < n_procs; p++) {
+                float logp = c_logp[p];
+                if (!isfinite(logp)) { continue; }
+                float p_over_f = exp(logp - logf);
+                if (!(p_over_f > 0.0f) || !isfinite(p_over_f)) { continue; }
+
+                float nu = s_proc_nu[p];
+                float dnu = s_proc_dnu[p];
+                uint y_idx = g_procs[p].yield_param_idx;
+                if (dnu != 0.0f) {
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, y_idx, n_params, -dnu * p_over_f);
+                }
+
+                uint mod_off = s_proc_mod_off[p];
+                uint nmods = s_proc_nmods[p];
+                for (uint m = 0; m < nmods; m++) {
+                    uint midx = mod_off + m;
+                    MetalUnbinnedRateModifierDesc rm = g_rate_mods[midx];
+                    uint aidx = rm.alpha_param_idx;
+                    if (aidx >= n_params) { continue; }
+                    float dnu_m = batch_rate_mod_dnu(
+                        g_rate_mods, s_params, s_rate_mod_dnu,
+                        use_rate_mod_dnu_cache, midx, nu
+                    );
+                    if (isfinite(dnu_m) && dnu_m != 0.0f) {
+                        batch_grad_add(local_grad, local_grad_cols, grad_out, aidx, n_params, -dnu_m * p_over_f);
+                    }
+                }
+
+                float r = nu * p_over_f;
+                uint gbase = p * FUSED_GRAD_STRIDE;
+                uint ng = c_ng[p];
+                for (uint g = 0; g < ng; g++) {
+                    batch_grad_add(local_grad, local_grad_cols, grad_out, c_pidx[gbase + g], n_params, -r * c_grad[gbase + g]);
+                }
+            }
+        }
+    } /* end fused single-pass */
+
+    if (!can_fuse) {
+#endif
+    /* --- Original 2-pass event loop (fallback for large n_procs). --- */
     for (uint i = tid; i < n_events; i += block_size) {
         float x = g_obs_flat[start + i];
 
@@ -2655,18 +2893,29 @@ kernel void unbinned_batch_nll_grad(
             }
         }
     }
+#if ENABLE_FUSED
+    } /* end if (!can_fuse) */
+#endif
 
+    /* Gradient reduction: tree reduction across threads (O(log2(block_size))). */
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint p = tid; p < local_grad_cols; p += block_size) {
-        float acc = 0.0f;
-        for (uint t = 0; t < block_size; t++) {
-            acc += s_grad_partial[t * local_grad_cols + p];
+    for (uint p = 0; p < local_grad_cols; p++) {
+        s_scratch[tid] = s_grad_partial[tid * local_grad_cols + p];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint stride = block_size / 2; stride > 0; stride >>= 1) {
+            if (tid < stride) {
+                s_scratch[tid] += s_scratch[tid + stride];
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
         }
-        if (isfinite(acc) && acc != 0.0f) {
-            atomic_fetch_add_explicit(&grad_out[p], acc, memory_order_relaxed);
+        if (tid == 0) {
+            float acc = s_scratch[0];
+            if (isfinite(acc) && acc != 0.0f) {
+                atomic_fetch_add_explicit(&grad_out[p], acc, memory_order_relaxed);
+            }
         }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     s_scratch[tid] = local_sum_logf;
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -3368,7 +3617,7 @@ kernel void unbinned_batch_nll_only(
 ) {
     uint tid = tid3.x;
     uint block_size = tptg.x;
-    uint toy = tg_pos.x;
+    uint toy = tg_pos.x + args.toy_offset;
     if (toy >= args.n_toys) {
         return;
     }

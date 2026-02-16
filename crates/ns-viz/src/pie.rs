@@ -5,22 +5,22 @@
 
 use ns_core::Result;
 use ns_translate::pyhf::HistFactoryModel;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieArtifact {
     pub schema_version: String,
     pub channels: Vec<PieChannelArtifact>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieChannelArtifact {
     pub channel_name: String,
     pub total_yield: f64,
     pub slices: Vec<PieSlice>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieSlice {
     pub sample_name: String,
     pub yield_sum: f64,

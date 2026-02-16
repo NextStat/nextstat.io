@@ -1,4 +1,4 @@
-//! LAPS: Late-Adjusted Parallel Sampler — GPU MAMS on CUDA.
+//! LAPS: Late-Adjusted Parallel Sampler — GPU MAMS on CUDA/Metal.
 //!
 //! Runs 4096+ chains simultaneously on GPU. The entire leapfrog trajectory
 //! (all `n_steps = ⌈L/ε⌉`) is computed in a single kernel launch per transition.
@@ -12,9 +12,13 @@
 //! - **Phase 4 (30%)**: L tuning + equilibrate — fixed ε, tuned L, MH enabled.
 //!
 //! Host handles warmup adaptation (step size, mass matrix, L tuning) and convergence diagnostics.
+//!
+//! Backends: CUDA (f64, NVIDIA) and Metal (f32, Apple Silicon). The warmup and
+//! sampling logic is generic over [`ns_compute::mams_trait::MamsAccelerator`].
 
 use crate::adapt::{DualAveraging, WelfordVariance, percentile};
 use crate::chain::{Chain, SamplerResult};
+use ns_compute::mams_trait::MamsAccelerator;
 use ns_core::Result;
 
 /// LAPS model specification for GPU sampling.
@@ -30,6 +34,15 @@ pub enum LapsModel {
     EightSchools { y: Vec<f64>, sigma: Vec<f64>, prior_mu_sigma: f64, prior_tau_scale: f64 },
     /// Neal's funnel: v ~ N(0,9), x_i|v ~ N(0, exp(v)).
     NealFunnel { dim: usize },
+    /// Neal's funnel — non-centered parameterization.
+    /// Samples (v, z_1..z_{d-1}) where z_i ~ N(0,1), then transforms x_i = z_i * exp(v/2).
+    NealFunnelNcp { dim: usize },
+    /// Neal's funnel — Riemannian MAMS with Fisher metric.
+    ///
+    /// G = diag(1/9, exp(-v), ..., exp(-v)). The kernel computes the effective
+    /// potential U_eff and natural gradient internally, with position-dependent
+    /// metric scaling in B-step and A-step.
+    NealFunnelRiemannian { dim: usize },
     /// Logistic regression: X is `n×p` row-major, y is `n` binary labels.
     GlmLogistic { x_data: Vec<f64>, y_data: Vec<f64>, n: usize, p: usize },
     /// User-defined model with raw CUDA C source for NLL and gradient.
@@ -51,6 +64,8 @@ impl LapsModel {
             LapsModel::StdNormal { dim } => *dim,
             LapsModel::EightSchools { y, .. } => 2 + y.len(),
             LapsModel::NealFunnel { dim } => *dim,
+            LapsModel::NealFunnelNcp { dim } => *dim,
+            LapsModel::NealFunnelRiemannian { dim } => *dim,
             LapsModel::GlmLogistic { p, .. } => *p,
             LapsModel::Custom { dim, .. } => *dim,
         }
@@ -62,14 +77,26 @@ impl LapsModel {
             LapsModel::StdNormal { .. } => 0,
             LapsModel::EightSchools { .. } => 1,
             LapsModel::NealFunnel { .. } => 2,
+            LapsModel::NealFunnelNcp { .. } => 4,
+            LapsModel::NealFunnelRiemannian { .. } => 5,
             LapsModel::GlmLogistic { .. } => 3,
             LapsModel::Custom { .. } => -1,
         }
     }
 
+    /// Whether this model uses Riemannian (position-dependent metric) dynamics.
+    fn is_riemannian(&self) -> bool {
+        matches!(self, LapsModel::NealFunnelRiemannian { .. })
+    }
+
     /// Whether this model uses JIT compilation (Custom variant).
     fn is_jit(&self) -> bool {
         matches!(self, LapsModel::Custom { .. })
+    }
+
+    /// Whether this model is supported on Metal (built-in models only, no JIT).
+    fn is_metal_supported(&self) -> bool {
+        !self.is_jit()
     }
 
     /// Flatten model data for GPU upload.
@@ -88,6 +115,8 @@ impl LapsModel {
                 data
             }
             LapsModel::NealFunnel { .. } => vec![],
+            LapsModel::NealFunnelNcp { .. } => vec![],
+            LapsModel::NealFunnelRiemannian { .. } => vec![],
             LapsModel::GlmLogistic { x_data, y_data, n, p } => {
                 let np = n * p;
                 let mut x_col = vec![0.0f64; np];
@@ -129,6 +158,20 @@ impl LapsModel {
                 }
                 names
             }
+            LapsModel::NealFunnelNcp { dim } => {
+                let mut names = vec!["v".into()];
+                for i in 1..*dim {
+                    names.push(format!("z[{}]", i));
+                }
+                names
+            }
+            LapsModel::NealFunnelRiemannian { dim } => {
+                let mut names = vec!["v".into()];
+                for i in 1..*dim {
+                    names.push(format!("x[{}]", i));
+                }
+                names
+            }
             LapsModel::GlmLogistic { p, .. } => (0..*p).map(|i| format!("beta[{}]", i)).collect(),
             LapsModel::Custom { param_names, dim, .. } => {
                 if param_names.is_empty() {
@@ -137,6 +180,16 @@ impl LapsModel {
                     param_names.clone()
                 }
             }
+        }
+    }
+
+    /// Rough posterior standard deviation estimate per parameter.
+    /// Used for L, init_scale, and pre-solve step sizing.
+    #[cfg(any(feature = "cuda", feature = "metal"))]
+    fn posterior_sigma_estimate(&self) -> f64 {
+        match self {
+            LapsModel::GlmLogistic { n, .. } => (2.0 / (*n as f64).sqrt()).clamp(0.02, 1.0),
+            _ => 1.0,
         }
     }
 }
@@ -182,6 +235,12 @@ pub struct LapsConfig {
     /// and per-chain DA fine-tunes — works well even for multi-scale models
     /// like Neal's funnel. Only disable for debugging.
     pub use_diagonal_precond: bool,
+    /// Number of mass matrix adaptation windows in warmup (default: 3).
+    ///
+    /// Each window collects Welford statistics, computes a new `inv_mass`,
+    /// resets dual averaging, and re-searches ε. Window sizes double
+    /// progressively (Stan-style). Set to 1 for single-pass (original behavior).
+    pub n_mass_windows: usize,
 }
 
 impl Default for LapsConfig {
@@ -200,8 +259,9 @@ impl Default for LapsConfig {
             welford_chains_per_device: 256,
             batch_size: 1000,
             fused_transitions: 1000,
-            report_chains: 32,
+            report_chains: 256,
             use_diagonal_precond: true,
+            n_mass_windows: 3,
         }
     }
 }
@@ -232,25 +292,59 @@ fn detect_cuda_devices() -> Vec<usize> {
 
 /// Run LAPS (GPU MAMS) sampling.
 ///
-/// Dispatches to single-GPU or multi-GPU path based on `config.device_ids`.
+/// Dispatches to CUDA (f64, multi-GPU) or Metal (f32, single-GPU) backend.
+/// CUDA is preferred when available. Metal is used on Apple Silicon when the
+/// model is a built-in type (Custom/JIT models require CUDA).
+///
 /// Returns a [`LapsResult`] containing chains from `n_report_chains` chains
-/// (default: min(n_chains, report_chains=32)) subsampled from the full GPU chain set,
+/// (default: min(n_chains, report_chains=256)) subsampled from the full GPU chain set,
 /// plus wall time and kernel launch count.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 pub fn sample_laps(model: &LapsModel, config: LapsConfig) -> Result<LapsResult> {
-    let device_ids = config.device_ids.clone().unwrap_or_else(detect_cuda_devices);
-    if device_ids.is_empty() {
-        return Err(ns_core::Error::Computation("No CUDA devices available".into()));
+    // CUDA path: priority (f64 precision + JIT + multi-GPU)
+    #[cfg(feature = "cuda")]
+    {
+        let device_ids = config.device_ids.clone().unwrap_or_else(detect_cuda_devices);
+        if !device_ids.is_empty() {
+            return if device_ids.len() == 1 {
+                sample_laps_single_gpu_cuda(model, config, device_ids[0])
+            } else {
+                sample_laps_multi_gpu(model, config, &device_ids)
+            };
+        }
     }
-    if device_ids.len() == 1 {
-        sample_laps_single_gpu(model, config, device_ids[0])
-    } else {
-        sample_laps_multi_gpu(model, config, &device_ids)
+
+    // Metal path: fallback on Apple Silicon (built-in models only)
+    #[cfg(feature = "metal")]
+    {
+        if model.is_metal_supported() {
+            return sample_laps_single_gpu_metal(model, config);
+        }
     }
+
+    Err(ns_core::Error::Computation(
+        "No GPU backend available for LAPS (need CUDA or Metal with a built-in model)".into(),
+    ))
+}
+
+/// Metal single-GPU wrapper: creates MetalMamsAccelerator and calls generic.
+#[cfg(feature = "metal")]
+fn sample_laps_single_gpu_metal(model: &LapsModel, config: LapsConfig) -> Result<LapsResult> {
+    let n_chains = config.n_chains;
+    let dim = model.dim();
+    let model_data = model.model_data();
+    let accel = ns_compute::metal_mams::MetalMamsAccelerator::new(
+        n_chains,
+        dim,
+        model.model_id(),
+        &model_data,
+        config.seed,
+    )?;
+    sample_laps_single_gpu_generic(model, config, accel, 0)
 }
 
 /// Generate random initial chain state for `n_chains` chains of `dim` dimensions.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn generate_init_state(
     n_chains: usize,
     dim: usize,
@@ -293,22 +387,35 @@ fn generate_init_state(
 }
 
 /// Compute initial trajectory length and step size.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64) {
     let dim = model.dim();
-    let l_default = std::f64::consts::PI * (dim as f64).sqrt();
+    // Model-specific default trajectory length:
+    // - Standard models (StdNormal, NealFunnel, EightSchools): L = √d
+    //   per MAMS paper (Robnik et al. 2023). The old π√d caused resonant
+    //   anti-correlation (cos(π√d) ≈ -1 for d≈10), inflating bulk ESS
+    //   but destroying tail ESS (5k vs 186k at L=√d).
+    // - GLM: uses π√d base scaled by posterior σ estimate (data-aware).
+    //   GLM's posterior is concentrated, so needs L ~ σ_post * π√d.
     let l = if config.init_l > 0.0 {
         config.init_l
     } else {
         match model {
-            // Data-aware default for logistic GLM:
-            // posterior scale per coefficient is roughly O(1/sqrt(n)).
-            // Use sigma_post ≈ 2/sqrt(n), so L = pi*sqrt(dim)*sigma_post.
-            LapsModel::GlmLogistic { n, .. } => {
-                let sigma_post = 2.0 / (*n as f64).sqrt();
-                (l_default * sigma_post).clamp(0.25, l_default)
+            LapsModel::GlmLogistic { .. } => {
+                let l_base = std::f64::consts::PI * (dim as f64).sqrt();
+                let sigma_post = model.posterior_sigma_estimate();
+                let l_model = l_base * sigma_post;
+                // With warmup: conservative floor (0.2*l_base) ensures stable
+                // early warmup even without GLM pre-solve. L tuning in Phase 4
+                // will adjust to the optimal value.
+                // Without warmup: tight floor (0.25) for data-aware L.
+                if config.n_warmup == 0 {
+                    l_model.clamp(0.25, l_base)
+                } else {
+                    l_model.clamp(0.2 * l_base, l_base)
+                }
             }
-            _ => l_default,
+            _ => (dim as f64).sqrt(),
         }
     };
     let eps = if config.init_step_size > 0.0 { config.init_step_size } else { l / 10.0 };
@@ -327,24 +434,31 @@ fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64) 
 /// For cold start: first finds a stable burn-in eps (adapts to gradient scale),
 /// runs burn-in, then searches UP from that eps. This handles both easy models
 /// (std_normal, eps~1) and data-heavy models (GLM n=5000, eps~0.001).
-#[cfg(feature = "cuda")]
-fn find_initial_eps_gpu(
-    accel: &mut ns_compute::cuda_mams::CudaMamsAccelerator,
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn find_initial_eps_gpu<A: MamsAccelerator>(
+    accel: &mut A,
     l: f64,
-    dim: usize,
+    _dim: usize,
     config: &LapsConfig,
     cold_start: bool,
-) -> Result<f64> {
-    let search_max_steps: usize = 50;
+    fast_glm: bool,
+    presolve_applied: bool,
+) -> Result<(f64, usize)> {
+    let search_max_steps: usize = if fast_glm { 32 } else { 50 };
     let eps_floor = (l / (config.max_leapfrog.max(1) as f64)).max(1e-6);
+    let stable_probe_iters: usize = if fast_glm { 5 } else { 8 };
+    let search_iters: usize = if fast_glm { 12 } else { 20 };
+    let search_repeats: usize = if fast_glm { 2 } else { 3 };
+    let mut launches = 0usize;
 
     // Phase A: find a stable eps (one that doesn't immediately diverge).
     // Start at l/10, drop by 10x until acceptance > 1%. For std_normal l/10~1.4
     // works immediately. For GLM n=5000, drops to ~1e-4 after 3 iterations.
     let mut stable_eps = l / 10.0;
-    for _ in 0..8 {
+    for _ in 0..stable_probe_iters {
         accel.set_uniform_eps(stable_eps)?;
         accel.transition_auto(l, 1, true)?;
+        launches += 1;
         let diag = accel.download_diagnostics()?;
         let acc = compute_mean_accept_prob(&diag.energy_error);
         if acc > 0.01 {
@@ -359,13 +473,22 @@ fn find_initial_eps_gpu(
 
     // Phase B (cold only): burn-in at stable_eps to move toward typical set.
     // With init_scale ≈ posterior_std, chains start within ~2σ of origin.
-    // 50 L-traversals suffice to reach the typical set (was 200, but that's
-    // too expensive for data-heavy models where each leapfrog step is O(n×p)).
-    if cold_start {
+    // For no-warmup runs we use a shorter burn-in to reduce startup overhead
+    // while keeping the robust cold-start behavior.
+    // Skip if pre-solve already moved chains near the mode.
+    if cold_start && !presolve_applied {
         accel.set_uniform_eps(stable_eps)?;
         let n_steps = ((l / stable_eps).round() as usize).clamp(1, search_max_steps);
-        for _ in 0..50 {
+        let burnin_iters = if config.n_warmup == 0 {
+            if fast_glm { 8 } else { 12 }
+        } else if fast_glm {
+            20
+        } else {
+            50
+        };
+        for _ in 0..burnin_iters {
             accel.transition_auto(l, n_steps, false)?;
+            launches += 1;
         }
     }
 
@@ -375,16 +498,17 @@ fn find_initial_eps_gpu(
     let mut eps = stable_eps;
     let mut best_eps = eps;
 
-    for _ in 0..20 {
+    for _ in 0..search_iters {
         accel.set_uniform_eps(eps)?;
         let n_steps = ((l / eps).round() as usize).clamp(1, search_max_steps);
         let mut total_accept = 0.0;
-        for _ in 0..3 {
+        for _ in 0..search_repeats {
             accel.transition_auto(l, n_steps, true)?;
+            launches += 1;
             let diag = accel.download_diagnostics()?;
             total_accept += compute_mean_accept_prob(&diag.energy_error);
         }
-        let acc = total_accept / 3.0;
+        let acc = total_accept / search_repeats as f64;
 
         if acc >= 0.65 {
             best_eps = eps;
@@ -403,7 +527,7 @@ fn find_initial_eps_gpu(
         }
     }
 
-    Ok(best_eps.clamp(eps_floor, l * 0.5))
+    Ok((best_eps.clamp(eps_floor, l * 0.5), launches))
 }
 
 /// Tune decoherence length L on GPU using median of per-chain eps.
@@ -411,22 +535,33 @@ fn find_initial_eps_gpu(
 /// Per-chain eps are already uploaded to GPU. We use the median eps
 /// to compute n_steps for each L candidate.
 /// Returns `(best_l, n_kernel_launches)`.
-#[cfg(feature = "cuda")]
-fn tune_l_gpu(
-    accel: &mut ns_compute::cuda_mams::CudaMamsAccelerator,
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn tune_l_gpu<A: MamsAccelerator>(
+    accel: &mut A,
     eps_median: f64,
     n_chains: usize,
-    _dim: usize,
+    dim: usize,
     config: &LapsConfig,
+    fast_glm: bool,
 ) -> Result<(f64, usize)> {
     use crate::adapt::estimate_ess_simple;
 
-    let n_trials = 40;
+    let (n_trials, n_candidates) = if fast_glm {
+        if config.n_warmup < 100 { (8, 3) } else { (12, 4) }
+    } else if config.n_warmup < 100 {
+        (16, 4)
+    } else {
+        (40, 7)
+    };
     // Robust L scoring: aggregate ESS/grad over multiple chains instead of
     // relying on chain 0 only (which is brittle on funnel-like geometries).
     let n_eval_chains =
         n_chains.min(config.welford_chains_per_device.max(1)).min(config.report_chains.max(1));
     let l_min = (std::f64::consts::FRAC_PI_2).max(eps_median * 4.0);
+    // Cap L search at 2√d to prevent resonant anti-correlation.
+    // For N(0,I_d), L > 2√d causes cos(L) ≈ -1, which inflates bulk ESS
+    // but destroys tail ESS. GLM needs larger L (scaled by posterior σ).
+    let l_cap = if fast_glm { f64::MAX } else { 2.0 * (dim as f64).sqrt() };
 
     let mut best_l = l_min;
     let mut best_ess_per_grad = 0.0f64;
@@ -435,7 +570,10 @@ fn tune_l_gpu(
     accel.configure_batch(n_trials, n_eval_chains)?;
 
     let mut l_candidate = l_min;
-    for _ in 0..7 {
+    for _ in 0..n_candidates {
+        if l_candidate > l_cap {
+            break;
+        }
         // max_leapfrog cap — per-chain n_steps computed in kernel
         let max_leapfrog =
             ((l_candidate / eps_median).round() as usize).clamp(1, config.max_leapfrog) * 2;
@@ -475,7 +613,7 @@ fn tune_l_gpu(
 }
 
 /// Compute inv_mass from Welford variance with Stan regularization.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn regularize_inv_mass(welford: &WelfordVariance, dim: usize) -> Option<Vec<f64>> {
     if welford.count() < 10 {
         return None;
@@ -518,7 +656,7 @@ fn create_accelerator(
 }
 
 /// Assemble SamplerResult from per-chain collected data.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn assemble_result(
     chain_draws: Vec<Vec<Vec<f64>>>,
     chain_accept_probs: Vec<Vec<f64>>,
@@ -543,7 +681,8 @@ fn assemble_result(
             accept_probs: chain_accept_probs[c].clone(),
             energies: chain_energies[c].clone(),
             n_leapfrog: chain_leapfrogs[c].clone(),
-            max_treedepth: 0,
+            // LAPS/MAMS are not tree-based samplers; avoid false max-treedepth failures.
+            max_treedepth: usize::MAX,
             step_size: eps,
             mass_diag: mass_diag.clone(),
         })
@@ -553,25 +692,66 @@ fn assemble_result(
 }
 
 /// Compute max_leapfrog cap from per-chain eps and L.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn compute_max_leapfrog(eps_vec: &[f64], l: f64, cap: usize) -> usize {
     eps_vec.iter().map(|&e| ((l / e).round() as usize).clamp(1, cap)).max().unwrap_or(10)
 }
 
 /// Compute number of chains retained for diagnostics/result payload.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 fn compute_report_chains(config: &LapsConfig, n_chains: usize) -> usize {
     n_chains.min(config.report_chains.max(1))
+}
+
+/// For short warmup schedules on data-heavy GLM, skip expensive L tuning.
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn should_skip_l_tuning(model: &LapsModel, config: &LapsConfig) -> bool {
+    config.n_warmup <= 256 && matches!(model, LapsModel::GlmLogistic { .. })
+}
+
+/// Iteration budget for optional GLM pre-solve.
+///
+/// This hook is only effective on CUDA when the backend exposes a model-aware
+/// pre-solve implementation (currently cuBLAS-backed logistic GLM).
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn glm_presolve_iters(model: &LapsModel, config: &LapsConfig) -> usize {
+    if std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_PRESOLVE").is_some() {
+        return 0;
+    }
+    if let Ok(v) = std::env::var("NEXTSTAT_LAPS_GLM_PRESOLVE_ITERS")
+        && let Ok(parsed) = v.parse::<usize>()
+    {
+        return parsed;
+    }
+    match model {
+        LapsModel::GlmLogistic { n, .. } => {
+            // Pre-solve is most useful for truly large-n GLM.
+            // Too many normalized-GD steps can over-collapse chains near the
+            // mode and hurt energy mixing (E-BFMI), so keep defaults modest.
+            let base = if *n >= 5000 {
+                20
+            } else if *n >= 3000 {
+                15
+            } else {
+                0
+            };
+            if base == 0 {
+                return 0;
+            }
+            if config.n_warmup == 0 { (base / 2).max(10) } else { base }
+        }
+        _ => 0,
+    }
 }
 
 /// Decide whether to use fused multi-step kernel in sampling.
 ///
 /// Empirically, for large-n GLM logistic with warp support, the fused path can
 /// be slower than warp batch launches despite fewer kernel launches.
-#[cfg(feature = "cuda")]
-fn should_use_fused_sampling(
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn should_use_fused_sampling<A: MamsAccelerator>(
     model: &LapsModel,
-    accel: &ns_compute::cuda_mams::CudaMamsAccelerator,
+    accel: &A,
     config: &LapsConfig,
 ) -> bool {
     if config.fused_transitions == 0 || !accel.supports_fused() {
@@ -585,11 +765,11 @@ fn should_use_fused_sampling(
 
 /// Per-chain DA warmup helper: update DA instances from energy errors
 /// and upload new per-chain eps to GPU.
-#[cfg(feature = "cuda")]
-fn update_per_chain_da(
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn update_per_chain_da<A: MamsAccelerator>(
     da_vec: &mut [DualAveraging],
     energy_errors: &[f64],
-    accel: &mut ns_compute::cuda_mams::CudaMamsAccelerator,
+    accel: &mut A,
     n_chains: usize,
     l: f64,
     max_leapfrog: usize,
@@ -622,19 +802,65 @@ fn update_per_chain_da(
     Ok(())
 }
 
+/// Compute LAPS windowed mass adaptation schedule.
+///
+/// Returns a Vec of window sizes that sum to `total_iters`.
+/// Sizes double progressively: `init, 2*init, 4*init, ...`, with
+/// the last window absorbing the remainder.
+///
+/// `init_window = max(total_iters / (2^n_windows - 1), 1)` ensures
+/// the geometric series fills the budget, or `max(total/20, 25)` whichever
+/// is larger for stability.
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn compute_laps_window_schedule(total_iters: usize, n_windows: usize) -> Vec<usize> {
+    if total_iters == 0 || n_windows == 0 {
+        return vec![];
+    }
+    if n_windows == 1 {
+        return vec![total_iters];
+    }
+
+    // Geometric series: init * (2^n - 1) ≈ total → init ≈ total / (2^n - 1)
+    let denom = (1usize << n_windows).saturating_sub(1).max(1);
+    let init_window = (total_iters / denom).max(1).max(25.min(total_iters));
+
+    let mut sizes = Vec::with_capacity(n_windows);
+    let mut remaining = total_iters;
+    let mut size = init_window;
+
+    for i in 0..n_windows {
+        if i == n_windows - 1 {
+            // Last window absorbs remainder
+            sizes.push(remaining);
+        } else if size >= remaining {
+            // Can't fit more windows — give all remaining to this one
+            sizes.push(remaining);
+            break;
+        } else {
+            sizes.push(size);
+            remaining -= size;
+            size *= 2;
+        }
+    }
+
+    sizes
+}
+
 /// Single-GPU LAPS sampling with per-chain step size adaptation.
-#[cfg(feature = "cuda")]
-fn sample_laps_single_gpu(
+///
+/// Generic over `MamsAccelerator` — the caller creates the backend-specific accelerator
+/// and passes the `device_id` for result metadata.
+#[cfg(any(feature = "cuda", feature = "metal"))]
+fn sample_laps_single_gpu_generic<A: MamsAccelerator>(
     model: &LapsModel,
     config: LapsConfig,
+    mut accel: A,
     device_id: usize,
 ) -> Result<LapsResult> {
     let start = std::time::Instant::now();
     let dim = model.dim();
     let n_chains = config.n_chains;
-    let model_data = model.model_data();
-
-    let mut accel = create_accelerator(model, n_chains, dim, &model_data, config.seed, device_id)?;
+    let fast_glm = matches!(model, LapsModel::GlmLogistic { .. });
 
     let (mut l, _init_eps) = compute_initial_params(model, &config);
     // Scale chain initialization: init_scale ≈ posterior_std from init_l.
@@ -643,11 +869,23 @@ fn sample_laps_single_gpu(
     let (x_init, u_init, potential_init, grad_init) =
         generate_init_state(n_chains, dim, config.seed, init_scale);
     accel.upload_state(&x_init, &u_init, &potential_init, &grad_init)?;
+    let presolve_iters = glm_presolve_iters(model, &config);
+    let presolve_applied = if presolve_iters > 0 {
+        match accel.glm_presolve(presolve_iters) {
+            Ok(applied) => applied,
+            Err(e) => {
+                log::warn!("LAPS GLM pre-solve skipped due to backend error: {}", e);
+                false
+            }
+        }
+    } else {
+        false
+    };
     let t_init = start.elapsed().as_secs_f64();
     let mut inv_mass = vec![1.0f64; dim];
     let mut n_kernel_launches = 0usize;
 
-    // ---------- 4-phase warmup with PER-CHAIN dual averaging ----------
+    // ---------- Windowed warmup with PER-CHAIN dual averaging ----------
     let phase1_iters = (config.n_warmup as f64 * 0.15) as usize;
     let phase2_iters = (config.n_warmup as f64 * 0.40) as usize;
     let phase3_iters = (config.n_warmup as f64 * 0.15) as usize;
@@ -656,9 +894,9 @@ fn sample_laps_single_gpu(
 
     // Initial ε binary search (uniform across chains)
     // Cold start: ~8 stability probes + 200 burn-in + up to 20*3 = 60 search ≈ 270
-    let cold_start = config.n_warmup > 0;
-    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, cold_start)?;
-    n_kernel_launches += if cold_start { 270 } else { 70 };
+    let (eps, eps_launches) =
+        find_initial_eps_gpu(&mut accel, l, dim, &config, true, fast_glm, presolve_applied)?;
+    n_kernel_launches += eps_launches;
 
     // Per-chain DA: one DualAveraging instance per chain
     let mut da_vec: Vec<DualAveraging> =
@@ -685,88 +923,104 @@ fn sample_laps_single_gpu(
         }
     }
 
-    // ---------- Phase 2: Per-chain DA + Welford — collect mass matrix ----------
-    let mut welford = WelfordVariance::new(dim);
-    for iter in 0..phase2_iters {
-        let eps_vec: Vec<f64> = da_vec.iter().map(|da| da.current_step_size()).collect();
-        let max_lf = compute_max_leapfrog(&eps_vec, l, config.max_leapfrog);
-        accel.transition_auto(l, max_lf, true)?;
-        n_kernel_launches += 1;
-
-        if (iter + 1) % config.sync_interval == 0 || iter == phase2_iters - 1 {
-            let diag = accel.download_diagnostics()?;
-            update_per_chain_da(
-                &mut da_vec,
-                &diag.energy_error,
-                &mut accel,
-                n_chains,
-                l,
-                config.max_leapfrog,
-            )?;
-
-            if config.use_diagonal_precond {
-                let positions = accel.download_positions()?;
-                for c in 0..n_chains.min(config.welford_chains_per_device) {
-                    welford.update(&positions[c * dim..(c + 1) * dim]);
-                }
-            }
-        }
-    }
+    // ---------- Phase 2+3: Windowed mass adaptation ----------
+    //
+    // Instead of a single Welford pass + one DA reset, we run K windows
+    // (Stan-style doubling schedule). Each window:
+    //   1. Runs DA + Welford for `window_size` iterations
+    //   2. Computes new inv_mass from Welford variance
+    //   3. Uploads inv_mass to GPU
+    //   4. Re-searches eps via binary search
+    //   5. Resets DA instances with the new eps
+    //   6. Resets Welford
+    //
+    // The windowed iterations consume Phase 2 + Phase 3 budget combined
+    // (55% of warmup). n_mass_windows=1 gives original single-pass behavior.
+    let windowed_iters = phase2_iters + phase3_iters;
 
     let final_eps: Vec<f64>;
-    if config.n_warmup > 0 {
-        // Mass update + reset per-chain DA + find new ε
-        if config.use_diagonal_precond {
-            if let Some(new_mass) = regularize_inv_mass(&welford, dim) {
-                inv_mass = new_mass;
-                accel.set_inv_mass(&inv_mass)?;
-            }
-        }
-        // Warm search (no burn-in): ~8 stability + up to 20*3 = 60 search ≈ 70
-        let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, false)?;
-        da_vec = (0..n_chains).map(|_| DualAveraging::new(config.target_accept, eps)).collect();
-        accel.set_uniform_eps(eps)?;
-        n_kernel_launches += 70;
+    let eps_median: f64;
+    let max_lf: usize;
+    if config.n_warmup == 0 {
+        // Fast path for no-warmup runs:
+        // keep stable eps from initial cold search and skip expensive
+        // second eps search + L tuning phases.
+        final_eps = vec![eps.min(l * 0.5).max(1e-6); n_chains];
+        eps_median = final_eps[0];
+        accel.set_per_chain_eps(&final_eps)?;
+        max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
+    } else {
+        // Compute window schedule: sizes double, last window absorbs remainder.
+        let n_windows = config.n_mass_windows.max(1);
+        let window_sizes = compute_laps_window_schedule(windowed_iters, n_windows);
 
-        // ---------- Phase 3: Per-chain DA with new metric ----------
-        let p3_sync = config.sync_interval.min(phase3_iters.max(1) / 3).max(1);
-        for iter in 0..phase3_iters {
-            let eps_vec: Vec<f64> = da_vec.iter().map(|da| da.current_step_size()).collect();
-            let max_lf = compute_max_leapfrog(&eps_vec, l, config.max_leapfrog);
-            accel.transition_auto(l, max_lf, true)?;
-            n_kernel_launches += 1;
+        let mut welford = WelfordVariance::new(dim);
 
-            if (iter + 1) % p3_sync == 0 || iter == phase3_iters - 1 {
-                let diag = accel.download_diagnostics()?;
-                update_per_chain_da(
-                    &mut da_vec,
-                    &diag.energy_error,
-                    &mut accel,
-                    n_chains,
-                    l,
-                    config.max_leapfrog,
-                )?;
+        for (_win_idx, &win_size) in window_sizes.iter().enumerate() {
+            // Run DA + Welford for this window
+            for iter in 0..win_size {
+                let eps_vec: Vec<f64> = da_vec.iter().map(|da| da.current_step_size()).collect();
+                let max_lf = compute_max_leapfrog(&eps_vec, l, config.max_leapfrog);
+                accel.transition_auto(l, max_lf, true)?;
+                n_kernel_launches += 1;
+
+                if (iter + 1) % config.sync_interval == 0 || iter == win_size - 1 {
+                    let diag = accel.download_diagnostics()?;
+                    update_per_chain_da(
+                        &mut da_vec,
+                        &diag.energy_error,
+                        &mut accel,
+                        n_chains,
+                        l,
+                        config.max_leapfrog,
+                    )?;
+
+                    if config.use_diagonal_precond {
+                        let positions = accel.download_positions()?;
+                        for c in 0..n_chains.min(config.welford_chains_per_device) {
+                            welford.update(&positions[c * dim..(c + 1) * dim]);
+                        }
+                    }
+                }
             }
+
+            // End of window: update mass matrix, re-search eps, reset DA + Welford
+            if config.use_diagonal_precond {
+                if let Some(new_mass) = regularize_inv_mass(&welford, dim) {
+                    inv_mass = new_mass;
+                    accel.set_inv_mass(&inv_mass)?;
+                }
+            }
+
+            let (new_eps, eps_launches) =
+                find_initial_eps_gpu(&mut accel, l, dim, &config, false, fast_glm, false)?;
+            n_kernel_launches += eps_launches;
+
+            da_vec =
+                (0..n_chains).map(|_| DualAveraging::new(config.target_accept, new_eps)).collect();
+            accel.set_uniform_eps(new_eps)?;
+
+            welford.reset();
         }
 
         // Finalize per-chain eps (smoothed adapted step sizes)
         final_eps = da_vec.iter().map(|da| da.adapted_step_size().min(l * 0.5).max(1e-6)).collect();
-        let eps_median = percentile(&final_eps, 0.5);
+        eps_median = percentile(&final_eps, 0.5);
         accel.set_per_chain_eps(&final_eps)?;
 
         // ---------- Phase 4: L tuning + equilibrate ----------
-        let (tuned_l, l_launches) = tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config)?;
-        l = tuned_l;
-        n_kernel_launches += l_launches;
+        if !should_skip_l_tuning(model, &config) {
+            let (tuned_l, l_launches) =
+                tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config, fast_glm)?;
+            l = tuned_l;
+            n_kernel_launches += l_launches;
+        }
 
-        let max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
+        max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
         for _iter in 0..phase_final_iters {
             accel.transition_auto(l, max_lf, true)?;
             n_kernel_launches += 1;
         }
-    } else {
-        final_eps = vec![eps.min(l * 0.5).max(1e-6); n_chains];
-        accel.set_per_chain_eps(&final_eps)?;
     }
 
     let t_warmup = start.elapsed().as_secs_f64() - t_init;
@@ -837,6 +1091,20 @@ fn sample_laps_single_gpu(
     })
 }
 
+/// CUDA single-GPU wrapper: creates CudaMamsAccelerator and calls generic.
+#[cfg(feature = "cuda")]
+fn sample_laps_single_gpu_cuda(
+    model: &LapsModel,
+    config: LapsConfig,
+    device_id: usize,
+) -> Result<LapsResult> {
+    let n_chains = config.n_chains;
+    let dim = model.dim();
+    let model_data = model.model_data();
+    let accel = create_accelerator(model, n_chains, dim, &model_data, config.seed, device_id)?;
+    sample_laps_single_gpu_generic(model, config, accel, device_id)
+}
+
 /// Per-device result returned from each GPU thread.
 #[cfg(feature = "cuda")]
 struct DeviceLapsResult {
@@ -865,6 +1133,7 @@ fn sample_laps_multi_gpu(
 
     let start = std::time::Instant::now();
     let dim = model.dim();
+    let fast_glm = matches!(model, LapsModel::GlmLogistic { .. });
     let n_chains = config.n_chains;
     let n_devices = device_ids.len();
     let model_data = model.model_data();
@@ -945,6 +1214,7 @@ fn sample_laps_multi_gpu(
                 let shared_l = &shared_l;
                 let config = &config;
                 let model_data = &model_data;
+                let fast_glm = fast_glm;
 
                 scope.spawn(move || -> Result<DeviceLapsResult> {
                     let mut remaining_barriers = total_barrier_pairs;
@@ -975,15 +1245,32 @@ fn sample_laps_multi_gpu(
                     {
                         bail_with_barriers!(e);
                     }
+                    let presolve_iters = glm_presolve_iters(model, config);
+                    let presolve_applied = if presolve_iters > 0 {
+                        match accel.glm_presolve(presolve_iters) {
+                            Ok(applied) => applied,
+                            Err(e) => {
+                                log::warn!(
+                                    "LAPS GLM pre-solve skipped on device {} due to backend error: {}",
+                                    device_id,
+                                    e
+                                );
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    };
 
                     let mut n_kernel_launches = 0usize;
 
                     // Initial ε binary search on device 0, broadcast to all
                     if dev_idx == 0 {
-                        if let Ok(found_eps) =
-                            find_initial_eps_gpu(&mut accel, l, dim, config, true)
+                        if let Ok((found_eps, launches)) =
+                            find_initial_eps_gpu(&mut accel, l, dim, config, true, fast_glm, presolve_applied)
                         {
                             *shared_init_eps.lock().unwrap() = found_eps;
+                            n_kernel_launches += launches;
                         }
                     }
                     let eps = *shared_init_eps.lock().unwrap();
@@ -1104,17 +1391,21 @@ fn sample_laps_multi_gpu(
 
                         // Device 0 finds new eps, broadcasts as init for per-chain DA reset
                         if dev_idx == 0 {
-                            let new_eps =
-                                match find_initial_eps_gpu(&mut accel, l, dim, config, false) {
-                                    Ok(e) => e,
-                                    Err(_) => percentile(
-                                        &da_vec
-                                            .iter()
-                                            .map(|da| da.adapted_step_size())
-                                            .collect::<Vec<_>>(),
-                                        0.5,
-                                    ),
-                                };
+                            let new_eps = match find_initial_eps_gpu(
+                                &mut accel, l, dim, config, false, fast_glm, false,
+                            ) {
+                                Ok((e, launches)) => {
+                                    n_kernel_launches += launches;
+                                    e
+                                }
+                                Err(_) => percentile(
+                                    &da_vec
+                                        .iter()
+                                        .map(|da| da.adapted_step_size())
+                                        .collect::<Vec<_>>(),
+                                    0.5,
+                                ),
+                            };
                             *shared_init_eps.lock().unwrap() = new_eps;
                         }
                         let new_eps = *shared_init_eps.lock().unwrap();
@@ -1171,10 +1462,13 @@ fn sample_laps_multi_gpu(
                     {
                         barrier_upload.wait();
 
-                        if dev_idx == 0 {
-                            match tune_l_gpu(&mut accel, eps_median, dev_chains, dim, config) {
-                                Ok((tuned_l, _launches)) => {
+                        if dev_idx == 0 && !should_skip_l_tuning(model, config) {
+                            match tune_l_gpu(
+                                &mut accel, eps_median, dev_chains, dim, config, fast_glm,
+                            ) {
+                                Ok((tuned_l, launches)) => {
                                     *shared_l.lock().unwrap() = tuned_l;
+                                    n_kernel_launches += launches;
                                 }
                                 Err(_) => {} // keep default L
                             }
@@ -1286,7 +1580,8 @@ fn sample_laps_multi_gpu(
                             accept_probs: chain_accept_probs[c].clone(),
                             energies: chain_energies[c].clone(),
                             n_leapfrog: chain_leapfrogs[c].clone(),
-                            max_treedepth: 0,
+                            // LAPS/MAMS are not tree-based samplers; avoid false max-treedepth failures.
+                            max_treedepth: usize::MAX,
                             step_size: eps_median,
                             mass_diag: mass_diag.clone(),
                         })
@@ -1412,5 +1707,91 @@ mod tests {
         };
         let result = sample_laps(&model, config).unwrap();
         assert_eq!(result.sampler_result.chains[0].draws_constrained[0].len(), 5);
+    }
+}
+
+#[cfg(test)]
+#[cfg(all(feature = "metal", not(feature = "cuda")))]
+mod tests_metal {
+    use super::*;
+
+    #[test]
+    fn test_laps_metal_std_normal_smoke() {
+        let model = LapsModel::StdNormal { dim: 10 };
+        let config = LapsConfig {
+            n_chains: 256,
+            n_warmup: 100,
+            n_samples: 200,
+            seed: 42,
+            ..Default::default()
+        };
+        let result = sample_laps(&model, config).unwrap();
+        assert_eq!(result.sampler_result.chains.len(), 256);
+        assert_eq!(result.sampler_result.chains[0].draws_constrained.len(), 200);
+        assert!(result.wall_time_s > 0.0);
+        assert!(result.n_kernel_launches > 0);
+
+        // Verify posterior moments: mean ≈ 0, var ≈ 1 (f32 tolerance)
+        let chain = &result.sampler_result.chains[0];
+        let n_draws = chain.draws_constrained.len();
+        let dim = chain.draws_constrained[0].len();
+        for d in 0..dim {
+            let mean: f64 =
+                chain.draws_constrained.iter().map(|s| s[d]).sum::<f64>() / n_draws as f64;
+            assert!(mean.abs() < 0.5, "dim {d} mean = {mean}, expected ≈ 0");
+        }
+    }
+
+    #[test]
+    fn test_laps_metal_eight_schools_smoke() {
+        let model = LapsModel::EightSchools {
+            y: vec![28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0],
+            sigma: vec![15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0],
+            prior_mu_sigma: 5.0,
+            prior_tau_scale: 5.0,
+        };
+        let config = LapsConfig {
+            n_chains: 256,
+            n_warmup: 100,
+            n_samples: 100,
+            seed: 42,
+            ..Default::default()
+        };
+        let result = sample_laps(&model, config).unwrap();
+        assert_eq!(result.sampler_result.chains[0].draws_constrained[0].len(), 10);
+    }
+
+    #[test]
+    fn test_laps_metal_neal_funnel_smoke() {
+        let model = LapsModel::NealFunnel { dim: 5 };
+        let config = LapsConfig {
+            n_chains: 256,
+            n_warmup: 100,
+            n_samples: 100,
+            seed: 42,
+            ..Default::default()
+        };
+        let result = sample_laps(&model, config).unwrap();
+        assert_eq!(result.sampler_result.chains[0].draws_constrained[0].len(), 5);
+    }
+
+    #[test]
+    fn test_laps_metal_custom_rejected() {
+        // Custom (JIT) models are not supported on Metal — should return error.
+        let model = LapsModel::Custom {
+            dim: 2,
+            param_names: vec!["x".into(), "y".into()],
+            model_data: vec![],
+            cuda_src: "// dummy".into(),
+        };
+        let config = LapsConfig {
+            n_chains: 64,
+            n_warmup: 10,
+            n_samples: 10,
+            seed: 42,
+            ..Default::default()
+        };
+        let result = sample_laps(&model, config);
+        assert!(result.is_err(), "Custom model should fail on Metal-only");
     }
 }

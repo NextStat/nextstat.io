@@ -25,6 +25,38 @@ fn run(args: &[&str]) -> Output {
         .unwrap_or_else(|e| panic!("failed to run {:?} {:?}: {}", bin_path(), args, e))
 }
 
+fn run_with_env(args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(bin_path());
+    cmd.args(args);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    cmd.output().unwrap_or_else(|e| panic!("failed to run {:?} {:?}: {}", bin_path(), args, e))
+}
+
+fn python_for_render() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("NEXTSTAT_TEST_PYTHON")
+        && !p.trim().is_empty()
+    {
+        return Some(PathBuf::from(p));
+    }
+    let venv = repo_root().join(".venv/bin/python");
+    if venv.exists() {
+        return Some(venv);
+    }
+    None
+}
+
+fn python_has_render_deps(python: &PathBuf) -> bool {
+    let mut cmd = Command::new(python);
+    cmd.arg("-c").arg(
+        "import importlib.util; \
+         assert importlib.util.find_spec('matplotlib') is not None; \
+         assert importlib.util.find_spec('PIL') is not None",
+    );
+    cmd.status().map(|s| s.success()).unwrap_or(false)
+}
+
 #[test]
 fn run_accepts_analysis_spec_v0_trex_config_yaml_fit() {
     let root = repo_root();
@@ -413,6 +445,278 @@ gates:
     assert!(report_dir.join("yields.json").exists(), "missing yields.json");
     assert!(report_dir.join("pulls.json").exists(), "missing pulls.json");
     assert!(report_dir.join("corr.json").exists(), "missing corr.json");
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+}
+
+#[test]
+fn run_analysis_spec_v0_histfactory_report_render_e2e() {
+    let Some(python) = python_for_render() else {
+        eprintln!("skip e2e render test: .venv/bin/python (or NEXTSTAT_TEST_PYTHON) not available");
+        return;
+    };
+    if !python_has_render_deps(&python) {
+        eprintln!("skip e2e render test: python lacks matplotlib/Pillow");
+        return;
+    }
+
+    let root = repo_root();
+    let export_dir = root.join("tests/fixtures/histfactory");
+    let spec_dir = tmp_dir("run_spec_histfactory_render_e2e");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+
+    let workspace_json = spec_dir.join("workspace.json");
+    let report_dir = spec_dir.join("report");
+    let svg_dir = report_dir.join("svg");
+    let pdf_path = report_dir.join("report.pdf");
+    let spec_path = spec_dir.join("analysis.yaml");
+
+    let yaml = format!(
+        r#"$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: "fixture-render-e2e"
+  description: "fixture-render-e2e"
+  tags: ["test", "render", "e2e"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: "{export_dir}"
+    combination_xml: null
+    measurement: NominalMeasurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: "{workspace_json}"
+
+  fit:
+    enabled: false
+    output_json: "{fit_json}"
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: "{scan_json}"
+
+  report:
+    enabled: true
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: true
+      pdf: "{pdf_path}"
+      svg_dir: "{svg_dir}"
+      python: "{python}"
+      label_status: Preliminary
+      sqrt_s_tev: 13.6
+      show_mc_band: true
+      show_stat_band: true
+      band_hatch: "////"
+      palette: tableau10
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+"#,
+        export_dir = export_dir.display(),
+        workspace_json = workspace_json.display(),
+        report_dir = report_dir.display(),
+        pdf_path = pdf_path.display(),
+        svg_dir = svg_dir.display(),
+        python = python.display(),
+        fit_json = spec_dir.join("fit.json").display(),
+        scan_json = spec_dir.join("scan.json").display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run_with_env(
+        &["run", "--config", spec_path.to_string_lossy().as_ref()],
+        &[("NEXTSTAT_FORCE_PYTHONPATH", "1")],
+    );
+    assert!(
+        out.status.success(),
+        "run(render e2e) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(workspace_json.exists(), "missing workspace.json");
+    assert!(report_dir.join("fit.json").exists(), "missing report fit.json");
+    assert!(report_dir.join("distributions.json").exists(), "missing distributions.json");
+    assert!(pdf_path.exists(), "missing report.pdf");
+    assert!(pdf_path.metadata().map(|m| m.len()).unwrap_or(0) > 0, "empty report.pdf");
+
+    let dist_svg = svg_dir.join("distributions__SR.svg");
+    let dist_png = svg_dir.join("distributions__SR.png");
+    assert!(dist_svg.exists(), "missing rendered svg");
+    assert!(dist_png.exists(), "missing rendered png");
+    assert!(dist_png.metadata().map(|m| m.len()).unwrap_or(0) > 0, "empty rendered png");
+
+    let svg_text = std::fs::read_to_string(&dist_svg).expect("read svg");
+    assert!(svg_text.contains("NEXTSTAT"), "svg should include NEXTSTAT header");
+    assert!(svg_text.contains("Preliminary"), "svg should include label_status");
+    assert!(svg_text.contains("13.6"), "svg should include sqrt(s) value");
+
+    let _ = std::fs::remove_dir_all(&spec_dir);
+}
+
+#[test]
+fn run_analysis_spec_v0_histfactory_report_render_blinded_e2e() {
+    let Some(python) = python_for_render() else {
+        eprintln!(
+            "skip blinded e2e render test: .venv/bin/python (or NEXTSTAT_TEST_PYTHON) not available"
+        );
+        return;
+    };
+    if !python_has_render_deps(&python) {
+        eprintln!("skip blinded e2e render test: python lacks matplotlib/Pillow");
+        return;
+    }
+
+    let root = repo_root();
+    let export_dir = root.join("tests/fixtures/histfactory");
+    let spec_dir = tmp_dir("run_spec_histfactory_render_blinded_e2e");
+    std::fs::create_dir_all(&spec_dir).unwrap();
+
+    let workspace_json = spec_dir.join("workspace.json");
+    let report_dir = spec_dir.join("report");
+    let svg_dir = report_dir.join("svg");
+    let pdf_path = report_dir.join("report.pdf");
+    let spec_path = spec_dir.join("analysis.yaml");
+
+    let yaml = format!(
+        r#"$schema: https://nextstat.io/schemas/trex/analysis_spec_v0.schema.json
+schema_version: trex_analysis_spec_v0
+
+analysis:
+  name: "fixture-render-blinded-e2e"
+  description: "fixture-render-blinded-e2e"
+  tags: ["test", "render", "e2e", "blinded"]
+
+inputs:
+  mode: histfactory_xml
+  histfactory:
+    export_dir: "{export_dir}"
+    combination_xml: null
+    measurement: NominalMeasurement
+
+execution:
+  determinism:
+    threads: 1
+
+  import:
+    enabled: true
+    output_json: "{workspace_json}"
+
+  fit:
+    enabled: false
+    output_json: "{fit_json}"
+
+  profile_scan:
+    enabled: false
+    start: 0.0
+    stop: 5.0
+    points: 21
+    output_json: "{scan_json}"
+
+  report:
+    enabled: true
+    out_dir: "{report_dir}"
+    overwrite: true
+    include_covariance: false
+    histfactory_xml: null
+    render:
+      enabled: true
+      pdf: "{pdf_path}"
+      svg_dir: "{svg_dir}"
+      python: "{python}"
+      label_status: Internal
+      sqrt_s_tev: 13.0
+      show_mc_band: true
+      show_stat_band: true
+      band_hatch: "////"
+      palette: hep2026
+    skip_uncertainty: true
+    uncertainty_grouping: prefix_1
+    blind_regions: [SR]
+
+gates:
+  baseline_compare:
+    enabled: false
+    baseline_dir: tmp/baselines
+    require_same_host: true
+    max_slowdown: 1.3
+"#,
+        export_dir = export_dir.display(),
+        workspace_json = workspace_json.display(),
+        report_dir = report_dir.display(),
+        pdf_path = pdf_path.display(),
+        svg_dir = svg_dir.display(),
+        python = python.display(),
+        fit_json = spec_dir.join("fit.json").display(),
+        scan_json = spec_dir.join("scan.json").display(),
+    );
+    std::fs::write(&spec_path, yaml).unwrap();
+
+    let out = run_with_env(
+        &["run", "--config", spec_path.to_string_lossy().as_ref()],
+        &[("NEXTSTAT_FORCE_PYTHONPATH", "1")],
+    );
+    assert!(
+        out.status.success(),
+        "run(render blinded e2e) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(workspace_json.exists(), "missing workspace.json");
+    assert!(report_dir.join("distributions.json").exists(), "missing distributions.json");
+    assert!(pdf_path.exists(), "missing report.pdf");
+
+    let dist_svg = svg_dir.join("distributions__SR.svg");
+    let dist_png = svg_dir.join("distributions__SR.png");
+    assert!(dist_svg.exists(), "missing rendered svg");
+    assert!(dist_png.exists(), "missing rendered png");
+
+    // Artifact-level blinding contract.
+    let dist_json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(report_dir.join("distributions.json")).unwrap())
+            .expect("parse distributions.json");
+    let channels = dist_json.get("channels").and_then(|v| v.as_array()).expect("channels array");
+    let sr = channels
+        .iter()
+        .find(|c| c.get("channel_name").and_then(|v| v.as_str()) == Some("SR"))
+        .expect("SR channel");
+    assert_eq!(sr.get("data_is_blinded").and_then(|v| v.as_bool()), Some(true));
+    for key in ["data_y", "ratio_y"] {
+        let xs = sr.get(key).and_then(|v| v.as_array()).expect("numeric array");
+        assert!(
+            xs.iter().all(|v| v.as_f64().unwrap_or(f64::NAN) == 0.0),
+            "blinded channel should have zeroed {}",
+            key
+        );
+    }
+
+    // Render-level blinding contract.
+    let svg_text = std::fs::read_to_string(&dist_svg).expect("read svg");
+    assert!(svg_text.contains("BLINDED"), "svg should mark blinded channel");
+    assert!(
+        !svg_text.contains("Data / MC"),
+        "ratio panel label should be hidden for blinded channel"
+    );
 
     let _ = std::fs::remove_dir_all(&spec_dir);
 }

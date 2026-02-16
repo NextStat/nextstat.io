@@ -402,7 +402,38 @@
                 "enabled": { "type": "boolean", "default": false },
                 "pdf": { "$ref": "#/$defs/nullable_path" },
                 "svg_dir": { "$ref": "#/$defs/nullable_path" },
-                "python": { "$ref": "#/$defs/nullable_path" }
+                "python": { "$ref": "#/$defs/nullable_path" },
+                "label_status": {
+                  "type": "string",
+                  "default": "Internal",
+                  "description": "Header status label in rendered plots (e.g. Internal, Preliminary, Public)."
+                },
+                "sqrt_s_tev": {
+                  "type": "number",
+                  "default": 13.0,
+                  "description": "Center-of-mass energy shown in header (TeV)."
+                },
+                "show_mc_band": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Show total postfit uncertainty band."
+                },
+                "show_stat_band": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Show stat-only postfit uncertainty band."
+                },
+                "band_hatch": {
+                  "type": "string",
+                  "default": "////",
+                  "description": "Hatch pattern used for total uncertainty bands."
+                },
+                "palette": {
+                  "type": "string",
+                  "enum": ["hep2026", "tableau10"],
+                  "default": "hep2026",
+                  "description": "Categorical sample color palette."
+                }
               }
             },
             "skip_uncertainty": { "type": "boolean", "default": false },

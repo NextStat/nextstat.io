@@ -59,3 +59,6 @@ METAL_NLL_ATOL = 1e-3
 METAL_GRAD_ATOL = 1e-2
 METAL_PARAM_ATOL = 1e-2
 METAL_FIT_NLL_ATOL = 1e-3
+# Batch toy fitting compounds f32 rounding across many L-BFGS-B iterations
+# per toy, so the per-toy NLL tolerance is wider than a single fit.
+METAL_BATCH_TOY_NLL_ATOL = 5e-3

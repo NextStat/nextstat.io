@@ -46,6 +46,18 @@ pub struct RunConfig {
     pub svg_dir: Option<PathBuf>,
     #[serde(default)]
     pub python: Option<PathBuf>,
+    #[serde(default = "default_label_status")]
+    pub label_status: String,
+    #[serde(default = "default_sqrt_s_tev")]
+    pub sqrt_s_tev: f64,
+    #[serde(default = "default_true")]
+    pub show_mc_band: bool,
+    #[serde(default = "default_true")]
+    pub show_stat_band: bool,
+    #[serde(default = "default_band_hatch")]
+    pub band_hatch: String,
+    #[serde(default = "default_palette")]
+    pub palette: String,
 }
 
 fn default_threads() -> usize {
@@ -54,6 +66,26 @@ fn default_threads() -> usize {
 
 fn default_uncertainty_grouping() -> String {
     "prefix_1".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_label_status() -> String {
+    "Internal".to_string()
+}
+
+fn default_sqrt_s_tev() -> f64 {
+    13.0
+}
+
+fn default_band_hatch() -> String {
+    "////".to_string()
+}
+
+fn default_palette() -> String {
+    "hep2026".to_string()
 }
 
 pub fn read_run_config(path: &Path) -> Result<RunConfig> {
@@ -259,7 +291,7 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
 
     // Copy run outputs (inputs+artifacts) verbatim.
     let run_outputs = outputs_dir.join("run");
-    copy_tree_filtered(&cfg.out_dir, &run_outputs, &["json", "csv", "tex", "pdf", "svg"])?;
+    copy_tree_filtered(&cfg.out_dir, &run_outputs, &["json", "csv", "tex", "pdf", "svg", "png"])?;
 
     // Provenance (intermediate hashes).
     let mut prov_inputs = Vec::new();
@@ -449,7 +481,11 @@ pub fn write_run_bundle_spec_v0(
     }
     if let Some(report) = plan.report.as_ref() {
         let dst_dir = outputs_dir.join("report");
-        copy_tree_filtered(&report.out_dir, &dst_dir, &["json", "csv", "tex", "pdf", "svg"])?;
+        copy_tree_filtered(
+            &report.out_dir,
+            &dst_dir,
+            &["json", "csv", "tex", "pdf", "svg", "png"],
+        )?;
 
         let key_reports: &[(&str, &str)] = &[
             ("report_fit_json", "fit.json"),

@@ -5,6 +5,7 @@
 //! - `sample_nuts` / `sample_nuts_multichain` (Bayesian sampling)
 
 use nalgebra::{DMatrix, DVector};
+use ndarray::{ArrayView1, ArrayView2};
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
 use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
@@ -270,6 +271,9 @@ pub struct LogisticRegressionModel {
 }
 
 impl LogisticRegressionModel {
+    const NDARRAY_FASTPATH_MIN_WORK: usize = 32_768;
+    const NDARRAY_FASTPATH_MAX_MAMS_CHAINS: usize = 8;
+
     /// Create a new logistic regression model from row-wise `X` and binary `y`.
     pub fn new(x: Vec<Vec<f64>>, y: Vec<u8>, include_intercept: bool) -> Result<Self> {
         let x = DenseX::from_rows(x)?;
@@ -293,6 +297,90 @@ impl LogisticRegressionModel {
         } else {
             row_dot(self.x.row(i), params)
         }
+    }
+
+    #[inline]
+    fn use_ndarray_fastpath(&self) -> bool {
+        let chains_hint = crate::perf_hints::mams_chain_hint();
+        let chain_ok = chains_hint == 0 || chains_hint <= Self::NDARRAY_FASTPATH_MAX_MAMS_CHAINS;
+        chain_ok
+            && self.x.n.saturating_mul(self.x.p) >= Self::NDARRAY_FASTPATH_MIN_WORK
+            && std::env::var_os("NEXTSTAT_DISABLE_GLM_NDARRAY").is_none()
+    }
+
+    fn nll_grad_fused_scalar(&self, params: &[f64]) -> (f64, Vec<f64>) {
+        let mut nll = 0.0;
+        let mut grad = vec![0.0; self.dim_internal()];
+
+        if self.include_intercept {
+            let b0 = params[0];
+            let beta = &params[1..];
+            for i in 0..self.x.n {
+                let row = self.x.row(i);
+                let eta = b0 + row_dot(row, beta);
+                let yi = self.y[i] as f64;
+                nll += log1pexp(eta) - yi * eta;
+                let err = sigmoid(eta) - yi;
+                grad[0] += err;
+                for j in 0..self.x.p {
+                    grad[1 + j] += err * row[j];
+                }
+            }
+        } else {
+            for i in 0..self.x.n {
+                let row = self.x.row(i);
+                let eta = row_dot(row, params);
+                let yi = self.y[i] as f64;
+                nll += log1pexp(eta) - yi * eta;
+                let err = sigmoid(eta) - yi;
+                for j in 0..self.x.p {
+                    grad[j] += err * row[j];
+                }
+            }
+        }
+
+        (nll, grad)
+    }
+
+    fn nll_grad_fused_ndarray(&self, params: &[f64]) -> (f64, Vec<f64>) {
+        let x = ArrayView2::from_shape((self.x.n, self.x.p), &self.x.data)
+            .expect("DenseX shape must match n*p");
+
+        let (intercept, beta) =
+            if self.include_intercept { (params[0], &params[1..]) } else { (0.0, params) };
+        let beta_view = ArrayView1::from(beta);
+
+        // eta = X @ beta (+ intercept if present)
+        let mut eta = x.dot(&beta_view);
+        if self.include_intercept {
+            eta.mapv_inplace(|v| v + intercept);
+        }
+
+        let mut nll = 0.0;
+        let mut diff = vec![0.0; self.x.n];
+        for i in 0..self.x.n {
+            let yi = self.y[i] as f64;
+            let et = eta[i];
+            nll += log1pexp(et) - yi * et;
+            diff[i] = sigmoid(et) - yi;
+        }
+
+        let diff_view = ArrayView1::from(&diff);
+        let grad_beta = x.t().dot(&diff_view);
+
+        let mut grad = vec![0.0; self.dim_internal()];
+        if self.include_intercept {
+            grad[0] = diff.iter().sum();
+            for j in 0..self.x.p {
+                grad[1 + j] = grad_beta[j];
+            }
+        } else {
+            for j in 0..self.x.p {
+                grad[j] = grad_beta[j];
+            }
+        }
+
+        (nll, grad)
     }
 }
 
@@ -380,6 +468,33 @@ impl LogDensityModel for LogisticRegressionModel {
 
     fn prepared(&self) -> Self::Prepared<'_> {
         PreparedModelRef::new(self)
+    }
+
+    fn prefer_fused_eval_grad(&self) -> bool {
+        true
+    }
+
+    fn nll_grad_prepared(
+        &self,
+        _prepared: &Self::Prepared<'_>,
+        params: &[f64],
+    ) -> Result<(f64, Vec<f64>)> {
+        if params.len() != self.dim_internal() {
+            return Err(Error::Validation(format!(
+                "expected {} parameters, got {}",
+                self.dim_internal(),
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Validation("params must contain only finite values".to_string()));
+        }
+        let out = if self.use_ndarray_fastpath() {
+            self.nll_grad_fused_ndarray(params)
+        } else {
+            self.nll_grad_fused_scalar(params)
+        };
+        Ok(out)
     }
 }
 
@@ -879,6 +994,69 @@ mod tests {
         assert!((nll - fx.nll_at_hat).abs() < 1e-6);
         let g = m.grad_nll(&fx.beta_hat).unwrap();
         assert!(inf_norm(&g) < 1e-6, "grad inf-norm too large: {}", inf_norm(&g));
+    }
+
+    #[test]
+    fn test_logistic_regression_fused_nll_grad_matches_separate() {
+        let fx =
+            load_fixture(include_str!("../../../tests/fixtures/regression/logistic_small.json"));
+        let y: Vec<u8> = fx.y.iter().map(|&v| if v >= 0.5 { 1u8 } else { 0u8 }).collect();
+        let m = LogisticRegressionModel::new(fx.x.clone(), y, fx.include_intercept).unwrap();
+
+        let nll_ref = m.nll(&fx.beta_hat).unwrap();
+        let grad_ref = m.grad_nll(&fx.beta_hat).unwrap();
+
+        let prepared = m.prepared();
+        let (nll_fused, grad_fused) = m.nll_grad_prepared(&prepared, &fx.beta_hat).unwrap();
+
+        assert!((nll_ref - nll_fused).abs() < 1e-12);
+        assert_vec_close(&grad_ref, &grad_fused, 1e-12);
+    }
+
+    #[test]
+    fn test_logistic_regression_ndarray_fastpath_matches_scalar() {
+        let n = 256usize;
+        let p = 128usize; // n*p == fast-path threshold
+        let mut x = vec![vec![0.0; p]; n];
+        let mut y = vec![0u8; n];
+        for i in 0..n {
+            let mut s = 0.0;
+            for j in 0..p {
+                let v = ((i * 17 + j * 31) as f64 * 0.001).sin();
+                x[i][j] = v;
+                s += v * ((j as f64 + 1.0) * 0.003).cos();
+            }
+            y[i] = if s > 0.0 { 1 } else { 0 };
+        }
+
+        let m = LogisticRegressionModel::new(x, y, true).unwrap();
+        let mut params = vec![0.0; p + 1];
+        for (k, v) in params.iter_mut().enumerate() {
+            *v = ((k as f64) * 0.01).cos() * 0.1;
+        }
+
+        let (nll_scalar, grad_scalar) = m.nll_grad_fused_scalar(&params);
+        let (nll_nd, grad_nd) = m.nll_grad_fused_ndarray(&params);
+
+        assert!((nll_scalar - nll_nd).abs() < 1e-10);
+        assert_vec_close(&grad_scalar, &grad_nd, 1e-10);
+    }
+
+    #[test]
+    fn test_logistic_regression_fastpath_respects_mams_chain_hint() {
+        let n = 256usize;
+        let p = 128usize;
+        let x = vec![vec![0.0; p]; n];
+        let y = vec![0u8; n];
+        let m = LogisticRegressionModel::new(x, y, true).unwrap();
+
+        crate::perf_hints::set_mams_chain_hint(4);
+        assert!(m.use_ndarray_fastpath());
+
+        crate::perf_hints::set_mams_chain_hint(64);
+        assert!(!m.use_ndarray_fastpath());
+
+        crate::perf_hints::clear_mams_chain_hint();
     }
 
     #[test]

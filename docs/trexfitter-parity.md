@@ -117,11 +117,12 @@ TRExFitter uses single-letter action codes: `h` (build histograms), `n` (create 
 | Yield tables (pre/postfit) | ✅ | ✅ in report artifacts | ✅ |
 | Brazil band plot (CLs vs μ) | ✅ | ✅ `viz cls` | ✅ |
 | Profile likelihood plot | ✅ | ✅ `viz profile` | ✅ |
-| **Gammas plot** (stat NPs) | ✅ dedicated | 🔶 included in pulls, no dedicated gamma plot | 🔶 |
-| **Summary plot** (μ for multiple fits) | ✅ multi-fit | ❌ | ❌ |
-| **Pie chart** (composition) | ✅ | ❌ | ❌ |
-| Separation plot (S vs B) | ✅ | ❌ | ❌ |
+| **Gammas plot** (stat NPs) | ✅ dedicated | ✅ `viz gammas` | ✅ |
+| **Summary plot** (μ for multiple fits) | ✅ multi-fit | ✅ `viz summary` | ✅ |
+| **Pie chart** (composition) | ✅ | ✅ `viz pie` | ✅ |
+| Separation plot (S vs B) | ✅ | ✅ `viz separation` | ✅ |
 | PDF/SVG rendering | ✅ (ROOT TCanvas) | ✅ Python matplotlib + SVG | ✅ |
+| Single-artifact render (PNG/SVG/PDF) | ✅ | ✅ `viz render --kind pulls|corr|ranking` | ✅ |
 | Unified report bundle | ❌ (separate files) | ✅ `nextstat report` → single dir | 🟢 |
 
 ---

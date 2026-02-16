@@ -93,8 +93,9 @@ pub fn fit_toys_batch_gpu(
 
     // 7. Lockstep iteration loop
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> =
-            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
+        let active_indices: Vec<usize> = (0..n_toys)
+            .filter(|&i| active_mask[i] && !states[i].converged && !states[i].failed)
+            .collect();
 
         if active_indices.is_empty() {
             break;
@@ -116,7 +117,7 @@ pub fn fit_toys_batch_gpu(
             let nll = nlls[ai];
             let grad = &grads[ai * n_params..(ai + 1) * n_params];
             states[toy_idx].step(nll, grad);
-            if states[toy_idx].converged {
+            if states[toy_idx].converged || states[toy_idx].failed {
                 active_mask[toy_idx] = false;
             }
         }
@@ -133,7 +134,7 @@ pub fn fit_toys_batch_gpu(
                 state.x,
                 vec![0.0; n_params], // No uncertainties for toy fits
                 state.fval,
-                state.converged && !state.failed,
+                state.converged,
                 state.iter,
                 state.n_fev,
                 state.n_gev,
@@ -207,8 +208,9 @@ pub fn fit_toys_from_data_gpu(
     let mut params_flat = vec![0.0f64; n_toys * n_params];
 
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> =
-            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
+        let active_indices: Vec<usize> = (0..n_toys)
+            .filter(|&i| active_mask[i] && !states[i].converged && !states[i].failed)
+            .collect();
 
         if active_indices.is_empty() {
             break;
@@ -227,7 +229,7 @@ pub fn fit_toys_from_data_gpu(
             let nll = nlls[ai];
             let grad = &grads[ai * n_params..(ai + 1) * n_params];
             states[toy_idx].step(nll, grad);
-            if states[toy_idx].converged {
+            if states[toy_idx].converged || states[toy_idx].failed {
                 active_mask[toy_idx] = false;
             }
         }

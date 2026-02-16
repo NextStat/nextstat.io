@@ -7,16 +7,16 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryArtifact {
     pub schema_version: String,
     pub meta: SummaryMeta,
     pub entries: Vec<SummaryEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryMeta {
     pub tool: String,
     pub tool_version: String,
@@ -24,7 +24,7 @@ pub struct SummaryMeta {
     pub poi_name: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryEntry {
     pub label: String,
     pub mu_hat: f64,

@@ -1,0 +1,32 @@
+# NextStat HTCondor: profile scan array job
+#
+# Strategy B (portable venv) example.
+# Splits a profile scan into N jobs, one mu-value per job.
+# Each job writes scan_<Process>.json; merge on submit node after completion.
+#
+# Usage:
+#   condor_submit scan_array.sub
+#
+# After completion:
+#   python3 merge_scan.py scan_*.json -o scan_merged.json
+
+universe   = vanilla
+executable = wrapper.sh
+arguments  = scan_point.py $(Process)
+
+transfer_input_files    = nextstat-env.tar.gz, scan_point.py, workspace.json
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+transfer_output_files   = scan_$(Process).json
+
+output = logs/scan_$(Cluster)_$(Process).out
+error  = logs/scan_$(Cluster)_$(Process).err
+log    = logs/scan_$(Cluster).log
+
+request_cpus   = 1
+request_memory = 2GB
+request_disk   = 2GB
+
+requirements = (TARGET.Arch == "X86_64") && (TARGET.OpSys == "LINUX")
+
+queue 201

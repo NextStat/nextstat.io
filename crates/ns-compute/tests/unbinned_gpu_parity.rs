@@ -908,6 +908,257 @@ fn metal_unbinned_nll_grad_matches_cpu_on_histogram_model() {
     assert_metal_unbinned_batch_matches_single(&gpu, &params);
 }
 
+/// 3-process model (Gaussian signal + Exponential bkg + Chebyshev bkg2).
+/// With n_procs=3 this hits the fused single-pass event loop pipeline
+/// (`ENABLE_FUSED=1`, `use_fused = n_procs >= 3 && n_procs <= 4`).
+fn build_three_proc_reference_model_and_gpu_data() -> (UnbinnedModel, UnbinnedGpuModelData, Vec<f64>)
+{
+    // 0: mu (POI)
+    // 1: nu_bkg1 (exponential yield)
+    // 2: nu_bkg2 (chebyshev yield)
+    // 3: gauss_mu
+    // 4: gauss_sigma
+    // 5: exp_lambda (Gaussian constraint)
+    // 6..8: chebyshev c1..c3
+    // 9: alpha_bkg (NormSys nuisance, Gaussian constraint)
+    let params = vec![
+        Parameter { name: "mu".into(), init: 1.0, bounds: (0.0, 5.0), constraint: None },
+        Parameter { name: "nu_bkg1".into(), init: 300.0, bounds: (0.0, 5000.0), constraint: None },
+        Parameter { name: "nu_bkg2".into(), init: 200.0, bounds: (0.0, 5000.0), constraint: None },
+        Parameter { name: "gauss_mu".into(), init: 125.0, bounds: (0.0, 500.0), constraint: None },
+        Parameter {
+            name: "gauss_sigma".into(),
+            init: 30.0,
+            bounds: (0.1, 200.0),
+            constraint: None,
+        },
+        Parameter {
+            name: "exp_lambda".into(),
+            init: -0.01,
+            bounds: (-1.0, 1.0),
+            constraint: Some(Constraint::Gaussian { mean: -0.01, sigma: 0.1 }),
+        },
+        Parameter { name: "c1".into(), init: 0.10, bounds: (-0.5, 0.5), constraint: None },
+        Parameter { name: "c2".into(), init: -0.05, bounds: (-0.5, 0.5), constraint: None },
+        Parameter { name: "c3".into(), init: 0.02, bounds: (-0.5, 0.5), constraint: None },
+        Parameter {
+            name: "alpha_bkg".into(),
+            init: 0.0,
+            bounds: (-5.0, 5.0),
+            constraint: Some(Constraint::Gaussian { mean: 0.0, sigma: 1.0 }),
+        },
+    ];
+
+    let n_events = 256usize;
+    let mut xs = Vec::with_capacity(n_events);
+    for i in 0..n_events {
+        let t = (i as f64 + 0.5) / (n_events as f64);
+        xs.push(500.0 * t);
+    }
+    let obs = ObservableSpec::branch("x", (0.0, 500.0));
+    let store = EventStore::from_columns(vec![obs], vec![("x".into(), xs.clone())], None).unwrap();
+    let store = Arc::new(store);
+
+    let sig_pdf = Arc::new(GaussianPdf::new("x"));
+    let bkg1_pdf = Arc::new(ExponentialPdf::new("x"));
+    let bkg2_pdf = Arc::new(ChebyshevPdf::new("x", 3).unwrap());
+
+    let sig = Process {
+        name: "sig".into(),
+        pdf: sig_pdf,
+        shape_param_indices: vec![3, 4],
+        yield_expr: YieldExpr::Scaled { base_yield: 200.0, scale_index: 0 },
+    };
+    let bkg1 = Process {
+        name: "bkg1".into(),
+        pdf: bkg1_pdf,
+        shape_param_indices: vec![5],
+        yield_expr: YieldExpr::Modified {
+            base: Box::new(YieldExpr::Parameter { index: 1 }),
+            modifiers: vec![RateModifier::NormSys { alpha_index: 9, lo: 0.9, hi: 1.1 }],
+        },
+    };
+    let bkg2 = Process {
+        name: "bkg2".into(),
+        pdf: bkg2_pdf,
+        shape_param_indices: vec![6, 7, 8],
+        yield_expr: YieldExpr::Parameter { index: 2 },
+    };
+
+    let ch = UnbinnedChannel {
+        name: "SR".into(),
+        include_in_fit: true,
+        data: store,
+        processes: vec![sig, bkg1, bkg2],
+    };
+
+    let model = UnbinnedModel::new(params.clone(), vec![ch], Some(0)).unwrap();
+    let init = model.parameter_init();
+
+    let (gauss_constraints, constraint_const) = lower_gauss_constraints(&params);
+    let gpu = UnbinnedGpuModelData {
+        n_params: init.len(),
+        n_obs: 1,
+        n_events,
+        obs_bounds: vec![(0.0, 500.0)],
+        obs_soa: xs,
+        event_weights: None,
+        processes: vec![
+            // Signal: Gaussian(mu, sigma), yield = 200 * mu
+            GpuUnbinnedProcessDesc {
+                base_yield: 200.0,
+                pdf_kind: pdf_kind::GAUSSIAN,
+                yield_kind: yield_kind::SCALED,
+                obs_index: 0,
+                shape_param_offset: 0,
+                n_shape_params: 2,
+                yield_param_idx: 0,
+                rate_mod_offset: 0,
+                n_rate_mods: 0,
+                pdf_aux_offset: 0,
+                pdf_aux_len: 0,
+            },
+            // Bkg1: Exponential(lambda), yield = nu_bkg1 * NormSys(alpha_bkg)
+            GpuUnbinnedProcessDesc {
+                base_yield: 0.0,
+                pdf_kind: pdf_kind::EXPONENTIAL,
+                yield_kind: yield_kind::PARAMETER,
+                obs_index: 0,
+                shape_param_offset: 2,
+                n_shape_params: 1,
+                yield_param_idx: 1,
+                rate_mod_offset: 0,
+                n_rate_mods: 1,
+                pdf_aux_offset: 0,
+                pdf_aux_len: 0,
+            },
+            // Bkg2: Chebyshev(c1,c2,c3), yield = nu_bkg2
+            GpuUnbinnedProcessDesc {
+                base_yield: 0.0,
+                pdf_kind: pdf_kind::CHEBYSHEV,
+                yield_kind: yield_kind::PARAMETER,
+                obs_index: 0,
+                shape_param_offset: 3,
+                n_shape_params: 3,
+                yield_param_idx: 2,
+                rate_mod_offset: 0,
+                n_rate_mods: 0,
+                pdf_aux_offset: 0,
+                pdf_aux_len: 0,
+            },
+        ],
+        rate_modifiers: vec![GpuUnbinnedRateModifierDesc {
+            kind: rate_modifier_kind::NORM_SYS,
+            alpha_param_idx: 9,
+            interp_code: 0,
+            _pad: 0,
+            lo: 0.9,
+            hi: 1.1,
+        }],
+        shape_param_indices: vec![3, 4, 5, 6, 7, 8],
+        pdf_aux_f64: Vec::new(),
+        gauss_constraints,
+        constraint_const,
+    };
+
+    (model, gpu, init)
+}
+
+/// Tests the fused pipeline path (3 processes → use_fused=true).
+#[cfg(feature = "metal")]
+#[test]
+fn metal_unbinned_fused_3proc_nll_grad_matches_cpu() {
+    let (model, gpu, params) = build_three_proc_reference_model_and_gpu_data();
+    assert_metal_unbinned_matches_cpu(&model, &gpu, &params);
+    assert_metal_unbinned_batch_matches_single(&gpu, &params);
+}
+
+/// Perf: batch NLL+grad throughput on the 2-process model (2-pass path).
+#[cfg(feature = "metal")]
+#[test]
+fn metal_unbinned_batch_perf_2proc() {
+    if !ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::is_available() {
+        return;
+    }
+    let (_model, gpu, init) = build_reference_model_and_gpu_data();
+    let n_toys = 64;
+    let toy_offsets: Vec<u32> = (0..=n_toys).map(|i| (i * gpu.n_events) as u32).collect();
+    let obs_flat: Vec<f64> = (0..n_toys).flat_map(|_| gpu.obs_soa.iter().copied()).collect();
+    let params_flat: Vec<f64> = (0..n_toys).flat_map(|_| init.iter().copied()).collect();
+
+    let mut accel =
+        ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
+            &gpu,
+            &toy_offsets,
+            &obs_flat,
+            n_toys,
+        )
+        .unwrap();
+
+    // Warmup
+    let _ = accel.batch_nll_grad(&params_flat).unwrap();
+
+    let n_iter = 50;
+    let t0 = std::time::Instant::now();
+    for _ in 0..n_iter {
+        let _ = accel.batch_nll_grad(&params_flat).unwrap();
+    }
+    let elapsed = t0.elapsed();
+    let us_per_call = elapsed.as_micros() as f64 / n_iter as f64;
+    eprintln!(
+        "[perf] 2-pass (2 procs, {} toys, {} events/toy, {} params): {:.0} us/call ({:.1} ms total for {} iters)",
+        n_toys,
+        gpu.n_events,
+        gpu.n_params,
+        us_per_call,
+        elapsed.as_secs_f64() * 1e3,
+        n_iter
+    );
+}
+
+/// Perf: batch NLL+grad throughput on the 3-process model (fused path).
+#[cfg(feature = "metal")]
+#[test]
+fn metal_unbinned_batch_perf_3proc_fused() {
+    if !ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::is_available() {
+        return;
+    }
+    let (_model, gpu, init) = build_three_proc_reference_model_and_gpu_data();
+    let n_toys = 64;
+    let toy_offsets: Vec<u32> = (0..=n_toys).map(|i| (i * gpu.n_events) as u32).collect();
+    let obs_flat: Vec<f64> = (0..n_toys).flat_map(|_| gpu.obs_soa.iter().copied()).collect();
+    let params_flat: Vec<f64> = (0..n_toys).flat_map(|_| init.iter().copied()).collect();
+
+    let mut accel =
+        ns_compute::metal_unbinned_batch::MetalUnbinnedBatchAccelerator::from_unbinned_static_and_toys(
+            &gpu,
+            &toy_offsets,
+            &obs_flat,
+            n_toys,
+        )
+        .unwrap();
+
+    // Warmup
+    let _ = accel.batch_nll_grad(&params_flat).unwrap();
+
+    let n_iter = 50;
+    let t0 = std::time::Instant::now();
+    for _ in 0..n_iter {
+        let _ = accel.batch_nll_grad(&params_flat).unwrap();
+    }
+    let elapsed = t0.elapsed();
+    let us_per_call = elapsed.as_micros() as f64 / n_iter as f64;
+    eprintln!(
+        "[perf] fused (3 procs, {} toys, {} events/toy, {} params): {:.0} us/call ({:.1} ms total for {} iters)",
+        n_toys,
+        gpu.n_events,
+        gpu.n_params,
+        us_per_call,
+        elapsed.as_secs_f64() * 1e3,
+        n_iter
+    );
+}
+
 #[cfg(feature = "cuda")]
 fn assert_cuda_unbinned_matches_cpu(
     model: &UnbinnedModel,

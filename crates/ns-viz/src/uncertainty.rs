@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::ranking::RankingArtifact;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UncertaintyBreakdownArtifact {
     pub schema_version: String,
     pub meta: UncertaintyMeta,
@@ -17,7 +17,7 @@ pub struct UncertaintyBreakdownArtifact {
     pub total: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UncertaintyMeta {
     pub tool: String,
     pub tool_version: String,
@@ -25,13 +25,13 @@ pub struct UncertaintyMeta {
     pub parity_mode: UncertaintyParityMode,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UncertaintyParityMode {
     pub threads: usize,
     pub stable_ordering: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UncertaintyGroup {
     pub name: String,
     pub impact: f64,

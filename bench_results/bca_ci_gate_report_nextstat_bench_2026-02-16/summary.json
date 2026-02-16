@@ -1,0 +1,34 @@
+{
+  "schema_version": "bca_ci_gate_v1",
+  "overall_pass": true,
+  "thresholds": {
+    "hep_max_overhead": 1.25,
+    "churn_max_overhead": 1.75,
+    "hep_max_fallback_rate": 0.05,
+    "churn_max_fallback_rate": 0.05,
+    "hep_min_effective_bca_rate": 0.95,
+    "churn_min_effective_bca_rate": 0.95
+  },
+  "metrics": {
+    "hep": {
+      "runs": 32,
+      "median_wall_percentile_s": 0.03330801849369891,
+      "median_wall_bca_s": 0.03319725347682834,
+      "overhead_bca_vs_percentile": 0.996674523977116,
+      "fallback_count": 0,
+      "fallback_rate": 0.0,
+      "effective_bca_count": 32,
+      "effective_bca_rate": 1.0
+    },
+    "churn": {
+      "median_wall_percentile_s": 0.23142723052296788,
+      "median_wall_bca_s": 0.2945329964859411,
+      "overhead_bca_vs_percentile": 1.272680815565091,
+      "fallback_total": 0,
+      "fallback_rate": 0.0,
+      "effective_bca_total": 64,
+      "effective_bca_rate": 1.0
+    }
+  },
+  "failures": []
+}

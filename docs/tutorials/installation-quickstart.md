@@ -27,6 +27,7 @@ sudo apt update && sudo apt install python3.12 python3.12-venv python3-pip
 Pre-built binary wheels are available for:
 - Linux x86_64 and aarch64
 - macOS Apple Silicon (arm64)
+- macOS Intel (x86_64)
 - Windows x86_64
 
 #### 1a. Create a virtual environment (strongly recommended)
@@ -65,7 +66,7 @@ python3 -c "import nextstat; print(nextstat.__version__)"
 Expected output:
 
 ```
-0.9.4
+0.9.5
 ```
 
 #### 1d. Install optional extras

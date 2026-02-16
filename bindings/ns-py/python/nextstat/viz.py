@@ -22,7 +22,7 @@ def profile_curve(model, mu_values: Sequence[float], *, data: Optional[list[floa
     """Compute profile likelihood scan artifact over POI values."""
     from . import _core
 
-    return _core.profile_curve(model, list(mu_values), data=data)
+    return _core.profile_scan(model, list(mu_values), data=data, return_curve=True)
 
 def ranking(model):
     """Compute nuisance-parameter ranking (impact on POI)."""
@@ -435,85 +435,12 @@ def plot_profile_curve(
 
 
 def plot_ranking(
-    artifact_or_entries: Mapping[str, Any] | Sequence[Mapping[str, Any]],
-    *,
-    max_nps: int = 20,
-    title: Optional[str] = None,
-    ax_pull=None,
-    ax_impact=None,
-):
-    """Plot a standard HEP-style ranking: pulls (left) and POI impacts (right).
-
-    Accepts either:
-    - an artifact dict from `ranking_artifact(...)`, or
-    - a list of ranking entry dicts (as returned by `nextstat.ranking(...)`).
-    """
-    _require_matplotlib()
-    import matplotlib.pyplot as plt
-
-    if isinstance(artifact_or_entries, (list, tuple)):
-        artifact = _ranking_arrays_from_entries(artifact_or_entries)
-    else:
-        artifact = ranking_arrays(artifact_or_entries)
-
-    names = list(artifact.get("names") or [])
-    up = [float(x) for x in (artifact.get("delta_mu_up") or [])]
-    down = [float(x) for x in (artifact.get("delta_mu_down") or [])]
-    pulls = [float(x) for x in (artifact.get("pull") or [])]
-
-    n = min(len(names), len(up), len(down), len(pulls))
-    n = min(n, int(max_nps))
-    if n <= 0:
-        raise ValueError("ranking artifact is empty")
-
-    names = names[:n]
-    up = up[:n]
-    down = down[:n]
-    pulls = pulls[:n]
-
-    y = list(range(n))
-
-    if ax_pull is None or ax_impact is None:
-        height = max(2.8, 0.35 * float(n) + 0.8)
-        _, (ax_pull, ax_impact) = plt.subplots(
-            ncols=2,
-            sharey=True,
-            figsize=(9.4, height),
-            gridspec_kw={"width_ratios": [1.0, 2.0]},
-        )
-
-    # Pulls panel
-    ax_pull.axvspan(-1.0, 1.0, color="#E5E7EB", alpha=0.7, zorder=0)
-    ax_pull.axvline(0.0, color="#9CA3AF", lw=1.0)
-    ax_pull.scatter(pulls, y, s=28, color="#111827", zorder=3)
-    ax_pull.set_xlim(-3.0, 3.0)
-    ax_pull.set_xlabel("pull")
-    ax_pull.grid(True, axis="x", alpha=0.25)
-
-    # Impact panel
-    ax_impact.axvline(0.0, color="#9CA3AF", lw=1.0)
-    ax_impact.barh(y, up, color="#2563EB", alpha=0.85, height=0.36, label="+1σ")
-    ax_impact.barh(y, down, color="#F97316", alpha=0.75, height=0.36, label="-1σ")
-    ax_impact.set_xlabel("Δmu")
-    ax_impact.grid(True, axis="x", alpha=0.25)
-    ax_impact.legend(frameon=False, loc="lower right")
-
-    ax_pull.set_yticks(y)
-    ax_pull.set_yticklabels(names)
-    ax_pull.invert_yaxis()
-
-    if title:
-        ax_impact.set_title(title)
-
-    return ax_pull, ax_impact
-
-
-def plot_ranking(
     artifact: Mapping[str, Any] | Sequence[Mapping[str, Any]],
     *,
     ax_impact=None,
     ax_pull=None,
     top_n: Optional[int] = None,
+    max_nps: Optional[int] = None,
     poi_label: str = "mu",
     title: Optional[str] = None,
 ):
@@ -526,8 +453,28 @@ def plot_ranking(
     _require_matplotlib()
     import matplotlib.pyplot as plt
 
+    if top_n is None and max_nps is not None:
+        top_n = int(max_nps)
+
     if isinstance(artifact, Mapping) and "entries" in artifact:
         entries = list(artifact.get("entries") or [])
+    elif isinstance(artifact, Mapping) and "names" in artifact and "delta_mu_up" in artifact:
+        names = list(artifact.get("names") or [])
+        d_up = list(artifact.get("delta_mu_up") or [])
+        d_dn = list(artifact.get("delta_mu_down") or [])
+        pull = list(artifact.get("pull") or [])
+        constr = list(artifact.get("constraint") or [])
+        n = min(len(names), len(d_up), len(d_dn), len(pull), len(constr))
+        entries = [
+            {
+                "name": str(names[i]),
+                "delta_mu_up": float(d_up[i]),
+                "delta_mu_down": float(d_dn[i]),
+                "pull": float(pull[i]),
+                "constraint": float(constr[i]),
+            }
+            for i in range(n)
+        ]
     else:
         entries = list(artifact)  # type: ignore[arg-type]
 
@@ -591,6 +538,69 @@ def plot_ranking(
 
     ax_impact.legend(frameon=False, loc="lower right")
     return ax_impact, ax_pull
+
+
+def plot_pulls(
+    artifact: Mapping[str, Any] | Sequence[Mapping[str, Any]],
+    *,
+    ax=None,
+    top_n: Optional[int] = None,
+    title: Optional[str] = None,
+):
+    """Plot TREx-like pulls with postfit constraint error bars.
+
+    Accepts:
+    - a `trex_report_pulls_v0` artifact dict containing `entries`, or
+    - a list of entry dicts.
+    """
+    _require_matplotlib()
+    import matplotlib.pyplot as plt
+
+    if isinstance(artifact, Mapping):
+        entries = list(artifact.get("entries") or [])
+    else:
+        entries = list(artifact)
+
+    if top_n is not None:
+        n = int(top_n)
+        if n < 0:
+            raise ValueError("top_n must be >= 0")
+        entries = entries[:n]
+
+    if not entries:
+        raise ValueError("pulls plot requires at least 1 entry")
+
+    names = [str(e.get("name", "")) for e in entries]
+    pulls = [float(e.get("pull", 0.0)) for e in entries]
+    constraints = [abs(float(e.get("constraint", 0.0))) for e in entries]
+    y = list(range(len(entries)))
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8.6, max(3.2, 0.28 * len(entries) + 1.4)))
+
+    colors = ["#1D4ED8" if p >= 0.0 else "#DC2626" for p in pulls]
+    ax.barh(y, pulls, color=colors, alpha=0.75)
+    ax.errorbar(
+        pulls,
+        y,
+        xerr=constraints,
+        fmt="none",
+        ecolor="#111827",
+        lw=1.0,
+        capsize=2.0,
+    )
+    ax.axvline(0.0, color="#111827", lw=1.0)
+    ax.axvline(1.0, color="#6B7280", lw=1.0, ls=":")
+    ax.axvline(-1.0, color="#6B7280", lw=1.0, ls=":")
+    ax.grid(True, axis="x", alpha=0.25)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(names)
+    ax.invert_yaxis()
+    ax.set_xlabel("pull (± constraint)")
+    if title:
+        ax.set_title(title)
+    return ax
 
 
 def plot_corr_matrix(
@@ -658,6 +668,76 @@ def plot_corr_matrix(
     return ax
 
 
+def render_svg(artifact: dict, kind: str, *, config: dict | None = None) -> str:
+    """Render an artifact dict to SVG string using the native Rust renderer.
+
+    Parameters
+    ----------
+    artifact : dict
+        Artifact data (e.g. pulls, ranking, corr, etc.).
+    kind : str
+        Artifact kind name (e.g. "pulls", "ranking", "corr", "profile", "cls", etc.).
+    config : dict, optional
+        VizConfig overrides as a dict (will be serialized to YAML).
+
+    Returns
+    -------
+    str
+        SVG document as a string.
+    """
+    import json
+
+    from . import _core
+
+    artifact_json = json.dumps(artifact)
+    config_yaml = None
+    if config is not None:
+        import yaml  # type: ignore[import-untyped]
+
+        config_yaml = yaml.dump(config)
+    svg_bytes = _core.render_viz(artifact_json, kind, "svg", config_yaml=config_yaml)
+    return svg_bytes.decode("utf-8")
+
+
+def render_to_file(
+    artifact: dict,
+    kind: str,
+    path: str,
+    *,
+    config: dict | None = None,
+    dpi: int | None = None,
+) -> None:
+    """Render an artifact dict to a file (format inferred from extension).
+
+    Parameters
+    ----------
+    artifact : dict
+        Artifact data.
+    kind : str
+        Artifact kind name.
+    path : str
+        Output file path (.svg, .pdf, .png).
+    config : dict, optional
+        VizConfig overrides.
+    dpi : int, optional
+        DPI for raster output (PNG).
+    """
+    import json
+
+    from . import _core
+
+    artifact_json = json.dumps(artifact)
+    ext = path.rsplit(".", 1)[-1] if "." in path else "svg"
+    config_yaml = None
+    if config is not None:
+        import yaml  # type: ignore[import-untyped]
+
+        config_yaml = yaml.dump(config)
+    data = _core.render_viz(artifact_json, kind, ext, config_yaml=config_yaml, dpi=dpi)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 __all__ = [
     "cls_curve",
     "profile_curve",
@@ -667,6 +747,9 @@ __all__ = [
     "plot_cls_curve",
     "plot_brazil_limits",
     "plot_profile_curve",
+    "plot_pulls",
     "plot_ranking",
     "plot_corr_matrix",
+    "render_svg",
+    "render_to_file",
 ]

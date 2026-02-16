@@ -45,6 +45,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -79,6 +81,61 @@ jobs:
 
       - name: Build CLI (for validation-report)
         run: cargo build --release -p ns-cli
+
+      - name: Run BCa CI method benchmarks (HEP + churn)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/bca_ci
+
+          python3 scripts/benchmarks/bench_unbinned_summary_ci.py \
+            --runs 12 \
+            --n-toys 200 \
+            --summary-ci-bootstrap 400 \
+            --summary-ci-level 0.68 \
+            --threads 1 \
+            --out-dir artifacts/bca_ci/unbinned_summary_ci
+
+          python3 scripts/benchmarks/bench_churn_bootstrap_ci_methods.py \
+            --n-customers 2000 \
+            --n-cohorts 48 \
+            --max-time 12 \
+            --treatment-fraction 0.3 \
+            --n-bootstrap 500 \
+            --n-jackknife 160 \
+            --runs 8 \
+            --conf-level 0.95 \
+            --use-default-truth \
+            --regenerate-data-per-run \
+            --out-dir artifacts/bca_ci/churn_bootstrap_ci_methods
+
+      - name: Check BCa CI release gates
+        run: |
+          set -euo pipefail
+          python3 scripts/benchmarks/check_bca_ci_gates.py \
+            --hep-summary artifacts/bca_ci/unbinned_summary_ci/summary.json \
+            --churn-summary artifacts/bca_ci/churn_bootstrap_ci_methods/summary.json \
+            --out-json artifacts/bca_ci/gate_report.json \
+            --out-md artifacts/bca_ci/gate_report.md \
+            --hep-max-overhead 1.25 \
+            --churn-max-overhead 1.75 \
+            --hep-max-fallback-rate 0.05 \
+            --churn-max-fallback-rate 0.05 \
+            --hep-min-effective-bca-rate 0.95 \
+            --churn-min-effective-bca-rate 0.95
+
+      - name: Run BCa skew calibration matrix (informational)
+        run: |
+          set -euo pipefail
+          python3 scripts/benchmarks/bench_bca_skew_calibration.py \
+            --runs 8 \
+            --seed0 100 \
+            --hep-n-toys 120 \
+            --hep-summary-ci-bootstrap 300 \
+            --hep-summary-ci-level 0.68 \
+            --churn-n-bootstrap 300 \
+            --churn-n-jackknife 120 \
+            --churn-conf-level 0.95 \
+            --out-dir artifacts/bca_skew_calibration
 
       - name: Render validation pack (JSON + PDF)
         run: |

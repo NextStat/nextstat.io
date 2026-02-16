@@ -221,18 +221,80 @@ curl -s https://nextstat.ru/llms.txt | head -10
 
 ---
 
-## RC-6: PyPI Publish
+## RC-6: PyPI Wheel Matrix & Publish (CI-automated)
 
-After all gates pass:
+PyPI publishing is **fully automated** via `.github/workflows/release.yml`. Pushing a `v*` tag triggers the entire pipeline. **Never run `maturin publish` manually.**
+
+### Wheel Build Matrix (canonical)
+
+| Runner | Target | Interpreter source | manylinux |
+|--------|--------|-------------------|-----------|
+| `ubuntu-latest` | `x86_64-unknown-linux-gnu` | manylinux Docker (pre-installed) | `2_17` |
+| `ubuntu-latest` | `aarch64-unknown-linux-gnu` | manylinux Docker (pre-installed) | `2_17` |
+| `macos-14` (ARM) | `aarch64-apple-darwin` | `setup-python` 3.11/3.12/3.13 | — |
+| `macos-14` (ARM) | `x86_64-apple-darwin` | `setup-python` 3.11/3.12/3.13 | — |
+| `windows-latest` | `x86_64-pc-windows-msvc` | `setup-python` 3.11/3.12/3.13 | — |
+
+Expected output: **~15 wheels** (5 targets × 3 Python versions) + 1 sdist.
+
+### Critical rules (lessons from v0.9.5 incident)
+
+1. **Linux MUST use `manylinux: "2_17"`** — without it, maturin builds on the bare runner (glibc 2.35+) and produces wheels incompatible with most Linux distros, Docker images, and CI environments. The `manylinux_2_17` Docker container has all Python interpreters pre-installed AND old glibc.
+
+2. **macOS Intel uses `macos-14` (cross-compile), NOT `macos-13`** — GitHub deprecated `macos-13` runners. Intel Mac wheels are cross-compiled from ARM via `--target x86_64-apple-darwin`. maturin-action handles this transparently.
+
+3. **`setup-python` is required for macOS/Windows** — Linux manylinux Docker has interpreters pre-installed, but macOS/Windows runners only have one Python. Without `setup-python` installing 3.11/3.12/3.13, `--find-interpreter` finds only one → only one wheel per platform.
+
+4. **Linux does NOT need `setup-python`** — the manylinux Docker container overrides the runner environment. Adding `setup-python` for Linux is harmless but unnecessary (the `if: runner.os != 'Linux'` guard skips it).
+
+5. **Validation Pack must match interpreter** — the `find dist -name '*.whl'` glob can pick up a `cp314` wheel on a Python 3.12 runner. Always filter: `find dist -name '*cp312*.whl'`.
+
+6. **CLI cross-compile needs `--target` flag** — when cross-compiling CLI binaries (e.g. Intel from ARM runner), `cargo build --release -p ns-cli` builds for the host arch. Must use `cargo build --release -p ns-cli --target ${{ matrix.target }}` and look for binary in `target/<target>/release/`.
+
+### Pipeline flow
+
+```
+tag v* pushed
+  → test (fmt + clippy + tests)
+  → wheels (5 targets × 3 Pythons)
+  → sdist
+  → cli (3 targets)
+  → whitepaper PDF
+  → crates.io publish
+  → validation pack (install cp312 wheel + pytest suite)
+  → GitHub Release (attach all artifacts)
+  → PyPI publish (Trusted Publisher, OIDC)
+```
+
+### Post-publish verification
 
 ```bash
-maturin build --release
-maturin publish
+# 1. Check PyPI has all wheels
+pip install nextstat==X.Y.Z --dry-run --verbose 2>&1 | grep "Found link"
 
-# Verify from clean venv
+# 2. Verify installation on clean venv
+python -m venv /tmp/ns-test && source /tmp/ns-test/bin/activate
 pip install nextstat==X.Y.Z
 python -c "import nextstat; print(nextstat.__version__)"
+deactivate && rm -rf /tmp/ns-test
+
+# 3. Check wheel tags on PyPI (expect ~15 wheels + 1 sdist)
+pip index versions nextstat 2>&1 | head -5
 ```
+
+### Post-mortem: v0.9.4 → v0.9.5 wheel fix
+
+**Symptoms:** `pip install nextstat` failed on Linux x86_64 (most common platform) and macOS Intel. Users saw maturin trying to build from source, failing because sdist lacked complete Cargo workspace.
+
+**Root causes:**
+1. Linux x86_64 built on bare `ubuntu-latest` (glibc 2.35) → produced `manylinux_2_35` tag → incompatible with most systems
+2. Only 1 Python found on bare runner → only 1 wheel (cp312) instead of 3
+3. macOS Intel (`x86_64-apple-darwin`) target entirely missing from matrix
+4. macOS/Windows had no `setup-python` → only 1 wheel per platform
+
+**Fix:** Added `manylinux: "2_17"`, added Intel Mac target on `macos-14` (cross-compile), added `setup-python@v5` for non-Linux. Result: full wheel coverage across all platforms.
+
+**Prevention:** This document. Any change to `release.yml` wheel matrix MUST be verified against this canonical table.
 
 ---
 
@@ -369,7 +431,7 @@ cargo tree -p ns-wasm --target wasm32-unknown-unknown -e normal -i parquet 2>&1
 | RC-3 | Version Bump | Cargo.toml + pyproject.toml + llms*.txt | YES |
 | RC-4 | Changelog | Update CHANGELOG.md | YES |
 | RC-5 | Website Rebuild + Deploy | `npm run build` + `railway up` (EN + RU) | YES |
-| RC-6 | PyPI Publish | `maturin publish` | YES |
+| RC-6 | PyPI Wheel Matrix & Publish | CI-automated (push `v*` tag) — verify wheel count post-publish | YES |
 | RC-7 | WASM Playground Build | `make playground-build-wasm` + copy to sites | If playground changed |
 
 **BMCP epic:** `eb8c74ad-5b16-4d95-b523-f9a495fac8da` (Pre-Release Checklist — Recurring Gate)

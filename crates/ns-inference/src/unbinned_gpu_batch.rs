@@ -278,7 +278,7 @@ fn run_lockstep_iterations<A: UnbinnedBatchAccel>(
     for _outer_iter in 0..max_iter {
         active_toys.clear();
         for t in 0..n_toys {
-            if !states[t].converged {
+            if !states[t].converged && !states[t].failed {
                 active_toys.push(t);
             }
         }
@@ -357,6 +357,9 @@ fn run_lockstep_iterations<A: UnbinnedBatchAccel>(
                     step_sizes[toy_idx] *= 0.5;
                     if step_sizes[toy_idx] <= 1e-20 {
                         // Give up on this toy for this iteration; keep x unchanged.
+                        // Advance iter so the `iter >= 3` guard on
+                        // `relative_obj_change` convergence can fire.
+                        states[toy_idx].accept_x(states[toy_idx].x.clone());
                         line_search_exhaustions[toy_idx] += 1;
                         accepted[toy_idx] = true;
                     } else {
@@ -366,6 +369,17 @@ fn run_lockstep_iterations<A: UnbinnedBatchAccel>(
             }
             if all_accepted {
                 break;
+            }
+        }
+
+        // Mark toys that were never accepted in backtracking as exhausted.
+        // Advance their iter counter so the `iter >= 3` relative_obj_change
+        // convergence guard can fire on subsequent iterations.
+        for &toy_idx in &active_toys {
+            if !accepted[toy_idx] {
+                states[toy_idx].accept_x(states[toy_idx].x.clone());
+                line_search_exhaustions[toy_idx] += 1;
+                accepted[toy_idx] = true;
             }
         }
     }
