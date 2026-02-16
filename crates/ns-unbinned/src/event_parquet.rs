@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use arrow::array::{Array, AsArray, Float64Array, StringBuilder};
+use arrow::array::{Array, AsArray, Float64Array, LargeStringArray, StringArray, StringBuilder};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 
@@ -434,12 +434,12 @@ pub fn event_stores_from_record_batches(
         let ch_idx = batch.schema().index_of(CHANNEL_COLUMN).map_err(|_| {
             Error::Validation("inconsistent schema: _channel missing in some batches".into())
         })?;
-        let ch_arr = batch.column(ch_idx).as_string::<i32>();
+        let ch_col = batch.column(ch_idx);
 
         // Get unique channels in this batch and filter rows.
         let mut channels_in_batch: HashMap<String, Vec<usize>> = HashMap::new();
         for i in 0..batch.num_rows() {
-            let ch = ch_arr.value(i).to_string();
+            let ch = channel_row_value(ch_col, i)?;
             channels_in_batch.entry(ch).or_default().push(i);
         }
 
@@ -670,6 +670,36 @@ fn concat_batches_with_schema(
     Ok(merged)
 }
 
+fn channel_row_value(col: &Arc<dyn Array>, row: usize) -> Result<String> {
+    if col.is_null(row) {
+        return Err(Error::Validation(format!("row {row}: '{CHANNEL_COLUMN}' must not be null")));
+    }
+    match col.data_type() {
+        DataType::Utf8 => {
+            let arr = col.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
+                Error::Validation(format!(
+                    "column '{CHANNEL_COLUMN}' has type {:?}, expected Utf8",
+                    col.data_type()
+                ))
+            })?;
+            Ok(arr.value(row).to_string())
+        }
+        DataType::LargeUtf8 => {
+            let arr = col.as_any().downcast_ref::<LargeStringArray>().ok_or_else(|| {
+                Error::Validation(format!(
+                    "column '{CHANNEL_COLUMN}' has type {:?}, expected LargeUtf8",
+                    col.data_type()
+                ))
+            })?;
+            Ok(arr.value(row).to_string())
+        }
+        _ => Err(Error::Validation(format!(
+            "column '{CHANNEL_COLUMN}' has type {:?}, expected Utf8/LargeUtf8",
+            col.data_type()
+        ))),
+    }
+}
+
 fn default_compression() -> parquet::basic::Compression {
     #[cfg(feature = "arrow-io-zstd")]
     {
@@ -688,6 +718,11 @@ fn default_compression() -> parquet::basic::Compression {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::array::Array;
+    use arrow::array::{Float64Array, LargeStringBuilder};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use std::sync::Arc;
 
     fn make_test_store() -> EventStore {
         let obs = vec![
@@ -814,5 +849,31 @@ mod tests {
         assert!(result.is_err());
         let msg = format!("{}", result.unwrap_err());
         assert!(msg.contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_event_stores_from_record_batches_accepts_largeutf8_channel() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("mass", DataType::Float64, false),
+            Field::new(CHANNEL_COLUMN, DataType::LargeUtf8, false),
+        ]));
+
+        let mass = Arc::new(Float64Array::from(vec![120.0, 130.0, 140.0, 150.0])) as Arc<dyn Array>;
+        let mut ch_builder = LargeStringBuilder::new();
+        ch_builder.append_value("SR");
+        ch_builder.append_value("SR");
+        ch_builder.append_value("CR");
+        ch_builder.append_value("CR");
+        let ch = Arc::new(ch_builder.finish()) as Arc<dyn Array>;
+
+        let batch = RecordBatch::try_new(schema, vec![mass, ch]).unwrap();
+        let obs = vec![ObservableSpec::branch("mass", (100.0, 180.0))];
+        let stores = event_stores_from_record_batches(&[batch], Some(&obs), "__default").unwrap();
+
+        assert_eq!(stores.len(), 2);
+        assert_eq!(stores[0].0, "CR");
+        assert_eq!(stores[0].1.n_events(), 2);
+        assert_eq!(stores[1].0, "SR");
+        assert_eq!(stores[1].1.n_events(), 2);
     }
 }

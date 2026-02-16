@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "constraint": 1.0,
+      "group": "poi",
+      "kind": "poi",
+      "name": "mu",
+      "postfit_center": 0.5245205740436321,
+      "postfit_sigma": 0.8736631537030387,
+      "pull": 0.0
+    }
+  ],
+  "meta": {
+    "created_unix_ms": 1771194587366,
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat",
+    "tool_version": "0.9.5"
+  },
+  "ordering_policy": "name_lex",
+  "schema_version": "trex_report_pulls_v0"
+}

@@ -1,0 +1,34 @@
+{
+  "corr": [
+    [
+      1.0,
+      -0.324474827095223,
+      -0.5413039494850381
+    ],
+    [
+      -0.324474827095223,
+      1.0,
+      0.17563950541511913
+    ],
+    [
+      -0.5413039494850381,
+      0.17563950541511913,
+      1.0000000000000002
+    ]
+  ],
+  "meta": {
+    "created_unix_ms": 1771194588713,
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat",
+    "tool_version": "0.9.5"
+  },
+  "parameter_names": [
+    "mu",
+    "uncorr_bkguncrt[0]",
+    "uncorr_bkguncrt[1]"
+  ],
+  "schema_version": "trex_report_corr_v0"
+}

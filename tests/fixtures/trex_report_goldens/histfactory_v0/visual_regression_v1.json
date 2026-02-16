@@ -1,0 +1,82 @@
+{
+  "png": {
+    "corr.png": {
+      "ahash16": "dfffce7dc3fde3fdc0fdf8fdf8fff81ffe1ffe0dffc5ff85ffcdfffdffffffff",
+      "max_hamming": 24,
+      "size_bytes": 77832,
+      "size_tolerance_bytes": 22000
+    },
+    "distributions__SR.png": {
+      "ahash16": "fffffffffffffc1ffc1ffc1f801f8000800080008000ffffffffffffffffffff",
+      "max_hamming": 24,
+      "size_bytes": 113104,
+      "size_tolerance_bytes": 28000
+    },
+    "pulls__p1.png": {
+      "ahash16": "cfbf8000bc1efe1ffc1fbe1ffe1f3c1ffe1ffe1f3c1ffe1fbe1f0000fefffe1f",
+      "max_hamming": 24,
+      "size_bytes": 53588,
+      "size_tolerance_bytes": 18000
+    },
+    "yields__SR.png": {
+      "ahash16": "3e7f267cffffffffffff0000000000000000000000000000ffffffffffffffff",
+      "max_hamming": 24,
+      "size_bytes": 36151,
+      "size_tolerance_bytes": 14000
+    }
+  },
+  "svg": {
+    "corr.svg": {
+      "channel": 0,
+      "fill_count": 65,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 47,
+      "relative_tolerance": 0.35,
+      "size_bytes": 24953,
+      "size_relative_tolerance": 0.35,
+      "stroke_count": 48,
+      "text_count": 26,
+      "use_count": 29
+    },
+    "distributions__SR.svg": {
+      "channel": 1,
+      "fill_count": 80,
+      "mc_unc": 1,
+      "nextstat": 1,
+      "path_count": 57,
+      "relative_tolerance": 0.35,
+      "size_bytes": 33871,
+      "size_relative_tolerance": 0.35,
+      "stroke_count": 104,
+      "text_count": 31,
+      "use_count": 57
+    },
+    "pulls__p1.svg": {
+      "channel": 0,
+      "fill_count": 48,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 26,
+      "relative_tolerance": 0.35,
+      "size_bytes": 17407,
+      "size_relative_tolerance": 0.35,
+      "stroke_count": 53,
+      "text_count": 17,
+      "use_count": 29
+    },
+    "yields__SR.svg": {
+      "channel": 1,
+      "fill_count": 38,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 16,
+      "relative_tolerance": 0.35,
+      "size_bytes": 10346,
+      "size_relative_tolerance": 0.35,
+      "stroke_count": 15,
+      "text_count": 18,
+      "use_count": 0
+    }
+  }
+}

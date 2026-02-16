@@ -3470,7 +3470,7 @@ fn churn_uplift_survival(
 }
 
 #[pyfunction]
-#[pyo3(signature = (times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95))]
+#[pyo3(signature = (times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95, ci_method="percentile", n_jackknife=200))]
 fn churn_bootstrap_hr(
     py: Python<'_>,
     times: Vec<f64>,
@@ -3480,8 +3480,21 @@ fn churn_bootstrap_hr(
     n_bootstrap: usize,
     seed: u64,
     conf_level: f64,
+    ci_method: &str,
+    n_jackknife: usize,
 ) -> PyResult<Py<PyAny>> {
-    let r = ns_inference::bootstrap_hazard_ratios(
+    let ci_method_norm = ci_method.trim().to_ascii_lowercase();
+    let method = match ci_method_norm.as_str() {
+        "percentile" => ns_inference::BootstrapCiMethod::Percentile,
+        "bca" => ns_inference::BootstrapCiMethod::Bca,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "invalid ci_method '{other}', expected 'percentile' or 'bca'"
+            )));
+        }
+    };
+
+    let r = ns_inference::bootstrap_hazard_ratios_with_method(
         &times,
         &events,
         &covariates,
@@ -3489,6 +3502,8 @@ fn churn_bootstrap_hr(
         n_bootstrap,
         seed,
         conf_level,
+        method,
+        n_jackknife,
     )
     .map_err(|e| PyValueError::new_err(format!("churn_bootstrap_hr failed: {e}")))?;
 
@@ -3498,8 +3513,56 @@ fn churn_bootstrap_hr(
     out.set_item("hr_ci_lower", &r.hr_ci_lower)?;
     out.set_item("hr_ci_upper", &r.hr_ci_upper)?;
     out.set_item("n_bootstrap", r.n_bootstrap)?;
+    out.set_item("n_jackknife_requested", r.n_jackknife_requested)?;
+    out.set_item("n_jackknife_attempted", r.n_jackknife_attempted)?;
     out.set_item("n_converged", r.n_converged)?;
     out.set_item("elapsed_s", r.elapsed_s)?;
+    out.set_item(
+        "ci_method_requested",
+        match r.ci_method_requested {
+            ns_inference::BootstrapCiMethod::Percentile => "percentile",
+            ns_inference::BootstrapCiMethod::Bca => "bca",
+        },
+    )?;
+
+    let ci_method_effective = PyList::empty(py);
+    for m in &r.ci_method_effective {
+        ci_method_effective.append(match m {
+            ns_inference::BootstrapCiMethod::Percentile => "percentile",
+            ns_inference::BootstrapCiMethod::Bca => "bca",
+        })?;
+    }
+    out.set_item("ci_method_effective", ci_method_effective)?;
+
+    let diagnostics = PyList::empty(py);
+    for d in &r.ci_diagnostics {
+        let dd = PyDict::new(py);
+        dd.set_item(
+            "requested_method",
+            match d.requested_method {
+                ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                ns_inference::BootstrapCiMethod::Bca => "bca",
+            },
+        )?;
+        dd.set_item(
+            "effective_method",
+            match d.effective_method {
+                ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                ns_inference::BootstrapCiMethod::Bca => "bca",
+            },
+        )?;
+        dd.set_item("z0", d.z0)?;
+        dd.set_item("acceleration", d.acceleration)?;
+        dd.set_item("alpha_low", d.alpha_low)?;
+        dd.set_item("alpha_high", d.alpha_high)?;
+        dd.set_item("alpha_low_adj", d.alpha_low_adj)?;
+        dd.set_item("alpha_high_adj", d.alpha_high_adj)?;
+        dd.set_item("n_bootstrap", d.n_bootstrap)?;
+        dd.set_item("n_jackknife", d.n_jackknife)?;
+        dd.set_item("fallback_reason", &d.fallback_reason)?;
+        diagnostics.append(dd)?;
+    }
+    out.set_item("ci_diagnostics", diagnostics)?;
     Ok(out.into_any().unbind())
 }
 

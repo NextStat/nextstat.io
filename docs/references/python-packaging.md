@@ -61,3 +61,7 @@ Reproducibility guidelines:
 
 - Python: `>=3.11` (see `bindings/ns-py/pyproject.toml`)
 - Platforms: macOS + Linux wheels are built in CI; other platforms may require source builds.
+
+## HPC Deployment
+
+For deploying on HTCondor, Slurm, or other batch clusters, see `docs/guides/htcondor-hpc.md`.

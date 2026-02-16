@@ -259,7 +259,7 @@ pub fn write_run_bundle(bundle_dir: &Path, config_path: &Path, cfg: &RunConfig) 
 
     // Copy run outputs (inputs+artifacts) verbatim.
     let run_outputs = outputs_dir.join("run");
-    copy_tree_filtered(&cfg.out_dir, &run_outputs, &["json", "csv", "tex", "pdf", "svg"])?;
+    copy_tree_filtered(&cfg.out_dir, &run_outputs, &["json", "csv", "tex", "pdf", "svg", "png"])?;
 
     // Provenance (intermediate hashes).
     let mut prov_inputs = Vec::new();
@@ -449,7 +449,11 @@ pub fn write_run_bundle_spec_v0(
     }
     if let Some(report) = plan.report.as_ref() {
         let dst_dir = outputs_dir.join("report");
-        copy_tree_filtered(&report.out_dir, &dst_dir, &["json", "csv", "tex", "pdf", "svg"])?;
+        copy_tree_filtered(
+            &report.out_dir,
+            &dst_dir,
+            &["json", "csv", "tex", "pdf", "svg", "png"],
+        )?;
 
         let key_reports: &[(&str, &str)] = &[
             ("report_fit_json", "fit.json"),

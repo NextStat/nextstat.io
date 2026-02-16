@@ -181,12 +181,13 @@ pub use chain_ladder::{
     bootstrap_reserves, chain_ladder as chain_ladder_fit, mack_chain_ladder,
 };
 pub use churn::{
-    ArmSummary, BootstrapHrResult, CensoringSegment, ChurnDataConfig, ChurnDataset,
-    ChurnDiagnosticsReport, ChurnIngestError, ChurnIngestResult, ChurnMappingConfig, ChurnRecord,
-    ChurnRiskModel, ChurnUpliftResult, CohortMatrixCell, CohortMatrixRow, CohortRetentionMatrix,
-    CorrectionMethod, CovariateBalance, DiagnosticWarning, OverlapDiagnostics, PairwiseComparison,
-    PropensityOverlap, RetentionAnalysis, SegmentComparisonReport, SegmentSummary,
-    SurvivalDiffAtHorizon, SurvivalUpliftReport, bootstrap_hazard_ratios, churn_diagnostics_report,
+    ArmSummary, BootstrapHrCoefficientDiagnostics, BootstrapHrResult, CensoringSegment,
+    ChurnDataConfig, ChurnDataset, ChurnDiagnosticsReport, ChurnIngestError, ChurnIngestResult,
+    ChurnMappingConfig, ChurnRecord, ChurnRiskModel, ChurnUpliftResult, CohortMatrixCell,
+    CohortMatrixRow, CohortRetentionMatrix, CorrectionMethod, CovariateBalance, DiagnosticWarning,
+    OverlapDiagnostics, PairwiseComparison, PropensityOverlap, RetentionAnalysis,
+    SegmentComparisonReport, SegmentSummary, SurvivalDiffAtHorizon, SurvivalUpliftReport,
+    bootstrap_hazard_ratios, bootstrap_hazard_ratios_with_method, churn_diagnostics_report,
     churn_risk_model, churn_uplift, cohort_retention_matrix, compute_rmst, generate_churn_dataset,
     ingest_churn_arrays, retention_analysis, segment_comparison_report, survival_uplift_report,
 };

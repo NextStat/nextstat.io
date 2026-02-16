@@ -1003,11 +1003,18 @@ Survival-native causal uplift: RMST, IPW-weighted Kaplan-Meier, and ΔS(t) at sp
 - `survival_diffs` — list of `{horizon, survival_treated, survival_control, delta_survival}`
 - `overlap` — `{n_total, n_after_trim, n_trimmed, mean_propensity, min_propensity, max_propensity, ess_treated, ess_control}`
 
-### `nextstat.churn_bootstrap_hr(times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95) -> dict`
+### `nextstat.churn_bootstrap_hr(times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95, ci_method="percentile", n_jackknife=200) -> dict`
 
-Bootstrap hazard ratios via parallel Cox PH refitting. Returns percentile-based CIs.
+Bootstrap hazard ratios via parallel Cox PH refitting.
 
-**Returns** a dict with keys: `names`, `hr_point`, `hr_ci_lower`, `hr_ci_upper`, `n_bootstrap`, `n_converged`, `elapsed_s`.
+- `ci_method`: `"percentile"` (default) or `"bca"`.
+- `n_jackknife`: number of leave-one-out fits for BCa acceleration (used when `ci_method="bca"`).
+
+**Returns** a dict with keys:
+- `names`, `hr_point`, `hr_ci_lower`, `hr_ci_upper`
+- `n_bootstrap`, `n_jackknife_requested`, `n_jackknife_attempted`, `n_converged`, `elapsed_s`
+- `ci_method_requested`, `ci_method_effective`
+- `ci_diagnostics` (per coefficient): `requested_method`, `effective_method`, `z0`, `acceleration`, alpha fields, counts, and `fallback_reason`.
 
 ### `nextstat.churn_ingest(times, events, *, groups=None, treated=None, covariates=[], covariate_names=[], observation_end=None) -> dict`
 

@@ -304,9 +304,17 @@ fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64) 
             // Data-aware default for logistic GLM:
             // posterior scale per coefficient is roughly O(1/sqrt(n)).
             // Use sigma_post ≈ 2/sqrt(n), so L = pi*sqrt(dim)*sigma_post.
+            // Empirically:
+            // - n_warmup=0 needs more aggressive small L for stability/mixing.
+            // - with warmup, a too-small L can hurt mixing quality; keep a floor.
             LapsModel::GlmLogistic { n, .. } => {
                 let sigma_post = 2.0 / (*n as f64).sqrt();
-                (l_default * sigma_post).clamp(0.25, l_default)
+                let l_model = l_default * sigma_post;
+                if config.n_warmup == 0 {
+                    l_model.clamp(0.25, l_default)
+                } else {
+                    l_model.clamp(0.2 * l_default, l_default)
+                }
             }
             _ => l_default,
         }
@@ -359,12 +367,13 @@ fn find_initial_eps_gpu(
 
     // Phase B (cold only): burn-in at stable_eps to move toward typical set.
     // With init_scale ≈ posterior_std, chains start within ~2σ of origin.
-    // 50 L-traversals suffice to reach the typical set (was 200, but that's
-    // too expensive for data-heavy models where each leapfrog step is O(n×p)).
+    // For no-warmup runs we use a shorter burn-in to reduce startup overhead
+    // while keeping the robust cold-start behavior.
     if cold_start {
         accel.set_uniform_eps(stable_eps)?;
         let n_steps = ((l / stable_eps).round() as usize).clamp(1, search_max_steps);
-        for _ in 0..50 {
+        let burnin_iters = if config.n_warmup == 0 { 12 } else { 50 };
+        for _ in 0..burnin_iters {
             accel.transition_auto(l, n_steps, false)?;
         }
     }
@@ -421,7 +430,8 @@ fn tune_l_gpu(
 ) -> Result<(f64, usize)> {
     use crate::adapt::estimate_ess_simple;
 
-    let n_trials = 40;
+    let n_trials = if config.n_warmup < 100 { 16 } else { 40 };
+    let n_candidates = if config.n_warmup < 100 { 4 } else { 7 };
     // Robust L scoring: aggregate ESS/grad over multiple chains instead of
     // relying on chain 0 only (which is brittle on funnel-like geometries).
     let n_eval_chains =
@@ -435,7 +445,7 @@ fn tune_l_gpu(
     accel.configure_batch(n_trials, n_eval_chains)?;
 
     let mut l_candidate = l_min;
-    for _ in 0..7 {
+    for _ in 0..n_candidates {
         // max_leapfrog cap — per-chain n_steps computed in kernel
         let max_leapfrog =
             ((l_candidate / eps_median).round() as usize).clamp(1, config.max_leapfrog) * 2;
@@ -564,6 +574,12 @@ fn compute_report_chains(config: &LapsConfig, n_chains: usize) -> usize {
     n_chains.min(config.report_chains.max(1))
 }
 
+/// For short warmup schedules on data-heavy GLM, skip expensive L tuning.
+#[cfg(feature = "cuda")]
+fn should_skip_l_tuning(model: &LapsModel, config: &LapsConfig) -> bool {
+    config.n_warmup <= 64 && matches!(model, LapsModel::GlmLogistic { .. })
+}
+
 /// Decide whether to use fused multi-step kernel in sampling.
 ///
 /// Empirically, for large-n GLM logistic with warp support, the fused path can
@@ -656,9 +672,8 @@ fn sample_laps_single_gpu(
 
     // Initial ε binary search (uniform across chains)
     // Cold start: ~8 stability probes + 200 burn-in + up to 20*3 = 60 search ≈ 270
-    let cold_start = config.n_warmup > 0;
-    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, cold_start)?;
-    n_kernel_launches += if cold_start { 270 } else { 70 };
+    let eps = find_initial_eps_gpu(&mut accel, l, dim, &config, true)?;
+    n_kernel_launches += 270;
 
     // Per-chain DA: one DualAveraging instance per chain
     let mut da_vec: Vec<DualAveraging> =
@@ -714,7 +729,17 @@ fn sample_laps_single_gpu(
     }
 
     let final_eps: Vec<f64>;
-    if config.n_warmup > 0 {
+    let eps_median: f64;
+    let max_lf: usize;
+    if config.n_warmup == 0 {
+        // Fast path for no-warmup runs:
+        // keep stable eps from initial cold search and skip expensive
+        // second eps search + L tuning phases.
+        final_eps = vec![eps.min(l * 0.5).max(1e-6); n_chains];
+        eps_median = final_eps[0];
+        accel.set_per_chain_eps(&final_eps)?;
+        max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
+    } else {
         // Mass update + reset per-chain DA + find new ε
         if config.use_diagonal_precond {
             if let Some(new_mass) = regularize_inv_mass(&welford, dim) {
@@ -751,22 +776,21 @@ fn sample_laps_single_gpu(
 
         // Finalize per-chain eps (smoothed adapted step sizes)
         final_eps = da_vec.iter().map(|da| da.adapted_step_size().min(l * 0.5).max(1e-6)).collect();
-        let eps_median = percentile(&final_eps, 0.5);
+        eps_median = percentile(&final_eps, 0.5);
         accel.set_per_chain_eps(&final_eps)?;
 
         // ---------- Phase 4: L tuning + equilibrate ----------
-        let (tuned_l, l_launches) = tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config)?;
-        l = tuned_l;
-        n_kernel_launches += l_launches;
+        if !should_skip_l_tuning(model, &config) {
+            let (tuned_l, l_launches) = tune_l_gpu(&mut accel, eps_median, n_chains, dim, &config)?;
+            l = tuned_l;
+            n_kernel_launches += l_launches;
+        }
 
-        let max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
+        max_lf = compute_max_leapfrog(&final_eps, l, config.max_leapfrog);
         for _iter in 0..phase_final_iters {
             accel.transition_auto(l, max_lf, true)?;
             n_kernel_launches += 1;
         }
-    } else {
-        final_eps = vec![eps.min(l * 0.5).max(1e-6); n_chains];
-        accel.set_per_chain_eps(&final_eps)?;
     }
 
     let t_warmup = start.elapsed().as_secs_f64() - t_init;
@@ -1171,7 +1195,7 @@ fn sample_laps_multi_gpu(
                     {
                         barrier_upload.wait();
 
-                        if dev_idx == 0 {
+                        if dev_idx == 0 && !should_skip_l_tuning(model, config) {
                             match tune_l_gpu(&mut accel, eps_median, dev_chains, dim, config) {
                                 Ok((tuned_l, _launches)) => {
                                     *shared_l.lock().unwrap() = tuned_l;

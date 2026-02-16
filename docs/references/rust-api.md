@@ -140,7 +140,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Competing risks: `cumulative_incidence`, `gray_test`, `fine_gray_fit`, `CifEstimate`, `FineGrayResult`
 - Sequential: `group_sequential_design`, `alpha_spending_design`, `sequential_test`, `SequentialDesign`
 - Chain ladder: `chain_ladder_fit`, `mack_chain_ladder`, `bootstrap_reserves`, `ChainLadderResult`, `MackResult`
-- Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `cohort_retention_matrix`, and 15+ types
+- Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `bootstrap_hazard_ratios_with_method`, `cohort_retention_matrix`, and 15+ types
 - Fault tree MC: `FaultTreeSpec`, `FaultTreeNode`, `FailureMode`, `fault_tree_mc_cpu`, `fault_tree_mc_cuda` (CUDA), `fault_tree_mc_metal` (Metal), `FaultTreeCeIsConfig`, `FaultTreeCeIsResult`, `fault_tree_mc_ce_is` — GPU-accelerated MC and Cross-Entropy Importance Sampling for rare-event fault tree estimation (all failure modes: Bernoulli, WeibullMission, BernoulliUncertain)
 - Econometrics: `panel_fe_fit`, `did_canonical`, `event_study`, `iv_2sls`, `aipw_ate`, `rosenbaum_bounds`, `cluster_robust_se`
 - PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel` (analytical gradients)
@@ -254,6 +254,9 @@ Native ROOT file reader — zero dependency on ROOT C++.
 
 Key exports:
 - `ns_root::RootFile` — open ROOT files (mmap or owned bytes), read TH1 histograms and TTrees.
+- `ns_root::{RNTupleInfo, RNTupleAnchor, RNTupleEnvelopeBytes}` — RNTuple metadata foundation types.
+- `ns_root::{RNTupleEnvelopeInfo, RNTupleFieldToken, RNTupleHeaderSummary, RNTupleMetadataSummary}` — parsed envelope framing + header summary.
+- `ns_root::{RNTupleSchemaSummary, RNTupleSchemaField, RNTupleFieldKind, RNTupleScalarType}` — best-effort schema projection from header metadata (primitive/array/nested classification).
 - `ns_root::{Tree, BranchInfo, LeafType}` — TTree metadata and branch descriptors. **Compound leaf-list branches** (multiple scalars packed per entry, e.g. `"x/F:y/F:z/F"`) are now parsed — each scalar is exposed as a separate `BranchInfo`.
 - `ns_root::BranchReader` — columnar data extraction with parallel basket decompression (rayon).
 - `ns_root::BasketCache` — per-`RootFile` LRU cache of decompressed basket payloads. Byte-bounded eviction (default 256 MiB). Keyed by basket seek position; values are `Arc<Vec<u8>>` (shared ownership, zero-copy on cache hit). `RootFile::basket_cache()` returns cache stats; `RootFile::set_cache_config()` tunes capacity or disables caching.
@@ -261,6 +264,14 @@ Key exports:
 - `ns_root::ChainedSlice` — zero-copy concatenation of multiple decompressed basket payloads via `Arc` sharing. O(log n) random access across non-contiguous segments via binary search on cumulative offsets. Methods: `locate(pos)`, `read_array::<N>(pos)`, `decode_f64_at(pos, leaf_type)`.
 - `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` -> `eval_row()` / `eval_bulk()`). Supports ternary `cond ? a : b`; parse errors include `line/col`.
 - `ns_root::{HistogramSpec, FilledHistogram, fill_histograms}` — single-pass histogram filling.
+
+RNTuple foundation API (metadata-only for now):
+- `RootFile::list_rntuples()` / `RootFile::has_rntuples()` — discover top-level RNTuple keys.
+- `RootFile::read_rntuple_payload(name)` — raw decompressed anchor object payload.
+- `RootFile::read_rntuple_anchor(name)` — parse `ROOT::RNTuple` anchor fields (header/footer offsets and sizes).
+- `RootFile::read_rntuple_envelopes(name)` — load and decompress header/footer envelope blobs referenced by the anchor.
+- `RootFile::read_rntuple_metadata_summary(name)` — parse envelope type/length/checksum and extract header summary (`ntuple_name`, `writer`, discovered payload strings, best-effort `field_tokens` pairs).
+- `RootFile::read_rntuple_schema_summary(name)` — map field tokens to structural kind (`Primitive`, `FixedArray`, `VariableArray`, `Nested`, `Unknown`), normalized scalar/element scalar types, and `fixed_len` for fixed arrays (metadata-only, no page/cluster data decode yet).
 
 TTree example:
 
@@ -780,8 +791,8 @@ pub use ns_viz::{
 
 - `DistributionsArtifact` — per-channel stacked distributions with ratio panel.
   - `channels: Vec<DistributionsChannelArtifact>`
-  - `distributions_artifact(model, data_by_channel, bin_edges_by_channel, params_prefit, params_postfit, threads, blinded_channels) -> Result<Self>`
-- `DistributionsChannelArtifact` — `bin_edges`, `data_y/yerr`, `samples: Vec<DistributionsSampleSeries>`, `total_prefit_y/postfit_y`, `ratio_y/yerr`, `ratio_policy`
+  - `distributions_artifact(model, data_by_channel, bin_edges_by_channel, params_prefit, params_postfit, postfit_uncertainties, postfit_covariance, threads, blinded_channels) -> Result<Self>`
+- `DistributionsChannelArtifact` — `bin_edges`, `data_y/yerr`, `samples: Vec<DistributionsSampleSeries>`, `total_prefit_y/postfit_y`, optional `mc_band_prefit/mc_band_postfit`, `ratio_y/yerr`, optional `ratio_band`, `ratio_policy`
 
 ### `yields` — Yield tables
 

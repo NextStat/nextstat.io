@@ -94,6 +94,12 @@ enum SummaryCiMethod {
     Bca,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ChurnCiMethod {
+    Percentile,
+    Bca,
+}
+
 #[derive(Parser)]
 #[command(name = "nextstat")]
 #[command(about = "NextStat - High-performance statistical fitting")]
@@ -874,7 +880,7 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         include_covariance: bool,
 
-        /// Render publication-ready PDF + per-plot SVGs via Python (`python -m nextstat.report ...`).
+        /// Render publication-ready PDF + per-plot SVG/PNG via Python (`python -m nextstat.report ...`).
         #[arg(long, default_value_t = false)]
         render: bool,
 
@@ -882,7 +888,7 @@ enum Commands {
         #[arg(long)]
         pdf: Option<PathBuf>,
 
-        /// Directory for per-plot SVGs (defaults to `--out-dir/svg` when `--render`).
+        /// Directory for per-plot SVGs (PNG files are written alongside SVG by default).
         #[arg(long)]
         svg_dir: Option<PathBuf>,
 
@@ -1898,6 +1904,16 @@ enum ChurnCommands {
         /// Confidence level for bootstrap CIs.
         #[arg(long, default_value = "0.95")]
         conf_level: f64,
+
+        /// Confidence interval method.
+        #[arg(long, value_enum, default_value_t = ChurnCiMethod::Percentile)]
+        ci_method: ChurnCiMethod,
+
+        /// Number of leave-one-out jackknife fits used for BCa acceleration.
+        ///
+        /// Used only when `--ci-method bca`. `0` enables auto mode (`min(n, 200)`).
+        #[arg(long, default_value_t = 200)]
+        n_jackknife: usize,
 
         /// Output file (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -2935,16 +2951,24 @@ fn main() -> Result<()> {
             ChurnCommands::RiskModel { input, conf_level, output } => {
                 churn::cmd_churn_risk_model(&input, conf_level, output.as_ref(), bundle.as_ref())
             }
-            ChurnCommands::BootstrapHr { input, n_bootstrap, seed, conf_level, output } => {
-                churn::cmd_churn_bootstrap_hr(
-                    &input,
-                    n_bootstrap,
-                    seed,
-                    conf_level,
-                    output.as_ref(),
-                    bundle.as_ref(),
-                )
-            }
+            ChurnCommands::BootstrapHr {
+                input,
+                n_bootstrap,
+                seed,
+                conf_level,
+                ci_method,
+                n_jackknife,
+                output,
+            } => churn::cmd_churn_bootstrap_hr(
+                &input,
+                n_bootstrap,
+                seed,
+                conf_level,
+                ci_method,
+                n_jackknife,
+                output.as_ref(),
+                bundle.as_ref(),
+            ),
             ChurnCommands::Uplift { input, horizon, output } => {
                 churn::cmd_churn_uplift(&input, horizon, output.as_ref(), bundle.as_ref())
             }
@@ -13478,6 +13502,8 @@ fn cmd_report(
         &bin_edges_by_channel,
         &params_prefit,
         &params_postfit,
+        fit_result.as_ref().map(|fr| fr.uncertainties.as_slice()),
+        fit_result.as_ref().and_then(|fr| fr.covariance.as_deref()),
         threads,
         blinded_ref,
     )?;
@@ -13658,6 +13684,8 @@ fn cmd_viz_distributions(
         &bin_edges_by_channel,
         &params_prefit,
         &params_postfit,
+        None,
+        None,
         threads,
         None,
     )?;

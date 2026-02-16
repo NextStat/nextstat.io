@@ -196,13 +196,19 @@ Churn / Subscription (Phase 7):
 - `nextstat churn generate-data [--n-customers 2000] [--n-cohorts 6] [--max-time 24] [--seed 42]`
 - `nextstat churn retention --input churn.json [--conf-level 0.95]`
 - `nextstat churn risk-model --input churn.json`
-- `nextstat churn bootstrap-hr --input churn.json [--n-bootstrap 1000] [--seed 42]`
+- `nextstat churn bootstrap-hr --input churn.json [--n-bootstrap 1000] [--seed 42] [--conf-level 0.95] [--ci-method percentile|bca] [--n-jackknife 200]`
 - `nextstat churn uplift --input churn.json [--horizon 12]`
 - `nextstat churn ingest --input raw.json [--observation-end 24]`
 - `nextstat churn cohort-matrix --input churn.json --periods 1,3,6,12,24`
 - `nextstat churn compare --input churn.json [--correction bh|bonferroni] [--alpha 0.05]`
 - `nextstat churn diagnostics --input churn.json [--trim 0.01] [--covariate-names name1,name2] [--out-dir artifacts/] [--output diag.json]`
 - `nextstat churn uplift-survival --input churn.json [--horizon 12] [--eval-horizons 3,6,12,24]`
+  - `churn bootstrap-hr` now supports:
+    - `--ci-method percentile|bca` (default: `percentile`)
+    - `--n-jackknife N` for BCa acceleration estimation (used only for `bca`)
+  - Output includes method metadata (`ci_method_requested`, per-coefficient `ci_method`)
+    and per-coefficient diagnostics under `coefficients[].ci_diagnostics`
+    with fallback reason when BCa falls back to percentile.
 
 ## GPU acceleration
 

@@ -14,6 +14,11 @@ use crate::key::{Key, KeyInfo};
 use crate::lazy_branch_reader::LazyBranchReader;
 use crate::objects;
 use crate::rbuffer::RBuffer;
+use crate::rntuple::{
+    RNTUPLE_ENVELOPE_TYPE_FOOTER, RNTUPLE_ENVELOPE_TYPE_HEADER, RNTupleAnchor,
+    RNTupleMetadataSummary, RNTupleSchemaSummary, parse_rntuple_anchor_payload,
+    parse_rntuple_envelope, parse_rntuple_header_summary, parse_rntuple_schema_summary,
+};
 use crate::tree::Tree;
 
 /// Parsed ROOT file header.
@@ -42,6 +47,28 @@ pub struct RootFile {
     path: PathBuf,
     /// LRU cache for decompressed basket payloads (shared across all branch readers).
     basket_cache: BasketCache,
+}
+
+/// Public info about an RNTuple-like object discovered in a ROOT directory key list.
+#[derive(Debug, Clone)]
+pub struct RNTupleInfo {
+    /// Object name.
+    pub name: String,
+    /// Raw ROOT class name as stored in TKey metadata.
+    pub class_name: String,
+    /// Cycle number.
+    pub cycle: u16,
+}
+
+/// Decompressed RNTuple metadata envelopes resolved from the anchor.
+#[derive(Debug, Clone)]
+pub struct RNTupleEnvelopeBytes {
+    /// Parsed anchor values used for locating metadata blobs.
+    pub anchor: RNTupleAnchor,
+    /// Decompressed header envelope bytes.
+    pub header: Vec<u8>,
+    /// Decompressed footer envelope bytes.
+    pub footer: Vec<u8>,
 }
 
 const ROOT_MAGIC: &[u8; 4] = b"root";
@@ -177,6 +204,20 @@ impl RootFile {
         Ok(dir.keys().iter().map(KeyInfo::from_key).collect())
     }
 
+    /// List top-level keys that look like RNTuple objects.
+    ///
+    /// ROOT class names vary across producers, so detection is best-effort and
+    /// based on class-name matching (`*RNTuple*`, case-insensitive).
+    pub fn list_rntuples(&self) -> Result<Vec<RNTupleInfo>> {
+        let keys = self.list_keys()?;
+        Ok(keys.into_iter().filter_map(|k| to_rntuple_info(&k)).collect())
+    }
+
+    /// Fast check for whether this file exposes any top-level RNTuple key.
+    pub fn has_rntuples(&self) -> Result<bool> {
+        Ok(!self.list_rntuples()?.is_empty())
+    }
+
     /// Get a histogram by its full path (e.g. `"subdir/hist_name"`).
     pub fn get_histogram(&self, path: &str) -> Result<Histogram> {
         let dir = self.read_top_directory()?;
@@ -294,6 +335,29 @@ impl RootFile {
         read_key_payload_from(&self.data, key)
     }
 
+    fn read_file_range(&self, seek: u64, n_bytes: u64) -> Result<&[u8]> {
+        let start: usize = seek
+            .try_into()
+            .map_err(|_| RootError::Deserialization(format!("seek offset too large: {}", seek)))?;
+        let len: usize = n_bytes.try_into().map_err(|_| {
+            RootError::Deserialization(format!("range length too large: {}", n_bytes))
+        })?;
+        let end = start.checked_add(len).ok_or_else(|| {
+            RootError::Deserialization(format!(
+                "range overflow for seek={} n_bytes={}",
+                seek, n_bytes
+            ))
+        })?;
+        if end > self.data.len() {
+            return Err(RootError::BufferUnderflow {
+                offset: start,
+                need: len,
+                have: self.data.len().saturating_sub(start),
+            });
+        }
+        Ok(&self.data[start..end])
+    }
+
     /// Access the raw file data.
     #[allow(dead_code)]
     pub fn file_data(&self) -> &[u8] {
@@ -322,6 +386,65 @@ impl RootFile {
 
         let payload = self.read_key_payload(key)?;
         objects::read_tree(&payload)
+    }
+
+    // ── RNTuple API (foundation) ─────────────────────────────
+
+    /// Read raw payload bytes for an RNTuple-like key by name.
+    ///
+    /// This is a foundation API used by upcoming metadata/schema parser stages.
+    /// It validates the key class as RNTuple-like and returns decompressed object bytes.
+    pub fn read_rntuple_payload(&self, name: &str) -> Result<Vec<u8>> {
+        let dir = self.read_top_directory()?;
+        let key = dir.find_key(name).ok_or_else(|| RootError::KeyNotFound(name.to_string()))?;
+        if !is_rntuple_class_name(&key.class_name) {
+            return Err(RootError::UnsupportedClass(format!(
+                "'{}' is {} not an RNTuple-like class",
+                name, key.class_name
+            )));
+        }
+        self.read_key_payload(key)
+    }
+
+    /// Parse anchor metadata from an RNTuple-like key by name.
+    pub fn read_rntuple_anchor(&self, name: &str) -> Result<RNTupleAnchor> {
+        let payload = self.read_rntuple_payload(name)?;
+        parse_rntuple_anchor_payload(&payload)
+    }
+
+    /// Read and decompress RNTuple header/footer envelopes referenced by the anchor.
+    pub fn read_rntuple_envelopes(&self, name: &str) -> Result<RNTupleEnvelopeBytes> {
+        let anchor = self.read_rntuple_anchor(name)?;
+
+        let header_comp = self.read_file_range(anchor.seek_header, anchor.nbytes_header)?;
+        let footer_comp = self.read_file_range(anchor.seek_footer, anchor.nbytes_footer)?;
+
+        let header = decompress_ntuple_blob(header_comp, anchor.len_header as usize)?;
+        let footer = decompress_ntuple_blob(footer_comp, anchor.len_footer as usize)?;
+
+        Ok(RNTupleEnvelopeBytes { anchor, header, footer })
+    }
+
+    /// Parse metadata summary from anchor and header/footer envelopes.
+    pub fn read_rntuple_metadata_summary(&self, name: &str) -> Result<RNTupleMetadataSummary> {
+        let envelopes = self.read_rntuple_envelopes(name)?;
+        let header_envelope =
+            parse_rntuple_envelope(&envelopes.header, Some(RNTUPLE_ENVELOPE_TYPE_HEADER))?;
+        let footer_envelope =
+            parse_rntuple_envelope(&envelopes.footer, Some(RNTUPLE_ENVELOPE_TYPE_FOOTER))?;
+        let header_summary = parse_rntuple_header_summary(&envelopes.header)?;
+        Ok(RNTupleMetadataSummary {
+            anchor: envelopes.anchor,
+            header_envelope,
+            footer_envelope,
+            header_summary,
+        })
+    }
+
+    /// Parse best-effort schema summary from RNTuple metadata.
+    pub fn read_rntuple_schema_summary(&self, name: &str) -> Result<RNTupleSchemaSummary> {
+        let metadata = self.read_rntuple_metadata_summary(name)?;
+        Ok(parse_rntuple_schema_summary(&metadata.header_summary))
     }
 
     /// Create a [`BranchReader`] for the named branch (with basket caching).
@@ -394,6 +517,25 @@ fn parse_indexed_branch_name(s: &str) -> Option<(&str, usize)> {
     Some((base, idx))
 }
 
+fn is_rntuple_class_name(class_name: &str) -> bool {
+    class_name.to_ascii_lowercase().contains("rntuple")
+}
+
+fn to_rntuple_info(key: &KeyInfo) -> Option<RNTupleInfo> {
+    if !is_rntuple_class_name(&key.class_name) {
+        return None;
+    }
+    Some(RNTupleInfo {
+        name: key.name.clone(),
+        class_name: key.class_name.clone(),
+        cycle: key.cycle,
+    })
+}
+
+fn decompress_ntuple_blob(blob: &[u8], expected_len: usize) -> Result<Vec<u8>> {
+    if blob.len() == expected_len { Ok(blob.to_vec()) } else { decompress(blob, expected_len) }
+}
+
 /// Shared helper: read and decompress a TKey payload from raw file bytes.
 pub(crate) fn read_key_payload_from(data: &[u8], key: &Key) -> Result<Vec<u8>> {
     let seek = key.seek_key as usize;
@@ -437,5 +579,28 @@ mod tests {
         let data = b"root".to_vec();
         let result = RootFile::from_bytes(data, PathBuf::from("test.root"));
         assert!(matches!(result, Err(RootError::BadMagic)));
+    }
+
+    #[test]
+    fn rntuple_class_name_matching_is_case_insensitive() {
+        assert!(is_rntuple_class_name("ROOT::Experimental::RNTuple"));
+        assert!(is_rntuple_class_name("rntuple"));
+        assert!(!is_rntuple_class_name("TTree"));
+    }
+
+    #[test]
+    fn to_rntuple_info_filters_non_rntuple_keys() {
+        let keep = KeyInfo {
+            name: "Events".into(),
+            class_name: "ROOT::Experimental::RNTuple".into(),
+            cycle: 1,
+        };
+        let drop = KeyInfo { name: "tree".into(), class_name: "TTree".into(), cycle: 1 };
+
+        let info = to_rntuple_info(&keep).expect("expected rntuple key");
+        assert_eq!(info.name, "Events");
+        assert_eq!(info.class_name, "ROOT::Experimental::RNTuple");
+        assert_eq!(info.cycle, 1);
+        assert!(to_rntuple_info(&drop).is_none());
     }
 }

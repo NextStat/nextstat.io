@@ -1,0 +1,25 @@
+# NextStat HTCondor: single fit job
+#
+# Strategy A (shared filesystem) example.
+# Assumes NextStat is installed in a shared venv at /shared/nextstat-env.
+#
+# Usage:
+#   condor_submit simple_fit.sub
+
+universe   = vanilla
+executable = /shared/nextstat-env/bin/nextstat
+
+arguments  = fit --input workspace.json --output fit_result.json --threads 1
+
+# Input: workspace on shared FS (no transfer needed)
+should_transfer_files = NO
+
+output = logs/fit_$(Cluster).out
+error  = logs/fit_$(Cluster).err
+log    = logs/fit_$(Cluster).log
+
+request_cpus   = 1
+request_memory = 2GB
+request_disk   = 500MB
+
+queue 1
