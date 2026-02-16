@@ -109,6 +109,10 @@ coverage.xml
 criterion/
 *.bench
 benchmarks/unbinned/artifacts/
+bench_results/**/churn_data.json
+bench_results/**/raw_runs.json
+bench_results/**/summary.md
+bench_results/**/unbinned_spec_summary_ci.json
 # nextstat-public-benchmarks contains both source (tracked) and generated outputs.
 # Do NOT ignore the whole tree, otherwise new benchmark code can be silently hidden.
 benchmarks/nextstat-public-benchmarks/artifacts/

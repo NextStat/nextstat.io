@@ -183,14 +183,13 @@ fn isokinetic_leapfrog_step(
         state.x[i] += eps * inv_mass[i].sqrt() * state.u[i];
     }
 
-    // Recompute potential and gradient at new position
-    let new_potential = match posterior.logpdf_unconstrained(&state.x) {
-        Ok(lp) if lp.is_finite() => -lp,
-        _ => return Err(ns_core::Error::Validation("non-finite potential in leapfrog".into())),
-    };
-    let new_grad = posterior.grad_unconstrained(&state.x)?;
-    state.potential = new_potential;
-    state.grad_potential = new_grad.iter().map(|g| -g).collect();
+    // Recompute potential and gradient at new position (fused path).
+    let (new_lp, new_grad_lp) = posterior.logpdf_grad_unconstrained(&state.x)?;
+    if !new_lp.is_finite() {
+        return Err(ns_core::Error::Validation("non-finite potential in leapfrog".into()));
+    }
+    state.potential = -new_lp;
+    state.grad_potential = new_grad_lp.iter().map(|g| -g).collect();
 
     // --- Second B-step (ε/2) ---
     delta_k += b_step(state, eps * 0.5, inv_mass, dm1);
@@ -702,10 +701,9 @@ pub fn sample_mams<M: LogDensityModel>(
         }
     };
 
-    // Compute initial potential + gradient
-    let init_logpdf = posterior.logpdf_unconstrained(&z_init)?;
+    // Compute initial potential + gradient in one fused pass.
+    let (init_logpdf, init_grad_lp) = posterior.logpdf_grad_unconstrained(&z_init)?;
     let init_potential = if init_logpdf.is_finite() { -init_logpdf } else { 1e6 };
-    let init_grad_lp = posterior.grad_unconstrained(&z_init)?;
     let init_grad: Vec<f64> = init_grad_lp.iter().map(|g| -g).collect();
 
     // Initialize velocity: random unit vector on S^{d-1}
@@ -910,6 +908,7 @@ pub fn sample_mams_multichain(
 
     let n_warmup = config.n_warmup;
     let n_samples = config.n_samples;
+    crate::perf_hints::set_mams_chain_hint(n_chains);
 
     let chains: Vec<Result<crate::chain::Chain>> = (0..n_chains)
         .into_par_iter()
@@ -918,6 +917,7 @@ pub fn sample_mams_multichain(
             sample_mams(model, config.clone(), chain_seed)
         })
         .collect();
+    crate::perf_hints::clear_mams_chain_hint();
 
     let chains: Vec<crate::chain::Chain> = chains.into_iter().collect::<Result<Vec<_>>>()?;
     let param_names: Vec<String> = model.parameter_names();

@@ -163,6 +163,95 @@ __device__ void a_step(
     }
 }
 
+/* ---------- Riemannian steps for Neal Funnel (model_id=5) --------------- */
+/*
+ * Position-dependent metric: G = diag(1/9, exp(-v), ..., exp(-v))
+ * sqrt(G^{-1}) = diag(3, exp(v/2), ..., exp(v/2))
+ *
+ * These replace b_step/a_step when model_id==5 and riemannian flag is set.
+ */
+
+// Riemannian B-step for Neal Funnel.
+// Hybrid Riemannian B-step for Neal Funnel:
+//   v (i=0): standard preconditioning via inv_mass[0] from Welford adaptation
+//   x_i (i>0): position-dependent metric exp(v/2) matching funnel geometry
+__device__ double b_step_riemannian_funnel(
+    double* u, const double* grad, const double* x,
+    const double* inv_mass, double half_eps, int dim, double dm1)
+{
+    double v = x[0];
+    double v_clamped = fmax(fmin(v, 20.0), -20.0);
+    double ev2 = exp(v_clamped * 0.5);
+
+    // Hybrid preconditioned gradient:
+    //   g_tilde[0] = sqrt(inv_mass[0]) * grad[0]  (standard)
+    //   g_tilde[i] = exp(v/2) * grad[i]           (Riemannian)
+    double g_norm_sq = 0.0;
+    double sqrt_ginv[MAX_DIM];
+    sqrt_ginv[0] = sqrt(inv_mass[0]);
+    for (int i = 1; i < dim; i++) sqrt_ginv[i] = ev2;
+
+    for (int i = 0; i < dim; i++) {
+        double gi = sqrt_ginv[i] * grad[i];
+        g_norm_sq += gi * gi;
+    }
+    double g_norm = sqrt(g_norm_sq);
+    if (g_norm < 1e-30) return 0.0;
+
+    double e_dot_u = 0.0;
+    for (int i = 0; i < dim; i++) {
+        double ei = sqrt_ginv[i] * grad[i] / g_norm;
+        e_dot_u += ei * u[i];
+    }
+    if (e_dot_u > 1.0) e_dot_u = 1.0;
+    if (e_dot_u < -1.0) e_dot_u = -1.0;
+
+    double delta = half_eps * g_norm / dm1;
+    double zeta_m1 = expm1(-2.0 * delta);
+    double c_u = 2.0 + zeta_m1;
+    double c_e = -zeta_m1;
+
+    double u_norm_sq = 0.0;
+    for (int i = 0; i < dim; i++) {
+        double ei = sqrt_ginv[i] * grad[i] / g_norm;
+        u[i] = u[i] * c_u - ei * c_e;
+        u_norm_sq += u[i] * u[i];
+    }
+    double u_norm = sqrt(u_norm_sq);
+    if (u_norm > 1e-12) {
+        double inv = 1.0 / u_norm;
+        for (int i = 0; i < dim; i++) u[i] *= inv;
+    } else {
+        for (int i = 0; i < dim; i++) {
+            u[i] = -sqrt_ginv[i] * grad[i] / g_norm;
+        }
+    }
+
+    double arg = 0.5 * zeta_m1 * (1.0 + e_dot_u);
+    if (arg < -1.0 + 1e-50) arg = -1.0 + 1e-50;
+    return dm1 * (delta + log1p(arg));
+}
+
+// Hybrid Riemannian A-step for Neal Funnel:
+//   v (i=0): standard scaling via inv_mass[0]
+//   x_i (i>0): position-dependent exp(v/2), sub-stepped to track v changes
+__device__ void a_step_riemannian_funnel(
+    double* x, const double* u, const double* inv_mass, double eps, int dim)
+{
+    double sqrt_m0 = sqrt(inv_mass[0]);
+    const int K_SUB = 4;
+    double sub_eps = eps / (double)K_SUB;
+    for (int k = 0; k < K_SUB; k++) {
+        double v = x[0];
+        double v_clamped = fmax(fmin(v, 20.0), -20.0);
+        double ev2 = exp(v_clamped * 0.5);
+        x[0] += sub_eps * sqrt_m0 * u[0];
+        for (int i = 1; i < dim; i++) {
+            x[i] += sub_eps * ev2 * u[i];
+        }
+    }
+}
+
 /* ---------- Main kernel -------------------------------------------------- */
 
 extern "C" __global__ void mams_transition(
@@ -268,17 +357,24 @@ extern "C" __global__ void mams_transition(
     // ---------- 3. Isokinetic leapfrog trajectory ----------
     double total_delta_k = 0.0;
     int divergent = 0;
+    int is_riemannian = (model_id == 5);
 
     for (int s = 0; s < n_steps; s++) {
-        // B(eps/2)
-        total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
-        // A(eps)
-        a_step(x, u, inv_mass, eps, dim);
+        if (is_riemannian) {
+            total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
+            a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
+        } else {
+            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+            a_step(x, u, inv_mass, eps, dim);
+        }
         // Recompute gradient + potential
         user_grad(x, grad, dim, model_data);
         potential = user_nll(x, dim, model_data);
-        // B(eps/2)
-        total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+        if (is_riemannian) {
+            total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
+        } else {
+            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+        }
 
         // Early termination check (skip on first call when potential_old = NaN)
         double current_w = (potential - potential_old) + total_delta_k;
@@ -478,13 +574,23 @@ extern "C" __global__ void mams_transition_fused(
         // --- 3. Isokinetic leapfrog ---
         double total_delta_k = 0.0;
         int divergent = 0;
+        int is_riemannian = (model_id == 5);
 
         for (int s = 0; s < n_steps; s++) {
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
-            a_step(x, u, inv_mass, eps, dim);
+            if (is_riemannian) {
+                total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
+                a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
+            } else {
+                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+                a_step(x, u, inv_mass, eps, dim);
+            }
             user_grad(x, grad_reg, dim, model_data);
             potential = user_nll(x, dim, model_data);
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            if (is_riemannian) {
+                total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
+            } else {
+                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            }
 
             double current_w = (potential - potential_old) + total_delta_k;
             if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0)) {
@@ -668,7 +774,7 @@ extern "C" __global__ void mams_transition_warp(
     double* s_X_col = s_data;               // [n_feat × n_obs] column-major
     double* s_y = s_data + n_obs * n_feat;  // [n_obs]
 
-    if (warp_use_shmem && n_obs > 0 && n_feat > 0) {
+    if (warp_use_shmem == 1 && n_obs > 0 && n_feat > 0) {
         const double* X_col = model_data + 2 + n_obs * n_feat + n_obs;
         const double* y_src = model_data + 2 + n_obs * n_feat;
 
@@ -755,17 +861,24 @@ extern "C" __global__ void mams_transition_warp(
     // ---------- 3. Isokinetic leapfrog (warp-cooperative grad/nll) ----------
     double total_delta_k = 0.0;
     int divergent = 0;
+    int is_riemannian = (model_id == 5);
 
     for (int s = 0; s < n_steps; s++) {
-        // b_step: identical across all lanes (deterministic, O(dim))
-        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
-        // a_step: identical across all lanes
-        a_step(x, u, inv_mass, eps, dim);
+        if (is_riemannian) {
+            total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
+            a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
+        } else {
+            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            a_step(x, u, inv_mass, eps, dim);
+        }
         // Warp-cooperative grad + nll (single fused callback)
         potential = user_grad_nll_warp(
             x, grad_reg, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, warp_use_shmem);
-        // b_step again
-        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+        if (is_riemannian) {
+            total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
+        } else {
+            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+        }
 
         double current_w = (potential - potential_old) + total_delta_k;
         if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0)) {

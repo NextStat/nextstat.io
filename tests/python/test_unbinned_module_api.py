@@ -86,11 +86,11 @@ def test_analysis_methods_delegate_to_core(monkeypatch) -> None:
         return [{"name": "theta"}]
 
     monkeypatch.setattr(ns_unbinned, "_fit", _fake_fit)
-    monkeypatch.setattr(ns_unbinned, "unbinned_profile_scan", _fake_scan)
-    monkeypatch.setattr(ns_unbinned, "unbinned_fit_toys", _fake_fit_toys)
-    monkeypatch.setattr(ns_unbinned, "unbinned_hypotest", _fake_hypotest)
-    monkeypatch.setattr(ns_unbinned, "unbinned_hypotest_toys", _fake_hypotest_toys)
-    monkeypatch.setattr(ns_unbinned, "unbinned_ranking", _fake_ranking)
+    monkeypatch.setattr(ns_unbinned, "_profile_scan", _fake_scan)
+    monkeypatch.setattr(ns_unbinned, "_fit_toys", _fake_fit_toys)
+    monkeypatch.setattr(ns_unbinned, "_hypotest", _fake_hypotest)
+    monkeypatch.setattr(ns_unbinned, "_hypotest_toys", _fake_hypotest_toys)
+    monkeypatch.setattr(ns_unbinned, "_ranking", _fake_ranking)
 
     assert analysis.fit(init_pars=(1.0, -0.2)) == {"kind": "fit"}
     assert analysis.fit_toys(params=[1.1, 0.0], n_toys=25, seed=7) == [{"kind": "fit_toys"}]
@@ -124,7 +124,7 @@ def test_fit_toys_defaults_to_suggested_init(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return []
 
-    monkeypatch.setattr(ns_unbinned, "unbinned_fit_toys", _fake_fit_toys)
+    monkeypatch.setattr(ns_unbinned, "_fit_toys", _fake_fit_toys)
 
     assert analysis.fit_toys(n_toys=3, seed=11) == []
     assert captured["model"] is model

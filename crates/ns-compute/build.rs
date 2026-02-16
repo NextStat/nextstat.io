@@ -10,8 +10,18 @@ fn main() {
     {
         use std::io::Write as _;
 
+        println!("cargo:rerun-if-env-changed=NS_COMPUTE_FORCE_STUB_PTX");
+        let force_stub_ptx = std::env::var("NS_COMPUTE_FORCE_STUB_PTX")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
         // Find nvcc: check CUDA_PATH/CUDA_HOME, then /usr/local/cuda, then PATH.
-        let nvcc = {
+        let nvcc = if force_stub_ptx {
+            // Make Command::new() fail with NotFound so each kernel path
+            // falls back to stub PTX generation.
+            String::from("__ns_compute_force_stub_nvcc__")
+        } else {
             let candidates = [
                 std::env::var("CUDA_PATH").ok().map(|p| format!("{}/bin/nvcc", p)),
                 std::env::var("CUDA_HOME").ok().map(|p| format!("{}/bin/nvcc", p)),
@@ -26,6 +36,11 @@ fn main() {
             }
             found
         };
+        if force_stub_ptx {
+            println!(
+                "cargo:warning=ns-compute: NS_COMPUTE_FORCE_STUB_PTX=1, writing stub PTX for CUDA kernels"
+            );
+        }
 
         let kernel_dir = "kernels";
         let common_header = format!("{}/common.cuh", kernel_dir);
@@ -272,5 +287,7 @@ fn main() {
             Err(e) => panic!("failed to spawn nvcc for {}: {}", mams_src, e),
         }
         println!("cargo:rustc-env=CUDA_MAMS_PTX_PATH={}", mams_ptx);
+
+        // glm_cublas_aux is NVRTC-JIT compiled at runtime (see cuda_glm_cublas.rs).
     }
 }

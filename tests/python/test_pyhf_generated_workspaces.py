@@ -255,8 +255,9 @@ def test_generated_workspaces_upper_limit_root_parity(ns_timing):
 
         with ns_timing.time("nextstat"):
             ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
-            ns_obs, ns_exp = ns_infer.upper_limits_root(
+            ns_obs, ns_exp = ns_infer.upper_limit(
                 ns_model,
+                method="root",
                 alpha=0.05,
                 lo=0.0,
                 hi=float(hi),

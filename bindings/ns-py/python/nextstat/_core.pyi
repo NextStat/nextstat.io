@@ -52,6 +52,241 @@ class SamplerResult(TypedDict):
     n_warmup: int
     n_samples: int
 
+# ---------------------------------------------------------------------------
+# Structured return types for inference results
+# ---------------------------------------------------------------------------
+
+class RankingEntry(TypedDict):
+    name: str
+    delta_mu_up: float
+    delta_mu_down: float
+    pull: float
+    constraint: float
+
+class HypotestResult(TypedDict):
+    cls: float
+    clsb: float
+    clb: float
+
+class HypotestToysMetaResult(TypedDict):
+    mu_test: float
+    cls: float
+    clsb: float
+    clb: float
+    q_obs: float
+    mu_hat: float
+    n_toys_b: int
+    n_toys_sb: int
+    n_error_b: int
+    n_error_sb: int
+    n_nonconverged_b: int
+    n_nonconverged_sb: int
+    expected: Optional[List[float]]
+
+class ProfileScanPoint(TypedDict, total=False):
+    mu: float
+    q_mu: float
+    nll_mu: float
+    converged: bool
+    n_iter: int
+    params: Optional[List[float]]
+    message: Optional[str]
+    n_fev: Optional[int]
+    n_gev: Optional[int]
+    initial_cost: Optional[float]
+    grad_l2: Optional[float]
+
+class ProfileScanResult(TypedDict):
+    poi_index: int
+    mu_hat: float
+    nll_hat: float
+    points: List[ProfileScanPoint]
+
+class ProfileCurveResult(TypedDict):
+    poi_index: int
+    mu_hat: float
+    nll_hat: float
+    mu_values: List[float]
+    q_mu_values: List[float]
+    twice_delta_nll: List[float]
+    points: List[ProfileScanPoint]
+
+class UnbinnedHypotestResult(TypedDict):
+    input_schema_version: str
+    poi_index: int
+    mu_test: float
+    mu_hat: float
+    nll_hat: float
+    nll_mu: float
+    q_mu: float
+    q0: Optional[float]
+    nll_mu0: Optional[float]
+    converged_hat: bool
+    converged_mu: bool
+    n_iter_hat: int
+    n_iter_mu: int
+
+class WorkspaceAuditResult(TypedDict):
+    n_channels: int
+    n_samples: int
+    n_parameters: int
+    n_bins_total: int
+    modifiers: Dict[str, int]
+    unsupported: List[str]
+
+# ---------------------------------------------------------------------------
+# Structured return types for econometrics
+# ---------------------------------------------------------------------------
+
+class PanelFeResult(TypedDict):
+    coefficients: List[float]
+    se_ols: List[float]
+    se_cluster: Optional[List[float]]
+    r_squared_within: float
+    n_obs: int
+    n_entities: int
+    n_time_periods: int
+    n_regressors: int
+    df_absorbed: int
+    rss: float
+
+class DidResult(TypedDict):
+    att: float
+    se: float
+    se_cluster: Optional[float]
+    t_stat: float
+    mean_treated_post: float
+    mean_treated_pre: float
+    mean_control_post: float
+    mean_control_pre: float
+    n_obs: int
+
+class EventStudyResult(TypedDict):
+    coefficients: List[float]
+    se_cluster: List[float]
+    lag_labels: List[int]
+    n_obs: int
+
+class Iv2slsResult(TypedDict):
+    coefficients: List[float]
+    se: List[float]
+    se_cluster: Optional[List[float]]
+    names: List[str]
+    n_obs: int
+
+# ---------------------------------------------------------------------------
+# Structured return types for time series
+# ---------------------------------------------------------------------------
+
+class KalmanFilterResult(TypedDict):
+    filtered_states: List[List[float]]
+    filtered_covs: List[List[List[float]]]
+    log_likelihood: float
+
+class KalmanSmoothResult(TypedDict):
+    smoothed_states: List[List[float]]
+    smoothed_covs: List[List[List[float]]]
+    log_likelihood: float
+
+class KalmanEmResult(TypedDict):
+    model: Dict[str, Any]
+    log_likelihood: float
+    n_iter: int
+    converged: bool
+
+class KalmanForecastResult(TypedDict):
+    states: List[List[float]]
+    observations: List[List[float]]
+    intervals: Optional[Dict[str, Any]]
+
+class KalmanSimulateResult(TypedDict):
+    states: List[List[float]]
+    observations: List[List[float]]
+
+# ---------------------------------------------------------------------------
+# Structured return types for meta-analysis & actuarial
+# ---------------------------------------------------------------------------
+
+class MetaAnalysisResult(TypedDict):
+    estimate: float
+    se: float
+    ci_lower: float
+    ci_upper: float
+    weights: List[float]
+    z: float
+    p_value: float
+    q_statistic: Optional[float]
+    i_squared: Optional[float]
+    tau_squared: Optional[float]
+
+class ChainLadderResult(TypedDict):
+    development_factors: List[float]
+    full_triangle: List[List[float]]
+    reserves: List[float]
+    total_reserve: float
+
+class MackChainLadderResult(TypedDict):
+    development_factors: List[float]
+    full_triangle: List[List[float]]
+    reserves: List[float]
+    total_reserve: float
+    se_reserves: List[float]
+    se_total: float
+    ci_lower: List[float]
+    ci_upper: List[float]
+
+# ---------------------------------------------------------------------------
+# Structured return types for survival
+# ---------------------------------------------------------------------------
+
+class KaplanMeierResult(TypedDict):
+    times: List[float]
+    survival: List[float]
+    ci_lower: List[float]
+    ci_upper: List[float]
+    at_risk: List[int]
+    events: List[int]
+
+class LogRankTestResult(TypedDict):
+    statistic: float
+    p_value: float
+    df: int
+
+# ---------------------------------------------------------------------------
+# Structured return types for CLs curve
+# ---------------------------------------------------------------------------
+
+class ClsCurvePoint(TypedDict):
+    mu: float
+    cls: float
+    expected: List[float]
+
+class ClsCurveResult(TypedDict):
+    alpha: float
+    nsigma_order: List[float]
+    obs_limit: float
+    exp_limits: List[float]
+    mu_values: List[float]
+    cls_obs: List[float]
+    cls_exp: List[List[float]]
+    points: List[ClsCurvePoint]
+
+# ---------------------------------------------------------------------------
+# Structured return types for causal inference
+# ---------------------------------------------------------------------------
+
+class AipwAteResult(TypedDict):
+    ate: float
+    se: float
+    ci_lower: float
+    ci_upper: float
+    n_trimmed: int
+
+class RosenbaumBoundsResult(TypedDict):
+    gammas: List[float]
+    p_values_upper: List[float]
+    p_values_lower: List[float]
+
 # `HistFactoryModel` accepts Python sequences (list/tuple/array('d')) and also
 # buffer-protocol objects for performance. Type stubs stay conservative and
 # describe the common supported surfaces without using `Any`.
@@ -977,7 +1212,7 @@ class MaximumLikelihoodEstimator:
     def ranking(
         self,
         model: HistFactoryModel,
-    ) -> List[Dict[str, Any]]: ...
+    ) -> List[RankingEntry]: ...
     def q0_like_loss_and_grad_nominal(
         self,
         model: HistFactoryModel,
@@ -1051,25 +1286,25 @@ def meta_fixed(
     *,
     labels: Optional[List[str]] = ...,
     conf_level: float = ...,
-) -> Dict[str, Any]: ...
+) -> MetaAnalysisResult: ...
 def meta_random(
     estimates: List[float],
     standard_errors: List[float],
     *,
     labels: Optional[List[str]] = ...,
     conf_level: float = ...,
-) -> Dict[str, Any]: ...
+) -> MetaAnalysisResult: ...
 def chain_ladder(
     triangle: List[List[float]],
-) -> Dict[str, Any]: ...
+) -> ChainLadderResult: ...
 def mack_chain_ladder(
     triangle: List[List[float]],
     *,
     conf_level: float = ...,
-) -> Dict[str, Any]: ...
+) -> MackChainLadderResult: ...
 def hypotest_toys(
     poi_test: float,
-    model: HistFactoryModel,
+    model: Union[HistFactoryModel, UnbinnedModel],
     *,
     n_toys: int = ...,
     seed: int = ...,
@@ -1077,9 +1312,7 @@ def hypotest_toys(
     data: Optional[List[float]] = ...,
     return_tail_probs: bool = ...,
     return_meta: bool = ...,
-) -> Any: ...
-def ranking_gpu(model: HistFactoryModel) -> List[Dict[str, Any]]: ...
-def ranking_metal(model: HistFactoryModel) -> List[Dict[str, Any]]: ...
+) -> Union[float, Tuple[float, List[float]], HypotestToysMetaResult]: ...
 
 def read_root_histogram(root_path: str, hist_path: str) -> Dict[str, Any]: ...
 @overload
@@ -1174,37 +1407,17 @@ def fit_batch(
 @overload
 def fit_batch(models_or_model: HistFactoryModel, datasets: List[List[float]]) -> List[FitResult]: ...
 def fit_toys(
-    model: HistFactoryModel,
-    params: List[float],
-    *,
-    n_toys: int = ...,
-    seed: int = ...,
-) -> List[FitResult]: ...
-def unbinned_fit_toys(
-    model: UnbinnedModel,
-    params: List[float],
-    *,
-    n_toys: int = ...,
-    seed: int = ...,
-    init_params: Optional[List[float]] = ...,
-    max_retries: int = ...,
-    max_iter: int = ...,
-    compute_hessian: bool = ...,
-) -> List[FitResult]: ...
-def fit_toys_batch(
-    model: HistFactoryModel,
-    params: List[float],
-    *,
-    n_toys: int = ...,
-    seed: int = ...,
-) -> List[FitResult]: ...
-def fit_toys_batch_gpu(
-    model: HistFactoryModel,
+    model: Union[HistFactoryModel, UnbinnedModel],
     params: List[float],
     *,
     n_toys: int = ...,
     seed: int = ...,
     device: str = "cpu",
+    batch: bool = ...,
+    compute_hessian: bool = ...,
+    max_retries: int = ...,
+    max_iter: int = ...,
+    init_params: Optional[List[float]] = ...,
 ) -> List[FitResult]: ...
 def set_eval_mode(mode: str) -> None: ...
 def set_threads(threads: int) -> bool: ...
@@ -1212,7 +1425,7 @@ def get_eval_mode() -> str: ...
 def has_accelerate() -> bool: ...
 def has_cuda() -> bool: ...
 def has_metal() -> bool: ...
-def workspace_audit(json_str: str) -> Dict[str, Any]: ...
+def workspace_audit(json_str: str) -> WorkspaceAuditResult: ...
 def asimov_data(model: HistFactoryModel, params: List[float]) -> List[float]: ...
 def poisson_toys(
     model: HistFactoryModel,
@@ -1222,33 +1435,11 @@ def poisson_toys(
     seed: int = ...,
 ) -> List[List[float]]: ...
 def ranking(
-    model: HistFactoryModel,
-) -> List[Dict[str, Any]]: ...
-
-def unbinned_ranking(
-    model: UnbinnedModel,
-) -> List[Dict[str, Any]]: ...
-
-def unbinned_profile_scan(
-    model: UnbinnedModel,
-    mu_values: List[float],
-) -> Dict[str, Any]: ...
-
-def unbinned_hypotest(
-    mu_test: float,
-    model: UnbinnedModel,
-) -> Dict[str, Any]: ...
-
-def unbinned_hypotest_toys(
-    poi_test: float,
-    model: UnbinnedModel,
+    model: Union[HistFactoryModel, UnbinnedModel],
     *,
-    n_toys: int = ...,
-    seed: int = ...,
-    expected_set: bool = ...,
-    return_tail_probs: bool = ...,
-    return_meta: bool = ...,
-) -> Any: ...
+    device: str = "cpu",
+) -> List[RankingEntry]: ...
+
 
 def rk4_linear(
     a: List[List[float]],
@@ -1264,33 +1455,35 @@ def ols_fit(x: List[List[float]], y: List[float], *, include_intercept: bool = .
 
 def hypotest(
     poi_test: float,
-    model: HistFactoryModel,
+    model: Union[HistFactoryModel, UnbinnedModel],
     *,
     data: Optional[List[float]] = ...,
     return_tail_probs: bool = ...,
-) -> Union[float, Tuple[float, List[float]]]: ...
+) -> Union[float, Tuple[float, List[float]], UnbinnedHypotestResult]: ...
 
 
 def profile_scan(
-    model: HistFactoryModel,
+    model: Union[HistFactoryModel, UnbinnedModel],
     mu_values: List[float],
     *,
     data: Optional[List[float]] = ...,
     device: str = "cpu",
     return_params: bool = ...,
-) -> Dict[str, Any]: ...
+    return_curve: bool = ...,
+) -> Union[ProfileScanResult, ProfileCurveResult]: ...
 
 
 def upper_limit(
     model: HistFactoryModel,
     *,
+    method: str = "bisect",
     alpha: float = ...,
     lo: float = ...,
     hi: Optional[float] = ...,
     rtol: float = ...,
     max_iter: int = ...,
     data: Optional[List[float]] = ...,
-) -> float: ...
+) -> Union[float, Tuple[float, List[float]]]: ...
 
 
 def upper_limits(
@@ -1302,16 +1495,6 @@ def upper_limits(
 ) -> Tuple[float, List[float]]: ...
 
 
-def upper_limits_root(
-    model: HistFactoryModel,
-    *,
-    alpha: float = ...,
-    lo: float = ...,
-    hi: Optional[float] = ...,
-    rtol: float = ...,
-    max_iter: int = ...,
-    data: Optional[List[float]] = ...,
-) -> Tuple[float, List[float]]: ...
 
 
 @overload
@@ -1503,27 +1686,21 @@ def cls_curve(
     *,
     alpha: float = ...,
     data: Optional[List[float]] = ...,
-) -> Dict[str, Any]: ...
+) -> ClsCurveResult: ...
 
 
-def profile_curve(
-    model: HistFactoryModel,
-    mu_values: List[float],
-    *,
-    data: Optional[List[float]] = ...,
-) -> Dict[str, Any]: ...
 
 
 def kalman_filter(
     model: KalmanModel,
     ys: List[List[Optional[float]]],
-) -> Dict[str, Any]: ...
+) -> KalmanFilterResult: ...
 
 
 def kalman_smooth(
     model: KalmanModel,
     ys: List[List[Optional[float]]],
-) -> Dict[str, Any]: ...
+) -> KalmanSmoothResult: ...
 
 
 def kalman_em(
@@ -1537,7 +1714,7 @@ def kalman_em(
     estimate_f: bool = ...,
     estimate_h: bool = ...,
     min_diag: float = ...,
-) -> Dict[str, Any]: ...
+) -> KalmanEmResult: ...
 
 
 def kalman_forecast(
@@ -1546,7 +1723,7 @@ def kalman_forecast(
     *,
     steps: int = ...,
     alpha: Optional[float] = ...,
-) -> Dict[str, Any]: ...
+) -> KalmanForecastResult: ...
 
 
 def kalman_simulate(
@@ -1556,7 +1733,7 @@ def kalman_simulate(
     seed: int = ...,
     init: str = ...,
     x0: Optional[List[float]] = ...,
-) -> Dict[str, Any]: ...
+) -> KalmanSimulateResult: ...
 
 
 def garch11_fit(
@@ -1579,13 +1756,14 @@ def sv_logchi2_fit(
 
 
 def panel_fe(
-    entity_ids: List[int],
-    x: List[float],
     y: List[float],
+    x: List[float],
+    entity_ids: List[int],
     p: int,
     *,
+    time_ids: Optional[List[int]] = ...,
     cluster_ids: Optional[List[int]] = ...,
-) -> Dict[str, Any]: ...
+) -> PanelFeResult: ...
 
 
 def did(
@@ -1593,7 +1771,7 @@ def did(
     treat: List[int],
     post: List[int],
     cluster_ids: List[int],
-) -> Dict[str, Any]: ...
+) -> DidResult: ...
 
 
 def event_study(
@@ -1605,7 +1783,7 @@ def event_study(
     max_lag: int,
     reference_period: int,
     cluster_ids: List[int],
-) -> Dict[str, Any]: ...
+) -> EventStudyResult: ...
 
 
 def iv_2sls(
@@ -1631,14 +1809,14 @@ def aipw_ate(
     mu0: List[float],
     *,
     trim: float = ...,
-) -> Dict[str, Any]: ...
+) -> AipwAteResult: ...
 
 
 def rosenbaum_bounds(
     y_treated: List[float],
     y_control: List[float],
     gammas: List[float],
-) -> Dict[str, Any]: ...
+) -> RosenbaumBoundsResult: ...
 
 
 def nlme_foce(
@@ -1726,14 +1904,14 @@ def kaplan_meier(
     events: List[bool],
     *,
     conf_level: float = ...,
-) -> Dict[str, Any]: ...
+) -> KaplanMeierResult: ...
 
 
 def log_rank_test(
     times: List[float],
     events: List[bool],
     groups: List[int],
-) -> Dict[str, Any]: ...
+) -> LogRankTestResult: ...
 
 
 def fault_tree_mc(

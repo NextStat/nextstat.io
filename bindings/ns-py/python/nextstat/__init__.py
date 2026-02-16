@@ -36,11 +36,6 @@ apply_patchset = _get("apply_patchset")
 profile_scan = _get("profile_scan")
 upper_limit = _get("upper_limit")
 upper_limits = _get("upper_limits")
-upper_limits_root = _get("upper_limits_root")
-unbinned_hypotest = _get("unbinned_hypotest")
-unbinned_hypotest_toys = _get("unbinned_hypotest_toys")
-unbinned_profile_scan = _get("unbinned_profile_scan")
-unbinned_fit_toys = _get("unbinned_fit_toys")
 
 HistFactoryModel = _get("HistFactoryModel")
 UnbinnedModel = _get("UnbinnedModel")
@@ -84,8 +79,6 @@ GpdModel = _get("GpdModel")
 EightSchoolsModel = _get("EightSchoolsModel")
 ols_fit = _get("ols_fit")
 fit_toys = _get("fit_toys")
-fit_toys_batch = _get("fit_toys_batch")
-fit_toys_batch_gpu = _get("fit_toys_batch_gpu")
 set_eval_mode = _get("set_eval_mode")
 set_threads = _get("set_threads")
 get_eval_mode = _get("get_eval_mode")
@@ -98,12 +91,10 @@ MetalProfiledDifferentiableSession = _get("MetalProfiledDifferentiableSession")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
-unbinned_ranking = _get("unbinned_ranking")
 rk4_linear = _get("rk4_linear")
 read_root_histogram = _get("read_root_histogram")
 workspace_audit = _get("workspace_audit")
 cls_curve = _get("cls_curve")
-profile_curve = _get("profile_curve")
 kalman_filter = _get("kalman_filter")
 kalman_smooth = _get("kalman_smooth")
 kalman_em = _get("kalman_em")
@@ -143,6 +134,7 @@ _LAZY_SUBMODULES = {
     "arrow_io",
     "bayes",
     "viz",
+    "viz_render",
     "data",
     "glm",
     "timeseries",
@@ -367,38 +359,20 @@ def to_arrow(model: HistFactoryModel, *, params: list[float] | None = None, what
 __all__ = [
     "__version__",
     "_core",
+    # Inference functions (unified API)
     "fit",
     "map_fit",
     "fit_batch",
+    "fit_toys",
     "hypotest",
     "hypotest_toys",
+    "profile_scan",
+    "upper_limit",
+    "upper_limits",
+    "ranking",
     "sample",
-    "sample_nuts",
-    "sample_mams",
-    "sample_laps",
-    "RawCudaModel",
-    "bayes",
-    "viz",
-    "data",
-    "unbinned",
-    "glm",
-    "timeseries",
-    "hier",
-    "ppc",
-    "survival",
-    "ordinal",
-    "causal",
-    "missing",
-    "ode",
-    "formula",
-    "summary",
-    "robust",
-    "sklearn",
-    "panel",
-    "econometrics",
-    "volatility",
-    "torch",
-    "gym",
+    "cls_curve",
+    # Model classes
     "HistFactoryModel",
     "UnbinnedModel",
     "HybridModel",
@@ -431,16 +405,14 @@ __all__ = [
     "MaximumLikelihoodEstimator",
     "FitResult",
     "Posterior",
+    "RawCudaModel",
+    "FlowPdf",
+    "DcrSurrogate",
+    # Utility functions
     "asimov_data",
     "poisson_toys",
-    "ranking",
-    "unbinned_ranking",
     "rk4_linear",
     "ols_fit",
-    "fit_toys",
-    "unbinned_fit_toys",
-    "fit_toys_batch",
-    "fit_toys_batch_gpu",
     "set_eval_mode",
     "set_threads",
     "get_eval_mode",
@@ -449,19 +421,21 @@ __all__ = [
     "has_metal",
     "read_root_histogram",
     "workspace_audit",
-    "cls_curve",
-    "profile_curve",
+    # Time series
     "kalman_filter",
     "kalman_smooth",
     "kalman_em",
     "kalman_forecast",
     "kalman_simulate",
+    # Meta-analysis & actuarial
     "meta_fixed",
     "meta_random",
     "chain_ladder",
     "mack_chain_ladder",
+    # Survival
     "kaplan_meier",
     "log_rank_test",
+    # Churn
     "churn_generate_data",
     "churn_retention",
     "churn_risk_model",
@@ -472,32 +446,50 @@ __all__ = [
     "churn_uplift_survival",
     "churn_bootstrap_hr",
     "churn_ingest",
+    # Arrow/Parquet I/O
     "from_arrow_ipc",
     "from_parquet",
     "from_parquet_with_modifiers",
     "to_arrow_yields_ipc",
     "to_arrow_params_ipc",
-    "FlowPdf",
-    "DcrSurrogate",
     "from_arrow",
     "to_arrow",
+    # Factory functions
     "from_pyhf",
     "apply_patchset",
     "from_histfactory_xml",
     "histfactory_bin_edges_by_channel",
-    "profile_scan",
-    "upper_limit",
-    "upper_limits",
-    "upper_limits_root",
-    "unbinned_hypotest",
-    "unbinned_hypotest_toys",
-    "unbinned_profile_scan",
+    # Submodules
+    "bayes",
+    "viz",
+    "viz_render",
+    "data",
+    "unbinned",
+    "glm",
+    "timeseries",
+    "hier",
+    "ppc",
+    "survival",
+    "ordinal",
+    "causal",
+    "missing",
+    "ode",
+    "formula",
+    "summary",
+    "robust",
+    "sklearn",
+    "panel",
+    "econometrics",
+    "volatility",
+    "torch",
+    "gym",
     "mlops",
     "interpret",
     "tools",
     "distill",
     "remote",
     "arrow_io",
+    # Back-compat aliases
     "PyModel",
     "PyFitResult",
 ]

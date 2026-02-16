@@ -67,6 +67,8 @@ def test_plot_helpers_require_matplotlib():
         with pytest.raises(ImportError):
             nextstat.viz.plot_profile_curve({"points": []})
         with pytest.raises(ImportError):
+            nextstat.viz.plot_pulls({"entries": []})
+        with pytest.raises(ImportError):
             nextstat.viz.plot_ranking({"entries": []})
         with pytest.raises(ImportError):
             nextstat.viz.plot_corr_matrix({"parameter_names": [], "corr": []})
@@ -81,6 +83,16 @@ def test_plot_helpers_require_matplotlib():
     assert ax is not None
 
     ax = nextstat.viz.plot_profile_curve({"mu_values": [0.0, 1.0], "q_mu_values": [0.0, 1.0], "mu_hat": 0.3})
+    assert ax is not None
+
+    ax = nextstat.viz.plot_pulls(
+        {
+            "entries": [
+                {"name": "np1", "pull": 0.2, "constraint": 0.8},
+                {"name": "np2", "pull": -0.3, "constraint": 1.1},
+            ]
+        }
+    )
     assert ax is not None
 
     ax_pull, ax_impact = nextstat.viz.plot_ranking(

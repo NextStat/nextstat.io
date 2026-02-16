@@ -5,13 +5,13 @@ This module exposes both:
 1) low-level bindings (mirrors ``nextstat._core``), and
 2) a higher-level workflow object ``UnbinnedAnalysis`` for production scripts.
 
-The low-level surface:
+The low-level surface (via unified API):
 - ``UnbinnedModel.from_config(path)`` — compile a JSON/YAML ``unbinned_spec_v0``
-- ``unbinned_fit_toys(model, params, ...)`` — generate+fit unbinned Poisson toys
-- ``unbinned_profile_scan(model, mu_values)`` — profile likelihood scan (q_mu)
-- ``unbinned_hypotest(mu_test, model)`` — one-sided q_mu (and q0 if applicable)
-- ``unbinned_hypotest_toys(poi_test, model, ...)`` — toy-based CLs (qtilde)
-- ``unbinned_ranking(model)`` — nuisance ranking (impact on POI)
+- ``fit_toys(model, params, ...)`` — generate+fit unbinned Poisson toys
+- ``profile_scan(model, mu_values)`` — profile likelihood scan (q_mu)
+- ``hypotest(poi_test, model)`` — one-sided q_mu (and q0 if applicable)
+- ``hypotest_toys(poi_test, model, ...)`` — toy-based CLs (qtilde)
+- ``ranking(model)`` — nuisance ranking (impact on POI)
 
 The high-level surface:
 - ``UnbinnedAnalysis.from_config(path)`` — compile + attach analysis helpers
@@ -27,12 +27,12 @@ from typing import Any
 
 from ._core import (  # type: ignore
     fit as _fit,
+    fit_toys as _fit_toys,
+    hypotest as _hypotest,
+    hypotest_toys as _hypotest_toys,
+    profile_scan as _profile_scan,
+    ranking as _ranking,
     UnbinnedModel,
-    unbinned_fit_toys,
-    unbinned_hypotest,
-    unbinned_hypotest_toys,
-    unbinned_profile_scan,
-    unbinned_ranking,
 )
 
 
@@ -70,7 +70,7 @@ class UnbinnedAnalysis:
     ):
         """Generate and fit Poisson-fluctuated unbinned toys."""
         p = list(params) if params is not None else list(self.model.suggested_init())
-        return unbinned_fit_toys(
+        return _fit_toys(
             self.model,
             p,
             n_toys=int(n_toys),
@@ -79,11 +79,11 @@ class UnbinnedAnalysis:
 
     def scan(self, mu_values: Iterable[float]) -> dict[str, Any]:
         """Profile-likelihood scan over POI values."""
-        return unbinned_profile_scan(self.model, list(mu_values))
+        return _profile_scan(self.model, list(mu_values))
 
     def hypotest(self, mu_test: float) -> dict[str, Any]:
         """Compute one-sided unbinned ``q_mu`` (plus ``q0`` when available)."""
-        return unbinned_hypotest(float(mu_test), self.model)
+        return _hypotest(float(mu_test), self.model)
 
     def hypotest_toys(
         self,
@@ -96,7 +96,7 @@ class UnbinnedAnalysis:
         return_meta: bool = False,
     ):
         """Toy-based unbinned CLs (qtilde)."""
-        return unbinned_hypotest_toys(
+        return _hypotest_toys(
             float(poi_test),
             self.model,
             n_toys=int(n_toys),
@@ -108,7 +108,7 @@ class UnbinnedAnalysis:
 
     def ranking(self) -> list[dict[str, Any]]:
         """Nuisance ranking (impact on POI)."""
-        return unbinned_ranking(self.model)
+        return _ranking(self.model)
 
     def parameter_index(self, param: int | str) -> int:
         """Resolve parameter by index or name."""
@@ -162,9 +162,4 @@ __all__ = [
     "from_config",
     "UnbinnedAnalysis",
     "UnbinnedModel",
-    "unbinned_fit_toys",
-    "unbinned_hypotest",
-    "unbinned_hypotest_toys",
-    "unbinned_profile_scan",
-    "unbinned_ranking",
 ]

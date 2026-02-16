@@ -12,7 +12,10 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
+use crate::cuda_glm_cublas::CudaGlmCublasEvaluator;
+
 const PTX_SRC: &str = include_str!(env!("CUDA_MAMS_PTX_PATH"));
+const WARP_SHMEM_LIMIT_BYTES: usize = 48 * 1024;
 
 fn cuda_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("CUDA mams: {msg}"))
@@ -68,29 +71,11 @@ pub struct CudaMamsAccelerator {
     // Warp kernel data dimensions (for shared memory sizing)
     n_obs: usize,
     n_feat: usize,
+    // Optional cuBLAS evaluator for GLM initialization.
+    glm_cublas_eval: Option<CudaGlmCublasEvaluator>,
 }
 
-/// Diagnostics from one transition.
-pub struct TransitionDiagnostics {
-    /// Per-chain acceptance flags.
-    pub accepted: Vec<i32>,
-    /// Per-chain energy errors (ΔV + ΔK).
-    pub energy_error: Vec<f64>,
-}
-
-/// Result from a batch of transitions (GPU-side accumulation).
-pub struct BatchResult {
-    /// Positions `[batch_size][n_report × dim]` (flat per-sample).
-    pub positions: Vec<Vec<f64>>,
-    /// Potentials `[batch_size][n_report]`.
-    pub potentials: Vec<Vec<f64>>,
-    /// Acceptance flags `[batch_size][n_report]`.
-    pub accepted: Vec<Vec<i32>>,
-    /// Energy errors `[batch_size][n_report]`.
-    pub energy_error: Vec<Vec<f64>>,
-    /// Number of kernel launches in this batch.
-    pub n_launches: usize,
-}
+pub use crate::mams_trait::{BatchResult, TransitionDiagnostics};
 
 impl CudaMamsAccelerator {
     /// Check CUDA availability.
@@ -126,6 +111,23 @@ impl CudaMamsAccelerator {
         } else {
             (0, 0)
         };
+        let mut glm_cublas_eval = None;
+        if model_id == 3 && n_obs > 0 && n_feat > 0 && dim == n_feat {
+            let np = n_obs * n_feat;
+            let y_off = 2 + np;
+            let x_col_off = y_off + n_obs;
+            let has_layout = model_data.len() >= x_col_off + np;
+            let disable = std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_CUBLAS_INIT").is_some();
+            if has_layout && !disable {
+                let y = &model_data[y_off..y_off + n_obs];
+                let x_col = &model_data[x_col_off..x_col_off + np];
+                if let Ok(eval) = CudaGlmCublasEvaluator::new_on_device(
+                    x_col, y, n_obs, n_feat, n_chains, device_id,
+                ) {
+                    glm_cublas_eval = Some(eval);
+                }
+            }
+        }
 
         let total = n_chains * dim;
 
@@ -180,6 +182,7 @@ impl CudaMamsAccelerator {
             iteration: 0,
             n_obs,
             n_feat,
+            glm_cublas_eval,
         })
     }
 
@@ -270,6 +273,7 @@ impl CudaMamsAccelerator {
             iteration: 0,
             n_obs: 0,
             n_feat: 0,
+            glm_cublas_eval: None,
         })
     }
 
@@ -303,10 +307,30 @@ impl CudaMamsAccelerator {
         assert_eq!(potential.len(), self.n_chains);
         assert_eq!(grad.len(), total);
 
+        let mut potential_upload = potential.to_vec();
+        let mut grad_upload = grad.to_vec();
+
+        // GLM-specific startup fast-path:
+        // if host provides non-finite initial potential (typical cold start),
+        // seed potential/grad from cuBLAS evaluator before first transition.
+        if potential_upload.iter().any(|v| !v.is_finite()) {
+            if let Some(eval) = self.glm_cublas_eval.as_mut() {
+                if let Ok((grad0, nll0)) = eval.evaluate_host(x) {
+                    if grad0.len() == total
+                        && nll0.len() == self.n_chains
+                        && nll0.iter().all(|v| v.is_finite())
+                    {
+                        grad_upload = grad0;
+                        potential_upload = nll0;
+                    }
+                }
+            }
+        }
+
         self.stream.memcpy_htod(x, &mut self.d_x).map_err(cuda_err)?;
         self.stream.memcpy_htod(u, &mut self.d_u).map_err(cuda_err)?;
-        self.stream.memcpy_htod(potential, &mut self.d_potential).map_err(cuda_err)?;
-        self.stream.memcpy_htod(grad, &mut self.d_grad).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&potential_upload, &mut self.d_potential).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&grad_upload, &mut self.d_grad).map_err(cuda_err)?;
 
         Ok(())
     }
@@ -558,14 +582,17 @@ impl CudaMamsAccelerator {
         let total_threads = self.n_chains as u32 * 32;
         let grid_dim = ((total_threads + block_dim - 1) / block_dim).min(65535);
 
-        let shmem_bytes_usize = if self.n_obs > 0 && self.n_feat > 0 {
+        let full_shmem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
             (self.n_obs * self.n_feat + self.n_obs) * std::mem::size_of::<f64>()
         } else {
             0usize
         };
-        let warp_use_shmem = shmem_bytes_usize <= 48 * 1024;
-        let shmem_bytes = if warp_use_shmem { shmem_bytes_usize as u32 } else { 0u32 };
-        let warp_use_shmem_arg: i32 = if warp_use_shmem { 1 } else { 0 };
+        let (warp_use_shmem_arg, shmem_bytes) =
+            if full_shmem_bytes > 0 && full_shmem_bytes <= WARP_SHMEM_LIMIT_BYTES {
+                (1i32, full_shmem_bytes as u32)
+            } else {
+                (0i32, 0u32)
+            };
 
         let config = LaunchConfig {
             grid_dim: (grid_dim, 1, 1),
@@ -638,14 +665,17 @@ impl CudaMamsAccelerator {
         let total_threads = self.n_chains as u32 * 32;
         let grid_dim = ((total_threads + block_dim - 1) / block_dim).min(65535);
 
-        let shmem_bytes_usize = if self.n_obs > 0 && self.n_feat > 0 {
+        let full_shmem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
             (self.n_obs * self.n_feat + self.n_obs) * std::mem::size_of::<f64>()
         } else {
             0usize
         };
-        let warp_use_shmem = shmem_bytes_usize <= 48 * 1024;
-        let shmem_bytes = if warp_use_shmem { shmem_bytes_usize as u32 } else { 0u32 };
-        let warp_use_shmem_arg: i32 = if warp_use_shmem { 1 } else { 0 };
+        let (warp_use_shmem_arg, shmem_bytes) =
+            if full_shmem_bytes > 0 && full_shmem_bytes <= WARP_SHMEM_LIMIT_BYTES {
+                (1i32, full_shmem_bytes as u32)
+            } else {
+                (0i32, 0u32)
+            };
 
         let config = LaunchConfig {
             grid_dim: (grid_dim, 1, 1),
@@ -911,5 +941,80 @@ impl CudaMamsAccelerator {
     /// Parameter dimensionality.
     pub fn dim(&self) -> usize {
         self.dim
+    }
+}
+
+impl crate::mams_trait::MamsAccelerator for CudaMamsAccelerator {
+    fn upload_state(
+        &mut self,
+        x: &[f64],
+        u: &[f64],
+        potential: &[f64],
+        grad: &[f64],
+    ) -> ns_core::Result<()> {
+        self.upload_state(x, u, potential, grad)
+    }
+
+    fn download_positions(&self) -> ns_core::Result<Vec<f64>> {
+        self.download_positions()
+    }
+
+    fn download_potentials(&self) -> ns_core::Result<Vec<f64>> {
+        self.download_potentials()
+    }
+
+    fn download_diagnostics(&self) -> ns_core::Result<TransitionDiagnostics> {
+        self.download_diagnostics()
+    }
+
+    fn set_inv_mass(&mut self, inv_mass: &[f64]) -> ns_core::Result<()> {
+        self.set_inv_mass(inv_mass)
+    }
+
+    fn set_per_chain_eps(&mut self, eps_vec: &[f64]) -> ns_core::Result<()> {
+        self.set_per_chain_eps(eps_vec)
+    }
+
+    fn set_uniform_eps(&mut self, eps: f64) -> ns_core::Result<()> {
+        self.set_uniform_eps(eps)
+    }
+
+    fn transition_auto(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        enable_mh: bool,
+    ) -> ns_core::Result<()> {
+        self.transition_auto(l, max_leapfrog, enable_mh)
+    }
+
+    fn transition_batch_auto(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        batch_size: usize,
+        prefer_fused: bool,
+    ) -> ns_core::Result<BatchResult> {
+        self.transition_batch_auto(l, max_leapfrog, batch_size, prefer_fused)
+    }
+
+    fn configure_batch(&mut self, batch_size: usize, n_report: usize) -> ns_core::Result<()> {
+        self.configure_batch(batch_size, n_report)
+    }
+
+    fn supports_fused(&self) -> bool {
+        self.supports_fused()
+    }
+
+    fn supports_warp(&self) -> bool {
+        self.supports_warp()
+    }
+
+    fn n_chains(&self) -> usize {
+        self.n_chains()
+    }
+
+    fn dim(&self) -> usize {
+        self.dim()
     }
 }

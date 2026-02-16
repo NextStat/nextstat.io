@@ -55,9 +55,38 @@ jobs:
       - name: Run tests (no default features)
         run: cargo test --workspace --no-default-features --verbose
 
+      - name: Run ns-root RNTuple perf gate
+        if: matrix.rust == 'stable'
+        run: make rntuple-perf-gate
+
       - name: Run validation-report CLI tests
         if: matrix.rust == 'stable'
         run: cargo test -p ns-cli --test cli_validation_report --verbose
+
+      - name: Arrow ingest large-offset regression smoke
+        if: matrix.rust == 'stable'
+        run: |
+          cargo test -p ns-translate --features arrow-io test_ingest_large_offsets_basic --verbose
+          cargo test -p ns-translate --features arrow-io test_ingest_with_modifiers_large_offsets --verbose
+          cargo test -p ns-unbinned --features arrow-io test_event_stores_from_record_batches_accepts_largeutf8_channel --verbose
+
+  trex-one-command:
+    name: TREx One-Command Workflow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run TREx one-command workflow tests
+        run: cargo test -p ns-cli --test cli_trex_import_config --test cli_import_trex_config --test cli_run_analysis_spec --test cli_validate --verbose
 
   wasm-smoke:
     name: WASM Smoke (parquet/zstd adapters)
@@ -91,6 +120,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
+          toolchain: stable
           components: clippy
 
       - name: Cache cargo
@@ -115,6 +145,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
+          toolchain: stable
           components: rustfmt
 
       - name: Check formatting
@@ -129,6 +160,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -177,6 +210,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -206,6 +241,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

@@ -1,0 +1,77 @@
+{
+  "config": {
+    "runs": 12,
+    "seed0": 100,
+    "n_events": 300,
+    "sigma_true": 30.0,
+    "conf_level": 0.95,
+    "n_bootstrap": 200,
+    "threads": 8,
+    "obs_low": 0.0,
+    "obs_high": 500.0,
+    "max_run_attempts": 5,
+    "nextstat_bin": "/Users/andresvlc/WebDev/nextstat.io/target/release/nextstat"
+  },
+  "scenarios": {
+    "gauss_mu_mid": {
+      "percentile": {
+        "runs": 12,
+        "coverage_vs_true_poi": 0.9166666666666666,
+        "median_width": 6.469278696162085,
+        "mean_width": 6.546104797376215,
+        "median_wall_total_s": 0.016919875517487526,
+        "mean_wall_total_s": 0.01789687139292558,
+        "median_center_minus_true": 0.35787400047706086,
+        "mean_center_minus_true": -0.0696502348542604,
+        "median_obs_hat_minus_true": 0.501495466802858,
+        "mean_obs_hat_minus_true": 0.14558394440480052,
+        "fallback_count": 0,
+        "effective_bca_count": 0
+      },
+      "bca": {
+        "runs": 12,
+        "coverage_vs_true_poi": 0.9166666666666666,
+        "median_width": 6.223103756809536,
+        "mean_width": 6.380958948639375,
+        "median_wall_total_s": 0.016919875517487526,
+        "mean_wall_total_s": 0.01789687139292558,
+        "median_center_minus_true": 0.7093185305518404,
+        "mean_center_minus_true": 0.25181379705740053,
+        "median_obs_hat_minus_true": 0.501495466802858,
+        "mean_obs_hat_minus_true": 0.14558394440480052,
+        "fallback_count": 0,
+        "effective_bca_count": 12
+      }
+    },
+    "gauss_mu_boundary_low": {
+      "percentile": {
+        "runs": 12,
+        "coverage_vs_true_poi": 0.9166666666666666,
+        "median_width": 6.48251090614982,
+        "mean_width": 6.145479039209178,
+        "median_wall_total_s": 0.016462729312479496,
+        "mean_wall_total_s": 0.016894593679656584,
+        "median_center_minus_true": 0.32304874542681006,
+        "mean_center_minus_true": 0.10096680717606314,
+        "median_obs_hat_minus_true": 0.47555591812882625,
+        "mean_obs_hat_minus_true": 0.11813769825646385,
+        "fallback_count": 0,
+        "effective_bca_count": 0
+      },
+      "bca": {
+        "runs": 12,
+        "coverage_vs_true_poi": 0.9166666666666666,
+        "median_width": 6.229943914841158,
+        "mean_width": 6.08383958706131,
+        "median_wall_total_s": 0.016462729312479496,
+        "mean_wall_total_s": 0.016894593679656584,
+        "median_center_minus_true": 0.6847671685857506,
+        "mean_center_minus_true": 0.37676514849176473,
+        "median_obs_hat_minus_true": 0.47555591812882625,
+        "mean_obs_hat_minus_true": 0.11813769825646385,
+        "fallback_count": 0,
+        "effective_bca_count": 12
+      }
+    }
+  }
+}

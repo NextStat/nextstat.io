@@ -1,0 +1,36 @@
+{
+  "config": {
+    "runs": 32,
+    "seed0": 100,
+    "n_toys": 300,
+    "summary_ci_level": 0.68,
+    "summary_ci_bootstrap": 600,
+    "threads": 32,
+    "fixture_root": "/root/nextstat-bca-run-20260216/tests/fixtures/simple_tree.root",
+    "nextstat_bin": "/root/.nextstat-cargo-target/release/nextstat"
+  },
+  "percentile": {
+    "runs": 32,
+    "coverage_vs_poi_true": 0.21875,
+    "median_width": 0.0036547169395255708,
+    "mean_width": 0.003651763589255539,
+    "median_wall_s": 0.03330801849369891,
+    "mean_wall_s": 0.03361834187671775,
+    "median_center_minus_poi_true": 0.0022354169737740515,
+    "mean_center_minus_poi_true": 0.002174770618657694,
+    "fallback_count": 0,
+    "effective_bca_count": 0
+  },
+  "bca": {
+    "runs": 32,
+    "coverage_vs_poi_true": 0.25,
+    "median_width": 0.003670268004014321,
+    "mean_width": 0.0036612746620615644,
+    "median_wall_s": 0.03319725347682834,
+    "mean_wall_s": 0.03293064474200946,
+    "median_center_minus_poi_true": 0.002209371975165464,
+    "mean_center_minus_poi_true": 0.0021583275422532716,
+    "fallback_count": 0,
+    "effective_bca_count": 32
+  }
+}

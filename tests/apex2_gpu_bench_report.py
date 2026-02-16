@@ -94,9 +94,7 @@ def _profile_scan(model, *, mu_values: List[float], device: str) -> Dict[str, An
 
 def _batch_toys(model, *, params: List[float], n_toys: int, seed: int, device: str) -> Any:
     core = nextstat._core
-    if device == "cpu":
-        return core.fit_toys_batch(model, params, n_toys=n_toys, seed=seed)
-    return core.fit_toys_batch_gpu(model, params, n_toys=n_toys, seed=seed, device=device)
+    return core.fit_toys(model, params, n_toys=n_toys, seed=seed, device=device)
 
 
 def _median(xs: List[float]) -> float:

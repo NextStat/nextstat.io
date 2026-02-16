@@ -2,12 +2,17 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, Float64Builder, ListBuilder, StringBuilder};
+use arrow::array::{
+    Array, ArrayRef, Float64Builder, LargeListBuilder, LargeStringBuilder, ListBuilder,
+    StringBuilder,
+};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 
 use super::export::record_batch_to_ipc;
-use super::ingest::{ArrowIngestConfig, from_arrow_ipc, from_record_batches};
+use super::ingest::{
+    ArrowIngestConfig, from_arrow_ipc, from_record_batches, from_record_batches_with_modifiers,
+};
 use super::parquet::{read_parquet_bytes, write_parquet_bytes};
 use crate::pyhf::HistFactoryModel;
 
@@ -82,6 +87,180 @@ fn make_test_batch() -> RecordBatch {
     .unwrap()
 }
 
+/// Build a test RecordBatch using large-offset Arrow types.
+fn make_test_batch_large_offsets() -> RecordBatch {
+    let mut channel_builder = LargeStringBuilder::new();
+    let mut sample_builder = LargeStringBuilder::new();
+    let mut yields_builder = LargeListBuilder::new(Float64Builder::new());
+    let mut stat_error_builder = LargeListBuilder::new(Float64Builder::new());
+
+    // SR / signal: [5.0, 10.0, 15.0]
+    channel_builder.append_value("SR");
+    sample_builder.append_value("signal");
+    let yb = yields_builder.values();
+    yb.append_value(5.0);
+    yb.append_value(10.0);
+    yb.append_value(15.0);
+    yields_builder.append(true);
+    let sb = stat_error_builder.values();
+    sb.append_value(1.0);
+    sb.append_value(2.0);
+    sb.append_value(3.0);
+    stat_error_builder.append(true);
+
+    // SR / background: [100.0, 200.0, 150.0]
+    channel_builder.append_value("SR");
+    sample_builder.append_value("background");
+    let yb = yields_builder.values();
+    yb.append_value(100.0);
+    yb.append_value(200.0);
+    yb.append_value(150.0);
+    yields_builder.append(true);
+    let sb = stat_error_builder.values();
+    sb.append_value(10.0);
+    sb.append_value(14.0);
+    sb.append_value(12.0);
+    stat_error_builder.append(true);
+
+    // CR / background: [500.0, 600.0]
+    channel_builder.append_value("CR");
+    sample_builder.append_value("background");
+    let yb = yields_builder.values();
+    yb.append_value(500.0);
+    yb.append_value(600.0);
+    yields_builder.append(true);
+    stat_error_builder.append(false);
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("channel", DataType::LargeUtf8, false),
+        Field::new("sample", DataType::LargeUtf8, false),
+        Field::new(
+            "yields",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            false,
+        ),
+        Field::new(
+            "stat_error",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            true,
+        ),
+    ]));
+
+    RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(channel_builder.finish()) as ArrayRef,
+            Arc::new(sample_builder.finish()) as ArrayRef,
+            Arc::new(yields_builder.finish()) as ArrayRef,
+            Arc::new(stat_error_builder.finish()) as ArrayRef,
+        ],
+    )
+    .unwrap()
+}
+
+fn make_modifiers_batches_large_offsets() -> (RecordBatch, RecordBatch) {
+    // Yields table (large offsets)
+    let mut channel_builder = LargeStringBuilder::new();
+    let mut sample_builder = LargeStringBuilder::new();
+    let mut yields_builder = LargeListBuilder::new(Float64Builder::new());
+    let mut stat_error_builder = LargeListBuilder::new(Float64Builder::new());
+
+    channel_builder.append_value("SR");
+    sample_builder.append_value("signal");
+    let yb = yields_builder.values();
+    yb.append_value(5.0);
+    yb.append_value(10.0);
+    yields_builder.append(true);
+    stat_error_builder.append(false);
+
+    let yields_schema = Arc::new(Schema::new(vec![
+        Field::new("channel", DataType::LargeUtf8, false),
+        Field::new("sample", DataType::LargeUtf8, false),
+        Field::new(
+            "yields",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            false,
+        ),
+        Field::new(
+            "stat_error",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            true,
+        ),
+    ]));
+    let yields_batch = RecordBatch::try_new(
+        yields_schema,
+        vec![
+            Arc::new(channel_builder.finish()) as ArrayRef,
+            Arc::new(sample_builder.finish()) as ArrayRef,
+            Arc::new(yields_builder.finish()) as ArrayRef,
+            Arc::new(stat_error_builder.finish()) as ArrayRef,
+        ],
+    )
+    .unwrap();
+
+    // Modifiers table (large offsets)
+    let mut mch_builder = LargeStringBuilder::new();
+    let mut msa_builder = LargeStringBuilder::new();
+    let mut mname_builder = LargeStringBuilder::new();
+    let mut mtype_builder = LargeStringBuilder::new();
+    let mut data_hi_builder = LargeListBuilder::new(Float64Builder::new());
+    let mut data_lo_builder = LargeListBuilder::new(Float64Builder::new());
+    let mut data_builder = LargeListBuilder::new(Float64Builder::new());
+
+    mch_builder.append_value("SR");
+    msa_builder.append_value("signal");
+    mname_builder.append_value("sig_norm");
+    mtype_builder.append_value("normsys");
+
+    let hib = data_hi_builder.values();
+    hib.append_value(1.1);
+    data_hi_builder.append(true);
+
+    let lob = data_lo_builder.values();
+    lob.append_value(0.9);
+    data_lo_builder.append(true);
+
+    data_builder.append(false);
+
+    let mods_schema = Arc::new(Schema::new(vec![
+        Field::new("channel", DataType::LargeUtf8, false),
+        Field::new("sample", DataType::LargeUtf8, false),
+        Field::new("modifier_name", DataType::LargeUtf8, false),
+        Field::new("modifier_type", DataType::LargeUtf8, false),
+        Field::new(
+            "data_hi",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            true,
+        ),
+        Field::new(
+            "data_lo",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            true,
+        ),
+        Field::new(
+            "data",
+            DataType::LargeList(Arc::new(Field::new_list_field(DataType::Float64, true))),
+            true,
+        ),
+    ]));
+
+    let mods_batch = RecordBatch::try_new(
+        mods_schema,
+        vec![
+            Arc::new(mch_builder.finish()) as ArrayRef,
+            Arc::new(msa_builder.finish()) as ArrayRef,
+            Arc::new(mname_builder.finish()) as ArrayRef,
+            Arc::new(mtype_builder.finish()) as ArrayRef,
+            Arc::new(data_hi_builder.finish()) as ArrayRef,
+            Arc::new(data_lo_builder.finish()) as ArrayRef,
+            Arc::new(data_builder.finish()) as ArrayRef,
+        ],
+    )
+    .unwrap();
+
+    (yields_batch, mods_batch)
+}
+
 #[test]
 fn test_ingest_basic() {
     let batch = make_test_batch();
@@ -108,6 +287,20 @@ fn test_ingest_basic() {
     // SR observation = Asimov (sum of yields)
     let sr_obs = &ws.observations[1];
     assert_eq!(sr_obs.name, "SR");
+    assert_eq!(sr_obs.data, vec![105.0, 210.0, 165.0]);
+}
+
+#[test]
+fn test_ingest_large_offsets_basic() {
+    let batch = make_test_batch_large_offsets();
+    let config = ArrowIngestConfig::default();
+    let ws = from_record_batches(&[batch], &config).unwrap();
+
+    assert_eq!(ws.channels.len(), 2);
+    assert_eq!(ws.observations.len(), 2);
+    assert_eq!(ws.measurements[0].config.poi, "mu");
+
+    let sr_obs = ws.observations.iter().find(|o| o.name == "SR").unwrap();
     assert_eq!(sr_obs.data, vec![105.0, 210.0, 165.0]);
 }
 
@@ -425,6 +618,27 @@ fn test_modifiers_export_roundtrip() {
     assert!(types.contains(&"normsys"));
     assert!(types.contains(&"staterror"));
     assert!(types.contains(&"normfactor"));
+}
+
+#[test]
+fn test_ingest_with_modifiers_large_offsets() {
+    let (yields_batch, mods_batch) = make_modifiers_batches_large_offsets();
+    let config = ArrowIngestConfig::default();
+    let ws = from_record_batches_with_modifiers(&[yields_batch], &[mods_batch], &config).unwrap();
+
+    assert_eq!(ws.channels.len(), 1);
+    assert_eq!(ws.channels[0].name, "SR");
+    assert_eq!(ws.channels[0].samples.len(), 1);
+
+    let signal = &ws.channels[0].samples[0];
+    assert_eq!(signal.name, "signal");
+    assert!(
+        signal.modifiers.iter().any(|m| matches!(
+            m,
+            crate::pyhf::schema::Modifier::NormSys { name, .. } if name == "sig_norm"
+        )),
+        "expected NormSys modifier parsed from LargeUtf8/LargeList batch"
+    );
 }
 
 #[test]

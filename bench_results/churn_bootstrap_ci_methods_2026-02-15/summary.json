@@ -1,0 +1,27 @@
+{
+  "config": {
+    "n_customers": 2000,
+    "n_bootstrap": 500,
+    "conf_level": 0.95,
+    "n_jackknife": 160,
+    "runs": 8,
+    "seed0": 42,
+    "nextstat_bin": "/Users/andresvlc/WebDev/.nextstat-cargo-target/debug/nextstat"
+  },
+  "percentile": {
+    "runs": 8,
+    "median_wall_s": 4.465642395662144,
+    "mean_wall_s": 5.967562890553381,
+    "mean_interval_width": 0.11235313366408164,
+    "fallback_total": 0,
+    "effective_bca_total": 0
+  },
+  "bca": {
+    "runs": 8,
+    "median_wall_s": 6.075284604448825,
+    "mean_wall_s": 6.236679276044015,
+    "mean_interval_width": 0.11372061950338136,
+    "fallback_total": 0,
+    "effective_bca_total": 32
+  }
+}

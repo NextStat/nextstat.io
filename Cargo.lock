@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "ns-ad"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "criterion",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "ns-cli"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1681,7 +1681,7 @@ dependencies = [
 
 [[package]]
 name = "ns-compute"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "block",
@@ -1704,7 +1704,7 @@ dependencies = [
 
 [[package]]
 name = "ns-core"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "criterion",
@@ -1718,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "ns-inference"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "argmin",
@@ -1745,7 +1745,7 @@ dependencies = [
 
 [[package]]
 name = "ns-prob"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "criterion",
@@ -1756,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "ns-py"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "nalgebra",
  "ns-ad",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "ns-root"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "criterion",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "ns-server"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -1818,7 +1818,7 @@ dependencies = [
 
 [[package]]
 name = "ns-translate"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "arrow",
@@ -1845,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "ns-unbinned"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "anyhow",
  "approx",
@@ -1871,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "ns-viz"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "approx",
  "ns-core",
@@ -1885,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "ns-wasm"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

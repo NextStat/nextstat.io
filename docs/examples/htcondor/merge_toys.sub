@@ -1,0 +1,13 @@
+# Merge toy results — triggered by DAGMan after all toy jobs complete.
+#
+# Uses "universe = local" so the merge runs on the submit node,
+# where toy output files (toys_*.json) were transferred back to.
+
+universe   = local
+executable = merge_toys_local.sh
+
+output = logs/merge_$(Cluster).out
+error  = logs/merge_$(Cluster).err
+log    = logs/merge_$(Cluster).log
+
+queue 1

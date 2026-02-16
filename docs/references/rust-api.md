@@ -106,7 +106,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Posterior + priors: `Posterior`, `Prior`
 - NUTS: `NutsConfig`, `sample_nuts`, `sample_nuts_multichain`
 - MAMS: `MamsConfig`, `sample_mams`, `sample_mams_multichain` — Metropolis-Adjusted Microcanonical Sampler (arXiv:2503.01707). Isokinetic dynamics on S^{d-1}, 4-phase DualAveraging warmup with adaptive phase durations (when Pathfinder init provides Hessian metric: 10%/15%/10%/65%, default: 15%/40%/15%/30%), exp_m1/ln_1p stable b-step.
-- LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`). 4096+ chains in parallel, 1 thread = 1 chain, zero warp divergence. Two-phase warmup (unadjusted MCLMC → exact MH). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `GlmLogistic`. User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching. Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (barrier every 50 iters for global step size + mass matrix) and independent sampling. Auto-detects all GPUs when `device_ids: None`.
+- LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`) or Metal (feature `metal`, Apple Silicon, f32). 4096+ chains in parallel, 1 thread = 1 chain. Windowed warmup with Stan-style doubling windows (default `n_mass_windows=3`). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `NealFunnelNcp`, `NealFunnelRiemannian { dim }`, `GlmLogistic`. `NealFunnelNcp` is the recommended parametrization for funnel geometries (R-hat < 1.02). `NealFunnelRiemannian` uses hybrid position-dependent Fisher metric (experimental, known v-bias). User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching (CUDA only). Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (CUDA only). Backend priority: CUDA (f64) > Metal (f32, built-in models only).
 - NVRTC JIT: `MamsJitCompiler` (ns-compute, feature `cuda`) — compiles user CUDA C (`user_nll` + `user_grad`) with the MAMS engine header into PTX at runtime. Per-device GPU arch auto-detect via `new_for_device(device_id)`, SHA-256 disk cache at `~/.cache/nextstat/ptx/`. `CudaMamsAccelerator::new_jit_on_device()` / `new_on_device()` load on a specific GPU device.
 - `InitStrategy`: `Random` (Stan-style Uniform(-2,2)), `Mle` (L-BFGS mode), `Pathfinder` (full L-BFGS + diagonal inverse Hessian as initial mass matrix). Used by both NUTS and MAMS.
 - Frequentist: `AsymptoticCLsContext`, `HypotestResult`
@@ -129,6 +129,8 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Batch GPU: `fit_toys_batch_gpu` (feature `cuda`), `fit_toys_batch_metal` (feature `metal`)
 - GPU sessions: `CudaGpuSession`, `cuda_session` (feature `cuda`); `MetalGpuSession`, `metal_session` (feature `metal`)
 - Ranking GPU: `ranking_gpu` (feature `cuda`), `ranking_metal` (feature `metal`)
+
+> **Note (v0.10):** The Python API now uses unified entry points (`fit_toys(device=...)`, `ranking(device=...)`, etc.) that dispatch to these Rust functions internally. See `docs/references/python-api.md`.
 - Differentiable: `DifferentiableSession`, `ProfiledDifferentiableSession` (feature `cuda`); `MetalProfiledDifferentiableSession` (feature `metal`)
 - Transforms: `ParameterTransform`
 - Hybrid: `HybridLikelihood`, `SharedParameterMap` (combine binned + unbinned models with shared parameters)
@@ -140,7 +142,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Competing risks: `cumulative_incidence`, `gray_test`, `fine_gray_fit`, `CifEstimate`, `FineGrayResult`
 - Sequential: `group_sequential_design`, `alpha_spending_design`, `sequential_test`, `SequentialDesign`
 - Chain ladder: `chain_ladder_fit`, `mack_chain_ladder`, `bootstrap_reserves`, `ChainLadderResult`, `MackResult`
-- Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `cohort_retention_matrix`, and 15+ types
+- Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `bootstrap_hazard_ratios_with_method`, `cohort_retention_matrix`, and 15+ types
 - Fault tree MC: `FaultTreeSpec`, `FaultTreeNode`, `FailureMode`, `fault_tree_mc_cpu`, `fault_tree_mc_cuda` (CUDA), `fault_tree_mc_metal` (Metal), `FaultTreeCeIsConfig`, `FaultTreeCeIsResult`, `fault_tree_mc_ce_is` — GPU-accelerated MC and Cross-Entropy Importance Sampling for rare-event fault tree estimation (all failure modes: Bernoulli, WeibullMission, BernoulliUncertain)
 - Econometrics: `panel_fe_fit`, `did_canonical`, `event_study`, `iv_2sls`, `aipw_ate`, `rosenbaum_bounds`, `cluster_robust_se`
 - PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel` (analytical gradients)
@@ -254,6 +256,12 @@ Native ROOT file reader — zero dependency on ROOT C++.
 
 Key exports:
 - `ns_root::RootFile` — open ROOT files (mmap or owned bytes), read TH1 histograms and TTrees.
+- `ns_root::{RNTupleInfo, RNTupleAnchor, RNTupleEnvelopeBytes}` — RNTuple metadata foundation types.
+- `ns_root::{RNTupleEnvelopeInfo, RNTupleFieldToken, RNTupleHeaderSummary, RNTupleMetadataSummary}` — parsed envelope framing + header summary.
+- `ns_root::{RNTupleSchemaSummary, RNTupleSchemaField, RNTupleFieldKind, RNTupleScalarType}` — best-effort schema projection from header metadata (primitive/array/nested classification).
+- `ns_root::{RNTupleFooterSummary, RNTupleClusterGroupSummary, RNTupleLocatorSummary}` — footer cluster-group/page-list locator summary for navigation.
+- `ns_root::RNTuplePageListEnvelopeBytes` — decompressed page-list envelope payload for a selected cluster group.
+- `ns_root::{RNTuplePageListSummary, RNTuplePageSummary, RNTuplePageBlobBytes, RNTupleDecodedColumnsF64, RNTupleClusterDecodedColumnsF64, RNTuplePrimitiveColumnF64, RNTupleFixedArrayColumnF64, RNTupleVariableArrayColumnF64, RNTuplePairColumnF64, RNTuplePairScalarVariableColumnF64, RNTuplePairVariableScalarColumnF64, RNTuplePairVariableVariableColumnF64}` — parsed page-list descriptors, raw on-storage page blobs, and decoded typed column slices (`f64` representation) for primitive/array/pair subsets.
 - `ns_root::{Tree, BranchInfo, LeafType}` — TTree metadata and branch descriptors. **Compound leaf-list branches** (multiple scalars packed per entry, e.g. `"x/F:y/F:z/F"`) are now parsed — each scalar is exposed as a separate `BranchInfo`.
 - `ns_root::BranchReader` — columnar data extraction with parallel basket decompression (rayon).
 - `ns_root::BasketCache` — per-`RootFile` LRU cache of decompressed basket payloads. Byte-bounded eviction (default 256 MiB). Keyed by basket seek position; values are `Arc<Vec<u8>>` (shared ownership, zero-copy on cache hit). `RootFile::basket_cache()` returns cache stats; `RootFile::set_cache_config()` tunes capacity or disables caching.
@@ -261,6 +269,30 @@ Key exports:
 - `ns_root::ChainedSlice` — zero-copy concatenation of multiple decompressed basket payloads via `Arc` sharing. O(log n) random access across non-contiguous segments via binary search on cumulative offsets. Methods: `locate(pos)`, `read_array::<N>(pos)`, `decode_f64_at(pos, leaf_type)`.
 - `ns_root::CompiledExpr` — expression engine for selections/weights (`compile()` -> `eval_row()` / `eval_bulk()`). Supports ternary `cond ? a : b`; parse errors include `line/col`.
 - `ns_root::{HistogramSpec, FilledHistogram, fill_histograms}` — single-pass histogram filling.
+
+RNTuple read API:
+- `RootFile::list_rntuples()` / `RootFile::has_rntuples()` — discover top-level RNTuple keys.
+- `RootFile::read_rntuple_payload(name)` — raw decompressed anchor object payload.
+- `RootFile::read_rntuple_anchor(name)` — parse `ROOT::RNTuple` anchor fields (header/footer offsets and sizes).
+- `RootFile::read_rntuple_envelopes(name)` — load and decompress header/footer envelope blobs referenced by the anchor.
+- `RootFile::read_rntuple_metadata_summary(name)` — parse envelope type/length/checksum and extract header summary (`ntuple_name`, `writer`, discovered payload strings, best-effort `field_tokens` pairs).
+- `RootFile::read_rntuple_schema_summary(name)` — map field tokens to structural kind (`Primitive`, `FixedArray`, `VariableArray`, `Nested`, `Unknown`), normalized scalar/element scalar types, and `fixed_len` for fixed arrays. For schema-evolution layouts it merges header and footer-discovered field tokens.
+- `RootFile::read_rntuple_footer_summary(name)` — parse footer cluster-group summaries including page-list envelope length and on-disk locator.
+- `RootFile::read_rntuple_pagelist_envelope(name, cluster_group_index)` — load and decompress one page-list envelope (`envelope_type = 0x03`) for downstream page/cluster decode.
+- `RootFile::read_rntuple_pagelist_summary(name, cluster_group_index)` — parse page-list record descriptors (`nbytes`, `position` plus raw record markers) from the decompressed page-list payload, including observed larger-fixture framing variants.
+- `RootFile::read_rntuple_page_blob(name, cluster_group_index, page_index)` — load one raw page blob by descriptor index (bytes as stored; useful for diagnostics/corruption triage).
+- `RootFile::read_rntuple_primitive_columns_f64(name, cluster_group_index)` — decode primitive schema fields for one cluster group into numeric vectors (`f64`), using observed ROOT 6.38 page encoding (byte-shuffle + zigzag for signed ints) with compressed-page decode support.
+- `RootFile::read_rntuple_fixed_array_columns_f64(name, cluster_group_index)` — decode fixed-size array schema fields (`std::array<T,N>` / `T[N]`) into per-entry vectors.
+- `RootFile::read_rntuple_variable_array_columns_f64(name, cluster_group_index)` — decode variable-size array schema fields (`std::vector<T>` / `RVec<T>`) via offset+data pages into jagged per-entry vectors.
+- `RootFile::read_rntuple_pair_columns_f64(name, cluster_group_index)` — decode nested `std::pair<primitive,primitive>` fields into per-entry tuples.
+- `RootFile::read_rntuple_pair_scalar_variable_columns_f64(name, cluster_group_index)` — decode nested `std::pair<primitive,std::vector<primitive>>` fields into per-entry `(scalar, jagged)` tuples.
+- `RootFile::read_rntuple_pair_variable_scalar_columns_f64(name, cluster_group_index)` — decode nested `std::pair<std::vector<primitive>,primitive>` fields into per-entry `(jagged, scalar)` tuples.
+- `RootFile::read_rntuple_pair_variable_variable_columns_f64(name, cluster_group_index)` — decode nested `std::pair<std::vector<primitive>,std::vector<primitive>>` fields into per-entry `(jagged, jagged)` tuples.
+- `RootFile::read_rntuple_decoded_columns_f64(name, cluster_group_index)` — decode all supported field kinds above in one pass and return grouped results (`primitive`, `fixed_arrays`, `variable_arrays`, `pairs`, `pair_scalar_variable`, `pair_variable_scalar`, `pair_variable_variable`).
+- `RootFile::read_rntuple_decoded_columns_all_clusters_f64(name)` — decode supported field kinds for every cluster group and return per-group metadata (`cluster_group_index`, `min_entry`, `entry_span`) plus grouped decoded columns. In schema-evolution layouts, fields introduced after initial clusters are decoded where pages exist and omitted in earlier cluster groups. Verified coverage includes large mixed-layout stress fixture `tests/fixtures/rntuple_bench_large.root` (`20` cluster groups, `2,000,000` entries).
+- Performance/release gate:
+- `make rntuple-perf-gate` runs `crates/ns-root/tests/rntuple_perf_gate.rs` with configurable thresholds via `NS_ROOT_RNTUPLE_PERF_*` and optional case override via `NS_ROOT_RNTUPLE_PERF_CASES`.
+- `make rntuple-perf-gate-large-mixed` runs optional release-gate coverage for `tests/fixtures/rntuple_bench_large.root` with dedicated thresholds via `NS_ROOT_RNTUPLE_PERF_LARGE_MIXED_*`.
 
 TTree example:
 
@@ -780,8 +812,8 @@ pub use ns_viz::{
 
 - `DistributionsArtifact` — per-channel stacked distributions with ratio panel.
   - `channels: Vec<DistributionsChannelArtifact>`
-  - `distributions_artifact(model, data_by_channel, bin_edges_by_channel, params_prefit, params_postfit, threads, blinded_channels) -> Result<Self>`
-- `DistributionsChannelArtifact` — `bin_edges`, `data_y/yerr`, `samples: Vec<DistributionsSampleSeries>`, `total_prefit_y/postfit_y`, `ratio_y/yerr`, `ratio_policy`
+  - `distributions_artifact(model, data_by_channel, bin_edges_by_channel, params_prefit, params_postfit, postfit_uncertainties, postfit_covariance, threads, blinded_channels) -> Result<Self>`
+- `DistributionsChannelArtifact` — `bin_edges`, `data_y/yerr`, `samples: Vec<DistributionsSampleSeries>`, `total_prefit_y/postfit_y`, optional `mc_band_prefit/mc_band_postfit/mc_band_postfit_stat`, `ratio_y/yerr`, optional `ratio_band/ratio_band_stat`, `ratio_policy`
 
 ### `yields` — Yield tables
 

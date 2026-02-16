@@ -131,11 +131,29 @@
             "hi": { "$ref": "#/$defs/num_array" }
           }
         },
+        "mc_band_postfit_stat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lo", "hi"],
+          "properties": {
+            "lo": { "$ref": "#/$defs/num_array" },
+            "hi": { "$ref": "#/$defs/num_array" }
+          }
+        },
         "ratio_policy": { "$ref": "#/$defs/ratio_policy" },
         "ratio_y": { "$ref": "#/$defs/num_array" },
         "ratio_yerr_lo": { "$ref": "#/$defs/num_array" },
         "ratio_yerr_hi": { "$ref": "#/$defs/num_array" },
         "ratio_band": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lo", "hi"],
+          "properties": {
+            "lo": { "$ref": "#/$defs/num_array" },
+            "hi": { "$ref": "#/$defs/num_array" }
+          }
+        },
+        "ratio_band_stat": {
           "type": "object",
           "additionalProperties": false,
           "required": ["lo", "hi"],

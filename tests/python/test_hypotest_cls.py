@@ -148,8 +148,8 @@ def test_upper_limits_rootfind_simple_parity(ns_timing):
         )
 
     with ns_timing.time("nextstat"):
-        ns_obs, ns_exp = ns_infer.upper_limits_root(
-            ns_model, alpha=0.05, lo=0.0, hi=5.0, rtol=1e-4, max_iter=80
+        ns_obs, ns_exp = ns_infer.upper_limit(
+            ns_model, method="root", alpha=0.05, lo=0.0, hi=5.0, rtol=1e-4, max_iter=80
         )
 
     assert abs(float(ns_obs) - float(pyhf_obs)) < 5e-4

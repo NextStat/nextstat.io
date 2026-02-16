@@ -56,7 +56,7 @@ Both CUDA and Metal support GPU-accelerated batch toy fitting for CLs hypothesis
 
 | Entry Point | Description |
 |-------------|-------------|
-| `fit_toys_batch_gpu` / `fit_toys_batch_metal` | High-level: generate toys from model params |
+| `fit_toys(device="cuda"\|"metal")` | High-level: generate toys from model params (internal: `fit_toys_batch_gpu`/`fit_toys_batch_metal`) |
 | `fit_toys_from_data_gpu` / `fit_toys_from_data_metal` | Low-level: custom expected data, init, bounds |
 | `hypotest_qtilde_toys_gpu(device="cuda"\|"metal")` | Full CLs workflow: Phase A (CPU baseline) + Phase B (GPU ensemble) |
 

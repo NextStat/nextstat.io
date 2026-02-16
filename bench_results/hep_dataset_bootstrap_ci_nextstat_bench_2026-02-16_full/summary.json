@@ -1,0 +1,77 @@
+{
+  "config": {
+    "runs": 32,
+    "seed0": 5000,
+    "n_events": 400,
+    "sigma_true": 30.0,
+    "conf_level": 0.95,
+    "n_bootstrap": 1500,
+    "threads": 56,
+    "obs_low": 0.0,
+    "obs_high": 500.0,
+    "max_run_attempts": 5,
+    "nextstat_bin": "/opt/nextstat_src_min_2026-02-16/target/release/nextstat"
+  },
+  "scenarios": {
+    "gauss_mu_mid": {
+      "percentile": {
+        "runs": 32,
+        "coverage_vs_true_poi": 0.96875,
+        "median_width": 5.9378476956040345,
+        "mean_width": 5.93501892449816,
+        "median_wall_total_s": 0.058310927503043786,
+        "mean_wall_total_s": 0.05777763925289037,
+        "median_center_minus_true": -0.16423802811895882,
+        "mean_center_minus_true": -0.209517382590918,
+        "median_obs_hat_minus_true": -0.1883837323269475,
+        "mean_obs_hat_minus_true": -0.23340980104809717,
+        "fallback_count": 0,
+        "effective_bca_count": 0
+      },
+      "bca": {
+        "runs": 32,
+        "coverage_vs_true_poi": 0.96875,
+        "median_width": 5.894875495980962,
+        "mean_width": 5.896640175101245,
+        "median_wall_total_s": 0.058310927503043786,
+        "mean_wall_total_s": 0.05777763925289037,
+        "median_center_minus_true": -0.014411862551853005,
+        "mean_center_minus_true": -0.05988564652194572,
+        "median_obs_hat_minus_true": -0.1883837323269475,
+        "mean_obs_hat_minus_true": -0.23340980104809717,
+        "fallback_count": 0,
+        "effective_bca_count": 32
+      }
+    },
+    "gauss_mu_boundary_low": {
+      "percentile": {
+        "runs": 32,
+        "coverage_vs_true_poi": 0.96875,
+        "median_width": 5.923099971604103,
+        "mean_width": 5.653142423094998,
+        "median_wall_total_s": 0.055873370001791045,
+        "mean_wall_total_s": 0.055614658474951284,
+        "median_center_minus_true": -0.194968354391996,
+        "mean_center_minus_true": -0.09572272106150193,
+        "median_obs_hat_minus_true": -0.21645312833283725,
+        "mean_obs_hat_minus_true": -0.260702187509958,
+        "fallback_count": 0,
+        "effective_bca_count": 0
+      },
+      "bca": {
+        "runs": 32,
+        "coverage_vs_true_poi": 0.96875,
+        "median_width": 5.900677273700246,
+        "mean_width": 5.672272898924044,
+        "median_wall_total_s": 0.055873370001791045,
+        "mean_wall_total_s": 0.055614658474951284,
+        "median_center_minus_true": -0.03624370501620433,
+        "mean_center_minus_true": 0.03626762442168863,
+        "median_obs_hat_minus_true": -0.21645312833283725,
+        "mean_obs_hat_minus_true": -0.260702187509958,
+        "fallback_count": 0,
+        "effective_bca_count": 32
+      }
+    }
+  }
+}

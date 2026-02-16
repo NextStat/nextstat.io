@@ -483,6 +483,66 @@ impl MetalUnbinnedBatchAccelerator {
         Ok(Self::read_buffer_f32_to_f64(&self.buf_nll_out, self.n_toys))
     }
 
+    /// Batch NLL for a subset of active toys (scatter/gather around `batch_nll`).
+    pub fn batch_nll_active(
+        &mut self,
+        params_flat_active: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<Vec<f64>> {
+        if params_flat_active.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat_active length mismatch: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat_active.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut params_full = vec![0.0f64; self.n_toys * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            let src = &params_flat_active[slot * self.n_params..(slot + 1) * self.n_params];
+            let dst = &mut params_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        let nll_full = self.batch_nll(&params_full)?;
+        Ok(active_toys.iter().map(|&i| nll_full[i]).collect())
+    }
+
+    /// Batch NLL+gradient for a subset of active toys (scatter/gather around `batch_nll_grad`).
+    pub fn batch_nll_grad_active(
+        &mut self,
+        params_flat_active: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params_flat_active.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat_active length mismatch: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat_active.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut params_full = vec![0.0f64; self.n_toys * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            let src = &params_flat_active[slot * self.n_params..(slot + 1) * self.n_params];
+            let dst = &mut params_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        let (nll_full, grad_full) = self.batch_nll_grad(&params_full)?;
+        let mut nll_active = Vec::with_capacity(active_toys.len());
+        let mut grad_active = vec![0.0f64; active_toys.len() * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            nll_active.push(nll_full[toy_idx]);
+            let src = &grad_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            let dst = &mut grad_active[slot * self.n_params..(slot + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        Ok((nll_active, grad_active))
+    }
+
     /// Number of parameters.
     pub fn n_params(&self) -> usize {
         self.n_params

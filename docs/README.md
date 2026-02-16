@@ -10,6 +10,7 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 
 - Tutorials index (end-to-end workflows): `docs/tutorials/README.md`
 - Quickstarts (10 minutes to result): `docs/quickstarts/README.md`
+- Adoption playbook (HEP routes A/B/C): `docs/guides/README.md`
 - Python reference: `docs/references/python-api.md`
 - Python packaging (wheels/extras): `docs/references/python-packaging.md`
 - Arrow / Parquet I/O (histogram tables): `docs/references/arrow-parquet-io.md`
@@ -17,6 +18,12 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 - Rust reference: `docs/references/rust-api.md`
 - Terminology and style guide: `docs/references/terminology.md`
 - Glossary (cross-domain term definitions): `docs/references/glossary.md`
+- RNTuple effort estimate (minimal/converter/full): `docs/references/rntuple-minimal-reader-estimate.md`
+- RNTuple compatibility matrix (verified rows + CI gates): `docs/references/rntuple-compatibility-matrix.md`
+- RNTuple rollout/migration notes (v1 scope + limits): `docs/references/rntuple-rollout-v1.md`
+- RNTuple benchmark note (`nextstat-bench`, `ns-root` vs ROOT): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
+- RNTuple mixed-layout verification addendum (`2,000,000` entries, release perf-gate): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
+- RNTuple reproducible comparison harness (`make rntuple-root-vs-nsroot`): `scripts/benchmarks/run_rntuple_root_vs_nsroot.sh`
 
 ## Demos
 
@@ -47,6 +54,16 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 
 - Binned histogram Parquet schema (v2, with modifiers): `docs/references/binned-parquet-schema.md`
 - Unbinned event-level Parquet schema (v1): `docs/references/unbinned-parquet-schema.md`
+
+## Architecture Decisions (RFC/ADR)
+
+- ADR-0001 RNTuple Support Policy: `docs/rfcs/rntuple-support-policy.md`
+
+## HPC / Cluster Deployment
+
+- HTCondor & HPC cluster guide: `docs/guides/htcondor-hpc.md`
+- HTCondor examples (.sub files, DAGMan): `docs/examples/htcondor/`
+- Apptainer/Singularity containers: `containers/`
 
 ## GPU Support
 
