@@ -1,0 +1,49 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-runtime-almalinux9
+
+%labels
+    Author NextStat Team
+    Version 0.9.5
+    Description NextStat statistical inference engine (GPU/CUDA)
+
+%post
+    # Python 3.12 (not default on AlmaLinux 9; needs module enable)
+    dnf install -y dnf-plugins-core && \
+    dnf module enable -y python3.12 && \
+    dnf install -y python3.12 python3.12-pip python3.12-devel gcc && \
+    dnf clean all
+
+    # Install NextStat from PyPI (pre-built manylinux wheel)
+    python3.12 -m pip install --no-cache-dir nextstat
+
+    # Verify
+    python3.12 -c "import nextstat; print('NextStat', nextstat.__version__)"
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    # NVIDIA container runtime sets these automatically:
+    # NVIDIA_VISIBLE_DEVICES, CUDA_VISIBLE_DEVICES
+
+%runscript
+    exec nextstat "$@"
+
+%test
+    nextstat --version
+    python3.12 -c "import nextstat; print('OK:', nextstat.__version__)"
+    nvidia-smi || echo "No GPU available in build environment (expected)"
+
+%help
+    NextStat with CUDA GPU support.
+
+    Usage (GPU toys):
+        apptainer run --nv nextstat-gpu.sif hypotest-toys \
+            --input workspace.json --mu 1.0 --n-toys 10000 --gpu-sample-toys
+
+    Usage (Python, GPU):
+        apptainer exec --nv nextstat-gpu.sif python3.12 my_gpu_analysis.py
+
+    Build:
+        apptainer build nextstat-gpu.sif nextstat-gpu.def
+
+    IMPORTANT: Use --nv flag to expose host GPU drivers to the container.

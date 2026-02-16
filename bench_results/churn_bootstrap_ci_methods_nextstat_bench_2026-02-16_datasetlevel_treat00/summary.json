@@ -1,0 +1,112 @@
+{
+  "config": {
+    "n_customers": 4000,
+    "n_cohorts": 6,
+    "max_time": 24.0,
+    "treatment_fraction": 0.0,
+    "n_bootstrap": 800,
+    "conf_level": 0.95,
+    "n_jackknife": 240,
+    "runs": 128,
+    "seed0": 9600,
+    "regenerate_data_per_run": true,
+    "nextstat_bin": "/opt/nextstat_src_min_2026-02-16/target/release/nextstat",
+    "use_default_truth": true,
+    "truth_hr_default": {
+      "plan_basic": 0.65,
+      "plan_premium": 0.4,
+      "usage_score": 0.8,
+      "support_tickets": 1.0
+    }
+  },
+  "percentile": {
+    "runs": 128,
+    "median_wall_s": 0.24824253952829167,
+    "mean_wall_s": 0.24978137550988322,
+    "mean_interval_width": 0.07448378216394241,
+    "fallback_total": 0,
+    "effective_bca_total": 0,
+    "coverage_vs_true_hr": 0.9296875,
+    "coverage_hits": 476,
+    "coverage_total": 512,
+    "per_coefficient": {
+      "plan_basic": {
+        "hr_true": 0.65,
+        "coverage_hits": 117,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9140625,
+        "mean_width": 0.10696447634451223,
+        "mean_hr_point": 0.6529631871403159
+      },
+      "plan_premium": {
+        "hr_true": 0.4,
+        "coverage_hits": 117,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9140625,
+        "mean_width": 0.08083294945371712,
+        "mean_hr_point": 0.4018890127703102
+      },
+      "support_tickets": {
+        "hr_true": 1.0,
+        "coverage_hits": 120,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9375,
+        "mean_width": 0.05127964113488134,
+        "mean_hr_point": 0.9996507403973922
+      },
+      "usage_score": {
+        "hr_true": 0.8,
+        "coverage_hits": 122,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.953125,
+        "mean_width": 0.05885806172265897,
+        "mean_hr_point": 0.8004394013234829
+      }
+    }
+  },
+  "bca": {
+    "runs": 128,
+    "median_wall_s": 0.31230008450802416,
+    "mean_wall_s": 0.31504090525731954,
+    "mean_interval_width": 0.0746309812603467,
+    "fallback_total": 0,
+    "effective_bca_total": 512,
+    "coverage_vs_true_hr": 0.9296875,
+    "coverage_hits": 476,
+    "coverage_total": 512,
+    "per_coefficient": {
+      "plan_basic": {
+        "hr_true": 0.65,
+        "coverage_hits": 117,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9140625,
+        "mean_width": 0.10715679780017649,
+        "mean_hr_point": 0.6529631871403159
+      },
+      "plan_premium": {
+        "hr_true": 0.4,
+        "coverage_hits": 119,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9296875,
+        "mean_width": 0.08108467922509519,
+        "mean_hr_point": 0.4018890127703102
+      },
+      "support_tickets": {
+        "hr_true": 1.0,
+        "coverage_hits": 120,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9375,
+        "mean_width": 0.051317684074292734,
+        "mean_hr_point": 0.9996507403973922
+      },
+      "usage_score": {
+        "hr_true": 0.8,
+        "coverage_hits": 120,
+        "coverage_total": 128,
+        "coverage_vs_true_hr": 0.9375,
+        "mean_width": 0.05896476394182236,
+        "mean_hr_point": 0.8004394013234829
+      }
+    }
+  }
+}

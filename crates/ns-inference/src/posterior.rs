@@ -242,6 +242,73 @@ impl<'a, M: LogDensityModel + ?Sized> Posterior<'a, M> {
         Ok(grad_z)
     }
 
+    /// Fused log-posterior and gradient in unconstrained space.
+    ///
+    /// This avoids duplicate constrained transforms and allows models to use
+    /// fused `nll+grad` implementations via `LogDensityModel::nll_grad_prepared`.
+    pub fn logpdf_grad_unconstrained(&self, z: &[f64]) -> Result<(f64, Vec<f64>)> {
+        if z.len() != self.dim() {
+            return Err(ns_core::Error::Validation(format!(
+                "expected z length = model.dim() = {}, got {}",
+                self.dim(),
+                z.len()
+            )));
+        }
+        if z.iter().any(|v| !v.is_finite()) {
+            return Ok((f64::NEG_INFINITY, vec![0.0; self.dim()]));
+        }
+
+        let theta = match self.to_constrained(z) {
+            Ok(t) => t,
+            Err(e) if Self::is_nonfinite_validation(&e) => {
+                return Ok((f64::NEG_INFINITY, vec![0.0; self.dim()]));
+            }
+            Err(e) => return Err(e),
+        };
+
+        let prepared = self.model.prepared();
+        let (nll, grad_nll) = match self.model.nll_grad_prepared(&prepared, &theta) {
+            Ok(v) => v,
+            Err(e) if Self::is_nonfinite_validation(&e) => {
+                return Ok((f64::NEG_INFINITY, vec![0.0; self.dim()]));
+            }
+            Err(e) => return Err(e),
+        };
+
+        let mut lp = -nll;
+        let mut grad_theta_logpdf: Vec<f64> = grad_nll.iter().map(|g| -*g).collect();
+
+        for (i, prior) in self.priors.iter().enumerate() {
+            match prior {
+                Prior::Flat => {}
+                Prior::Normal { center, width } => {
+                    if !width.is_finite() || *width <= 0.0 {
+                        return Err(ns_core::Error::Validation(format!(
+                            "Normal prior width must be finite and > 0, got {}",
+                            width
+                        )));
+                    }
+                    let pull = (theta[i] - center) / width;
+                    lp -= 0.5 * pull * pull;
+                    grad_theta_logpdf[i] -= (theta[i] - center) / (width * width);
+                }
+            }
+        }
+
+        let log_jac = self.transform.log_abs_det_jacobian(z);
+        let jac_diag = self.transform.jacobian_diag(z);
+        let grad_log_jac = self.transform.grad_log_abs_det_jacobian(z);
+
+        let grad_z: Vec<f64> = grad_theta_logpdf
+            .iter()
+            .zip(jac_diag.iter())
+            .zip(grad_log_jac.iter())
+            .map(|((&gt, &jd), &glj)| gt * jd + glj)
+            .collect();
+
+        Ok((lp + log_jac, grad_z))
+    }
+
     /// Map constrained -> unconstrained.
     pub fn to_unconstrained(&self, theta: &[f64]) -> Result<Vec<f64>> {
         self.validate_theta_len(theta)?;

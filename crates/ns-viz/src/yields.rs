@@ -4,18 +4,18 @@ use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use ns_translate::pyhf::HistFactoryModel;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YieldsArtifact {
     pub schema_version: String,
     pub meta: YieldsMeta,
     pub channels: Vec<YieldsChannel>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YieldsMeta {
     pub tool: String,
     pub tool_version: String,
@@ -23,13 +23,13 @@ pub struct YieldsMeta {
     pub parity_mode: YieldsParityMode,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YieldsParityMode {
     pub threads: usize,
     pub stable_ordering: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YieldsChannel {
     pub channel_name: String,
     pub data: f64,
@@ -40,7 +40,7 @@ pub struct YieldsChannel {
     pub total_postfit: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YieldsSample {
     pub name: String,
     pub prefit: f64,

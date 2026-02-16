@@ -792,7 +792,7 @@ nextstat viz ranking --input multichannel.json --output ranking.json
 ranking = nextstat.ranking(model)
 print("Top impacts on mu:")
 for r in ranking[:10]:
-    print(f"  {r['name']:25s}  Δμ(+1σ)={r['impact_up']:+.4f}  Δμ(-1σ)={r['impact_down']:+.4f}")
+    print(f"  {r['name']:25s}  Δμ(+1σ)={r['delta_mu_up']:+.4f}  Δμ(-1σ)={r['delta_mu_down']:+.4f}")
 ```
 
 **Interpreting ranking:**
@@ -1075,7 +1075,7 @@ print("─" * 60)
 
 ranking = nextstat.ranking(model)
 for i, r in enumerate(ranking[:10]):
-    print(f"  {i+1:2d}. {r['name']:25s}  Δμ(+1σ)={r['impact_up']:+.4f}  Δμ(-1σ)={r['impact_down']:+.4f}")
+    print(f"  {i+1:2d}. {r['name']:25s}  Δμ(+1σ)={r['delta_mu_up']:+.4f}  Δμ(-1σ)={r['delta_mu_down']:+.4f}")
 print()
 
 # ── 6. Pulls ──────────────────────────────────────────────────
@@ -1170,8 +1170,8 @@ import matplotlib.pyplot as plt
 # ranking from nextstat.ranking(model)
 top_n = ranking[:15]
 names_r = [r["name"] for r in top_n][::-1]
-up = [r["impact_up"] for r in top_n][::-1]
-down = [r["impact_down"] for r in top_n][::-1]
+up = [r["delta_mu_up"] for r in top_n][::-1]
+down = [r["delta_mu_down"] for r in top_n][::-1]
 
 fig, ax = plt.subplots(figsize=(8, 6))
 y = range(len(names_r))
@@ -1210,7 +1210,8 @@ plt.show()
 | NP ranking | `nextstat viz ranking --input ws.json` |
 | Pull plot | `nextstat viz pulls --input ws.json --fit fit.json` |
 | Correlation matrix | `nextstat viz corr --input ws.json --fit fit.json` |
-| Distributions | `nextstat viz distributions --input ws.json --fit fit.json` |
+| Distributions | `nextstat viz distributions --input ws.json --histfactory-xml combination.xml --fit fit.json` |
+| Render viz artifact | `nextstat viz render --kind pulls|corr|ranking --input artifact.json --output artifact.png` |
 | CLs curve (Brazil) | `nextstat viz cls --input ws.json --scan-start 0 --scan-stop 5 --scan-points 201` |
 | Profile curve | `nextstat viz profile --input ws.json --start 0 --stop 3 --points 31` |
 | Goodness of fit | `nextstat goodness-of-fit --input ws.json` |
@@ -1218,7 +1219,7 @@ plt.show()
 | Mass scan | `nextstat mass-scan --workspaces-dir dir/ --labels m100,m200` |
 | Smooth systematics | `nextstat preprocess smooth --input ws.json --output smooth.json` |
 | Prune systematics | `nextstat preprocess prune --input ws.json --output pruned.json` |
-| Full report | `nextstat report --input ws.json --out-dir report/ --render --pdf report.pdf` |
+| Full report | `nextstat report --input ws.json --histfactory-xml combination.xml --out-dir report/ --render --pdf report.pdf` |
 
 ---
 

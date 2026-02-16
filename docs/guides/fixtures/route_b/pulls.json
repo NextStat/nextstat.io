@@ -1,0 +1,74 @@
+{
+  "entries": [
+    {
+      "constraint": 1.0,
+      "group": "poi",
+      "kind": "poi",
+      "name": "mu",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.04590660627800035,
+      "pull": 0.0
+    },
+    {
+      "constraint": 0.7105967794300597,
+      "kind": "nuisance",
+      "name": "staterror_SR[0]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.2260295441788628,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.31808411003516196,
+      "pull": 0.0
+    },
+    {
+      "constraint": 0.7631407630659823,
+      "kind": "nuisance",
+      "name": "staterror_SR[1]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.0580596109377351,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.0760798187538505,
+      "pull": 0.0
+    },
+    {
+      "constraint": 0.8974328086989514,
+      "kind": "nuisance",
+      "name": "staterror_SR[2]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.037486388750560914,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.04177069122857968,
+      "pull": 0.0
+    },
+    {
+      "constraint": 0.7579513901495082,
+      "kind": "nuisance",
+      "name": "staterror_SR[3]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.05938615109868347,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.0783508703466714,
+      "pull": 0.0
+    },
+    {
+      "constraint": 0.6730487829568331,
+      "kind": "nuisance",
+      "name": "staterror_SR[4]",
+      "postfit_center": 1.0,
+      "postfit_sigma": 0.4039530761827912,
+      "prefit_center": 1.0,
+      "prefit_sigma": 0.6001839486406133,
+      "pull": 0.0
+    }
+  ],
+  "meta": {
+    "created_unix_ms": 1771194584008,
+    "parity_mode": {
+      "stable_ordering": true,
+      "threads": 1
+    },
+    "tool": "nextstat",
+    "tool_version": "0.9.5"
+  },
+  "ordering_policy": "name_lex",
+  "schema_version": "trex_report_pulls_v0"
+}

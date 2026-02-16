@@ -182,8 +182,9 @@ def _run_nextstat_mams(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
     import nextstat  # type: ignore
 
     t0 = time.perf_counter()
-    r = nextstat.sample_mams(
+    r = nextstat.sample(
         model_obj,
+        method="mams",
         n_chains=cfg["n_chains"],
         n_warmup=cfg["n_warmup"],
         n_samples=cfg["n_samples"],

@@ -84,8 +84,9 @@ def run_laps(
         }
 
     t0 = time.perf_counter()
-    result = nextstat.sample_laps(
+    result = nextstat.sample(
         model,
+        method="laps",
         model_data=model_data,
         n_chains=n_chains,
         n_warmup=n_warmup,

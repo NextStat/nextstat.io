@@ -1,4 +1,4 @@
-"""Parity check: `nextstat.unbinned_fit_toys` vs `nextstat unbinned-fit-toys` CLI."""
+"""Parity check: `nextstat.fit_toys` (unbinned) vs `nextstat unbinned-fit-toys` CLI."""
 
 from __future__ import annotations
 
@@ -171,6 +171,7 @@ def _run_unbinned_fit_toys_cli(
             or "support not compiled in" in msg
             or "no metal device found" in msg
             or "no device/driver" in msg
+            or "requires building with" in msg
         ):
             pytest.skip(f"CLI backend '{gpu}' unavailable in this environment")
         raise RuntimeError(f"CLI failed:\n{proc.stderr}\n{proc.stdout}")
@@ -188,7 +189,7 @@ def test_unbinned_fit_toys_matches_cli(tmp_path: Path) -> None:
     nextstat.set_threads(1)
     n_toys = 8
     seed = 123
-    py_results = nextstat.unbinned_fit_toys(model, params, n_toys=n_toys, seed=seed)
+    py_results = nextstat.fit_toys(model, params, n_toys=n_toys, seed=seed)
     assert len(py_results) == n_toys
 
     cli_out = _run_unbinned_fit_toys_cli(spec_path, n_toys=n_toys, seed=seed)

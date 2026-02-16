@@ -150,3 +150,69 @@ fn import_trex_config_hist_mode_matches_histfactory_fixture() {
 
     let _ = std::fs::remove_file(&ws_path);
 }
+
+#[test]
+fn import_trex_config_analysis_yaml_runs_full_report_e2e() {
+    let root = repo_root();
+    let config = root.join("docs/examples/trex_config_hist_minimal.txt");
+    let histfactory_xml = fixture_path("histfactory/combination.xml");
+    assert!(config.exists(), "missing config: {}", config.display());
+    assert!(histfactory_xml.exists(), "missing HistFactory XML: {}", histfactory_xml.display());
+
+    let import_ws_path = tmp_path("trex_hist_import_ws.json");
+    let run_ws_path = tmp_path("trex_hist_run_ws.json");
+    let yaml_path = tmp_path("trex_hist_analysis.yaml");
+    let report_dir = tmp_path("trex_hist_report_dir");
+
+    let out = run(&[
+        "import",
+        "trex-config",
+        "--config",
+        config.to_string_lossy().as_ref(),
+        "--base-dir",
+        root.to_string_lossy().as_ref(),
+        "--output",
+        import_ws_path.to_string_lossy().as_ref(),
+        "--analysis-yaml",
+        yaml_path.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        out.status.success(),
+        "import trex-config should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(yaml_path.exists(), "missing generated analysis yaml: {}", yaml_path.display());
+
+    let mut spec: serde_json::Value =
+        serde_yaml_ng::from_slice(&std::fs::read(&yaml_path).unwrap()).unwrap();
+    spec["execution"]["import"]["output_json"] =
+        serde_json::Value::String(run_ws_path.to_string_lossy().into_owned());
+    spec["execution"]["report"]["enabled"] = serde_json::Value::Bool(true);
+    spec["execution"]["report"]["out_dir"] =
+        serde_json::Value::String(report_dir.to_string_lossy().into_owned());
+    spec["execution"]["report"]["overwrite"] = serde_json::Value::Bool(true);
+    spec["execution"]["report"]["histfactory_xml"] =
+        serde_json::Value::String(histfactory_xml.to_string_lossy().into_owned());
+    spec["execution"]["report"]["skip_uncertainty"] = serde_json::Value::Bool(false);
+    std::fs::write(&yaml_path, serde_yaml_ng::to_string(&spec).unwrap()).unwrap();
+
+    let run_out = run(&["run", "--config", yaml_path.to_string_lossy().as_ref()]);
+    assert!(
+        run_out.status.success(),
+        "nextstat run should succeed, stderr={}",
+        String::from_utf8_lossy(&run_out.stderr)
+    );
+
+    assert!(run_ws_path.exists(), "missing run workspace output: {}", run_ws_path.display());
+    assert!(report_dir.join("fit.json").exists(), "missing report fit.json");
+    assert!(report_dir.join("distributions.json").exists(), "missing report distributions.json");
+    assert!(report_dir.join("yields.json").exists(), "missing report yields.json");
+    assert!(report_dir.join("pulls.json").exists(), "missing report pulls.json");
+    assert!(report_dir.join("corr.json").exists(), "missing report corr.json");
+    assert!(report_dir.join("uncertainty.json").exists(), "missing report uncertainty.json");
+
+    let _ = std::fs::remove_file(&import_ws_path);
+    let _ = std::fs::remove_file(&run_ws_path);
+    let _ = std::fs::remove_file(&yaml_path);
+    let _ = std::fs::remove_dir_all(&report_dir);
+}

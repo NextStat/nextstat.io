@@ -2,6 +2,7 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	adoption-playbook-smoke \
 	validation-pack \
 	rust-slow-tests \
 	rust-very-slow-tests \
@@ -20,6 +21,9 @@
 	apex2-root-aggregate \
 	apex2-root-suite-compare-perf \
 	apex2-root-suite-compare-latest \
+	rntuple-perf-gate \
+	rntuple-perf-gate-large-mixed \
+	rntuple-root-vs-nsroot \
 	nsr-vendor-sync \
 	nsr-vendor-check \
 	nsr-cran-check-clean \
@@ -61,6 +65,18 @@ PLAYGROUND_PORT ?= 8000
 VALIDATION_PACK_OUT_DIR ?= tmp/validation_pack
 VALIDATION_PACK_WORKSPACE ?= tests/fixtures/complex_workspace.json
 VALIDATION_PACK_ARGS ?=
+ADOPTION_PLAYBOOK_REPORT ?= tmp/reports/adoption_playbook_smoke_report.json
+ADOPTION_PLAYBOOK_ARGS ?=
+RNTUPLE_PERF_ITERS ?= 10
+RNTUPLE_PERF_MAX_AVG_MS ?= 120
+RNTUPLE_PERF_MIN_SUITES_PER_SEC ?= 8
+RNTUPLE_PERF_CARGO_TARGET_DIR ?= target
+RNTUPLE_PERF_LARGE_MIXED_ITERS ?= 5
+RNTUPLE_PERF_LARGE_MIXED_MAX_AVG_MS ?= 200
+RNTUPLE_PERF_LARGE_MIXED_MIN_SUITES_PER_SEC ?= 5
+RNTUPLE_PERF_LARGE_MIXED_CASE ?= tests/fixtures/rntuple_bench_large.root
+RNTUPLE_BENCH_ITERS ?= 5
+RNTUPLE_BENCH_FIXTURE ?= tests/fixtures/rntuple_bench_large_primitive.root
 
 apex2-baseline-record:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/record_baseline.py $(RECORD_ARGS)
@@ -70,6 +86,11 @@ apex2-baseline-compare:
 
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
+
+adoption-playbook-smoke:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/guides/verify_adoption_playbook.py \
+		--report "$(ADOPTION_PLAYBOOK_REPORT)" \
+		$(ADOPTION_PLAYBOOK_ARGS)
 
 validation-pack:
 	bash validation-pack/render_validation_pack.sh \
@@ -168,6 +189,26 @@ apex2-root-suite-compare-latest:
 		--current "$(ROOT_CURRENT_SUITE)" \
 		--out "$(ROOT_PERF_OUT)" \
 		$(ROOT_PERF_ARGS)
+
+rntuple-perf-gate:
+	CARGO_TARGET_DIR="$(RNTUPLE_PERF_CARGO_TARGET_DIR)" \
+	NS_ROOT_RNTUPLE_PERF_ITERS="$(RNTUPLE_PERF_ITERS)" \
+	NS_ROOT_RNTUPLE_PERF_MAX_AVG_MS="$(RNTUPLE_PERF_MAX_AVG_MS)" \
+	NS_ROOT_RNTUPLE_PERF_MIN_SUITES_PER_SEC="$(RNTUPLE_PERF_MIN_SUITES_PER_SEC)" \
+	cargo test -p ns-root --test rntuple_perf_gate rntuple_decode_perf_gate_baseline -- --ignored --nocapture
+
+rntuple-perf-gate-large-mixed:
+	CARGO_TARGET_DIR="$(RNTUPLE_PERF_CARGO_TARGET_DIR)" \
+	NS_ROOT_RNTUPLE_PERF_LARGE_MIXED_CASES="$(abspath $(RNTUPLE_PERF_LARGE_MIXED_CASE))" \
+	NS_ROOT_RNTUPLE_PERF_LARGE_MIXED_ITERS="$(RNTUPLE_PERF_LARGE_MIXED_ITERS)" \
+	NS_ROOT_RNTUPLE_PERF_LARGE_MIXED_MAX_AVG_MS="$(RNTUPLE_PERF_LARGE_MIXED_MAX_AVG_MS)" \
+	NS_ROOT_RNTUPLE_PERF_LARGE_MIXED_MIN_SUITES_PER_SEC="$(RNTUPLE_PERF_LARGE_MIXED_MIN_SUITES_PER_SEC)" \
+	cargo test -p ns-root --test rntuple_perf_gate rntuple_decode_perf_gate_large_mixed_optional --release -- --ignored --nocapture
+
+rntuple-root-vs-nsroot:
+	bash scripts/benchmarks/run_rntuple_root_vs_nsroot.sh \
+		--fixture "$(abspath $(RNTUPLE_BENCH_FIXTURE))" \
+		--iters "$(RNTUPLE_BENCH_ITERS)"
 
 nsr-vendor-sync:
 	bash scripts/nsr_vendor_sync.sh

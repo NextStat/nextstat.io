@@ -170,7 +170,6 @@ impl LbfgsState {
 
         if !nll.is_finite() || grad.iter().any(|g| !g.is_finite()) {
             self.failed = true;
-            self.converged = true;
             self.fval = nll;
             return None;
         }
@@ -182,7 +181,10 @@ impl LbfgsState {
             return None;
         }
 
-        if let Some(prev) = self.prev_fval
+        // Only check relative objective change after enough iterations for the
+        // L-BFGS Hessian to have meaningful curvature information.
+        if self.iter >= 3
+            && let Some(prev) = self.prev_fval
             && Self::relative_obj_change(prev, nll) < self.tol
         {
             self.converged = true;
@@ -283,7 +285,6 @@ impl LbfgsState {
         // would silently corrupt the inverse Hessian approximation.
         if !nll.is_finite() || grad.iter().any(|g| !g.is_finite()) {
             self.failed = true;
-            self.converged = true;
             self.fval = nll;
             return &self.x;
         }
@@ -296,7 +297,12 @@ impl LbfgsState {
             return &self.x;
         }
 
-        if let Some(prev) = self.prev_fval
+        // Only check relative objective change after enough iterations for the
+        // L-BFGS Hessian to have meaningful curvature information.  On iterations
+        // 1-2, L-BFGS-B uses (near-)steepest descent which can produce tiny NLL
+        // changes even when far from the minimum, causing false convergence.
+        if self.iter >= 3
+            && let Some(prev) = self.prev_fval
             && Self::relative_obj_change(prev, nll) < self.tol
         {
             self.converged = true;
@@ -716,12 +722,18 @@ mod tests {
     fn begin_iter_converges_on_small_relative_obj_change() {
         let mut st = LbfgsState::new(vec![0.0], vec![(-10.0, 10.0)], 5, 1e-6);
 
-        let dir0 = st.begin_iter(1000.0, &[1.0]).expect("first iter should be active");
-        let x1 = st.propose_x(&dir0, 1e-8);
-        st.accept_x(x1);
+        // Need at least 3 iterations before relative-change convergence fires
+        // (guard prevents false convergence on early steepest-descent steps).
+        for nll in [1000.0, 999.5, 999.1] {
+            let dir = st.begin_iter(nll, &[1.0]).expect("should be active before iter 3");
+            let x_next = st.propose_x(&dir, 1e-8);
+            st.accept_x(x_next);
+        }
+        assert_eq!(st.iter, 3, "should have completed 3 iterations");
 
-        let dir1 = st.begin_iter(999.9995, &[1.0]);
-        assert!(dir1.is_none(), "second iter should stop on relative objective criterion");
+        // Iteration 3: tiny relative change → convergence
+        let dir3 = st.begin_iter(999.09995, &[1.0]);
+        assert!(dir3.is_none(), "iter 3 should stop on relative objective criterion");
         assert!(st.converged, "state must be marked converged");
         assert!(!st.failed, "state must not be marked failed");
     }

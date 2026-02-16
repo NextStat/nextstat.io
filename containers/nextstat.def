@@ -1,0 +1,46 @@
+Bootstrap: docker
+From: almalinux:9
+
+%labels
+    Author NextStat Team
+    Version 0.9.5
+    Description NextStat statistical inference engine (CPU)
+
+%post
+    # Python 3.12 (not default on AlmaLinux 9; needs module enable)
+    dnf install -y dnf-plugins-core && \
+    dnf module enable -y python3.12 && \
+    dnf install -y python3.12 python3.12-pip python3.12-devel gcc && \
+    dnf clean all
+
+    # Install NextStat from PyPI (pre-built manylinux wheel, no compilation)
+    python3.12 -m pip install --no-cache-dir nextstat
+
+    # Verify installation
+    python3.12 -c "import nextstat; print('NextStat', nextstat.__version__)"
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+%runscript
+    exec nextstat "$@"
+
+%test
+    nextstat --version
+    python3.12 -c "import nextstat; print('OK:', nextstat.__version__)"
+
+%help
+    NextStat — high-performance statistical inference engine.
+
+    Usage (CLI):
+        apptainer run nextstat.sif fit --input workspace.json
+        apptainer run nextstat.sif hypotest --input workspace.json --mu 1.0
+
+    Usage (Python):
+        apptainer exec nextstat.sif python3.12 my_analysis.py
+
+    Build:
+        apptainer build nextstat.sif nextstat.def
+
+    More info: https://nextstat.io

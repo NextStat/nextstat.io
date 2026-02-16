@@ -11,17 +11,17 @@ use std::collections::{HashMap, HashSet};
 
 use ns_core::Result;
 use ns_translate::pyhf::HistFactoryModel;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Top-level separation artifact covering all channels.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeparationArtifact {
     pub schema_version: String,
     pub channels: Vec<SeparationChannelArtifact>,
 }
 
 /// Per-channel separation data.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeparationChannelArtifact {
     pub channel_name: String,
     /// Bin edges (length = n_bins + 1). Empty if not available.

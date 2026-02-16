@@ -6,18 +6,18 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::{FitResult, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use ns_translate::pyhf::HistFactoryModel;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GammasArtifact {
     pub schema_version: String,
     pub meta: GammasMeta,
     pub entries: Vec<GammaEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GammasMeta {
     pub tool: String,
     pub tool_version: String,
@@ -25,7 +25,7 @@ pub struct GammasMeta {
     pub n_gamma_params: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GammaEntry {
     pub name: String,
     pub channel: Option<String>,

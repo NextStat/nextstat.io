@@ -3,11 +3,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::{FitResult, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use ns_translate::pyhf::HistFactoryModel;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrArtifact {
     pub schema_version: String,
     pub meta: CorrMeta,
@@ -17,7 +17,7 @@ pub struct CorrArtifact {
     pub covariance: Option<Vec<Vec<f64>>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrMeta {
     pub tool: String,
     pub tool_version: String,
@@ -25,7 +25,7 @@ pub struct CorrMeta {
     pub parity_mode: CorrParityMode,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrParityMode {
     pub threads: usize,
     pub stable_ordering: bool,

@@ -12,10 +12,118 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
+use crate::cuda_glm_cublas::CudaGlmCublasEvaluator;
+
 const PTX_SRC: &str = include_str!(env!("CUDA_MAMS_PTX_PATH"));
+const MAMS_CUDA_SRC: &str = include_str!("../kernels/mams_leapfrog.cu");
+const MAMS_KERNEL_INCLUDE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/kernels");
+const WARP_SHMEM_LIMIT_BYTES: usize = 48 * 1024;
 
 fn cuda_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("CUDA mams: {msg}"))
+}
+
+fn detect_cuda_compute_capability(device_id: usize) -> ns_core::Result<(i32, i32)> {
+    use cudarc::driver::result;
+    use cudarc::driver::sys;
+
+    unsafe {
+        result::init().map_err(|e| cuda_err(format!("cuInit: {e}")))?;
+        let dev = result::device::get(device_id as i32)
+            .map_err(|e| cuda_err(format!("cuDeviceGet({device_id}): {e}")))?;
+        let major = result::device::get_attribute(
+            dev,
+            sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR,
+        )
+        .map_err(|e| cuda_err(format!("get CC major (device {device_id}): {e}")))?;
+        let minor = result::device::get_attribute(
+            dev,
+            sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
+        )
+        .map_err(|e| cuda_err(format!("get CC minor (device {device_id}): {e}")))?;
+        Ok((major, minor))
+    }
+}
+
+fn load_precompiled_mams_kernels(
+    ctx: &Arc<CudaContext>,
+) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>)> {
+    let ptx = Ptx::from_src(PTX_SRC);
+    let module = ctx.load_module(ptx).map_err(|e| cuda_err(format!("load module: {e}")))?;
+    let kernel = module
+        .load_function("mams_transition")
+        .map_err(|e| cuda_err(format!("load function mams_transition: {e}")))?;
+    let kernel_fused = module.load_function("mams_transition_fused").ok();
+    let kernel_warp = module.load_function("mams_transition_warp").ok();
+    Ok((kernel, kernel_fused, kernel_warp))
+}
+
+fn load_nvrtc_mams_kernels(
+    ctx: &Arc<CudaContext>,
+    device_id: usize,
+) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>)> {
+    use cudarc::nvrtc::{CompileOptions, compile_ptx_with_opts};
+
+    let (major, minor) = detect_cuda_compute_capability(device_id)?;
+    let include_opt = format!("--include-path={MAMS_KERNEL_INCLUDE_DIR}");
+    let mut last_err = String::new();
+
+    // CUDA 13 toolchains can drop support for older arch flags (e.g. sm_70 on V100 images).
+    // Try a short cascade and end with NVRTC default arch as final fallback.
+    let mut arch_attempts = vec![
+        Some(format!("--gpu-architecture=compute_{major}{minor}")),
+        Some(format!("--gpu-architecture=sm_{major}{minor}")),
+        Some("--gpu-architecture=compute_75".to_string()),
+        Some("--gpu-architecture=sm_75".to_string()),
+        None, // let NVRTC choose default virtual arch
+    ];
+    arch_attempts.dedup();
+
+    for arch_opt in arch_attempts {
+        let mut options = vec![include_opt.clone()];
+        if let Some(opt) = arch_opt.clone() {
+            options.push(opt);
+        }
+        let opts = CompileOptions {
+            prec_sqrt: Some(true),
+            prec_div: Some(true),
+            arch: None,
+            options,
+            ..Default::default()
+        };
+
+        let arch_label = arch_opt.clone().unwrap_or_else(|| "default-arch".to_string());
+
+        let ptx = match compile_ptx_with_opts(MAMS_CUDA_SRC, opts) {
+            Ok(ptx) => ptx,
+            Err(e) => {
+                last_err = format!("{arch_label} compile: {e}");
+                continue;
+            }
+        };
+
+        let module = match ctx.load_module(ptx) {
+            Ok(module) => module,
+            Err(e) => {
+                last_err = format!("{arch_label} load_module: {e}");
+                continue;
+            }
+        };
+
+        let kernel = match module.load_function("mams_transition") {
+            Ok(kernel) => kernel,
+            Err(e) => {
+                last_err = format!("{arch_label} load_function(mams_transition): {e}");
+                continue;
+            }
+        };
+
+        let kernel_fused = module.load_function("mams_transition_fused").ok();
+        let kernel_warp = module.load_function("mams_transition_warp").ok();
+        return Ok((kernel, kernel_fused, kernel_warp));
+    }
+
+    Err(cuda_err(format!("NVRTC mams_leapfrog failed after arch fallback cascade: {last_err}")))
 }
 
 /// CUDA accelerator for MAMS transitions.
@@ -68,29 +176,11 @@ pub struct CudaMamsAccelerator {
     // Warp kernel data dimensions (for shared memory sizing)
     n_obs: usize,
     n_feat: usize,
+    // Optional cuBLAS evaluator for GLM initialization.
+    glm_cublas_eval: Option<CudaGlmCublasEvaluator>,
 }
 
-/// Diagnostics from one transition.
-pub struct TransitionDiagnostics {
-    /// Per-chain acceptance flags.
-    pub accepted: Vec<i32>,
-    /// Per-chain energy errors (ΔV + ΔK).
-    pub energy_error: Vec<f64>,
-}
-
-/// Result from a batch of transitions (GPU-side accumulation).
-pub struct BatchResult {
-    /// Positions `[batch_size][n_report × dim]` (flat per-sample).
-    pub positions: Vec<Vec<f64>>,
-    /// Potentials `[batch_size][n_report]`.
-    pub potentials: Vec<Vec<f64>>,
-    /// Acceptance flags `[batch_size][n_report]`.
-    pub accepted: Vec<Vec<i32>>,
-    /// Energy errors `[batch_size][n_report]`.
-    pub energy_error: Vec<Vec<f64>>,
-    /// Number of kernel launches in this batch.
-    pub n_launches: usize,
-}
+pub use crate::mams_trait::{BatchResult, TransitionDiagnostics};
 
 impl CudaMamsAccelerator {
     /// Check CUDA availability.
@@ -111,13 +201,17 @@ impl CudaMamsAccelerator {
             .map_err(|e| cuda_err(format!("context (device {device_id}): {e}")))?;
         let stream = ctx.default_stream();
 
-        let ptx = Ptx::from_src(PTX_SRC);
-        let module = ctx.load_module(ptx).map_err(|e| cuda_err(format!("load module: {e}")))?;
-        let kernel = module
-            .load_function("mams_transition")
-            .map_err(|e| cuda_err(format!("load function: {e}")))?;
-        let kernel_fused = module.load_function("mams_transition_fused").ok();
-        let kernel_warp = module.load_function("mams_transition_warp").ok();
+        let (kernel, kernel_fused, kernel_warp) = match load_precompiled_mams_kernels(&ctx) {
+            Ok(kernels) => kernels,
+            Err(pre_err) => {
+                log::warn!(
+                    "CUDA mams: precompiled PTX unavailable on device {} ({}), falling back to NVRTC JIT",
+                    device_id,
+                    pre_err
+                );
+                load_nvrtc_mams_kernels(&ctx, device_id)?
+            }
+        };
 
         // Extract data dimensions for warp kernel shared memory sizing.
         // GLM logistic (model_id=3): model_data = [n, p, X(n*p), y(n)]
@@ -126,6 +220,43 @@ impl CudaMamsAccelerator {
         } else {
             (0, 0)
         };
+        let mut glm_cublas_eval = None;
+        if model_id == 3 && n_obs > 0 && n_feat > 0 && dim == n_feat {
+            let np = n_obs * n_feat;
+            let y_off = 2 + np;
+            let x_col_off = y_off + n_obs;
+            let has_layout = model_data.len() >= x_col_off + np;
+            let disable = std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_CUBLAS_INIT").is_some();
+            let strict = std::env::var_os("NEXTSTAT_STRICT_LAPS_GLM_CUBLAS_INIT").is_some();
+            if has_layout && !disable {
+                let y = &model_data[y_off..y_off + n_obs];
+                let x_col = &model_data[x_col_off..x_col_off + np];
+                match CudaGlmCublasEvaluator::new_on_device(
+                    x_col, y, n_obs, n_feat, n_chains, device_id,
+                ) {
+                    Ok(eval) => {
+                        log::info!(
+                            "LAPS GLM cuBLAS evaluator enabled (device={}, n={}, p={}, chains={})",
+                            device_id,
+                            n_obs,
+                            n_feat,
+                            n_chains
+                        );
+                        glm_cublas_eval = Some(eval);
+                    }
+                    Err(e) => {
+                        if strict {
+                            return Err(e);
+                        }
+                        log::warn!(
+                            "LAPS GLM cuBLAS evaluator unavailable on device {}: {}",
+                            device_id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
 
         let total = n_chains * dim;
 
@@ -180,6 +311,7 @@ impl CudaMamsAccelerator {
             iteration: 0,
             n_obs,
             n_feat,
+            glm_cublas_eval,
         })
     }
 
@@ -270,6 +402,7 @@ impl CudaMamsAccelerator {
             iteration: 0,
             n_obs: 0,
             n_feat: 0,
+            glm_cublas_eval: None,
         })
     }
 
@@ -303,10 +436,30 @@ impl CudaMamsAccelerator {
         assert_eq!(potential.len(), self.n_chains);
         assert_eq!(grad.len(), total);
 
+        let mut potential_upload = potential.to_vec();
+        let mut grad_upload = grad.to_vec();
+
+        // GLM-specific startup fast-path:
+        // if host provides non-finite initial potential (typical cold start),
+        // seed potential/grad from cuBLAS evaluator before first transition.
+        if potential_upload.iter().any(|v| !v.is_finite()) {
+            if let Some(eval) = self.glm_cublas_eval.as_mut() {
+                if let Ok((grad0, nll0)) = eval.evaluate_host(x) {
+                    if grad0.len() == total
+                        && nll0.len() == self.n_chains
+                        && nll0.iter().all(|v| v.is_finite())
+                    {
+                        grad_upload = grad0;
+                        potential_upload = nll0;
+                    }
+                }
+            }
+        }
+
         self.stream.memcpy_htod(x, &mut self.d_x).map_err(cuda_err)?;
         self.stream.memcpy_htod(u, &mut self.d_u).map_err(cuda_err)?;
-        self.stream.memcpy_htod(potential, &mut self.d_potential).map_err(cuda_err)?;
-        self.stream.memcpy_htod(grad, &mut self.d_grad).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&potential_upload, &mut self.d_potential).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&grad_upload, &mut self.d_grad).map_err(cuda_err)?;
 
         Ok(())
     }
@@ -329,6 +482,135 @@ impl CudaMamsAccelerator {
     pub fn set_uniform_eps(&mut self, eps: f64) -> ns_core::Result<()> {
         let uniform = vec![eps; self.n_chains];
         self.set_per_chain_eps(&uniform)
+    }
+
+    /// Optional GLM pre-solve using cuBLAS batched gradients.
+    ///
+    /// Runs a short normalized gradient-descent loop on host-side `x` using the
+    /// cuBLAS evaluator, then uploads `(x, grad, potential)` back to GPU state.
+    /// This is model-specific (GLM logistic only) and intended to reduce warmup
+    /// transients for large-`n` data-heavy runs.
+    pub fn glm_presolve(&mut self, max_iters: usize) -> ns_core::Result<bool> {
+        if max_iters == 0 || self.model_id != 3 {
+            return Ok(false);
+        }
+        if std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_PRESOLVE").is_some() {
+            return Ok(false);
+        }
+        let Some(eval) = self.glm_cublas_eval.as_mut() else {
+            return Ok(false);
+        };
+
+        let total = self.n_chains * self.dim;
+        let mut x = vec![0.0f64; total];
+        self.stream.memcpy_dtoh(&self.d_x, &mut x).map_err(cuda_err)?;
+        self.stream.synchronize().map_err(cuda_err)?;
+
+        let sigma_post =
+            if self.n_obs > 0 { (2.0 / (self.n_obs as f64).sqrt()).clamp(0.02, 1.0) } else { 1.0 };
+        let base_step = std::env::var("NEXTSTAT_LAPS_GLM_PRESOLVE_STEP")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.20)
+            .max(1e-6);
+        let min_step = std::env::var("NEXTSTAT_LAPS_GLM_PRESOLVE_MIN_STEP")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.02)
+            .max(1e-6);
+        let x_clip = std::env::var("NEXTSTAT_LAPS_GLM_PRESOLVE_X_CLIP")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(20.0)
+            .max(1.0);
+
+        let mut grad_rms_prev = f64::INFINITY;
+        let mut applied_iters = 0usize;
+
+        for iter in 0..max_iters {
+            let (grad, nll) = eval.evaluate_host(&x)?;
+            if grad.len() != total || nll.len() != self.n_chains {
+                break;
+            }
+            if nll.iter().any(|v| !v.is_finite()) || grad.iter().any(|g| !g.is_finite()) {
+                break;
+            }
+
+            let t = if max_iters > 1 { iter as f64 / (max_iters - 1) as f64 } else { 0.0 };
+            // Normalized GD is already normalized by ||grad|| — no need to scale
+            // by sigma_post. But for small-n models (sigma_post < 1), clamp step
+            // to avoid overshooting the mode.
+            let raw_step = (1.0 - t) * base_step + t * min_step;
+            let step = if sigma_post < 1.0 { raw_step.min(2.0 * sigma_post) } else { raw_step };
+
+            let mut grad_norm_sq_sum = 0.0f64;
+            for c in 0..self.n_chains {
+                let row = &grad[c * self.dim..(c + 1) * self.dim];
+                let mut g2 = 0.0f64;
+                for &g in row {
+                    g2 += g * g;
+                }
+                let gnorm = g2.sqrt();
+                grad_norm_sq_sum += g2;
+                if gnorm > 1e-14 {
+                    let scale = step / gnorm;
+                    for d in 0..self.dim {
+                        let idx = c * self.dim + d;
+                        x[idx] = (x[idx] - scale * row[d]).clamp(-x_clip, x_clip);
+                    }
+                }
+            }
+
+            applied_iters += 1;
+            let grad_rms = (grad_norm_sq_sum / (total.max(1) as f64)).sqrt();
+            let rel_improve = (grad_rms_prev - grad_rms).abs() / grad_rms_prev.max(1e-12);
+            grad_rms_prev = grad_rms;
+            if grad_rms < 1e-3 || (iter >= 12 && rel_improve < 5e-4) {
+                break;
+            }
+        }
+
+        if applied_iters == 0 {
+            return Ok(false);
+        }
+
+        // Perturb chains by ~σ_post so they don't all start at the same mode.
+        // Uses xorshift64 + Box-Muller to avoid adding rand dependency.
+        {
+            let mut rng_state: u64 = 0xCAFE_BABE_DEAD_BEEF;
+            let next_u64 = |s: &mut u64| -> u64 {
+                *s ^= *s << 13;
+                *s ^= *s >> 7;
+                *s ^= *s << 17;
+                *s
+            };
+            let noise_scale = std::env::var("NEXTSTAT_LAPS_GLM_PRESOLVE_JITTER")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.20)
+                .max(0.0);
+            let noise_std = noise_scale * sigma_post;
+            for idx in 0..total {
+                let u1 = (next_u64(&mut rng_state) as f64 / u64::MAX as f64).max(1e-12);
+                let u2 = next_u64(&mut rng_state) as f64 / u64::MAX as f64;
+                let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+                x[idx] = (x[idx] + noise_std * z).clamp(-x_clip, x_clip);
+            }
+        }
+
+        let (grad_final, nll_final) = eval.evaluate_host(&x)?;
+        if grad_final.len() != total || nll_final.len() != self.n_chains {
+            return Ok(false);
+        }
+        if nll_final.iter().any(|v| !v.is_finite()) || grad_final.iter().any(|g| !g.is_finite()) {
+            return Ok(false);
+        }
+
+        self.stream.memcpy_htod(&x, &mut self.d_x).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&grad_final, &mut self.d_grad).map_err(cuda_err)?;
+        self.stream.memcpy_htod(&nll_final, &mut self.d_potential).map_err(cuda_err)?;
+        self.stream.synchronize().map_err(cuda_err)?;
+        Ok(true)
     }
 
     /// Run one MAMS transition for all chains.
@@ -558,14 +840,17 @@ impl CudaMamsAccelerator {
         let total_threads = self.n_chains as u32 * 32;
         let grid_dim = ((total_threads + block_dim - 1) / block_dim).min(65535);
 
-        let shmem_bytes_usize = if self.n_obs > 0 && self.n_feat > 0 {
+        let full_shmem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
             (self.n_obs * self.n_feat + self.n_obs) * std::mem::size_of::<f64>()
         } else {
             0usize
         };
-        let warp_use_shmem = shmem_bytes_usize <= 48 * 1024;
-        let shmem_bytes = if warp_use_shmem { shmem_bytes_usize as u32 } else { 0u32 };
-        let warp_use_shmem_arg: i32 = if warp_use_shmem { 1 } else { 0 };
+        let (warp_use_shmem_arg, shmem_bytes) =
+            if full_shmem_bytes > 0 && full_shmem_bytes <= WARP_SHMEM_LIMIT_BYTES {
+                (1i32, full_shmem_bytes as u32)
+            } else {
+                (0i32, 0u32)
+            };
 
         let config = LaunchConfig {
             grid_dim: (grid_dim, 1, 1),
@@ -638,14 +923,17 @@ impl CudaMamsAccelerator {
         let total_threads = self.n_chains as u32 * 32;
         let grid_dim = ((total_threads + block_dim - 1) / block_dim).min(65535);
 
-        let shmem_bytes_usize = if self.n_obs > 0 && self.n_feat > 0 {
+        let full_shmem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
             (self.n_obs * self.n_feat + self.n_obs) * std::mem::size_of::<f64>()
         } else {
             0usize
         };
-        let warp_use_shmem = shmem_bytes_usize <= 48 * 1024;
-        let shmem_bytes = if warp_use_shmem { shmem_bytes_usize as u32 } else { 0u32 };
-        let warp_use_shmem_arg: i32 = if warp_use_shmem { 1 } else { 0 };
+        let (warp_use_shmem_arg, shmem_bytes) =
+            if full_shmem_bytes > 0 && full_shmem_bytes <= WARP_SHMEM_LIMIT_BYTES {
+                (1i32, full_shmem_bytes as u32)
+            } else {
+                (0i32, 0u32)
+            };
 
         let config = LaunchConfig {
             grid_dim: (grid_dim, 1, 1),
@@ -911,5 +1199,84 @@ impl CudaMamsAccelerator {
     /// Parameter dimensionality.
     pub fn dim(&self) -> usize {
         self.dim
+    }
+}
+
+impl crate::mams_trait::MamsAccelerator for CudaMamsAccelerator {
+    fn upload_state(
+        &mut self,
+        x: &[f64],
+        u: &[f64],
+        potential: &[f64],
+        grad: &[f64],
+    ) -> ns_core::Result<()> {
+        self.upload_state(x, u, potential, grad)
+    }
+
+    fn download_positions(&self) -> ns_core::Result<Vec<f64>> {
+        self.download_positions()
+    }
+
+    fn download_potentials(&self) -> ns_core::Result<Vec<f64>> {
+        self.download_potentials()
+    }
+
+    fn download_diagnostics(&self) -> ns_core::Result<TransitionDiagnostics> {
+        self.download_diagnostics()
+    }
+
+    fn set_inv_mass(&mut self, inv_mass: &[f64]) -> ns_core::Result<()> {
+        self.set_inv_mass(inv_mass)
+    }
+
+    fn set_per_chain_eps(&mut self, eps_vec: &[f64]) -> ns_core::Result<()> {
+        self.set_per_chain_eps(eps_vec)
+    }
+
+    fn set_uniform_eps(&mut self, eps: f64) -> ns_core::Result<()> {
+        self.set_uniform_eps(eps)
+    }
+
+    fn transition_auto(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        enable_mh: bool,
+    ) -> ns_core::Result<()> {
+        self.transition_auto(l, max_leapfrog, enable_mh)
+    }
+
+    fn transition_batch_auto(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        batch_size: usize,
+        prefer_fused: bool,
+    ) -> ns_core::Result<BatchResult> {
+        self.transition_batch_auto(l, max_leapfrog, batch_size, prefer_fused)
+    }
+
+    fn glm_presolve(&mut self, max_iters: usize) -> ns_core::Result<bool> {
+        self.glm_presolve(max_iters)
+    }
+
+    fn configure_batch(&mut self, batch_size: usize, n_report: usize) -> ns_core::Result<()> {
+        self.configure_batch(batch_size, n_report)
+    }
+
+    fn supports_fused(&self) -> bool {
+        self.supports_fused()
+    }
+
+    fn supports_warp(&self) -> bool {
+        self.supports_warp()
+    }
+
+    fn n_chains(&self) -> usize {
+        self.n_chains()
+    }
+
+    fn dim(&self) -> usize {
+        self.dim()
     }
 }

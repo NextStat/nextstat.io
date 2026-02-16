@@ -29,7 +29,16 @@ struct BatchScalarArgs {
     n_toys: u32,
     local_grad_cols: u32,
     constraint_const: f32,
+    toy_offset: u32,
 }
+
+/// Maximum threadgroups per Metal dispatch.  Defensive chunking limit — the
+/// original "occupancy cliff" (~100× slowdown above ~338 TGs) was actually
+/// caused by an L-BFGS-B lockstep convergence bug (seed-dependent toys
+/// spinning for max_iter with no progress).  That bug is now fixed in the
+/// line-search exhaustion handler, but we keep chunked dispatch as a
+/// conservative guard against future pathological workloads.
+const METAL_MAX_TGS_PER_DISPATCH: usize = 256;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -71,12 +80,32 @@ fn metal_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("Metal (unbinned batch): {msg}"))
 }
 
+/// Compile a single Metal pipeline from MSL source (no caching).
+fn compile_pipeline(
+    device: &Device,
+    source: &str,
+    function_name: &str,
+) -> ns_core::Result<ComputePipelineState> {
+    let options = CompileOptions::new();
+    let library = device
+        .new_library_with_source(source, &options)
+        .map_err(|e| metal_err(format!("MSL compile: {e}")))?;
+    let function = library
+        .get_function(function_name, None)
+        .map_err(|e| metal_err(format!("get {function_name}: {e}")))?;
+    let pipeline = device
+        .new_compute_pipeline_state_with_function(&function)
+        .map_err(|e| metal_err(format!("pipeline {function_name}: {e}")))?;
+    Ok(pipeline)
+}
+
 /// Metal accelerator for unbinned batch toy NLL + gradient.
 #[allow(dead_code)]
 pub struct MetalUnbinnedBatchAccelerator {
     device: Device,
     queue: CommandQueue,
     pipeline_nll_grad: ComputePipelineState,
+    pipeline_nll_grad_fused: ComputePipelineState,
     pipeline_nll_only: ComputePipelineState,
 
     // --- Static buffers ---
@@ -98,6 +127,7 @@ pub struct MetalUnbinnedBatchAccelerator {
     // --- Metadata ---
     n_params: usize,
     n_toys: usize,
+    use_fused: bool,
     scalar_args: BatchScalarArgs,
 
     // --- CPU scratch ---
@@ -246,12 +276,18 @@ impl MetalUnbinnedBatchAccelerator {
         buf_toy_offsets: Buffer,
         n_toys: usize,
     ) -> ns_core::Result<Self> {
+        // MSL_SRC defaults to ENABLE_FUSED=0 via #ifndef guard in the kernel.
+        // Use the library cache for the non-fused pipelines.
         let pipeline_nll_grad = crate::metal_kernel_cache::get_pipeline(
             &device,
             "unbinned_batch",
             MSL_SRC,
             "unbinned_batch_nll_grad",
         )?;
+        // Fused variant: compile a second pipeline with ENABLE_FUSED=1.
+        let fused_src = format!("#define ENABLE_FUSED 1\n{MSL_SRC}");
+        let pipeline_nll_grad_fused =
+            compile_pipeline(&device, &fused_src, "unbinned_batch_nll_grad")?;
         let pipeline_nll_only = crate::metal_kernel_cache::get_pipeline(
             &device,
             "unbinned_batch",
@@ -338,12 +374,21 @@ impl MetalUnbinnedBatchAccelerator {
             n_toys: n_toys as u32,
             local_grad_cols: data.n_params.min(METAL_LOCAL_GRAD_CAP) as u32,
             constraint_const: data.constraint_const as f32,
+            toy_offset: 0,
         };
+
+        // Use fused pipeline when the model has enough processes to benefit
+        // from the reduced exp() calls (≥3 procs). For small models (1-2 procs),
+        // the fused path's register pressure reduces occupancy without sufficient
+        // compute savings to compensate.
+        let n_procs = data.processes.len();
+        let use_fused = n_procs >= 3 && n_procs <= 4; // FUSED_PROC_CAP=4
 
         Ok(Self {
             device,
             queue,
             pipeline_nll_grad,
+            pipeline_nll_grad_fused,
             pipeline_nll_only,
             buf_obs_flat,
             buf_toy_offsets,
@@ -359,6 +404,7 @@ impl MetalUnbinnedBatchAccelerator {
             buf_grad_out,
             n_params: data.n_params,
             n_toys,
+            use_fused,
             scalar_args,
             scratch_params_f32: vec![0.0f32; n_toys * data.n_params],
         })
@@ -395,36 +441,48 @@ impl MetalUnbinnedBatchAccelerator {
             + METAL_BATCH_PROC_META_CAP)
             * mem::size_of::<f32>();
 
-        let cmd_buffer = self.queue.new_command_buffer();
-        let encoder = cmd_buffer.new_compute_command_encoder();
-
-        encoder.set_compute_pipeline_state(&self.pipeline_nll_grad);
-        encoder.set_buffer(0, Some(&self.buf_params_flat), 0);
-        encoder.set_buffer(1, Some(&self.buf_obs_flat), 0);
-        encoder.set_buffer(2, Some(&self.buf_toy_offsets), 0);
-        encoder.set_buffer(3, Some(&self.buf_obs_lo), 0);
-        encoder.set_buffer(4, Some(&self.buf_obs_hi), 0);
-        encoder.set_buffer(5, Some(&self.buf_procs), 0);
-        encoder.set_buffer(6, Some(&self.buf_rate_mods), 0);
-        encoder.set_buffer(7, Some(&self.buf_shape_pidx), 0);
-        encoder.set_buffer(8, Some(&self.buf_pdf_aux_f32), 0);
-        encoder.set_buffer(9, Some(&self.buf_gauss), 0);
-        encoder.set_buffer(10, Some(&self.buf_nll_out), 0);
-        encoder.set_buffer(11, Some(&self.buf_grad_out), 0);
-        encoder.set_bytes(
-            12,
-            mem::size_of::<BatchScalarArgs>() as u64,
-            &self.scalar_args as *const BatchScalarArgs as *const std::ffi::c_void,
-        );
-        encoder.set_threadgroup_memory_length(0, shared_bytes as u64);
-
-        let grid = MTLSize::new(self.n_toys as u64, 1, 1);
         let tg = MTLSize::new(block_size as u64, 1, 1);
-        encoder.dispatch_thread_groups(grid, tg);
-        encoder.end_encoding();
 
-        cmd_buffer.commit();
-        cmd_buffer.wait_until_completed();
+        let pipeline =
+            if self.use_fused { &self.pipeline_nll_grad_fused } else { &self.pipeline_nll_grad };
+
+        // Chunked dispatch: defensive guard (see METAL_MAX_TGS_PER_DISPATCH).
+        let mut offset = 0usize;
+        while offset < self.n_toys {
+            let chunk = (self.n_toys - offset).min(METAL_MAX_TGS_PER_DISPATCH);
+            let grid = MTLSize::new(chunk as u64, 1, 1);
+
+            let mut args = self.scalar_args;
+            args.toy_offset = offset as u32;
+
+            let cmd_buffer = self.queue.new_command_buffer();
+            let encoder = cmd_buffer.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(pipeline);
+            encoder.set_buffer(0, Some(&self.buf_params_flat), 0);
+            encoder.set_buffer(1, Some(&self.buf_obs_flat), 0);
+            encoder.set_buffer(2, Some(&self.buf_toy_offsets), 0);
+            encoder.set_buffer(3, Some(&self.buf_obs_lo), 0);
+            encoder.set_buffer(4, Some(&self.buf_obs_hi), 0);
+            encoder.set_buffer(5, Some(&self.buf_procs), 0);
+            encoder.set_buffer(6, Some(&self.buf_rate_mods), 0);
+            encoder.set_buffer(7, Some(&self.buf_shape_pidx), 0);
+            encoder.set_buffer(8, Some(&self.buf_pdf_aux_f32), 0);
+            encoder.set_buffer(9, Some(&self.buf_gauss), 0);
+            encoder.set_buffer(10, Some(&self.buf_nll_out), 0);
+            encoder.set_buffer(11, Some(&self.buf_grad_out), 0);
+            encoder.set_bytes(
+                12,
+                mem::size_of::<BatchScalarArgs>() as u64,
+                &args as *const BatchScalarArgs as *const std::ffi::c_void,
+            );
+            encoder.set_threadgroup_memory_length(0, shared_bytes as u64);
+            encoder.dispatch_thread_groups(grid, tg);
+            encoder.end_encoding();
+
+            cmd_buffer.commit();
+            cmd_buffer.wait_until_completed();
+            offset += chunk;
+        }
 
         let nll = Self::read_buffer_f32_to_f64(&self.buf_nll_out, self.n_toys);
         let grad = Self::read_buffer_f32_to_f64(&self.buf_grad_out, self.n_toys * self.n_params);
@@ -450,37 +508,105 @@ impl MetalUnbinnedBatchAccelerator {
         let shared_bytes =
             (self.n_params + block_size + (2 * METAL_BATCH_PROC_CACHE_CAP)) * mem::size_of::<f32>();
 
-        let cmd_buffer = self.queue.new_command_buffer();
-        let encoder = cmd_buffer.new_compute_command_encoder();
-
-        encoder.set_compute_pipeline_state(&self.pipeline_nll_only);
-        encoder.set_buffer(0, Some(&self.buf_params_flat), 0);
-        encoder.set_buffer(1, Some(&self.buf_obs_flat), 0);
-        encoder.set_buffer(2, Some(&self.buf_toy_offsets), 0);
-        encoder.set_buffer(3, Some(&self.buf_obs_lo), 0);
-        encoder.set_buffer(4, Some(&self.buf_obs_hi), 0);
-        encoder.set_buffer(5, Some(&self.buf_procs), 0);
-        encoder.set_buffer(6, Some(&self.buf_rate_mods), 0);
-        encoder.set_buffer(7, Some(&self.buf_shape_pidx), 0);
-        encoder.set_buffer(8, Some(&self.buf_pdf_aux_f32), 0);
-        encoder.set_buffer(9, Some(&self.buf_gauss), 0);
-        encoder.set_buffer(10, Some(&self.buf_nll_out), 0);
-        encoder.set_bytes(
-            11,
-            mem::size_of::<BatchScalarArgs>() as u64,
-            &self.scalar_args as *const BatchScalarArgs as *const std::ffi::c_void,
-        );
-        encoder.set_threadgroup_memory_length(0, shared_bytes as u64);
-
-        let grid = MTLSize::new(self.n_toys as u64, 1, 1);
         let tg = MTLSize::new(block_size as u64, 1, 1);
-        encoder.dispatch_thread_groups(grid, tg);
-        encoder.end_encoding();
 
-        cmd_buffer.commit();
-        cmd_buffer.wait_until_completed();
+        let mut offset = 0usize;
+        while offset < self.n_toys {
+            let chunk = (self.n_toys - offset).min(METAL_MAX_TGS_PER_DISPATCH);
+            let grid = MTLSize::new(chunk as u64, 1, 1);
+
+            let mut args = self.scalar_args;
+            args.toy_offset = offset as u32;
+
+            let cmd_buffer = self.queue.new_command_buffer();
+            let encoder = cmd_buffer.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.pipeline_nll_only);
+            encoder.set_buffer(0, Some(&self.buf_params_flat), 0);
+            encoder.set_buffer(1, Some(&self.buf_obs_flat), 0);
+            encoder.set_buffer(2, Some(&self.buf_toy_offsets), 0);
+            encoder.set_buffer(3, Some(&self.buf_obs_lo), 0);
+            encoder.set_buffer(4, Some(&self.buf_obs_hi), 0);
+            encoder.set_buffer(5, Some(&self.buf_procs), 0);
+            encoder.set_buffer(6, Some(&self.buf_rate_mods), 0);
+            encoder.set_buffer(7, Some(&self.buf_shape_pidx), 0);
+            encoder.set_buffer(8, Some(&self.buf_pdf_aux_f32), 0);
+            encoder.set_buffer(9, Some(&self.buf_gauss), 0);
+            encoder.set_buffer(10, Some(&self.buf_nll_out), 0);
+            encoder.set_bytes(
+                11,
+                mem::size_of::<BatchScalarArgs>() as u64,
+                &args as *const BatchScalarArgs as *const std::ffi::c_void,
+            );
+            encoder.set_threadgroup_memory_length(0, shared_bytes as u64);
+            encoder.dispatch_thread_groups(grid, tg);
+            encoder.end_encoding();
+
+            cmd_buffer.commit();
+            cmd_buffer.wait_until_completed();
+            offset += chunk;
+        }
 
         Ok(Self::read_buffer_f32_to_f64(&self.buf_nll_out, self.n_toys))
+    }
+
+    /// Batch NLL for a subset of active toys (scatter/gather around `batch_nll`).
+    pub fn batch_nll_active(
+        &mut self,
+        params_flat_active: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<Vec<f64>> {
+        if params_flat_active.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat_active length mismatch: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat_active.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut params_full = vec![0.0f64; self.n_toys * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            let src = &params_flat_active[slot * self.n_params..(slot + 1) * self.n_params];
+            let dst = &mut params_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        let nll_full = self.batch_nll(&params_full)?;
+        Ok(active_toys.iter().map(|&i| nll_full[i]).collect())
+    }
+
+    /// Batch NLL+gradient for a subset of active toys (scatter/gather around `batch_nll_grad`).
+    pub fn batch_nll_grad_active(
+        &mut self,
+        params_flat_active: &[f64],
+        active_toys: &[usize],
+    ) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params_flat_active.len() != active_toys.len() * self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params_flat_active length mismatch: expected {}, got {}",
+                active_toys.len() * self.n_params,
+                params_flat_active.len()
+            )));
+        }
+        if active_toys.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        let mut params_full = vec![0.0f64; self.n_toys * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            let src = &params_flat_active[slot * self.n_params..(slot + 1) * self.n_params];
+            let dst = &mut params_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        let (nll_full, grad_full) = self.batch_nll_grad(&params_full)?;
+        let mut nll_active = Vec::with_capacity(active_toys.len());
+        let mut grad_active = vec![0.0f64; active_toys.len() * self.n_params];
+        for (slot, &toy_idx) in active_toys.iter().enumerate() {
+            nll_active.push(nll_full[toy_idx]);
+            let src = &grad_full[toy_idx * self.n_params..(toy_idx + 1) * self.n_params];
+            let dst = &mut grad_active[slot * self.n_params..(slot + 1) * self.n_params];
+            dst.copy_from_slice(src);
+        }
+        Ok((nll_active, grad_active))
     }
 
     /// Number of parameters.

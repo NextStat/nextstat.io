@@ -253,7 +253,7 @@ def _crystal_ball_exp_case() -> CaseType:
         {"name": "mu_cb", "init": 91.0, "bounds": [85.0, 95.0]},
         {"name": "sigma_cb", "init": 3.0, "bounds": [0.5, 10.0]},
         {"name": "alpha_cb", "init": 1.5, "bounds": [0.1, 5.0], "fixed": True},
-        {"name": "n_cb", "init": 5.0, "bounds": [1.0, 50.0], "fixed": True},
+        {"name": "n_cb", "init": 5.0, "bounds": [1.01, 50.0], "fixed": True},
         {"name": "lambda_bkg", "init": -0.02, "bounds": [-0.1, -0.001]},
     ]
     processes = [

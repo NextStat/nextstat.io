@@ -1,0 +1,27 @@
+{
+  "config": {
+    "n_customers": 4000,
+    "n_bootstrap": 800,
+    "conf_level": 0.95,
+    "n_jackknife": 240,
+    "runs": 16,
+    "seed0": 42,
+    "nextstat_bin": "/root/.nextstat-cargo-target/release/nextstat"
+  },
+  "percentile": {
+    "runs": 16,
+    "median_wall_s": 0.23142723052296788,
+    "mean_wall_s": 0.230485532702005,
+    "mean_interval_width": 0.08258903684945174,
+    "fallback_total": 0,
+    "effective_bca_total": 0
+  },
+  "bca": {
+    "runs": 16,
+    "median_wall_s": 0.2945329964859411,
+    "mean_wall_s": 0.2970893533201888,
+    "mean_interval_width": 0.08293978574623906,
+    "fallback_total": 0,
+    "effective_bca_total": 64
+  }
+}

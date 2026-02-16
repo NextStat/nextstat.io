@@ -24,7 +24,7 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 For the HistFactory configuration format, see `docs/references/analysis-config.md`.
 For event-level fits, use the `unbinned_spec_v0` schema (`nextstat config schema --name unbinned_spec_v0`).
 
-HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
+HEP / HistFactory (HS3 auto-detected for model-based commands; some utilities remain pyhf-only):
 - `nextstat validate --config analysis.yaml`
 - `nextstat config schema [--name analysis_spec_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
@@ -52,12 +52,21 @@ HEP / HistFactory (pyhf JSON and HS3 JSON auto-detected):
 - `nextstat viz separation --input workspace.json [--signal-samples signal] [--histfactory-xml combination.xml] [--output separation.json] [--threads 1]`
 - `nextstat viz summary fit1.json fit2.json [--labels "Analysis A,Analysis B"] [--output summary.json]`
 - `nextstat viz pie --input workspace.json [--fit fit.json] [--output pie.json] [--threads 1]`
+- `nextstat viz render --kind pulls|corr|ranking --input artifact.json --output figure.png [--python python3] [--title "..."] [--dpi 220] [--corr-include "..."] [--corr-exclude "..."] [--corr-top-n 40]`
 - `nextstat mass-scan --workspaces-dir mass_workspaces/ [--alpha 0.05] [--scan-start 0 --scan-stop 5 --scan-points 41] [--labels m100,m200] [--json-metrics metrics.json] [--threads 1]`
 - `nextstat preprocess smooth --input workspace.json [--output smoothed.json] [--max-variation 0.0]`
 - `nextstat preprocess prune --input workspace.json [--output pruned.json] [--threshold 0.005]`
-- `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render] [--deterministic] [--blind-regions SR1,SR2] [--include-covariance] [--uncertainty-grouping prefix_1] [--skip-uncertainty] [--overwrite] [--pdf report.pdf] [--svg-dir svg/] [--python python3]`
+- `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render] [--deterministic] [--blind-regions SR1,SR2] [--include-covariance] [--uncertainty-grouping prefix_1] [--skip-uncertainty] [--overwrite] [--pdf report.pdf] [--svg-dir svg/] [--python python3] [--label-status Internal] [--sqrt-s-tev 13] [--show-mc-band true] [--show-stat-band true] [--band-hatch ////] [--palette hep2026|tableau10]`
 - `nextstat validation-report --apex2 master_report.json --workspace workspace.json --out validation_report.json [--pdf validation_report.pdf] [--deterministic]`
 - `nextstat version`
+
+pyhf-only workspace commands:
+- `nextstat audit`
+- `nextstat export histfactory`
+- `nextstat preprocess smooth`
+- `nextstat preprocess prune`
+- `nextstat report`
+- `nextstat viz distributions`
 
 HEP / Unbinned (event-level) (Phase 1, experimental):
 - `nextstat convert --input data.root --tree MyTree --output events.parquet --observable mass:100:180 [--selection "..."] [--weight "..."] [--max-events 1000000]`
@@ -196,13 +205,19 @@ Churn / Subscription (Phase 7):
 - `nextstat churn generate-data [--n-customers 2000] [--n-cohorts 6] [--max-time 24] [--seed 42]`
 - `nextstat churn retention --input churn.json [--conf-level 0.95]`
 - `nextstat churn risk-model --input churn.json`
-- `nextstat churn bootstrap-hr --input churn.json [--n-bootstrap 1000] [--seed 42]`
+- `nextstat churn bootstrap-hr --input churn.json [--n-bootstrap 1000] [--seed 42] [--conf-level 0.95] [--ci-method percentile|bca] [--n-jackknife 200]`
 - `nextstat churn uplift --input churn.json [--horizon 12]`
 - `nextstat churn ingest --input raw.json [--observation-end 24]`
 - `nextstat churn cohort-matrix --input churn.json --periods 1,3,6,12,24`
 - `nextstat churn compare --input churn.json [--correction bh|bonferroni] [--alpha 0.05]`
 - `nextstat churn diagnostics --input churn.json [--trim 0.01] [--covariate-names name1,name2] [--out-dir artifacts/] [--output diag.json]`
 - `nextstat churn uplift-survival --input churn.json [--horizon 12] [--eval-horizons 3,6,12,24]`
+  - `churn bootstrap-hr` now supports:
+    - `--ci-method percentile|bca` (default: `percentile`)
+    - `--n-jackknife N` for BCa acceleration estimation (used only for `bca`)
+  - Output includes method metadata (`ci_method_requested`, per-coefficient `ci_method`)
+    and per-coefficient diagnostics under `coefficients[].ci_diagnostics`
+    with fallback reason when BCa falls back to percentile.
 
 ## GPU acceleration
 
@@ -484,7 +499,23 @@ For analysis spec v0:
 - `nextstat validate --config ...` fail-fast checks `gates.baseline_compare` manifest presence when the gate is enabled.
 - `nextstat run --config ...` executes `gates.baseline_compare` and fails the run if the baseline gate fails.
 
-`nextstat report` writes multiple artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`, `uncertainty.json`, plus `yields.csv` and `yields.tex`). `uncertainty.json` is ranking-based and can be skipped via `--skip-uncertainty`. When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs (requires `matplotlib`, see `nextstat[viz]` extra).
+`nextstat report` writes multiple artifacts into `--out-dir` (currently: `distributions.json`, `pulls.json`, `corr.json`, `yields.json`, `uncertainty.json`, plus `yields.csv` and `yields.tex`). `uncertainty.json` is ranking-based and can be skipped via `--skip-uncertainty`. When `--render` is enabled it calls `python -m nextstat.report render ...` to produce a multi-page PDF and per-plot SVGs/PNGs (requires `matplotlib`, see `nextstat[viz]` extra).
+
+For single-artifact rendering (without generating a full report pack), use:
+
+```bash
+nextstat viz render --kind pulls   --input pulls.json   --output pulls.png
+nextstat viz render --kind corr    --input corr.json    --output corr.svg --corr-top-n 40
+nextstat viz render --kind ranking --input ranking.json --output ranking.pdf
+```
+
+Render style controls:
+- `--label-status` (header label)
+- `--sqrt-s-tev` (header energy, TeV)
+- `--show-mc-band` (total postfit uncertainty band)
+- `--show-stat-band` (stat-only uncertainty band)
+- `--band-hatch` (total-band hatch pattern)
+- `--palette` (`hep2026` or `tableau10`)
 
 If `--fit` is omitted, `nextstat report` runs an MLE fit itself and writes `fit.json` into `--out-dir` before producing the report artifacts.
 
@@ -495,9 +526,12 @@ For time series input formats, see:
 For the frequentist (CLs) workflow, see:
 - `docs/tutorials/phase-3.1-frequentist.md`
 
+For compact post-fit parameter tables, see:
+- `docs/references/fit-summary.md`
+
 ## Input format auto-detection (pyhf vs HS3)
 
-All commands that accept `--input workspace.json` automatically detect the JSON format:
+Commands that build a HistFactory model from `--input workspace.json` auto-detect the JSON format (for example: `fit`, `hypotest`, `scan`, `upper-limit`, and most `viz` subcommands):
 
 - **pyhf JSON** — standard HistFactory workspace with `"channels"` + `"measurements"` at top level.
 - **HS3 JSON** — HEP Statistics Serialization Standard (v0.2) with `"distributions"` + `"metadata"` (containing `"hs3_version"`), as produced by ROOT 6.37+.
@@ -515,6 +549,16 @@ nextstat fit --input workspace-postFit_PTV.json
 ```
 
 When HS3 is detected, the CLI uses ROOT HistFactory default interpolation codes (Code1 for NormSys, Code0 for HistoSys) and selects the first analysis and `"default_values"` parameter point set.
+
+The following workspace utilities are currently pyhf-only:
+- `nextstat audit`
+- `nextstat export histfactory`
+- `nextstat preprocess smooth`
+- `nextstat preprocess prune`
+- `nextstat report`
+- `nextstat viz distributions`
+
+`nextstat viz separation` also supports HS3 input, but for HS3 you must pass `--signal-samples` explicitly (auto-detection of signal samples uses pyhf channel/sample metadata).
 
 ## Import notes
 
@@ -581,7 +625,7 @@ Example config (HIST wrapper): `docs/examples/trex_config_hist_minimal.txt`.
 
 ## Workspace audit
 
-`nextstat audit` inspects a pyhf/HS3 workspace and reports channel/sample/modifier counts plus any unsupported features:
+`nextstat audit` inspects a pyhf workspace and reports channel/sample/modifier counts plus any unsupported features:
 
 ```bash
 nextstat audit --input workspace.json

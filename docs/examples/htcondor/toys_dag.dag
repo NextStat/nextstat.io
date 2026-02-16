@@ -1,0 +1,16 @@
+# NextStat DAGMan: batch toys -> merge
+#
+# Runs toy CLs in parallel, then merges results.
+#
+# Usage:
+#   mkdir -p logs
+#   condor_submit_dag toys_dag.dag
+#
+# Monitor:
+#   condor_watch_q
+#   tail -f toys_dag.dag.dagman.out
+
+JOB TOYS toys_batch.sub
+JOB MERGE merge_toys.sub
+
+PARENT TOYS CHILD MERGE

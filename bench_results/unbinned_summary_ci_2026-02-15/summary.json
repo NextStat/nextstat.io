@@ -1,0 +1,32 @@
+{
+  "config": {
+    "runs": 12,
+    "seed0": 100,
+    "n_toys": 200,
+    "summary_ci_level": 0.68,
+    "summary_ci_bootstrap": 400,
+    "threads": 1,
+    "fixture_root": "/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/simple_tree.root",
+    "nextstat_bin": "/Users/andresvlc/WebDev/.nextstat-cargo-target/debug/nextstat"
+  },
+  "percentile": {
+    "runs": 12,
+    "coverage_vs_poi_true": 0.08333333333333333,
+    "median_width": 0.004417798353671731,
+    "mean_width": 0.004443633766647877,
+    "median_wall_s": 1.802403416717425,
+    "mean_wall_s": 1.8452686006591346,
+    "fallback_count": 0,
+    "effective_bca_count": 0
+  },
+  "bca": {
+    "runs": 12,
+    "coverage_vs_poi_true": 0.08333333333333333,
+    "median_width": 0.0043649726672773115,
+    "mean_width": 0.004446342776784499,
+    "median_wall_s": 1.6785807500127703,
+    "mean_wall_s": 1.805523565931556,
+    "fallback_count": 0,
+    "effective_bca_count": 12
+  }
+}

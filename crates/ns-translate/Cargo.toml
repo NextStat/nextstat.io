@@ -20,6 +20,7 @@ roxmltree = "0.21"
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+serde_yaml_ng.workspace = true
 log.workspace = true
 rayon.workspace = true
 statrs.workspace = true

@@ -1145,8 +1145,8 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         rtol = float(arguments.get("rtol", 1e-4))
         max_iter = int(arguments.get("max_iter", 80))
         if expected:
-            obs, exp = nextstat.upper_limits_root(
-                model, alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
+            obs, exp = nextstat.upper_limit(
+                model, method="root", alpha=alpha, lo=lo, hi=hi_val, rtol=rtol, max_iter=max_iter
             )
             return {
                 "alpha": alpha,

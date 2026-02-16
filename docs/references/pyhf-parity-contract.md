@@ -257,8 +257,8 @@ These are different layers: parity = identical likelihood function, bestfit = op
 
 Both CPU and GPU batch paths use the same compiled model:
 
-- **CPU:** `fit_toys_batch()` — Rayon `par_iter().map_init()`, one AD Tape per thread
-- **GPU:** `fit_toys_batch_gpu()` — lockstep L-BFGS-B, fused NLL+gradient kernel
+- **CPU:** `fit_toys(device="cpu")` — Rayon `par_iter().map_init()`, one AD Tape per thread (internal: `fit_toys_batch`)
+- **GPU:** `fit_toys(device="cuda"|"metal")` — lockstep L-BFGS-B, fused NLL+gradient kernel (internal: `fit_toys_batch_gpu`/`fit_toys_batch_metal`)
 
 Batch fitting skips Hessian computation for speed. Seed-based reproducibility:
 `toy_seed = base_seed + toy_index`.

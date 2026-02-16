@@ -5,6 +5,74 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+## [0.9.6] — 2026-02-17
+
+### Added
+
+- **Pure Rust visualization engine** (`ns-viz-render`) — sub-millisecond SVG generation for all 17 plot types (pulls, ranking, correlation matrix, profile scan, CLs curve, distributions, gammas, separation, summary, uncertainty, significance, contour, pie, yields, unfolding, morphing, injection). Replaces Python matplotlib dependency. Output: SVG (always), PDF (svg2pdf), PNG (resvg). Embedded Inter font family. Four theme presets: `nextstat2026`, `atlas`, `cms`, `minimal`. YAML-configurable experiment labels, colors, palettes, axes, grid. CLI: `nextstat viz render --kind <kind> --input artifact.json --output plot.svg` (native by default, `--use-python` for legacy). Python: `nextstat.viz.render_svg()` and `nextstat.viz.render_to_file()`.
+- **Cabinetry config reader** — parse cabinetry YAML configs and convert to pyhf JSON workspace. CLI: `nextstat import cabinetry --config config.yml --histograms /path/to/histograms --output workspace.json`. Rust API: `ns_translate::cabinetry::parse_cabinetry_config()` and `to_workspace()`.
+- **Full analysis tutorial notebook** (`tutorials/nextstat_example.ipynb`) — end-to-end HistFactory workflow: workspace construction, model inspection, MLE fit, pulls, ranking, correlation, distributions, profile scan, CLs exclusion, theme switching (ATLAS/CMS/NextStat/Minimal), and export to SVG/PDF/PNG.
+- **Unified Python API** — merged model-type and device variants into single functions with runtime dispatch: `ranking()` (was 3 functions), `hypotest()`/`hypotest_toys()` (was 4), `profile_scan()` (was 3), `fit_toys()` (was 4), `upper_limit()` (was 2). All accept `device="cpu"|"cuda"|"metal"` and dispatch on `HistFactoryModel` vs `UnbinnedModel` automatically. Old `unbinned_*`, `*_gpu`, `*_batch_gpu` variants removed.
+- **TypedDict return types** — added ~25 structured `TypedDict` definitions (`RankingEntry`, `ProfileScanResult`, `HypotestToysMetaResult`, `PanelFeResult`, `KalmanFilterResult`, `MetaAnalysisResult`, `ClsCurveResult`, etc.) replacing opaque `Dict[str, Any]` returns. IDE autocomplete now works for all inference functions.
+- **Internal API conventions document** — `docs/internal/api-conventions.md` defining rules for parameter ordering, device handling, model-type dispatch, return types, and new function checklist.
+- **`profile_scan(return_curve=True)`** — merges former `profile_curve()` into `profile_scan()` with plot-friendly arrays (`mu_values`, `q_mu_values`, `twice_delta_nll`).
+- **`upper_limit(method="root")`** — merges former `upper_limits_root()` into `upper_limit()` with `method="bisect"|"root"`.
+
+- **LAPS Metal backend** — GPU-accelerated MAMS sampler on Apple Silicon (M1–M5) via Metal Shading Language. Built-in models (`StdNormal`, `EightSchools`, `NealFunnel`, `NealFunnelNcp`, `NealFunnelRiemannian`, `GlmLogistic`) with f32 compute, fused multi-step kernel, and SIMD-group cooperative kernel for data-heavy GLM. Automatic fallback: CUDA (f64) > Metal (f32) > error.
+- **LAPS windowed mass adaptation** — warmup Phase 2+3 now uses Stan-style doubling windows (default 3) for `inv_mass` estimation. Each window resets Welford statistics and dual averaging, improving convergence on multi-scale models. Configurable via `n_mass_windows` in `LapsConfig` (set to 1 for single-pass legacy behavior).
+- **LAPS Neal Funnel NCP** — non-centered parametrization of Neal's funnel (`model="neal_funnel_ncp"`). Removes position-dependent geometry, allowing MAMS to sample efficiently. R-hat < 1.02, ESS/s > 40,000 on M5 GPU (4096 chains).
+- **LAPS Riemannian MAMS for Neal Funnel** — experimental `model="neal_funnel_riemannian"` with hybrid position-dependent metric: x-components use Fisher metric `exp(v/2)` scaling (Riemannian), v-component uses learned diagonal mass (standard). 19x ESS/s improvement over centered parametrization for x-dimensions. Known limitation: systematic v-bias (v_mean ≈ 3.5 vs expected 0) due to isokinetic dynamics — use NCP for unbiased sampling. Available on both Metal (f32) and CUDA (f64) backends.
+
+### Fixed
+
+- **Metal unbinned batch toy fitting** — fixed lockstep L-BFGS-B optimizer stall that caused 80–100× slowdown on certain toy datasets. Line search exhaustion left toys in an unhandled state, preventing convergence detection. Also applies f32-appropriate tolerance floor (`1e-4`) and enables retry-with-jitter for the Metal path.
+- **`panel_fe()` parameter order** — changed from `(entity_ids, x, y, p)` to `(y, x, entity_ids, p)` to match econometrics module convention (`y` first).
+- **BCa confidence interval engine** — reusable bootstrap CI utilities in `ns-inference` (`percentile` + `bca`) with diagnostics (`z0`, acceleration, adjusted alphas, sample counts).
+- **HEP toy-summary CI controls** — `nextstat unbinned-fit-toys` now supports opt-in summary CI computation for `summary.mean`:
+  - `--summary-ci-method percentile|bca`
+  - `--summary-ci-level`
+  - `--summary-ci-bootstrap`
+  Output includes `summary.mean_ci` with requested/effective method and fallback diagnostics.
+- **Churn bootstrap CI method selection** — `nextstat churn bootstrap-hr` now supports:
+  - `--ci-method percentile|bca` (default `percentile`)
+  - `--n-jackknife` for BCa acceleration estimation.
+  Output includes method metadata and per-coefficient diagnostics (`ci_diagnostics`) with fallback reason.
+- **Python churn parity for CI methods** — `nextstat.churn_bootstrap_hr(...)` now accepts `ci_method` and `n_jackknife` and returns per-coefficient effective method/diagnostics.
+- **BCa benchmark harnesses**:
+  - `scripts/benchmarks/bench_unbinned_summary_ci.py` (HEP `unbinned-fit-toys`)
+  - `scripts/benchmarks/bench_churn_bootstrap_ci_methods.py` (churn `bootstrap-hr`)
+  - runbook: `docs/benchmarks/bca-hep-churn-ci-methods.md`.
+- **BCa CI release-gate automation**:
+  - `scripts/benchmarks/check_bca_ci_gates.py` validates HEP/churn overhead, fallback-rate, and effective-BCa-rate thresholds.
+  - `.github/workflows/apex2-nightly-slow.yml` now runs BCa benchmark matrix + gate check and publishes gate artifacts.
+- **Benchmark artifact retention policy** — for `bench_results/*` BCa snapshots, repository keeps only `summary.json`; generated intermediates (`raw_runs.json`, `summary.md`, `churn_data.json`, `unbinned_spec_summary_ci.json`) are ignored.
+- **Benchmark retention policy guard test** — added `tests/python/test_bca_bench_results_policy.py` to fail CI if live tracked files under `bench_results/*` include anything except `summary.json`.
+- **Controlled skew calibration harness (HEP + churn)** — added `scripts/benchmarks/bench_bca_skew_calibration.py` for BCa vs percentile coverage/width calibration in asymmetric scenarios (HEP boundary POI and churn heavy-censoring small-sample regime), with runbook updates in `docs/benchmarks/bca-hep-churn-ci-methods.md`.
+- **Skew calibration baseline snapshot (2026-02-16)** — published matrix summary artifact at `bench_results/bca_skew_calibration_2026-02-16/summary.json`.
+- **Apex2 nightly skew-calibration run** — `.github/workflows/apex2-nightly-slow.yml` now executes `bench_bca_skew_calibration.py` and uploads informational skew-scenario artifacts.
+- **Benchmark binary selection hardening** — BCa benchmark scripts now accept `--nextstat-bin` and prioritize `release` artifacts in auto-discovery to avoid accidental stale-binary runs on remote stands.
+- **HEP BCa diagnostic enrichment** — HEP benchmark summaries now include CI-center bias metrics (`median_center_minus_poi_true`, `mean_center_minus_poi_true`) for correct interpretation of inclusion rates.
+- **HEP dataset-level BCa calibration benchmark (BCA-14)** — added `scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py` with per-run observed data regeneration, bootstrap CI comparison (percentile vs BCa), and baseline artifact `bench_results/hep_dataset_bootstrap_ci_2026-02-16/summary.json`. Added smoke regression `tests/python/test_bca_hep_dataset_bootstrap_ci_smoke.py`.
+- **BCA-14 nextstat-bench full-matrix snapshot** — provisioned benchmark runtime on `nextstat-bench` (ROOT + Python deps), built native Linux `nextstat`, and published adult-run summary artifact `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_full/summary.json` (`runs=32`, `n_bootstrap=1500`, `threads=56`). Coverage is `0.96875` for both percentile and BCa in both HEP scenarios, with `fallback_count=0`.
+- **BCA-14 nextstat-bench long-run calibration snapshot** — published extended matrix artifact `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_longrun/summary.json` (`runs=128`, `n_bootstrap=1500`, `threads=56`). Coverage remained high (`0.97656` mid-POI for both methods; boundary scenario `0.96875` percentile vs `0.97656` BCa), BCa remained fallback-free and slightly narrower.
+- **Churn benchmark coverage diagnostics + dataset-level mode** — `scripts/benchmarks/bench_churn_bootstrap_ci_methods.py` now supports:
+  - `--use-default-truth` (coverage fields in summary: `coverage_vs_true_hr`, `coverage_hits`, `coverage_total`)
+  - `--regenerate-data-per-run` (frequentist dataset-level calibration)
+  - generator controls (`--n-cohorts`, `--max-time`, `--treatment-fraction`)
+  - per-coefficient aggregates (`per_coefficient` coverage/mean point/mean width).
+- **Churn nextstat-bench dataset-level calibration snapshots** — published:
+  - `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat30/summary.json`
+  - `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat00/summary.json`
+  using `runs=128`, `n_customers=4000`, `n_bootstrap=800`, `n_jackknife=240`. Coverage is near nominal in both methods (treat=0.3: percentile `0.9453`, BCa `0.9512`; treat=0.0: both `0.9297`), all with zero fallbacks.
+- **Apex2 nightly churn benchmark switched to dataset-level calibration default (BCA-20)** — `.github/workflows/apex2-nightly-slow.yml` now runs churn BCa benchmark with `--regenerate-data-per-run --use-default-truth` and pinned generator controls (`--n-cohorts 48 --max-time 12 --treatment-fraction 0.3`) so nightly coverage reflects dataset-level calibration instead of fixed-dataset conditional diagnostics.
+- **Rootless HEP dataset generator path (BCA-15)** — `scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py` now supports `--root-writer auto|uproot|root-cli` and defaults to rootless `uproot` when available (with `root` CLI fallback). Smoke coverage in `tests/python/test_bca_hep_dataset_bootstrap_ci_smoke.py` now accepts either backend and skips only when both are unavailable.
+- **Single-artifact visualization renderer (`nextstat viz render`)** — added direct rendering of JSON viz artifacts to image/document outputs (`pulls`, `corr`, `ranking`) without full report generation. Supports title/DPI options and correlation filters (`--corr-include`, `--corr-exclude`, `--corr-top-n`) via Python `nextstat.viz_render` entrypoint.
+
+### Fixed
+
+- **HS3/pyhf CLI scope clarity for workspace utilities** — corrected command help/docs and added explicit fail-fast diagnostics for pyhf-only commands (`audit`, `report`, `viz distributions`, `export histfactory`, `preprocess smooth/prune`) when HS3 input is provided. `viz separation` now reports a clear HS3-specific requirement to pass `--signal-samples` explicitly.
+- **Arrow/Parquet `from_arrow` large-offset compatibility** — fixed ingestion for `Utf8/LargeUtf8` and `List<Float64>/LargeList<Float64>` in core paths, so Arrow tables from Polars/DuckDB are accepted without pre-normalization. Added Rust and Python regression coverage (including Polars/DuckDB round-trips) and removed the temporary normalization workaround from the Route C quick-start flow.
+
 ## [0.9.5] — 2026-02-15
 
 ### Fixed

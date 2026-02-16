@@ -170,7 +170,6 @@ fn cuda_toy_sampler_supports_more_pdfs() {
 
 #[cfg(feature = "metal")]
 #[test]
-#[ignore]
 fn metal_toy_sampler_supports_more_pdfs() {
     use ns_compute::metal_unbinned_toy::MetalUnbinnedToySampler;
 

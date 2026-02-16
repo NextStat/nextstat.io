@@ -25,6 +25,8 @@
 pub mod cpu;
 /// Device-agnostic GPU accelerator abstraction (always available).
 pub mod gpu_accel;
+/// Device-agnostic MAMS accelerator trait (always available).
+pub mod mams_trait;
 pub mod simd;
 /// GPU data types for unbinned likelihood kernels (always available).
 pub mod unbinned_types;
@@ -139,6 +141,10 @@ pub mod fault_tree_cuda;
 #[cfg(feature = "cuda")]
 pub mod cuda_mams;
 
+/// cuBLAS batched GLM logistic evaluator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_glm_cublas;
+
 /// NVRTC JIT compiler for user-defined MAMS models on GPU (requires `cuda` feature).
 #[cfg(feature = "cuda")]
 pub mod nvrtc_mams;
@@ -170,6 +176,10 @@ pub mod metal_unbinned_toy;
 /// Metal differentiable NLL accelerator for profiled fitting (requires `metal` feature).
 #[cfg(feature = "metal")]
 pub mod metal_differentiable;
+
+/// Metal MAMS (Metropolis-Adjusted Microcanonical Sampler) accelerator for LAPS (requires `metal` feature).
+#[cfg(feature = "metal")]
+pub mod metal_mams;
 
 /// Direct Parquet → Metal GPU upload (SoA f64 → f32 MTLBuffer, requires `metal` feature).
 #[cfg(feature = "metal")]

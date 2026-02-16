@@ -3,11 +3,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ns_core::{FitResult, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use ns_translate::pyhf::HistFactoryModel;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullsArtifact {
     pub schema_version: String,
     pub meta: PullsMeta,
@@ -16,7 +16,7 @@ pub struct PullsArtifact {
     pub entries: Vec<PullEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullsMeta {
     pub tool: String,
     pub tool_version: String,
@@ -24,13 +24,13 @@ pub struct PullsMeta {
     pub parity_mode: PullsParityMode,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullsParityMode {
     pub threads: usize,
     pub stable_ordering: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullEntry {
     pub name: String,
     pub kind: String,

@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use arrow::array::{Array, AsArray, Float64Array, ListArray};
+use arrow::array::{
+    Array, ArrayRef, Float64Array, LargeListArray, LargeStringArray, ListArray, StringArray,
+};
 use arrow::datatypes::DataType;
 use arrow::ipc::reader::StreamReader;
 use arrow::record_batch::RecordBatch;
@@ -161,17 +163,16 @@ fn extract_rows(batch: &RecordBatch, rows: &mut Vec<RowData>) -> Result<(), Arro
         validate_list_f64(batch, idx, "stat_error")?;
     }
 
-    let channel_arr = batch.column(channel_idx).as_string::<i32>();
-    let sample_arr = batch.column(sample_idx).as_string::<i32>();
-    let yields_arr = batch.column(yields_idx).as_list::<i32>();
-
-    let stat_error_arr: Option<&ListArray> = stat_error_idx.map(|idx| batch.column(idx).as_list());
+    let channel_col = batch.column(channel_idx);
+    let sample_col = batch.column(sample_idx);
+    let yields_col = batch.column(yields_idx);
+    let stat_error_col: Option<&ArrayRef> = stat_error_idx.map(|idx| batch.column(idx));
 
     for i in 0..batch.num_rows() {
-        let channel = channel_arr.value(i).to_string();
-        let sample = sample_arr.value(i).to_string();
+        let channel = string_row_value(channel_col, i, "channel")?;
+        let sample = string_row_value(sample_col, i, "sample")?;
 
-        let yields_values = yields_arr.value(i);
+        let yields_values = list_row_values(yields_col, i, "yields")?;
         let yields_f64 =
             yields_values.as_any().downcast_ref::<Float64Array>().ok_or_else(|| {
                 ArrowIngestError::WrongType {
@@ -191,11 +192,11 @@ fn extract_rows(batch: &RecordBatch, rows: &mut Vec<RowData>) -> Result<(), Arro
 
         let yields: Vec<f64> = yields_f64.values().to_vec();
 
-        let stat_error = if let Some(se_arr) = stat_error_arr {
-            if se_arr.is_null(i) {
+        let stat_error = if let Some(se_col) = stat_error_col {
+            if se_col.is_null(i) {
                 None
             } else {
-                let se_values = se_arr.value(i);
+                let se_values = list_row_values(se_col, i, "stat_error")?;
                 let se_f64 =
                     se_values.as_any().downcast_ref::<Float64Array>().ok_or_else(|| {
                         ArrowIngestError::WrongType {
@@ -290,34 +291,46 @@ fn extract_modifier_rows(
         validate_list_f64(batch, idx, "data")?;
     }
 
-    let channel_arr = batch.column(channel_idx).as_string::<i32>();
-    let sample_arr = batch.column(sample_idx).as_string::<i32>();
-    let mod_name_arr = batch.column(mod_name_idx).as_string::<i32>();
-    let mod_type_arr = batch.column(mod_type_idx).as_string::<i32>();
+    let channel_col = batch.column(channel_idx);
+    let sample_col = batch.column(sample_idx);
+    let mod_name_col = batch.column(mod_name_idx);
+    let mod_type_col = batch.column(mod_type_idx);
 
-    let data_hi_arr: Option<&ListArray> = data_hi_idx.map(|i| batch.column(i).as_list());
-    let data_lo_arr: Option<&ListArray> = data_lo_idx.map(|i| batch.column(i).as_list());
-    let data_arr: Option<&ListArray> = data_idx.map(|i| batch.column(i).as_list());
+    let data_hi_col: Option<&ArrayRef> = data_hi_idx.map(|i| batch.column(i));
+    let data_lo_col: Option<&ArrayRef> = data_lo_idx.map(|i| batch.column(i));
+    let data_col: Option<&ArrayRef> = data_idx.map(|i| batch.column(i));
 
     for i in 0..batch.num_rows() {
-        let extract_list = |arr: Option<&ListArray>, row: usize| -> Option<Vec<f64>> {
-            let a = arr?;
+        let extract_list = |arr: Option<&ArrayRef>,
+                            row: usize,
+                            col_name: &str|
+         -> Result<Option<Vec<f64>>, ArrowIngestError> {
+            let a = match arr {
+                Some(a) => a,
+                None => return Ok(None),
+            };
             if a.is_null(row) {
-                return None;
+                return Ok(None);
             }
-            let values = a.value(row);
-            let f64_arr = values.as_any().downcast_ref::<Float64Array>()?;
-            Some(f64_arr.values().to_vec())
+            let values = list_row_values(a, row, col_name)?;
+            let f64_arr = values.as_any().downcast_ref::<Float64Array>().ok_or_else(|| {
+                ArrowIngestError::WrongType {
+                    col: col_name.into(),
+                    expected: "Float64".into(),
+                    actual: format!("{:?}", values.data_type()),
+                }
+            })?;
+            Ok(Some(f64_arr.values().to_vec()))
         };
 
         rows.push(ModifierRow {
-            channel: channel_arr.value(i).to_string(),
-            sample: sample_arr.value(i).to_string(),
-            modifier_name: mod_name_arr.value(i).to_string(),
-            modifier_type: mod_type_arr.value(i).to_string(),
-            data_hi: extract_list(data_hi_arr, i),
-            data_lo: extract_list(data_lo_arr, i),
-            data: extract_list(data_arr, i),
+            channel: string_row_value(channel_col, i, "channel")?,
+            sample: string_row_value(sample_col, i, "sample")?,
+            modifier_name: string_row_value(mod_name_col, i, "modifier_name")?,
+            modifier_type: string_row_value(mod_type_col, i, "modifier_type")?,
+            data_hi: extract_list(data_hi_col, i, "data_hi")?,
+            data_lo: extract_list(data_lo_col, i, "data_lo")?,
+            data: extract_list(data_col, i, "data")?,
         });
     }
 
@@ -552,4 +565,72 @@ fn asimov_from_samples(samples: &[Sample]) -> Vec<f64> {
         }
     }
     asimov
+}
+
+fn string_row_value(
+    col: &ArrayRef,
+    row: usize,
+    col_name: &str,
+) -> Result<String, ArrowIngestError> {
+    match col.data_type() {
+        DataType::Utf8 => {
+            let arr = col.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
+                ArrowIngestError::WrongType {
+                    col: col_name.into(),
+                    expected: "Utf8".into(),
+                    actual: format!("{:?}", col.data_type()),
+                }
+            })?;
+            Ok(arr.value(row).to_string())
+        }
+        DataType::LargeUtf8 => {
+            let arr = col.as_any().downcast_ref::<LargeStringArray>().ok_or_else(|| {
+                ArrowIngestError::WrongType {
+                    col: col_name.into(),
+                    expected: "LargeUtf8".into(),
+                    actual: format!("{:?}", col.data_type()),
+                }
+            })?;
+            Ok(arr.value(row).to_string())
+        }
+        _ => Err(ArrowIngestError::WrongType {
+            col: col_name.into(),
+            expected: "Utf8".into(),
+            actual: format!("{:?}", col.data_type()),
+        }),
+    }
+}
+
+fn list_row_values(
+    col: &ArrayRef,
+    row: usize,
+    col_name: &str,
+) -> Result<ArrayRef, ArrowIngestError> {
+    match col.data_type() {
+        DataType::List(_) => {
+            let arr = col.as_any().downcast_ref::<ListArray>().ok_or_else(|| {
+                ArrowIngestError::WrongType {
+                    col: col_name.into(),
+                    expected: "List<Float64>".into(),
+                    actual: format!("{:?}", col.data_type()),
+                }
+            })?;
+            Ok(arr.value(row))
+        }
+        DataType::LargeList(_) => {
+            let arr = col.as_any().downcast_ref::<LargeListArray>().ok_or_else(|| {
+                ArrowIngestError::WrongType {
+                    col: col_name.into(),
+                    expected: "LargeList<Float64>".into(),
+                    actual: format!("{:?}", col.data_type()),
+                }
+            })?;
+            Ok(arr.value(row))
+        }
+        _ => Err(ArrowIngestError::WrongType {
+            col: col_name.into(),
+            expected: "List<Float64>".into(),
+            actual: format!("{:?}", col.data_type()),
+        }),
+    }
 }

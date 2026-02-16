@@ -41,6 +41,7 @@ pub mod key;
 pub mod lazy_branch_reader;
 pub mod objects;
 pub mod rbuffer;
+pub mod rntuple;
 pub mod tree;
 
 pub use branch_reader::{BranchReader, JaggedCol};
@@ -48,7 +49,13 @@ pub use cache::{BasketCache, CacheConfig, CacheStats};
 pub use chained_slice::ChainedSlice;
 pub use error::{Result, RootError};
 pub use expr::{CompiledExpr, DEFAULT_CHUNK_SIZE};
-pub use file::RootFile;
+pub use file::{
+    RNTupleClusterDecodedColumnsF64, RNTupleDecodedColumnsF64, RNTupleEnvelopeBytes,
+    RNTupleFixedArrayColumnF64, RNTupleInfo, RNTuplePageBlobBytes, RNTuplePageListEnvelopeBytes,
+    RNTuplePairColumnF64, RNTuplePairScalarVariableColumnF64, RNTuplePairVariableScalarColumnF64,
+    RNTuplePairVariableVariableColumnF64, RNTuplePrimitiveColumnF64, RNTupleVariableArrayColumnF64,
+    RootFile,
+};
 pub use filler::{
     FilledHistogram, FlowPolicy, HistogramSpec, NegativeWeightPolicy, fill_histograms,
     fill_histograms_with_jagged,
@@ -56,4 +63,13 @@ pub use filler::{
 pub use histogram::{Histogram, HistogramWithFlows};
 pub use key::KeyInfo;
 pub use lazy_branch_reader::LazyBranchReader;
+pub use rntuple::{
+    RNTUPLE_ENVELOPE_TYPE_FOOTER, RNTUPLE_ENVELOPE_TYPE_HEADER, RNTUPLE_ENVELOPE_TYPE_PAGELIST,
+    RNTupleAnchor, RNTupleClusterGroupSummary, RNTupleEnvelopeInfo, RNTupleFieldKind,
+    RNTupleFieldToken, RNTupleFooterSummary, RNTupleHeaderSummary, RNTupleLocatorSummary,
+    RNTupleMetadataSummary, RNTuplePageListSummary, RNTuplePageSummary, RNTupleScalarType,
+    RNTupleSchemaField, RNTupleSchemaSummary, parse_rntuple_anchor_payload, parse_rntuple_envelope,
+    parse_rntuple_footer_summary, parse_rntuple_header_summary, parse_rntuple_pagelist_summary,
+    parse_rntuple_schema_summary,
+};
 pub use tree::{BranchInfo, LeafType, Tree};

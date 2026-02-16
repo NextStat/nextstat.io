@@ -155,8 +155,9 @@ def test_survival_cox_schoenfeld_sum_matches_score() -> None:
 
     m = nextstat.CoxPhModel(times, events, x, ties="efron")
     g = [float(v) for v in m.grad_nll(beta)]
-    assert score[0] == pytest.approx(-g[0], rel=0.0, abs=1e-10)
-    assert score[1] == pytest.approx(-g[1], rel=0.0, abs=1e-10)
+    n_events = sum(1 for v in events if v)
+    assert score[0] == pytest.approx(-g[0] * n_events, rel=0.0, abs=1e-10)
+    assert score[1] == pytest.approx(-g[1] * n_events, rel=0.0, abs=1e-10)
 
 
 def test_survival_cox_ph_test_smoke() -> None:

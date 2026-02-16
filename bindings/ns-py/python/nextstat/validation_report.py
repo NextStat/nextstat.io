@@ -28,9 +28,11 @@ def _require_matplotlib():
 
 
 def _apply_pub_style():
+    from . import report as _report_style
     import matplotlib as mpl
 
-    mpl.use("Agg", force=True)
+    # Reuse the report renderer publication baseline so typography/axes/ticks stay consistent.
+    _report_style._apply_pub_style()
     mpl.rcParams.update(
         {
             "figure.constrained_layout.use": True,

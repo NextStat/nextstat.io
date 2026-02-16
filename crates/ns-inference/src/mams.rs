@@ -49,6 +49,11 @@ pub struct MamsConfig {
     pub init_strategy: InitStrategy,
     /// Euclidean metric type (default: Diagonal).
     pub metric_type: MetricType,
+    /// Step-size jitter scale (default: 0.1 = ±10%).
+    /// Each transition uses eps * uniform(1-scale, 1+scale).
+    /// Breaks fixed-L periodicity → fixes resonance on harmonic targets.
+    /// Set to 0.0 to disable (e.g. for concentrated GLM posteriors).
+    pub eps_jitter: f64,
 }
 
 impl Default for MamsConfig {
@@ -63,6 +68,7 @@ impl Default for MamsConfig {
             diagonal_precond: true,
             init_strategy: InitStrategy::Random,
             metric_type: MetricType::Diagonal,
+            eps_jitter: 0.1,
         }
     }
 }
@@ -183,14 +189,13 @@ fn isokinetic_leapfrog_step(
         state.x[i] += eps * inv_mass[i].sqrt() * state.u[i];
     }
 
-    // Recompute potential and gradient at new position
-    let new_potential = match posterior.logpdf_unconstrained(&state.x) {
-        Ok(lp) if lp.is_finite() => -lp,
-        _ => return Err(ns_core::Error::Validation("non-finite potential in leapfrog".into())),
-    };
-    let new_grad = posterior.grad_unconstrained(&state.x)?;
-    state.potential = new_potential;
-    state.grad_potential = new_grad.iter().map(|g| -g).collect();
+    // Recompute potential and gradient at new position (fused path).
+    let (new_lp, new_grad_lp) = posterior.logpdf_grad_unconstrained(&state.x)?;
+    if !new_lp.is_finite() {
+        return Err(ns_core::Error::Validation("non-finite potential in leapfrog".into()));
+    }
+    state.potential = -new_lp;
+    state.grad_potential = new_grad_lp.iter().map(|g| -g).collect();
 
     // --- Second B-step (ε/2) ---
     delta_k += b_step(state, eps * 0.5, inv_mass, dm1);
@@ -487,6 +492,7 @@ use crate::adapt::estimate_ess_simple;
 
 /// Tune the decoherence length L by trying several candidates and picking
 /// the one with best ESS per gradient evaluation.
+#[allow(dead_code)]
 fn tune_decoherence_length(
     state: &MicrocanonicalState,
     eps: f64,
@@ -494,17 +500,31 @@ fn tune_decoherence_length(
     inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> f64 {
+    let dim = state.x.len();
     let n_trials = 40; // transitions per candidate L
 
-    // Minimum L: π/2 (absolute floor, independent of ε).
-    // This ensures trajectories are always long enough for decorrelation.
-    let l_min = (std::f64::consts::FRAC_PI_2).max(eps * 4.0);
+    // Cap L at 2√d to prevent resonant anti-correlation.
+    // For N(0,I_d), L > 2√d risks cos(L) ≈ -1, destroying tail ESS.
+    let l_cap = 2.0 * (dim as f64).sqrt();
+
+    // Minimum L: scale with ε (no fixed π/2 floor).
+    // For concentrated posteriors (large-n GLM), ε is small and the optimal L
+    // is well below π/2. The old floor prevented L tuning from finding it.
+    let l_min = if eps * 4.0 < l_cap {
+        (eps * 4.0).max(0.05)
+    } else {
+        // For very small dim where eps is large, start below cap
+        (l_cap / 4.0).max(eps)
+    };
     let mut best_l = l_min;
     let mut best_ess_per_grad = 0.0_f64;
 
-    // Try L ∈ {l_min, 2·l_min, 4·l_min, ..., 64·l_min}
+    // Try L ∈ {l_min, 2·l_min, 4·l_min, ..., 512·l_min} — up to 10 candidates
     let mut l_candidate = l_min;
-    for _ in 0..7 {
+    for _ in 0..10 {
+        if l_candidate > l_cap {
+            break;
+        }
         let n_steps = ((l_candidate / eps).round() as usize).clamp(1, 1024);
         let mut draws = Vec::with_capacity(n_trials);
         let mut total_leapfrog = 0usize;
@@ -702,10 +722,9 @@ pub fn sample_mams<M: LogDensityModel>(
         }
     };
 
-    // Compute initial potential + gradient
-    let init_logpdf = posterior.logpdf_unconstrained(&z_init)?;
+    // Compute initial potential + gradient in one fused pass.
+    let (init_logpdf, init_grad_lp) = posterior.logpdf_grad_unconstrained(&z_init)?;
     let init_potential = if init_logpdf.is_finite() { -init_logpdf } else { 1e6 };
-    let init_grad_lp = posterior.grad_unconstrained(&z_init)?;
     let init_grad: Vec<f64> = init_grad_lp.iter().map(|g| -g).collect();
 
     // Initialize velocity: random unit vector on S^{d-1}
@@ -720,12 +739,10 @@ pub fn sample_mams<M: LogDensityModel>(
 
     // ---------- Trajectory length L ----------
     // L is an absolute trajectory length, not relative to ε.
-    // Default: π·√d — the standard quarter-period of a d-dimensional oscillator.
-    let mut l = if config.init_l > 0.0 {
-        config.init_l
-    } else {
-        std::f64::consts::PI * (dim as f64).sqrt()
-    };
+    // Default: √d — per MAMS paper (Robnik et al. 2023).
+    // The classical π√d (HMC quarter-period) causes resonant anti-correlation
+    // for dim≈10: cos(π√10) ≈ -0.87, inflating bulk ESS but destroying tail ESS.
+    let mut l = if config.init_l > 0.0 { config.init_l } else { (dim as f64).sqrt() };
 
     // ---------- Stan-style 4-phase warmup with DualAveraging ----------
     //
@@ -802,7 +819,14 @@ pub fn sample_mams<M: LogDensityModel>(
         for i in 0..dim {
             inv_mass[i] = (alpha * var[i] + 1e-3 * (1.0 - alpha)).max(1e-10);
         }
-        // Reset DA with new step size for new metric
+        // Reset L to √d in preconditioned space (BlackJAX-style).
+        // After mass matrix update, preconditioning absorbs posterior scale,
+        // so the typical set radius in preconditioned space is √d.
+        if config.init_l <= 0.0 {
+            l = (dim as f64).sqrt();
+        }
+
+        // Reset DA with new step size for new metric and L
         eps = find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng);
         da = DualAveraging::new(config.target_accept, eps);
     }
@@ -823,13 +847,23 @@ pub fn sample_mams<M: LogDensityModel>(
     }
     eps = da.adapted_step_size();
 
-    // --- Phase 4: Tune L + equilibrate ---
-    if config.init_l <= 0.0 {
-        l = tune_decoherence_length(&state, eps, &posterior, &inv_mass, &mut rng);
-    }
+    // --- Phase 4: Equilibrate with eps-jitter ---
+    //
+    // L = √d is fixed after Phase 2 mass matrix update (deterministic).
+    // eps-jitter breaks periodicity: each transition has a slightly different
+    // effective trajectory length L_eff = n_steps × eps_jittered,
+    // so cos(L_eff) varies across transitions → autocorrelation destroyed.
+    // This fixes high-d resonance (e.g. StdNormal d=50 tail ESS).
+    // Scale 0.1 = ±10% (default). Set to 0.0 for concentrated posteriors.
+    let jitter_scale = config.eps_jitter.abs();
     for _ in 0..phase_final_iters {
-        let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
-        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        let eps_j = if jitter_scale > 0.0 {
+            eps * (1.0 + jitter_scale * (2.0 * rng.random::<f64>() - 1.0))
+        } else {
+            eps
+        };
+        let n_steps = ((l / eps_j).round() as usize).clamp(1, config.max_leapfrog);
+        if let Ok(r) = mams_transition(&state, eps_j, l, n_steps, &posterior, &inv_mass, &mut rng) {
             state.x = r.x;
             state.u = r.u;
             state.potential = r.potential;
@@ -837,9 +871,7 @@ pub fn sample_mams<M: LogDensityModel>(
         }
     }
 
-    // ---------- Sampling ----------
-    let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
-
+    // ---------- Sampling with eps-jitter ----------
     let mut draws_unconstrained = Vec::with_capacity(config.n_samples);
     let mut draws_constrained = Vec::with_capacity(config.n_samples);
     let mut divergences = Vec::with_capacity(config.n_samples);
@@ -848,7 +880,13 @@ pub fn sample_mams<M: LogDensityModel>(
     let mut leapfrog_counts = Vec::with_capacity(config.n_samples);
 
     for _ in 0..config.n_samples {
-        match mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        let eps_j = if jitter_scale > 0.0 {
+            eps * (1.0 + jitter_scale * (2.0 * rng.random::<f64>() - 1.0))
+        } else {
+            eps
+        };
+        let n_steps = ((l / eps_j).round() as usize).clamp(1, config.max_leapfrog);
+        match mams_transition(&state, eps_j, l, n_steps, &posterior, &inv_mass, &mut rng) {
             Ok(r) => {
                 state.x = r.x;
                 state.u = r.u;
@@ -910,6 +948,7 @@ pub fn sample_mams_multichain(
 
     let n_warmup = config.n_warmup;
     let n_samples = config.n_samples;
+    crate::perf_hints::set_mams_chain_hint(n_chains);
 
     let chains: Vec<Result<crate::chain::Chain>> = (0..n_chains)
         .into_par_iter()
@@ -918,6 +957,7 @@ pub fn sample_mams_multichain(
             sample_mams(model, config.clone(), chain_seed)
         })
         .collect();
+    crate::perf_hints::clear_mams_chain_hint();
 
     let chains: Vec<crate::chain::Chain> = chains.into_iter().collect::<Result<Vec<_>>>()?;
     let param_names: Vec<String> = model.parameter_names();

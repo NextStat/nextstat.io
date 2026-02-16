@@ -207,6 +207,67 @@ __device__ double nll_glm_logistic(
     return nll;
 }
 
+// Model 4: Neal's funnel non-centered parameterization.
+// params: [v, z_1, ..., z_{d-1}]
+// v ~ N(0, 9),  x_i = exp(v/2) * z_i, z_i ~ N(0,1)
+// NLL = v^2/18 + 0.5 * sum(z_i^2)
+__device__ void grad_neal_funnel_ncp(
+    const double* x, double* grad, int dim,
+    const double* /*model_data*/)
+{
+    grad[0] = x[0] / 9.0;
+    for (int i = 1; i < dim; i++) {
+        grad[i] = x[i];
+    }
+}
+
+__device__ double nll_neal_funnel_ncp(
+    const double* x, int dim,
+    const double* /*model_data*/)
+{
+    double nll = x[0] * x[0] / 18.0;
+    for (int i = 1; i < dim; i++) {
+        nll += 0.5 * x[i] * x[i];
+    }
+    return nll;
+}
+
+// Model 5: Neal's funnel — Riemannian MAMS with Fisher metric.
+// Uses effective potential U_eff = v^2/18 + 0.5*exp(-v)*sum(x_i^2).
+// The (d-1)*v/2 terms from U and 0.5*ln|det G| cancel.
+// Gradient of U_eff: d/dv = v/9 - 0.5*exp(-v)*sum(x_i^2), d/dx_i = exp(-v)*x_i.
+__device__ void grad_neal_funnel_riemannian(
+    const double* x, double* grad, int dim,
+    const double* /*model_data*/)
+{
+    double v = x[0];
+    double v_clamped = fmax(fmin(v, 20.0), -20.0);
+    double exp_neg_v = exp(-v_clamped);
+    double sum_x2 = 0.0;
+    for (int i = 1; i < dim; i++) {
+        sum_x2 += x[i] * x[i];
+    }
+    // Full NLL gradient (same as centered funnel) — correct target distribution
+    grad[0] = v / 9.0 + (dim - 1) * 0.5 - 0.5 * exp_neg_v * sum_x2;
+    for (int i = 1; i < dim; i++) {
+        grad[i] = exp_neg_v * x[i];
+    }
+}
+
+__device__ double nll_neal_funnel_riemannian(
+    const double* x, int dim,
+    const double* /*model_data*/)
+{
+    double v = x[0];
+    double v_clamped = fmax(fmin(v, 20.0), -20.0);
+    double sum_x2 = 0.0;
+    for (int i = 1; i < dim; i++) {
+        sum_x2 += x[i] * x[i];
+    }
+    // Full NLL (same as centered funnel) — Riemannian metric only affects dynamics
+    return v * v / 18.0 + (dim - 1) * 0.5 * v + 0.5 * exp(-v_clamped) * sum_x2;
+}
+
 /* ---------- Model dispatch → user_nll / user_grad ----------------------- */
 
 /* The engine header (mams_engine.cuh) calls user_nll/user_grad with a fixed
@@ -222,6 +283,8 @@ __device__ double user_nll(const double* x, int dim, const double* model_data) {
         case 1: return nll_eight_schools(x, dim, model_data);
         case 2: return nll_neal_funnel(x, dim, model_data);
         case 3: return nll_glm_logistic(x, dim, model_data);
+        case 4: return nll_neal_funnel_ncp(x, dim, model_data);
+        case 5: return nll_neal_funnel_riemannian(x, dim, model_data);
         default: return 1e30;
     }
 }
@@ -232,6 +295,8 @@ __device__ void user_grad(const double* x, double* grad, int dim, const double* 
         case 1: grad_eight_schools(x, grad, dim, model_data); break;
         case 2: grad_neal_funnel(x, grad, dim, model_data); break;
         case 3: grad_glm_logistic(x, grad, dim, model_data); break;
+        case 4: grad_neal_funnel_ncp(x, grad, dim, model_data); break;
+        case 5: grad_neal_funnel_riemannian(x, grad, dim, model_data); break;
     }
 }
 
@@ -248,7 +313,6 @@ __device__ void user_grad(const double* x, double* grad, int dim, const double* 
  * Layout: s_data = [X_col_major (p × n doubles), y (n doubles)]
  * The host must pass shared_mem_bytes = (n*p + n) * sizeof(double).
  */
-
 // Warp-cooperative GLM logistic gradient (shared memory, column-major X).
 // Includes N(0,1) prior on beta: grad_j += beta_j.
 // s_X_col: column-major X [p][n], s_y: response [n], loaded by caller.
@@ -470,19 +534,89 @@ __device__ double grad_nll_glm_logistic_warp_shmem(
 
 // Fused warp-cooperative GLM logistic: compute gradient and NLL in one pass.
 // Global-memory path (precomputed column-major X in model_data).
+template <int P>
+__device__ double grad_nll_glm_logistic_warp_global_p(
+    const double* beta, double* grad,
+    const double* X_col, const double* y,
+    int n, int lane_id)
+{
+    #pragma unroll
+    for (int j = 0; j < P; j++) {
+        grad[j] = 0.0;
+    }
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        #pragma unroll
+        for (int j = 0; j < P; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+
+        double prob;
+        if (eta >= 0.0) {
+            double e = exp(-eta);
+            prob = 1.0 / (1.0 + e);
+        } else {
+            double e = exp(eta);
+            prob = e / (1.0 + e);
+        }
+
+        double abs_eta = fabs(eta);
+        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
+
+        double diff = prob - y[i];
+        #pragma unroll
+        for (int j = 0; j < P; j++) {
+            grad[j] += diff * X_col[(size_t)j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    #pragma unroll
+    for (int j = 0; j < P; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+
+    double prior = 0.0;
+    #pragma unroll
+    for (int j = 0; j < P; j++) {
+        prior += 0.5 * beta[j] * beta[j];
+    }
+    return nll + prior;
+}
+
 __device__ double grad_nll_glm_logistic_warp_global(
     const double* beta, double* grad, int dim,
     const double* model_data, int n, int p, int lane_id)
 {
     (void)dim;
+    const double* X_col = model_data + 2 + n * p + n;
+    const double* y = model_data + 2 + n * p;
+
+    switch (p) {
+        case 6:
+            return grad_nll_glm_logistic_warp_global_p<6>(beta, grad, X_col, y, n, lane_id);
+        case 20:
+            return grad_nll_glm_logistic_warp_global_p<20>(beta, grad, X_col, y, n, lane_id);
+        default:
+            break;
+    }
 
     for (int j = 0; j < p; j++) {
         grad[j] = 0.0;
     }
     double nll = 0.0;
-
-    const double* X_col = model_data + 2 + n * p + n;
-    const double* y = model_data + 2 + n * p;
 
     for (int i = lane_id; i < n; i += 32) {
         double eta = 0.0;
@@ -541,7 +675,7 @@ __device__ double user_nll_warp(
 {
     switch (__mams_model_id) {
         case 3:
-            if (use_shmem) {
+            if (use_shmem == 1) {
                 return nll_glm_logistic_warp_shmem(x, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
             }
             return nll_glm_logistic_warp_global(x, dim, model_data, n_obs, n_feat, lane_id);
@@ -556,7 +690,7 @@ __device__ void user_grad_warp(
 {
     switch (__mams_model_id) {
         case 3:
-            if (use_shmem) {
+            if (use_shmem == 1) {
                 grad_glm_logistic_warp_shmem(x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
             } else {
                 grad_glm_logistic_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
@@ -574,7 +708,7 @@ __device__ double user_grad_nll_warp(
 {
     switch (__mams_model_id) {
         case 3:
-            if (use_shmem) {
+            if (use_shmem == 1) {
                 return grad_nll_glm_logistic_warp_shmem(
                     x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
             }

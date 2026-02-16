@@ -34,7 +34,7 @@ def rank_impact(
 ) -> list[dict[str, Any]]:
     """Compute systematic-impact ranking (Feature Importance for HEP).
 
-    Calls NextStat's native ``ranking()`` (or ``ranking_gpu()``) and
+    Calls NextStat's native ``ranking()`` (with ``device="cuda"`` for GPU) and
     returns a sorted list of dicts augmented with ``total_impact``.
 
     Args:
@@ -76,12 +76,7 @@ def rank_impact(
     import nextstat as ns  # type: ignore
 
     if gpu:
-        ranking_fn = getattr(ns._core, "ranking_gpu", None)
-        if ranking_fn is None:
-            raise ImportError(
-                "GPU ranking requires CUDA build. Use gpu=False for CPU ranking."
-            )
-        raw = ranking_fn(model)
+        raw = ns.ranking(model, device="cuda")
     else:
         raw = ns.ranking(model)
 

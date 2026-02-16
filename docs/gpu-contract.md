@@ -9,7 +9,8 @@ GPU-accelerated paths must produce results within specified tolerance of the CPU
 | 1 | NLL at same params | atol=1e-8, rtol=1e-6 | atol=1e-3 |
 | 2 | Gradient per-element | atol=1e-5 | atol=1e-2 |
 | 3 | Best-fit params | atol=2e-4 | atol=1e-2 |
-| 4 | Fit NLL | atol=1e-6 | atol=1e-3 |
+| 4 | Fit NLL (single) | atol=1e-6 | atol=1e-3 |
+| 5 | Batch toy NLL | atol=1e-6 | atol=5e-3 |
 
 ## Interpolation
 
@@ -56,7 +57,7 @@ Both CUDA and Metal support GPU-accelerated batch toy fitting for CLs hypothesis
 
 | Entry Point | Description |
 |-------------|-------------|
-| `fit_toys_batch_gpu` / `fit_toys_batch_metal` | High-level: generate toys from model params |
+| `fit_toys(device="cuda"\|"metal")` | High-level: generate toys from model params (internal: `fit_toys_batch_gpu`/`fit_toys_batch_metal`) |
 | `fit_toys_from_data_gpu` / `fit_toys_from_data_metal` | Low-level: custom expected data, init, bounds |
 | `hypotest_qtilde_toys_gpu(device="cuda"\|"metal")` | Full CLs workflow: Phase A (CPU baseline) + Phase B (GPU ensemble) |
 

@@ -4,8 +4,8 @@
 //! and a single Metal kernel computes NLL + gradient for all active toys.
 //!
 //! All GPU compute is in f32. Conversion f64↔f32 happens at the API boundary
-//! inside [`MetalBatchAccelerator`]. Tolerance is relaxed to `max(tol, 1e-4)`
-//! to account for f32 precision.
+//! inside [`MetalBatchAccelerator`]. Tolerance is clamped to `max(tol, 1e-5)`
+//! to account for f32 precision while avoiding false convergence.
 //!
 //! ```text
 //! ┌───────────────────────────────────────────────────────────┐
@@ -51,8 +51,12 @@ pub fn fit_toys_batch_metal(
     config: Option<OptimizerConfig>,
 ) -> Result<Vec<Result<FitResult>>> {
     let mut config = config.unwrap_or_default();
-    // Relax tolerance for f32 precision — below 1e-3 the f32 gradient noise dominates
-    config.tol = config.tol.max(1e-3);
+    // f32 gradient noise floor is ~1e-6 for typical HEP models.
+    // Use 1e-5 as tol floor: tight enough to avoid false convergence on small models,
+    // loose enough to converge despite f32 rounding.  The old 1e-3 floor caused false
+    // convergence for 3-parameter models where f32 noise made tiny NLL changes look
+    // like convergence.
+    config.tol = config.tol.max(1e-5);
     let n_params = model.n_params();
 
     // 1. Serialize model for GPU (f64 → f32)
@@ -93,7 +97,14 @@ pub fn fit_toys_batch_metal(
 
     let effective_m = config.effective_m(n_params);
     let mut states: Vec<LbfgsState> = (0..n_toys)
-        .map(|_| LbfgsState::new(init_params.clone(), bounds.clone(), effective_m, config.tol))
+        .map(|_| {
+            let mut s =
+                LbfgsState::new(init_params.clone(), bounds.clone(), effective_m, config.tol);
+            // Disable NLL-based tolerance scaling — f32 gradient noise + sqrt(|nll|)
+            // scaling causes false convergence on small models.
+            s.set_expected_events(1);
+            s
+        })
         .collect();
 
     let mut active_mask: Vec<bool> = vec![true; n_toys];
@@ -103,8 +114,9 @@ pub fn fit_toys_batch_metal(
 
     // 7. Lockstep iteration loop
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> =
-            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
+        let active_indices: Vec<usize> = (0..n_toys)
+            .filter(|&i| active_mask[i] && !states[i].converged && !states[i].failed)
+            .collect();
 
         if active_indices.is_empty() {
             break;
@@ -126,7 +138,7 @@ pub fn fit_toys_batch_metal(
             let nll = nlls[ai];
             let grad = &grads[ai * n_params..(ai + 1) * n_params];
             states[toy_idx].step(nll, grad);
-            if states[toy_idx].converged {
+            if states[toy_idx].converged || states[toy_idx].failed {
                 active_mask[toy_idx] = false;
             }
         }
@@ -143,7 +155,7 @@ pub fn fit_toys_batch_metal(
                 state.x,
                 vec![0.0; n_params], // No uncertainties for toy fits
                 state.fval,
-                state.converged && !state.failed,
+                state.converged,
                 state.iter,
                 state.n_fev,
                 state.n_gev,
@@ -177,7 +189,7 @@ pub fn fit_toys_from_data_metal(
     config: Option<OptimizerConfig>,
 ) -> Result<Vec<Result<FitResult>>> {
     let mut config = config.unwrap_or_default();
-    config.tol = config.tol.max(1e-3);
+    config.tol = config.tol.max(1e-5);
     let n_params = model.n_params();
 
     let gpu_data = model.serialize_for_gpu()?;
@@ -212,15 +224,25 @@ pub fn fit_toys_from_data_metal(
     // Use custom init and bounds
     let effective_m = config.effective_m(n_params);
     let mut states: Vec<LbfgsState> = (0..n_toys)
-        .map(|_| LbfgsState::new(init_params.to_vec(), bounds.to_vec(), effective_m, config.tol))
+        .map(|_| {
+            let mut s =
+                LbfgsState::new(init_params.to_vec(), bounds.to_vec(), effective_m, config.tol);
+            // Disable NLL-based tolerance scaling for f32 batch toys.
+            // The default `sqrt(|nll|)` proxy inflates the effective tolerance
+            // (e.g. 1e-3 * sqrt(12.5) ≈ 3.5e-3), causing premature convergence
+            // when f32 gradient noise masks the true descent direction.
+            s.set_expected_events(1);
+            s
+        })
         .collect();
 
     let mut active_mask: Vec<bool> = vec![true; n_toys];
     let mut params_flat = vec![0.0f64; n_toys * n_params];
 
     for _iter in 0..config.max_iter {
-        let active_indices: Vec<usize> =
-            (0..n_toys).filter(|&i| active_mask[i] && !states[i].converged).collect();
+        let active_indices: Vec<usize> = (0..n_toys)
+            .filter(|&i| active_mask[i] && !states[i].converged && !states[i].failed)
+            .collect();
 
         if active_indices.is_empty() {
             break;
@@ -239,7 +261,7 @@ pub fn fit_toys_from_data_metal(
             let nll = nlls[ai];
             let grad = &grads[ai * n_params..(ai + 1) * n_params];
             states[toy_idx].step(nll, grad);
-            if states[toy_idx].converged {
+            if states[toy_idx].converged || states[toy_idx].failed {
                 active_mask[toy_idx] = false;
             }
         }

@@ -62,10 +62,10 @@ def bench_fit(model, n_runs=5):
 def bench_batch_toys(model, params, n_toys=100):
     """Measure batch toy throughput (toys/sec)."""
     # Warmup
-    nextstat.fit_toys_batch(model, params, n_toys=5, seed=0)
+    nextstat.fit_toys(model, params, n_toys=5, seed=0)
 
     start = time.perf_counter()
-    nextstat.fit_toys_batch(model, params, n_toys=n_toys, seed=42)
+    nextstat.fit_toys(model, params, n_toys=n_toys, seed=42)
     elapsed = time.perf_counter() - start
     return n_toys / elapsed
 

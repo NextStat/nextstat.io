@@ -70,8 +70,8 @@ pub mod hybrid;
 pub mod hypotest;
 /// Laplace approximation utilities (generic).
 pub mod laplace;
-/// LAPS: Late-Adjusted Parallel Sampler — GPU MAMS on CUDA.
-#[cfg(feature = "cuda")]
+/// LAPS: Late-Adjusted Parallel Sampler — GPU MAMS on CUDA or Metal.
+#[cfg(any(feature = "cuda", feature = "metal"))]
 pub mod laps;
 /// Shared L-BFGS-B state machine for GPU lockstep optimization.
 pub(crate) mod lbfgs;
@@ -97,6 +97,8 @@ pub mod optimizer;
 pub mod ordinal;
 /// Pharmacodynamic models (Emax, sigmoid Emax, indirect response).
 pub mod pd;
+/// Internal runtime hints for performance-path dispatch.
+pub(crate) mod perf_hints;
 /// Pharmacometrics models (Phase 13).
 pub mod pk;
 /// Posterior API: log-pdf, gradient, transforms.
@@ -181,12 +183,13 @@ pub use chain_ladder::{
     bootstrap_reserves, chain_ladder as chain_ladder_fit, mack_chain_ladder,
 };
 pub use churn::{
-    ArmSummary, BootstrapHrResult, CensoringSegment, ChurnDataConfig, ChurnDataset,
-    ChurnDiagnosticsReport, ChurnIngestError, ChurnIngestResult, ChurnMappingConfig, ChurnRecord,
-    ChurnRiskModel, ChurnUpliftResult, CohortMatrixCell, CohortMatrixRow, CohortRetentionMatrix,
-    CorrectionMethod, CovariateBalance, DiagnosticWarning, OverlapDiagnostics, PairwiseComparison,
-    PropensityOverlap, RetentionAnalysis, SegmentComparisonReport, SegmentSummary,
-    SurvivalDiffAtHorizon, SurvivalUpliftReport, bootstrap_hazard_ratios, churn_diagnostics_report,
+    ArmSummary, BootstrapHrCoefficientDiagnostics, BootstrapHrResult, CensoringSegment,
+    ChurnDataConfig, ChurnDataset, ChurnDiagnosticsReport, ChurnIngestError, ChurnIngestResult,
+    ChurnMappingConfig, ChurnRecord, ChurnRiskModel, ChurnUpliftResult, CohortMatrixCell,
+    CohortMatrixRow, CohortRetentionMatrix, CorrectionMethod, CovariateBalance, DiagnosticWarning,
+    OverlapDiagnostics, PairwiseComparison, PropensityOverlap, RetentionAnalysis,
+    SegmentComparisonReport, SegmentSummary, SurvivalDiffAtHorizon, SurvivalUpliftReport,
+    bootstrap_hazard_ratios, bootstrap_hazard_ratios_with_method, churn_diagnostics_report,
     churn_risk_model, churn_uplift, cohort_retention_matrix, compute_rmst, generate_churn_dataset,
     ingest_churn_arrays, retention_analysis, segment_comparison_report, survival_uplift_report,
 };

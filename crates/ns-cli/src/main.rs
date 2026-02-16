@@ -94,6 +94,59 @@ enum SummaryCiMethod {
     Bca,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum VizRenderKind {
+    Pulls,
+    Corr,
+    Ranking,
+    Profile,
+    Cls,
+    Distributions,
+    Gammas,
+    Separation,
+    Summary,
+    Uncertainty,
+    Significance,
+    Contour,
+    Pie,
+    Yields,
+    Unfolding,
+    ResponseMatrix,
+    Morphing,
+    Injection,
+}
+
+impl VizRenderKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Pulls => "pulls",
+            Self::Corr => "corr",
+            Self::Ranking => "ranking",
+            Self::Profile => "profile",
+            Self::Cls => "cls",
+            Self::Distributions => "distributions",
+            Self::Gammas => "gammas",
+            Self::Separation => "separation",
+            Self::Summary => "summary",
+            Self::Uncertainty => "uncertainty",
+            Self::Significance => "significance",
+            Self::Contour => "contour",
+            Self::Pie => "pie",
+            Self::Yields => "yields",
+            Self::Unfolding => "unfolding",
+            Self::ResponseMatrix => "response_matrix",
+            Self::Morphing => "morphing",
+            Self::Injection => "injection",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ChurnCiMethod {
+    Percentile,
+    Bca,
+}
+
 #[derive(Parser)]
 #[command(name = "nextstat")]
 #[command(about = "NextStat - High-performance statistical fitting")]
@@ -171,7 +224,7 @@ enum Commands {
 
     /// Perform MLE fit
     Fit {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -566,7 +619,7 @@ enum Commands {
 
     /// Asymptotic CLs hypotest (qtilde)
     Hypotest {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -599,7 +652,7 @@ enum Commands {
     /// discovery p-value (p₀) and significance (Z = Φ⁻¹(1−p₀) ≈ √q₀).
     /// Comparable to TRExFitter `GetSignificance`.
     Significance {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -624,7 +677,7 @@ enum Commands {
     /// best-fit expected yields and observed data.  Reports χ², ndof, and
     /// p-value.  Comparable to TRExFitter saturated-model GoF.
     GoodnessOfFit {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -667,7 +720,7 @@ enum Commands {
 
     /// Toy-based CLs hypotest (qtilde)
     HypotestToys {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -702,7 +755,7 @@ enum Commands {
 
     /// Observed CLs upper limit via bisection (asymptotics, qtilde)
     UpperLimit {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -811,7 +864,7 @@ enum Commands {
 
     /// Profile likelihood scan over POI values (q_mu)
     Scan {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -874,7 +927,7 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         include_covariance: bool,
 
-        /// Render publication-ready PDF + per-plot SVGs via Python (`python -m nextstat.report ...`).
+        /// Render publication-ready PDF + per-plot SVG/PNG via Python (`python -m nextstat.report ...`).
         #[arg(long, default_value_t = false)]
         render: bool,
 
@@ -882,13 +935,37 @@ enum Commands {
         #[arg(long)]
         pdf: Option<PathBuf>,
 
-        /// Directory for per-plot SVGs (defaults to `--out-dir/svg` when `--render`).
+        /// Directory for per-plot SVGs (PNG files are written alongside SVG by default).
         #[arg(long)]
         svg_dir: Option<PathBuf>,
 
         /// Python executable used for rendering (defaults to `.venv/bin/python` if it exists, else `python3`).
         #[arg(long)]
         python: Option<PathBuf>,
+
+        /// Label status in plot header (`NEXTSTAT <status>`), e.g. Internal, Preliminary, Public.
+        #[arg(long, default_value = "Internal")]
+        label_status: String,
+
+        /// Center-of-mass energy shown in the header.
+        #[arg(long, default_value = "13.0")]
+        sqrt_s_tev: f64,
+
+        /// Show total MC uncertainty band in distributions and ratio panels.
+        #[arg(long, default_value_t = true)]
+        show_mc_band: bool,
+
+        /// Show stat-only MC uncertainty band in distributions and ratio panels.
+        #[arg(long, default_value_t = true)]
+        show_stat_band: bool,
+
+        /// Hatch pattern used for uncertainty bands.
+        #[arg(long, default_value = "////")]
+        band_hatch: String,
+
+        /// Sample color palette (`hep2026`, `tableau10`).
+        #[arg(long, default_value = "hep2026")]
+        palette: String,
 
         /// Skip computing the uncertainty breakdown artifact (ranking-based, can be expensive).
         #[arg(long, default_value_t = false)]
@@ -1067,7 +1144,7 @@ enum Commands {
 enum VizCommands {
     /// Profile likelihood curve artifact (q_mu vs mu)
     Profile {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1094,7 +1171,7 @@ enum VizCommands {
 
     /// CLs curve artifact with Brazil bands (observed + expected)
     Cls {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1125,7 +1202,7 @@ enum VizCommands {
 
     /// Nuisance-parameter ranking artifact (impact on POI)
     Ranking {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1140,7 +1217,7 @@ enum VizCommands {
 
     /// Pulls + constraints artifact (TREx-style)
     Pulls {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1162,7 +1239,7 @@ enum VizCommands {
     /// Shows postfit values of γ parameters relative to their nominal (1.0),
     /// with prefit and postfit uncertainties.  Comparable to TRExFitter gammas plot.
     Gammas {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1181,7 +1258,7 @@ enum VizCommands {
 
     /// Correlation matrix artifact (TREx-style)
     Corr {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1232,7 +1309,7 @@ enum VizCommands {
     /// Shows signal and background shapes normalised to unit area, plus a
     /// numeric separation metric.  Comparable to TRExFitter separation plot.
     Separation {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1279,7 +1356,7 @@ enum VizCommands {
     /// Shows the fraction of total expected yield contributed by each sample
     /// (process) in every channel.  Comparable to TRExFitter pie chart.
     Pie {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf/HS3 JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1295,6 +1372,53 @@ enum VizCommands {
         /// Threads (0 = auto). Use 1 for deterministic parity.
         #[arg(long, default_value = "1")]
         threads: usize,
+    },
+
+    /// Render a single viz artifact (pulls/corr/ranking) directly to PNG/SVG/PDF.
+    Render {
+        /// Artifact kind to render.
+        #[arg(long, value_enum)]
+        kind: VizRenderKind,
+
+        /// Input artifact JSON (e.g. pulls.json / corr.json / ranking.json).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output image/document path (.png/.svg/.pdf).
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Python executable used for rendering (defaults to `.venv/bin/python` if it exists, else `python3`).
+        #[arg(long)]
+        python: Option<PathBuf>,
+
+        /// Optional title override.
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Output DPI (applies to raster formats like PNG).
+        #[arg(long)]
+        dpi: Option<u32>,
+
+        /// Correlation-only: regex include filter for parameter names.
+        #[arg(long)]
+        corr_include: Option<String>,
+
+        /// Correlation-only: regex exclude filter for parameter names.
+        #[arg(long)]
+        corr_exclude: Option<String>,
+
+        /// Correlation-only: keep top-N parameters by max |corr|.
+        #[arg(long)]
+        corr_top_n: Option<usize>,
+
+        /// VizConfig YAML file for native renderer (themes, colors, experiment label, etc.).
+        #[arg(long)]
+        config: Option<PathBuf>,
+
+        /// Force Python matplotlib renderer instead of native Rust renderer.
+        #[arg(long)]
+        use_python: bool,
     },
 }
 
@@ -1349,6 +1473,22 @@ enum ImportCommands {
         /// Also emit a JSON expression coverage report (selection/weight/variable + weight systematics).
         #[arg(long)]
         expr_coverage_json: Option<PathBuf>,
+    },
+
+    /// Cabinetry YAML config → pyhf JSON workspace (requires pre-built histograms).
+    Cabinetry {
+        /// Path to cabinetry config YAML.
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Directory containing pre-built histograms (JSON files: {region}_{sample}.json
+        /// with keys "nominal", "stat_uncertainties", "systematics").
+        #[arg(long)]
+        histograms: PathBuf,
+
+        /// Output file for the workspace (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 
     /// Apply a pyhf PatchSet (HEPData) to a base workspace JSON (typically background-only).
@@ -1898,6 +2038,16 @@ enum ChurnCommands {
         /// Confidence level for bootstrap CIs.
         #[arg(long, default_value = "0.95")]
         conf_level: f64,
+
+        /// Confidence interval method.
+        #[arg(long, value_enum, default_value_t = ChurnCiMethod::Percentile)]
+        ci_method: ChurnCiMethod,
+
+        /// Number of leave-one-out jackknife fits used for BCa acceleration.
+        ///
+        /// Used only when `--ci-method bca`. `0` enables auto mode (`min(n, 200)`).
+        #[arg(long, default_value_t = 200)]
+        n_jackknife: usize,
 
         /// Output file (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -2539,6 +2689,12 @@ fn main() -> Result<()> {
             pdf,
             svg_dir,
             python,
+            label_status,
+            sqrt_s_tev,
+            show_mc_band,
+            show_stat_band,
+            band_hatch,
+            palette,
             skip_uncertainty,
             uncertainty_grouping,
             threads,
@@ -2555,6 +2711,12 @@ fn main() -> Result<()> {
             pdf.as_ref(),
             svg_dir.as_ref(),
             python.as_ref(),
+            label_status.as_str(),
+            sqrt_s_tev,
+            show_mc_band,
+            show_stat_band,
+            band_hatch.as_str(),
+            palette.as_str(),
             skip_uncertainty,
             uncertainty_grouping.as_str(),
             threads,
@@ -2666,6 +2828,31 @@ fn main() -> Result<()> {
                 interp_defaults,
                 bundle.as_ref(),
             ),
+            VizCommands::Render {
+                kind,
+                input,
+                output,
+                python,
+                title,
+                dpi,
+                corr_include,
+                corr_exclude,
+                corr_top_n,
+                config,
+                use_python,
+            } => cmd_viz_render(
+                kind,
+                &input,
+                &output,
+                python.as_ref(),
+                title.as_deref(),
+                dpi,
+                corr_include.as_deref(),
+                corr_exclude.as_deref(),
+                corr_top_n,
+                config.as_ref(),
+                use_python,
+            ),
         },
         Commands::Import { command } => match command {
             ImportCommands::Histfactory { xml, dir, basedir, output } => {
@@ -2698,6 +2885,9 @@ fn main() -> Result<()> {
                 expr_coverage_json.as_ref(),
                 bundle.as_ref(),
             ),
+            ImportCommands::Cabinetry { config, histograms, output } => {
+                cmd_import_cabinetry(&config, &histograms, output.as_ref())
+            }
             ImportCommands::Patchset { workspace, patchset, patch_name, output } => {
                 cmd_import_patchset(
                     &workspace,
@@ -2935,16 +3125,24 @@ fn main() -> Result<()> {
             ChurnCommands::RiskModel { input, conf_level, output } => {
                 churn::cmd_churn_risk_model(&input, conf_level, output.as_ref(), bundle.as_ref())
             }
-            ChurnCommands::BootstrapHr { input, n_bootstrap, seed, conf_level, output } => {
-                churn::cmd_churn_bootstrap_hr(
-                    &input,
-                    n_bootstrap,
-                    seed,
-                    conf_level,
-                    output.as_ref(),
-                    bundle.as_ref(),
-                )
-            }
+            ChurnCommands::BootstrapHr {
+                input,
+                n_bootstrap,
+                seed,
+                conf_level,
+                ci_method,
+                n_jackknife,
+                output,
+            } => churn::cmd_churn_bootstrap_hr(
+                &input,
+                n_bootstrap,
+                seed,
+                conf_level,
+                ci_method,
+                n_jackknife,
+                output.as_ref(),
+                bundle.as_ref(),
+            ),
             ChurnCommands::Uplift { input, horizon, output } => {
                 churn::cmd_churn_uplift(&input, horizon, output.as_ref(), bundle.as_ref())
             }
@@ -3056,6 +3254,12 @@ fn cmd_validate(config_path: &PathBuf) -> Result<()> {
                     "pdf": cfg.pdf,
                     "svg_dir": cfg.svg_dir,
                     "python": cfg.python,
+                    "label_status": cfg.label_status,
+                    "sqrt_s_tev": cfg.sqrt_s_tev,
+                    "show_mc_band": cfg.show_mc_band,
+                    "show_stat_band": cfg.show_stat_band,
+                    "band_hatch": cfg.band_hatch,
+                    "palette": cfg.palette,
                 },
             });
             println!("{}", serde_json::to_string_pretty(&summary)?);
@@ -3343,6 +3547,12 @@ fn cmd_run_legacy(
         cfg.pdf.as_ref(),
         cfg.svg_dir.as_ref(),
         cfg.python.as_ref(),
+        cfg.label_status.as_str(),
+        cfg.sqrt_s_tev,
+        cfg.show_mc_band,
+        cfg.show_stat_band,
+        cfg.band_hatch.as_str(),
+        cfg.palette.as_str(),
         cfg.skip_uncertainty,
         cfg.uncertainty_grouping.as_str(),
         cfg.threads,
@@ -3488,6 +3698,12 @@ fn cmd_run_spec_v0(
             report.pdf.as_ref(),
             report.svg_dir.as_ref(),
             report.python.as_ref(),
+            report.label_status.as_str(),
+            report.sqrt_s_tev,
+            report.show_mc_band,
+            report.show_stat_band,
+            report.band_hatch.as_str(),
+            report.palette.as_str(),
             report.skip_uncertainty,
             report.uncertainty_grouping.as_str(),
             plan.threads,
@@ -3646,6 +3862,12 @@ fn cmd_import_trex_config(
                         "pdf": serde_json::Value::Null,
                         "svg_dir": serde_json::Value::Null,
                         "python": serde_json::Value::Null,
+                        "label_status": "Internal",
+                        "sqrt_s_tev": 13.0,
+                        "show_mc_band": true,
+                        "show_stat_band": true,
+                        "band_hatch": "////",
+                        "palette": "hep2026",
                     },
                     "skip_uncertainty": true,
                     "uncertainty_grouping": "prefix_1",
@@ -3705,6 +3927,104 @@ fn cmd_import_patchset(
     Ok(())
 }
 
+fn cmd_import_cabinetry(
+    config_path: &PathBuf,
+    histograms_dir: &PathBuf,
+    output: Option<&PathBuf>,
+) -> Result<()> {
+    use ns_translate::cabinetry;
+
+    tracing::info!(config = %config_path.display(), histograms = %histograms_dir.display(), "importing cabinetry config");
+
+    let yaml = std::fs::read_to_string(config_path)?;
+    let config = cabinetry::parse_cabinetry_config(&yaml).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    // Load histograms from JSON files: {region}_{sample}.json
+    let mut histograms = Vec::new();
+    let mut observations = Vec::new();
+
+    for region in &config.regions {
+        for sample in &config.samples {
+            let filename = format!("{}_{}.json", region.name, sample.name);
+            let path = histograms_dir.join(&filename);
+            if !path.exists() {
+                if sample.data {
+                    // Data sample → observation.
+                    let obs_path = histograms_dir.join(format!("{}_data.json", region.name));
+                    if obs_path.exists() {
+                        let obs_json: serde_json::Value =
+                            serde_json::from_str(&std::fs::read_to_string(&obs_path)?)?;
+                        if let Some(data) = obs_json.get("data").and_then(|d| d.as_array()) {
+                            let vals: Vec<f64> = data.iter().filter_map(|v| v.as_f64()).collect();
+                            observations.push((region.name.clone(), vals));
+                        }
+                    }
+                    continue;
+                }
+                anyhow::bail!("missing histogram file: {}", path.display());
+            }
+
+            let histo_json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+
+            let nominal: Vec<f64> = histo_json
+                .get("nominal")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
+                .unwrap_or_default();
+
+            let stat_unc: Vec<f64> = histo_json
+                .get("stat_uncertainties")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
+                .unwrap_or_default();
+
+            let mut systs = Vec::new();
+            if let Some(syst_obj) = histo_json.get("systematics").and_then(|v| v.as_object()) {
+                for (name, val) in syst_obj {
+                    if let (Some(up), Some(down)) = (val.get("up"), val.get("down")) {
+                        let up_data: Vec<f64> = up
+                            .as_array()
+                            .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
+                            .unwrap_or_default();
+                        let down_data: Vec<f64> = down
+                            .as_array()
+                            .map(|a| a.iter().filter_map(|v| v.as_f64()).collect())
+                            .unwrap_or_default();
+                        systs.push((name.clone(), up_data, down_data));
+                    }
+                }
+            }
+
+            if sample.data {
+                observations.push((region.name.clone(), nominal));
+            } else {
+                histograms.push(cabinetry::HistogramData {
+                    region: region.name.clone(),
+                    sample: sample.name.clone(),
+                    nominal,
+                    stat_uncertainties: stat_unc,
+                    systematics: systs,
+                });
+            }
+        }
+    }
+
+    let workspace = cabinetry::to_workspace(&config, &histograms, &observations)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let ws_json = serde_json::to_value(&workspace)?;
+    write_json(output, &ws_json)?;
+
+    tracing::info!(
+        channels = workspace.channels.len(),
+        measurements = workspace.measurements.len(),
+        "cabinetry config imported successfully"
+    );
+
+    Ok(())
+}
+
 fn cmd_build_hists(
     config: &PathBuf,
     base_dir: Option<&PathBuf>,
@@ -3758,6 +4078,14 @@ fn cmd_export_histfactory(
     })?;
     if !input.is_file() {
         anyhow::bail!("input workspace not found: {}", input.display());
+    }
+    let input_json = std::fs::read_to_string(&input)?;
+    if ns_translate::hs3::detect::detect_format(&input_json)
+        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+    {
+        anyhow::bail!(
+            "`export histfactory` requires pyhf JSON input; HS3 is not supported for this command"
+        );
     }
 
     if out_dir.exists() {
@@ -10119,6 +10447,11 @@ fn cmd_unbinned_merge_toys(inputs: &[PathBuf], output: Option<&PathBuf>) -> Resu
 
 fn cmd_audit(input: &PathBuf, format: &str, output: Option<&PathBuf>) -> Result<()> {
     let json_str = std::fs::read_to_string(input)?;
+    if ns_translate::hs3::detect::detect_format(&json_str)
+        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+    {
+        anyhow::bail!("`audit` currently supports pyhf JSON only; HS3 support is not implemented");
+    }
     let json: serde_json::Value = serde_json::from_str(&json_str)?;
     let audit = ns_translate::pyhf::audit::workspace_audit(&json);
 
@@ -10721,6 +11054,13 @@ fn load_workspace_and_model(
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
+    if ns_translate::hs3::detect::detect_format(&json)
+        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+    {
+        anyhow::bail!(
+            "this command currently requires pyhf JSON input; HS3 is not supported here yet"
+        );
+    }
     let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
     let model = match interp_defaults {
         InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
@@ -10871,7 +11211,7 @@ mod deterministic_json_tests {
 
 #[cfg(test)]
 mod cli_parse_tests {
-    use super::{Cli, InterpDefaults};
+    use super::{Cli, Commands, InterpDefaults, VizCommands, VizRenderKind};
     use clap::Parser;
 
     #[test]
@@ -10895,6 +11235,43 @@ mod cli_parse_tests {
                 ])
                 .unwrap();
                 assert_eq!(cli.interp_defaults, InterpDefaults::Pyhf);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn viz_render_parses() {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let cli = Cli::try_parse_from([
+                    "nextstat",
+                    "viz",
+                    "render",
+                    "--kind",
+                    "corr",
+                    "--input",
+                    "corr.json",
+                    "--output",
+                    "corr.png",
+                    "--corr-top-n",
+                    "40",
+                ])
+                .unwrap();
+
+                match cli.command {
+                    Commands::Viz {
+                        command: VizCommands::Render { kind, input, output, corr_top_n, .. },
+                    } => {
+                        assert_eq!(kind, VizRenderKind::Corr);
+                        assert_eq!(input, std::path::PathBuf::from("corr.json"));
+                        assert_eq!(output, std::path::PathBuf::from("corr.png"));
+                        assert_eq!(corr_top_n, Some(40));
+                    }
+                    _ => panic!("expected `viz render` command"),
+                }
             })
             .unwrap()
             .join()
@@ -12568,6 +12945,13 @@ fn cmd_preprocess_smooth(
     use ns_translate::pyhf::schema::{Modifier, Workspace};
 
     let data = std::fs::read_to_string(input)?;
+    if ns_translate::hs3::detect::detect_format(&data)
+        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+    {
+        anyhow::bail!(
+            "`preprocess smooth` requires pyhf JSON input; HS3 is not supported for this command"
+        );
+    }
     let mut ws: Workspace = serde_json::from_str(&data)?;
 
     let mut n_smoothed = 0usize;
@@ -12672,6 +13056,13 @@ fn cmd_preprocess_prune(input: &PathBuf, output: Option<&PathBuf>, threshold: f6
     use ns_translate::pyhf::schema::{Modifier, Workspace};
 
     let data = std::fs::read_to_string(input)?;
+    if ns_translate::hs3::detect::detect_format(&data)
+        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+    {
+        anyhow::bail!(
+            "`preprocess prune` requires pyhf JSON input; HS3 is not supported for this command"
+        );
+    }
     let mut ws: Workspace = serde_json::from_str(&data)?;
 
     let mut n_pruned = 0usize;
@@ -13365,6 +13756,12 @@ fn cmd_report(
     pdf: Option<&PathBuf>,
     svg_dir: Option<&PathBuf>,
     python: Option<&PathBuf>,
+    label_status: &str,
+    sqrt_s_tev: f64,
+    show_mc_band: bool,
+    show_stat_band: bool,
+    band_hatch: &str,
+    palette: &str,
     skip_uncertainty: bool,
     uncertainty_grouping: &str,
     threads: usize,
@@ -13478,6 +13875,8 @@ fn cmd_report(
         &bin_edges_by_channel,
         &params_prefit,
         &params_postfit,
+        fit_result.as_ref().map(|fr| fr.uncertainties.as_slice()),
+        fit_result.as_ref().and_then(|fr| fr.covariance.as_deref()),
         threads,
         blinded_ref,
     )?;
@@ -13609,6 +14008,18 @@ fn cmd_report(
             .arg(&pdf)
             .arg("--svg-dir")
             .arg(&svg_dir)
+            .arg("--label-status")
+            .arg(label_status)
+            .arg("--sqrt-s-tev")
+            .arg(sqrt_s_tev.to_string())
+            .arg("--show-mc-band")
+            .arg(if show_mc_band { "1" } else { "0" })
+            .arg("--show-stat-band")
+            .arg(if show_stat_band { "1" } else { "0" })
+            .arg("--band-hatch")
+            .arg(band_hatch)
+            .arg("--palette")
+            .arg(palette)
             .status()?;
 
         if !status.success() {
@@ -13658,6 +14069,8 @@ fn cmd_viz_distributions(
         &bin_edges_by_channel,
         &params_prefit,
         &params_postfit,
+        None,
+        None,
         threads,
         None,
     )?;
@@ -13840,8 +14253,16 @@ fn cmd_viz_separation(
         if let Some(ref poi) = poi_name {
             // The first sample in each channel that contains a normfactor with the POI name
             // is the signal. We use the workspace schema to detect this.
-            let ws_bytes = std::fs::read(input)?;
-            let ws: ns_translate::pyhf::Workspace = serde_json::from_slice(&ws_bytes)?;
+            let ws_json = std::fs::read_to_string(input)?;
+            if ns_translate::hs3::detect::detect_format(&ws_json)
+                == ns_translate::hs3::detect::WorkspaceFormat::Hs3
+            {
+                anyhow::bail!(
+                    "auto signal-sample detection for `viz separation` requires pyhf JSON; \
+                     for HS3 input pass --signal-samples explicitly"
+                );
+            }
+            let ws: ns_translate::pyhf::Workspace = serde_json::from_str(&ws_json)?;
             let mut names = std::collections::HashSet::new();
             for ch in &ws.channels {
                 for sample in &ch.samples {
@@ -14051,6 +14472,133 @@ fn cmd_viz_corr(
             &output_json,
             false,
         )?;
+    }
+    Ok(())
+}
+
+fn cmd_viz_render(
+    kind: VizRenderKind,
+    input: &PathBuf,
+    output: &PathBuf,
+    python: Option<&PathBuf>,
+    title: Option<&str>,
+    dpi: Option<u32>,
+    corr_include: Option<&str>,
+    corr_exclude: Option<&str>,
+    corr_top_n: Option<usize>,
+    config_yaml: Option<&PathBuf>,
+    use_python: bool,
+) -> Result<()> {
+    // Native Rust renderer (default when feature is enabled and --use-python is not set)
+    #[cfg(feature = "native-render")]
+    if !use_python {
+        let artifact_json = std::fs::read_to_string(input)?;
+        let mut config = if let Some(yaml_path) = config_yaml {
+            let yaml = std::fs::read_to_string(yaml_path)?;
+            ns_viz_render::config::resolve_config(Some(&yaml))
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+        } else {
+            ns_viz_render::config::VizConfig::default()
+        };
+        if let Some(d) = dpi {
+            config.output.dpi = d;
+        }
+        ns_viz_render::render_to_file(&artifact_json, kind.as_str(), output.as_ref(), &config)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        return Ok(());
+    }
+
+    #[cfg(not(feature = "native-render"))]
+    let _ = (config_yaml, use_python);
+
+    let default_python = {
+        let venv = PathBuf::from(".venv/bin/python");
+        if venv.exists() { venv } else { PathBuf::from("python3") }
+    };
+    let python = python.cloned().unwrap_or(default_python);
+
+    // Keep matplotlib cache writes inside the repo to avoid HOME permission issues.
+    let mplconfigdir = PathBuf::from("tmp/mplconfig");
+    let _ = std::fs::create_dir_all(&mplconfigdir);
+
+    // Only point PYTHONPATH at local sources when a local extension is present.
+    let local_ext_present = {
+        let pkg = PathBuf::from("bindings/ns-py/python/nextstat");
+        if pkg.is_dir() {
+            std::fs::read_dir(pkg)
+                .ok()
+                .and_then(|it| {
+                    for e in it.flatten() {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("_core.")
+                            && (name.ends_with(".so")
+                                || name.ends_with(".pyd")
+                                || name.ends_with(".dylib")
+                                || name.ends_with(".dll"))
+                        {
+                            return Some(());
+                        }
+                    }
+                    None
+                })
+                .is_some()
+        } else {
+            false
+        }
+    };
+    let force_py_path = std::env::var("NEXTSTAT_FORCE_PYTHONPATH").ok().as_deref() == Some("1");
+
+    let mut py = Command::new(&python);
+    py.env("MPLCONFIGDIR", &mplconfigdir);
+    if local_ext_present || force_py_path {
+        let mut pythonpath = std::ffi::OsString::new();
+        pythonpath.push("bindings/ns-py/python");
+        if let Some(existing) = std::env::var_os("PYTHONPATH")
+            && !existing.is_empty()
+        {
+            pythonpath.push(":");
+            pythonpath.push(existing);
+        }
+        py.env("PYTHONPATH", pythonpath);
+    }
+
+    py.arg("-m")
+        .arg("nextstat.viz_render")
+        .arg("render")
+        .arg("--kind")
+        .arg(kind.as_str())
+        .arg("--input")
+        .arg(input)
+        .arg("--output")
+        .arg(output);
+
+    if let Some(v) = title
+        && !v.trim().is_empty()
+    {
+        py.arg("--title").arg(v);
+    }
+    if let Some(v) = dpi {
+        py.arg("--dpi").arg(v.to_string());
+    }
+    if matches!(kind, VizRenderKind::Corr) {
+        if let Some(v) = corr_include
+            && !v.is_empty()
+        {
+            py.arg("--corr-include").arg(v);
+        }
+        if let Some(v) = corr_exclude
+            && !v.is_empty()
+        {
+            py.arg("--corr-exclude").arg(v);
+        }
+        if let Some(v) = corr_top_n {
+            py.arg("--corr-top-n").arg(v.to_string());
+        }
+    }
+
+    let status = py.status()?;
+    if !status.success() {
+        anyhow::bail!("viz renderer failed (python={}, status={})", python.display(), status);
     }
     Ok(())
 }

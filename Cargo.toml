@@ -14,6 +14,7 @@ members = [
     "crates/ns-translate",
     "crates/ns-unbinned",
     "crates/ns-viz",
+    "crates/ns-viz-render",
     "crates/ns-cli",
     "crates/ns-server",
     "crates/ns-zstd",
@@ -26,7 +27,7 @@ members = [
 zstd = { path = "crates/zstd-shim" }
 
 [workspace.package]
-version = "0.9.5"
+version = "0.9.6"
 edition = "2024"
 rust-version = "1.93"
 authors = ["NextStat Contributors"]
@@ -38,16 +39,17 @@ categories = ["science", "mathematics"]
 
 [workspace.dependencies]
 # Internal workspace crates (for publishable versioned deps).
-ns-core = { path = "crates/ns-core", version = "0.9.4" }
-ns-compute = { path = "crates/ns-compute", version = "0.9.4" }
-ns-ad = { path = "crates/ns-ad", version = "0.9.4" }
-ns-prob = { path = "crates/ns-prob", version = "0.9.4" }
-ns-root = { path = "crates/ns-root", version = "0.9.4" }
-ns-translate = { path = "crates/ns-translate", version = "0.9.4", default-features = false }
-ns-inference = { path = "crates/ns-inference", version = "0.9.4", default-features = false }
-ns-viz = { path = "crates/ns-viz", version = "0.9.4" }
-ns-cli = { path = "crates/ns-cli", version = "0.9.4" }
-ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.4" }
+ns-core = { path = "crates/ns-core", version = "0.9.6" }
+ns-compute = { path = "crates/ns-compute", version = "0.9.6" }
+ns-ad = { path = "crates/ns-ad", version = "0.9.6" }
+ns-prob = { path = "crates/ns-prob", version = "0.9.6" }
+ns-root = { path = "crates/ns-root", version = "0.9.6" }
+ns-translate = { path = "crates/ns-translate", version = "0.9.6", default-features = false }
+ns-inference = { path = "crates/ns-inference", version = "0.9.6", default-features = false }
+ns-viz = { path = "crates/ns-viz", version = "0.9.6" }
+ns-viz-render = { path = "crates/ns-viz-render", version = "0.9.6", default-features = false }
+ns-cli = { path = "crates/ns-cli", version = "0.9.6" }
+ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.6" }
 
 # Core dependencies
 thiserror = "2.0"
@@ -109,7 +111,7 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 ort = { version = "2.0.0-rc.11", default-features = false, features = ["std"] }
 
 # GPU backends (Phase 2C - Optional)
-cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "std", "dynamic-loading", "cuda-12040"] }
+cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "cublas", "std", "dynamic-loading", "cuda-12040"] }
 metal = "0.30"
 objc = "0.2"
 block = "0.1"

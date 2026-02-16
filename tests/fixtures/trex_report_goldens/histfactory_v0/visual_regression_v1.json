@@ -1,0 +1,66 @@
+{
+  "png": {
+    "corr.png": {
+      "ahash16": "dfffce7dc3fde3fdc0fdf8fdf8fff81ffe1ffe0dffc5ff85ffcdfffdffffffff",
+      "size_bytes": 77832
+    },
+    "distributions__SR.png": {
+      "ahash16": "fffffffffffffc1ffc1ffc1f801f8000800080008000ffffffffffffffffffff",
+      "size_bytes": 172086
+    },
+    "pulls__p1.png": {
+      "ahash16": "cfbf8000bc1efe1ffc1fbe1ffe1f3c1ffe1ffe1f3c1ffe1fbe1f0000fefffe1f",
+      "size_bytes": 53588
+    },
+    "yields__SR.png": {
+      "ahash16": "3e7f267cffffffffffff0000000000000000000000000000ffffffffffffffff",
+      "size_bytes": 36151
+    }
+  },
+  "svg": {
+    "corr.svg": {
+      "channel": 0,
+      "fill_count": 65,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 47,
+      "size_bytes": 24953,
+      "stroke_count": 48,
+      "text_count": 26,
+      "use_count": 29
+    },
+    "distributions__SR.svg": {
+      "channel": 1,
+      "fill_count": 89,
+      "mc_unc": 1,
+      "nextstat": 1,
+      "path_count": 66,
+      "size_bytes": 547355,
+      "stroke_count": 106,
+      "text_count": 32,
+      "use_count": 57
+    },
+    "pulls__p1.svg": {
+      "channel": 0,
+      "fill_count": 48,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 26,
+      "size_bytes": 17407,
+      "stroke_count": 53,
+      "text_count": 17,
+      "use_count": 29
+    },
+    "yields__SR.svg": {
+      "channel": 1,
+      "fill_count": 38,
+      "mc_unc": 0,
+      "nextstat": 1,
+      "path_count": 16,
+      "size_bytes": 10346,
+      "stroke_count": 15,
+      "text_count": 18,
+      "use_count": 0
+    }
+  }
+}

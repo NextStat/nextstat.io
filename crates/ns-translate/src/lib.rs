@@ -16,6 +16,7 @@
 
 #[cfg(feature = "arrow-io")]
 pub mod arrow;
+pub mod cabinetry;
 #[cfg(feature = "root-io")]
 pub mod histfactory;
 pub mod hs3;

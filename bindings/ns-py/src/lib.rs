@@ -150,6 +150,17 @@ fn sampler_result_to_py<'py>(
     n_warmup: usize,
     n_samples: usize,
 ) -> PyResult<Py<PyAny>> {
+    sampler_result_to_py_gates(py, result, n_chains, n_warmup, n_samples, false)
+}
+
+fn sampler_result_to_py_gates<'py>(
+    py: Python<'py>,
+    result: &RustSamplerResult,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+    microcanonical: bool,
+) -> PyResult<Py<PyAny>> {
     let diag = compute_diagnostics(result);
     let param_names = &result.param_names;
     let n_params = param_names.len();
@@ -194,8 +205,10 @@ fn sampler_result_to_py<'py>(
     diagnostics_dict.set_item("max_treedepth_rate", diag.max_treedepth_rate)?;
     diagnostics_dict.set_item("ebfmi", diag.ebfmi.clone())?;
 
-    // Non-slow quality summary (conservative gates).
-    let gates = QualityGates::default();
+    // Non-slow quality summary. Microcanonical samplers (MAMS/LAPS) use relaxed
+    // EBFMI gates since low E-BFMI is expected for Sundman leapfrog dynamics.
+    let gates =
+        if microcanonical { QualityGates::microcanonical() } else { QualityGates::default() };
     let qs = quality_summary(&diag, n_chains, n_samples, &gates);
     let quality = PyDict::new(py);
     quality.set_item("status", qs.status.to_string())?;
@@ -2783,12 +2796,12 @@ fn sv_logchi2_fit(
 // ---------------------------------------------------------------------------
 
 #[pyfunction]
-#[pyo3(signature = (entity_ids, x, y, p, *, time_ids=None, cluster_ids=None))]
+#[pyo3(signature = (y, x, entity_ids, p, *, time_ids=None, cluster_ids=None))]
 fn panel_fe(
     py: Python<'_>,
-    entity_ids: Vec<u64>,
-    x: Vec<f64>,
     y: Vec<f64>,
+    x: Vec<f64>,
+    entity_ids: Vec<u64>,
     p: usize,
     time_ids: Option<Vec<u64>>,
     cluster_ids: Option<Vec<u64>>,
@@ -3470,7 +3483,7 @@ fn churn_uplift_survival(
 }
 
 #[pyfunction]
-#[pyo3(signature = (times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95))]
+#[pyo3(signature = (times, events, covariates, names, *, n_bootstrap=1000, seed=42, conf_level=0.95, ci_method="percentile", n_jackknife=200))]
 fn churn_bootstrap_hr(
     py: Python<'_>,
     times: Vec<f64>,
@@ -3480,8 +3493,21 @@ fn churn_bootstrap_hr(
     n_bootstrap: usize,
     seed: u64,
     conf_level: f64,
+    ci_method: &str,
+    n_jackknife: usize,
 ) -> PyResult<Py<PyAny>> {
-    let r = ns_inference::bootstrap_hazard_ratios(
+    let ci_method_norm = ci_method.trim().to_ascii_lowercase();
+    let method = match ci_method_norm.as_str() {
+        "percentile" => ns_inference::BootstrapCiMethod::Percentile,
+        "bca" => ns_inference::BootstrapCiMethod::Bca,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "invalid ci_method '{other}', expected 'percentile' or 'bca'"
+            )));
+        }
+    };
+
+    let r = ns_inference::bootstrap_hazard_ratios_with_method(
         &times,
         &events,
         &covariates,
@@ -3489,6 +3515,8 @@ fn churn_bootstrap_hr(
         n_bootstrap,
         seed,
         conf_level,
+        method,
+        n_jackknife,
     )
     .map_err(|e| PyValueError::new_err(format!("churn_bootstrap_hr failed: {e}")))?;
 
@@ -3498,8 +3526,56 @@ fn churn_bootstrap_hr(
     out.set_item("hr_ci_lower", &r.hr_ci_lower)?;
     out.set_item("hr_ci_upper", &r.hr_ci_upper)?;
     out.set_item("n_bootstrap", r.n_bootstrap)?;
+    out.set_item("n_jackknife_requested", r.n_jackknife_requested)?;
+    out.set_item("n_jackknife_attempted", r.n_jackknife_attempted)?;
     out.set_item("n_converged", r.n_converged)?;
     out.set_item("elapsed_s", r.elapsed_s)?;
+    out.set_item(
+        "ci_method_requested",
+        match r.ci_method_requested {
+            ns_inference::BootstrapCiMethod::Percentile => "percentile",
+            ns_inference::BootstrapCiMethod::Bca => "bca",
+        },
+    )?;
+
+    let ci_method_effective = PyList::empty(py);
+    for m in &r.ci_method_effective {
+        ci_method_effective.append(match m {
+            ns_inference::BootstrapCiMethod::Percentile => "percentile",
+            ns_inference::BootstrapCiMethod::Bca => "bca",
+        })?;
+    }
+    out.set_item("ci_method_effective", ci_method_effective)?;
+
+    let diagnostics = PyList::empty(py);
+    for d in &r.ci_diagnostics {
+        let dd = PyDict::new(py);
+        dd.set_item(
+            "requested_method",
+            match d.requested_method {
+                ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                ns_inference::BootstrapCiMethod::Bca => "bca",
+            },
+        )?;
+        dd.set_item(
+            "effective_method",
+            match d.effective_method {
+                ns_inference::BootstrapCiMethod::Percentile => "percentile",
+                ns_inference::BootstrapCiMethod::Bca => "bca",
+            },
+        )?;
+        dd.set_item("z0", d.z0)?;
+        dd.set_item("acceleration", d.acceleration)?;
+        dd.set_item("alpha_low", d.alpha_low)?;
+        dd.set_item("alpha_high", d.alpha_high)?;
+        dd.set_item("alpha_low_adj", d.alpha_low_adj)?;
+        dd.set_item("alpha_high_adj", d.alpha_high_adj)?;
+        dd.set_item("n_bootstrap", d.n_bootstrap)?;
+        dd.set_item("n_jackknife", d.n_jackknife)?;
+        dd.set_item("fallback_reason", &d.fallback_reason)?;
+        diagnostics.append(dd)?;
+    }
+    out.set_item("ci_diagnostics", diagnostics)?;
     Ok(out.into_any().unbind())
 }
 
@@ -7599,27 +7675,67 @@ fn fit_batch<'py>(
     mle.fit_batch(py, models_or_model, datasets)
 }
 
-/// Convenience wrapper: generate Poisson toys and fit each in parallel.
+/// Unified toy fitting: generate Poisson toys and fit each.
+///
+/// Dispatches on model type: HistFactoryModel (CPU/CUDA/Metal), UnbinnedModel (CPU only).
+/// - `batch=True` (default): fast batch mode, skips Hessian/covariance.
+/// - `batch=False`: full mode with Hessian (HistFactory only, CPU only).
+/// - `device="cuda"|"metal"`: GPU-accelerated batch (HistFactory only).
 #[pyfunction]
-#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
+#[pyo3(signature = (model, params, *, n_toys=1000, seed=42, device="cpu", batch=true, compute_hessian=false, max_retries=3, max_iter=5000, init_params=None))]
 fn fit_toys(
     py: Python<'_>,
-    model: &PyHistFactoryModel,
+    model: &Bound<'_, PyAny>,
     params: Vec<f64>,
     n_toys: usize,
     seed: u64,
+    device: &str,
+    batch: bool,
+    compute_hessian: bool,
+    max_retries: usize,
+    max_iter: u64,
+    init_params: Option<Vec<f64>>,
 ) -> PyResult<Vec<PyFitResult>> {
-    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
-    mle.fit_toys(py, model, params, n_toys, seed)
+    if let Ok(hf) = model.extract::<PyRef<PyHistFactoryModel>>() {
+        match device {
+            "cuda" | "metal" => fit_toys_batch_gpu_impl(py, &hf, params, n_toys, seed, device),
+            "cpu" => {
+                if batch {
+                    fit_toys_batch_impl(py, &hf, params, n_toys, seed)
+                } else {
+                    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+                    mle.fit_toys(py, &hf, params, n_toys, seed)
+                }
+            }
+            _ => Err(PyValueError::new_err(format!(
+                "Device '{}' not supported for fit_toys. Use 'cpu', 'cuda', or 'metal'.",
+                device
+            ))),
+        }
+    } else if let Ok(ub) = model.extract::<PyRef<PyUnbinnedModel>>() {
+        if device != "cpu" {
+            return Err(PyValueError::new_err(
+                "UnbinnedModel fit_toys only supports device='cpu'.",
+            ));
+        }
+        unbinned_fit_toys_impl(
+            py,
+            &ub,
+            params,
+            n_toys,
+            seed,
+            init_params,
+            max_retries,
+            max_iter,
+            compute_hessian,
+        )
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err("Expected HistFactoryModel or UnbinnedModel"))
+    }
 }
 
-/// Generate Poisson-fluctuated toys and fit each for an unbinned model.
-///
-/// Uses warm-start (from `init_params` or observed-data MLE), retry with jitter,
-/// and Rayon parallelism for ≥95% convergence on typical unbinned models.
-#[pyfunction]
-#[pyo3(signature = (model, params, *, n_toys=1000, seed=42, init_params=None, max_retries=3, max_iter=5000, compute_hessian=false))]
-fn unbinned_fit_toys(
+/// Internal: unbinned toy fitting — called by unified `fit_toys()`.
+fn unbinned_fit_toys_impl(
     py: Python<'_>,
     model: &PyUnbinnedModel,
     params: Vec<f64>,
@@ -7662,13 +7778,8 @@ fn unbinned_fit_toys(
         .collect()
 }
 
-/// Batch toy fitting (skips Hessian/covariance for speed).
-///
-/// Uses Accelerate (vDSP/vForce) for Poisson NLL when built with `--features accelerate`.
-/// Returns FitResult with parameters + NLL only (uncertainties = 0).
-#[pyfunction]
-#[pyo3(signature = (model, params, *, n_toys=1000, seed=42))]
-fn fit_toys_batch(
+/// Internal: batch toy fitting for HistFactory — called by unified `fit_toys()`.
+fn fit_toys_batch_impl(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     params: Vec<f64>,
@@ -7762,13 +7873,8 @@ fn has_metal() -> bool {
     ns_inference::batch::is_metal_batch_available()
 }
 
-/// GPU-accelerated batch toy fitting (requires CUDA).
-///
-/// All toys are optimized in lockstep on the GPU.
-/// Falls back to CPU if CUDA is not available.
-#[pyfunction]
-#[pyo3(signature = (model, params, *, n_toys=1000, seed=42, device="cpu"))]
-fn fit_toys_batch_gpu(
+/// Internal: GPU batch toy fitting for HistFactory — called by unified `fit_toys()`.
+fn fit_toys_batch_gpu_impl(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     params: Vec<f64>,
@@ -7851,16 +7957,54 @@ fn poisson_toys(
         .map_err(|e| PyValueError::new_err(format!("poisson_toys failed: {}", e)))
 }
 
-/// Convenience wrapper: nuisance-parameter ranking (impact on POI).
+/// Unified nuisance-parameter ranking (impact on POI).
+///
+/// Dispatches on model type: HistFactoryModel (CPU/CUDA), UnbinnedModel (CPU only).
 #[pyfunction]
-fn ranking<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
-    let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
-    mle.ranking(py, model)
+#[pyo3(signature = (model, *, device="cpu"))]
+fn ranking<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    device: &str,
+) -> PyResult<Vec<Py<PyAny>>> {
+    if let Ok(hf) = model.extract::<PyRef<PyHistFactoryModel>>() {
+        match device {
+            "cpu" => {
+                let mle = PyMaximumLikelihoodEstimator { inner: RustMLE::new() };
+                mle.ranking(py, &hf)
+            }
+            "cuda" => {
+                #[cfg(feature = "cuda")]
+                {
+                    ranking_gpu_impl(py, &hf)
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    Err(PyValueError::new_err(
+                        "Device 'cuda' not available. Build with --features cuda.",
+                    ))
+                }
+            }
+            _ => Err(PyValueError::new_err(format!(
+                "Device '{}' not supported for ranking. Use 'cpu' or 'cuda'.",
+                device
+            ))),
+        }
+    } else if let Ok(ub) = model.extract::<PyRef<PyUnbinnedModel>>() {
+        if device != "cpu" {
+            return Err(PyValueError::new_err("UnbinnedModel ranking only supports device='cpu'."));
+        }
+        unbinned_ranking_impl(py, &ub)
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err("Expected HistFactoryModel or UnbinnedModel"))
+    }
 }
 
-/// Convenience wrapper: nuisance-parameter ranking (impact on POI) for `UnbinnedModel`.
-#[pyfunction]
-fn unbinned_ranking<'py>(py: Python<'py>, model: &PyUnbinnedModel) -> PyResult<Vec<Py<PyAny>>> {
+/// Internal: unbinned ranking logic (called by unified `ranking()`).
+fn unbinned_ranking_impl<'py>(
+    py: Python<'py>,
+    model: &PyUnbinnedModel,
+) -> PyResult<Vec<Py<PyAny>>> {
     let poi_idx = model.inner.poi_index().ok_or_else(|| {
         PyValueError::new_err("UnbinnedModel has no POI (spec.model.poi is required for ranking)")
     })?;
@@ -7959,13 +8103,9 @@ fn unbinned_ranking<'py>(py: Python<'py>, model: &PyUnbinnedModel) -> PyResult<V
         .collect()
 }
 
-/// GPU-accelerated nuisance-parameter ranking (impact on POI).
-///
-/// Nominal fit uses CPU (needs Hessian for pull/constraint). Per-NP refits
-/// use GPU with shared session, warm-start, and bounds-clamping.
+/// Internal: GPU-accelerated ranking (called by unified `ranking()`).
 #[cfg(feature = "cuda")]
-#[pyfunction]
-fn ranking_gpu<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
+fn ranking_gpu_impl<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResult<Vec<Py<PyAny>>> {
     let mle = RustMLE::new();
     let m = model.inner.clone();
 
@@ -8018,43 +8158,103 @@ fn ols_fit(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> PyResult<V
     rust_ols_fit(x, y, include_intercept).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Frequentist hypotest (asymptotics, qtilde) returning CLs (pyhf-compatible).
+/// Frequentist hypotest (asymptotics, qtilde) returning CLs.
+///
+/// Dispatches on model type: HistFactoryModel or UnbinnedModel.
 #[pyfunction]
 #[pyo3(signature = (poi_test, model, *, data=None, return_tail_probs=false))]
 fn hypotest(
     py: Python<'_>,
     poi_test: f64,
-    model: &PyHistFactoryModel,
+    model: &Bound<'_, PyAny>,
     data: Option<Vec<f64>>,
     return_tail_probs: bool,
 ) -> PyResult<Py<PyAny>> {
-    let mle = RustMLE::new();
-    let fit_model = if let Some(obs_main) = data {
-        model
-            .inner
-            .with_observed_main(&obs_main)
-            .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
-    } else {
-        model.inner.clone()
-    };
+    if let Ok(hf) = model.extract::<PyRef<PyHistFactoryModel>>() {
+        let mle = RustMLE::new();
+        let fit_model = if let Some(obs_main) = data {
+            hf.inner
+                .with_observed_main(&obs_main)
+                .map_err(|e| PyValueError::new_err(format!("Failed to set observed data: {}", e)))?
+        } else {
+            hf.inner.clone()
+        };
 
-    let ctx = RustCLsCtx::new(&mle, &fit_model)
-        .map_err(|e| PyValueError::new_err(format!("Failed to build asymptotic context: {}", e)))?;
-    let r = ctx
-        .hypotest_qtilde(&mle, poi_test)
-        .map_err(|e| PyValueError::new_err(format!("Hypotest failed: {}", e)))?;
+        let ctx = RustCLsCtx::new(&mle, &fit_model).map_err(|e| {
+            PyValueError::new_err(format!("Failed to build asymptotic context: {}", e))
+        })?;
+        let r = ctx
+            .hypotest_qtilde(&mle, poi_test)
+            .map_err(|e| PyValueError::new_err(format!("Hypotest failed: {}", e)))?;
 
-    if return_tail_probs {
-        (r.cls, vec![r.clsb, r.clb]).into_py_any(py)
+        if return_tail_probs {
+            (r.cls, vec![r.clsb, r.clb]).into_py_any(py)
+        } else {
+            r.cls.into_py_any(py)
+        }
+    } else if let Ok(ub) = model.extract::<PyRef<PyUnbinnedModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data override is not supported for UnbinnedModel (data is in the model spec)",
+            ));
+        }
+        unbinned_hypotest_impl(py, poi_test, &ub)
     } else {
-        r.cls.into_py_any(py)
+        Err(pyo3::exceptions::PyTypeError::new_err("Expected HistFactoryModel or UnbinnedModel"))
     }
 }
 
 /// Frequentist hypotest (toy-based CLs, qtilde) returning CLs.
+///
+/// Dispatches on model type: HistFactoryModel or UnbinnedModel.
 #[pyfunction]
 #[pyo3(signature = (poi_test, model, *, n_toys=1000, seed=42, expected_set=false, data=None, return_tail_probs=false, return_meta=false))]
 fn hypotest_toys(
+    py: Python<'_>,
+    poi_test: f64,
+    model: &Bound<'_, PyAny>,
+    n_toys: usize,
+    seed: u64,
+    expected_set: bool,
+    data: Option<Vec<f64>>,
+    return_tail_probs: bool,
+    return_meta: bool,
+) -> PyResult<Py<PyAny>> {
+    if let Ok(hf) = model.extract::<PyRef<PyHistFactoryModel>>() {
+        hypotest_toys_hf_impl(
+            py,
+            poi_test,
+            &hf,
+            n_toys,
+            seed,
+            expected_set,
+            data,
+            return_tail_probs,
+            return_meta,
+        )
+    } else if let Ok(ub) = model.extract::<PyRef<PyUnbinnedModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data override is not supported for UnbinnedModel (data is in the model spec)",
+            ));
+        }
+        unbinned_hypotest_toys_impl(
+            py,
+            poi_test,
+            &ub,
+            n_toys,
+            seed,
+            expected_set,
+            return_tail_probs,
+            return_meta,
+        )
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err("Expected HistFactoryModel or UnbinnedModel"))
+    }
+}
+
+/// Internal: toy-based hypotest for HistFactory models.
+fn hypotest_toys_hf_impl(
     py: Python<'_>,
     poi_test: f64,
     model: &PyHistFactoryModel,
@@ -8134,10 +8334,8 @@ fn hypotest_toys(
     }
 }
 
-/// Unbinned hypotest (toy-based CLs, qtilde) returning CLs.
-#[pyfunction]
-#[pyo3(signature = (poi_test, model, *, n_toys=1000, seed=42, expected_set=false, return_tail_probs=false, return_meta=false))]
-fn unbinned_hypotest_toys(
+/// Internal: unbinned hypotest (toy-based CLs) — called by unified `hypotest_toys()`.
+fn unbinned_hypotest_toys_impl(
     py: Python<'_>,
     poi_test: f64,
     model: &PyUnbinnedModel,
@@ -8214,10 +8412,8 @@ fn unbinned_hypotest_toys(
     }
 }
 
-/// Unbinned profile likelihood scan over POI values (q_mu).
-#[pyfunction]
-#[pyo3(signature = (model, mu_values))]
-fn unbinned_profile_scan(
+/// Internal: unbinned profile scan — called by unified `profile_scan()`.
+fn unbinned_profile_scan_impl(
     py: Python<'_>,
     model: &PyUnbinnedModel,
     mu_values: Vec<f64>,
@@ -8247,10 +8443,12 @@ fn unbinned_profile_scan(
     Ok(out.into_any().unbind())
 }
 
-/// Unbinned `q_mu` computation (upper-limit style, one-sided).
-#[pyfunction]
-#[pyo3(signature = (mu_test, model))]
-fn unbinned_hypotest(py: Python<'_>, mu_test: f64, model: &PyUnbinnedModel) -> PyResult<Py<PyAny>> {
+/// Internal: unbinned `q_mu` computation — called by unified `hypotest()`.
+fn unbinned_hypotest_impl(
+    py: Python<'_>,
+    mu_test: f64,
+    model: &PyUnbinnedModel,
+) -> PyResult<Py<PyAny>> {
     let poi_idx = model.inner.poi_index().ok_or_else(|| {
         PyValueError::new_err("UnbinnedModel has no POI (spec.model.poi is required for hypotest)")
     })?;
@@ -8315,21 +8513,48 @@ fn unbinned_hypotest(py: Python<'_>, mu_test: f64, model: &PyUnbinnedModel) -> P
 
 /// Profile likelihood scan over POI values (q_mu).
 ///
-/// Pass `device="cuda"` to use GPU-accelerated NLL+gradient (requires CUDA build).
+/// Dispatches on model type: HistFactoryModel (CPU/CUDA) or UnbinnedModel (CPU only).
+/// Pass `return_curve=True` for plot-friendly arrays (mu_values, q_mu_values, twice_delta_nll).
 #[pyfunction]
-#[pyo3(signature = (model, mu_values, *, data=None, device="cpu", return_params=false))]
+#[pyo3(signature = (model, mu_values, *, data=None, device="cpu", return_params=false, return_curve=false))]
 fn profile_scan(
+    py: Python<'_>,
+    model: &Bound<'_, PyAny>,
+    mu_values: Vec<f64>,
+    data: Option<Vec<f64>>,
+    device: &str,
+    return_params: bool,
+    return_curve: bool,
+) -> PyResult<Py<PyAny>> {
+    if let Ok(hf) = model.extract::<PyRef<PyHistFactoryModel>>() {
+        profile_scan_hf_impl(py, &hf, mu_values, data, device, return_params, return_curve)
+    } else if let Ok(ub) = model.extract::<PyRef<PyUnbinnedModel>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data override is not supported for UnbinnedModel (data is in the model spec)",
+            ));
+        }
+        if device != "cpu" {
+            return Err(PyValueError::new_err(
+                "UnbinnedModel profile scan only supports device='cpu'.",
+            ));
+        }
+        unbinned_profile_scan_impl(py, &ub, mu_values)
+    } else {
+        Err(pyo3::exceptions::PyTypeError::new_err("Expected HistFactoryModel or UnbinnedModel"))
+    }
+}
+
+/// Internal: HistFactory profile scan.
+fn profile_scan_hf_impl(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     mu_values: Vec<f64>,
     data: Option<Vec<f64>>,
     device: &str,
     return_params: bool,
+    return_curve: bool,
 ) -> PyResult<Py<PyAny>> {
-    // Profile scans are used as a parity surface against ROOT/HistFactory. In practice,
-    // ROOT's Minuit stopping criteria are looser than our strict-gradient defaults; an
-    // overly strict tolerance can push the fit into slightly different basins and produce
-    // small but systematic q(mu) differences on large exports.
     let mle = RustMLE::with_config(OptimizerConfig {
         max_iter: 20000,
         tol: 1e-6,
@@ -8360,7 +8585,7 @@ fn profile_scan(
         #[cfg(not(feature = "cuda"))]
         {
             return Err(PyValueError::new_err(
-                "CUDA support not compiled in. Build with --features cuda",
+                "Device 'cuda' not available. Build with --features cuda.",
             ));
         }
     } else if return_params {
@@ -8370,6 +8595,35 @@ fn profile_scan(
         pl::scan_histfactory(&mle, &fit_model, &mu_values)
             .map_err(|e| PyValueError::new_err(format!("Profile scan failed: {}", e)))?
     };
+
+    // If return_curve, produce the plot-friendly artifact format.
+    if return_curve {
+        let art: ProfileCurveArtifact = scan.into();
+        let out = PyDict::new(py);
+        out.set_item("poi_index", art.poi_index)?;
+        out.set_item("mu_hat", art.mu_hat)?;
+        out.set_item("nll_hat", art.nll_hat)?;
+        out.set_item("mu_values", art.mu_values.clone())?;
+        out.set_item("q_mu_values", art.q_mu_values.clone())?;
+        out.set_item("twice_delta_nll", art.twice_delta_nll.clone())?;
+
+        let points: Vec<Py<PyAny>> = art
+            .points
+            .iter()
+            .map(|p| -> PyResult<Py<PyAny>> {
+                let d = PyDict::new(py);
+                d.set_item("mu", p.mu)?;
+                d.set_item("q_mu", p.q_mu)?;
+                d.set_item("nll_mu", p.nll_mu)?;
+                d.set_item("converged", p.converged)?;
+                d.set_item("n_iter", p.n_iter)?;
+                Ok(d.into_any().unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        out.set_item("points", PyList::new(py, points)?)?;
+
+        return Ok(out.into_any().unbind());
+    }
 
     let out = PyDict::new(py);
     out.set_item("poi_index", scan.poi_index)?;
@@ -8400,18 +8654,23 @@ fn profile_scan(
     Ok(out.into_any().unbind())
 }
 
-/// Observed upper limit via asymptotic CLs (qtilde) and bisection.
+/// Observed upper limit via asymptotic CLs (qtilde).
+///
+/// `method="bisect"` (default): returns a single float (observed limit).
+/// `method="root"`: returns (observed, [expected_band]) like `upper_limits_root()`.
 #[pyfunction]
-#[pyo3(signature = (model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None))]
+#[pyo3(signature = (model, *, method="bisect", alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None))]
 fn upper_limit(
+    py: Python<'_>,
     model: &PyHistFactoryModel,
+    method: &str,
     alpha: f64,
     lo: f64,
     hi: Option<f64>,
     rtol: f64,
     max_iter: usize,
     data: Option<Vec<f64>>,
-) -> PyResult<f64> {
+) -> PyResult<Py<PyAny>> {
     let mle = RustMLE::new();
     let fit_model = if let Some(obs_main) = data {
         model
@@ -8432,8 +8691,24 @@ fn upper_limit(
             .unwrap_or(10.0)
     });
 
-    ctx.upper_limit_qtilde(&mle, alpha, lo, hi0, rtol, max_iter)
-        .map_err(|e| PyValueError::new_err(format!("Upper limit failed: {}", e)))
+    match method {
+        "bisect" => {
+            let obs = ctx
+                .upper_limit_qtilde(&mle, alpha, lo, hi0, rtol, max_iter)
+                .map_err(|e| PyValueError::new_err(format!("Upper limit failed: {}", e)))?;
+            obs.into_py_any(py)
+        }
+        "root" => {
+            let (obs, exp) = ctx
+                .upper_limits_qtilde_bisection(&mle, alpha, lo, hi0, rtol, max_iter)
+                .map_err(|e| PyValueError::new_err(format!("Upper limits root failed: {}", e)))?;
+            (obs, exp.to_vec()).into_py_any(py)
+        }
+        _ => Err(PyValueError::new_err(format!(
+            "Unknown method '{}'. Use 'bisect' or 'root'.",
+            method
+        ))),
+    }
 }
 
 /// Observed and expected upper limits via linear scan + interpolation (pyhf-compatible).
@@ -8464,10 +8739,10 @@ fn upper_limits(
     Ok((obs, exp.to_vec()))
 }
 
-/// Observed and expected upper limits via bisection root-finding (pyhf scan=None analogue).
-#[pyfunction]
-#[pyo3(signature = (model, *, alpha=0.05, lo=0.0, hi=None, rtol=1e-4, max_iter=80, data=None))]
-fn upper_limits_root(
+/// Internal: upper limits via bisection root-finding — kept for backward compatibility.
+/// Prefer `upper_limit(model, method="root")`.
+#[allow(dead_code)]
+fn upper_limits_root_impl(
     model: &PyHistFactoryModel,
     alpha: f64,
     lo: f64,
@@ -8600,7 +8875,7 @@ fn sample<'py>(
     model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42,
     target_accept=0.9, init_strategy="random", metric="diagonal",
     init_step_size=0.0, init_l=0.0, max_leapfrog=1024,
-    diagonal_precond=true, data=None
+    diagonal_precond=true, eps_jitter=0.1, data=None
 ))]
 fn sample_mams_py<'py>(
     py: Python<'py>,
@@ -8616,6 +8891,7 @@ fn sample_mams_py<'py>(
     init_l: f64,
     max_leapfrog: usize,
     diagonal_precond: bool,
+    eps_jitter: f64,
     data: Option<Vec<f64>>,
 ) -> PyResult<Py<PyAny>> {
     // Validate
@@ -8661,6 +8937,7 @@ fn sample_mams_py<'py>(
         diagonal_precond,
         init_strategy,
         metric_type,
+        eps_jitter,
     };
 
     let result = if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
@@ -8679,7 +8956,7 @@ fn sample_mams_py<'py>(
             .map_err(|e| PyValueError::new_err(format!("MAMS sampling failed: {}", e)))?
     };
 
-    sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
+    sampler_result_to_py_gates(py, &result, n_chains, n_warmup, n_samples, true)
 }
 
 /// User-defined CUDA model for GPU LAPS sampling via NVRTC JIT compilation.
@@ -8758,16 +9035,16 @@ impl PyRawCudaModel {
 /// as `sample_mams()` plus `wall_time_s` and `n_kernel_launches`.
 ///
 /// The `model` argument can be:
-/// - A string name: "std_normal", "eight_schools", "neal_funnel", "glm_logistic"
+/// - A string name: "std_normal", "eight_schools", "neal_funnel", "neal_funnel_centered", "glm_logistic"
 /// - A `RawCudaModel` instance for JIT-compiled user-defined models
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 #[pyfunction]
 #[pyo3(name = "sample_laps", signature = (
     model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000,
     seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0,
     max_leapfrog=8192, device_ids=None,
     sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000,
-    report_chains=32,
+    report_chains=256,
     diagonal_precond=true
 ))]
 fn sample_laps_py<'py>(
@@ -8802,14 +9079,20 @@ fn sample_laps_py<'py>(
         return Err(PyValueError::new_err("report_chains must be >= 1"));
     }
 
-    // Check if model is a RawCudaModel instance
-    let laps_model = if let Ok(raw) = model.extract::<PyRef<PyRawCudaModel>>() {
-        LapsModel::Custom {
+    // Check if model is a RawCudaModel instance (CUDA only)
+    #[cfg(feature = "cuda")]
+    let laps_model_from_raw: Option<LapsModel> =
+        model.extract::<PyRef<PyRawCudaModel>>().ok().map(|raw| LapsModel::Custom {
             dim: raw.dim,
             param_names: raw.param_names.clone(),
             model_data: raw.data.clone(),
             cuda_src: raw.cuda_src.clone(),
-        }
+        });
+    #[cfg(not(feature = "cuda"))]
+    let laps_model_from_raw: Option<LapsModel> = None;
+
+    let laps_model = if let Some(m) = laps_model_from_raw {
+        m
     } else if let Ok(name) = model.extract::<&str>() {
         match name {
             "std_normal" => {
@@ -8844,13 +9127,29 @@ fn sample_laps_py<'py>(
                     .unwrap_or(5.0);
                 LapsModel::EightSchools { y, sigma, prior_mu_sigma, prior_tau_scale }
             }
-            "neal_funnel" => {
+            "neal_funnel" | "neal_funnel_ncp" => {
+                let dim = if let Some(d) = model_data {
+                    d.get_item("dim")?.map(|v| v.extract::<usize>()).transpose()?.unwrap_or(10)
+                } else {
+                    10
+                };
+                LapsModel::NealFunnelNcp { dim }
+            }
+            "neal_funnel_centered" => {
                 let dim = if let Some(d) = model_data {
                     d.get_item("dim")?.map(|v| v.extract::<usize>()).transpose()?.unwrap_or(10)
                 } else {
                     10
                 };
                 LapsModel::NealFunnel { dim }
+            }
+            "neal_funnel_riemannian" => {
+                let dim = if let Some(d) = model_data {
+                    d.get_item("dim")?.map(|v| v.extract::<usize>()).transpose()?.unwrap_or(10)
+                } else {
+                    10
+                };
+                LapsModel::NealFunnelRiemannian { dim }
             }
             "glm_logistic" => {
                 let d = model_data.ok_or_else(|| {
@@ -8878,7 +9177,7 @@ fn sample_laps_py<'py>(
             }
             other => {
                 return Err(PyValueError::new_err(format!(
-                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'glm_logistic', or a RawCudaModel, got '{other}'"
+                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'neal_funnel_centered', 'neal_funnel_ncp', 'neal_funnel_riemannian', 'glm_logistic', or a RawCudaModel, got '{other}'"
                 )));
             }
         }
@@ -8902,6 +9201,7 @@ fn sample_laps_py<'py>(
         fused_transitions,
         report_chains,
         use_diagonal_precond: diagonal_precond,
+        n_mass_windows: 3,
     };
 
     let laps_result = py
@@ -8909,18 +9209,24 @@ fn sample_laps_py<'py>(
         .map_err(|e| PyValueError::new_err(format!("LAPS sampling failed: {}", e)))?;
 
     let n_report_chains = laps_result.sampler_result.chains.len();
-    let mut result = sampler_result_to_py(
+    let result = sampler_result_to_py_gates(
         py,
         &laps_result.sampler_result,
         n_report_chains,
         n_warmup,
         n_samples,
+        true,
     )?;
 
     // Add LAPS-specific fields
     let out = result.bind(py).cast::<PyDict>()?;
     out.set_item("wall_time_s", laps_result.wall_time_s)?;
     out.set_item("n_kernel_launches", laps_result.n_kernel_launches)?;
+    let phase_times = PyDict::new(py);
+    phase_times.set_item("init_s", laps_result.phase_times[0])?;
+    phase_times.set_item("warmup_s", laps_result.phase_times[1])?;
+    phase_times.set_item("sampling_s", laps_result.phase_times[2])?;
+    out.set_item("phase_times", phase_times)?;
     out.set_item("n_gpu_chains", n_chains)?;
     out.set_item("n_report_chains", n_report_chains)?;
     out.set_item("n_devices", laps_result.n_devices)?;
@@ -8983,10 +9289,9 @@ fn cls_curve(
     Ok(out.into_any().unbind())
 }
 
-/// Plot-friendly profile likelihood scan artifact.
-#[pyfunction]
-#[pyo3(signature = (model, mu_values, *, data=None))]
-fn profile_curve(
+/// Internal: plot-friendly profile scan artifact — prefer `profile_scan(model, mu_values, return_curve=True)`.
+#[allow(dead_code)]
+fn profile_curve_impl(
     py: Python<'_>,
     model: &PyHistFactoryModel,
     mu_values: Vec<f64>,
@@ -9750,6 +10055,32 @@ fn profile_ci_py(
     }
 }
 
+/// Native Rust visualization renderer.
+///
+/// Returns bytes in the requested format (svg/pdf/png).
+#[cfg(feature = "native-render")]
+#[pyfunction]
+#[pyo3(signature = (artifact_json, kind, format="svg", config_yaml=None, dpi=None))]
+fn render_viz(
+    artifact_json: &str,
+    kind: &str,
+    format: &str,
+    config_yaml: Option<&str>,
+    dpi: Option<u32>,
+) -> PyResult<Vec<u8>> {
+    let mut config = if let Some(yaml) = config_yaml {
+        ns_viz_render::config::resolve_config(Some(yaml))
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
+    } else {
+        ns_viz_render::config::VizConfig::default()
+    };
+    if let Some(d) = dpi {
+        config.output.dpi = d;
+    }
+    ns_viz_render::render_to_bytes(artifact_json, kind, format, &config)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -9774,40 +10105,29 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
     m.add_function(wrap_pyfunction!(fit_toys, m)?)?;
-    m.add_function(wrap_pyfunction!(unbinned_fit_toys, m)?)?;
-    m.add_function(wrap_pyfunction!(fit_toys_batch, m)?)?;
     m.add_function(wrap_pyfunction!(set_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(set_threads, m)?)?;
     m.add_function(wrap_pyfunction!(get_eval_mode, m)?)?;
     m.add_function(wrap_pyfunction!(has_accelerate, m)?)?;
     m.add_function(wrap_pyfunction!(has_cuda, m)?)?;
     m.add_function(wrap_pyfunction!(has_metal, m)?)?;
-    m.add_function(wrap_pyfunction!(fit_toys_batch_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
-    m.add_function(wrap_pyfunction!(unbinned_ranking, m)?)?;
-    #[cfg(feature = "cuda")]
-    m.add_function(wrap_pyfunction!(ranking_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest_toys, m)?)?;
-    m.add_function(wrap_pyfunction!(unbinned_hypotest, m)?)?;
-    m.add_function(wrap_pyfunction!(unbinned_hypotest_toys, m)?)?;
     m.add_function(wrap_pyfunction!(profile_scan, m)?)?;
-    m.add_function(wrap_pyfunction!(unbinned_profile_scan, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
-    m.add_function(wrap_pyfunction!(upper_limits_root, m)?)?;
     m.add_function(wrap_pyfunction!(sample, m)?)?;
     m.add_function(wrap_pyfunction!(sample_mams_py, m)?)?;
-    #[cfg(feature = "cuda")]
+    #[cfg(any(feature = "cuda", feature = "metal"))]
     m.add_function(wrap_pyfunction!(sample_laps_py, m)?)?;
     #[cfg(feature = "cuda")]
     m.add_class::<PyRawCudaModel>()?;
     m.add_function(wrap_pyfunction!(cls_curve, m)?)?;
-    m.add_function(wrap_pyfunction!(profile_curve, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
@@ -9917,6 +10237,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc))?;
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc_ce_is))?;
     m.add_function(wrap_pyfunction!(profile_ci_py, m)?)?;
+
+    // Native Rust visualization renderer
+    #[cfg(feature = "native-render")]
+    m.add_function(wrap_pyfunction!(render_viz, m)?)?;
 
     // Back-compat aliases used in plans/docs.
     let model_cls = m.getattr("HistFactoryModel")?;

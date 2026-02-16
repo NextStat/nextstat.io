@@ -163,10 +163,13 @@ def test_cox_ph_matches_reference_nll_and_grad_breslow_and_efron() -> None:
         m = nextstat.CoxPhModel(times, events, x, ties=ties)
         got_nll = float(m.nll(beta))
         ref_nll = float(_cox_nll_reference(times, events, x, beta, ties=ties))
-        assert got_nll == pytest.approx(ref_nll, rel=1e-12, abs=1e-12)
+        n_events = sum(1 for ev in events if ev)
+        assert got_nll == pytest.approx(ref_nll / n_events, rel=1e-12, abs=1e-12)
 
         got_g = [float(v) for v in m.grad_nll(beta)]
-        ref_g = _finite_diff_grad(lambda b: _cox_nll_reference(times, events, x, b, ties=ties), beta)
+        ref_g = _finite_diff_grad(
+            lambda b: _cox_nll_reference(times, events, x, b, ties=ties) / n_events, beta
+        )
         assert got_g[0] == pytest.approx(ref_g[0], rel=5e-5, abs=5e-5)
         assert got_g[1] == pytest.approx(ref_g[1], rel=5e-5, abs=5e-5)
 

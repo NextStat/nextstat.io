@@ -105,6 +105,23 @@ impl Default for QualityGates {
     }
 }
 
+impl QualityGates {
+    /// Gates for microcanonical samplers (MAMS, LAPS).
+    ///
+    /// MAMS/LAPS use Sundman leapfrog with norm-preserving momentum refresh,
+    /// producing structurally lower E-BFMI than HMC/NUTS (typically 0.04–0.25).
+    /// Low E-BFMI is expected and does not indicate poor exploration.
+    /// EBFMI is reported as warn-only, never fail.
+    pub fn microcanonical() -> Self {
+        Self {
+            // EBFMI: warn at 0.03 (very low even for MAMS), never fail.
+            min_ebfmi_warn: 0.03,
+            min_ebfmi_fail: 0.0,
+            ..Self::default()
+        }
+    }
+}
+
 /// Summary of sampling run quality.
 #[derive(Debug, Clone)]
 pub struct QualitySummary {

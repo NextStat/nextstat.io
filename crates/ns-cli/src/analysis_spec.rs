@@ -76,6 +76,12 @@ pub struct ReportPlan {
     pub pdf: Option<PathBuf>,
     pub svg_dir: Option<PathBuf>,
     pub python: Option<PathBuf>,
+    pub label_status: String,
+    pub sqrt_s_tev: f64,
+    pub show_mc_band: bool,
+    pub show_stat_band: bool,
+    pub band_hatch: String,
+    pub palette: String,
     pub skip_uncertainty: bool,
     pub uncertainty_grouping: String,
 }
@@ -260,6 +266,22 @@ fn default_true() -> bool {
     true
 }
 
+fn default_label_status() -> String {
+    "Internal".to_string()
+}
+
+fn default_sqrt_s_tev() -> f64 {
+    13.0
+}
+
+fn default_band_hatch() -> String {
+    "////".to_string()
+}
+
+fn default_palette() -> String {
+    "hep2026".to_string()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Determinism {
     pub threads: usize,
@@ -310,6 +332,18 @@ pub struct RenderStep {
     pub pdf: Option<PathBuf>,
     pub svg_dir: Option<PathBuf>,
     pub python: Option<PathBuf>,
+    #[serde(default = "default_label_status")]
+    pub label_status: String,
+    #[serde(default = "default_sqrt_s_tev")]
+    pub sqrt_s_tev: f64,
+    #[serde(default = "default_true")]
+    pub show_mc_band: bool,
+    #[serde(default = "default_true")]
+    pub show_stat_band: bool,
+    #[serde(default = "default_band_hatch")]
+    pub band_hatch: String,
+    #[serde(default = "default_palette")]
+    pub palette: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -785,6 +819,12 @@ impl AnalysisSpecV0 {
                     .python
                     .as_ref()
                     .map(|p| resolve_path(cfg_dir, p)),
+                label_status: self.execution.report.render.label_status.clone(),
+                sqrt_s_tev: self.execution.report.render.sqrt_s_tev,
+                show_mc_band: self.execution.report.render.show_mc_band,
+                show_stat_band: self.execution.report.render.show_stat_band,
+                band_hatch: self.execution.report.render.band_hatch.clone(),
+                palette: self.execution.report.render.palette.clone(),
                 skip_uncertainty: self.execution.report.skip_uncertainty,
                 uncertainty_grouping: self.execution.report.uncertainty_grouping.clone(),
             })
