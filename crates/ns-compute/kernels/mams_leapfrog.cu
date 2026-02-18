@@ -35,6 +35,19 @@ __device__ double nll_std_normal(
     return nll;
 }
 
+__device__ double grad_nll_std_normal(
+    const double* x, double* grad, int dim,
+    const double* /*model_data*/)
+{
+    double nll = 0.0;
+    for (int i = 0; i < dim; i++) {
+        double xi = x[i];
+        grad[i] = xi;
+        nll += 0.5 * xi * xi;
+    }
+    return nll;
+}
+
 // Model 1: Eight Schools (non-centered).
 // params: [mu, tau, theta_raw_0..J-1]  (dim = 2+J)
 // model_data: [J, y_0..y_{J-1}, inv_var_0..inv_var_{J-1}, prior_mu_sigma, prior_tau_scale]
@@ -297,6 +310,20 @@ __device__ void user_grad(const double* x, double* grad, int dim, const double* 
         case 3: grad_glm_logistic(x, grad, dim, model_data); break;
         case 4: grad_neal_funnel_ncp(x, grad, dim, model_data); break;
         case 5: grad_neal_funnel_riemannian(x, grad, dim, model_data); break;
+    }
+}
+
+// Optional fused grad+nll callback for non-warp paths in mams_engine.cuh.
+#define MAMS_FUSED_GRAD_NLL_DEFINED
+__device__ double user_grad_nll(
+    const double* x, double* grad, int dim, const double* model_data)
+{
+    switch (__mams_model_id) {
+        case 0:
+            return grad_nll_std_normal(x, grad, dim, model_data);
+        default:
+            user_grad(x, grad, dim, model_data);
+            return user_nll(x, dim, model_data);
     }
 }
 

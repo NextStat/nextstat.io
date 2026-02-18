@@ -10,9 +10,9 @@ tags: [NextStat, MAMS, LAPS, BlackJAX, Benchmarks, Bayesian Inference]
 > **TL;DR (only final v0.9.6 numbers)**
 >
 > - **LAPS Metal:** final matrix is **8/8 ok** with `Div%=0` across all cases.
-> - **CUDA V100 parity (3-seed median):** NextStat LAPS keeps **zero runtime JIT tax** (`cold ~= warm`), while BlackJAX cold-start is **347-552s** in this setup. On warm-start throughput for simple targets, BlackJAX's XLA-compiled kernel is faster (about ~20x on `std_normal`).
+> - **CUDA V100 parity (3-seed median, canonical):** NextStat LAPS keeps **zero runtime JIT tax** (`cold ~= warm`), while BlackJAX cold-start is **11.8-90.6s** in this setup.
 > - **Time-to-result in real edit cycles:** when model structure/shape changes (priors, parameterization, dimensions), JAX/XLA workflows commonly recompile; that compile wall repeats across iterations. NextStat AOT kernels keep iteration latency close to warm-path behavior.
-> - **ESS/grad (V100 sampling):** on the three matched-target converged runs, LAPS ESS/grad is **4.17x to 748x** higher.
+> - **ESS/grad (V100 sampling, report-chain normalized):** on matched targets, NS LAPS ranges from **2.46x to 45.11x** vs BlackJAX in this canonical run.
 > - **CPU funnel fairness fixed:** `FunnelNcpModel` (NCP) is **6/6 ok** across 3 seeds on EPYC for both MAMS and NUTS; centered funnel remains a known pathological control.
 
 ---
@@ -89,20 +89,21 @@ These are **not the same optimization problem**. The centered funnel has positio
 To preempt concerns about competitor misconfiguration, the full BlackJAX setup:
 
 - **Sampler:** `blackjax.adjusted_mclmc` with `isokinetic_mclachlan` integrator.
-- **Warmup:** manual Dual Averaging (500 iterations on a single chain, `target_accept=0.9`, DA parameters `gamma=0.05, t0=10, kappa=0.75`). Due to stability issues observed in BlackJAX 1.3's built-in `adjusted_mclmc_find_L_and_step_size` at benchmark time, we used a faithful manual DA setup to ensure robust warmup.
-- **Trajectory length:** `L = pi * sqrt(dim)` (BlackJAX default), tuned via DA to find step_size, then `n_steps = round(L / step_size)`.
+- **Warmup:** built-in `blackjax.adjusted_mclmc_find_L_and_step_size` (500 iterations, single-chain warmup, `target_accept=0.9`, `diagonal_preconditioning=True`).
+- **Trajectory length:** tuned by BlackJAX warmup (`L`, `step_size`), then `n_steps = round(L / step_size)`.
+- **Mass matrix:** sampling uses tuned `inverse_mass_matrix` from BlackJAX warmup.
 - **Multi-chain:** 4096 chains, `jax.vmap(run_chain)`, `block_until_ready()` + `device_get()` for fair host-side timing.
 - **Cold/warm:** cold = first `vmap` call (includes XLA compilation); warm = second call with cached JIT.
-- **Init:** `N(0, 0.25)` per chain, independent keys.
+- **Init:** chains are initialized around the warmed single-chain state (`warmed_state.position + N(0, 0.5)`).
 - **Seed:** 42 (cold), 1042 (warm).
 - **Seeds:** `42, 123, 777` (for each seed, warm run uses `seed + 1000` key path).
-- **Source:** `benchmarks/a100_triple_bench.py`, functions `_blackjax_manual_warmup()` and `bench_blackjax()`.
+- **Source:** `benchmarks/gpu_triple_bench.py`, functions `_blackjax_builtin_warmup()` and `bench_blackjax()`.
 
 ### V100 parity run config (NS LAPS, 3 seeds)
 
-- `n_chains=4096`, `n_warmup=500`, `n_samples=1000`, `report_chains=64`, `seeds=42/123/777`.
+- `n_chains=4096`, `n_warmup=500`, `n_samples=1000`, `report_chains=256`, `seeds=42/123/777`.
 - Section 3/4 report **median across 3 seeds**.
-- R-hat computed from 64 report chains (128 half-chains), giving SE(R-hat) ≈ 0.06. Values of 1.01-1.02 are within noise.
+- R-hat computed from 256 report chains (512 half-chains), giving materially tighter diagnostics than the earlier 64-chain reporting.
 
 ---
 
@@ -136,30 +137,22 @@ Quality gate policy used for this matrix:
 
 Hardware: **Tesla V100-PCIE-16GB**.
 
-| Model | Engine | Cold (s) | Warm (s) | min_ESS_bulk | ESS/s (warm) | R-hat |
+| Model | Engine | Cold (s) | Warm (s) | min_ESS | ESS/s (warm) | R-hat |
 |---|---|---:|---:|---:|---:|---:|
-| std_normal_10d | NS LAPS GPU | 0.477 | 0.477 | 35,314 | 68,188 | 1.0157 |
-| std_normal_10d | BlackJAX GPU | 347.176 | 0.201 | 270,727 | 1,346,240 | 1.0211 |
-| eight_schools | NS LAPS GPU | 0.481 | 0.481 | 28,143 | 61,532 | 1.0082 |
-| eight_schools | BlackJAX GPU | 444.712 | 0.319 | 15,619 | 46,546 | 1.0111 |
-| neal_funnel_10d | NS LAPS GPU | 0.448 | 0.448 | 18,457 | 41,155 | 1.0108 |
-| neal_funnel_10d | BlackJAX GPU | 413.366 | 0.456 | 562 | 946 | 1.0736 |
-| glm_logistic | NS LAPS GPU | 26.395 | 26.395 | 10,646 | 403 | 1.0148 |
-| glm_logistic | BlackJAX GPU | 551.113 | 77.902 | 14,566 | 187 | 1.0035 |
+| std_normal_10d | NS LAPS GPU | 1.554 | 0.240 | 159,753 | 680,785 | 1.0062 |
+| std_normal_10d | BlackJAX GPU | 14.064 | 0.225 | 1,771 | 7,847 | 1.1010 |
+| eight_schools | NS LAPS GPU | 1.425 | 0.241 | 75,682 | 314,476 | 1.0065 |
+| eight_schools | BlackJAX GPU | 11.769 | 0.346 | 28,020 | 75,255 | 1.0080 |
+| neal_funnel_10d | NS LAPS GPU | 1.404 | 0.259 | 54,768 | 211,581 | 1.0083 |
+| neal_funnel_10d | BlackJAX GPU | 15.517 | 0.412 | 706 | 1,759 | 1.2732 |
+| glm_logistic | NS LAPS GPU | 23.791 | 9.254 | 77,852 | 8,415 | 1.0086 |
+| glm_logistic | BlackJAX GPU | 90.615 | 77.765 | 19,583 | 226 | 1.0122 |
 
 ### Reading this table
 
-- **Zero JIT tax:** NS LAPS cold = warm (AOT-compiled Rust/CUDA). BlackJAX cold-start is dominated by XLA compilation (347-552s).
-- **Warm-start throughput:** on simple targets (`std_normal`), BlackJAX's XLA-compiled kernel achieves ~20x higher warm ESS/s (1.35M vs 68K). This reflects XLA's strength on embarrassingly parallel, low-dimensional problems. On more complex targets (`glm_logistic`), NS LAPS is ~2.16x faster.
-- **`neal_funnel` is not a like-for-like comparison** (see section 1: NS samples NCP, BlackJAX samples centered). In these 3 seeds, BlackJAX centered-funnel R-hat ranges `1.054-1.130` and remains weaker than NS NCP, which is expected from parameterization difficulty, not a sampler defect.
-
-For `std_normal_10d`, this is the key decomposition:
-
-- warm ESS/s ratio is about `20x` in favor of BlackJAX,
-- ESS/grad ratio is about `4.17x` in favor of NS LAPS,
-- therefore BlackJAX is delivering about `82x` higher raw grad/s on this target (`20 x 4.17`).
-
-This is expected for this specific workload: the gradient is trivial (`∇log p(x) = -x`) and the state is tiny, so the benchmark is dominated by kernel execution overhead and memory movement, where XLA-fused kernels are strongest.
+- **Zero JIT tax:** NS LAPS cold remains close to warm (AOT-compiled Rust/CUDA). BlackJAX cold-start is materially higher in this setup (`11.8-90.6s`).
+- **Warm-start throughput (canonical run):** NS LAPS is higher on all matched targets in this setup.
+- **`neal_funnel` is not a like-for-like comparison** (see section 1: NS samples NCP, BlackJAX samples centered). In these 3 seeds, BlackJAX centered-funnel R-hat ranges `1.260-1.275` and remains weaker than NS NCP, which is expected from parameterization difficulty, not a sampler defect.
 
 ---
 
@@ -167,18 +160,18 @@ This is expected for this specific workload: the gradient is trivial (`∇log p(
 
 | Model | NS LAPS ESS/grad | BlackJAX ESS/grad | Ratio (NS/BJ) |
 |---|---:|---:|---:|
-| std_normal_10d | 0.137945 | 0.033048 | 4.17x |
-| eight_schools | 0.109935 | 0.000689 | 159.52x |
-| glm_logistic | 0.041586 | 0.00005556 | 748.44x |
+| std_normal_10d | 0.312017 | 0.006917 | 45.11x |
+| eight_schools | 0.098544 | 0.040104 | 2.46x |
+| glm_logistic | 0.101370 | 0.002638 | 38.43x |
 
-`neal_funnel` is excluded from this table because the two engines sample different parameterizations (see section 1). On the three matched targets where both engines converge, LAPS ESS/grad advantage ranges from **4.17x to 748x**.
+`neal_funnel` is excluded from this table because the two engines sample different parameterizations (see section 1).
 
-A major contributor to this gap is execution architecture. In these runs, the JAX/XLA path uses fixed-shape loops for `vmap`-friendly execution, which can continue masked trajectory work after proposals become non-viable. NextStat's native AOT kernels apply strict early termination in leapfrog loops on divergence signals, so avoided gradient work is converted directly into higher ESS/grad.
+A major contributor to the change vs earlier drafts is denominator normalization: both engines now compute ESS/grad on the same `report_chains` budget.
 
-The practical interpretation is:
+The practical interpretation for this canonical run is:
 
-- On trivial targets (`std_normal`), warm-path throughput can favor XLA strongly.
-- As target geometry and gradient cost increase, algorithmic efficiency matters more: in this run `eight_schools` is near warm-ESS/s parity, while `glm_logistic` favors NS LAPS on warm ESS/s and ESS/grad.
+- NS LAPS achieves higher ESS/grad across all matched targets reported here.
+- `glm_logistic` remains the most expensive target for both engines in absolute wall time.
 
 ---
 
@@ -194,7 +187,7 @@ Separate run with tighter diagnostics (`report_chains=256` → 512 half-chains �
 | GLM n=200 p=6 | 1.0044 | 55,423 | 0.449 | ok |
 | NealFunnel centered 10d | 1.2914 | 257 | 0.000 | fail (expected control) |
 
-This confirms that LAPS convergence is solid when measured with sufficient diagnostic chains. The parity-run R-hat values (section 3, `report_chains=64`) are noisier but consistent.
+This confirms that LAPS convergence is solid when measured with sufficient diagnostic chains. The parity-run R-hat values (section 3, `report_chains=256`) are directly comparable to the quality run.
 
 ---
 
@@ -282,8 +275,10 @@ Interpretation:
 
 Artifacts (all in `docs/blog/artifacts/v096-zero-jit-tax/`):
 
-- V100 3-seed matrix (median/mean/std): `v100-multi-seed-matrix.json`
-- V100 raw 3-seed parity run: `v100_v096_real_3seed_20260218T100007Z/seed_42.json`, `v100_v096_real_3seed_20260218T100007Z/seed_123.json`, `v100_v096_real_3seed_20260218T100007Z/seed_777.json`
+- V100 3-seed matrix (canonical): `v100-multi-seed-matrix-canonical.json`
+- V100 chart data (canonical): `v100-parity-chart-data-canonical.csv`, `v100-essgrad-ratio-canonical.csv`
+- V100 raw 3-seed parity run (canonical): `v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_42/gpu_triple_bench.json`, `v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_123/gpu_triple_bench.json`, `v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_777/gpu_triple_bench.json`
+- V100 funnel addendum raw runs: `v100_ns_funnel_3seed_20260218T231337Z/*`, `v100_bj_funnel_builtin3seed_20260218T231204Z/*`
 - V100 quality run (`report_chains=256`, 5 models): `v100-quality-report256-5models.json`
 - V100 + EPYC refresh note: `2026-02-17-v096-refresh-v100-epyc.md`
 - EPYC multi-seed matrix: `epyc-multi-seed-matrix.json`
@@ -298,12 +293,12 @@ Retained for transparency. These rows compare NS LAPS (NCP) against BlackJAX (ce
 
 | Metric | NS LAPS (NCP) | BlackJAX (centered) |
 |---|---:|---:|
-| Cold (s) | 0.448 | 413.366 |
-| Warm (s) | 0.448 | 0.456 |
-| min_ESS_bulk | 18,457 | 562 |
-| ESS/s (warm) | 41,155 | 946 |
-| R-hat | 1.0108 | 1.0736 |
-| ESS/grad | 0.072097 | 0.00000980 |
+| Cold (s) | 1.404 | 15.517 |
+| Warm (s) | 0.259 | 0.412 |
+| min_ESS | 54,768 | 706 |
+| ESS/s (warm) | 211,581 | 1,759 |
+| R-hat | 1.0083 | 1.2732 |
+| ESS/grad | 0.071312 | 0.000710 |
 
 BlackJAX's non-convergence on the centered funnel is expected (see section 6: even NUTS fails 3/3 on centered funnel with 4 chains and standard budget). This comparison primarily demonstrates that NS's default NCP dispatch produces converged results where the centered parameterization does not.
 

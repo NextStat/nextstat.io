@@ -1,0 +1,70 @@
+{
+  "environment": {
+    "python_version": "3.12.3",
+    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "x86_64",
+    "node": "beeb3e6dd6df",
+    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "gpus": [
+      {
+        "name": "Tesla V100-PCIE-16GB",
+        "driver": "580.95.05",
+        "compute_capability": "7.0",
+        "memory_mb": "16384",
+        "power_limit_w": "250.00",
+        "compute_mode": "Default"
+      }
+    ],
+    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+    "cuda_visible_devices": null,
+    "jax": {
+      "jax": "0.9.0.1",
+      "jaxlib": "0.9.0.1",
+      "backend": "gpu",
+      "device": "Tesla V100-PCIE-16GB",
+      "compilation_cache_dir": null
+    },
+    "nextstat_version": "0.9.6",
+    "packages": {
+      "blackjax": "1.3",
+      "arviz": "0.23.4",
+      "scipy": "1.17.0",
+      "numpy": "2.4.0"
+    }
+  },
+  "config": {
+    "n_chains_gpu": 4096,
+    "n_chains_cpu": 4,
+    "n_warmup": 500,
+    "n_samples": 1000,
+    "seed": 42,
+    "report_chains": 256,
+    "models": [
+      "neal_funnel_10d"
+    ]
+  },
+  "results": [
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "neal_funnel_10d",
+      "wall_s": 14.970215173438191,
+      "wall_warm": 0.41182927042245865,
+      "min_ess": 706.4536069542903,
+      "max_rhat": 1.2732423216503075,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 0.8550356102215334,
+      "tuned_n_steps": 4,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 10.72369895875454,
+      "cold_sampling_s": 4.246516214683652,
+      "n_grad_evals": 1024000,
+      "ess_per_grad": 0.0006898961005412991
+    }
+  ]
+}

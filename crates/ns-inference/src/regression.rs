@@ -289,6 +289,16 @@ impl LogisticRegressionModel {
         self.x.p + if self.include_intercept { 1 } else { 0 }
     }
 
+    /// Number of observations.
+    pub fn n_obs(&self) -> usize {
+        self.x.n
+    }
+
+    /// Number of feature columns (without intercept).
+    pub fn n_features(&self) -> usize {
+        self.x.p
+    }
+
     #[inline]
     fn eta(&self, i: usize, params: &[f64]) -> f64 {
         if self.include_intercept {

@@ -156,7 +156,7 @@ fn isokinetic_leapfrog_step(
     state: &mut MicrocanonicalState,
     eps: f64,
     posterior: &Posterior<'_, impl LogDensityModel + ?Sized>,
-    inv_mass: &[f64],
+    sqrt_inv_mass: &[f64],
 ) -> Result<f64> {
     let dim = state.x.len();
     let d = dim as f64;
@@ -179,14 +179,14 @@ fn isokinetic_leapfrog_step(
     let mut delta_k = 0.0;
 
     // --- First B-step (ε/2) ---
-    delta_k += b_step(state, eps * 0.5, inv_mass, dm1);
+    delta_k += b_step(state, eps * 0.5, sqrt_inv_mass, dm1);
 
     // --- A-step (ε) ---
     // Position update in whitened space: q += ε·u.
     // Back to x-space: x_i += ε · √(inv_mass_i) · u_i.
     // This matches the B-step which uses g̃_i = √(inv_mass_i) · ∇U_i.
     for i in 0..dim {
-        state.x[i] += eps * inv_mass[i].sqrt() * state.u[i];
+        state.x[i] += eps * sqrt_inv_mass[i] * state.u[i];
     }
 
     // Recompute potential and gradient at new position (fused path).
@@ -198,7 +198,7 @@ fn isokinetic_leapfrog_step(
     state.grad_potential = new_grad_lp.iter().map(|g| -g).collect();
 
     // --- Second B-step (ε/2) ---
-    delta_k += b_step(state, eps * 0.5, inv_mass, dm1);
+    delta_k += b_step(state, eps * 0.5, sqrt_inv_mass, dm1);
 
     Ok(delta_k)
 }
@@ -213,13 +213,13 @@ fn isokinetic_leapfrog_step(
 /// - Small δ (well-behaved): `exp_m1` avoids catastrophic cancellation in `1 − exp(−2δ)`.
 ///
 /// Returns ΔK contribution from this half-step.
-fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1: f64) -> f64 {
+fn b_step(state: &mut MicrocanonicalState, half_eps: f64, sqrt_inv_mass: &[f64], dm1: f64) -> f64 {
     let dim = state.x.len();
 
     // Preconditioned gradient: g̃_i = √(inv_mass_i) · grad_potential_i.
     let mut g_norm_sq = 0.0;
     for i in 0..dim {
-        let gi = inv_mass[i].sqrt() * state.grad_potential[i];
+        let gi = sqrt_inv_mass[i] * state.grad_potential[i];
         g_norm_sq += gi * gi;
     }
     let g_norm = g_norm_sq.sqrt();
@@ -231,7 +231,7 @@ fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1:
     // e = g̃/|g̃|  (unit gradient direction — UP the potential).
     let mut e_dot_u = 0.0;
     for i in 0..dim {
-        let ei = inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
+        let ei = sqrt_inv_mass[i] * state.grad_potential[i] / g_norm;
         e_dot_u += ei * state.u[i];
     }
     let e_dot_u = e_dot_u.clamp(-1.0, 1.0);
@@ -254,7 +254,7 @@ fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1:
     // u_new ∝ u·cosh δ − e·sinh δ  ∝  u·c_u − e·c_e
     let mut u_new_norm_sq = 0.0;
     for i in 0..dim {
-        let ei = inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
+        let ei = sqrt_inv_mass[i] * state.grad_potential[i] / g_norm;
         state.u[i] = state.u[i] * c_u - ei * c_e;
         u_new_norm_sq += state.u[i] * state.u[i];
     }
@@ -267,7 +267,7 @@ fn b_step(state: &mut MicrocanonicalState, half_eps: f64, inv_mass: &[f64], dm1:
     } else {
         // Degenerate: velocity collapsed to zero → point along −e (down the potential)
         for i in 0..dim {
-            state.u[i] = -inv_mass[i].sqrt() * state.grad_potential[i] / g_norm;
+            state.u[i] = -sqrt_inv_mass[i] * state.grad_potential[i] / g_norm;
         }
     }
 
@@ -352,7 +352,8 @@ fn mams_transition(
     l: f64,
     n_steps: usize,
     posterior: &Posterior<'_, impl LogDensityModel + ?Sized>,
-    inv_mass: &[f64],
+    _inv_mass: &[f64],
+    sqrt_inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> Result<MamsTransitionResult> {
     // Clone state for proposal
@@ -376,7 +377,7 @@ fn mams_transition(
     let mut divergent = false;
     let mut total_delta_k = 0.0;
     for _ in 0..n_steps {
-        match isokinetic_leapfrog_step(&mut proposal, eps, posterior, inv_mass) {
+        match isokinetic_leapfrog_step(&mut proposal, eps, posterior, sqrt_inv_mass) {
             Ok(dk) => {
                 total_delta_k += dk;
                 n_leapfrog += 1;
@@ -455,6 +456,7 @@ fn find_mams_step_size(
     l: f64,
     posterior: &Posterior<'_, impl LogDensityModel + ?Sized>,
     inv_mass: &[f64],
+    sqrt_inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> f64 {
     // Use the actual trajectory length L (not relative to ε).
@@ -467,7 +469,7 @@ fn find_mams_step_size(
         let n_test = 5;
         let mut n_accepted = 0;
         for _ in 0..n_test {
-            match mams_transition(state, eps, l, n_steps, posterior, inv_mass, rng) {
+            match mams_transition(state, eps, l, n_steps, posterior, inv_mass, sqrt_inv_mass, rng) {
                 Ok(r) if r.accepted => n_accepted += 1,
                 _ => {}
             }
@@ -498,6 +500,7 @@ fn tune_decoherence_length(
     eps: f64,
     posterior: &Posterior<'_, impl LogDensityModel + ?Sized>,
     inv_mass: &[f64],
+    sqrt_inv_mass: &[f64],
     rng: &mut impl Rng,
 ) -> f64 {
     let dim = state.x.len();
@@ -531,7 +534,16 @@ fn tune_decoherence_length(
         let mut current = state.clone();
 
         for _ in 0..n_trials {
-            match mams_transition(&current, eps, l_candidate, n_steps, posterior, inv_mass, rng) {
+            match mams_transition(
+                &current,
+                eps,
+                l_candidate,
+                n_steps,
+                posterior,
+                inv_mass,
+                sqrt_inv_mass,
+                rng,
+            ) {
                 Ok(r) => {
                     total_leapfrog += r.n_leapfrog;
                     current.x = r.x;
@@ -736,6 +748,7 @@ pub fn sample_mams<M: LogDensityModel>(
         potential: init_potential,
         grad_potential: init_grad,
     };
+    let mut sqrt_inv_mass: Vec<f64> = inv_mass.iter().map(|&im| im.max(1e-30).sqrt()).collect();
 
     // ---------- Trajectory length L ----------
     // L is an absolute trajectory length, not relative to ε.
@@ -772,7 +785,7 @@ pub fn sample_mams<M: LogDensityModel>(
     let mut eps = if config.init_step_size > 0.0 {
         config.init_step_size
     } else {
-        find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng)
+        find_mams_step_size(&state, l, &posterior, &inv_mass, &sqrt_inv_mass, &mut rng)
     };
 
     let mut da = DualAveraging::new(config.target_accept, eps);
@@ -780,7 +793,16 @@ pub fn sample_mams<M: LogDensityModel>(
     // --- Phase 1: Fast DA — adapt ε only ---
     for _ in 0..phase1_iters {
         let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
-        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        if let Ok(r) = mams_transition(
+            &state,
+            eps,
+            l,
+            n_steps,
+            &posterior,
+            &inv_mass,
+            &sqrt_inv_mass,
+            &mut rng,
+        ) {
             let ap =
                 if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
             da.update(ap);
@@ -796,7 +818,16 @@ pub fn sample_mams<M: LogDensityModel>(
     let mut welford = WelfordVariance::new(dim);
     for _ in 0..phase2_iters {
         let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
-        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        if let Ok(r) = mams_transition(
+            &state,
+            eps,
+            l,
+            n_steps,
+            &posterior,
+            &inv_mass,
+            &sqrt_inv_mass,
+            &mut rng,
+        ) {
             let ap =
                 if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
             da.update(ap);
@@ -819,6 +850,7 @@ pub fn sample_mams<M: LogDensityModel>(
         for i in 0..dim {
             inv_mass[i] = (alpha * var[i] + 1e-3 * (1.0 - alpha)).max(1e-10);
         }
+        sqrt_inv_mass = inv_mass.iter().map(|&im| im.max(1e-30).sqrt()).collect();
         // Reset L to √d in preconditioned space (BlackJAX-style).
         // After mass matrix update, preconditioning absorbs posterior scale,
         // so the typical set radius in preconditioned space is √d.
@@ -827,14 +859,23 @@ pub fn sample_mams<M: LogDensityModel>(
         }
 
         // Reset DA with new step size for new metric and L
-        eps = find_mams_step_size(&state, l, &posterior, &inv_mass, &mut rng);
+        eps = find_mams_step_size(&state, l, &posterior, &inv_mass, &sqrt_inv_mass, &mut rng);
         da = DualAveraging::new(config.target_accept, eps);
     }
 
     // --- Phase 3: DA with new metric — re-adapt ε ---
     for _ in 0..phase3_iters {
         let n_steps = ((l / eps).round() as usize).clamp(1, config.max_leapfrog);
-        if let Ok(r) = mams_transition(&state, eps, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        if let Ok(r) = mams_transition(
+            &state,
+            eps,
+            l,
+            n_steps,
+            &posterior,
+            &inv_mass,
+            &sqrt_inv_mass,
+            &mut rng,
+        ) {
             let ap =
                 if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
             da.update(ap);
@@ -863,7 +904,16 @@ pub fn sample_mams<M: LogDensityModel>(
             eps
         };
         let n_steps = ((l / eps_j).round() as usize).clamp(1, config.max_leapfrog);
-        if let Ok(r) = mams_transition(&state, eps_j, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        if let Ok(r) = mams_transition(
+            &state,
+            eps_j,
+            l,
+            n_steps,
+            &posterior,
+            &inv_mass,
+            &sqrt_inv_mass,
+            &mut rng,
+        ) {
             state.x = r.x;
             state.u = r.u;
             state.potential = r.potential;
@@ -886,7 +936,16 @@ pub fn sample_mams<M: LogDensityModel>(
             eps
         };
         let n_steps = ((l / eps_j).round() as usize).clamp(1, config.max_leapfrog);
-        match mams_transition(&state, eps_j, l, n_steps, &posterior, &inv_mass, &mut rng) {
+        match mams_transition(
+            &state,
+            eps_j,
+            l,
+            n_steps,
+            &posterior,
+            &inv_mass,
+            &sqrt_inv_mass,
+            &mut rng,
+        ) {
             Ok(r) => {
                 state.x = r.x;
                 state.u = r.u;
@@ -1074,7 +1133,8 @@ mod tests {
         // should approximately cancel the ΔV, so total energy error is small.
         let model = DiagMVN::new(vec![0.0; 4], vec![1.0; 4]);
         let posterior = Posterior::new(&model);
-        let inv_mass = vec![1.0; 4];
+        let inv_mass = vec![1.0_f64; 4];
+        let sqrt_inv_mass: Vec<f64> = inv_mass.iter().map(|&im| im.sqrt()).collect();
         let eps = 0.05;
 
         let lp = posterior.logpdf_unconstrained(&[0.5, -0.3, 0.8, -0.2]).unwrap();
@@ -1094,7 +1154,7 @@ mod tests {
         // 100 leapfrog steps, accumulate ΔK
         let mut total_dk = 0.0;
         for _ in 0..100 {
-            let dk = isokinetic_leapfrog_step(&mut state, eps, &posterior, &inv_mass).unwrap();
+            let dk = isokinetic_leapfrog_step(&mut state, eps, &posterior, &sqrt_inv_mass).unwrap();
             total_dk += dk;
         }
 
@@ -1136,7 +1196,8 @@ mod tests {
         use rand::SeedableRng;
         let model = DiagMVN::new(vec![0.0; 4], vec![1.0; 4]);
         let posterior = Posterior::new(&model);
-        let inv_mass = vec![1.0; 4];
+        let inv_mass = vec![1.0_f64; 4];
+        let sqrt_inv_mass: Vec<f64> = inv_mass.iter().map(|&im| im.sqrt()).collect();
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
         let lp = posterior.logpdf_unconstrained(&[0.5, -0.3, 0.8, -0.2]).unwrap();
@@ -1153,7 +1214,17 @@ mod tests {
         let mut n_accepted = 0;
         let n_total = 50;
         for _ in 0..n_total {
-            let r = mams_transition(&state, 0.1, 0.5, 5, &posterior, &inv_mass, &mut rng).unwrap();
+            let r = mams_transition(
+                &state,
+                0.1,
+                0.5,
+                5,
+                &posterior,
+                &inv_mass,
+                &sqrt_inv_mass,
+                &mut rng,
+            )
+            .unwrap();
             assert!(r.energy_error.is_finite() || !r.accepted);
             if r.accepted {
                 n_accepted += 1;

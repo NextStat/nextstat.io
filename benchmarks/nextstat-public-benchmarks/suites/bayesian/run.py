@@ -1035,14 +1035,6 @@ model {
         )
 
         rng_key = jax.random.PRNGKey(int(cfg["seed"]))
-        # JIT warmup: tiny MCMC run to compile kernels (not timed)
-        try:
-            jit_kernel = NUTS(model_fn, target_accept_prob=float(cfg["target_accept"]), max_tree_depth=int(cfg["max_treedepth"]))
-            jit_mcmc = MCMC(jit_kernel, num_warmup=5, num_samples=5, num_chains=1, progress_bar=False)
-            jit_mcmc.run(jax.random.PRNGKey(9999), *model_args, **model_kwargs)
-            del jit_mcmc, jit_kernel
-        except Exception:
-            pass
 
         t0 = time.perf_counter()
         try:

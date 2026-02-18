@@ -12,6 +12,10 @@
  *   __device__ double user_nll(const double* x, int dim, const double* model_data);
  *   __device__ void   user_grad(const double* x, double* grad, int dim, const double* model_data);
  *
+ * Optional fast path:
+ *   #define MAMS_FUSED_GRAD_NLL_DEFINED
+ *   __device__ double user_grad_nll(const double* x, double* grad, int dim, const double* model_data);
+ *
  * The kernel calls user_nll() and user_grad() for model evaluation.
  * Build-time (nvcc) and JIT (NVRTC) paths both use this header.
  *
@@ -105,6 +109,12 @@ __device__ __forceinline__ int mams_is_funnel_model(int model_id) {
 
 __device__ __forceinline__ double mams_refresh_angle(double eps, double l, int model_id) {
     double angle = eps / l;
+    if (model_id == 0) {
+        // StdNormal benefits from stronger refresh to reduce long-range
+        // autocorrelation in short-budget massively parallel runs.
+        const double kStdNormalAngleFloor = 0.35;
+        if (angle < kStdNormalAngleFloor) angle = kStdNormalAngleFloor;
+    }
     if (mams_is_funnel_model(model_id)) {
         // Empirical floor for funnel-like geometries: avoid near-identity refresh.
         const double kFunnelAngleFloor = 0.20;
@@ -113,18 +123,57 @@ __device__ __forceinline__ double mams_refresh_angle(double eps, double l, int m
     return angle;
 }
 
+__device__ __forceinline__ void mams_partial_refresh(
+    double* u,
+    int dim,
+    double cos_a,
+    double sin_a,
+    PhiloxState* rng,
+    double* z_buf)
+{
+    double u_dot_z = 0.0;
+    for (int i = 0; i < dim; i++) {
+        z_buf[i] = philox_normal(rng);
+        u_dot_z += u[i] * z_buf[i];
+    }
+
+    double z_perp_norm_sq = 0.0;
+    for (int i = 0; i < dim; i++) {
+        z_buf[i] -= u_dot_z * u[i];
+        z_perp_norm_sq += z_buf[i] * z_buf[i];
+    }
+
+    double z_perp_norm = sqrt(z_perp_norm_sq);
+    if (z_perp_norm <= 1e-12) return;
+
+    double inv_norm = 1.0 / z_perp_norm;
+    double u_new_norm_sq = 0.0;
+    for (int i = 0; i < dim; i++) {
+        u[i] = u[i] * cos_a + z_buf[i] * inv_norm * sin_a;
+        u_new_norm_sq += u[i] * u[i];
+    }
+
+    double u_new_norm = sqrt(u_new_norm_sq);
+    if (u_new_norm <= 1e-12) return;
+
+    double inv = 1.0 / u_new_norm;
+    for (int i = 0; i < dim; i++) {
+        u[i] *= inv;
+    }
+}
+
 /* ---------- Integrator steps --------------------------------------------- */
 
-// B-step: half-step velocity update on unit sphere.
+// B-step with precomputed sqrt(inv_mass): half-step velocity update on unit sphere.
 // Returns delta_k contribution.
-__device__ double b_step(
-    double* u, const double* grad, const double* inv_mass,
+__device__ __forceinline__ double b_step_precond(
+    double* u, const double* grad, const double* sqrt_inv_mass,
     double half_eps, int dim, double dm1)
 {
     // Preconditioned gradient: g_tilde_i = sqrt(inv_mass_i) * grad_i
     double g_norm_sq = 0.0;
     for (int i = 0; i < dim; i++) {
-        double gi = sqrt(inv_mass[i]) * grad[i];
+        double gi = sqrt_inv_mass[i] * grad[i];
         g_norm_sq += gi * gi;
     }
     double g_norm = sqrt(g_norm_sq);
@@ -133,7 +182,7 @@ __device__ double b_step(
     // e = g_tilde / |g_tilde|, compute e_dot_u
     double e_dot_u = 0.0;
     for (int i = 0; i < dim; i++) {
-        double ei = sqrt(inv_mass[i]) * grad[i] / g_norm;
+        double ei = sqrt_inv_mass[i] * grad[i] / g_norm;
         e_dot_u += ei * u[i];
     }
     if (e_dot_u > 1.0) e_dot_u = 1.0;
@@ -149,7 +198,7 @@ __device__ double b_step(
     // u_new = u * c_u - e * c_e, then renormalize
     double u_norm_sq = 0.0;
     for (int i = 0; i < dim; i++) {
-        double ei = sqrt(inv_mass[i]) * grad[i] / g_norm;
+        double ei = sqrt_inv_mass[i] * grad[i] / g_norm;
         u[i] = u[i] * c_u - ei * c_e;
         u_norm_sq += u[i] * u[i];
     }
@@ -159,7 +208,7 @@ __device__ double b_step(
         for (int i = 0; i < dim; i++) u[i] *= inv;
     } else {
         for (int i = 0; i < dim; i++) {
-            u[i] = -sqrt(inv_mass[i]) * grad[i] / g_norm;
+            u[i] = -sqrt_inv_mass[i] * grad[i] / g_norm;
         }
     }
 
@@ -167,6 +216,18 @@ __device__ double b_step(
     double arg = 0.5 * zeta_m1 * (1.0 + e_dot_u);
     if (arg < -1.0 + 1e-50) arg = -1.0 + 1e-50;
     return dm1 * (delta + log1p(arg));
+}
+
+// Backward-compatible wrapper when precomputed sqrt(inv_mass) is unavailable.
+__device__ __forceinline__ double b_step(
+    double* u, const double* grad, const double* inv_mass,
+    double half_eps, int dim, double dm1)
+{
+    double sqrt_inv_mass[MAX_DIM];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass[i] = sqrt(inv_mass[i]);
+    }
+    return b_step_precond(u, grad, sqrt_inv_mass, half_eps, dim, dm1);
 }
 
 // A-step: full-step position update.
@@ -177,6 +238,17 @@ __device__ void a_step(
     for (int i = 0; i < dim; i++) {
         x[i] += eps * sqrt(inv_mass[i]) * u[i];
     }
+}
+
+__device__ __forceinline__ double mams_eval_grad_nll(
+    const double* x, double* grad, int dim, const double* model_data)
+{
+#ifdef MAMS_FUSED_GRAD_NLL_DEFINED
+    return user_grad_nll(x, grad, dim, model_data);
+#else
+    user_grad(x, grad, dim, model_data);
+    return user_nll(x, dim, model_data);
+#endif
 }
 
 /* ---------- Riemannian steps for Neal Funnel (model_id=5) --------------- */
@@ -336,30 +408,8 @@ extern "C" __global__ void mams_transition(
     double cos_a = cos(angle);
     double sin_a = sin(angle);
 
-    // Sample z ~ N(0,I) and project out u-component
     double z[MAX_DIM];
-    double u_dot_z = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] = philox_normal(&rng);
-        u_dot_z += u[i] * z[i];
-    }
-    double z_perp_norm_sq = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] -= u_dot_z * u[i];
-        z_perp_norm_sq += z[i] * z[i];
-    }
-    double z_perp_norm = sqrt(z_perp_norm_sq);
-    if (z_perp_norm > 1e-12) {
-        double inv_norm = 1.0 / z_perp_norm;
-        double u_new_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-            u_new_norm_sq += u[i] * u[i];
-        }
-        double u_new_norm = sqrt(u_new_norm_sq);
-        double inv = 1.0 / u_new_norm;
-        for (int i = 0; i < dim; i++) u[i] *= inv;
-    }
+    mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
     // ---------- 2. Save pre-trajectory state for MH ----------
     double x_old[MAX_DIM], u_old[MAX_DIM], grad_old[MAX_DIM];
@@ -374,22 +424,25 @@ extern "C" __global__ void mams_transition(
     double total_delta_k = 0.0;
     int divergent = 0;
     int is_riemannian = (model_id == 5);
+    double sqrt_inv_mass_local[MAX_DIM];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+    }
 
     for (int s = 0; s < n_steps; s++) {
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
             a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
         } else {
-            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             a_step(x, u, inv_mass, eps, dim);
         }
-        // Recompute gradient + potential
-        user_grad(x, grad, dim, model_data);
-        potential = user_nll(x, dim, model_data);
+        // Recompute gradient + potential (fused path when available).
+        potential = mams_eval_grad_nll(x, grad, dim, model_data);
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
         } else {
-            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
         }
 
         // Early termination check (skip on first call when potential_old = NaN)
@@ -555,28 +608,7 @@ extern "C" __global__ void mams_transition_fused(
         double sin_a = sin(angle);
 
         double z[MAX_DIM];
-        double u_dot_z = 0.0;
-        for (int i = 0; i < dim; i++) {
-            z[i] = philox_normal(&rng);
-            u_dot_z += u[i] * z[i];
-        }
-        double z_perp_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            z[i] -= u_dot_z * u[i];
-            z_perp_norm_sq += z[i] * z[i];
-        }
-        double z_perp_norm = sqrt(z_perp_norm_sq);
-        if (z_perp_norm > 1e-12) {
-            double inv_norm = 1.0 / z_perp_norm;
-            double u_new_norm_sq = 0.0;
-            for (int i = 0; i < dim; i++) {
-                u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-                u_new_norm_sq += u[i] * u[i];
-            }
-            double u_new_norm = sqrt(u_new_norm_sq);
-            double inv = 1.0 / u_new_norm;
-            for (int i = 0; i < dim; i++) u[i] *= inv;
-        }
+        mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
         // --- 2. Save pre-trajectory state ---
         double x_old[MAX_DIM], u_old[MAX_DIM], grad_old[MAX_DIM];
@@ -591,21 +623,26 @@ extern "C" __global__ void mams_transition_fused(
         double total_delta_k = 0.0;
         int divergent = 0;
         int is_riemannian = (model_id == 5);
+        double sqrt_inv_mass_local[MAX_DIM];
+        for (int i = 0; i < dim; i++) {
+            sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+        }
 
         for (int s = 0; s < n_steps; s++) {
             if (is_riemannian) {
                 total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
                 a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
             } else {
-                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+                total_delta_k +=
+                    b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
                 a_step(x, u, inv_mass, eps, dim);
             }
-            user_grad(x, grad_reg, dim, model_data);
-            potential = user_nll(x, dim, model_data);
+            potential = mams_eval_grad_nll(x, grad_reg, dim, model_data);
             if (is_riemannian) {
                 total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
             } else {
-                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+                total_delta_k +=
+                    b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             }
 
             double current_w = (potential - potential_old) + total_delta_k;
@@ -842,28 +879,7 @@ extern "C" __global__ void mams_transition_warp(
     double sin_a = sin(angle);
 
     double z[MAX_DIM_WARP];
-    double u_dot_z = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] = philox_normal(&rng);
-        u_dot_z += u[i] * z[i];
-    }
-    double z_perp_norm_sq = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] -= u_dot_z * u[i];
-        z_perp_norm_sq += z[i] * z[i];
-    }
-    double z_perp_norm = sqrt(z_perp_norm_sq);
-    if (z_perp_norm > 1e-12) {
-        double inv_norm = 1.0 / z_perp_norm;
-        double u_new_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-            u_new_norm_sq += u[i] * u[i];
-        }
-        double u_new_norm = sqrt(u_new_norm_sq);
-        double inv = 1.0 / u_new_norm;
-        for (int i = 0; i < dim; i++) u[i] *= inv;
-    }
+    mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
     // ---------- 2. Save pre-trajectory state ----------
     double x_old[MAX_DIM_WARP], u_old[MAX_DIM_WARP], grad_old[MAX_DIM_WARP];
@@ -878,13 +894,17 @@ extern "C" __global__ void mams_transition_warp(
     double total_delta_k = 0.0;
     int divergent = 0;
     int is_riemannian = (model_id == 5);
+    double sqrt_inv_mass_local[MAX_DIM];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+    }
 
     for (int s = 0; s < n_steps; s++) {
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
             a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
         } else {
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             a_step(x, u, inv_mass, eps, dim);
         }
         // Warp-cooperative grad + nll (single fused callback)
@@ -893,7 +913,7 @@ extern "C" __global__ void mams_transition_warp(
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
         } else {
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
         }
 
         double current_w = (potential - potential_old) + total_delta_k;
