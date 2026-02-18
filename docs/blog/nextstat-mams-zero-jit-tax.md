@@ -150,7 +150,7 @@ Hardware: **Tesla V100-PCIE-16GB**.
 ### Reading this table
 
 - **Zero JIT tax:** NS LAPS cold = warm (AOT-compiled Rust/CUDA). BlackJAX cold-start is dominated by XLA compilation (347-552s).
-- **Warm-start throughput:** on simple targets (`std_normal`), BlackJAX's XLA-compiled kernel achieves ~20x higher warm ESS/s (1.51M vs 75K). This reflects XLA's strength on embarrassingly parallel, low-dimensional problems. On more complex targets (`glm_logistic`), NS LAPS is ~2.16x faster.
+- **Warm-start throughput:** on simple targets (`std_normal`), BlackJAX's XLA-compiled kernel achieves ~20x higher warm ESS/s (1.35M vs 68K). This reflects XLA's strength on embarrassingly parallel, low-dimensional problems. On more complex targets (`glm_logistic`), NS LAPS is ~2.16x faster.
 - **`neal_funnel` is not a like-for-like comparison** (see section 1: NS samples NCP, BlackJAX samples centered). In these 3 seeds, BlackJAX centered-funnel R-hat ranges `1.054-1.130` and remains weaker than NS NCP, which is expected from parameterization difficulty, not a sampler defect.
 
 For `std_normal_10d`, this is the key decomposition:
