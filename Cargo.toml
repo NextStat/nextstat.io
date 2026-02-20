@@ -83,8 +83,8 @@ proptest = "1.10"
 criterion = { version = "0.8", features = ["html_reports"] }
 
 # MCMC / sampling (Phase 3, optional)
-rand = "0.9"
-rand_distr = "0.5"
+rand = "0.10"
+rand_distr = "0.6"
 json-patch = "4.1.0"
 sha2 = "0.10"
 
@@ -112,7 +112,7 @@ ort = { version = "2.0.0-rc.11", default-features = false, features = ["std"] }
 
 # GPU backends (Phase 2C - Optional)
 cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "cublas", "std", "dynamic-loading", "cuda-12040"] }
-metal = "0.30"
+metal = "0.33"
 objc = "0.2"
 block = "0.1"
 
