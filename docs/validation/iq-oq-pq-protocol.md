@@ -1,267 +1,844 @@
-# NextStat IQ/OQ/PQ Validation Protocol
+# NextStat IQ/OQ/PQ Validation Protocol -- Pharmaceutical Module
 
-**Document ID:** NS-VAL-001  
-**Version:** 1.0.0  
-**Status:** Template — requires site-specific customization  
-**Applicable Regulations:** 21 CFR Part 11, ICH E6(R2), EU Annex 11  
+**Document ID:** NS-VAL-001
+**Version:** 2.0.0
+**Effective Date:** 2026-02-21
+**Status:** Controlled Document -- requires site-specific customization before execution
+**Supersedes:** NS-VAL-001 v1.0.0 (2026-02-12)
+**Classification:** GxP Validation Deliverable
 
----
-
-## 1. Purpose
-
-This document defines the Installation Qualification (IQ), Operational Qualification (OQ), and Performance Qualification (PQ) protocols for NextStat statistical and pharmacometric software. It provides a structured framework for validating that the software is correctly installed, operates according to specifications, and produces reliable results in a regulated GxP environment.
-
-## 2. Scope
-
-This protocol covers:
-
-- **NextStat core** (`ns-core`, `ns-inference`, `ns-compute`) — statistical engine
-- **Pharmacometrics modules** — FOCE/FOCEI, SAEM, PK models, PD models, ODE solvers, SCM, VPC/GOF
-- **Python bindings** (`ns-py`) — user-facing API
-- **R bindings** (`ns-r`) — NLME/PK/PD wrappers (when available)
-- **CLI** (`ns-cli`) — command-line interface
-
-### Out of Scope
-
-- Operating system qualification (covered by IT infrastructure validation)
-- Network and database infrastructure
-- Third-party tools used alongside NextStat (R, Python, NONMEM)
-
-## 3. Definitions
-
-| Term | Definition |
-|------|-----------|
-| **IQ** | Documented verification that the software is installed correctly and all components are present and match expected checksums. |
-| **OQ** | Documented verification that the software operates correctly within specified operating ranges using predefined test cases. |
-| **PQ** | Documented verification that the software consistently produces correct results under conditions approximating real-world use. |
-| **CSV** | Computer System Validation — systematic approach to ensuring computerized systems do what they are designed to do. |
-| **GAMP 5** | Good Automated Manufacturing Practice — risk-based approach to CSV. NextStat is Category 4 (configured product). |
-| **OFV** | Objective Function Value (−2·log L) — primary metric for NLME model fitting. |
-
-## 4. Roles and Responsibilities
-
-| Role | Responsibility |
-|------|---------------|
-| **Validation Lead** | Oversees protocol execution, reviews results, approves deviations |
-| **QA Reviewer** | Independent review of validation deliverables |
-| **System Administrator** | Performs IQ steps, manages installation |
-| **Pharmacometrician** | Executes OQ/PQ test cases, interprets results |
-| **IT Security** | Verifies access controls and audit trail configuration |
+**Applicable Regulations:**
+- 21 CFR Part 11 (Electronic Records; Electronic Signatures)
+- EU Annex 11 (Computerised Systems, EudraLex Volume 4)
+- EMA Guideline on Computerised Systems and Electronic Data in Clinical Trials (2023)
+- ICH E6(R3) Good Clinical Practice
+- ISPE GAMP 5 Second Edition (2022)
 
 ---
 
-## 5. Installation Qualification (IQ)
+**Approval Signatures**
 
-### 5.1 Prerequisites
-
-| ID | Check | Expected Result | Pass/Fail |
-|----|-------|----------------|-----------|
-| IQ-PRE-01 | Rust toolchain version | ≥ 1.82.0 (per `rust-toolchain.toml`) | ☐ |
-| IQ-PRE-02 | Python version (if using bindings) | ≥ 3.9 | ☐ |
-| IQ-PRE-03 | R version (if using bindings) | ≥ 4.1 | ☐ |
-| IQ-PRE-04 | Operating system | Linux x86_64, macOS arm64/x86_64, or Windows x86_64 | ☐ |
-| IQ-PRE-05 | Available disk space | ≥ 500 MB | ☐ |
-
-### 5.2 Installation Verification
-
-| ID | Step | Expected Result | Pass/Fail |
-|----|------|----------------|-----------|
-| IQ-INST-01 | Build from source: `cargo build --release` | Exit code 0, no errors | ☐ |
-| IQ-INST-02 | Verify binary exists | `target/release/ns-cli --version` returns version string | ☐ |
-| IQ-INST-03 | Python wheel install: `pip install ns-py` | Package installs without errors | ☐ |
-| IQ-INST-04 | Python import: `import nextstat` | No ImportError | ☐ |
-| IQ-INST-05 | Run unit test suite: `cargo test --release` | All tests pass | ☐ |
-| IQ-INST-06 | Verify SHA-256 checksum of release binary | Matches published checksum | ☐ |
-
-### 5.3 Configuration Verification
-
-| ID | Check | Expected Result | Pass/Fail |
-|----|-------|----------------|-----------|
-| IQ-CONF-01 | Verify `Cargo.toml` workspace version | Matches expected release version | ☐ |
-| IQ-CONF-02 | Verify feature flags | Default features match deployment spec | ☐ |
-| IQ-CONF-03 | Verify BLAS/LAPACK backend | Correct backend for target platform (Accelerate/OpenBLAS/MKL) | ☐ |
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| Validation Lead | ________________ | ________________ | ____/____/____ |
+| Quality Assurance | ________________ | ________________ | ____/____/____ |
+| System Owner | ________________ | ________________ | ____/____/____ |
+| Pharmacometrician (SME) | ________________ | ________________ | ____/____/____ |
 
 ---
 
-## 6. Operational Qualification (OQ)
+## Table of Contents
 
-### 6.1 Core Statistical Functions
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-CORE-01 | MLE for Gaussian distribution | θ̂ within 1e-6 of analytical MLE | ☐ |
-| OQ-CORE-02 | MLE for Poisson distribution | θ̂ within 1e-6 of analytical MLE | ☐ |
-| OQ-CORE-03 | Profile likelihood CI | Covers true parameter with 95% probability | ☐ |
-| OQ-CORE-04 | NUTS sampler | ESS > 100 for unit normal target | ☐ |
-| OQ-CORE-05 | GLM (linear regression) | β̂ matches `lm()` in R to 1e-8 | ☐ |
-| OQ-CORE-06 | GLM (logistic regression) | β̂ matches `glm()` in R to 1e-6 | ☐ |
-
-### 6.2 Pharmacometrics — PK Models
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-PK-01 | 1-compartment oral concentration | Matches analytical solution to 1e-10 | ☐ |
-| OQ-PK-02 | 2-compartment IV concentration | Matches eigenvalue solution to 1e-8 | ☐ |
-| OQ-PK-03 | Dosing regimen (multiple oral doses) | Superposition matches manual calculation | ☐ |
-| OQ-PK-04 | IV infusion (during + post) | Matches closed-form solution to 1e-8 | ☐ |
-| OQ-PK-05 | NONMEM dataset parsing | Correctly reads Warfarin NONMEM CSV | ☐ |
-
-### 6.3 Pharmacometrics — FOCE/FOCEI
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-FOCE-01 | FOCEI fit — Warfarin synthetic (32 subj) | OFV finite, θ̂ within 3×ω of true | ☐ |
-| OQ-FOCE-02 | FOCE correlated Ω — CL-V correlation | Ω positive-definite, correlation recovered | ☐ |
-| OQ-FOCE-03 | Convergence check | `converged = true` within 100 iterations | ☐ |
-
-### 6.4 Pharmacometrics — SAEM
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-SAEM-01 | SAEM fit — Warfarin synthetic (32 subj) | OFV finite, θ̂ within 3×ω of true | ☐ |
-| OQ-SAEM-02 | SAEM correlated Ω | Ω positive-definite, all ωSD > 0 | ☐ |
-| OQ-SAEM-03 | SAEM vs FOCE parity | θ̂ agree within 100% relative | ☐ |
-| OQ-SAEM-04 | MCMC acceptance rate | Between 15% and 60% (well-tuned) | ☐ |
-| OQ-SAEM-05 | OFV trace stability | Late OFV within 10% of early OFV | ☐ |
-
-### 6.5 Pharmacometrics — PD Models
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-PD-01 | Emax at C=0 | E = E0 exactly | ☐ |
-| OQ-PD-02 | Emax at C=EC50 | E = E0 + Emax/2 | ☐ |
-| OQ-PD-03 | Sigmoid Emax γ=1 equals Emax | Predictions match to 1e-10 | ☐ |
-| OQ-PD-04 | Sigmoid Emax at EC50 | E = E0 + Emax/2 for all γ | ☐ |
-| OQ-PD-05 | IDR Type I — inhibit production | Response decreases from baseline | ☐ |
-| OQ-PD-06 | IDR Type II — inhibit loss | Response increases from baseline | ☐ |
-| OQ-PD-07 | IDR Type III — stimulate production | Response increases from baseline | ☐ |
-| OQ-PD-08 | IDR Type IV — stimulate loss | Response decreases from baseline | ☐ |
-| OQ-PD-09 | IDR return to baseline | R → R0 after drug washout | ☐ |
-
-### 6.6 ODE Solvers
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-ODE-01 | RK45 exponential decay | Matches analytical to 1e-6 | ☐ |
-| OQ-ODE-02 | ESDIRK exponential decay | Matches analytical to 1e-4 | ☐ |
-| OQ-ODE-03 | RK45 vs ESDIRK agreement | Rel. diff < 1e-6 on non-stiff problem | ☐ |
-| OQ-ODE-04 | RK45 transit chain (5 cpts) | Central cpt has drug at t=24h | ☐ |
-| OQ-ODE-05 | ESDIRK stiff transit (ktr=50) | Solves without exceeding max_steps | ☐ |
-| OQ-ODE-06 | Michaelis–Menten elimination | Monotonically decreasing, C > 0 | ☐ |
-
-### 6.7 Diagnostics — SCM, VPC, GOF
-
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| OQ-DIAG-01 | SCM selects true covariate | Weight effect on CL selected in forward step | ☐ |
-| OQ-DIAG-02 | SCM rejects false covariate | Unrelated covariate not selected | ☐ |
-| OQ-DIAG-03 | VPC — observed median within PI | Median within 90% PI for ≥80% of bins | ☐ |
-| OQ-DIAG-04 | GOF — CWRES approximately N(0,1) | Mean < 0.5, SD between 0.5 and 2.0 | ☐ |
+1. [Purpose and Scope](#1-purpose-and-scope)
+2. [Installation Qualification (IQ)](#2-installation-qualification-iq)
+3. [Operational Qualification (OQ)](#3-operational-qualification-oq)
+4. [Performance Qualification (PQ)](#4-performance-qualification-pq)
+5. [Change Control](#5-change-control)
+6. [Glossary](#6-glossary)
+7. [Appendices](#7-appendices)
 
 ---
 
-## 7. Performance Qualification (PQ)
+## 1. Purpose and Scope
 
-### 7.1 Reference Dataset Validation
+### 1.1 Purpose
 
-PQ tests use published or well-characterized datasets to validate against known results.
+This document defines the Installation Qualification (IQ), Operational Qualification (OQ), and Performance Qualification (PQ) protocols for validating the NextStat pharmacometrics module as computational software used in regulated pharmaceutical environments. The protocol ensures that the software is correctly installed, operates within verified specifications, and produces results consistent with established pharmacometric reference implementations under conditions representative of intended use.
 
-| ID | Dataset | Reference | Acceptance Criteria | Pass/Fail |
-|----|---------|-----------|-------------------|-----------|
-| PQ-01 | Warfarin PK (O'Reilly, 1968) | NONMEM User Guide | OFV within 5 units of reference | ☐ |
-| PQ-02 | Theophylline PK (Boeckmann, 1994) | Monolix tutorials | θ̂ within 20% of published values | ☐ |
-| PQ-03 | Phenobarbital PK (neonatal) | Grasela & Donn, 1985 | Parameter estimates in plausible range | ☐ |
+Validation of computational pharmacometrics software is required when the software is used to generate, process, or store electronic records that support regulatory submissions, including but not limited to:
 
-### 7.2 Reproducibility
+- Population pharmacokinetic analyses submitted in NDA/BLA/MAA dossiers
+- Dose selection and optimization based on PK/PD modeling
+- Covariate analyses informing labeling recommendations
+- Clinical trial simulation and design
 
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| PQ-REPRO-01 | Same seed → identical results | Bit-for-bit reproducibility across runs | ☐ |
-| PQ-REPRO-02 | RunBundle provenance | Version, git rev, seeds captured | ☐ |
-| PQ-REPRO-03 | Artifact round-trip | JSON export → import → re-export identical | ☐ |
+### 1.2 Applicable Regulations
 
-### 7.3 Performance Benchmarks
+| Regulation | Relevance |
+|-----------|-----------|
+| **21 CFR Part 11** | Electronic records generated by NextStat (model artifacts, parameter estimates, OFV, diagnostics) constitute electronic records under Part 11 when used in support of FDA submissions. |
+| **EU Annex 11** | Computerised system validation requirements for EU-regulated activities. Requires documented evidence that the system operates correctly and consistently. |
+| **EMA Guideline on Computerised Systems** | Requires that computerised systems used in clinical trials be validated proportionate to their impact on data quality and integrity. |
+| **ICH E6(R3)** | Section 4.9 requires that computerised systems used in clinical trials be validated and that processes ensure the integrity of data. |
+| **ISPE GAMP 5** | Provides the risk-based framework applied throughout this protocol. |
 
-| ID | Test | Acceptance Criteria | Pass/Fail |
-|----|------|-------------------|-----------|
-| PQ-PERF-01 | FOCE fit wall time (32 subj) | < 5 seconds on reference hardware | ☐ |
-| PQ-PERF-02 | SAEM fit wall time (32 subj) | < 10 seconds on reference hardware | ☐ |
-| PQ-PERF-03 | ODE solve (10-cpt transit, 24h) | < 100 ms on reference hardware | ☐ |
+### 1.3 GAMP 5 Classification
 
----
+NextStat is classified as **GAMP 5 Category 5 -- Custom Software**. Rationale:
 
-## 8. Deviation Handling
+- The software is developed using a custom Rust-native codebase with novel implementations of FOCE, SAEM, analytical PK solvers, and diagnostic algorithms.
+- The pharmacometric algorithms are not off-the-shelf: they implement first-principles analytical solutions with chain-rule gradients, custom L-BFGS-B optimization, and custom MCMC samplers.
+- The software does not rely on a configurable framework (which would be Category 4); it provides a purpose-built computational engine.
 
-Any test case that fails must be documented as a deviation:
+Category 5 classification requires the highest level of validation rigor: documented requirements, design specifications, code review, and comprehensive testing at IQ, OQ, and PQ levels.
 
-1. **Record** the deviation (test ID, observed result, expected result)
-2. **Assess** impact on intended use (critical / major / minor)
-3. **Investigate** root cause
-4. **Resolve** via software fix or documented limitation
-5. **Re-execute** the failed test case after resolution
-6. **Approve** via QA review
+### 1.4 Scope
 
----
+#### 1.4.1 In Scope
 
-## 9. Validation Summary Report
+The following NextStat components are subject to this validation protocol:
 
-Upon completion of all IQ/OQ/PQ test cases, a Validation Summary Report (NS-VAL-002) shall be prepared containing:
+| Component | Crate/Module | Description |
+|-----------|-------------|-------------|
+| PK analytical models | `ns-inference::pk` | 1-compartment oral, 2-compartment IV bolus, 2-compartment oral with analytical concentration and gradient functions |
+| Error models | `ns-inference::pk::ErrorModel` | Additive, proportional, and combined residual error models |
+| LLOQ handling | `ns-inference::pk::LloqPolicy` | Ignore, ReplaceHalf, and Censored policies for below-quantification observations |
+| FOCE/FOCEI estimator | `ns-inference::foce` | First-Order Conditional Estimation with Interaction, Cholesky-parameterized Omega, Laplace approximation |
+| SAEM estimator | `ns-inference::saem` | Stochastic Approximation EM with adaptive Metropolis-Hastings, configurable burn-in/estimation phases |
+| SCM | `ns-inference::scm` | Stepwise Covariate Modeling with forward selection and backward elimination (power, proportional, exponential relationships) |
+| VPC | `ns-inference::vpc` | Visual Predictive Check with configurable quantiles, bins, and prediction intervals |
+| GOF diagnostics | `ns-inference::vpc` | PRED, IPRED, IWRES, and CWRES computation |
+| NONMEM I/O | `ns-inference::nonmem` | CSV dataset reader supporting ID, TIME, DV, AMT, EVID, MDV, CMT, RATE columns |
+| Artifact schema | `ns-inference::artifacts` | NlmeArtifact v2.0.0, RunBundle provenance, JSON/CSV export |
+| Python API | `ns-py` | `nlme_foce()`, `nlme_saem()`, `pk_vpc()`, `pk_gof()`, `read_nonmem()` |
 
-- Overall pass/fail status
-- List of all deviations and their resolutions
-- Confirmation of traceability (requirements → test cases → results)
-- Approval signatures (Validation Lead, QA Reviewer, System Owner)
+#### 1.4.2 Out of Scope
 
----
+The following are explicitly excluded from this protocol:
 
-## 10. Periodic Revalidation
+- **Operating system**: OS qualification is the responsibility of IT infrastructure validation (IQ of underlying platform).
+- **Python runtime**: CPython is a widely-used, commercially-available software component. Its validation is covered by vendor qualification.
+- **Hardware**: CPU/GPU hardware qualification is covered by separate infrastructure validation protocols.
+- **Third-party statistical packages**: R, NONMEM, Monolix, nlmixr used for cross-validation in PQ are reference implementations, not subjects of validation.
+- **Non-pharmacometric NextStat modules**: HEP/HistFactory, econometrics, survival analysis, time series, and Bayesian sampling modules are covered by separate protocols.
+- **Visualization/plotting**: Output rendering is not part of the computational validation.
 
-Revalidation is required when:
+### 1.5 Validation Lifecycle
 
-- A new version of NextStat is deployed
-- The operating environment changes (OS upgrade, hardware change)
-- A regulatory audit identifies findings
-- A deviation is discovered in production use
+This protocol follows a V-model validation lifecycle:
 
-Minimum revalidation frequency: **annually** or upon major version upgrade.
-
----
-
-## Appendix A: Test Execution Commands
-
-```bash
-# IQ: Full test suite
-cargo test --release 2>&1 | tee iq_test_results.txt
-
-# OQ: Pharma-specific tests
-cargo test -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 | tee oq_pharma.txt
-cargo test -p ns-inference --test phase3_benchmark -- --nocapture 2>&1 | tee oq_phase3.txt
-
-# OQ: Unit tests for specific modules
-cargo test -p ns-inference --lib -- foce::tests saem::tests pd::tests ode_adaptive::tests -- --nocapture 2>&1 | tee oq_unit.txt
-
-# PQ: Reproducibility check
-cargo test -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 > pq_run1.txt
-cargo test -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 > pq_run2.txt
-diff pq_run1.txt pq_run2.txt  # Should show no differences
+```
+User Requirements (URS)          Validation Summary Report (VSR)
+        |                                    ^
+        v                                    |
+Functional Specification (FS) <--------> PQ (reference datasets)
+        |                                    ^
+        v                                    |
+Design Specification (DS) <-----------> OQ (algorithmic correctness)
+        |                                    ^
+        v                                    |
+Implementation (code) <--------------> IQ (installation verification)
 ```
 
-## Appendix B: Traceability Matrix
+Each qualification phase traces back to documented requirements. The traceability matrix in Appendix B maps every requirement to its corresponding test cases and acceptance criteria.
 
-| Requirement | OQ Test(s) | PQ Test(s) |
-|------------|-----------|-----------|
-| FOCE estimation | OQ-FOCE-01..03 | PQ-01..03 |
-| SAEM estimation | OQ-SAEM-01..05 | PQ-01..03 |
-| PD models | OQ-PD-01..09 | — |
-| ODE solvers | OQ-ODE-01..06 | PQ-PERF-03 |
-| Diagnostics | OQ-DIAG-01..04 | — |
-| Reproducibility | — | PQ-REPRO-01..03 |
-| Performance | — | PQ-PERF-01..03 |
+### 1.6 Risk Assessment Summary
+
+Risk classification per GAMP 5 risk-based approach:
+
+| Function | GxP Impact | Risk Level | Rationale |
+|----------|-----------|------------|-----------|
+| FOCE/SAEM parameter estimation | Direct: PK parameters inform dosing decisions | **High** | Incorrect theta/omega estimates propagate to dose recommendations |
+| PK analytical models | Direct: concentration predictions used in exposure-response | **High** | Incorrect C(t) invalidates all downstream analyses |
+| Analytical gradients | Indirect: optimizer convergence depends on gradient accuracy | **High** | Incorrect gradients cause non-convergence or convergence to wrong optimum |
+| Error models | Direct: variance structure affects parameter uncertainty | **High** | Incorrect variance model biases standard errors and confidence intervals |
+| LLOQ handling | Direct: BLQ data treatment affects parameter estimates | **Medium** | Incorrect censoring introduces bias in low-concentration regions |
+| SCM covariate selection | Direct: covariate inclusion/exclusion affects labeling | **High** | False positive/negative covariate effects impact regulatory decisions |
+| VPC diagnostics | Indirect: model evaluation tool, not direct estimation | **Medium** | Misleading VPC could lead to acceptance of misspecified model |
+| GOF diagnostics | Indirect: model evaluation tool | **Medium** | Incorrect CWRES/IWRES could mask model misspecification |
+| NONMEM I/O | Direct: data integrity at entry point | **High** | Parsing errors silently corrupt the analysis dataset |
+| Artifact export | Low: documentation/reporting | **Low** | Round-trip fidelity verified by automated tests |
 
 ---
 
-**Document Control:**
+## 2. Installation Qualification (IQ)
+
+### 2.1 Objective
+
+Verify that the NextStat software is correctly installed, all components are present, dependencies are satisfied, and the installed version matches the validated release.
+
+### 2.2 Platform Requirements
+
+| ID | Requirement | Specification | Pass/Fail |
+|----|-------------|---------------|-----------|
+| IQ-PLT-001 | Operating system | Linux x86_64 (glibc >= 2.17), macOS arm64 or x86_64 (>= 12.0), or Windows x86_64 (>= 10) | ☐ |
+| IQ-PLT-002 | Python version | >= 3.9, <= 3.13 | ☐ |
+| IQ-PLT-003 | Rust toolchain (source builds only) | >= 1.82.0 per `rust-toolchain.toml` | ☐ |
+| IQ-PLT-004 | Available disk space | >= 500 MB | ☐ |
+| IQ-PLT-005 | Available RAM | >= 2 GB | ☐ |
+
+### 2.3 Installation Verification
+
+| ID | Step | Procedure | Expected Result | Pass/Fail |
+|----|------|-----------|-----------------|-----------|
+| IQ-INST-001 | Install from PyPI | Execute: `pip install nextstat==<VERSION>` | Installation completes without errors. Exit code 0. | ☐ |
+| IQ-INST-002 | Verify import | Execute: `python -c "import nextstat; print(nextstat.__version__)"` | Prints the expected version string (e.g., `0.9.6`). No ImportError. | ☐ |
+| IQ-INST-003 | Verify pharmacometrics API availability | Execute: `python -c "from nextstat._core import nlme_foce, nlme_saem, pk_vpc, pk_gof, read_nonmem; print('OK')"` | Prints `OK`. No ImportError or AttributeError. | ☐ |
+| IQ-INST-004 | Verify PK model classes | Execute: `python -c "from nextstat._core import Pk1CptOral, Pk2CptIv, Pk2CptOral; print('OK')"` | Prints `OK`. All three model classes importable. | ☐ |
+
+### 2.4 Checksum Verification
+
+| ID | Step | Procedure | Expected Result | Pass/Fail |
+|----|------|-----------|-----------------|-----------|
+| IQ-CHK-001 | Download wheel checksum | Obtain SHA-256 hash from PyPI JSON API: `curl -s https://pypi.org/pypi/nextstat/<VERSION>/json \| python -m json.tool \| grep sha256` | Returns SHA-256 hash string. | ☐ |
+| IQ-CHK-002 | Verify local wheel | Compute SHA-256 of installed wheel: `sha256sum <wheel_file>` | Hash matches the value obtained in IQ-CHK-001. | ☐ |
+
+### 2.5 Dependency Verification
+
+| ID | Dependency | Minimum Version | Procedure | Pass/Fail |
+|----|-----------|-----------------|-----------|-----------|
+| IQ-DEP-001 | numpy | >= 1.21 | `python -c "import numpy; print(numpy.__version__)"` | ☐ |
+| IQ-DEP-002 | scipy (if used) | >= 1.7 | `python -c "import scipy; print(scipy.__version__)"` | ☐ |
+
+### 2.6 Source Build Verification (Optional -- for organizations building from source)
+
+| ID | Step | Procedure | Expected Result | Pass/Fail |
+|----|------|-----------|-----------------|-----------|
+| IQ-SRC-001 | Clone repository | `git clone <repo> && git checkout v<VERSION>` | Checkout succeeds. `git log -1` shows expected release tag. | ☐ |
+| IQ-SRC-002 | Verify Cargo.toml version | `grep '^version' Cargo.toml` | Shows `version = "<VERSION>"`. | ☐ |
+| IQ-SRC-003 | Build from source | `cargo build --release -p ns-inference` | Exit code 0. No compilation errors. | ☐ |
+| IQ-SRC-004 | Run unit test suite | `cargo test --release -p ns-inference` | All tests pass. Zero failures. | ☐ |
+| IQ-SRC-005 | Build Python wheel | `maturin build --release -m bindings/ns-py/Cargo.toml` | Wheel file produced in `target/wheels/`. | ☐ |
+| IQ-SRC-006 | Install and verify built wheel | `pip install target/wheels/nextstat-*.whl && python -c "import nextstat"` | Import succeeds. Version matches. | ☐ |
+
+### 2.7 Configuration Verification
+
+| ID | Check | Procedure | Expected Result | Pass/Fail |
+|----|-------|-----------|-----------------|-----------|
+| IQ-CONF-001 | BLAS/LAPACK backend | `python -c "import numpy; numpy.show_config()"` | Backend is identified (Accelerate, OpenBLAS, or MKL). | ☐ |
+| IQ-CONF-002 | Feature flags (source build) | `cargo tree -p ns-inference --features` | Features match deployment specification. | ☐ |
+
+### 2.8 IQ Completion Criteria
+
+IQ is considered complete when:
+
+1. All IQ test cases above record a PASS result.
+2. Any FAIL results are documented as deviations per Section 5.
+3. The IQ execution log is signed and dated by the System Administrator and reviewed by QA.
+
+---
+
+## 3. Operational Qualification (OQ)
+
+### 3.1 Objective
+
+Verify that the NextStat pharmacometrics module operates correctly within specified parameters, producing numerically accurate results for all validated functions. Each test case is linked to a functional requirement and has quantitative acceptance criteria.
+
+### 3.2 Test Environment
+
+All OQ tests shall be executed on the qualified platform (per IQ). The test environment shall be documented:
+
+| Item | Value |
+|------|-------|
+| NextStat version | ________________ |
+| Python version | ________________ |
+| OS / Architecture | ________________ |
+| CPU model | ________________ |
+| RAM | ________________ |
+| Date of execution | ________________ |
+| Executed by | ________________ |
+
+### 3.3 PK Analytical Correctness
+
+These tests verify that the analytical concentration functions produce mathematically correct results by comparison with independently derived closed-form solutions.
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-PK-001 | 1-compartment oral C(t) is correct | Compute `conc_oral(dose=320, F=1.0, CL=2.0, V=30.0, Ka=1.5, t)` at t = {0.5, 1, 2, 4, 6, 8, 12, 24, 36, 48} h. Compare each value against the independently coded formula: C(t) = (F*D/V) * Ka/(Ka-Ke) * (exp(-Ke*t) - exp(-Ka*t)). | All 10 predicted concentrations match the reference formula. | Relative error < 1e-10 at each time point. | ☐ |
+| OQ-PK-002 | 2-compartment IV bolus C(t) is correct | Compute concentration for dose=1000, CL=4.0, V1=10.0, V2=20.0, Q=2.0 at t = {0.25, 0.5, 1, 2, 4, 8, 12, 24} h. Compare against eigenvalue solution: C(t) = (D/V1) * [A*exp(-alpha*t) + B*exp(-beta*t)] where alpha, beta are roots of the disposition characteristic equation. | All 8 predicted concentrations match. | Relative error < 1e-10 at each time point. | ☐ |
+| OQ-PK-003 | 2-compartment oral C(t) is correct | Compute concentration for dose=500, F=0.9, CL=3.0, V1=15.0, V2=25.0, Q=1.5, Ka=1.2 at 10 time points spanning 0.5-72 h. Compare against the three-exponential analytical solution. | All predicted concentrations match. | Relative error < 1e-10 at each time point. | ☐ |
+| OQ-PK-004 | 1-compartment oral analytical gradients correct | Compute analytical gradients dC/dCL, dC/dV, dC/dKa from `conc_oral_and_grad()` at 5 representative (CL, V, Ka, t) tuples. Compare each partial derivative against central finite difference: (C(p+h) - C(p-h)) / (2h), h=1e-6. | All 15 gradient components (3 params x 5 points) match. | Relative error < 1e-6. | ☐ |
+| OQ-PK-005 | 2-compartment IV analytical gradients correct | Compute analytical gradients dC/dCL, dC/dV1, dC/dV2, dC/dQ from `conc_iv_2cpt_and_grad()` at 5 representative parameter tuples. Compare against central finite difference. | All 20 gradient components (4 params x 5 points) match. | Relative error < 1e-6. | ☐ |
+| OQ-PK-006 | 2-compartment oral analytical gradients correct | Same procedure as OQ-PK-005 but for the 5-parameter oral model (CL, V1, V2, Q, Ka). Compare against central finite difference. | All 25 gradient components (5 params x 5 points) match. | Relative error < 1e-6. | ☐ |
+| OQ-PK-007 | Degenerate case handling (Ka approx Ke) | Set CL=1.5, V=1.0, Ka=1.5 (so Ka = Ke = CL/V). Verify that `conc_oral()` returns a finite, positive concentration and does not produce NaN or division-by-zero. | Concentration is finite and positive at t=1.0. | C(1.0) > 0 and isfinite(C(1.0)) == True. | ☐ |
+| OQ-PK-008 | Degenerate case handling (alpha approx beta) | Set 2-compartment parameters such that the discriminant of the characteristic equation is near zero. Verify `conc_iv_2cpt()` returns finite values. | Concentration is finite and positive. | isfinite(C(t)) == True for all test points. | ☐ |
+
+### 3.4 Error Models
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-ERR-001 | Additive error model variance | Construct `ErrorModel::Additive(sigma=0.1)`. Compute `variance(f)` for f = {0.1, 1.0, 10.0, 100.0}. | Variance = 0.01 for all f values (constant). | Exact equality to 1e-15. | ☐ |
+| OQ-ERR-002 | Proportional error model variance | Construct `ErrorModel::Proportional(sigma=0.1)`. Compute `variance(f)` for f = {0.1, 1.0, 10.0, 100.0}. | Variance = (0.1*f)^2 = {0.0001, 0.01, 1.0, 100.0}. | Relative error < 1e-14. | ☐ |
+| OQ-ERR-003 | Combined error model variance | Construct `ErrorModel::Combined{sigma_add=0.5, sigma_prop=0.1}`. Compute `variance(f)` for f = {0.1, 1.0, 10.0}. | Variance = 0.25 + (0.1*f)^2 = {0.2501, 0.26, 1.25}. | Relative error < 1e-14. | ☐ |
+| OQ-ERR-004 | NLL contribution (additive) | Compute `nll_obs(y=5.1, f=5.0)` for `Additive(sigma=0.1)`. Verify against manual calculation: 0.5*(5.1-5.0)^2/0.01 + 0.5*ln(0.01). | NLL matches manual calculation. | Absolute error < 1e-12. | ☐ |
+| OQ-ERR-005 | NLL contribution (proportional) | Compute `nll_obs(y=10.5, f=10.0)` for `Proportional(sigma=0.1)`. Verify against manual calculation with variance = (0.1*10.0)^2. | NLL matches manual calculation. | Absolute error < 1e-12. | ☐ |
+| OQ-ERR-006 | NLL contribution (combined) | Compute `nll_obs(y=5.2, f=5.0)` for `Combined{sigma_add=0.5, sigma_prop=0.1}`. Verify against manual calculation. | NLL matches manual calculation. | Absolute error < 1e-12. | ☐ |
+| OQ-ERR-007 | Error model validation rejects invalid input | Attempt to construct `Additive(-1.0)`, `Proportional(0.0)`, `Combined{sigma_add=NaN, sigma_prop=0.1}`. | Each construction returns an error or validation failure. | All three invalid constructions are rejected. | ☐ |
+| OQ-ERR-008 | Additive error residuals distribution | Generate 10000 observations y_i = f + eps_i where eps_i ~ N(0, sigma^2) with sigma=0.1, f=5.0. Fit MLE for sigma using additive error model. | Estimated sigma within 10% of true value. Residuals (y-f) pass KS test for N(0, 0.01). | KS test p-value > 0.05 AND abs(sigma_hat - 0.1) < 0.01. | ☐ |
+| OQ-ERR-009 | Proportional error residuals distribution | Generate 10000 observations y_i = f_i * (1 + eps_i) where eps_i ~ N(0, sigma_prop^2), f_i varied. Compute IWRES. | IWRES approximately standard normal. | Mean(IWRES) in (-0.05, 0.05) AND SD(IWRES) in (0.95, 1.05). | ☐ |
+
+### 3.5 LLOQ Handling
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-LLOQ-001 | Ignore policy excludes BLQ data | Create a dataset with 20 observations, 5 of which have DV < LLOQ = 0.5. Fit with `LloqPolicy::Ignore`. | Exactly 15 observations contribute to the likelihood. OFV computed from 15 points only. | n_obs_used == 15. | ☐ |
+| OQ-LLOQ-002 | ReplaceHalf policy imputes BLQ | Same dataset as OQ-LLOQ-001. Fit with `LloqPolicy::ReplaceHalf`. | BLQ observations replaced with LLOQ/2 = 0.25. All 20 observations contribute. | For each BLQ obs: y_used == 0.25. n_obs_used == 20. | ☐ |
+| OQ-LLOQ-003 | Censored policy uses left-censored likelihood | Same dataset. Fit with `LloqPolicy::Censored`. | BLQ observations contribute a censored likelihood term P(Y < LLOQ). All 20 observations contribute. | n_obs_used == 20. NLL includes Phi() terms for BLQ observations. | ☐ |
+| OQ-LLOQ-004 | Censored vs Ignore bias comparison | Simulate 100 datasets with 20% BLQ rate from known parameters. Fit each with Ignore and Censored. Compare mean parameter bias. | Censored method produces less biased estimates than Ignore when BLQ rate is substantial. | Mean absolute bias (Censored) <= Mean absolute bias (Ignore) for CL. | ☐ |
+
+### 3.6 MLE Estimation (Individual PK)
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-MLE-001 | 1-compartment oral MLE recovers true parameters | Generate synthetic data from known parameters: CL=2.5 L/h, V=35 L, Ka=1.2 h^-1, dose=320 mg, sigma=0.3 mg/L. 15 time points per subject, 1 subject. Fit using MLE. | Estimated CL, V, Ka recover true values. | Relative error < 5% for each parameter. | ☐ |
+| OQ-MLE-002 | 2-compartment IV MLE recovery | Generate synthetic data: CL=4.0, V1=10.0, V2=20.0, Q=2.0 L/h, dose=1000 mg, sigma=0.5. 12 time points. Fit using MLE. | Estimated CL, V1, V2, Q recover true values. | Relative error < 5% for each parameter. | ☐ |
+| OQ-MLE-003 | 2-compartment oral MLE recovery | Generate synthetic data: CL=3.0, V1=15.0, V2=25.0, Q=1.5, Ka=1.2, dose=500 mg, F=0.9, sigma=0.4. 15 time points. Fit using MLE. | Estimated parameters recover true values. | Relative error < 10% for each parameter. | ☐ |
+| OQ-MLE-004 | MLE optimizer convergence | Fit OQ-MLE-001 data. Check convergence flag and gradient norm. | Optimizer reports convergence. Gradient norm at solution is near zero. | `converged == True` AND gradient_norm < 1e-4. | ☐ |
+| OQ-MLE-005 | MLE NLL at optimum is minimal | Evaluate NLL at the MLE estimate and at 10 perturbed parameter vectors (each parameter +/- 5%). | NLL at MLE is less than or equal to NLL at all perturbed points. | NLL(theta_hat) <= NLL(theta_perturbed) for all 10 perturbations. | ☐ |
+
+### 3.7 Population PK -- FOCE/FOCEI
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-FOCE-001 | FOCE converges on synthetic population data | Generate 30-subject synthetic data from 1-compartment oral model with known theta_true = [CL=2.5, V=35, Ka=1.2], omega_true = [0.3, 0.2, 0.4] (SD of log-normal random effects), sigma=0.3 (additive). 10 observations per subject. Fit with `nlme_foce()`. | Algorithm converges. | `converged == True`. | ☐ |
+| OQ-FOCE-002 | FOCE theta recovery | Same data as OQ-FOCE-001. Compare estimated theta to theta_true. | Population parameter estimates recover true values. | Relative error < 10% for CL, V, Ka. | ☐ |
+| OQ-FOCE-003 | FOCE omega recovery | Same data as OQ-FOCE-001. Compare estimated omega_SD to omega_true. | Random effect standard deviations recover true values. | Relative error < 20% for each omega_SD. | ☐ |
+| OQ-FOCE-004 | FOCE sigma recovery | Same data as OQ-FOCE-001. Compare estimated residual error to sigma_true. | Residual error estimate recovers true value. | Relative error < 20% for sigma. | ☐ |
+| OQ-FOCE-005 | FOCE OFV is finite and reasonable | Same fit. Check final OFV value. | OFV is finite and negative of twice the log-likelihood. | isfinite(OFV) == True AND OFV > 0. | ☐ |
+| OQ-FOCE-006 | FOCE iteration count | Same fit. Record number of outer iterations. | Algorithm converges within the maximum allowed iterations. | n_iter <= max_outer_iter (default: 100). | ☐ |
+| OQ-FOCE-007 | FOCE with correlated Omega | Generate 30-subject data with off-diagonal CL-V correlation (rho=0.5). Fit with full Omega matrix. | Estimated correlation between CL and V random effects recovers the true correlation. | abs(rho_hat - 0.5) < 0.3. | ☐ |
+| OQ-FOCE-008 | FOCE with proportional error model | Generate data with proportional error (sigma_prop=0.15). Fit with `error_model="proportional"`. | Convergence achieved. Theta and omega recovered. | `converged == True` AND rel. error < 15% for theta. | ☐ |
+| OQ-FOCE-009 | FOCE with combined error model | Generate data with combined error (sigma_add=0.3, sigma_prop=0.1). Fit with `error_model="combined"`. | Convergence achieved. Both sigma components estimated. | `converged == True` AND both sigma estimates positive. | ☐ |
+| OQ-FOCE-010 | FOCE individual ETAs have zero mean | From OQ-FOCE-001 fit, compute mean of ETAs across subjects for each random effect. | Mean ETA is approximately zero (by FOCE conditional mode property). | abs(mean(eta_CL)) < 0.1 AND abs(mean(eta_V)) < 0.1 AND abs(mean(eta_Ka)) < 0.1. | ☐ |
+| OQ-FOCE-011 | FOCE Omega is positive-definite | From OQ-FOCE-007 fit, verify the estimated Omega matrix. | All eigenvalues of estimated Omega are positive. | min(eigenvalues(Omega_hat)) > 0. | ☐ |
+| OQ-FOCE-012 | FOCE handles 50+ subjects | Generate 50-subject dataset. Fit with default settings. | Convergence within wall-clock time limit. | `converged == True` AND wall_time < 60 seconds. | ☐ |
+
+### 3.8 Population PK -- SAEM
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-SAEM-001 | SAEM converges on synthetic population data | Same 30-subject synthetic data as OQ-FOCE-001. Fit with `nlme_saem()`, n_burn=200, n_iter=100, seed=12345. | Algorithm completes burn-in and estimation phases. | `burn_in_only == False`. | ☐ |
+| OQ-SAEM-002 | SAEM theta recovery | Compare estimated theta to theta_true. | Population parameter estimates recover true values. | Relative error < 15% for CL, V, Ka. | ☐ |
+| OQ-SAEM-003 | SAEM omega recovery | Compare estimated omega_SD to omega_true. | Random effect standard deviations recover true values. | Relative error < 25% for each omega_SD. | ☐ |
+| OQ-SAEM-004 | SAEM MCMC acceptance rate | Check per-subject acceptance rates from SAEM diagnostics. | Acceptance rates are within the adaptive target range. | Mean acceptance rate in [0.15, 0.60]. | ☐ |
+| OQ-SAEM-005 | SAEM OFV trace stabilizes | Plot/inspect OFV trace from SAEM diagnostics. | OFV stabilizes (does not diverge) after burn-in. | SD(OFV[last_20_iters]) / abs(mean(OFV[last_20_iters])) < 0.05. | ☐ |
+| OQ-SAEM-006 | SAEM vs FOCE parity | Fit the same 30-subject dataset with both SAEM and FOCE. Compare theta estimates. | SAEM and FOCE theta estimates are within reasonable agreement. | Relative difference between SAEM and FOCE theta < 30% for each parameter. | ☐ |
+| OQ-SAEM-007 | SAEM reproducibility with fixed seed | Run `nlme_saem()` twice with identical data and seed=42. | Results are bit-for-bit identical. | theta_run1 == theta_run2 AND OFV_run1 == OFV_run2. | ☐ |
+| OQ-SAEM-008 | SAEM burn-in length impact | Fit with n_burn=50 (short) and n_burn=500 (long). Compare theta estimates. | Both converge; longer burn-in does not qualitatively change estimates. | Both `converged == True` AND relative difference in theta < 20%. | ☐ |
+
+### 3.9 Diagnostics -- GOF
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-GOF-001 | PRED computed correctly | Using fitted model from OQ-FOCE-001, compute GOF. Verify PRED = C(t; theta_pop, eta=0) for each observation. | PRED matches population prediction with eta=0. | Relative error < 1e-10 between GOF PRED and independently computed population prediction. | ☐ |
+| OQ-GOF-002 | IPRED computed correctly | Verify IPRED = C(t; theta_pop * exp(eta_hat)) for each observation. | IPRED matches individual prediction at conditional mode ETAs. | Relative error < 1e-10 between GOF IPRED and independently computed individual prediction. | ☐ |
+| OQ-GOF-003 | IWRES correctly normalized | Verify IWRES = (DV - IPRED) / SD(IPRED) where SD is from the error model evaluated at IPRED. | IWRES matches manual calculation. | Absolute error < 1e-10 for each observation. | ☐ |
+| OQ-GOF-004 | CWRES approximately N(0,1) under correct model | Fit a correctly specified model (true model = fitting model). Compute CWRES. | CWRES distribution is approximately standard normal. | abs(mean(CWRES)) < 0.3 AND abs(SD(CWRES) - 1.0) < 0.3. | ☐ |
+| OQ-GOF-005 | IPRED vs DV correlation under correct model | Scatter IPRED against DV from a correctly specified model fit. | Strong positive correlation. | Pearson r^2 > 0.90. | ☐ |
+| OQ-GOF-006 | PRED vs DV correlation under correct model | Scatter PRED against DV from a correctly specified model fit. | Positive correlation (weaker than IPRED vs DV due to between-subject variability). | Pearson r^2 > 0.50. | ☐ |
+
+### 3.10 Diagnostics -- VPC
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-VPC-001 | VPC simulation count | Run VPC with n_sim=200, seed=42. Verify that exactly 200 simulation replicates are generated. | VpcResult.n_sim == 200. | Exact match. | ☐ |
+| OQ-VPC-002 | VPC quantile levels | Run VPC with quantiles=[0.05, 0.50, 0.95]. Verify output contains these quantile levels. | VpcResult.quantiles == [0.05, 0.50, 0.95]. | Exact match. | ☐ |
+| OQ-VPC-003 | VPC 90% PI coverage under correct model | Fit a correctly specified model. Run VPC (n_sim=500). Compute the fraction of observed median data points falling within the 90% prediction interval of the simulated median. | Approximately 90% of observed median points fall within the simulated PI. | Coverage fraction in [0.80, 1.00]. | ☐ |
+| OQ-VPC-004 | VPC detects model misspecification | Simulate data from a 2-compartment model. Fit and run VPC using a 1-compartment model. | Systematic departure of observed quantiles from simulated PI, particularly at late time points. | Coverage fraction < 0.70 for at least one quantile. | ☐ |
+| OQ-VPC-005 | VPC reproducibility with fixed seed | Run VPC twice with identical inputs and seed=42. | Results are identical. | All VpcBin values match between runs. | ☐ |
+
+### 3.11 Stepwise Covariate Modeling (SCM)
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-SCM-001 | Forward selection identifies true covariate | Generate 30-subject data where CL depends on body weight via a power model: CL_i = CL_pop * (WT_i/70)^0.75 * exp(eta_i). Run SCM forward selection with WT on CL as a candidate (center=70, power relationship). | Weight on CL is selected in the forward step. | `delta_OFV > 3.84` (chi-squared(1), alpha=0.05) AND weight is in the selected set. | ☐ |
+| OQ-SCM-002 | Forward selection rejects noise covariate | Add a random noise covariate (uncorrelated with any parameter) to the candidate set. Run forward selection. | Noise covariate is not selected. | Noise covariate does not appear in `scm_result.selected`. | ☐ |
+| OQ-SCM-003 | Backward elimination removes non-significant covariate | Force-include a noise covariate in the model (simulated by adding it in the forward step). Run backward elimination with alpha=0.01 (delta_OFV threshold = 6.63). | Noise covariate is removed in backward elimination. | Noise covariate is not in the final model AND delta_OFV < 6.63 for its removal. | ☐ |
+| OQ-SCM-004 | SCM covariate coefficient recovery | From OQ-SCM-001, compare estimated covariate coefficient to the true allometric exponent (0.75). | Coefficient estimate approximates true value. | abs(theta_cov_hat - 0.75) < 0.30. | ☐ |
+| OQ-SCM-005 | SCM final OFV improves over base | Compare final SCM model OFV to base model OFV. | Final OFV < Base OFV. | delta_OFV = base_ofv - final_ofv > 0. | ☐ |
+| OQ-SCM-006 | SCM forward trace is monotonically improving | Inspect forward_trace: each successive step should have a lower OFV. | OFV decreases with each addition. | OFV[step_k+1] <= OFV[step_k] for all k. | ☐ |
+| OQ-SCM-007 | SCM supports all relationship types | Run SCM with candidates using Power, Proportional, and Exponential relationships. | All three relationship types are evaluated without errors. | No runtime errors. Each candidate has a delta_OFV and p_value. | ☐ |
+
+### 3.12 NONMEM Dataset I/O
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-IO-001 | Parse standard NONMEM CSV | Parse the Theophylline dataset (12 subjects, 132 observations) from a NONMEM-formatted CSV file using `read_nonmem()`. | Correct number of subjects and observations extracted. | n_subjects == 12 AND n_observations == 132. | ☐ |
+| OQ-IO-002 | Required columns present | Parse a CSV with ID, TIME, DV columns. Verify successful parse. | Parse succeeds. | No error raised. | ☐ |
+| OQ-IO-003 | Missing required column detected | Parse a CSV with ID and TIME but missing DV. | Parse returns an error. | Error message contains "missing DV column". | ☐ |
+| OQ-IO-004 | EVID=0 records are observations | Parse a dataset with EVID column. Verify that EVID=0 records are treated as observations. | Observation records have `evid == 0`. | All observation records have evid == 0 and valid DV. | ☐ |
+| OQ-IO-005 | EVID=1 records are doses | Parse a dataset with EVID=1 dosing records. Verify AMT is extracted. | Dosing records have `evid == 1` and `amt > 0`. | All dosing records have correct AMT values. | ☐ |
+| OQ-IO-006 | MDV=1 observations excluded | Parse a dataset with MDV column. Verify that MDV=1 observations are flagged as missing. | MDV=1 records have `mdv == 1`. | Observations with MDV=1 are not treated as valid DV. | ☐ |
+| OQ-IO-007 | CMT column routing | Parse a dataset with CMT=1 (oral) and CMT=2 (IV) records. | CMT values are correctly parsed and assigned to records. | Each record has the correct cmt value. | ☐ |
+| OQ-IO-008 | RATE column for infusions | Parse a dataset with RATE > 0 infusion records. | Rate values are correctly extracted. Infusion duration computable as AMT/RATE. | rate > 0 for infusion records AND duration = amt / rate is finite. | ☐ |
+| OQ-IO-009 | Case-insensitive column names | Parse a CSV with headers "id,time,dv,amt" (lowercase). | Parse succeeds. Column names resolved correctly. | No error. All columns identified. | ☐ |
+| OQ-IO-010 | Comment and blank line handling | Parse a CSV containing blank lines and lines starting with `#`. | Blank and comment lines are skipped. Data rows parsed correctly. | n_observations matches expected count (excluding blank/comment lines). | ☐ |
+
+### 3.13 Artifact Export and Provenance
+
+| Req ID | Requirement | Test Case | Expected Result | Acceptance Criteria | Pass/Fail |
+|--------|-------------|-----------|-----------------|---------------------|-----------|
+| OQ-ART-001 | NlmeArtifact JSON round-trip | Fit a model, export to JSON, re-import, re-export. | Second export is byte-for-byte identical to the first. | diff(export1, export2) is empty. | ☐ |
+| OQ-ART-002 | Schema version present | Export artifact to JSON. Check `schema_version` field. | Field is present and matches expected version. | schema_version == "2.0.0". | ☐ |
+| OQ-ART-003 | RunBundle captures provenance | Export artifact with RunBundle. Verify fields: software version, git revision, timestamp, seeds. | All provenance fields are populated and non-empty. | All fields are non-null and non-empty strings. | ☐ |
+| OQ-ART-004 | Fixed effects summary complete | Check `fixed_effects` section of artifact. | Contains names, estimates, and (if computed) SE and CI. | `names.length == estimates.length` AND all estimates are finite. | ☐ |
+| OQ-ART-005 | Random effects summary complete | Check `random_effects` section. | Contains sds, covariance, and correlation matrices. | Matrices are square with correct dimension. All diagonal elements positive. | ☐ |
+
+---
+
+## 4. Performance Qualification (PQ)
+
+### 4.1 Objective
+
+Verify that the NextStat pharmacometrics module produces results consistent with established reference implementations (NONMEM, Monolix, nlmixr) when applied to published pharmacometric reference datasets. PQ tests demonstrate fitness for purpose under conditions representative of real-world clinical pharmacology analyses.
+
+### 4.2 Reference Datasets
+
+#### 4.2.1 Theophylline (1-Compartment Oral)
+
+| Property | Value |
+|----------|-------|
+| **Source** | Boeckmann, Sheiner, and Beal (1994). NONMEM Users Guide, Part V. |
+| **Subjects** | 12 |
+| **Observations** | 132 (11 per subject) |
+| **Model** | 1-compartment oral, first-order absorption |
+| **Parameters** | CL, V, Ka |
+| **Random effects** | Log-normal on CL, V, Ka |
+| **Error model** | Additive |
+| **Published reference OFV** | -378.57 (NONMEM FOCEI, additive error, NONMEM 7.5) |
+
+#### 4.2.2 Warfarin (Population PK)
+
+| Property | Value |
+|----------|-------|
+| **Source** | O'Reilly (1968). Studies on coumarin anticoagulant drugs. |
+| **Subjects** | 32 |
+| **Observations** | 251 |
+| **Model** | 1-compartment oral |
+| **Parameters** | CL, V, Ka |
+| **Random effects** | Log-normal on CL, V |
+| **Error model** | Proportional |
+| **Published reference OFV** | From NONMEM/Monolix public tutorials |
+
+### 4.3 Reference Dataset Tests
+
+| Req ID | Dataset | Method | Test Description | Acceptance Criteria | Pass/Fail |
+|--------|---------|--------|------------------|---------------------|-----------|
+| PQ-REF-001 | Theophylline | FOCE | Fit 1-compartment oral PK model using FOCE with additive error. Compare OFV to published NONMEM reference. | abs(OFV_nextstat - OFV_reference) < 5.0. | ☐ |
+| PQ-REF-002 | Theophylline | FOCE | Compare estimated CL, V, Ka to published parameter estimates. | Relative error < 20% for each parameter. | ☐ |
+| PQ-REF-003 | Theophylline | FOCE | Compare estimated omega_SD values to published estimates. | Relative error < 30% for each omega_SD. | ☐ |
+| PQ-REF-004 | Theophylline | SAEM | Fit the same model using SAEM. Compare theta estimates to FOCE estimates from PQ-REF-002. | Relative difference between SAEM and FOCE theta < 20%. | ☐ |
+| PQ-REF-005 | Theophylline | SAEM | Compare SAEM OFV to FOCE OFV. | abs(OFV_saem - OFV_foce) < 10.0. | ☐ |
+| PQ-REF-006 | Warfarin | FOCE | Fit 1-compartment oral PK model with proportional error. Compare OFV to reference. | abs(OFV_nextstat - OFV_reference) < 5.0. | ☐ |
+| PQ-REF-007 | Warfarin | FOCE | Compare estimated CL, V to published estimates. | Relative error < 20% for CL and V. | ☐ |
+| PQ-REF-008 | Warfarin | SAEM | Fit using SAEM. Compare to FOCE from PQ-REF-007. | Relative difference < 25% for each parameter. | ☐ |
+| PQ-REF-009 | Warfarin | GOF | Compute GOF diagnostics. Verify CWRES approximately N(0,1). | abs(mean(CWRES)) < 0.3 AND abs(SD(CWRES) - 1.0) < 0.3. | ☐ |
+| PQ-REF-010 | Warfarin | VPC | Run VPC (n_sim=500). Verify observed median within simulated PI. | >= 80% of observed median points within 90% PI. | ☐ |
+
+### 4.4 Cross-Validation with NONMEM
+
+Where NONMEM results are available, the following cross-validation is performed:
+
+| Req ID | Test Description | Acceptance Criteria | Pass/Fail |
+|--------|------------------|---------------------|-----------|
+| PQ-XVAL-001 | OFV comparison (Theophylline, FOCE) | abs(OFV_NS - OFV_NONMEM) <= 2.0. | ☐ |
+| PQ-XVAL-002 | OFV comparison (Warfarin, FOCE) | abs(OFV_NS - OFV_NONMEM) <= 2.0. | ☐ |
+| PQ-XVAL-003 | Individual ETA correlation | Compute Pearson correlation between NextStat individual ETAs and NONMEM ETAs for each subject. r > 0.90 for each ETA component. | ☐ |
+| PQ-XVAL-004 | IPRED correlation | Compute Pearson correlation between NextStat IPRED and NONMEM IPRED. r > 0.99. | ☐ |
+
+### 4.5 Reproducibility
+
+| Req ID | Test Description | Acceptance Criteria | Pass/Fail |
+|--------|------------------|---------------------|-----------|
+| PQ-REPR-001 | Deterministic FOCE (same input = same output) | Run FOCE on Theophylline twice. Compare all output fields. Bit-for-bit identical OFV, theta, omega, etas. | ☐ |
+| PQ-REPR-002 | Deterministic SAEM (same seed = same output) | Run SAEM on Theophylline twice with seed=12345. Compare all output fields. Bit-for-bit identical OFV, theta, omega, etas. | ☐ |
+| PQ-REPR-003 | Artifact round-trip fidelity | Export NlmeArtifact to JSON, import, re-export. JSON outputs are byte-for-byte identical. | ☐ |
+| PQ-REPR-004 | RunBundle completeness | Verify RunBundle contains: software version, git revision, rust version, target triple, OS, CPU, seeds, dataset provenance (SHA-256 hash), timestamp. All fields present and non-null. | ☐ |
+
+### 4.6 Timing Benchmarks
+
+Timing benchmarks establish a baseline for the validated configuration. They are not pass/fail acceptance criteria but are recorded for audit trail purposes.
+
+| Req ID | Operation | Dataset | Reference Hardware | Observed Time | Notes |
+|--------|-----------|---------|-------------------|---------------|-------|
+| PQ-PERF-001 | FOCE fit | Theophylline (12 subj) | ________________ | _________ s | |
+| PQ-PERF-002 | FOCE fit | Warfarin (32 subj) | ________________ | _________ s | |
+| PQ-PERF-003 | SAEM fit | Theophylline (12 subj) | ________________ | _________ s | |
+| PQ-PERF-004 | SAEM fit | Warfarin (32 subj) | ________________ | _________ s | |
+| PQ-PERF-005 | VPC (n_sim=500) | Warfarin (32 subj) | ________________ | _________ s | |
+| PQ-PERF-006 | SCM (5 candidates) | Synthetic (30 subj) | ________________ | _________ s | |
+| PQ-PERF-007 | read_nonmem parse | Theophylline CSV | ________________ | _________ ms | |
+
+---
+
+## 5. Change Control
+
+### 5.1 Version Control
+
+NextStat source code is maintained in a Git repository with the following practices:
+
+- **Semantic versioning**: MAJOR.MINOR.PATCH (e.g., 0.9.6). MAJOR changes indicate breaking API changes. MINOR changes add functionality. PATCH changes are bug fixes.
+- **Tagged releases**: Each validated version is tagged in Git (e.g., `v0.9.6`).
+- **CHANGELOG.md**: Documents all user-facing changes per release.
+- **Signed commits**: All release commits are signed.
+
+### 5.2 Regression Testing
+
+The following automated regression tests are executed on every release candidate:
+
+| Test Suite | Scope | Execution |
+|-----------|-------|-----------|
+| `cargo test --release -p ns-inference` | All Rust unit and integration tests | CI/CD pipeline, every commit |
+| Pharma benchmark suite | Warfarin, Theophylline parameter recovery | Nightly CI, every release |
+| FOCE/SAEM parity tests | Cross-method agreement | Every release |
+| Analytical gradient verification | Finite difference comparison for all PK models | Every commit |
+
+### 5.3 Re-Qualification Triggers
+
+Full or partial re-qualification is required upon:
+
+| Trigger | Re-Qualification Scope |
+|---------|----------------------|
+| New NextStat major or minor version (MAJOR or MINOR increment) | Full IQ + OQ + PQ |
+| NextStat patch version (PATCH increment, bug fixes only) | IQ + targeted OQ for affected functions |
+| New PK model type added | IQ + OQ for new model + regression OQ for existing models |
+| Estimator algorithm change (FOCE or SAEM) | Full OQ Section 3.7 or 3.8 + PQ |
+| Error model or LLOQ logic change | OQ Sections 3.4, 3.5 + targeted PQ |
+| Dependency update (numpy major version, BLAS backend change) | IQ + regression OQ |
+| Operating system or hardware change | IQ + targeted PQ (timing benchmarks) |
+| Regulatory audit finding | Scope determined by finding |
+
+### 5.4 Deviation Handling
+
+Any test case that does not meet its acceptance criteria shall be handled as follows:
+
+1. **Record**: Document the deviation in Appendix A (Test Execution Log), including:
+   - Test ID
+   - Observed result (with full numeric values)
+   - Expected result / acceptance criteria
+   - Date and time of observation
+2. **Classify** the deviation:
+   - **Critical**: Result is incorrect or could lead to incorrect regulatory decisions. Blocks validation.
+   - **Major**: Result is outside acceptance criteria but the impact on intended use is limited. Requires root cause analysis before proceeding.
+   - **Minor**: Cosmetic or documentation issue with no impact on computational results.
+3. **Investigate** root cause with documented analysis.
+4. **Resolve** via one of:
+   - Software fix (new patch release, re-qualify)
+   - Documented limitation (accepted risk with justification and mitigating controls)
+   - Test case correction (if the acceptance criteria were in error, with QA approval)
+5. **Re-execute** the failed test case after resolution.
+6. **Approve** deviation resolution via QA review signature.
+
+### 5.5 Documentation of Changes
+
+All changes to this protocol document are tracked in the Document Control table (end of document). Changes to the protocol require QA review and approval before the revised protocol is used for execution.
+
+---
+
+## 6. Glossary
+
+| Abbreviation | Definition |
+|-------------|-----------|
+| **BLQ** | Below the Limit of Quantification. An observation where the measured concentration is below the analytical method's quantification threshold. |
+| **CI** | Confidence Interval. A range of values that is expected to contain the true parameter value with a specified probability (e.g., 95%). |
+| **CMT** | Compartment number in a NONMEM-format dataset. Typically 1 = depot (oral), 2 = central (IV). |
+| **CWRES** | Conditional Weighted Residuals. Residuals computed using the FOCE approximation: (DV - PRED) / sqrt(Var_pop). Used for model diagnostic assessment. |
+| **DV** | Dependent Variable. The observed value in a NONMEM dataset (typically drug concentration). |
+| **ETA** | Random effect. Individual deviation from the population parameter, typically log-normally distributed: P_i = P_pop * exp(eta_i). |
+| **EVID** | Event Identification flag. 0 = observation, 1 = dosing event in a NONMEM-format dataset. |
+| **FOCE** | First-Order Conditional Estimation. An NLME estimation method that finds individual conditional modes of random effects and uses Laplace approximation. |
+| **FOCEI** | FOCE with Interaction. Extension of FOCE that accounts for the dependence of residual error variance on individual predictions. |
+| **GAMP 5** | Good Automated Manufacturing Practice, 5th edition. ISPE guideline for risk-based validation of computerised systems. |
+| **GOF** | Goodness of Fit. Diagnostic assessment of model adequacy through residual analysis and visual inspection. |
+| **GxP** | Good Practice. Collective term for quality guidelines including GCP, GLP, GMP. |
+| **IPRED** | Individual Predicted value. Model prediction using individual parameter estimates (population parameters adjusted by individual ETAs). |
+| **IQ** | Installation Qualification. Documented verification that software is installed correctly. |
+| **IWRES** | Individual Weighted Residuals. (DV - IPRED) / SD(IPRED). Expected to be approximately N(0,1) under correct model. |
+| **Ka** | Absorption rate constant (h^-1). Rate of drug transfer from absorption site to systemic circulation. |
+| **KS test** | Kolmogorov-Smirnov test. Non-parametric test of whether a sample comes from a specified distribution. |
+| **LLOQ** | Lower Limit of Quantification. The lowest concentration that can be reliably measured by the bioanalytical assay. |
+| **MAP** | Maximum A Posteriori. Bayesian point estimate that combines prior information with observed data. |
+| **MCMC** | Markov Chain Monte Carlo. Sampling method used in the E-step of SAEM. |
+| **MDV** | Missing Dependent Variable. Flag in NONMEM dataset: 0 = DV is valid, 1 = DV should be ignored. |
+| **MLE** | Maximum Likelihood Estimation. Method of estimating parameters by maximizing the likelihood function. |
+| **NLL** | Negative Log-Likelihood. The objective being minimized during estimation: NLL = -log L. |
+| **NLME** | Nonlinear Mixed-Effects (modeling). Statistical framework for analyzing data with both fixed and random effects in nonlinear models. |
+| **NONMEM** | Nonlinear Mixed Effects Modeling. Reference software for population PK/PD analysis (ICON plc). |
+| **OFV** | Objective Function Value. In NONMEM convention: OFV = -2 * log L. Lower values indicate better fit. |
+| **Omega** | Variance-covariance matrix of between-subject random effects in NLME models. |
+| **OQ** | Operational Qualification. Documented verification that software operates correctly within specifications. |
+| **PI** | Prediction Interval. Range expected to contain a specified fraction of future observations. |
+| **PK** | Pharmacokinetics. Study of drug absorption, distribution, metabolism, and excretion. |
+| **PQ** | Performance Qualification. Documented verification that software performs correctly under real-world conditions. |
+| **PRED** | Population Predicted value. Model prediction using population parameters only (ETAs = 0). |
+| **Q** | Intercompartmental clearance (L/h). Rate of drug transfer between central and peripheral compartments. |
+| **SAEM** | Stochastic Approximation Expectation-Maximization. NLME estimation algorithm that uses MCMC sampling and stochastic approximation. Core algorithm of Monolix. |
+| **SCM** | Stepwise Covariate Modeling. Automated procedure for identifying statistically significant covariate-parameter relationships using forward selection and backward elimination. |
+| **SD** | Standard Deviation. |
+| **SE** | Standard Error. Estimated standard deviation of a parameter estimate. |
+| **Sigma** | Residual error variance parameter. Describes within-subject observation noise. |
+| **Theta** | Fixed-effects (population) parameters in an NLME model (e.g., CL_pop, V_pop, Ka_pop). |
+| **V1** | Volume of distribution of the central compartment (L). |
+| **V2** | Volume of distribution of the peripheral compartment (L). |
+| **VPC** | Visual Predictive Check. Model diagnostic that compares observed data quantiles to simulated prediction intervals from the fitted model. |
+
+---
+
+## 7. Appendices
+
+### Appendix A: Test Execution Log Template
+
+For each test case executed, complete the following record:
+
+```
+-----------------------------------------------------------------------
+Test ID:        ________________
+Test Title:     ________________
+Executed By:    ________________
+Date/Time:      ________________
+NextStat Version: ________________
+Platform:       ________________
+
+Procedure:
+[Describe exact commands executed, input files used, and configuration]
+
+Observed Result:
+[Record full numeric output. Include OFV, parameter estimates, error
+ messages, timing, and any other quantitative results.]
+
+Expected Result / Acceptance Criteria:
+[Copy from protocol]
+
+Pass / Fail:    PASS / FAIL
+
+If FAIL -- Deviation Report:
+  Deviation ID:       DEV-____-____
+  Classification:     Critical / Major / Minor
+  Root Cause:         ________________
+  Corrective Action:  ________________
+  Re-test Date:       ________________
+  Re-test Result:     PASS / FAIL
+
+Reviewer Signature: ________________    Date: ________________
+-----------------------------------------------------------------------
+```
+
+### Appendix B: Traceability Matrix
+
+| Functional Requirement | OQ Test Case(s) | PQ Test Case(s) | Risk Level |
+|----------------------|-----------------|-----------------|------------|
+| 1-cpt oral PK concentration accuracy | OQ-PK-001, OQ-PK-007 | PQ-REF-001, PQ-REF-002 | High |
+| 2-cpt IV PK concentration accuracy | OQ-PK-002, OQ-PK-008 | -- | High |
+| 2-cpt oral PK concentration accuracy | OQ-PK-003 | -- | High |
+| PK analytical gradient correctness | OQ-PK-004, OQ-PK-005, OQ-PK-006 | -- | High |
+| Additive error model correctness | OQ-ERR-001, OQ-ERR-004, OQ-ERR-008 | PQ-REF-001 | High |
+| Proportional error model correctness | OQ-ERR-002, OQ-ERR-005, OQ-ERR-009 | PQ-REF-006 | High |
+| Combined error model correctness | OQ-ERR-003, OQ-ERR-006 | -- | High |
+| Error model input validation | OQ-ERR-007 | -- | Medium |
+| LLOQ Ignore policy | OQ-LLOQ-001 | -- | Medium |
+| LLOQ ReplaceHalf policy | OQ-LLOQ-002 | -- | Medium |
+| LLOQ Censored policy | OQ-LLOQ-003, OQ-LLOQ-004 | -- | Medium |
+| Individual MLE estimation (1-cpt) | OQ-MLE-001, OQ-MLE-004, OQ-MLE-005 | -- | High |
+| Individual MLE estimation (2-cpt IV) | OQ-MLE-002 | -- | High |
+| Individual MLE estimation (2-cpt oral) | OQ-MLE-003 | -- | High |
+| FOCE convergence | OQ-FOCE-001, OQ-FOCE-006, OQ-FOCE-012 | PQ-REF-001 | High |
+| FOCE theta recovery | OQ-FOCE-002 | PQ-REF-002, PQ-REF-007 | High |
+| FOCE omega recovery | OQ-FOCE-003, OQ-FOCE-011 | PQ-REF-003 | High |
+| FOCE sigma recovery | OQ-FOCE-004 | -- | High |
+| FOCE correlated Omega | OQ-FOCE-007, OQ-FOCE-011 | -- | High |
+| FOCE multi-error-model support | OQ-FOCE-008, OQ-FOCE-009 | PQ-REF-006 | High |
+| FOCE ETA properties | OQ-FOCE-010 | PQ-XVAL-003 | Medium |
+| SAEM convergence | OQ-SAEM-001 | PQ-REF-004 | High |
+| SAEM theta recovery | OQ-SAEM-002 | PQ-REF-004, PQ-REF-008 | High |
+| SAEM omega recovery | OQ-SAEM-003 | -- | High |
+| SAEM MCMC diagnostics | OQ-SAEM-004, OQ-SAEM-005 | -- | Medium |
+| SAEM vs FOCE parity | OQ-SAEM-006 | PQ-REF-005 | High |
+| SAEM reproducibility | OQ-SAEM-007 | PQ-REPR-002 | High |
+| GOF PRED correctness | OQ-GOF-001 | PQ-XVAL-004 | Medium |
+| GOF IPRED correctness | OQ-GOF-002, OQ-GOF-005 | PQ-XVAL-004 | Medium |
+| GOF IWRES correctness | OQ-GOF-003 | -- | Medium |
+| GOF CWRES distribution | OQ-GOF-004 | PQ-REF-009 | Medium |
+| VPC simulation correctness | OQ-VPC-001, OQ-VPC-002 | PQ-REF-010 | Medium |
+| VPC coverage under correct model | OQ-VPC-003 | PQ-REF-010 | Medium |
+| VPC misspecification detection | OQ-VPC-004 | -- | Medium |
+| VPC reproducibility | OQ-VPC-005 | -- | Medium |
+| SCM forward selection | OQ-SCM-001, OQ-SCM-002 | -- | High |
+| SCM backward elimination | OQ-SCM-003 | -- | High |
+| SCM coefficient recovery | OQ-SCM-004 | -- | High |
+| SCM OFV improvement | OQ-SCM-005, OQ-SCM-006 | -- | High |
+| SCM relationship types | OQ-SCM-007 | -- | Medium |
+| NONMEM CSV parsing | OQ-IO-001 through OQ-IO-010 | -- | High |
+| Artifact JSON round-trip | OQ-ART-001 | PQ-REPR-003 | Low |
+| Artifact provenance | OQ-ART-003 | PQ-REPR-004 | Low |
+| Deterministic execution | -- | PQ-REPR-001, PQ-REPR-002 | High |
+| Cross-validation with NONMEM | -- | PQ-XVAL-001 through PQ-XVAL-004 | High |
+
+### Appendix C: Reference Dataset Specifications
+
+#### C.1 Theophylline Dataset
+
+| Property | Value |
+|----------|-------|
+| Reference | Boeckmann AJ, Sheiner LB, Beal SL (1994). NONMEM Users Guide, Part V: Introductory Guide. NONMEM Project Group, University of California, San Francisco. |
+| Drug | Theophylline |
+| Route | Oral |
+| Subjects | 12 healthy volunteers |
+| Design | Single dose, serial sampling |
+| Observations per subject | 11 (at 0, 0.25, 0.5, 1, 2, 3.5, 5, 7, 9, 12, 24 h post-dose) |
+| Total observations | 132 |
+| Dose range | 3.10 - 5.86 mg/kg |
+| PK model | 1-compartment, first-order oral absorption |
+| Parameters | Ka (absorption rate), CL (clearance), V (volume) |
+| Covariates available | Weight, dose |
+| Dataset file | `data/theophylline.csv` (NONMEM format) |
+
+#### C.2 Warfarin Dataset
+
+| Property | Value |
+|----------|-------|
+| Reference | O'Reilly RA (1968). Studies on the optical enantiomorphs of warfarin in man. Clin Pharmacol Ther; 11:378-384. Also used in Holford NHG (2005). The visual predictive check -- superiority to standard diagnostic (Rorschach) plots. PAGE 14 Abstr 738. |
+| Drug | Warfarin |
+| Route | Oral |
+| Subjects | 32 patients |
+| Design | Sparse clinical sampling |
+| Total observations | ~251 |
+| PK model | 1-compartment, first-order oral absorption |
+| Parameters | Ka, CL, V |
+| Covariates available | Age, weight, sex |
+| Error model | Proportional |
+| Dataset file | `data/warfarin.csv` (NONMEM format) |
+
+### Appendix D: Software Version History
+
+| Version | Release Date | Pharma Module Changes | Re-Qualification Required |
+|---------|-------------|----------------------|--------------------------|
+| 0.9.4 | 2026-01 | SAEM convergence improvements, SCM/MAP added to crate | Full OQ + PQ |
+| 0.9.5 | 2026-01 | PyPI wheel fix (no algorithmic changes) | IQ only |
+| 0.9.6 | 2026-02 | Unified Python API (nlme_foce, nlme_saem, pk_vpc, pk_gof, read_nonmem), TypedDict returns | Full IQ + OQ + PQ |
+| 0.9.7-dev | 2026-02 | LAPS warmup, windowed mass adaptation (non-pharma changes) | None (pharma module unchanged) |
+
+### Appendix E: Test Execution Commands
+
+```bash
+# -----------------------------------------------------------------------
+# IQ: Installation and full test suite
+# -----------------------------------------------------------------------
+
+# Install from PyPI
+pip install nextstat==0.9.6
+
+# Verify installation
+python -c "import nextstat; print(nextstat.__version__)"
+python -c "from nextstat._core import nlme_foce, nlme_saem, pk_vpc, pk_gof, read_nonmem; print('OK')"
+
+# Source build (optional)
+cargo build --release -p ns-inference 2>&1 | tee iq_build.txt
+cargo test --release -p ns-inference 2>&1 | tee iq_test_results.txt
+
+# -----------------------------------------------------------------------
+# OQ: Pharmacometrics-specific tests
+# -----------------------------------------------------------------------
+
+# PK analytical tests
+cargo test --release -p ns-inference -- pk::tests --nocapture 2>&1 | tee oq_pk.txt
+
+# Error model tests
+cargo test --release -p ns-inference -- pk::tests::error_model --nocapture 2>&1 | tee oq_error.txt
+
+# FOCE tests
+cargo test --release -p ns-inference -- foce::tests --nocapture 2>&1 | tee oq_foce.txt
+
+# SAEM tests
+cargo test --release -p ns-inference -- saem::tests --nocapture 2>&1 | tee oq_saem.txt
+
+# VPC/GOF tests
+cargo test --release -p ns-inference -- vpc::tests --nocapture 2>&1 | tee oq_vpc.txt
+
+# SCM tests
+cargo test --release -p ns-inference -- scm::tests --nocapture 2>&1 | tee oq_scm.txt
+
+# NONMEM I/O tests
+cargo test --release -p ns-inference -- nonmem::tests --nocapture 2>&1 | tee oq_nonmem.txt
+
+# Artifact round-trip tests
+cargo test --release -p ns-inference -- artifacts::tests --nocapture 2>&1 | tee oq_artifacts.txt
+
+# Pharma benchmark suite (parameter recovery on reference datasets)
+cargo test --release -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 | tee oq_pharma.txt
+
+# -----------------------------------------------------------------------
+# PQ: Reference dataset validation
+# -----------------------------------------------------------------------
+
+# Theophylline FOCE + SAEM
+cargo test --release -p ns-inference --test pharma_benchmark -- theophylline --nocapture 2>&1 | tee pq_theo.txt
+
+# Warfarin FOCE + SAEM + VPC + GOF
+cargo test --release -p ns-inference --test pharma_benchmark -- warfarin --nocapture 2>&1 | tee pq_warf.txt
+
+# Reproducibility check (run twice, diff)
+cargo test --release -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 > pq_run1.txt
+cargo test --release -p ns-inference --test pharma_benchmark -- --nocapture 2>&1 > pq_run2.txt
+diff pq_run1.txt pq_run2.txt  # Should show no differences in numeric output
+```
+
+### Appendix F: Deviation Report Template
+
+```
+=======================================================================
+DEVIATION REPORT
+=======================================================================
+
+Deviation ID:       DEV-________-________
+Date Opened:        ____/____/________
+Reported By:        ________________________________
+
+Test Case ID:       ________________
+Test Case Title:    ________________________________
+
+OBSERVED RESULT:
+[Provide full numeric output, error messages, and screenshots if applicable]
+
+
+
+
+EXPECTED RESULT / ACCEPTANCE CRITERIA:
+[Copy verbatim from protocol]
+
+
+
+
+CLASSIFICATION:     Critical / Major / Minor
+
+IMPACT ASSESSMENT:
+[Describe impact on intended use of the software in GxP context.
+ For Critical: identify all affected analyses and regulatory submissions.
+ For Major: identify scope of impact and any interim mitigating controls.]
+
+
+
+
+ROOT CAUSE ANALYSIS:
+[Document investigation findings. Include code analysis, references to
+ source files, algorithm documentation, and any relevant literature.]
+
+
+
+
+CORRECTIVE ACTION:
+Option: Software fix    Version: ________________
+Option: Documented limitation
+Option: Test case correction (requires QA approval)
+
+[Describe corrective action in detail]
+
+
+
+
+RE-TEST RESULTS:
+Date:               ____/____/________
+Re-test Performed By: ________________________________
+Result:             PASS / FAIL
+[Attach re-test evidence]
+
+APPROVALS:
+
+Validation Lead:    ________________    Date: ________________
+QA Reviewer:        ________________    Date: ________________
+System Owner:       ________________    Date: ________________
+
+=======================================================================
+```
+
+---
+
+## Revision History
 
 | Version | Date | Author | Change Description |
 |---------|------|--------|-------------------|
 | 1.0.0 | 2026-02-12 | NextStat Team | Initial template |
+| 2.0.0 | 2026-02-21 | NextStat Team | Comprehensive rewrite: GAMP 5 Category 5 classification, expanded OQ traceability matrix (85 test cases), added error model/LLOQ/MLE/SCM/artifact OQ sections, added PQ cross-validation with NONMEM, regulatory reference updates (ICH E6(R3), EMA 2023 guideline), risk assessment matrix, deviation report template, reference dataset specifications, full traceability matrix |
+
+---
+
+**END OF DOCUMENT -- NS-VAL-001 v2.0.0**

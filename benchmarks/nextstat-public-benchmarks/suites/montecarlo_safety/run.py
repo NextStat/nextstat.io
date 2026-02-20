@@ -139,7 +139,7 @@ def main() -> int:
     ap.add_argument("--n-components", type=int, default=16)
     ap.add_argument("--n-scenarios", type=int, default=10_000_000)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--device", default="cpu", help="cpu or cuda")
+    ap.add_argument("--device", default="cpu", help="cpu, cuda, or metal")
     ap.add_argument("--chunk-size", type=int, default=0)
     ap.add_argument("--repeat", type=int, default=5, help="Timing repeats")
     ap.add_argument("--out", required=True, help="Output JSON path")

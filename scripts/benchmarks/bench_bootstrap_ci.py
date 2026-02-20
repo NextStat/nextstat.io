@@ -18,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
+from _parse_utils import parse_json_stdout
+
 
 def _find_nextstat_binary() -> str | None:
     candidates = [
@@ -56,7 +58,7 @@ def bench_nextstat_bootstrap(
         capture_output=True, text=True, check=True,
     )
     wall = time.perf_counter() - t0
-    out = json.loads(r.stdout)
+    out = parse_json_stdout(r.stdout)
     return wall, out["n_converged"], out.get("elapsed_s", wall)
 
 

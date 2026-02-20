@@ -1,0 +1,111 @@
+{
+  "out_dir": "/tmp/v100_gpu_triple_3seed_20260220T111338Z",
+  "seeds": [
+    42,
+    123,
+    777
+  ],
+  "per_seed_files": [
+    "/tmp/v100_gpu_triple_3seed_20260220T111338Z/seed_123/gpu_triple_bench.json",
+    "/tmp/v100_gpu_triple_3seed_20260220T111338Z/seed_42/gpu_triple_bench.json",
+    "/tmp/v100_gpu_triple_3seed_20260220T111338Z/seed_777/gpu_triple_bench.json"
+  ],
+  "median": {
+    "std_normal_10d": {
+      "NS_LAPS_GPU": {
+        "wall_s": 1.5505750691518188,
+        "wall_sampling": 0.24411225700000003,
+        "min_ess": 159752.77129213774,
+        "max_rhat": 1.0061922774437562,
+        "n_grad_evals": 512000.0,
+        "ess_per_grad": 0.3120171314299565,
+        "grad_per_sec": 2097395.7075821883,
+        "ess_per_s_sampling": 654423.3921532982
+      },
+      "BlackJAX_GPU": {
+        "wall_s": 14.36823577620089,
+        "wall_sampling": 0.24578830692917109,
+        "min_ess": 1770.7953941309515,
+        "max_rhat": 1.1009631471467656,
+        "n_grad_evals": 256000.0,
+        "ess_per_grad": 0.0069171695083240295,
+        "grad_per_sec": 1041546.7000786641,
+        "ess_per_s_sampling": 7204.555075279649
+      },
+      "NS_CPU_MAMS": {
+        "wall_s": 0.019390862435102463,
+        "wall_sampling": 0.019390862435102463,
+        "min_ess": 1723.8163042188548,
+        "max_rhat": 1.0043292354148647,
+        "n_grad_evals": 6025.0,
+        "ess_per_grad": 0.2834556584248024,
+        "grad_per_sec": 302107.9294654694,
+        "ess_per_s_sampling": 88898.38242049012
+      }
+    },
+    "eight_schools": {
+      "NS_LAPS_GPU": {
+        "wall_s": 1.4052898054942489,
+        "wall_sampling": 0.23536668799999996,
+        "min_ess": 79005.80800660132,
+        "max_rhat": 1.0064213130205184,
+        "n_grad_evals": 768000.0,
+        "ess_per_grad": 0.1028721458419288,
+        "grad_per_sec": 3262993.614457455,
+        "ess_per_s_sampling": 335671.1549877497
+      },
+      "BlackJAX_GPU": {
+        "wall_s": 11.820208210498095,
+        "wall_sampling": 0.4065379975363612,
+        "min_ess": 28019.636703267603,
+        "max_rhat": 1.0079868759022037,
+        "n_grad_evals": 512000.0,
+        "ess_per_grad": 0.040104368343848014,
+        "grad_per_sec": 1476154.8809196772,
+        "ess_per_s_sampling": 68922.55305301811
+      },
+      "NS_CPU_MAMS": {
+        "wall_s": 0.018570994026958942,
+        "wall_sampling": 0.018570994026958942,
+        "min_ess": 1683.6470610160811,
+        "max_rhat": 1.0103100921942276,
+        "n_grad_evals": 12288.0,
+        "ess_per_grad": 0.16008814880822297,
+        "grad_per_sec": 661913.1331383501,
+        "ess_per_s_sampling": 90660.03998342696
+      }
+    },
+    "glm_logistic": {
+      "NS_LAPS_GPU": {
+        "wall_s": 200.5875847088173,
+        "wall_sampling": 9.207763544000017,
+        "min_ess": 93696.1017436776,
+        "max_rhat": 1.0096927480697007,
+        "n_grad_evals": 768000.0,
+        "ess_per_grad": 0.12200013247874687,
+        "grad_per_sec": 83407.87600920159,
+        "ess_per_s_sampling": 10175.771922893487
+      },
+      "BlackJAX_GPU": {
+        "wall_s": 92.07268274296075,
+        "wall_sampling": 78.2392103979364,
+        "min_ess": 19582.594114142703,
+        "max_rhat": 1.0121855226450518,
+        "n_grad_evals": 6656000.0,
+        "ess_per_grad": 0.0026377416640817218,
+        "grad_per_sec": 85721.37419944034,
+        "ess_per_s_sampling": 250.29130553008756
+      },
+      "NS_CPU_MAMS": {
+        "wall_s": 16.646275581791997,
+        "wall_sampling": 16.646275581791997,
+        "min_ess": 1193.1249481309937,
+        "max_rhat": 1.0085190254493823,
+        "n_grad_evals": 8000.0,
+        "ess_per_grad": 0.14914061851637422,
+        "grad_per_sec": 480.5879826206018,
+        "ess_per_s_sampling": 71.67518897957305
+      }
+    }
+  }
+}

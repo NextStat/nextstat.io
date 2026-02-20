@@ -27,6 +27,10 @@ pub struct Chain {
     pub step_size: f64,
     /// Final adapted mass matrix diagonal.
     pub mass_diag: Vec<f64>,
+    /// Full inverse mass matrix (row-major, dim×dim). Only populated for dense metric.
+    pub inv_mass_matrix: Option<Vec<f64>>,
+    /// Metric type used: "diagonal" or "dense".
+    pub metric_type_name: String,
 }
 
 /// Result of a multi-chain NUTS sampling run.

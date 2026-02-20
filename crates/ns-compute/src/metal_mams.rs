@@ -38,6 +38,7 @@ struct MamsArgs {
     n_obs: i32,
     n_feat: i32,
     riemannian: i32,
+    divergence_threshold: f32,
 }
 
 /// Metal accelerator for MAMS transitions.
@@ -54,6 +55,7 @@ pub struct MetalMamsAccelerator {
     pipeline_transition: ComputePipelineState,
     pipeline_fused: ComputePipelineState,
     pipeline_simdgroup: Option<ComputePipelineState>,
+    pipeline_simdgroup_hi: Option<ComputePipelineState>,
 
     // Per-chain state [n_chains × dim] — f32
     buf_x: Buffer,
@@ -90,6 +92,9 @@ pub struct MetalMamsAccelerator {
 
     // Whether this model uses Riemannian (position-dependent metric) dynamics.
     riemannian: bool,
+
+    // Energy error threshold for divergence detection (default: 1000.0).
+    divergence_threshold: f32,
 
     // CPU scratch buffer for f64→f32 conversion (reused)
     scratch_f32: Vec<f32>,
@@ -130,6 +135,13 @@ impl MetalMamsAccelerator {
             "mams_transition_simdgroup",
         )
         .ok();
+        let pipeline_simdgroup_hi = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "mams",
+            MSL_SRC,
+            "mams_transition_simdgroup_hi",
+        )
+        .ok();
 
         let opts = MTLResourceOptions::StorageModeShared;
         let total = n_chains * dim;
@@ -166,8 +178,8 @@ impl MetalMamsAccelerator {
         let buf_accum_accepted = device.new_buffer(mem::size_of::<i32>().max(4) as u64, opts);
         let buf_accum_energy = device.new_buffer(mem::size_of::<f32>().max(4) as u64, opts);
 
-        // Extract data dimensions for simdgroup kernel (GLM logistic)
-        let (n_obs, n_feat) = if model_id == 3 && model_data.len() >= 2 {
+        // Extract data dimensions for simdgroup kernel (GLM models)
+        let (n_obs, n_feat) = if [3, 6, 7, 8, 9].contains(&model_id) && model_data.len() >= 2 {
             (model_data[0] as usize, model_data[1] as usize)
         } else {
             (0, 0)
@@ -189,6 +201,7 @@ impl MetalMamsAccelerator {
             pipeline_transition,
             pipeline_fused,
             pipeline_simdgroup,
+            pipeline_simdgroup_hi,
             buf_x,
             buf_u,
             buf_potential,
@@ -212,6 +225,7 @@ impl MetalMamsAccelerator {
             n_obs,
             n_feat,
             riemannian,
+            divergence_threshold: 1000.0f32,
             scratch_f32,
         })
     }
@@ -333,6 +347,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
 
         let cmd = self.queue.new_command_buffer();
@@ -413,6 +428,7 @@ impl MetalMamsAccelerator {
                 n_obs: self.n_obs as i32,
                 n_feat: self.n_feat as i32,
                 riemannian: if self.riemannian { 1 } else { 0 },
+                divergence_threshold: self.divergence_threshold,
             };
 
             let enc = cmd.new_compute_command_encoder();
@@ -454,6 +470,20 @@ impl MetalMamsAccelerator {
         true
     }
 
+    /// Whether the high-dim simdgroup kernel (dim ≤ 96) is available and beneficial.
+    pub fn supports_warp_hi(&self) -> bool {
+        if self.pipeline_simdgroup_hi.is_none() || self.n_obs < 1024 {
+            return false;
+        }
+        if self.dim <= 32 || self.dim > 96 {
+            return false;
+        }
+        if self.n_feat == 0 {
+            return false;
+        }
+        true
+    }
+
     /// Run one MAMS transition using the simdgroup-cooperative kernel.
     pub fn transition_simdgroup(
         &mut self,
@@ -481,6 +511,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
 
         // Threadgroup memory for GLM data: X_col[p*n] + y[n] in f32
@@ -563,6 +594,142 @@ impl MetalMamsAccelerator {
                 n_obs: self.n_obs as i32,
                 n_feat: self.n_feat as i32,
                 riemannian: if self.riemannian { 1 } else { 0 },
+                divergence_threshold: self.divergence_threshold,
+            };
+
+            let enc = cmd.new_compute_command_encoder();
+            enc.set_compute_pipeline_state(&pipeline);
+            self.set_chain_buffers(enc);
+            enc.set_bytes(
+                13,
+                mem::size_of::<MamsArgs>() as u64,
+                &args as *const MamsArgs as *const std::ffi::c_void,
+            );
+            if tg_mem_bytes > 0 {
+                enc.set_threadgroup_memory_length(0, tg_mem_bytes as u64);
+            }
+
+            enc.dispatch_threads(grid, tg);
+            enc.end_encoding();
+
+            self.iteration += 1;
+        }
+
+        cmd.commit();
+        cmd.wait_until_completed();
+
+        self.download_batch_result(batch_size)
+    }
+
+    /// Run one MAMS transition using the high-dim simdgroup kernel (dim ≤ 96).
+    pub fn transition_simdgroup_hi(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        enable_mh: bool,
+    ) -> ns_core::Result<()> {
+        let pipeline = self
+            .pipeline_simdgroup_hi
+            .as_ref()
+            .ok_or_else(|| metal_err("simdgroup_hi kernel not available"))?;
+
+        let args = MamsArgs {
+            l: l as f32,
+            max_leapfrog: max_leapfrog as i32,
+            dim: self.dim as i32,
+            enable_mh: if enable_mh { 1 } else { 0 },
+            model_id: self.model_id,
+            seed_lo: (self.seed & 0xFFFF_FFFF) as u32,
+            seed_hi: (self.seed >> 32) as u32,
+            iteration: self.iteration,
+            n_chains: self.n_chains as i32,
+            store_idx: 0,
+            n_report: 0,
+            n_obs: self.n_obs as i32,
+            n_feat: self.n_feat as i32,
+            riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
+        };
+
+        let tg_mem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
+            (self.n_obs * self.n_feat + self.n_obs) * mem::size_of::<f32>()
+        } else {
+            0
+        };
+
+        let total_threads = self.n_chains as u64 * 32;
+        let grid = MTLSize::new(total_threads, 1, 1);
+        let tg = MTLSize::new(32, 1, 1);
+
+        let cmd = self.queue.new_command_buffer();
+        let enc = cmd.new_compute_command_encoder();
+
+        enc.set_compute_pipeline_state(pipeline);
+        self.set_chain_buffers(enc);
+        enc.set_bytes(
+            13,
+            mem::size_of::<MamsArgs>() as u64,
+            &args as *const MamsArgs as *const std::ffi::c_void,
+        );
+        if tg_mem_bytes > 0 {
+            enc.set_threadgroup_memory_length(0, tg_mem_bytes as u64);
+        }
+
+        enc.dispatch_threads(grid, tg);
+        enc.end_encoding();
+
+        cmd.commit();
+        cmd.wait_until_completed();
+
+        self.iteration += 1;
+        Ok(())
+    }
+
+    /// Run `batch_size` MAMS transitions using the high-dim simdgroup kernel.
+    pub fn transition_batch_simdgroup_hi(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        batch_size: usize,
+    ) -> ns_core::Result<BatchResult> {
+        let pipeline = self
+            .pipeline_simdgroup_hi
+            .as_ref()
+            .ok_or_else(|| metal_err("simdgroup_hi kernel not available"))?
+            .clone();
+
+        assert!(batch_size <= self.batch_stride, "batch_size exceeds configured batch_stride");
+        assert!(self.n_report > 0, "call configure_batch() first");
+
+        let tg_mem_bytes = if self.n_obs > 0 && self.n_feat > 0 {
+            (self.n_obs * self.n_feat + self.n_obs) * mem::size_of::<f32>()
+        } else {
+            0
+        };
+
+        let total_threads = self.n_chains as u64 * 32;
+        let grid = MTLSize::new(total_threads, 1, 1);
+        let tg = MTLSize::new(32, 1, 1);
+
+        let cmd = self.queue.new_command_buffer();
+
+        for s in 0..batch_size {
+            let args = MamsArgs {
+                l: l as f32,
+                max_leapfrog: max_leapfrog as i32,
+                dim: self.dim as i32,
+                enable_mh: 1,
+                model_id: self.model_id,
+                seed_lo: (self.seed & 0xFFFF_FFFF) as u32,
+                seed_hi: (self.seed >> 32) as u32,
+                iteration: self.iteration,
+                n_chains: self.n_chains as i32,
+                store_idx: s as i32,
+                n_report: self.n_report as i32,
+                n_obs: self.n_obs as i32,
+                n_feat: self.n_feat as i32,
+                riemannian: if self.riemannian { 1 } else { 0 },
+                divergence_threshold: self.divergence_threshold,
             };
 
             let enc = cmd.new_compute_command_encoder();
@@ -617,6 +784,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
         let n_transitions_arg = n_transitions as i32;
 
@@ -660,6 +828,8 @@ impl MetalMamsAccelerator {
     ) -> ns_core::Result<()> {
         if self.supports_warp() {
             self.transition_simdgroup(l, max_leapfrog, enable_mh)
+        } else if self.supports_warp_hi() {
+            self.transition_simdgroup_hi(l, max_leapfrog, enable_mh)
         } else {
             self.transition(l, max_leapfrog, enable_mh)
         }
@@ -677,6 +847,8 @@ impl MetalMamsAccelerator {
             self.transition_fused(l, max_leapfrog, batch_size)
         } else if self.supports_warp() {
             self.transition_batch_simdgroup(l, max_leapfrog, batch_size)
+        } else if self.supports_warp_hi() {
+            self.transition_batch_simdgroup_hi(l, max_leapfrog, batch_size)
         } else {
             self.transition_batch(l, max_leapfrog, batch_size)
         }
@@ -862,12 +1034,20 @@ impl MamsAccelerator for MetalMamsAccelerator {
         self.supports_warp()
     }
 
+    fn supports_warp_hi(&self) -> bool {
+        self.supports_warp_hi()
+    }
+
     fn n_chains(&self) -> usize {
         self.n_chains()
     }
 
     fn dim(&self) -> usize {
         self.dim()
+    }
+
+    fn set_divergence_threshold(&mut self, threshold: f64) {
+        self.divergence_threshold = threshold as f32;
     }
 }
 

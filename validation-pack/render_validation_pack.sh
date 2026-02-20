@@ -26,6 +26,7 @@ Options:
   --non-deterministic      Allow timestamps/timings in outputs
   --nuts-quality           Also run NUTS quality report (can be slower)
   --root-search-dir PATH   Auto-discover ROOT cases by scanning for combination.xml under PATH
+  --skip-pharma-validation Skip pharma IQ/OQ/PQ validation runner
   -h, --help               Show this help
 
 Examples:
@@ -60,6 +61,7 @@ openssl_key=""
 openssl_pub=""
 run_nuts_quality=0
 root_search_dir=""
+skip_pharma_validation=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -122,6 +124,10 @@ while [[ $# -gt 0 ]]; do
     --root-search-dir)
       root_search_dir="$2"
       shift 2
+      ;;
+    --skip-pharma-validation)
+      skip_pharma_validation=1
+      shift 1
       ;;
     -h|--help)
       usage
@@ -233,6 +239,27 @@ else
   fi
 fi
 
+pharma_validation_json="$out_dir/pharma_validation.json"
+if [[ "$skip_pharma_validation" == "0" ]]; then
+  pharma_runner="$repo_root/tests/pharma_validation/runner.py"
+  if [[ -f "$pharma_runner" ]]; then
+    echo "Running pharma IQ/OQ/PQ validation..." >&2
+    pharma_cmd=("$py" "$pharma_runner" --out "$pharma_validation_json")
+    if [[ "$deterministic" == "1" ]]; then
+      pharma_cmd+=(--deterministic)
+    fi
+    set +e
+    PYTHONPATH="$repo_root/tests:$repo_root/bindings/ns-py/python${PYTHONPATH:+:$PYTHONPATH}" "${pharma_cmd[@]}"
+    pharma_rc=$?
+    set -e
+    if [[ "$pharma_rc" != "0" ]]; then
+      echo "Pharma validation runner exited non-zero (rc=$pharma_rc). Continuing." >&2
+    fi
+  else
+    echo "Pharma validation runner not found: $pharma_runner (skipping)" >&2
+  fi
+fi
+
 schema_src="$repo_root/docs/schemas/validation/validation_report_v1.schema.json"
 if [[ -f "$schema_src" ]]; then
   cp "$schema_src" "$out_dir/validation_report_v1.schema.json"
@@ -275,6 +302,9 @@ if [[ "$render_pdf" == "1" ]]; then
 fi
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   manifest_files+=("validation_report_v1.schema.json")
+fi
+if [[ -f "$pharma_validation_json" ]]; then
+  manifest_files+=("pharma_validation.json")
 fi
 
 "$py" - "$out_dir" "$deterministic" "${manifest_files[@]}" >"$manifest_json" <<'PY'
@@ -373,6 +403,9 @@ if [[ -n "$openssl_key" ]]; then
 fi
 if [[ -f "$out_dir/validation_report_v1.schema.json" ]]; then
   echo "  $out_dir/validation_report_v1.schema.json" >&2
+fi
+if [[ -f "$pharma_validation_json" ]]; then
+  echo "  $pharma_validation_json" >&2
 fi
 
 if [[ -n "${apex2_rc:-}" && "$apex2_rc" != "0" ]]; then

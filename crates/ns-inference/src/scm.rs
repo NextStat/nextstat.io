@@ -1024,4 +1024,412 @@ mod tests {
         assert!((c1 - c_expected).abs() < 1e-10, "conc: {c1} vs expected {c_expected}");
         assert!((c1 - c0).abs() > 0.01, "covariate should change concentration");
     }
+
+    // -----------------------------------------------------------------------
+    // Deterministic reference tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: generate synthetic 1-cpt oral data with optional weight effect on CL.
+    fn generate_pk_data(
+        n_subjects: usize,
+        times_per: &[f64],
+        cl_pop: f64,
+        v_pop: f64,
+        ka_pop: f64,
+        dose: f64,
+        bioav: f64,
+        sigma: f64,
+        omega_sd: f64,
+        weights: &[f64],
+        wt_center: f64,
+        wt_exponent: f64, // 0.0 = no weight effect
+        seed: u64,
+    ) -> (Vec<f64>, Vec<f64>, Vec<usize>) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let eta_dist = RandNormal::new(0.0, omega_sd).unwrap();
+        let noise = RandNormal::new(0.0, sigma).unwrap();
+
+        let mut times = Vec::new();
+        let mut y = Vec::new();
+        let mut subject_idx = Vec::new();
+
+        for sid in 0..n_subjects {
+            let eta_cl: f64 = eta_dist.sample(&mut rng);
+            let eta_v: f64 = eta_dist.sample(&mut rng);
+            let eta_ka: f64 = eta_dist.sample(&mut rng);
+
+            let wt_effect = if wt_exponent.abs() > 1e-12 {
+                (weights[sid] / wt_center).powf(wt_exponent)
+            } else {
+                1.0
+            };
+            let cl_i = cl_pop * wt_effect * eta_cl.exp();
+            let v_i = v_pop * eta_v.exp();
+            let ka_i = ka_pop * eta_ka.exp();
+
+            for &t in times_per {
+                let c = pk::conc_oral(dose, bioav, cl_i, v_i, ka_i, t);
+                times.push(t);
+                y.push((c + noise.sample(&mut rng)).max(0.0));
+                subject_idx.push(sid);
+            }
+        }
+        (times, y, subject_idx)
+    }
+
+    #[test]
+    fn scm_deterministic_forward_selection() {
+        // Synthetic data with a TRUE weight effect on CL (exponent = 0.75).
+        // With 40 subjects, wide weight range, and moderate IIV, forward selection
+        // must select WT_on_CL.
+        let n_subjects: usize = 40;
+        let times_per = [0.5, 1.0, 2.0, 4.0, 8.0, 12.0];
+        let weights: Vec<f64> =
+            (0..n_subjects).map(|i| 40.0 + 60.0 * i as f64 / (n_subjects - 1) as f64).collect();
+        let wt_center = 70.0;
+
+        let (times, y, subject_idx) = generate_pk_data(
+            n_subjects,
+            &times_per,
+            1.2,   // cl_pop
+            15.0,  // v_pop
+            2.0,   // ka_pop
+            100.0, // dose
+            1.0,   // bioav
+            0.04,  // sigma (low noise)
+            0.12,  // omega_sd (moderate IIV)
+            &weights,
+            wt_center,
+            0.75, // true wt exponent
+            77,   // seed (matches known-good configuration)
+        );
+
+        let candidates = vec![CovariateCandidate {
+            name: "WT_on_CL".to_string(),
+            param_index: 0,
+            values: weights,
+            center: wt_center,
+            relationship: CovariateRelationship::Power,
+        }];
+
+        let omega = OmegaMatrix::from_diagonal(&[0.3, 0.3, 0.3]).unwrap();
+        let scm = ScmEstimator::with_defaults();
+        let result = scm
+            .run_1cpt_oral(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                100.0,
+                1.0,
+                ErrorModel::Additive(0.05),
+                &[1.0, 10.0, 1.5],
+                &omega,
+                &candidates,
+            )
+            .unwrap();
+
+        // Forward selection should select WT_on_CL.
+        assert!(
+            !result.forward_trace.is_empty(),
+            "forward trace should not be empty when a true effect exists"
+        );
+        assert!(
+            result.forward_trace[0].name == "WT_on_CL",
+            "first forward step should be WT_on_CL, got '{}'",
+            result.forward_trace[0].name
+        );
+        assert!(
+            result.forward_trace[0].delta_ofv < 0.0,
+            "delta_OFV should be negative (improvement), got {}",
+            result.forward_trace[0].delta_ofv
+        );
+        assert!(
+            result.forward_trace[0].p_value < 0.05,
+            "p-value should be < 0.05, got {}",
+            result.forward_trace[0].p_value
+        );
+        // Should remain in selected after backward elimination.
+        assert!(
+            result.selected.iter().any(|s| s.name == "WT_on_CL"),
+            "WT_on_CL should be in final selected set"
+        );
+        assert!(result.ofv < result.base_ofv, "final OFV should improve over base");
+    }
+
+    #[test]
+    fn scm_deterministic_backward_elimination() {
+        // Use 12 subjects, small IIV, and a RANDOM (non-significant) covariate.
+        // Forward might accidentally add it with a liberal threshold, but backward
+        // should remove it with the stricter threshold.
+        //
+        // We configure a very liberal forward threshold (alpha = 0.50) so the
+        // random covariate has a decent chance of sneaking in, then verify that
+        // backward elimination (alpha = 0.01) removes it.
+        let n_subjects: usize = 12;
+        let times_per = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
+
+        // No true covariate effect — data generated WITHOUT weight scaling.
+        let weights: Vec<f64> =
+            (0..n_subjects).map(|i| 50.0 + 30.0 * i as f64 / (n_subjects - 1) as f64).collect();
+
+        let (times, y, subject_idx) = generate_pk_data(
+            n_subjects,
+            &times_per,
+            1.2,
+            15.0,
+            2.0,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            &weights,
+            70.0,
+            0.0, // NO weight effect
+            555,
+        );
+
+        let candidates = vec![CovariateCandidate {
+            name: "NOISE_on_CL".to_string(),
+            param_index: 0,
+            values: weights,
+            center: 70.0,
+            relationship: CovariateRelationship::Power,
+        }];
+
+        let omega = OmegaMatrix::from_diagonal(&[0.3, 0.3, 0.3]).unwrap();
+
+        // Very liberal forward, strict backward.
+        let config = ScmConfig {
+            forward_alpha: 0.50, // delta_OFV > ~0.45
+            backward_alpha: 0.01,
+            foce: FoceConfig::default(),
+        };
+        let scm = ScmEstimator::new(config);
+        let result = scm
+            .run_1cpt_oral(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                100.0,
+                1.0,
+                ErrorModel::Additive(0.05),
+                &[1.0, 10.0, 1.5],
+                &omega,
+                &candidates,
+            )
+            .unwrap();
+
+        // If forward added the noise covariate, backward should have removed it.
+        // Either way, the final selected set should be empty for a noise covariate.
+        assert!(
+            result.selected.is_empty(),
+            "backward elimination should remove non-significant covariate; selected = {:?}",
+            result.selected.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(result.ofv.is_finite());
+    }
+
+    #[test]
+    fn scm_no_covariates_selected() {
+        // All covariates are pure noise — nothing should be selected.
+        let n_subjects: usize = 15;
+        let times_per = [0.5, 1.0, 2.0, 4.0, 8.0];
+
+        // Generate data with NO covariate effects.
+        let noise_cov1: Vec<f64> =
+            (0..n_subjects).map(|i| 60.0 + 20.0 * (i as f64 / n_subjects as f64)).collect();
+        let noise_cov2: Vec<f64> =
+            (0..n_subjects).map(|i| 30.0 + 10.0 * ((n_subjects - i) as f64 / n_subjects as f64)).collect();
+
+        let (times, y, subject_idx) = generate_pk_data(
+            n_subjects,
+            &times_per,
+            1.2,
+            15.0,
+            2.0,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            &noise_cov1, // not used in data generation (exponent = 0)
+            70.0,
+            0.0,
+            999,
+        );
+
+        let candidates = vec![
+            CovariateCandidate {
+                name: "NOISE1_on_CL".to_string(),
+                param_index: 0,
+                values: noise_cov1,
+                center: 70.0,
+                relationship: CovariateRelationship::Power,
+            },
+            CovariateCandidate {
+                name: "NOISE2_on_V".to_string(),
+                param_index: 1,
+                values: noise_cov2,
+                center: 35.0,
+                relationship: CovariateRelationship::Exponential,
+            },
+        ];
+
+        let omega = OmegaMatrix::from_diagonal(&[0.3, 0.3, 0.3]).unwrap();
+        let scm = ScmEstimator::with_defaults();
+        let result = scm
+            .run_1cpt_oral(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                100.0,
+                1.0,
+                ErrorModel::Additive(0.05),
+                &[1.0, 10.0, 1.5],
+                &omega,
+                &candidates,
+            )
+            .unwrap();
+
+        assert!(
+            result.selected.is_empty(),
+            "no covariates should be selected when all are noise; got {:?}",
+            result.selected.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(result.ofv.is_finite());
+        assert!(result.base_ofv.is_finite());
+        // OFV should not change much (no covariates added).
+        assert!(
+            (result.ofv - result.base_ofv).abs() < 1e-6,
+            "OFV should equal base when no covariates selected: {} vs {}",
+            result.ofv,
+            result.base_ofv
+        );
+    }
+
+    #[test]
+    fn scm_multiple_covariates() {
+        // Two TRUE covariate effects:
+        //   1. Weight on CL (power, exponent = 0.75) — strong
+        //   2. Weight on V (power, exponent = 1.0) — moderate (isometric)
+        // Plus one noise covariate (random values on Ka).
+        // Expected: WT_on_CL selected first (strongest), then WT_on_V.
+        // NOISE_on_Ka should NOT be selected.
+        let n_subjects: usize = 40;
+        let times_per = [0.5, 1.0, 2.0, 4.0, 8.0, 12.0];
+        let weights: Vec<f64> =
+            (0..n_subjects).map(|i| 40.0 + 60.0 * i as f64 / (n_subjects - 1) as f64).collect();
+        let wt_center = 70.0;
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(2024);
+        let eta_dist = RandNormal::new(0.0, 0.12).unwrap();
+        let noise_dist = RandNormal::new(0.0, 0.04).unwrap();
+
+        let mut times = Vec::new();
+        let mut y = Vec::new();
+        let mut subject_idx = Vec::new();
+
+        for sid in 0..n_subjects {
+            let eta_cl: f64 = eta_dist.sample(&mut rng);
+            let eta_v: f64 = eta_dist.sample(&mut rng);
+            let eta_ka: f64 = eta_dist.sample(&mut rng);
+
+            // CL has weight effect (power 0.75)
+            let cl_i = 1.2 * (weights[sid] / wt_center).powf(0.75) * eta_cl.exp();
+            // V has weight effect (power 1.0, isometric)
+            let v_i = 15.0 * (weights[sid] / wt_center).powf(1.0) * eta_v.exp();
+            let ka_i = 2.0 * eta_ka.exp();
+
+            for &t in &times_per {
+                let c = pk::conc_oral(100.0, 1.0, cl_i, v_i, ka_i, t);
+                times.push(t);
+                y.push((c + noise_dist.sample(&mut rng)).max(0.0));
+                subject_idx.push(sid);
+            }
+        }
+
+        // Noise covariate: random values, no relationship to any PK parameter.
+        let noise_vals: Vec<f64> = {
+            let mut rng2 = rand::rngs::StdRng::seed_from_u64(7777);
+            let d = RandNormal::new(50.0, 10.0).unwrap();
+            (0..n_subjects).map(|_| d.sample(&mut rng2)).collect()
+        };
+
+        let candidates = vec![
+            CovariateCandidate {
+                name: "WT_on_CL".to_string(),
+                param_index: 0,
+                values: weights.clone(),
+                center: wt_center,
+                relationship: CovariateRelationship::Power,
+            },
+            CovariateCandidate {
+                name: "WT_on_V".to_string(),
+                param_index: 1,
+                values: weights,
+                center: wt_center,
+                relationship: CovariateRelationship::Power,
+            },
+            CovariateCandidate {
+                name: "NOISE_on_Ka".to_string(),
+                param_index: 2,
+                values: noise_vals,
+                center: 50.0,
+                relationship: CovariateRelationship::Power,
+            },
+        ];
+
+        let omega = OmegaMatrix::from_diagonal(&[0.25, 0.25, 0.25]).unwrap();
+        let scm = ScmEstimator::with_defaults();
+        let result = scm
+            .run_1cpt_oral(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                100.0,
+                1.0,
+                ErrorModel::Additive(0.04),
+                &[1.0, 10.0, 1.5],
+                &omega,
+                &candidates,
+            )
+            .unwrap();
+
+        // WT_on_CL should be selected.
+        assert!(
+            result.selected.iter().any(|s| s.name == "WT_on_CL"),
+            "WT_on_CL should be selected; selected = {:?}",
+            result.selected.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // NOISE_on_Ka should NOT be selected.
+        assert!(
+            !result.selected.iter().any(|s| s.name == "NOISE_on_Ka"),
+            "NOISE_on_Ka should not be selected; selected = {:?}",
+            result.selected.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // Forward trace should show WT_on_CL as the first addition
+        // (it has the strongest true effect).
+        assert!(
+            !result.forward_trace.is_empty(),
+            "forward trace should not be empty"
+        );
+        assert_eq!(
+            result.forward_trace[0].name, "WT_on_CL",
+            "WT_on_CL should be selected first (strongest effect); got '{}'",
+            result.forward_trace[0].name
+        );
+
+        // Final OFV should be better than base.
+        assert!(
+            result.ofv < result.base_ofv,
+            "final OFV {} should be < base OFV {}",
+            result.ofv,
+            result.base_ofv
+        );
+    }
 }

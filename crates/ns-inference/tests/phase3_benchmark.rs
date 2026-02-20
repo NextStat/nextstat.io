@@ -65,6 +65,7 @@ fn benchmark_saem_warfarin() {
 
     let (times, y, subj) =
         make_warfarin_data(n_subjects, n_obs, &theta_true, &omega_sds, sigma, dose, 42);
+    let doses = vec![dose; n_subjects];
 
     let config = SaemConfig { n_burn: 200, n_iter: 100, seed: 42, ..Default::default() };
     let estimator = SaemEstimator::new(config);
@@ -75,7 +76,7 @@ fn benchmark_saem_warfarin() {
             &y,
             &subj,
             n_subjects,
-            dose,
+            &doses,
             1.0,
             ErrorModel::Additive(sigma),
             &theta_true,
@@ -116,6 +117,7 @@ fn benchmark_saem_vs_foce_parity() {
 
     let (times, y, subj) =
         make_warfarin_data(n_subjects, n_obs, &theta_true, &omega_sds, sigma, dose, 99);
+    let doses = vec![dose; n_subjects];
 
     // FOCE
     let foce = ns_inference::foce::FoceEstimator::focei();
@@ -125,7 +127,7 @@ fn benchmark_saem_vs_foce_parity() {
             &y,
             &subj,
             n_subjects,
-            dose,
+            &doses,
             1.0,
             ErrorModel::Additive(sigma),
             &theta_true,
@@ -142,7 +144,7 @@ fn benchmark_saem_vs_foce_parity() {
             &y,
             &subj,
             n_subjects,
-            dose,
+            &doses,
             1.0,
             ErrorModel::Additive(sigma),
             &theta_true,

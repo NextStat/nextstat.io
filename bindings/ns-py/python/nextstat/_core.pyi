@@ -26,13 +26,16 @@ class QualitySummary(TypedDict):
     min_ess_tail: float
     min_ebfmi: float
 
-class SampleStats(TypedDict):
+class SampleStats(TypedDict, total=False):
     diverging: List[List[bool]]
     tree_depth: List[List[int]]
     accept_prob: List[List[float]]
     energy: List[List[float]]
     step_size: List[float]
     n_leapfrog: List[List[int]]
+    metric_type: str
+    mass_diag: List[float]
+    inv_mass_matrix: List[float]
 
 class Diagnostics(TypedDict):
     r_hat: Dict[str, float]
@@ -471,6 +474,25 @@ class FunnelModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class FunnelNcpModel:
+    """Neal's funnel in non-centered parameterization (NCP).
+
+    Parameters are (v, z_1, ..., z_{d-1}) where v ~ N(0,9), z_i ~ N(0,1).
+    Original parameters: x_i = exp(v/2) * z_i.
+    """
+
+    def __init__(self, dim: int = 10) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class StdNormalModel:
     def __init__(self, dim: int = ...) -> None: ...
 
@@ -788,6 +810,53 @@ class TwoCompartmentOralPkModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class ThreeCompartmentIvPkModel:
+    def __init__(
+        self,
+        times: List[float],
+        y: List[float],
+        *,
+        dose: float,
+        error_model: str = "additive",
+        sigma: float = 0.05,
+        sigma_add: Optional[float] = None,
+        lloq: Optional[float] = None,
+        lloq_policy: str = "censored",
+    ) -> None: ...
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+    def predict(self, params: List[float]) -> List[float]: ...
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
+class ThreeCompartmentOralPkModel:
+    def __init__(
+        self,
+        times: List[float],
+        y: List[float],
+        *,
+        dose: float,
+        bioavailability: float = 1.0,
+        error_model: str = "additive",
+        sigma: float = 0.05,
+        sigma_add: Optional[float] = None,
+        lloq: Optional[float] = None,
+        lloq_policy: str = "censored",
+    ) -> None: ...
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+    def predict(self, params: List[float]) -> List[float]: ...
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class NegativeBinomialRegressionModel:
     def __init__(
         self,
@@ -987,6 +1056,8 @@ class Posterior:
             OneCompartmentOralPkNlmeModel,
             TwoCompartmentIvPkModel,
             TwoCompartmentOralPkModel,
+            ThreeCompartmentIvPkModel,
+            ThreeCompartmentOralPkModel,
             GevModel,
             GpdModel,
         ],
@@ -1039,6 +1110,8 @@ class MaximumLikelihoodEstimator:
             OneCompartmentOralPkNlmeModel,
             TwoCompartmentIvPkModel,
             TwoCompartmentOralPkModel,
+            ThreeCompartmentIvPkModel,
+            ThreeCompartmentOralPkModel,
             GammaRegressionModel,
             TweedieRegressionModel,
             GevModel,
@@ -1081,6 +1154,8 @@ class MaximumLikelihoodEstimator:
             OneCompartmentOralPkNlmeModel,
             TwoCompartmentIvPkModel,
             TwoCompartmentOralPkModel,
+            ThreeCompartmentIvPkModel,
+            ThreeCompartmentOralPkModel,
         ],
         *,
         data: Literal[None] = ...,
@@ -1193,6 +1268,18 @@ class MaximumLikelihoodEstimator:
     def fit_batch(
         self,
         models_or_model: List[TwoCompartmentOralPkModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[ThreeCompartmentIvPkModel],
+        datasets: Literal[None] = ...,
+    ) -> List[FitResult]: ...
+    @overload
+    def fit_batch(
+        self,
+        models_or_model: List[ThreeCompartmentOralPkModel],
         datasets: Literal[None] = ...,
     ) -> List[FitResult]: ...
     @overload
@@ -1344,6 +1431,10 @@ def fit(
         CoxPhModel,
         OneCompartmentOralPkModel,
         OneCompartmentOralPkNlmeModel,
+        TwoCompartmentIvPkModel,
+        TwoCompartmentOralPkModel,
+        ThreeCompartmentIvPkModel,
+        ThreeCompartmentOralPkModel,
         GevModel,
         GpdModel,
     ],
@@ -1402,6 +1493,16 @@ def fit_batch(
 @overload
 def fit_batch(
     models_or_model: List[TwoCompartmentOralPkModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[ThreeCompartmentIvPkModel],
+    datasets: Literal[None] = ...,
+) -> List[FitResult]: ...
+@overload
+def fit_batch(
+    models_or_model: List[ThreeCompartmentOralPkModel],
     datasets: Literal[None] = ...,
 ) -> List[FitResult]: ...
 @overload
@@ -1533,6 +1634,9 @@ def sample(
 def sample(
     model: Union[
         GaussianMeanModel,
+        FunnelModel,
+        FunnelNcpModel,
+        StdNormalModel,
         LinearRegressionModel,
         LogisticRegressionModel,
         OrderedLogitModel,
@@ -1549,6 +1653,10 @@ def sample(
         CoxPhModel,
         OneCompartmentOralPkModel,
         OneCompartmentOralPkNlmeModel,
+        TwoCompartmentIvPkModel,
+        TwoCompartmentOralPkModel,
+        ThreeCompartmentIvPkModel,
+        ThreeCompartmentOralPkModel,
         GevModel,
         GpdModel,
         EightSchoolsModel,
@@ -1608,6 +1716,9 @@ def sample_mams(
 def sample_mams(
     model: Union[
         GaussianMeanModel,
+        FunnelModel,
+        FunnelNcpModel,
+        StdNormalModel,
         LinearRegressionModel,
         LogisticRegressionModel,
         OrderedLogitModel,
@@ -1624,6 +1735,10 @@ def sample_mams(
         CoxPhModel,
         OneCompartmentOralPkModel,
         OneCompartmentOralPkNlmeModel,
+        TwoCompartmentIvPkModel,
+        TwoCompartmentOralPkModel,
+        ThreeCompartmentIvPkModel,
+        ThreeCompartmentOralPkModel,
         GevModel,
         GpdModel,
         EightSchoolsModel,
@@ -1680,6 +1795,7 @@ def sample_laps(
     fused_transitions: int = ...,
     report_chains: int = ...,
     diagonal_precond: bool = ...,
+    divergence_threshold: float = ...,
 ) -> SamplerResult: ...
 
 
@@ -1828,7 +1944,7 @@ def nlme_foce(
     subject_idx: List[int],
     n_subjects: int,
     *,
-    dose: float,
+    doses: List[float],
     bioavailability: float = ...,
     error_model: Literal["additive", "proportional", "combined"] = ...,
     sigma: float = ...,
@@ -1838,8 +1954,50 @@ def nlme_foce(
     max_outer_iter: int = ...,
     max_inner_iter: int = ...,
     tol: float = ...,
+    rel_tol: float = ...,
     interaction: bool = ...,
 ) -> Dict[str, Any]: ...
+
+
+class SaemDiagnosticsResult(TypedDict, total=False):
+    """Diagnostics from SAEM estimation."""
+    acceptance_rates: List[float]
+    ofv_trace: List[float]
+    burn_in_only: bool
+    theta_trace: List[List[float]]
+    relative_change: List[float]
+    geweke_scores: List[float]
+
+
+class SaemResult(TypedDict):
+    """Result of SAEM population PK estimation."""
+    theta: List[float]
+    omega: List[float]
+    omega_matrix: List[List[float]]
+    correlation: List[List[float]]
+    eta: List[List[float]]
+    ofv: float
+    converged: bool
+    n_iter: int
+    saem: SaemDiagnosticsResult
+
+
+class BootstrapNlmeResult(TypedDict):
+    """Result of nonparametric bootstrap for NLME."""
+    theta_ci: List[List[float]]
+    omega_ci: List[List[float]]
+    theta_se: List[float]
+    omega_se: List[float]
+    n_successful: int
+
+
+class CovariateDict(TypedDict, total=False):
+    """Covariate specification dict for SAEM."""
+    param_idx: int
+    values: List[float]
+    reference: float
+    relationship: Literal["power", "exponential", "proportional", "categorical"]
+    exponent: float
 
 
 def nlme_saem(
@@ -1848,19 +2006,49 @@ def nlme_saem(
     subject_idx: List[int],
     n_subjects: int,
     *,
-    dose: float,
+    model: Literal["1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"] = ...,
+    doses: List[float],
     bioavailability: float = ...,
     error_model: Literal["additive", "proportional", "combined"] = ...,
     sigma: float = ...,
     sigma_add: Optional[float] = ...,
     theta_init: List[float],
     omega_init: List[float],
+    omega_matrix: Optional[List[List[float]]] = ...,
+    covariates: Optional[List[CovariateDict]] = ...,
     n_burn: int = ...,
     n_iter: int = ...,
     n_chains: int = ...,
     seed: int = ...,
     tol: float = ...,
-) -> Dict[str, Any]: ...
+    return_theta_trace: bool = ...,
+) -> SaemResult: ...
+
+
+def bootstrap_nlme(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    n_subjects: int,
+    *,
+    model: Literal["1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"] = ...,
+    doses: List[float],
+    bioavailability: float = ...,
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+    theta: List[float],
+    omega: List[float],
+    covariates: Optional[List[CovariateDict]] = ...,
+    n_bootstrap: int = ...,
+    conf_level: float = ...,
+    ci_method: Literal["percentile", "bca"] = ...,
+    n_burn: int = ...,
+    n_iter: int = ...,
+    n_chains: int = ...,
+    seed: int = ...,
+    tol: float = ...,
+) -> BootstrapNlmeResult: ...
 
 
 def pk_vpc(
@@ -1869,7 +2057,7 @@ def pk_vpc(
     subject_idx: List[int],
     n_subjects: int,
     *,
-    dose: float,
+    doses: List[float],
     bioavailability: float = ...,
     theta: List[float],
     omega_matrix: List[List[float]],
@@ -1889,7 +2077,7 @@ def pk_gof(
     y: List[float],
     subject_idx: List[int],
     *,
-    dose: float,
+    doses: List[float],
     bioavailability: float = ...,
     theta: List[float],
     eta: List[List[float]],
@@ -1900,6 +2088,198 @@ def pk_gof(
 
 
 def read_nonmem(csv_text: str) -> Dict[str, Any]: ...
+
+
+class XptVariable(TypedDict):
+    name: str
+    label: str
+    var_type: Literal["numeric", "character"]
+    length: int
+    format: str
+
+
+class XptDataset(TypedDict):
+    name: str
+    label: str
+    variables: List[XptVariable]
+    data: List[List[Any]]
+
+
+def read_xpt(path: str) -> List[XptDataset]:
+    """Read CDISC .xpt (SAS Transport v5) file. Returns list of datasets."""
+    ...
+
+
+def write_xpt(path: str, datasets: List[XptDataset]) -> None:
+    """Write CDISC .xpt (SAS Transport v5) file."""
+    ...
+
+
+def xpt_to_nonmem(dataset: XptDataset) -> Dict[str, Any]:
+    """Convert XPT dataset to NONMEM format by auto-detecting SDTM/ADaM columns."""
+    ...
+
+
+class ScmStepResult(TypedDict):
+    name: str
+    param_index: int
+    relationship: Literal["power", "proportional", "exponential"]
+    delta_ofv: float
+    p_value: float
+    coefficient: float
+    included: bool
+
+
+class ScmResult(TypedDict):
+    selected: List[ScmStepResult]
+    forward_trace: List[ScmStepResult]
+    backward_trace: List[ScmStepResult]
+    base_ofv: float
+    final_ofv: float
+    n_forward_steps: int
+    n_backward_steps: int
+    theta: List[float]
+    omega: List[List[float]]
+
+
+# ---------------------------------------------------------------------------
+# Structured return types for bioequivalence
+# ---------------------------------------------------------------------------
+
+class BeResult(TypedDict):
+    geometric_mean_ratio: float
+    ci_lower: float
+    ci_upper: float
+    pe_log: float
+    se_log: float
+    df: float
+    t_lower: float
+    t_upper: float
+    p_lower: float
+    p_upper: float
+    conclusion: str
+
+class BeSampleSizeResult(TypedDict):
+    n_per_sequence: int
+    n_total: int
+    achieved_power: float
+
+# ---------------------------------------------------------------------------
+# Structured return types for trial simulation
+# ---------------------------------------------------------------------------
+
+class TrialSimResult(TypedDict):
+    concentrations: List[List[float]]
+    individual_params: List[List[float]]
+    auc: List[float]
+    cmax: List[float]
+    tmax: List[float]
+    ctrough: List[float]
+
+# ---------------------------------------------------------------------------
+# Structured return types for MAP estimation
+# ---------------------------------------------------------------------------
+
+class MapEstimateResult(TypedDict):
+    params: List[float]
+    se: Optional[List[float]]
+    nll_posterior: float
+    nll: float
+    log_prior: float
+    n_iter: int
+    converged: bool
+    param_names: Optional[List[str]]
+    shrinkage: Optional[List[float]]
+
+
+def scm(
+    times: List[float],
+    y: List[float],
+    subject_idx: List[int],
+    n_subjects: int,
+    covariates: List[List[float]],
+    covariate_names: List[str],
+    *,
+    dose: float,
+    bioavailability: float = ...,
+    error_model: Literal["additive", "proportional", "combined"] = ...,
+    sigma: float = ...,
+    sigma_add: Optional[float] = ...,
+    theta_init: List[float],
+    omega_init: List[float],
+    param_names: Optional[List[str]] = ...,
+    relationships: Optional[List[str]] = ...,
+    forward_alpha: float = ...,
+    backward_alpha: float = ...,
+    max_outer_iter: int = ...,
+    max_inner_iter: int = ...,
+    tol: float = ...,
+    rel_tol: float = ...,
+) -> ScmResult: ...
+
+
+# ---------------------------------------------------------------------------
+# Bioequivalence
+# ---------------------------------------------------------------------------
+
+def average_be(
+    test_values: List[float],
+    ref_values: List[float],
+    *,
+    alpha: float = 0.05,
+    limits: Tuple[float, float] = (0.80, 1.25),
+    design: str = "2x2",
+) -> BeResult: ...
+
+def be_power(
+    n_total: int,
+    *,
+    cv: float = 0.30,
+    gmr: float = 0.95,
+    alpha: float = 0.05,
+    design: str = "2x2",
+) -> float: ...
+
+def be_sample_size(
+    *,
+    cv: float = 0.30,
+    gmr: float = 0.95,
+    target_power: float = 0.80,
+    alpha: float = 0.05,
+    design: str = "2x2",
+) -> BeSampleSizeResult: ...
+
+# ---------------------------------------------------------------------------
+# Trial simulation
+# ---------------------------------------------------------------------------
+
+def simulate_trial(
+    *,
+    n_subjects: int,
+    dose: float,
+    obs_times: List[float],
+    pk_model: str = "1cpt_oral",
+    theta: List[float],
+    omega: List[float],
+    sigma: float,
+    error_model: str = "proportional",
+    bioavailability: float = 1.0,
+    seed: int = 42,
+) -> TrialSimResult: ...
+
+# ---------------------------------------------------------------------------
+# MAP estimation
+# ---------------------------------------------------------------------------
+
+def map_estimate(
+    model: Any,
+    priors: List[Tuple[float, float]],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-8,
+    compute_se: bool = True,
+    init: Optional[List[float]] = None,
+) -> MapEstimateResult: ...
 
 
 def kaplan_meier(

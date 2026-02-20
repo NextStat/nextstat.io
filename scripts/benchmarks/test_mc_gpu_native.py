@@ -11,6 +11,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
+from _parse_utils import parse_json_stdout as parse_json_from_stdout
+
+
 def write_parquet(path, values, obs_name, bounds):
     table = pa.table(
         {obs_name: pa.array(values.astype(np.float64), type=pa.float64())}
@@ -114,7 +117,7 @@ def main():
         if r1.returncode != 0:
             print("FAILED:", r1.stderr[:500])
             sys.exit(1)
-        d1r = json.loads(r1.stdout)
+        d1r = parse_json_from_stdout(r1.stdout)
         res_ls = d1r["results"]
         nc_ls = res_ls["n_converged"]
         print(f"  Converged: {nc_ls}/{n_toys}, time: {t_ls:.2f}s")
@@ -132,7 +135,7 @@ def main():
         if r2.returncode != 0:
             print("FAILED:", r2.stderr[:1000])
             sys.exit(1)
-        d2r = json.loads(r2.stdout)
+        d2r = parse_json_from_stdout(r2.stdout)
         res_gn = d2r["results"]
         nc_gn = res_gn["n_converged"]
         print(f"  Converged: {nc_gn}/{n_toys}, time: {t_gn:.2f}s")

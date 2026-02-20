@@ -1,0 +1,199 @@
+{
+  "environment": {
+    "python_version": "3.12.3",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "x86_64",
+    "node": "nextstat-gex44",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13500",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "gpus": [
+      {
+        "name": "NVIDIA RTX 4000 SFF Ada Generation",
+        "driver": "580.95.05",
+        "compute_capability": "8.9",
+        "memory_mb": "20475",
+        "power_limit_w": "70.00",
+        "compute_mode": "Default"
+      }
+    ],
+    "cuda_toolkit": "Cuda compilation tools, release 12.0, V12.0.140",
+    "cuda_visible_devices": null,
+    "jax": {
+      "jax": "0.9.0.1",
+      "jaxlib": "0.9.0.1",
+      "backend": "gpu",
+      "device": "NVIDIA RTX 4000 SFF Ada Generation",
+      "compilation_cache_dir": null
+    },
+    "nextstat_version": "0.9.6",
+    "packages": {
+      "blackjax": "1.3",
+      "arviz": "0.23.4",
+      "scipy": "1.17.0",
+      "numpy": "2.4.2"
+    }
+  },
+  "config": {
+    "n_chains_gpu": 4096,
+    "n_chains_cpu": 4,
+    "n_warmup": 500,
+    "n_samples": 1000,
+    "seed": 777,
+    "report_chains": 256,
+    "models": [
+      "std_normal_10d",
+      "eight_schools",
+      "glm_logistic"
+    ]
+  },
+  "results": [
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 0.959880530834198,
+      "wall_warm": 0.215943683,
+      "min_ess": 159752.77129213774,
+      "max_rhat": 1.0061922774437562,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.000582256,
+        "warmup_s": 0.140969619,
+        "sampling_s": 0.215943683
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 512000,
+      "ess_per_grad": 0.3120171314299565
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "std_normal_10d",
+      "wall_s": 0.010431784205138683,
+      "wall_warm": null,
+      "min_ess": 1723.8163042188548,
+      "max_rhat": 1.0065086251624802,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 5834,
+      "ess_per_grad": 0.29547759756922437
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 11.765396145172417,
+      "wall_warm": 0.16080974228680134,
+      "min_ess": 17660.372844260288,
+      "max_rhat": 1.0132964515684055,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 2.8751653291956045,
+      "tuned_n_steps": 1,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 10.246169589459896,
+      "cold_sampling_s": 1.519226555712521,
+      "n_grad_evals": 256000,
+      "ess_per_grad": 0.06898583142289175
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "eight_schools",
+      "wall_s": 1.062645255587995,
+      "wall_warm": 0.32028200999999995,
+      "min_ess": 85635.20456888882,
+      "max_rhat": 1.0048047698455114,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.000343073,
+        "warmup_s": 0.09113735,
+        "sampling_s": 0.32028200999999995
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.11150417261574065
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "eight_schools",
+      "wall_s": 0.00970128271728754,
+      "wall_warm": null,
+      "min_ess": 1683.6470610160811,
+      "max_rhat": 1.010041391106593,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 10517,
+      "ess_per_grad": 0.16008814880822297
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "eight_schools",
+      "wall_s": 11.85567879397422,
+      "wall_warm": 0.38486842066049576,
+      "min_ess": 39468.31966067211,
+      "max_rhat": 1.0057023063474855,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 1.191869771710903,
+      "tuned_n_steps": 3,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 10.14863897766918,
+      "cold_sampling_s": 1.7070398163050413,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.05139104122483348
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "glm_logistic",
+      "error": "LAPS sampling failed: Computation error: CUDA mams: DriverError(CUDA_ERROR_OUT_OF_MEMORY, \"out of memory\")"
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "glm_logistic",
+      "wall_s": 8.321433374658227,
+      "wall_warm": null,
+      "min_ess": 1193.1249481309937,
+      "max_rhat": 1.0077351451135972,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 8000,
+      "ess_per_grad": 0.14914061851637422
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "glm_logistic",
+      "wall_s": 694.5057154577225,
+      "wall_warm": 688.7010106313974,
+      "min_ess": 40167.516434762285,
+      "max_rhat": 1.005661609226048,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 0.18119320027925587,
+      "tuned_n_steps": 25,
+      "tuned_L": 4.47213595499958,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 4.342600182630122,
+      "cold_sampling_s": 690.1631152750924,
+      "n_grad_evals": 6400000,
+      "ess_per_grad": 0.006276174442931607
+    }
+  ]
+}

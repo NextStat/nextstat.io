@@ -47,7 +47,7 @@ fn detect_cuda_compute_capability(device_id: usize) -> ns_core::Result<(i32, i32
 
 fn load_precompiled_mams_kernels(
     ctx: &Arc<CudaContext>,
-) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>)> {
+) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>, Option<CudaFunction>)> {
     let ptx = Ptx::from_src(PTX_SRC);
     let module = ctx.load_module(ptx).map_err(|e| cuda_err(format!("load module: {e}")))?;
     let kernel = module
@@ -55,13 +55,14 @@ fn load_precompiled_mams_kernels(
         .map_err(|e| cuda_err(format!("load function mams_transition: {e}")))?;
     let kernel_fused = module.load_function("mams_transition_fused").ok();
     let kernel_warp = module.load_function("mams_transition_warp").ok();
-    Ok((kernel, kernel_fused, kernel_warp))
+    let kernel_warp_hi = module.load_function("mams_transition_warp_hi").ok();
+    Ok((kernel, kernel_fused, kernel_warp, kernel_warp_hi))
 }
 
 fn load_nvrtc_mams_kernels(
     ctx: &Arc<CudaContext>,
     device_id: usize,
-) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>)> {
+) -> ns_core::Result<(CudaFunction, Option<CudaFunction>, Option<CudaFunction>, Option<CudaFunction>)> {
     use cudarc::nvrtc::{CompileOptions, compile_ptx_with_opts};
 
     let (major, minor) = detect_cuda_compute_capability(device_id)?;
@@ -120,7 +121,8 @@ fn load_nvrtc_mams_kernels(
 
         let kernel_fused = module.load_function("mams_transition_fused").ok();
         let kernel_warp = module.load_function("mams_transition_warp").ok();
-        return Ok((kernel, kernel_fused, kernel_warp));
+        let kernel_warp_hi = module.load_function("mams_transition_warp_hi").ok();
+        return Ok((kernel, kernel_fused, kernel_warp, kernel_warp_hi));
     }
 
     Err(cuda_err(format!("NVRTC mams_leapfrog failed after arch fallback cascade: {last_err}")))
@@ -141,6 +143,7 @@ pub struct CudaMamsAccelerator {
     kernel: CudaFunction,
     kernel_fused: Option<CudaFunction>,
     kernel_warp: Option<CudaFunction>,
+    kernel_warp_hi: Option<CudaFunction>,
 
     // Per-chain state [n_chains × dim]
     d_x: CudaSlice<f64>,
@@ -178,6 +181,8 @@ pub struct CudaMamsAccelerator {
     n_feat: usize,
     // Optional cuBLAS evaluator for GLM initialization.
     glm_cublas_eval: Option<CudaGlmCublasEvaluator>,
+    // Energy error threshold for divergence detection (default: 1000.0).
+    divergence_threshold: f64,
 }
 
 pub use crate::mams_trait::{BatchResult, TransitionDiagnostics};
@@ -201,7 +206,7 @@ impl CudaMamsAccelerator {
             .map_err(|e| cuda_err(format!("context (device {device_id}): {e}")))?;
         let stream = ctx.default_stream();
 
-        let (kernel, kernel_fused, kernel_warp) = match load_precompiled_mams_kernels(&ctx) {
+        let (kernel, kernel_fused, kernel_warp, kernel_warp_hi) = match load_precompiled_mams_kernels(&ctx) {
             Ok(kernels) => kernels,
             Err(pre_err) => {
                 log::warn!(
@@ -214,14 +219,15 @@ impl CudaMamsAccelerator {
         };
 
         // Extract data dimensions for warp kernel shared memory sizing.
-        // GLM logistic (model_id=3): model_data = [n, p, X(n*p), y(n)]
-        let (n_obs, n_feat) = if model_id == 3 && model_data.len() >= 2 {
+        // GLM models: model_data starts with [n, p, ...] (id 3,6) or [n, p, offset_flag, ...] (id 7,8)
+        // or [n, p, G, ...] (id 9).
+        let (n_obs, n_feat) = if [3, 6, 7, 8, 9].contains(&model_id) && model_data.len() >= 2 {
             (model_data[0] as usize, model_data[1] as usize)
         } else {
             (0, 0)
         };
         let mut glm_cublas_eval = None;
-        if model_id == 3 && n_obs > 0 && n_feat > 0 && dim == n_feat {
+        if (model_id == 3 || model_id == 6) && n_obs > 0 && n_feat > 0 && dim == n_feat {
             let np = n_obs * n_feat;
             let y_off = 2 + np;
             let x_col_off = y_off + n_obs;
@@ -289,6 +295,7 @@ impl CudaMamsAccelerator {
             kernel,
             kernel_fused,
             kernel_warp,
+            kernel_warp_hi,
             d_x,
             d_u,
             d_potential,
@@ -312,6 +319,7 @@ impl CudaMamsAccelerator {
             n_obs,
             n_feat,
             glm_cublas_eval,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -351,6 +359,7 @@ impl CudaMamsAccelerator {
             .map_err(|e| cuda_err(format!("load JIT function: {e}")))?;
         let kernel_fused = module.load_function("mams_transition_fused").ok();
         let kernel_warp = module.load_function("mams_transition_warp").ok();
+        let kernel_warp_hi = module.load_function("mams_transition_warp_hi").ok();
 
         let total = n_chains * dim;
 
@@ -380,6 +389,7 @@ impl CudaMamsAccelerator {
             kernel,
             kernel_fused,
             kernel_warp,
+            kernel_warp_hi,
             d_x,
             d_u,
             d_potential,
@@ -403,6 +413,7 @@ impl CudaMamsAccelerator {
             n_obs: 0,
             n_feat: 0,
             glm_cublas_eval: None,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -491,7 +502,7 @@ impl CudaMamsAccelerator {
     /// This is model-specific (GLM logistic only) and intended to reduce warmup
     /// transients for large-`n` data-heavy runs.
     pub fn glm_presolve(&mut self, max_iters: usize) -> ns_core::Result<bool> {
-        if max_iters == 0 || self.model_id != 3 {
+        if max_iters == 0 || (self.model_id != 3 && self.model_id != 6) {
             return Ok(false);
         }
         if std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_PRESOLVE").is_some() {
@@ -670,6 +681,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&store_idx_arg);
         builder.arg(&n_report_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch: {e}")))?;
@@ -762,6 +774,7 @@ impl CudaMamsAccelerator {
             builder.arg(&mut self.d_accum_energy);
             builder.arg(&store_idx_arg);
             builder.arg(&n_report_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder.launch(config).map_err(|e| cuda_err(format!("launch batch[{s}]: {e}")))?;
@@ -826,16 +839,29 @@ impl CudaMamsAccelerator {
         true
     }
 
-    /// Run one MAMS transition using the warp-cooperative kernel (1 warp = 1 chain).
-    pub fn transition_warp(
+    /// Whether the high-dim warp kernel (dim ≤ 96) is available and beneficial.
+    pub fn supports_warp_hi(&self) -> bool {
+        if self.kernel_warp_hi.is_none() || self.n_obs < 1024 {
+            return false;
+        }
+        if self.dim <= 32 || self.dim > 96 {
+            return false;
+        }
+        if self.n_feat == 0 {
+            return false;
+        }
+        true
+    }
+
+    /// Internal: launch one warp transition with the given kernel function.
+    fn transition_warp_impl(
         &mut self,
+        kernel: &CudaFunction,
         l: f64,
         max_leapfrog: usize,
         enable_mh: bool,
+        label: &str,
     ) -> ns_core::Result<()> {
-        let kernel_warp =
-            self.kernel_warp.as_ref().ok_or_else(|| cuda_err("warp kernel not available"))?;
-
         let block_dim = 256u32;
         let total_threads = self.n_chains as u32 * 32;
         let grid_dim = ((total_threads + block_dim - 1) / block_dim).min(65535);
@@ -870,7 +896,7 @@ impl CudaMamsAccelerator {
         let n_obs_arg = self.n_obs as i32;
         let n_feat_arg = self.n_feat as i32;
 
-        let mut builder = self.stream.launch_builder(kernel_warp);
+        let mut builder = self.stream.launch_builder(kernel);
         builder.arg(&mut self.d_x);
         builder.arg(&mut self.d_u);
         builder.arg(&mut self.d_potential);
@@ -897,25 +923,25 @@ impl CudaMamsAccelerator {
         builder.arg(&n_obs_arg);
         builder.arg(&n_feat_arg);
         builder.arg(&warp_use_shmem_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
-            builder.launch(config).map_err(|e| cuda_err(format!("launch warp: {e}")))?;
+            builder.launch(config).map_err(|e| cuda_err(format!("launch {label}: {e}")))?;
         }
 
         self.iteration += 1;
         Ok(())
     }
 
-    /// Run `batch_size` MAMS transitions using the warp-cooperative kernel.
-    pub fn transition_batch_warp(
+    /// Internal: launch batch warp transitions with the given kernel function.
+    fn transition_batch_warp_impl(
         &mut self,
+        kernel: &CudaFunction,
         l: f64,
         max_leapfrog: usize,
         batch_size: usize,
+        label: &str,
     ) -> ns_core::Result<BatchResult> {
-        let kernel_warp =
-            self.kernel_warp.as_ref().ok_or_else(|| cuda_err("warp kernel not available"))?;
-
         assert!(batch_size <= self.batch_stride, "batch_size exceeds configured batch_stride");
         assert!(self.n_report > 0, "call configure_batch() first");
 
@@ -955,7 +981,7 @@ impl CudaMamsAccelerator {
             let iteration_arg = self.iteration;
             let store_idx_arg = s as i32;
 
-            let mut builder = self.stream.launch_builder(kernel_warp);
+            let mut builder = self.stream.launch_builder(kernel);
             builder.arg(&mut self.d_x);
             builder.arg(&mut self.d_u);
             builder.arg(&mut self.d_potential);
@@ -982,11 +1008,12 @@ impl CudaMamsAccelerator {
             builder.arg(&n_obs_arg);
             builder.arg(&n_feat_arg);
             builder.arg(&warp_use_shmem_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder
                     .launch(config)
-                    .map_err(|e| cuda_err(format!("launch warp batch[{s}]: {e}")))?;
+                    .map_err(|e| cuda_err(format!("launch {label} batch[{s}]: {e}")))?;
             }
 
             self.iteration += 1;
@@ -1025,6 +1052,58 @@ impl CudaMamsAccelerator {
         }
 
         Ok(BatchResult { positions, potentials, accepted, energy_error, n_launches: batch_size })
+    }
+
+    /// Run one MAMS transition using the warp-cooperative kernel (1 warp = 1 chain).
+    pub fn transition_warp(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        enable_mh: bool,
+    ) -> ns_core::Result<()> {
+        let kernel = self.kernel_warp.as_ref()
+            .ok_or_else(|| cuda_err("warp kernel not available"))?
+            .clone();
+        self.transition_warp_impl(&kernel, l, max_leapfrog, enable_mh, "warp")
+    }
+
+    /// Run one MAMS transition using the high-dim warp kernel (dim ≤ 96).
+    pub fn transition_warp_hi(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        enable_mh: bool,
+    ) -> ns_core::Result<()> {
+        let kernel = self.kernel_warp_hi.as_ref()
+            .ok_or_else(|| cuda_err("warp_hi kernel not available"))?
+            .clone();
+        self.transition_warp_impl(&kernel, l, max_leapfrog, enable_mh, "warp_hi")
+    }
+
+    /// Run `batch_size` MAMS transitions using the warp-cooperative kernel.
+    pub fn transition_batch_warp(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        batch_size: usize,
+    ) -> ns_core::Result<BatchResult> {
+        let kernel = self.kernel_warp.as_ref()
+            .ok_or_else(|| cuda_err("warp kernel not available"))?
+            .clone();
+        self.transition_batch_warp_impl(&kernel, l, max_leapfrog, batch_size, "warp")
+    }
+
+    /// Run `batch_size` MAMS transitions using the high-dim warp kernel.
+    pub fn transition_batch_warp_hi(
+        &mut self,
+        l: f64,
+        max_leapfrog: usize,
+        batch_size: usize,
+    ) -> ns_core::Result<BatchResult> {
+        let kernel = self.kernel_warp_hi.as_ref()
+            .ok_or_else(|| cuda_err("warp_hi kernel not available"))?
+            .clone();
+        self.transition_batch_warp_impl(&kernel, l, max_leapfrog, batch_size, "warp_hi")
     }
 
     /// Run `n_transitions` MAMS transitions in a single kernel launch (fused).
@@ -1085,6 +1164,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&n_report_arg);
         builder.arg(&n_transitions_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch fused: {e}")))?;
@@ -1136,6 +1216,8 @@ impl CudaMamsAccelerator {
     ) -> ns_core::Result<()> {
         if self.supports_warp() {
             self.transition_warp(l, max_leapfrog, enable_mh)
+        } else if self.supports_warp_hi() {
+            self.transition_warp_hi(l, max_leapfrog, enable_mh)
         } else {
             self.transition(l, max_leapfrog, enable_mh)
         }
@@ -1159,6 +1241,8 @@ impl CudaMamsAccelerator {
             self.transition_fused(l, max_leapfrog, batch_size)
         } else if self.supports_warp() {
             self.transition_batch_warp(l, max_leapfrog, batch_size)
+        } else if self.supports_warp_hi() {
+            self.transition_batch_warp_hi(l, max_leapfrog, batch_size)
         } else {
             self.transition_batch(l, max_leapfrog, batch_size)
         }
@@ -1272,11 +1356,19 @@ impl crate::mams_trait::MamsAccelerator for CudaMamsAccelerator {
         self.supports_warp()
     }
 
+    fn supports_warp_hi(&self) -> bool {
+        self.supports_warp_hi()
+    }
+
     fn n_chains(&self) -> usize {
         self.n_chains()
     }
 
     fn dim(&self) -> usize {
         self.dim()
+    }
+
+    fn set_divergence_threshold(&mut self, threshold: f64) {
+        self.divergence_threshold = threshold;
     }
 }

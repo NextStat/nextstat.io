@@ -107,7 +107,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Posterior + priors: `Posterior`, `Prior`
 - NUTS: `NutsConfig`, `sample_nuts`, `sample_nuts_multichain`
 - MAMS: `MamsConfig`, `sample_mams`, `sample_mams_multichain` — Metropolis-Adjusted Microcanonical Sampler (arXiv:2503.01707). Isokinetic dynamics on S^{d-1}, 4-phase DualAveraging warmup with adaptive phase durations (when Pathfinder init provides Hessian metric: 10%/15%/10%/65%, default: 15%/40%/15%/30%), exp_m1/ln_1p stable b-step.
-- LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`) or Metal (feature `metal`, Apple Silicon, f32). 4096+ chains in parallel, 1 thread = 1 chain. Windowed warmup with Stan-style doubling windows (default `n_mass_windows=3`). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `NealFunnelNcp`, `NealFunnelRiemannian { dim }`, `GlmLogistic`. `NealFunnelNcp` is the recommended parametrization for funnel geometries (R-hat < 1.02). `NealFunnelRiemannian` uses hybrid position-dependent Fisher metric (experimental, known v-bias). User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching (CUDA only). Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (CUDA only). Backend priority: CUDA (f64) > Metal (f32, built-in models only).
+- LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`) or Metal (feature `metal`, Apple Silicon, f32). 4096+ chains in parallel, 1 thread = 1 chain. Windowed warmup with Stan-style doubling windows (default `n_mass_windows=3`). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `NealFunnelNcp`, `NealFunnelRiemannian { dim }`, `GlmLogistic`, `GlmLinear`, `GlmPoisson` (optional offset), `GlmNegBin` (optional offset, dispersion log_alpha, dim=p+1), `GlmComposedLogistic` (random intercept NCP, dim=p+n_groups). `NealFunnelNcp` is the recommended parametrization for funnel geometries (R-hat < 1.02). `NealFunnelRiemannian` uses hybrid position-dependent Fisher metric (experimental, known v-bias). User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching (CUDA only). Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (CUDA only). Backend priority: CUDA (f64) > Metal (f32, built-in models only).
 - NVRTC JIT: `MamsJitCompiler` (ns-compute, feature `cuda`) — compiles user CUDA C (`user_nll` + `user_grad`) with the MAMS engine header into PTX at runtime. Per-device GPU arch auto-detect via `new_for_device(device_id)`, SHA-256 disk cache at `~/.cache/nextstat/ptx/`. `CudaMamsAccelerator::new_jit_on_device()` / `new_on_device()` load on a specific GPU device.
 - `InitStrategy`: `Random` (Stan-style Uniform(-2,2)), `Mle` (L-BFGS mode), `Pathfinder` (full L-BFGS + diagonal inverse Hessian as initial mass matrix). Used by both NUTS and MAMS.
 - Frequentist: `AsymptoticCLsContext`, `HypotestResult`
@@ -123,7 +123,7 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - LMM: `LmmMarginalModel`, `LmmRandomEffects`
 - Survival: `ExponentialSurvivalModel`, `WeibullSurvivalModel`, `LogNormalAftModel`, `CoxPhModel`, `IntervalCensoredWeibullModel`, `IntervalCensoredWeibullAftModel`, `IntervalCensoredExponentialModel`, `IntervalCensoredLogNormalModel`
 - Time series: Kalman / EM / forecasting utilities (see `ns_inference::timeseries::*`)
-- PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel`, `LloqPolicy`
+- PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ThreeCompartmentIvPkModel`, `ThreeCompartmentOralPkModel`, `ErrorModel`, `LloqPolicy`
 - ODE: `rk4_linear`, `OdeSolution`
 - Optimizer: `LbfgsbOptimizer`, `ObjectiveFunction`
 - Batch: `fit_toys_batch`, `is_accelerate_available`
@@ -146,14 +146,19 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Churn: `churn_risk_model`, `churn_uplift`, `churn_retention`, `bootstrap_hazard_ratios`, `bootstrap_hazard_ratios_with_method`, `cohort_retention_matrix`, and 15+ types
 - Fault tree MC: `FaultTreeSpec`, `FaultTreeNode`, `FailureMode`, `fault_tree_mc_cpu`, `fault_tree_mc_cuda` (CUDA), `fault_tree_mc_metal` (Metal), `FaultTreeCeIsConfig`, `FaultTreeCeIsResult`, `fault_tree_mc_ce_is` — GPU-accelerated MC and Cross-Entropy Importance Sampling for rare-event fault tree estimation (all failure modes: Bernoulli, WeibullMission, BernoulliUncertain)
 - Econometrics: `panel_fe_fit`, `did_canonical`, `event_study`, `iv_2sls`, `aipw_ate`, `rosenbaum_bounds`, `cluster_robust_se`
-- PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ErrorModel` (analytical gradients)
+- PK extended: `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ThreeCompartmentIvPkModel`, `ThreeCompartmentOralPkModel`, `ErrorModel` (analytical gradients via eigenvalue chain rule)
 - PD: `EmaxModel`, `SigmoidEmaxModel`, `IndirectResponseModel`, `PkPdLink`
 - Dosing: `DoseEvent`, `DoseRoute`, `DosingRegimen`
 - FOCE: `FoceConfig`, `FoceEstimator`, `FoceResult`, `OmegaMatrix`
-- SAEM: `SaemConfig`, `SaemEstimator`, `SaemDiagnostics`
-- SCM: `ScmConfig`, `ScmEstimator`, `ScmResult`, `CovariateCandidate`
+- SAEM: `SaemConfig`, `SaemEstimator`, `SaemDiagnostics` — multi-model dispatch (1/2/3-cpt × IV/oral), covariate support, convergence diagnostics (θ trace, Geweke), correlated Ω
+- SCM: `ScmConfig`, `ScmEstimator`, `ScmResult`, `CovariateCandidate` — forward selection + backward elimination
 - VPC: `VpcConfig`, `VpcResult`, `gof_1cpt_oral`, `vpc_1cpt_oral`
+- Bioequivalence: `AverageBe`, `BeResult`, `be_power`, `be_sample_size` — TOST, power analysis, sample size calculation
+- Trial simulation: `TrialSimConfig`, `TrialSimResult`, `simulate_trial` — Monte Carlo PK trial simulation with PTA
+- MAP estimation: `MapEstimateConfig`, `MapEstimateResult`, `map_estimate` — Bayesian individual estimation with population priors
+- Bootstrap: `BootstrapSaemResult`, `bootstrap_saem` — nonparametric bootstrap for NLME parameter uncertainty
 - ODE adaptive: `OdeSystem`, `OdeOptions`, `rk45`, `esdirk4`, `solve_at_times`
+- CDISC XPT: `XptReader`, `XptWriter`, `XptVariable`, `XptDataset` — pure Rust SAS Transport v5 parser/writer
 - NONMEM: `NonmemDataset`, `NonmemRecord`
 - Artifacts: `NlmeArtifact`, `RunBundle`, `SCHEMA_VERSION`
 

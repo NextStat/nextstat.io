@@ -8,7 +8,7 @@ use nalgebra::{DMatrix, DVector};
 use ndarray::{ArrayView1, ArrayView2};
 use ns_core::traits::{LogDensityModel, PreparedModelRef};
 use ns_core::{Error, Result};
-use ns_prob::math::{exp_clamped, log1pexp, sigmoid};
+use ns_prob::math::{exp_clamped, log1pexp, log1pexp_and_sigmoid, sigmoid};
 use statrs::function::gamma::{digamma, ln_gamma};
 
 #[inline]
@@ -266,12 +266,13 @@ pub fn ols_fit(x: Vec<Vec<f64>>, y: Vec<f64>, include_intercept: bool) -> Result
 #[derive(Debug, Clone)]
 pub struct LogisticRegressionModel {
     x: DenseX,
-    y: Vec<u8>, // 0/1
+    y: Vec<u8>,     // 0/1
+    y_f64: Vec<f64>, // pre-cast y for hot loops (avoids u8→f64 per obs per step)
     include_intercept: bool,
 }
 
 impl LogisticRegressionModel {
-    const NDARRAY_FASTPATH_MIN_WORK: usize = 32_768;
+    const NDARRAY_FASTPATH_MIN_WORK: usize = 100;
     const NDARRAY_FASTPATH_MAX_MAMS_CHAINS: usize = 8;
 
     /// Create a new logistic regression model from row-wise `X` and binary `y`.
@@ -281,12 +282,23 @@ impl LogisticRegressionModel {
         if y.iter().any(|&v| v != 0 && v != 1) {
             return Err(Error::Validation("y must contain only 0/1 values".to_string()));
         }
-        Ok(Self { x, y, include_intercept })
+        let y_f64: Vec<f64> = y.iter().map(|&v| v as f64).collect();
+        Ok(Self { x, y, y_f64, include_intercept })
     }
 
     #[inline]
     fn dim_internal(&self) -> usize {
         self.x.p + if self.include_intercept { 1 } else { 0 }
+    }
+
+    /// Number of observations.
+    pub fn n_obs(&self) -> usize {
+        self.x.n
+    }
+
+    /// Number of feature columns (without intercept).
+    pub fn n_features(&self) -> usize {
+        self.x.p
     }
 
     #[inline]
@@ -299,44 +311,92 @@ impl LogisticRegressionModel {
         }
     }
 
+    /// Minimum feature count for ndarray to beat scalar single-pass.
+    ///
+    /// Without BLAS, ndarray uses matrixmultiply which does 3 passes over the data
+    /// (X@beta, element-wise, X.t()@diff) plus 2 temp allocations (eta + diff).
+    /// For small p, LLVM auto-vectorizes the scalar loop and the single-pass
+    /// approach avoids L2 cache thrashing.  Empirically, scalar wins for p < 64
+    /// on EPYC 7502P without BLAS.
+    const NDARRAY_FASTPATH_MIN_P: usize = 64;
+
     #[inline]
     fn use_ndarray_fastpath(&self) -> bool {
         let chains_hint = crate::perf_hints::mams_chain_hint();
         let chain_ok = chains_hint == 0 || chains_hint <= Self::NDARRAY_FASTPATH_MAX_MAMS_CHAINS;
         chain_ok
+            && self.x.p >= Self::NDARRAY_FASTPATH_MIN_P
             && self.x.n.saturating_mul(self.x.p) >= Self::NDARRAY_FASTPATH_MIN_WORK
             && std::env::var_os("NEXTSTAT_DISABLE_GLM_NDARRAY").is_none()
     }
 
     fn nll_grad_fused_scalar(&self, params: &[f64]) -> (f64, Vec<f64>) {
+        let dim = self.dim_internal();
         let mut nll = 0.0;
-        let mut grad = vec![0.0; self.dim_internal()];
+        let mut grad = vec![0.0; dim];
+        let p = self.x.p;
+        let n = self.x.n;
+        let b0 = if self.include_intercept { params[0] } else { 0.0 };
+        let beta = if self.include_intercept { &params[1..] } else { params };
+        let g_off = if self.include_intercept { 1 } else { 0 };
 
-        if self.include_intercept {
-            let b0 = params[0];
-            let beta = &params[1..];
-            for i in 0..self.x.n {
-                let row = self.x.row(i);
-                let eta = b0 + row_dot(row, beta);
-                let yi = self.y[i] as f64;
-                nll += log1pexp(eta) - yi * eta;
-                let err = sigmoid(eta) - yi;
+        // 4x unrolled main loop: pipeline 4 independent exp() for ILP
+        let n4 = n - n % 4;
+        let mut i = 0;
+        while i < n4 {
+            let r0 = self.x.row(i);
+            let r1 = self.x.row(i + 1);
+            let r2 = self.x.row(i + 2);
+            let r3 = self.x.row(i + 3);
+
+            let eta0 = b0 + row_dot(r0, beta);
+            let eta1 = b0 + row_dot(r1, beta);
+            let eta2 = b0 + row_dot(r2, beta);
+            let eta3 = b0 + row_dot(r3, beta);
+
+            let (l0, m0) = log1pexp_and_sigmoid(eta0);
+            let (l1, m1) = log1pexp_and_sigmoid(eta1);
+            let (l2, m2) = log1pexp_and_sigmoid(eta2);
+            let (l3, m3) = log1pexp_and_sigmoid(eta3);
+
+            let y0 = self.y_f64[i];
+            let y1 = self.y_f64[i + 1];
+            let y2 = self.y_f64[i + 2];
+            let y3 = self.y_f64[i + 3];
+
+            nll += (l0 - y0 * eta0) + (l1 - y1 * eta1)
+                 + (l2 - y2 * eta2) + (l3 - y3 * eta3);
+
+            let e0 = m0 - y0;
+            let e1 = m1 - y1;
+            let e2 = m2 - y2;
+            let e3 = m3 - y3;
+
+            if self.include_intercept {
+                grad[0] += e0 + e1 + e2 + e3;
+            }
+            for j in 0..p {
+                grad[g_off + j] += e0 * r0[j] + e1 * r1[j]
+                                 + e2 * r2[j] + e3 * r3[j];
+            }
+            i += 4;
+        }
+
+        // Remainder (0–3 observations)
+        while i < n {
+            let row = self.x.row(i);
+            let eta = b0 + row_dot(row, beta);
+            let yi = self.y_f64[i];
+            let (log_term, mu) = log1pexp_and_sigmoid(eta);
+            nll += log_term - yi * eta;
+            let err = mu - yi;
+            if self.include_intercept {
                 grad[0] += err;
-                for j in 0..self.x.p {
-                    grad[1 + j] += err * row[j];
-                }
             }
-        } else {
-            for i in 0..self.x.n {
-                let row = self.x.row(i);
-                let eta = row_dot(row, params);
-                let yi = self.y[i] as f64;
-                nll += log1pexp(eta) - yi * eta;
-                let err = sigmoid(eta) - yi;
-                for j in 0..self.x.p {
-                    grad[j] += err * row[j];
-                }
+            for j in 0..p {
+                grad[g_off + j] += err * row[j];
             }
+            i += 1;
         }
 
         (nll, grad)
@@ -359,10 +419,11 @@ impl LogisticRegressionModel {
         let mut nll = 0.0;
         let mut diff = vec![0.0; self.x.n];
         for i in 0..self.x.n {
-            let yi = self.y[i] as f64;
+            let yi = self.y_f64[i];
             let et = eta[i];
-            nll += log1pexp(et) - yi * et;
-            diff[i] = sigmoid(et) - yi;
+            let (log_term, mu) = log1pexp_and_sigmoid(et);
+            nll += log_term - yi * et;
+            diff[i] = mu - yi;
         }
 
         let diff_view = ArrayView1::from(&diff);
@@ -428,7 +489,7 @@ impl LogDensityModel for LogisticRegressionModel {
         let mut nll = 0.0;
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
-            nll += log1pexp(eta) - (self.y[i] as f64) * eta;
+            nll += log1pexp(eta) - self.y_f64[i] * eta;
         }
         Ok(nll)
     }
@@ -449,7 +510,7 @@ impl LogDensityModel for LogisticRegressionModel {
         for i in 0..self.x.n {
             let eta = self.eta(i, params);
             let mu = sigmoid(eta);
-            let err = mu - (self.y[i] as f64);
+            let err = mu - self.y_f64[i];
             if self.include_intercept {
                 grad[0] += err;
                 let row = self.x.row(i);
@@ -1314,6 +1375,213 @@ mod tests {
         assert!(
             r.parameters.iter().all(|v| v.is_finite()),
             "all fitted parameters should be finite"
+        );
+    }
+
+    // ===================================================================
+    // Finite-difference verification of CUDA NegBin kernel math
+    // ===================================================================
+    //
+    // Reproduces EXACTLY the scalar kernel math from mams_leapfrog.cu
+    // (nll_glm_negbin + grad_glm_negbin) and checks gradient via FD.
+
+    /// CPU digamma matching device_digamma from mams_leapfrog.cu
+    fn cuda_digamma(mut x: f64) -> f64 {
+        let mut result = 0.0;
+        while x < 8.0 {
+            result -= 1.0 / x;
+            x += 1.0;
+        }
+        let inv_x = 1.0 / x;
+        let inv_x2 = inv_x * inv_x;
+        result += x.ln() - 0.5 * inv_x
+            - inv_x2
+                * (1.0 / 12.0
+                    - inv_x2
+                        * (1.0 / 120.0
+                            - inv_x2
+                                * (1.0 / 252.0
+                                    - inv_x2 * (1.0 / 240.0 - inv_x2 * (1.0 / 132.0)))));
+        result
+    }
+
+    /// NLL matching nll_glm_negbin from mams_leapfrog.cu (including N(0,1) prior).
+    /// x = [beta_0..beta_{p-1}, log_alpha], model_data row-major X (no intercept).
+    fn cuda_kernel_negbin_nll(x: &[f64], x_mat: &[Vec<f64>], y: &[f64]) -> f64 {
+        let n = y.len();
+        let p = x.len() - 1;
+        let beta = &x[..p];
+        let log_alpha = x[p];
+        let log_alpha_c = log_alpha.clamp(-10.0, 8.0);
+        let alpha = log_alpha_c.exp();
+        let theta = 1.0 / alpha;
+
+        let mut nll = 0.0;
+        // Prior
+        for j in 0..p {
+            nll += 0.5 * beta[j] * beta[j];
+        }
+        nll += 0.5 * log_alpha * log_alpha;
+
+        for i in 0..n {
+            let mut eta = 0.0;
+            for j in 0..p {
+                eta += x_mat[i][j] * beta[j];
+            }
+            let eta = eta.clamp(-50.0, 50.0);
+            let mu = eta.exp();
+            let yi = y[i];
+            let denom = theta + mu;
+
+            nll -= ln_gamma(yi + theta) - ln_gamma(theta)
+                + theta * (theta / denom).ln()
+                + yi * (mu / denom).ln();
+        }
+        nll
+    }
+
+    /// Gradient matching grad_glm_negbin from mams_leapfrog.cu (including N(0,1) prior).
+    fn cuda_kernel_negbin_grad(x: &[f64], x_mat: &[Vec<f64>], y: &[f64]) -> Vec<f64> {
+        let n = y.len();
+        let p = x.len() - 1;
+        let beta = &x[..p];
+        let log_alpha = x[p];
+        let log_alpha_c = log_alpha.clamp(-10.0, 8.0);
+        let alpha = log_alpha_c.exp();
+        let theta = 1.0 / alpha;
+
+        let mut grad = vec![0.0; x.len()];
+        // Prior gradients
+        for j in 0..p {
+            grad[j] = beta[j];
+        }
+        grad[p] = log_alpha; // prior on log_alpha
+
+        let mut d_log_alpha = 0.0;
+
+        for i in 0..n {
+            let mut eta = 0.0;
+            for j in 0..p {
+                eta += x_mat[i][j] * beta[j];
+            }
+            let eta = eta.clamp(-50.0, 50.0);
+            let mu = eta.exp();
+            let yi = y[i];
+            let denom = theta + mu;
+
+            // d(NLL_i)/d(eta_i) = mu*(theta+yi)/denom - yi
+            let d_eta = mu * (theta + yi) / denom - yi;
+            for j in 0..p {
+                grad[j] += d_eta * x_mat[i][j];
+            }
+
+            // d(NLL_i)/d(log_alpha) via chain rule
+            let psi_yi_theta = cuda_digamma(yi + theta);
+            let psi_theta = cuda_digamma(theta);
+            let d_theta =
+                -(psi_yi_theta - psi_theta + (theta / denom).ln() + 1.0 - (theta + yi) / denom);
+            d_log_alpha += d_theta * (-theta);
+        }
+
+        // Match CUDA fix: zero likelihood gradient when outside clamp range
+        if log_alpha <= -10.0 || log_alpha >= 8.0 {
+            d_log_alpha = 0.0;
+        }
+
+        grad[p] += d_log_alpha;
+        grad
+    }
+
+    #[test]
+    fn test_cuda_negbin_kernel_grad_matches_finite_diff() {
+        // Generate small NegBin dataset (no intercept, matching LAPS convention)
+        let (x_rows, y_u64, _include_intercept) = make_negbin_benchmark_like_dataset(50, 5, 42);
+        // LAPS path: no intercept (user includes it in X if needed)
+        // But the benchmark data has include_intercept=true, so p_data = 5 columns
+        // and the generated data expects an intercept column.
+        // For this test, just use the raw X without intercept handling.
+        let y: Vec<f64> = y_u64.iter().map(|&v| v as f64).collect();
+
+        // Test at several parameter values including near-zero and fitted
+        let test_points = vec![
+            vec![0.0; 6], // all zeros: beta[0..4]=0, log_alpha=0
+            vec![0.1, -0.2, 0.3, -0.1, 0.05, 0.5],
+            vec![0.5, 0.0, -0.5, 0.2, -0.3, -1.0],
+            vec![0.01, 0.02, -0.01, 0.03, -0.02, 2.0],  // large log_alpha
+            vec![0.01, 0.02, -0.01, 0.03, -0.02, -5.0],  // small log_alpha (large theta)
+            vec![0.01, 0.02, -0.01, 0.03, -0.02, -11.0], // OUTSIDE clamp range (below -10)
+            vec![0.01, 0.02, -0.01, 0.03, -0.02, 9.0],   // OUTSIDE clamp range (above 8)
+        ];
+
+        let h = 1e-7;
+
+        for (test_idx, params) in test_points.iter().enumerate() {
+            let nll = cuda_kernel_negbin_nll(params, &x_rows, &y);
+            let grad = cuda_kernel_negbin_grad(params, &x_rows, &y);
+
+            assert!(nll.is_finite(), "NLL not finite at test point {test_idx}: {nll}");
+
+            // Finite-difference gradient check
+            for d in 0..params.len() {
+                let mut params_plus = params.clone();
+                let mut params_minus = params.clone();
+                params_plus[d] += h;
+                params_minus[d] -= h;
+
+                let nll_plus = cuda_kernel_negbin_nll(&params_plus, &x_rows, &y);
+                let nll_minus = cuda_kernel_negbin_nll(&params_minus, &x_rows, &y);
+                let fd_grad = (nll_plus - nll_minus) / (2.0 * h);
+
+                let abs_err = (grad[d] - fd_grad).abs();
+                let rel_denom = grad[d].abs().max(fd_grad.abs()).max(1e-8);
+                let rel_err = abs_err / rel_denom;
+
+                assert!(
+                    rel_err < 1e-4 || abs_err < 1e-6,
+                    "CUDA NegBin kernel gradient mismatch at test point {test_idx}, param {d} ({}): \
+                     analytic={:.8e}, fd={:.8e}, abs_err={:.2e}, rel_err={:.2e}",
+                    if d < params.len() - 1 {
+                        format!("beta[{d}]")
+                    } else {
+                        "log_alpha".to_string()
+                    },
+                    grad[d],
+                    fd_grad,
+                    abs_err,
+                    rel_err,
+                );
+            }
+        }
+    }
+
+    /// Also verify that CUDA kernel NLL (minus prior) matches CPU reference NLL.
+    #[test]
+    fn test_cuda_negbin_nll_matches_cpu_reference() {
+        let (x_rows, y_u64, _) = make_negbin_benchmark_like_dataset(50, 5, 42);
+        let y_f64: Vec<f64> = y_u64.iter().map(|&v| v as f64).collect();
+
+        // CPU reference model (no intercept to match LAPS convention)
+        let m = NegativeBinomialRegressionModel::new(x_rows.clone(), y_u64, false, None).unwrap();
+
+        let params = vec![0.1, -0.2, 0.3, -0.1, 0.05, 0.5]; // 5 beta + log_alpha
+
+        // CPU NLL (likelihood only, no prior)
+        let cpu_nll = m.nll(&params).unwrap();
+
+        // CUDA NLL (with prior)
+        let cuda_nll = cuda_kernel_negbin_nll(&params, &x_rows, &y_f64);
+
+        // Compute prior
+        let prior: f64 = params.iter().map(|&v| 0.5 * v * v).sum();
+
+        let diff = (cuda_nll - cpu_nll - prior).abs();
+        assert!(
+            diff < 1e-8,
+            "CUDA NLL - CPU NLL - prior = {:.2e} (CUDA={:.6}, CPU={:.6}, prior={:.6})",
+            diff,
+            cuda_nll,
+            cpu_nll,
+            prior,
         );
     }
 }

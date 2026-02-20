@@ -26,7 +26,7 @@ struct ToyScalarArgs {
     n_toys: u32,
     seed: u64,
     total_pdf_aux_f32: u32,
-    _pad0: u32,
+    obs_capacity: u32, // 0 = no guard (two-pass), >0 = fused capacity bound
     _pad1: u32,
 }
 
@@ -57,6 +57,14 @@ struct MetalUnbinnedRateModifierDesc {
     hi: f32,
 }
 
+/// Per-process yield info cached at construction time for fused capacity estimation.
+#[derive(Debug, Clone, Copy)]
+struct ProcessYieldInfo {
+    base_yield: f64,
+    yield_kind: u32,
+    yield_param_idx: u32,
+}
+
 fn metal_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("Metal (unbinned toy): {msg}"))
 }
@@ -76,6 +84,37 @@ pub struct MetalToySampleTiming {
     pub sample_kernel_s: f64,
     /// f32->f64 host conversion time (`sample_toys_1d_timed` only).
     pub host_convert_s: f64,
+    /// Whether the fused (single command buffer) path was used.
+    pub fused: bool,
+}
+
+/// Default capacity for cached counts buffer (covers typical HEP use cases: 256KB).
+const DEFAULT_TOY_CAPACITY: usize = 65536;
+
+/// Maximum fused obs capacity in f32 elements (256MB / 4 = 64M).
+const FUSED_MAX_CAPACITY: usize = 64 * 1024 * 1024;
+
+/// Conservative upper bound for nu_tot (ignores rate modifiers, 2x safety).
+fn compute_nu_tot_upper_bound(procs: &[ProcessYieldInfo], params: &[f64]) -> f64 {
+    let mut nu = 0.0f64;
+    for p in procs {
+        let y = match p.yield_kind {
+            yield_kind::FIXED => p.base_yield,
+            yield_kind::PARAMETER => params.get(p.yield_param_idx as usize).copied().unwrap_or(0.0),
+            yield_kind::SCALED => {
+                p.base_yield * params.get(p.yield_param_idx as usize).copied().unwrap_or(0.0)
+            }
+            _ => 0.0,
+        };
+        nu += y.abs();
+    }
+    nu * 2.0 // safety for rate modifiers (NormSys typical: ±10-20%)
+}
+
+/// Poisson 8σ capacity: P(total > capacity) < 10^{-16}.
+fn fused_capacity(nu_tot: f64, n_toys: usize) -> usize {
+    let mean = nu_tot * n_toys as f64;
+    (mean + 8.0 * mean.max(1.0).sqrt() + 64.0).ceil() as usize
 }
 
 /// Metal toy sampler for unbinned 1D models.
@@ -85,6 +124,7 @@ pub struct MetalUnbinnedToySampler {
     queue: CommandQueue,
     pipeline_counts: ComputePipelineState,
     pipeline_sample: ComputePipelineState,
+    pipeline_scan: ComputePipelineState,
 
     // Static buffers
     buf_obs_lo: Buffer,
@@ -93,6 +133,16 @@ pub struct MetalUnbinnedToySampler {
     buf_rate_mods: Buffer,
     buf_shape_pidx: Buffer,
     buf_pdf_aux_f32: Buffer,
+
+    // Pre-allocated hot-path buffers (reused across calls)
+    buf_params: Buffer,
+    buf_counts_cache: Buffer,
+    cached_n_toys: usize,
+    buf_toy_offsets_cache: Buffer,
+    cached_toy_offsets_len: usize, // capacity in u32 elements
+
+    // Yield info for fused capacity estimation
+    proc_yield_info: Vec<ProcessYieldInfo>,
 
     n_params: usize,
     n_procs: usize,
@@ -291,6 +341,12 @@ impl MetalUnbinnedToySampler {
             MSL_SRC,
             "unbinned_toy_sample_obs_1d",
         )?;
+        let pipeline_scan = crate::metal_kernel_cache::get_pipeline(
+            &device,
+            "unbinned_toy",
+            MSL_SRC,
+            "unbinned_toy_prefix_scan",
+        )?;
 
         let opts = MTLResourceOptions::StorageModeShared;
 
@@ -394,17 +450,49 @@ impl MetalUnbinnedToySampler {
             )
         };
 
+        // Pre-allocate hot-path buffers reused across sample_toys_1d_inner() calls.
+        let buf_params = device.new_buffer(
+            (data.n_params * mem::size_of::<f32>()).max(4) as u64,
+            opts,
+        );
+        let buf_counts_cache = device.new_buffer(
+            (DEFAULT_TOY_CAPACITY * mem::size_of::<u32>()).max(4) as u64,
+            opts,
+        );
+        let toy_offsets_len = DEFAULT_TOY_CAPACITY + 1;
+        let buf_toy_offsets_cache = device.new_buffer(
+            (toy_offsets_len * mem::size_of::<u32>()).max(4) as u64,
+            opts,
+        );
+
+        let proc_yield_info: Vec<ProcessYieldInfo> = data
+            .processes
+            .iter()
+            .map(|p| ProcessYieldInfo {
+                base_yield: p.base_yield,
+                yield_kind: p.yield_kind,
+                yield_param_idx: p.yield_param_idx,
+            })
+            .collect();
+
         Ok(Self {
             device,
             queue,
             pipeline_counts,
             pipeline_sample,
+            pipeline_scan,
             buf_obs_lo,
             buf_obs_hi,
             buf_procs,
             buf_rate_mods,
             buf_shape_pidx,
             buf_pdf_aux_f32,
+            buf_params,
+            buf_counts_cache,
+            cached_n_toys: DEFAULT_TOY_CAPACITY,
+            buf_toy_offsets_cache,
+            cached_toy_offsets_len: toy_offsets_len,
+            proc_yield_info,
             n_params: data.n_params,
             n_procs: data.processes.len(),
             total_shape_params: data.shape_param_indices.len(),
@@ -423,47 +511,109 @@ impl MetalUnbinnedToySampler {
         &self.queue
     }
 
-    /// Run Kernel A (Poisson counts) + host prefix sum + Kernel B (sample observables).
-    ///
-    /// Returns `(toy_offsets, buf_toy_offsets, Option<buf_obs_flat_f32>)` where:
-    /// - `toy_offsets` are host prefix sums;
-    /// - `buf_toy_offsets` is the corresponding device buffer (for downstream reuse);
-    /// - `buf_obs_flat_f32` is a Metal shared buffer containing f32 observed values (`None` when total events == 0).
-    fn sample_toys_1d_inner(
+    /// Prepare params buffer and reusable counts buffer. Returns buf_counts reference.
+    fn prepare_params_and_counts<'a>(
+        &'a self,
+        params: &[f64],
+        n_toys: usize,
+        buf_counts_fresh: &'a mut Option<Buffer>,
+    ) -> &'a Buffer {
+        // Reuse pre-allocated buf_params (size is fixed at n_params).
+        // SAFETY: `buf_params` has capacity for `n_params` f32 values; pointer is valid while buffer lives.
+        unsafe {
+            let ptr = self.buf_params.contents() as *mut f32;
+            for (i, &v) in params.iter().enumerate() {
+                ptr.add(i).write(v as f32);
+            }
+        }
+        self.buf_params
+            .did_modify_range(NSRange::new(0, (self.n_params * mem::size_of::<f32>()) as u64));
+
+        // Reuse cached counts buffer when n_toys fits; allocate fresh otherwise.
+        if n_toys <= self.cached_n_toys {
+            &self.buf_counts_cache
+        } else {
+            let opts = MTLResourceOptions::StorageModeShared;
+            let fresh = self
+                .device
+                .new_buffer((n_toys * mem::size_of::<u32>()).max(4) as u64, opts);
+            *buf_counts_fresh = Some(fresh);
+            buf_counts_fresh.as_ref().unwrap()
+        }
+    }
+
+    /// Encode the counts kernel into the given command encoder.
+    fn encode_counts(
+        &self,
+        encoder: &ComputeCommandEncoderRef,
+        buf_counts: &Buffer,
+        scalar: &ToyScalarArgs,
+        n_toys: usize,
+    ) {
+        encoder.set_compute_pipeline_state(&self.pipeline_counts);
+        encoder.set_buffer(0, Some(&self.buf_params), 0);
+        encoder.set_buffer(1, Some(&self.buf_procs), 0);
+        encoder.set_buffer(2, Some(&self.buf_rate_mods), 0);
+        encoder.set_bytes(
+            3,
+            mem::size_of::<ToyScalarArgs>() as u64,
+            scalar as *const ToyScalarArgs as *const std::ffi::c_void,
+        );
+        encoder.set_buffer(4, Some(buf_counts), 0);
+
+        let tg_size: usize =
+            (self.pipeline_counts.max_total_threads_per_threadgroup().min(256)) as usize;
+        let grid = MTLSize::new(((n_toys + tg_size - 1) / tg_size) as u64, 1, 1);
+        let tg = MTLSize::new(tg_size as u64, 1, 1);
+        encoder.dispatch_thread_groups(grid, tg);
+    }
+
+    /// Encode the sample kernel into the given command encoder.
+    fn encode_sample(
+        &self,
+        encoder: &ComputeCommandEncoderRef,
+        buf_toy_offsets: &Buffer,
+        buf_obs_out: &Buffer,
+        scalar: &ToyScalarArgs,
+        n_toys: usize,
+    ) {
+        encoder.set_compute_pipeline_state(&self.pipeline_sample);
+        encoder.set_buffer(0, Some(&self.buf_params), 0);
+        encoder.set_buffer(1, Some(&self.buf_obs_lo), 0);
+        encoder.set_buffer(2, Some(&self.buf_obs_hi), 0);
+        encoder.set_buffer(3, Some(&self.buf_procs), 0);
+        encoder.set_buffer(4, Some(&self.buf_rate_mods), 0);
+        encoder.set_buffer(5, Some(&self.buf_shape_pidx), 0);
+        encoder.set_buffer(6, Some(buf_toy_offsets), 0);
+        encoder.set_buffer(7, Some(&self.buf_pdf_aux_f32), 0);
+        encoder.set_bytes(
+            8,
+            mem::size_of::<ToyScalarArgs>() as u64,
+            scalar as *const ToyScalarArgs as *const std::ffi::c_void,
+        );
+        encoder.set_buffer(9, Some(buf_obs_out), 0);
+
+        let tg_size: usize =
+            (self.pipeline_sample.max_total_threads_per_threadgroup().min(256)) as usize;
+        let grid = MTLSize::new(n_toys as u64, 1, 1);
+        let tg = MTLSize::new(tg_size as u64, 1, 1);
+        encoder.dispatch_thread_groups(grid, tg);
+    }
+
+    /// Two-pass path: counts kernel → host readback → CPU prefix sum → sample kernel.
+    /// Uses 2 command buffers with 2 host waits.
+    fn sample_toys_1d_two_pass(
         &self,
         params: &[f64],
         n_toys: usize,
         seed: u64,
     ) -> ns_core::Result<(Vec<u32>, Buffer, Option<Buffer>, MetalToySampleTiming)> {
         let mut timing = MetalToySampleTiming::default();
-        if n_toys == 0 {
-            return Err(ns_core::Error::Validation("n_toys must be > 0".into()));
-        }
-        if params.len() != self.n_params {
-            return Err(ns_core::Error::Validation(format!(
-                "params length mismatch: expected {}, got {}",
-                self.n_params,
-                params.len()
-            )));
-        }
-
         let opts = MTLResourceOptions::StorageModeShared;
 
         let t_prepare0 = std::time::Instant::now();
-        let params_bytes = (self.n_params * mem::size_of::<f32>()).max(4) as u64;
-        let buf_params = self.device.new_buffer(params_bytes, opts);
-        // SAFETY: `buf_params` has capacity for `n_params` f32 values; pointer is valid while buffer lives.
-        unsafe {
-            let ptr = buf_params.contents() as *mut f32;
-            for (i, &v) in params.iter().enumerate() {
-                ptr.add(i).write(v as f32);
-            }
-        }
-        buf_params
-            .did_modify_range(NSRange::new(0, (self.n_params * mem::size_of::<f32>()) as u64));
-
-        let buf_counts =
-            self.device.new_buffer((n_toys * mem::size_of::<u32>()).max(1) as u64, opts);
+        let mut buf_counts_fresh = None;
+        let buf_counts_ref = self.prepare_params_and_counts(params, n_toys, &mut buf_counts_fresh);
         timing.prepare_s = t_prepare0.elapsed().as_secs_f64();
 
         let scalar = ToyScalarArgs {
@@ -473,7 +623,7 @@ impl MetalUnbinnedToySampler {
             n_toys: n_toys as u32,
             seed,
             total_pdf_aux_f32: self.total_pdf_aux_f32 as u32,
-            _pad0: 0,
+            obs_capacity: 0,
             _pad1: 0,
         };
 
@@ -481,32 +631,16 @@ impl MetalUnbinnedToySampler {
         let t_counts0 = std::time::Instant::now();
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&self.pipeline_counts);
-        encoder.set_buffer(0, Some(&buf_params), 0);
-        encoder.set_buffer(1, Some(&self.buf_procs), 0);
-        encoder.set_buffer(2, Some(&self.buf_rate_mods), 0);
-        encoder.set_bytes(
-            3,
-            mem::size_of::<ToyScalarArgs>() as u64,
-            &scalar as *const ToyScalarArgs as *const std::ffi::c_void,
-        );
-        encoder.set_buffer(4, Some(&buf_counts), 0);
-
-        let tg: usize =
-            (self.pipeline_counts.max_total_threads_per_threadgroup().min(256)) as usize;
-        let grid = MTLSize::new(((n_toys + tg - 1) / tg) as u64, 1, 1);
-        let tg = MTLSize::new(tg as u64, 1, 1);
-        encoder.dispatch_thread_groups(grid, tg);
+        self.encode_counts(encoder, buf_counts_ref, &scalar, n_toys);
         encoder.end_encoding();
         cmd_buffer.commit();
         cmd_buffer.wait_until_completed();
         timing.counts_kernel_s = t_counts0.elapsed().as_secs_f64();
 
         let t_read0 = std::time::Instant::now();
-        // SAFETY: `buf_counts` is a shared Metal buffer we just wrote to via the counts kernel.
-        // Length is `n_toys` u32 elements; we only read it while `buf_counts` is alive.
+        // SAFETY: `buf_counts_ref` is a shared Metal buffer we just wrote to via the counts kernel.
         let counts: &[u32] = unsafe {
-            let ptr = buf_counts.contents() as *const u32;
+            let ptr = buf_counts_ref.contents() as *const u32;
             std::slice::from_raw_parts(ptr, n_toys)
         };
         timing.counts_readback_s = t_read0.elapsed().as_secs_f64();
@@ -534,39 +668,191 @@ impl MetalUnbinnedToySampler {
             return Ok((toy_offsets, buf_toy_offsets, None, timing));
         }
         let buf_obs_out =
-            self.device.new_buffer((n_events * mem::size_of::<f32>()).max(1) as u64, opts);
+            self.device
+                .new_buffer((n_events * mem::size_of::<f32>()).max(1) as u64, opts);
 
         // --- sample kernel ---
         let t_sample0 = std::time::Instant::now();
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&self.pipeline_sample);
-        encoder.set_buffer(0, Some(&buf_params), 0);
-        encoder.set_buffer(1, Some(&self.buf_obs_lo), 0);
-        encoder.set_buffer(2, Some(&self.buf_obs_hi), 0);
-        encoder.set_buffer(3, Some(&self.buf_procs), 0);
-        encoder.set_buffer(4, Some(&self.buf_rate_mods), 0);
-        encoder.set_buffer(5, Some(&self.buf_shape_pidx), 0);
-        encoder.set_buffer(6, Some(&buf_toy_offsets), 0);
-        encoder.set_buffer(7, Some(&self.buf_pdf_aux_f32), 0);
-        encoder.set_bytes(
-            8,
-            mem::size_of::<ToyScalarArgs>() as u64,
-            &scalar as *const ToyScalarArgs as *const std::ffi::c_void,
-        );
-        encoder.set_buffer(9, Some(&buf_obs_out), 0);
-
-        let tg: usize =
-            (self.pipeline_sample.max_total_threads_per_threadgroup().min(256)) as usize;
-        let grid = MTLSize::new(n_toys as u64, 1, 1);
-        let tg = MTLSize::new(tg as u64, 1, 1);
-        encoder.dispatch_thread_groups(grid, tg);
+        self.encode_sample(encoder, &buf_toy_offsets, &buf_obs_out, &scalar, n_toys);
         encoder.end_encoding();
         cmd_buffer.commit();
         cmd_buffer.wait_until_completed();
         timing.sample_kernel_s = t_sample0.elapsed().as_secs_f64();
 
         Ok((toy_offsets, buf_toy_offsets, Some(buf_obs_out), timing))
+    }
+
+    /// Fused path: counts + prefix scan + sample in 1 command buffer, 1 host wait.
+    fn sample_toys_1d_fused(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+        capacity: usize,
+    ) -> ns_core::Result<(Vec<u32>, Buffer, Option<Buffer>, MetalToySampleTiming)> {
+        let mut timing = MetalToySampleTiming {
+            fused: true,
+            ..Default::default()
+        };
+        let opts = MTLResourceOptions::StorageModeShared;
+
+        let t_prepare0 = std::time::Instant::now();
+        let mut buf_counts_fresh = None;
+        let buf_counts_ref = self.prepare_params_and_counts(params, n_toys, &mut buf_counts_fresh);
+
+        // Reuse cached toy_offsets buffer when (n_toys+1) fits; allocate fresh otherwise.
+        let offsets_len = n_toys + 1;
+        let (_buf_offsets_fresh, buf_offsets_ref);
+        if offsets_len <= self.cached_toy_offsets_len {
+            _buf_offsets_fresh = None;
+            buf_offsets_ref = &self.buf_toy_offsets_cache;
+        } else {
+            let fresh = self.device.new_buffer(
+                (offsets_len * mem::size_of::<u32>()).max(4) as u64,
+                opts,
+            );
+            _buf_offsets_fresh = Some(fresh);
+            buf_offsets_ref = _buf_offsets_fresh.as_ref().unwrap();
+        }
+
+        // Allocate obs_out buffer with pre-computed capacity (returned to caller, not cached).
+        let buf_obs_out = self
+            .device
+            .new_buffer((capacity * mem::size_of::<f32>()).max(4) as u64, opts);
+
+        timing.prepare_s = t_prepare0.elapsed().as_secs_f64();
+
+        let scalar_counts = ToyScalarArgs {
+            n_procs: self.n_procs as u32,
+            total_rate_mods: self.total_rate_mods as u32,
+            total_shape_params: self.total_shape_params as u32,
+            n_toys: n_toys as u32,
+            seed,
+            total_pdf_aux_f32: self.total_pdf_aux_f32 as u32,
+            obs_capacity: 0,
+            _pad1: 0,
+        };
+        let scalar_sample = ToyScalarArgs {
+            obs_capacity: capacity as u32,
+            ..scalar_counts
+        };
+        let n_toys_u32 = n_toys as u32;
+
+        // --- Single command buffer with 3 encoders ---
+        let t_gpu0 = std::time::Instant::now();
+        let cmd_buffer = self.queue.new_command_buffer();
+
+        // Encoder 1: counts kernel
+        let enc1 = cmd_buffer.new_compute_command_encoder();
+        self.encode_counts(enc1, buf_counts_ref, &scalar_counts, n_toys);
+        enc1.end_encoding();
+
+        // Encoder 2: prefix scan (1 thread, reads counts → writes toy_offsets)
+        let enc2 = cmd_buffer.new_compute_command_encoder();
+        enc2.set_compute_pipeline_state(&self.pipeline_scan);
+        enc2.set_buffer(0, Some(buf_counts_ref), 0);
+        enc2.set_buffer(1, Some(buf_offsets_ref), 0);
+        enc2.set_bytes(
+            2,
+            mem::size_of::<u32>() as u64,
+            &n_toys_u32 as *const u32 as *const std::ffi::c_void,
+        );
+        enc2.dispatch_thread_groups(MTLSize::new(1, 1, 1), MTLSize::new(1, 1, 1));
+        enc2.end_encoding();
+
+        // Encoder 3: sample kernel (reads GPU-computed toy_offsets)
+        let enc3 = cmd_buffer.new_compute_command_encoder();
+        self.encode_sample(enc3, buf_offsets_ref, &buf_obs_out, &scalar_sample, n_toys);
+        enc3.end_encoding();
+
+        cmd_buffer.commit();
+        cmd_buffer.wait_until_completed();
+        timing.counts_kernel_s = t_gpu0.elapsed().as_secs_f64();
+
+        // Read toy_offsets from shared buffer.
+        // SAFETY: `buf_offsets_ref` was written by the prefix scan kernel;
+        // it contains `n_toys+1` u32 elements in a shared Metal buffer.
+        let toy_offsets: Vec<u32> = unsafe {
+            let ptr = buf_offsets_ref.contents() as *const u32;
+            std::slice::from_raw_parts(ptr, n_toys + 1).to_vec()
+        };
+
+        let total_events = *toy_offsets.last().unwrap_or(&0) as usize;
+
+        // Overflow check: if total_events > capacity, fall back to two-pass.
+        // This should be astronomically rare (P < 10^{-16}).
+        if total_events > capacity {
+            return self.sample_toys_1d_two_pass(params, n_toys, seed);
+        }
+
+        // Create a fresh toy_offsets device buffer from the host data (don't return cached buffer).
+        let buf_toy_offsets_out = self.device.new_buffer_with_data(
+            toy_offsets.as_ptr() as *const _,
+            (toy_offsets.len() * mem::size_of::<u32>()) as u64,
+            opts,
+        );
+
+        if total_events == 0 {
+            return Ok((toy_offsets, buf_toy_offsets_out, None, timing));
+        }
+
+        Ok((toy_offsets, buf_toy_offsets_out, Some(buf_obs_out), timing))
+    }
+
+    /// Dispatcher: choose fused or two-pass path based on capacity estimation.
+    fn sample_toys_1d_inner(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Buffer, Option<Buffer>, MetalToySampleTiming)> {
+        if n_toys == 0 {
+            return Err(ns_core::Error::Validation("n_toys must be > 0".into()));
+        }
+        if params.len() != self.n_params {
+            return Err(ns_core::Error::Validation(format!(
+                "params length mismatch: expected {}, got {}",
+                self.n_params,
+                params.len()
+            )));
+        }
+
+        let nu_tot = compute_nu_tot_upper_bound(&self.proc_yield_info, params);
+        let capacity = fused_capacity(nu_tot, n_toys);
+
+        if capacity <= FUSED_MAX_CAPACITY && capacity > 0 {
+            self.sample_toys_1d_fused(params, n_toys, seed, capacity)
+        } else {
+            self.sample_toys_1d_two_pass(params, n_toys, seed)
+        }
+    }
+
+    /// Force two-pass path (for parity testing). Not part of public API.
+    #[doc(hidden)]
+    pub fn sample_toys_1d_two_pass_for_test(
+        &self,
+        params: &[f64],
+        n_toys: usize,
+        seed: u64,
+    ) -> ns_core::Result<(Vec<u32>, Vec<f64>)> {
+        let (toy_offsets, _buf_toy_offsets, buf_obs_opt, _timing) =
+            self.sample_toys_1d_two_pass(params, n_toys, seed)?;
+
+        let n_events = *toy_offsets.last().unwrap_or(&0) as usize;
+        let obs_flat = match buf_obs_opt {
+            Some(buf) => {
+                let obs_f32: &[f32] = unsafe {
+                    let ptr = buf.contents() as *const f32;
+                    std::slice::from_raw_parts(ptr, n_events)
+                };
+                obs_f32.iter().map(|&v| v as f64).collect()
+            }
+            None => Vec::new(),
+        };
+
+        Ok((toy_offsets, obs_flat))
     }
 
     /// Sample toys on Metal GPU, returning all data on the host.

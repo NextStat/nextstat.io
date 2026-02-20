@@ -255,6 +255,7 @@ fn run_foce_error_model_test(error_model: ErrorModel, label: &str) {
     let omega_ka = 0.25;
     let dose = 100.0;
     let bioav = 1.0;
+    let n_subjects = 30;
 
     let sample_times = vec![0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 24.0, 48.0];
     let data = generate_pop_1cpt_oral(
@@ -267,12 +268,13 @@ fn run_foce_error_model_test(error_model: ErrorModel, label: &str) {
         &error_model,
         dose,
         bioav,
-        30,
+        n_subjects,
         &sample_times,
         101,
     );
+    let doses = vec![dose; n_subjects];
 
-    let cfg = FoceConfig { max_outer_iter: 300, max_inner_iter: 30, tol: 1e-4, interaction: true };
+    let cfg = FoceConfig { max_outer_iter: 300, max_inner_iter: 30, tol: 1e-4, interaction: true, ..FoceConfig::default() };
     let estimator = FoceEstimator::new(cfg);
 
     let result = estimator
@@ -281,7 +283,7 @@ fn run_foce_error_model_test(error_model: ErrorModel, label: &str) {
             &data.y,
             &data.subject_idx,
             data.n_subjects,
-            dose,
+            &doses,
             bioav,
             error_model,
             &[cl_pop, v_pop, ka_pop], // init at truth for non-additive error models
@@ -330,6 +332,7 @@ fn run_saem_error_model_test(error_model: ErrorModel, label: &str) {
     let omega_ka = 0.25;
     let dose = 100.0;
     let bioav = 1.0;
+    let n_subjects = 40;
 
     let sample_times = vec![0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 12.0, 24.0];
     let data = generate_pop_1cpt_oral(
@@ -342,10 +345,11 @@ fn run_saem_error_model_test(error_model: ErrorModel, label: &str) {
         &error_model,
         dose,
         bioav,
-        40,
+        n_subjects,
         &sample_times,
         202,
     );
+    let doses = vec![dose; n_subjects];
 
     let cfg = SaemConfig {
         n_burn: 100,
@@ -363,7 +367,7 @@ fn run_saem_error_model_test(error_model: ErrorModel, label: &str) {
             &data.y,
             &data.subject_idx,
             data.n_subjects,
-            dose,
+            &doses,
             bioav,
             error_model,
             &[cl_pop * 1.2, v_pop * 0.8, ka_pop * 1.1],
@@ -411,6 +415,7 @@ fn foce_large_sample_n50() {
     let sigma = 0.3;
     let dose = 100.0;
     let bioav = 1.0;
+    let n_subjects = 50;
     let error_model = ErrorModel::Additive(sigma);
 
     let sample_times = vec![0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 24.0, 36.0, 48.0, 72.0];
@@ -424,12 +429,13 @@ fn foce_large_sample_n50() {
         &error_model,
         dose,
         bioav,
-        50,
+        n_subjects,
         &sample_times,
         303,
     );
+    let doses = vec![dose; n_subjects];
 
-    let cfg = FoceConfig { max_outer_iter: 300, max_inner_iter: 30, tol: 1e-4, interaction: true };
+    let cfg = FoceConfig { max_outer_iter: 300, max_inner_iter: 30, tol: 1e-4, interaction: true, ..FoceConfig::default() };
     let estimator = FoceEstimator::new(cfg);
 
     let result = estimator
@@ -438,7 +444,7 @@ fn foce_large_sample_n50() {
             &data.y,
             &data.subject_idx,
             data.n_subjects,
-            dose,
+            &doses,
             bioav,
             error_model,
             &[cl_pop * 1.1, v_pop * 1.1, ka_pop * 1.1], // slightly perturbed init
@@ -481,6 +487,7 @@ fn vpc_proportional_error() {
     let omega_ka = 0.25;
     let dose = 100.0;
     let bioav = 1.0;
+    let n_subjects = 20;
     let error_model = ErrorModel::Proportional(0.12);
 
     let sample_times = vec![0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 12.0, 24.0];
@@ -494,10 +501,11 @@ fn vpc_proportional_error() {
         &error_model,
         dose,
         bioav,
-        20,
+        n_subjects,
         &sample_times,
         404,
     );
+    let doses = vec![dose; n_subjects];
 
     let omega_mat = OmegaMatrix::from_diagonal(&[omega_cl, omega_v, omega_ka]).unwrap();
     let theta = [cl_pop, v_pop, ka_pop];
@@ -507,7 +515,7 @@ fn vpc_proportional_error() {
         &data.y,
         &data.subject_idx,
         data.n_subjects,
-        dose,
+        &doses,
         bioav,
         &theta,
         &omega_mat,
@@ -547,6 +555,7 @@ fn gof_all_error_models() {
         let omega_ka = 0.25;
         let dose = 100.0;
         let bioav = 1.0;
+        let n_subjects = 15;
 
         let sample_times = vec![0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 24.0];
         let data = generate_pop_1cpt_oral(
@@ -559,10 +568,11 @@ fn gof_all_error_models() {
             &error_model,
             dose,
             bioav,
-            15,
+            n_subjects,
             &sample_times,
             505,
         );
+        let doses = vec![dose; n_subjects];
 
         // Use true etas (all zero for simplicity — tests GOF infrastructure, not estimation)
         let etas: Vec<Vec<f64>> = (0..data.n_subjects).map(|_| vec![0.0, 0.0, 0.0]).collect();
@@ -572,7 +582,7 @@ fn gof_all_error_models() {
             &data.times,
             &data.y,
             &data.subject_idx,
-            dose,
+            &doses,
             bioav,
             &theta,
             &etas,

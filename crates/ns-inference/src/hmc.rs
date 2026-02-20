@@ -80,8 +80,19 @@ impl Metric {
     }
 
     pub fn kinetic_energy(&self, p: &[f64]) -> f64 {
-        let v = self.mul_inv_mass(p);
-        0.5 * p.iter().zip(v.iter()).map(|(&pi, &vi)| pi * vi).sum::<f64>()
+        match self {
+            Metric::Diag(inv_mass) => {
+                0.5 * inv_mass
+                    .iter()
+                    .zip(p.iter())
+                    .map(|(&m, &pi)| m * pi * pi)
+                    .sum::<f64>()
+            }
+            Metric::DenseCholesky { .. } => {
+                let v = self.mul_inv_mass(p);
+                0.5 * p.iter().zip(v.iter()).map(|(&pi, &vi)| pi * vi).sum::<f64>()
+            }
+        }
     }
 
     pub fn sample_momentum(&self, rng: &mut impl rand::Rng) -> Vec<f64> {
@@ -244,8 +255,7 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
 
     /// Initialize an HMC state at position `q`.
     pub fn init_state(&self, q: Vec<f64>) -> Result<HmcState> {
-        let lp = self.posterior.logpdf_unconstrained(&q)?;
-        let grad_lp = self.posterior.grad_unconstrained(&q)?;
+        let (lp, grad_lp) = self.posterior.logpdf_grad_unconstrained(&q)?;
         let potential = -lp;
         let grad_potential: Vec<f64> = grad_lp.iter().map(|&g| -g).collect();
         Ok(HmcState { q, p: vec![0.0; grad_potential.len()], potential, grad_potential })
@@ -267,15 +277,23 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
             state.p[i] -= 0.5 * eps * state.grad_potential[i];
         }
 
-        // Full-step position
-        let v = self.metric.mul_inv_mass(&state.p);
-        for i in 0..n {
-            state.q[i] += eps * v[i];
+        // Full-step position (inline diagonal to avoid Vec alloc in the common case)
+        match &self.metric {
+            Metric::Diag(inv_mass) => {
+                for i in 0..n {
+                    state.q[i] += eps * inv_mass[i] * state.p[i];
+                }
+            }
+            Metric::DenseCholesky { .. } => {
+                let v = self.metric.mul_inv_mass(&state.p);
+                for i in 0..n {
+                    state.q[i] += eps * v[i];
+                }
+            }
         }
 
-        // Recompute potential and gradient at new position
-        let lp = self.posterior.logpdf_unconstrained(&state.q)?;
-        let grad_lp = self.posterior.grad_unconstrained(&state.q)?;
+        // Recompute potential and gradient at new position (fused: single model eval + transform)
+        let (lp, grad_lp) = self.posterior.logpdf_grad_unconstrained(&state.q)?;
         state.potential = -lp;
         for i in 0..n {
             state.grad_potential[i] = -grad_lp[i];

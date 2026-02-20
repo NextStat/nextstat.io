@@ -1,0 +1,231 @@
+{
+  "environment": {
+    "python_version": "3.12.3",
+    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "x86_64",
+    "node": "beeb3e6dd6df",
+    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "gpus": [
+      {
+        "name": "Tesla V100-PCIE-16GB",
+        "driver": "580.95.05",
+        "compute_capability": "7.0",
+        "memory_mb": "16384",
+        "power_limit_w": "250.00",
+        "compute_mode": "Default"
+      }
+    ],
+    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+    "cuda_visible_devices": "0",
+    "jax": {
+      "jax": "0.9.0.1",
+      "jaxlib": "0.9.0.1",
+      "backend": "gpu",
+      "device": "Tesla V100-PCIE-16GB",
+      "compilation_cache_dir": null
+    },
+    "xla": {
+      "XLA_FLAGS": null,
+      "XLA_PYTHON_CLIENT_PREALLOCATE": "false"
+    },
+    "nextstat_version": "0.9.6",
+    "packages": {
+      "blackjax": "1.3",
+      "arviz": "0.23.4",
+      "scipy": "1.17.0",
+      "numpy": "2.4.0"
+    }
+  },
+  "config": {
+    "n_chains_gpu": 4096,
+    "n_chains_cpu": 4,
+    "n_warmup": 500,
+    "n_samples": 1000,
+    "seed": 42,
+    "report_chains": 256,
+    "models": [
+      "std_normal_10d",
+      "eight_schools",
+      "glm_logistic"
+    ]
+  },
+  "results": [
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 1.5962201748043299,
+      "wall_sampling": 0.24411225700000003,
+      "min_ess": 163573.57880744504,
+      "max_rhat": 1.0093807428342674,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.00164515,
+        "warmup_s": 0.234154316,
+        "sampling_s": 0.24411225700000003
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 512000,
+      "ess_per_grad": 0.3194796461082911,
+      "grad_per_sec": 2097395.7075821883
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "std_normal_10d",
+      "wall_s": 0.019390862435102463,
+      "wall_sampling": 0.019390862435102463,
+      "min_ess": 1937.3959175661078,
+      "max_rhat": 1.0012473261108026,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 6875,
+      "ess_per_grad": 0.2818030425550702,
+      "grad_per_sec": 354548.4386271792
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 15.077272505499423,
+      "wall_sampling": 0.22054529003798962,
+      "min_ess": 1770.7953941309515,
+      "max_rhat": 1.1061887612847383,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 2.875111915360532,
+      "tuned_n_steps": 1,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 10.840356584638357,
+      "cold_sampling_s": 4.236915920861065,
+      "n_grad_evals": 256000,
+      "ess_per_grad": 0.0069171695083240295,
+      "grad_per_sec": 1160759.315947773
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "eight_schools",
+      "wall_s": 1.4052898054942489,
+      "wall_sampling": 0.23766807599999998,
+      "min_ess": 79005.80800660132,
+      "max_rhat": 1.0070993014527105,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.002144554,
+        "warmup_s": 0.056914086,
+        "sampling_s": 0.23766807599999998
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.1028721458419288,
+      "grad_per_sec": 3231397.388011001
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "eight_schools",
+      "wall_s": 0.019383366219699383,
+      "wall_sampling": 0.019383366219699383,
+      "min_ess": 2152.1437737998463,
+      "max_rhat": 1.014886122852787,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 13264,
+      "ess_per_grad": 0.16225450646862533,
+      "grad_per_sec": 684298.0651379196
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "eight_schools",
+      "wall_s": 12.302909942343831,
+      "wall_sampling": 0.5385044161230326,
+      "min_ess": 20533.436592050184,
+      "max_rhat": 1.0114843737781467,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 1.5286887527939192,
+      "tuned_n_steps": 2,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 8.479107590392232,
+      "cold_sampling_s": 3.823802351951599,
+      "n_grad_evals": 512000,
+      "ess_per_grad": 0.040104368343848014,
+      "grad_per_sec": 950781.4321861066
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "glm_logistic",
+      "wall_s": 277.37178332544863,
+      "wall_sampling": 9.198621880000019,
+      "min_ess": 91003.0143259357,
+      "max_rhat": 1.012022839530801,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.004658703,
+        "warmup_s": 265.957874879,
+        "sampling_s": 9.198621880000019
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.95,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.11849350823689545,
+      "grad_per_sec": 83490.76742352176
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "glm_logistic",
+      "wall_s": 16.646275581791997,
+      "wall_sampling": 16.646275581791997,
+      "min_ess": 1041.3849415714967,
+      "max_rhat": 1.0143641972967297,
+      "n_chains": 4,
+      "n_samples": 1000,
+      "n_grad_evals": 8000,
+      "ess_per_grad": 0.13017311769643708,
+      "grad_per_sec": 480.5879826206018
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "glm_logistic",
+      "wall_s": 92.07268274296075,
+      "wall_sampling": 78.2392103979364,
+      "min_ess": 16572.831892161357,
+      "max_rhat": 1.0136983006124403,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 0.17121608158544963,
+      "tuned_n_steps": 26,
+      "tuned_L": 4.47213595499958,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 11.350541153922677,
+      "cold_sampling_s": 80.72214158903807,
+      "n_grad_evals": 6656000,
+      "ess_per_grad": 0.0024899086376444345,
+      "grad_per_sec": 85072.43319745408
+    }
+  ]
+}

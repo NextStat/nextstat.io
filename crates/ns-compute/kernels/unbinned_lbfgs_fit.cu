@@ -892,7 +892,7 @@ extern "C" __global__ void unbinned_batch_lbfgs_fit(
             if (isfinite(prev_fval)) {
                 rel_obj = fabs(prev_fval - fval) / fmax(fmax(fabs(prev_fval), fabs(fval)), 1.0);
             }
-            if (s_flag[0] == 0 && (pg_norm < tol_eff || rel_obj < tol)) {
+            if (s_flag[0] == 0 && (pg_norm < tol_eff || (iter >= 3 && rel_obj < tol))) {
                 g_nll_out[toy] = fval;
                 g_status[toy] = 1u;
                 g_iters[toy] = iter;

@@ -48,7 +48,8 @@ pub struct GofRecord {
 ///
 /// # Arguments
 /// - `times`, `y`, `subject_idx`: observation data
-/// - `dose`, `bioav`: dosing
+/// - `doses`: per-subject doses (length = n_subjects)
+/// - `bioav`: bioavailability
 /// - `theta`: fitted population parameters `[CL, V, Ka]`
 /// - `etas`: conditional modes per subject `eta[subject][param]`
 /// - `error_model`: residual error model
@@ -56,7 +57,7 @@ pub fn gof_1cpt_oral(
     times: &[f64],
     y: &[f64],
     subject_idx: &[usize],
-    dose: f64,
+    doses: &[f64],
     bioav: f64,
     theta: &[f64],
     etas: &[Vec<f64>],
@@ -68,6 +69,13 @@ pub fn gof_1cpt_oral(
     if times.len() != y.len() || times.len() != subject_idx.len() {
         return Err(Error::Validation("times/y/subject_idx length mismatch".into()));
     }
+    if doses.len() != etas.len() {
+        return Err(Error::Validation(format!(
+            "doses length {} != n_subjects {}",
+            doses.len(),
+            etas.len()
+        )));
+    }
 
     let n_obs = times.len();
     let mut records = Vec::with_capacity(n_obs);
@@ -76,6 +84,7 @@ pub fn gof_1cpt_oral(
         let s = subject_idx[i];
         let t = times[i];
         let dv = y[i];
+        let dose = doses[s];
 
         // Population prediction (eta = 0).
         let pred = pk::conc_oral(dose, bioav, theta[0], theta[1], theta[2], t);
@@ -170,7 +179,7 @@ pub fn vpc_1cpt_oral(
     y: &[f64],
     subject_idx: &[usize],
     n_subjects: usize,
-    dose: f64,
+    doses: &[f64],
     bioav: f64,
     theta: &[f64],
     omega: &OmegaMatrix,
@@ -188,6 +197,13 @@ pub fn vpc_1cpt_oral(
     }
     if times.len() != y.len() || times.len() != subject_idx.len() {
         return Err(Error::Validation("times/y/subject_idx mismatch".into()));
+    }
+    if doses.len() != n_subjects {
+        return Err(Error::Validation(format!(
+            "doses length {} != n_subjects {}",
+            doses.len(),
+            n_subjects
+        )));
     }
     if config.quantiles.is_empty() {
         return Err(Error::Validation("quantiles must not be empty".into()));
@@ -251,7 +267,7 @@ pub fn vpc_1cpt_oral(
             let cl_i = theta[0] * eta[0].exp();
             let v_i = theta[1] * eta[1].exp();
             let ka_i = theta[2] * eta[2].exp();
-            let c = pk::conc_oral(dose, bioav, cl_i, v_i, ka_i, t);
+            let c = pk::conc_oral(doses[s], bioav, cl_i, v_i, ka_i, t);
 
             // Add residual noise.
             let sd = error_model.variance(c.max(1e-30)).sqrt().max(1e-30);
@@ -382,9 +398,10 @@ mod tests {
         let (times, y, subject_idx, etas) = generate_pop_data(n_subjects, 42);
         let theta = [1.2, 15.0, 2.0];
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let records =
-            gof_1cpt_oral(&times, &y, &subject_idx, 100.0, 1.0, &theta, &etas, &em).unwrap();
+            gof_1cpt_oral(&times, &y, &subject_idx, &doses, 1.0, &theta, &etas, &em).unwrap();
 
         assert_eq!(records.len(), times.len());
         for r in &records {
@@ -411,9 +428,10 @@ mod tests {
         let (times, y, subject_idx, etas) = generate_pop_data(n_subjects, 77);
         let theta = [1.2, 15.0, 2.0];
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let records =
-            gof_1cpt_oral(&times, &y, &subject_idx, 100.0, 1.0, &theta, &etas, &em).unwrap();
+            gof_1cpt_oral(&times, &y, &subject_idx, &doses, 1.0, &theta, &etas, &em).unwrap();
 
         let mean_iwres: f64 = records.iter().map(|r| r.iwres).sum::<f64>() / records.len() as f64;
         // IWRES should be roughly centered around 0 (not exactly, since etas are true).
@@ -427,6 +445,7 @@ mod tests {
         let theta = [1.2, 15.0, 2.0];
         let omega = OmegaMatrix::from_diagonal(&[0.2, 0.2, 0.2]).unwrap();
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let cfg = VpcConfig { n_sim: 50, n_bins: 5, seed: 42, ..VpcConfig::default() };
 
@@ -435,7 +454,7 @@ mod tests {
             &y,
             &subject_idx,
             n_subjects,
-            100.0,
+            &doses,
             1.0,
             &theta,
             &omega,
@@ -473,6 +492,7 @@ mod tests {
         let theta = [1.2, 15.0, 2.0];
         let omega = OmegaMatrix::from_diagonal(&[0.2, 0.2, 0.2]).unwrap();
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let cfg = VpcConfig { n_sim: 100, n_bins: 5, seed: 42, ..VpcConfig::default() };
 
@@ -481,7 +501,7 @@ mod tests {
             &y,
             &subject_idx,
             n_subjects,
-            100.0,
+            &doses,
             1.0,
             &theta,
             &omega,
@@ -535,7 +555,7 @@ mod tests {
             &[2.0],
             &[0],
             1,
-            100.0,
+            &[100.0],
             1.0,
             &[1.0, 10.0], // wrong length
             &omega,

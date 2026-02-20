@@ -91,8 +91,9 @@ fn run_benchmark(
 ) {
     let bioav = 1.0;
     let em = ErrorModel::Additive(data.sigma);
+    let doses = vec![data.dose; data.n_subjects];
 
-    let cfg = FoceConfig { max_outer_iter: 150, max_inner_iter: 25, tol: 1e-4, interaction: true };
+    let cfg = FoceConfig { max_outer_iter: 150, max_inner_iter: 25, tol: 1e-4, interaction: true, ..FoceConfig::default() };
     let estimator = FoceEstimator::new(cfg);
 
     let start = std::time::Instant::now();
@@ -102,7 +103,7 @@ fn run_benchmark(
             &data.y,
             &data.subject_idx,
             data.n_subjects,
-            data.dose,
+            &doses,
             bioav,
             em,
             &theta_init,
@@ -162,7 +163,7 @@ fn run_benchmark(
         &data.times,
         &data.y,
         &data.subject_idx,
-        data.dose,
+        &doses,
         bioav,
         &result.theta,
         &result.eta,
@@ -181,7 +182,7 @@ fn run_benchmark(
         &data.y,
         &data.subject_idx,
         data.n_subjects,
-        data.dose,
+        &doses,
         bioav,
         &result.theta,
         &omega_mat,
@@ -332,7 +333,8 @@ fn benchmark_warfarin_correlated_omega() {
     }
 
     let init_omega = OmegaMatrix::from_diagonal(&[0.3, 0.3, 0.3]).unwrap();
-    let cfg = FoceConfig { max_outer_iter: 150, max_inner_iter: 25, tol: 1e-4, interaction: true };
+    let doses = vec![dose; n_subjects];
+    let cfg = FoceConfig { max_outer_iter: 150, max_inner_iter: 25, tol: 1e-4, interaction: true, ..FoceConfig::default() };
     let estimator = FoceEstimator::new(cfg);
 
     let start = std::time::Instant::now();
@@ -342,7 +344,7 @@ fn benchmark_warfarin_correlated_omega() {
             &y,
             &subject_idx,
             n_subjects,
-            dose,
+            &doses,
             bioav,
             ErrorModel::Additive(sigma),
             &[0.10, 5.0, 0.5],

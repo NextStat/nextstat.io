@@ -171,6 +171,10 @@ def main() -> int:
                 worst_score = score
                 worst_case = f"{case_id}::{backend}"
 
+            n_grad_evals = _maybe_float(obj.get("timing", {}).get("n_grad_evals"))
+            ess_per_grad = _maybe_float(obj.get("timing", {}).get("ess_per_grad"))
+            grad_per_sec = _maybe_float(obj.get("timing", {}).get("grad_per_sec"))
+
             sha = sha256_file(out_path) if out_path.exists() else "0" * 64
             index_cases.append(
                 {
@@ -184,6 +188,9 @@ def main() -> int:
                     "min_ess_tail": min_ess_tail,
                     "max_r_hat": max_r_hat,
                     "min_ess_bulk_per_sec": min_ess_bulk_per_sec,
+                    "n_grad_evals": int(n_grad_evals) if n_grad_evals is not None else None,
+                    "ess_per_grad": ess_per_grad,
+                    "grad_per_sec": grad_per_sec,
                 }
             )
 

@@ -2,7 +2,7 @@
  * Monte Carlo Fault-Tree Simulation CUDA Kernel.
  *
  * Architecture: 1 thread = 1 scenario, grid-stride loop.
- * Inline xoshiro-ish RNG (no cuRAND dependency).
+ * Counter-based RNG stream (no cuRAND dependency).
  * Box-Muller for normal sampling (BernoulliUncertain Z).
  * Atomic counters for TOP failure + component importance.
  *
@@ -19,29 +19,29 @@
  * Tree stored in CSR format for children.
  */
 
-/* ---------- RNG (xoshiro-ish, same as Metal kernel) ---------------------- */
+/* ---------- Counter-based RNG (SplitMix64 hash stream) -------------------- */
 
-__device__ __forceinline__ unsigned int rotl32(unsigned int x, int k) {
-    return (x << k) | (x >> (32 - k));
+__device__ __forceinline__ unsigned long long splitmix64(unsigned long long x) {
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
 }
 
-// Returns a pseudo-random u32 and updates the state.
-__device__ __forceinline__ unsigned int next_u32(
-    unsigned int* s0,
-    unsigned int* s1,
-    unsigned int* s2,
-    unsigned int* s3
+// Counter-based stream: each (seed, global_sid, draw_idx) maps to a unique u32.
+__device__ __forceinline__ unsigned int counter_u32(
+    unsigned int seed_lo,
+    unsigned int seed_hi,
+    unsigned long long global_sid,
+    unsigned long long draw_idx
 ) {
-    unsigned int r = (*s1) * 5u;
-    r = rotl32(r, 7) * 9u;
-    unsigned int t = (*s1) << 9;
-    *s2 ^= *s0;
-    *s3 ^= *s1;
-    *s1 ^= *s2;
-    *s0 ^= *s3;
-    *s2 ^= t;
-    *s3 = rotl32(*s3, 11);
-    return r;
+    unsigned long long seed64 =
+        (static_cast<unsigned long long>(seed_hi) << 32) | static_cast<unsigned long long>(seed_lo);
+    unsigned long long x =
+        seed64
+        ^ (global_sid * 0xD2B74407B1CE6E93ULL)
+        ^ (draw_idx * 0x9E3779B97F4A7C15ULL);
+    return static_cast<unsigned int>(splitmix64(x));
 }
 
 // Uniform [0,1) from u32 (31 bits).
@@ -87,26 +87,23 @@ extern "C" __global__ void fault_tree_mc_kernel(
     int top_node,
     unsigned int seed_lo,
     unsigned int seed_hi,
+    unsigned int scenario_offset_lo,
+    unsigned int scenario_offset_hi,
     int n_scenarios
 ) {
     // Grid-stride loop: each thread processes multiple scenarios.
-    for (int sid = blockIdx.x * blockDim.x + threadIdx.x;
-         sid < n_scenarios;
-         sid += blockDim.x * gridDim.x)
+    for (int local_sid = blockIdx.x * blockDim.x + threadIdx.x;
+         local_sid < n_scenarios;
+         local_sid += blockDim.x * gridDim.x)
     {
-        // Initialize Philox state for this scenario.
-        // RNG state initialization (mirrors Metal).
-        unsigned int s0 = seed_lo ^ ((unsigned int)sid * 0x9E3779B9u + 1u);
-        unsigned int s1 = seed_hi ^ ((unsigned int)sid * 0x517CC1B7u + 1u);
-        unsigned int s2 = seed_lo ^ (seed_hi + (unsigned int)sid + 0x6C62272Eu);
-        unsigned int s3 = (unsigned int)sid ^ (seed_lo * 0x61C88647u + seed_hi);
+        unsigned long long scenario_offset =
+            (static_cast<unsigned long long>(scenario_offset_hi) << 32)
+            | static_cast<unsigned long long>(scenario_offset_lo);
+        unsigned long long global_sid = scenario_offset + static_cast<unsigned long long>(local_sid);
+        unsigned long long draw_idx = 0ULL;
 
-        // Warm up.
-        for (int w = 0; w < 4; w++) {
-            (void)next_u32(&s0, &s1, &s2, &s3);
-        }
-
-        #define NEXT_UNIFORM() u32_to_uniform(next_u32(&s0, &s1, &s2, &s3))
+        #define NEXT_UNIFORM() \
+            u32_to_uniform(counter_u32(seed_lo, seed_hi, global_sid, draw_idx++))
 
         // Draw Z for epistemic uncertainty (always consumed for determinism).
         double u_z1 = NEXT_UNIFORM();
