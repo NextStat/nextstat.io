@@ -46,6 +46,7 @@ Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
 FunnelModel = _get("FunnelModel")
+FunnelNcpModel = _get("FunnelNcpModel")
 StdNormalModel = _get("StdNormalModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
@@ -72,6 +73,14 @@ nlme_saem = _get("nlme_saem")
 pk_vpc = _get("pk_vpc")
 pk_gof = _get("pk_gof")
 read_nonmem = _get("read_nonmem")
+scm = _get("scm")
+ThreeCompartmentIvPkModel = _get("ThreeCompartmentIvPkModel")
+ThreeCompartmentOralPkModel = _get("ThreeCompartmentOralPkModel")
+average_be = _get("average_be")
+be_power = _get("be_power")
+be_sample_size = _get("be_sample_size")
+simulate_trial = _get("simulate_trial")
+map_estimate = _get("map_estimate")
 GammaRegressionModel = _get("GammaRegressionModel")
 TweedieRegressionModel = _get("TweedieRegressionModel")
 GevModel = _get("GevModel")
@@ -378,6 +387,7 @@ __all__ = [
     "HybridModel",
     "GaussianMeanModel",
     "FunnelModel",
+    "FunnelNcpModel",
     "StdNormalModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
@@ -397,6 +407,8 @@ __all__ = [
     "IntervalCensoredLogNormalModel",
     "OneCompartmentOralPkModel",
     "OneCompartmentOralPkNlmeModel",
+    "ThreeCompartmentIvPkModel",
+    "ThreeCompartmentOralPkModel",
     "GammaRegressionModel",
     "TweedieRegressionModel",
     "GevModel",
@@ -435,6 +447,12 @@ __all__ = [
     # Survival
     "kaplan_meier",
     "log_rank_test",
+    # Pharma
+    "average_be",
+    "be_power",
+    "be_sample_size",
+    "simulate_trial",
+    "map_estimate",
     # Churn
     "churn_generate_data",
     "churn_retention",

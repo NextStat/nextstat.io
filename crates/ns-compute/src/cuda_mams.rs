@@ -178,6 +178,8 @@ pub struct CudaMamsAccelerator {
     n_feat: usize,
     // Optional cuBLAS evaluator for GLM initialization.
     glm_cublas_eval: Option<CudaGlmCublasEvaluator>,
+    // Energy error threshold for divergence detection (default: 1000.0).
+    divergence_threshold: f64,
 }
 
 pub use crate::mams_trait::{BatchResult, TransitionDiagnostics};
@@ -214,14 +216,15 @@ impl CudaMamsAccelerator {
         };
 
         // Extract data dimensions for warp kernel shared memory sizing.
-        // GLM logistic (model_id=3): model_data = [n, p, X(n*p), y(n)]
-        let (n_obs, n_feat) = if model_id == 3 && model_data.len() >= 2 {
+        // GLM models: model_data starts with [n, p, ...] (id 3,6) or [n, p, offset_flag, ...] (id 7,8)
+        // or [n, p, G, ...] (id 9).
+        let (n_obs, n_feat) = if [3, 6, 7, 8, 9].contains(&model_id) && model_data.len() >= 2 {
             (model_data[0] as usize, model_data[1] as usize)
         } else {
             (0, 0)
         };
         let mut glm_cublas_eval = None;
-        if model_id == 3 && n_obs > 0 && n_feat > 0 && dim == n_feat {
+        if (model_id == 3 || model_id == 6) && n_obs > 0 && n_feat > 0 && dim == n_feat {
             let np = n_obs * n_feat;
             let y_off = 2 + np;
             let x_col_off = y_off + n_obs;
@@ -312,6 +315,7 @@ impl CudaMamsAccelerator {
             n_obs,
             n_feat,
             glm_cublas_eval,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -403,6 +407,7 @@ impl CudaMamsAccelerator {
             n_obs: 0,
             n_feat: 0,
             glm_cublas_eval: None,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -491,7 +496,7 @@ impl CudaMamsAccelerator {
     /// This is model-specific (GLM logistic only) and intended to reduce warmup
     /// transients for large-`n` data-heavy runs.
     pub fn glm_presolve(&mut self, max_iters: usize) -> ns_core::Result<bool> {
-        if max_iters == 0 || self.model_id != 3 {
+        if max_iters == 0 || (self.model_id != 3 && self.model_id != 6) {
             return Ok(false);
         }
         if std::env::var_os("NEXTSTAT_DISABLE_LAPS_GLM_PRESOLVE").is_some() {
@@ -670,6 +675,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&store_idx_arg);
         builder.arg(&n_report_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch: {e}")))?;
@@ -762,6 +768,7 @@ impl CudaMamsAccelerator {
             builder.arg(&mut self.d_accum_energy);
             builder.arg(&store_idx_arg);
             builder.arg(&n_report_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder.launch(config).map_err(|e| cuda_err(format!("launch batch[{s}]: {e}")))?;
@@ -897,6 +904,7 @@ impl CudaMamsAccelerator {
         builder.arg(&n_obs_arg);
         builder.arg(&n_feat_arg);
         builder.arg(&warp_use_shmem_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch warp: {e}")))?;
@@ -982,6 +990,7 @@ impl CudaMamsAccelerator {
             builder.arg(&n_obs_arg);
             builder.arg(&n_feat_arg);
             builder.arg(&warp_use_shmem_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder
@@ -1085,6 +1094,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&n_report_arg);
         builder.arg(&n_transitions_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch fused: {e}")))?;
@@ -1278,5 +1288,9 @@ impl crate::mams_trait::MamsAccelerator for CudaMamsAccelerator {
 
     fn dim(&self) -> usize {
         self.dim()
+    }
+
+    fn set_divergence_threshold(&mut self, threshold: f64) {
+        self.divergence_threshold = threshold;
     }
 }

@@ -81,13 +81,30 @@ use ns_inference::{
     NonmemDataset as RustNonmemDataset, OmegaMatrix as RustOmegaMatrix,
     OneCompartmentOralPkModel as RustOneCompartmentOralPkModel,
     OneCompartmentOralPkNlmeModel as RustOneCompartmentOralPkNlmeModel,
+    ScmConfig as RustScmConfig, ScmEstimator as RustScmEstimator,
+    CovariateCandidate as RustCovariateCandidate,
+    CovariateRelationship as RustCovariateRelationship,
     OrderedLogitModel as RustOrderedLogitModel, OrderedProbitModel as RustOrderedProbitModel,
     PoissonRegressionModel as RustPoissonRegressionModel, SaemConfig as RustSaemConfig,
-    SaemEstimator as RustSaemEstimator, TwoCompartmentIvPkModel as RustTwoCompartmentIvPkModel,
+    SaemEstimator as RustSaemEstimator,
+    ThreeCompartmentIvPkModel as RustThreeCompartmentIvPkModel,
+    ThreeCompartmentOralPkModel as RustThreeCompartmentOralPkModel,
+    TwoCompartmentIvPkModel as RustTwoCompartmentIvPkModel,
     TwoCompartmentOralPkModel as RustTwoCompartmentOralPkModel, VpcConfig as RustVpcConfig,
     WeibullSurvivalModel as RustWeibullSurvivalModel, gof_1cpt_oral as rust_gof_1cpt_oral,
     hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
     profile_likelihood as pl, vpc_1cpt_oral as rust_vpc_1cpt_oral,
+    average_be as rust_average_be, be_power as rust_be_power, be_sample_size as rust_be_sample_size,
+    BeConfig as RustBeConfig, BeData as RustBeData, BeDesign as RustBeDesign,
+    BePowerConfig as RustBePowerConfig,
+    conc_iv_3cpt_macro, conc_oral_3cpt_macro,
+    simulate_trial as rust_simulate_trial,
+    TrialConfig as RustTrialConfig,
+    PopulationPkParams as RustPopulationPkParams, PkModelType as RustPkModelType,
+    TrialErrorModelType as RustTrialErrorModelType,
+    DoseEvent as RustDoseEvent, DoseRoute as RustDoseRoute,
+    MapConfig as RustMapConfig, MapResult as RustMapResult,
+    Posterior as RustPosterior, Prior as RustPrior, map_estimate as rust_map_estimate,
 };
 use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
@@ -186,6 +203,15 @@ fn sampler_result_to_py_gates<'py>(
     sample_stats.set_item("energy", energy)?;
     sample_stats.set_item("step_size", step_sizes)?;
     sample_stats.set_item("n_leapfrog", n_leapfrog)?;
+
+    // Metric info (from first chain; all chains share the same metric type)
+    if let Some(c0) = result.chains.first() {
+        sample_stats.set_item("metric_type", &c0.metric_type_name)?;
+        if let Some(ref inv_mass) = c0.inv_mass_matrix {
+            sample_stats.set_item("inv_mass_matrix", inv_mass.clone())?;
+        }
+        sample_stats.set_item("mass_diag", c0.mass_diag.clone())?;
+    }
 
     // Build "diagnostics" dict
     let diagnostics_dict = PyDict::new(py);
@@ -321,6 +347,7 @@ enum PosteriorModel {
     Hybrid(RustHybridModel),
     GaussianMean(GaussianMeanModel),
     Funnel(FunnelModel),
+    FunnelNcp(FunnelNcpModel),
     StdNormal(StdNormalModel),
     LinearRegression(RustLinearRegressionModel),
     LogisticRegression(RustLogisticRegressionModel),
@@ -342,6 +369,8 @@ enum PosteriorModel {
     OneCompartmentOralPkNlme(RustOneCompartmentOralPkNlmeModel),
     TwoCompartmentIvPk(RustTwoCompartmentIvPkModel),
     TwoCompartmentOralPk(RustTwoCompartmentOralPkModel),
+    ThreeCompartmentIvPk(RustThreeCompartmentIvPkModel),
+    ThreeCompartmentOralPk(RustThreeCompartmentOralPkModel),
     GammaRegression(RustGammaRegressionModel),
     TweedieRegression(RustTweedieRegressionModel),
     Gev(RustGevModel),
@@ -357,6 +386,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
             PosteriorModel::Funnel(m) => m.dim(),
+            PosteriorModel::FunnelNcp(m) => m.dim(),
             PosteriorModel::StdNormal(m) => m.dim(),
             PosteriorModel::LinearRegression(m) => m.dim(),
             PosteriorModel::LogisticRegression(m) => m.dim(),
@@ -374,6 +404,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.dim(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.dim(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.dim(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.dim(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.dim(),
             PosteriorModel::GammaRegression(m) => m.dim(),
             PosteriorModel::TweedieRegression(m) => m.dim(),
             PosteriorModel::Gev(m) => m.dim(),
@@ -393,6 +425,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
             PosteriorModel::Funnel(m) => m.parameter_names(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_names(),
             PosteriorModel::StdNormal(m) => m.parameter_names(),
             PosteriorModel::LinearRegression(m) => m.parameter_names(),
             PosteriorModel::LogisticRegression(m) => m.parameter_names(),
@@ -410,6 +443,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_names(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_names(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_names(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_names(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_names(),
             PosteriorModel::GammaRegression(m) => m.parameter_names(),
             PosteriorModel::TweedieRegression(m) => m.parameter_names(),
             PosteriorModel::Gev(m) => m.parameter_names(),
@@ -429,6 +464,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
             PosteriorModel::Funnel(m) => m.parameter_bounds(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_bounds(),
             PosteriorModel::StdNormal(m) => m.parameter_bounds(),
             PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
             PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
@@ -446,6 +482,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_bounds(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_bounds(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_bounds(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_bounds(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_bounds(),
             PosteriorModel::GammaRegression(m) => m.parameter_bounds(),
             PosteriorModel::TweedieRegression(m) => m.parameter_bounds(),
             PosteriorModel::Gev(m) => m.parameter_bounds(),
@@ -465,6 +503,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
             PosteriorModel::Funnel(m) => m.parameter_init(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_init(),
             PosteriorModel::StdNormal(m) => m.parameter_init(),
             PosteriorModel::LinearRegression(m) => m.parameter_init(),
             PosteriorModel::LogisticRegression(m) => m.parameter_init(),
@@ -482,6 +521,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_init(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_init(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_init(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_init(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_init(),
             PosteriorModel::GammaRegression(m) => m.parameter_init(),
             PosteriorModel::TweedieRegression(m) => m.parameter_init(),
             PosteriorModel::Gev(m) => m.parameter_init(),
@@ -501,6 +542,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
             PosteriorModel::Funnel(m) => m.nll(params),
+            PosteriorModel::FunnelNcp(m) => m.nll(params),
             PosteriorModel::StdNormal(m) => m.nll(params),
             PosteriorModel::LinearRegression(m) => m.nll(params),
             PosteriorModel::LogisticRegression(m) => m.nll(params),
@@ -518,6 +560,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.nll(params),
             PosteriorModel::TwoCompartmentIvPk(m) => m.nll(params),
             PosteriorModel::TwoCompartmentOralPk(m) => m.nll(params),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.nll(params),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.nll(params),
             PosteriorModel::GammaRegression(m) => m.nll(params),
             PosteriorModel::TweedieRegression(m) => m.nll(params),
             PosteriorModel::Gev(m) => m.nll(params),
@@ -537,6 +581,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
             PosteriorModel::Funnel(m) => m.grad_nll(params),
+            PosteriorModel::FunnelNcp(m) => m.grad_nll(params),
             PosteriorModel::StdNormal(m) => m.grad_nll(params),
             PosteriorModel::LinearRegression(m) => m.grad_nll(params),
             PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
@@ -554,6 +599,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.grad_nll(params),
             PosteriorModel::TwoCompartmentIvPk(m) => m.grad_nll(params),
             PosteriorModel::TwoCompartmentOralPk(m) => m.grad_nll(params),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.grad_nll(params),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.grad_nll(params),
             PosteriorModel::GammaRegression(m) => m.grad_nll(params),
             PosteriorModel::TweedieRegression(m) => m.grad_nll(params),
             PosteriorModel::Gev(m) => m.grad_nll(params),
@@ -573,6 +620,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
             PosteriorModel::Funnel(m) => mle.fit(m),
+            PosteriorModel::FunnelNcp(m) => mle.fit(m),
             PosteriorModel::StdNormal(m) => mle.fit(m),
             PosteriorModel::LinearRegression(m) => mle.fit(m),
             PosteriorModel::LogisticRegression(m) => mle.fit(m),
@@ -590,6 +638,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit(m),
             PosteriorModel::TwoCompartmentIvPk(m) => mle.fit(m),
             PosteriorModel::TwoCompartmentOralPk(m) => mle.fit(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => mle.fit(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => mle.fit(m),
             PosteriorModel::GammaRegression(m) => mle.fit(m),
             PosteriorModel::TweedieRegression(m) => mle.fit(m),
             PosteriorModel::Gev(m) => mle.fit(m),
@@ -609,6 +659,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GaussianMean(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Funnel(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::FunnelNcp(m) => mle.fit_from(m, init_pars),
             PosteriorModel::StdNormal(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LinearRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LogisticRegression(m) => mle.fit_from(m, init_pars),
@@ -626,6 +677,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TwoCompartmentIvPk(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TwoCompartmentOralPk(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ThreeCompartmentIvPk(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ThreeCompartmentOralPk(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GammaRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TweedieRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Gev(m) => mle.fit_from(m, init_pars),
@@ -662,6 +715,9 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::StdNormal(m) => {
@@ -715,6 +771,12 @@ impl PosteriorModel {
             PosteriorModel::TwoCompartmentOralPk(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
             PosteriorModel::GammaRegression(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
@@ -757,6 +819,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::GaussianMean(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::Funnel(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::FunnelNcp(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::StdNormal(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::LinearRegression(m) => {
                 sample_mams_multichain(m, n_chains, seed, config)
@@ -790,6 +853,12 @@ impl PosteriorModel {
                 sample_mams_multichain(m, n_chains, seed, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 sample_mams_multichain(m, n_chains, seed, config)
             }
             PosteriorModel::GammaRegression(m) => sample_mams_multichain(m, n_chains, seed, config),
@@ -842,6 +911,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
+            PosteriorModel::FunnelNcp(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
             PosteriorModel::StdNormal(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
@@ -907,6 +980,14 @@ impl PosteriorModel {
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
@@ -971,6 +1052,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
+            PosteriorModel::FunnelNcp(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
             PosteriorModel::StdNormal(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
@@ -1036,6 +1121,14 @@ impl PosteriorModel {
                 mle.fit(&w)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -1078,6 +1171,51 @@ impl PosteriorModel {
         }
     }
 
+    fn run_map_estimate(&self, priors: Vec<RustPrior>, config: &RustMapConfig) -> NsResult<RustMapResult> {
+        macro_rules! dispatch_map {
+            ($m:expr) => {{
+                let posterior = RustPosterior::new($m).with_priors(priors)?;
+                rust_map_estimate(&posterior, config)
+            }};
+        }
+        match self {
+            PosteriorModel::HistFactory(m) => dispatch_map!(m),
+            PosteriorModel::Unbinned(m) => dispatch_map!(m),
+            PosteriorModel::Hybrid(m) => dispatch_map!(m),
+            PosteriorModel::GaussianMean(m) => dispatch_map!(m),
+            PosteriorModel::Funnel(m) => dispatch_map!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_map!(m),
+            PosteriorModel::StdNormal(m) => dispatch_map!(m),
+            PosteriorModel::LinearRegression(m) => dispatch_map!(m),
+            PosteriorModel::LogisticRegression(m) => dispatch_map!(m),
+            PosteriorModel::OrderedLogit(m) => dispatch_map!(m),
+            PosteriorModel::OrderedProbit(m) => dispatch_map!(m),
+            PosteriorModel::PoissonRegression(m) => dispatch_map!(m),
+            PosteriorModel::NegativeBinomialRegression(m) => dispatch_map!(m),
+            PosteriorModel::ComposedGlm(m) => dispatch_map!(m),
+            PosteriorModel::LmmMarginal(m) => dispatch_map!(m),
+            PosteriorModel::ExponentialSurvival(m) => dispatch_map!(m),
+            PosteriorModel::WeibullSurvival(m) => dispatch_map!(m),
+            PosteriorModel::LogNormalAft(m) => dispatch_map!(m),
+            PosteriorModel::CoxPh(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::GammaRegression(m) => dispatch_map!(m),
+            PosteriorModel::TweedieRegression(m) => dispatch_map!(m),
+            PosteriorModel::Gev(m) => dispatch_map!(m),
+            PosteriorModel::Gpd(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibull(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibullAft(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredExponential(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredLogNormal(m) => dispatch_map!(m),
+            PosteriorModel::EightSchools(m) => dispatch_map!(m),
+        }
+    }
+
     fn sample_nuts_multichain_map(
         &self,
         n_chains: usize,
@@ -1107,6 +1245,10 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
@@ -1175,6 +1317,14 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
@@ -1240,6 +1390,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => dispatch_ci!(m),
             PosteriorModel::GaussianMean(m) => dispatch_ci!(m),
             PosteriorModel::Funnel(m) => dispatch_ci!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_ci!(m),
             PosteriorModel::StdNormal(m) => dispatch_ci!(m),
             PosteriorModel::LinearRegression(m) => dispatch_ci!(m),
             PosteriorModel::LogisticRegression(m) => dispatch_ci!(m),
@@ -1261,6 +1412,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch_ci!(m),
             PosteriorModel::TwoCompartmentIvPk(m) => dispatch_ci!(m),
             PosteriorModel::TwoCompartmentOralPk(m) => dispatch_ci!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch_ci!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch_ci!(m),
             PosteriorModel::GammaRegression(m) => dispatch_ci!(m),
             PosteriorModel::TweedieRegression(m) => dispatch_ci!(m),
             PosteriorModel::Gev(m) => dispatch_ci!(m),
@@ -1281,6 +1434,8 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
     } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
         Ok(PosteriorModel::Funnel(fm.inner.clone()))
+    } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelNcpModel>>() {
+        Ok(PosteriorModel::FunnelNcp(fm.inner.clone()))
     } else if let Ok(sm) = model.extract::<PyRef<'_, PyStdNormalModel>>() {
         Ok(PosteriorModel::StdNormal(sm.inner.clone()))
     } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
@@ -1315,6 +1470,10 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::TwoCompartmentIvPk(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyTwoCompartmentOralPkModel>>() {
         Ok(PosteriorModel::TwoCompartmentOralPk(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyThreeCompartmentIvPkModel>>() {
+        Ok(PosteriorModel::ThreeCompartmentIvPk(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyThreeCompartmentOralPkModel>>() {
+        Ok(PosteriorModel::ThreeCompartmentOralPk(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyGammaRegressionModel>>() {
         Ok(PosteriorModel::GammaRegression(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyTweedieRegressionModel>>() {
@@ -1335,7 +1494,7 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::EightSchools(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
+            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, FunnelNcpModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
         ))
     }
 }
@@ -1582,6 +1741,31 @@ impl<M: LogDensityModel> LogDensityModel for WithPriors<M> {
 
     fn prepared(&self) -> Self::Prepared<'_> {
         ns_core::traits::PreparedModelRef::new(self)
+    }
+
+    fn prefer_fused_eval_grad(&self) -> bool {
+        self.model.prefer_fused_eval_grad()
+    }
+
+    fn nll_grad_prepared(
+        &self,
+        _prepared: &Self::Prepared<'_>,
+        params: &[f64],
+    ) -> NsResult<(f64, Vec<f64>)> {
+        // Delegate to inner model's fused eval, then overlay prior terms in-place.
+        let inner_prepared = self.model.prepared();
+        let (mut nll, mut grad) = self.model.nll_grad_prepared(&inner_prepared, params)?;
+        for (i, pr) in self.priors.iter().enumerate() {
+            match pr {
+                Prior::Flat => {}
+                Prior::Normal { center, width } => {
+                    let pull = (params[i] - center) / width;
+                    nll += 0.5 * pull * pull;
+                    grad[i] += (params[i] - center) / (width * width);
+                }
+            }
+        }
+        Ok((nll, grad))
     }
 }
 
@@ -3879,6 +4063,176 @@ impl PyFunnelModel {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Neal's funnel — Non-Centered Parameterization (NCP).
+//
+// v ~ Normal(0, 3)
+// z_i ~ Normal(0, 1)        for i = 1..d-1
+// x_i = exp(v/2) * z_i      (constrained / original parameterization)
+//
+// NLL = v²/18 + 0.5 * Σ z_i²  (independent normals — trivial geometry)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct FunnelNcpModel {
+    d: usize,
+}
+
+impl FunnelNcpModel {
+    fn new(d: usize) -> Self {
+        assert!(d >= 2, "FunnelNcpModel requires d >= 2");
+        Self { d }
+    }
+}
+
+#[derive(Clone)]
+struct PreparedFunnelNcpModel<'a> {
+    model: &'a FunnelNcpModel,
+}
+
+impl PreparedNll for PreparedFunnelNcpModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for FunnelNcpModel {
+    type Prepared<'a>
+        = PreparedFunnelNcpModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.d
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("z[{}]", i));
+        }
+        names
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.d]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0; self.d]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let v = params[0];
+        let sum_z2: f64 = params[1..].iter().map(|zi| zi * zi).sum();
+        // v ~ N(0, 9), z_i ~ N(0, 1) — independent
+        Ok(v * v / 18.0 + 0.5 * sum_z2)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let mut grad = Vec::with_capacity(self.d);
+        grad.push(params[0] / 9.0);
+        for zi in &params[1..] {
+            grad.push(*zi);
+        }
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedFunnelNcpModel { model: self }
+    }
+}
+
+#[allow(dead_code)]
+impl FunnelNcpModel {
+    fn to_constrained(&self, params: &[f64]) -> Vec<f64> {
+        // Transform NCP → original: v stays, x_i = exp(v/2) * z_i
+        let v = params[0];
+        let scale = (v * 0.5).exp();
+        let mut out = Vec::with_capacity(self.d);
+        out.push(v);
+        for zi in &params[1..] {
+            out.push(scale * zi);
+        }
+        out
+    }
+
+    fn constrained_parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("x[{}]", i));
+        }
+        names
+    }
+}
+
+/// Python wrapper for FunnelNcpModel (Neal's funnel, non-centered parameterization).
+#[pyclass(name = "FunnelNcpModel")]
+struct PyFunnelNcpModel {
+    inner: FunnelNcpModel,
+}
+
+#[pymethods]
+impl PyFunnelNcpModel {
+    #[new]
+    #[pyo3(signature = (dim=10))]
+    fn new(dim: usize) -> Self {
+        Self { inner: FunnelNcpModel::new(dim) }
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
 /// Python wrapper for GaussianMeanModel.
 #[pyclass(name = "GaussianMeanModel")]
 struct PyGaussianMeanModel {
@@ -5943,6 +6297,196 @@ impl PyTwoCompartmentOralPkModel {
 }
 
 // ---------------------------------------------------------------------------
+// 3-compartment PK concentration helpers (delegating to pk.rs).
+// ---------------------------------------------------------------------------
+
+#[inline]
+fn conc_iv_3cpt_py(dose: f64, cl: f64, v1: f64, q2: f64, v2: f64, q3: f64, v3: f64, t: f64) -> f64 {
+    conc_iv_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3)
+}
+
+#[inline]
+fn conc_oral_3cpt_py(dose: f64, bioav: f64, cl: f64, v1: f64, q2: f64, v2: f64, q3: f64, v3: f64, ka: f64, t: f64) -> f64 {
+    conc_oral_3cpt_macro(dose * bioav, t, cl, v1, q2, v2, q3, v3, ka)
+}
+
+// ---------------------------------------------------------------------------
+// 3-compartment PK models.
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ThreeCompartmentIvPkModel` (IV bolus, 6 params: CL, V1, Q2, V2, Q3, V3).
+#[pyclass(name = "ThreeCompartmentIvPkModel")]
+struct PyThreeCompartmentIvPkModel {
+    inner: RustThreeCompartmentIvPkModel,
+    times: Vec<f64>,
+    dose: f64,
+}
+
+#[pymethods]
+impl PyThreeCompartmentIvPkModel {
+    #[new]
+    #[pyo3(signature = (times, y, *, dose, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        error_model: &str,
+        sigma: f64,
+        sigma_add: Option<f64>,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let em = parse_error_model(error_model, sigma, sigma_add)?;
+        let lp = parse_lloq_policy(lloq_policy)?;
+        let times_for_pred = times.clone();
+        let inner = RustThreeCompartmentIvPkModel::new(times, y, dose, em, lloq, lp)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner, times: times_for_pred, dose })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn predict(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        if params.len() != 6 {
+            return Err(PyValueError::new_err(format!(
+                "expected 6 parameters (CL, V1, Q2, V2, Q3, V3), got {}",
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(PyValueError::new_err("params must be finite and > 0"));
+        }
+        let cl = params[0];
+        let v1 = params[1];
+        let q2 = params[2];
+        let v2 = params[3];
+        let q3 = params[4];
+        let v3 = params[5];
+        Ok(self.times.iter().map(|&t| conc_iv_3cpt_py(self.dose, cl, v1, q2, v2, q3, v3, t)).collect())
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `ThreeCompartmentOralPkModel` (oral, 7 params: CL, V1, Q2, V2, Q3, V3, Ka).
+#[pyclass(name = "ThreeCompartmentOralPkModel")]
+struct PyThreeCompartmentOralPkModel {
+    inner: RustThreeCompartmentOralPkModel,
+    times: Vec<f64>,
+    dose: f64,
+    bioavailability: f64,
+}
+
+#[pymethods]
+impl PyThreeCompartmentOralPkModel {
+    #[new]
+    #[pyo3(signature = (times, y, *, dose, bioavailability=1.0, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        error_model: &str,
+        sigma: f64,
+        sigma_add: Option<f64>,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let em = parse_error_model(error_model, sigma, sigma_add)?;
+        let lp = parse_lloq_policy(lloq_policy)?;
+        let times_for_pred = times.clone();
+        let inner =
+            RustThreeCompartmentOralPkModel::new(times, y, dose, bioavailability, em, lloq, lp)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner, times: times_for_pred, dose, bioavailability })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn predict(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        if params.len() != 7 {
+            return Err(PyValueError::new_err(format!(
+                "expected 7 parameters (CL, V1, Q2, V2, Q3, V3, Ka), got {}",
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(PyValueError::new_err("params must be finite and > 0"));
+        }
+        let cl = params[0];
+        let v1 = params[1];
+        let q2 = params[2];
+        let v2 = params[3];
+        let q3 = params[4];
+        let v3 = params[5];
+        let ka = params[6];
+        Ok(self
+            .times
+            .iter()
+            .map(|&t| conc_oral_3cpt_py(self.dose, self.bioavailability, cl, v1, q2, v2, q3, v3, ka, t))
+            .collect())
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Population PK functions (FOCE, SAEM, VPC, GOF, NONMEM).
 // ---------------------------------------------------------------------------
 
@@ -6165,6 +6709,166 @@ fn read_nonmem(py: Python<'_>, csv_text: &str) -> PyResult<Py<PyAny>> {
     dict.set_item("times", times)?;
     dict.set_item("dv", dv)?;
     dict.set_item("subject_idx", subject_idx)?;
+    dict.into_py_any(py)
+}
+
+/// Stepwise Covariate Modeling (SCM) for 1-compartment oral PK model.
+///
+/// Forward selection + backward elimination of covariate–parameter
+/// relationships using ΔOFV (χ²(1) likelihood ratio test).
+#[pyfunction]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, covariates, covariate_names, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, param_names=None, relationships=None, forward_alpha=0.05, backward_alpha=0.01, max_outer_iter=100, max_inner_iter=20, tol=1e-4))]
+fn scm(
+    py: Python<'_>,
+    times: Vec<f64>,
+    y: Vec<f64>,
+    subject_idx: Vec<usize>,
+    n_subjects: usize,
+    covariates: Vec<Vec<f64>>,
+    covariate_names: Vec<String>,
+    dose: f64,
+    bioavailability: f64,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+    theta_init: Vec<f64>,
+    omega_init: Vec<f64>,
+    param_names: Option<Vec<String>>,
+    relationships: Option<Vec<String>>,
+    forward_alpha: f64,
+    backward_alpha: f64,
+    max_outer_iter: usize,
+    max_inner_iter: usize,
+    tol: f64,
+) -> PyResult<Py<PyAny>> {
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let foce_cfg = RustFoceConfig { max_outer_iter, max_inner_iter, tol, interaction: true };
+    let omega = RustOmegaMatrix::from_diagonal(&omega_init)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let pnames = param_names.unwrap_or_else(|| vec!["CL".into(), "V".into(), "Ka".into()]);
+
+    // Validate covariates dimensions.
+    let n_obs = times.len();
+    if covariates.len() != covariate_names.len() {
+        return Err(PyValueError::new_err(
+            "covariates and covariate_names must have the same length",
+        ));
+    }
+    for (i, cov) in covariates.iter().enumerate() {
+        if cov.len() != n_obs {
+            return Err(PyValueError::new_err(format!(
+                "covariate '{}' has {} values, expected {} (n_obs)",
+                covariate_names[i], cov.len(), n_obs,
+            )));
+        }
+    }
+
+    // Extract per-subject covariate values (first observation per subject).
+    let mut subj_first: Vec<Option<usize>> = vec![None; n_subjects];
+    for (i, &s) in subject_idx.iter().enumerate() {
+        if s < n_subjects && subj_first[s].is_none() {
+            subj_first[s] = Some(i);
+        }
+    }
+
+    // Build candidate list: each covariate × each PK parameter.
+    let mut candidates: Vec<RustCovariateCandidate> = Vec::new();
+    for (ci, cov_name) in covariate_names.iter().enumerate() {
+        let rel = if let Some(ref rels) = relationships {
+            if ci < rels.len() {
+                match rels[ci].to_ascii_lowercase().as_str() {
+                    "power" => RustCovariateRelationship::Power,
+                    "proportional" => RustCovariateRelationship::Proportional,
+                    "exponential" => RustCovariateRelationship::Exponential,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "Unknown relationship '{other}'. Use 'power', 'proportional', or 'exponential'.",
+                        )));
+                    }
+                }
+            } else {
+                RustCovariateRelationship::Power
+            }
+        } else {
+            RustCovariateRelationship::Power
+        };
+
+        // Per-subject values.
+        let subj_vals: Vec<f64> = (0..n_subjects)
+            .map(|s| subj_first[s].map(|idx| covariates[ci][idx]).unwrap_or(0.0))
+            .collect();
+
+        // Centering: median.
+        let mut sorted = subj_vals.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let center = if sorted.len() % 2 == 0 {
+            0.5 * (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2])
+        } else {
+            sorted[sorted.len() / 2]
+        };
+
+        // Test this covariate on each PK parameter.
+        for pidx in 0..pnames.len().min(3) {
+            candidates.push(RustCovariateCandidate {
+                name: format!("{}_on_{}", cov_name, pnames[pidx]),
+                param_index: pidx,
+                values: subj_vals.clone(),
+                center,
+                relationship: rel,
+            });
+        }
+    }
+
+    let config = RustScmConfig { forward_alpha, backward_alpha, foce: foce_cfg };
+    let estimator = RustScmEstimator::new(config);
+
+    let result = estimator
+        .run_1cpt_oral(
+            &times, &y, &subject_idx, n_subjects, dose, bioavailability,
+            em, &theta_init, &omega, &candidates,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    // Convert ScmStep → PyDict.
+    let step_to_dict = |py: Python<'_>, s: &ns_inference::ScmStep| -> PyResult<Py<PyAny>> {
+        let d = PyDict::new(py);
+        d.set_item("name", &s.name)?;
+        d.set_item("param_index", s.param_index)?;
+        d.set_item("relationship", match s.relationship {
+            RustCovariateRelationship::Power => "power",
+            RustCovariateRelationship::Proportional => "proportional",
+            RustCovariateRelationship::Exponential => "exponential",
+        })?;
+        d.set_item("delta_ofv", s.delta_ofv)?;
+        d.set_item("p_value", s.p_value)?;
+        d.set_item("coefficient", s.coefficient)?;
+        d.set_item("included", s.included)?;
+        d.into_py_any(py)
+    };
+
+    let selected = PyList::empty(py);
+    for s in &result.selected {
+        selected.append(step_to_dict(py, s)?)?;
+    }
+    let forward_trace = PyList::empty(py);
+    for s in &result.forward_trace {
+        forward_trace.append(step_to_dict(py, s)?)?;
+    }
+    let backward_trace = PyList::empty(py);
+    for s in &result.backward_trace {
+        backward_trace.append(step_to_dict(py, s)?)?;
+    }
+
+    let dict = PyDict::new(py);
+    dict.set_item("selected", selected)?;
+    dict.set_item("forward_trace", forward_trace)?;
+    dict.set_item("backward_trace", backward_trace)?;
+    dict.set_item("base_ofv", result.base_ofv)?;
+    dict.set_item("final_ofv", result.ofv)?;
+    dict.set_item("n_forward_steps", result.forward_trace.len())?;
+    dict.set_item("n_backward_steps", result.backward_trace.len())?;
+    dict.set_item("theta", result.theta.clone())?;
+    dict.set_item("omega", result.omega.to_matrix())?;
     dict.into_py_any(py)
 }
 
@@ -6513,6 +7217,10 @@ impl PyMaximumLikelihoodEstimator {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
+                    PosteriorModel::FunnelNcp(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
                     PosteriorModel::StdNormal(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
@@ -6578,6 +7286,14 @@ impl PyMaximumLikelihoodEstimator {
                         None => mle.fit_minimum(&m),
                     },
                     PosteriorModel::TwoCompartmentOralPk(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::ThreeCompartmentIvPk(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::ThreeCompartmentOralPk(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
@@ -9035,7 +9751,8 @@ impl PyRawCudaModel {
 /// as `sample_mams()` plus `wall_time_s` and `n_kernel_launches`.
 ///
 /// The `model` argument can be:
-/// - A string name: "std_normal", "eight_schools", "neal_funnel", "neal_funnel_centered", "glm_logistic"
+/// - A string name: "std_normal", "eight_schools", "neal_funnel", "neal_funnel_centered",
+///   "glm_logistic", "glm_linear", "glm_poisson", "glm_negbin", "glm_composed_logistic"
 /// - A `RawCudaModel` instance for JIT-compiled user-defined models
 #[cfg(any(feature = "cuda", feature = "metal"))]
 #[pyfunction]
@@ -9045,7 +9762,8 @@ impl PyRawCudaModel {
     max_leapfrog=8192, device_ids=None,
     sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000,
     report_chains=256,
-    diagonal_precond=true
+    diagonal_precond=true,
+    divergence_threshold=1000.0
 ))]
 fn sample_laps_py<'py>(
     py: Python<'py>,
@@ -9066,6 +9784,7 @@ fn sample_laps_py<'py>(
     fused_transitions: usize,
     report_chains: usize,
     diagonal_precond: bool,
+    divergence_threshold: f64,
 ) -> PyResult<Py<PyAny>> {
     use ns_inference::laps::{LapsConfig, LapsModel};
 
@@ -9173,11 +9892,181 @@ fn sample_laps_py<'py>(
                     .get_item("p")?
                     .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
                     .extract()?;
+                // Validate dimensions and values
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_logistic: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: x_data.len()={} != n*p={}*{}={}",
+                        x_data.len(),
+                        n,
+                        p,
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_logistic: y_data must contain only 0.0 or 1.0",
+                    ));
+                }
                 LapsModel::GlmLogistic { x_data, y_data, n, p }
+            }
+            "glm_linear" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_linear requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d.get_item("x")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?.extract()?;
+                let y_data: Vec<f64> = d.get_item("y")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?.extract()?;
+                let n: usize = d.get_item("n")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?.extract()?;
+                let p: usize = d.get_item("p")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?.extract()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_linear: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!("glm_linear: x_data.len()={} != n*p={}", x_data.len(), n * p)));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!("glm_linear: y_data.len()={} != n={}", y_data.len(), n)));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_linear: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_linear: y_data contains NaN or Inf"));
+                }
+                LapsModel::GlmLinear { x_data, y_data, n, p }
+            }
+            "glm_poisson" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_poisson requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d.get_item("x")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?.extract()?;
+                let y_data: Vec<f64> = d.get_item("y")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?.extract()?;
+                let n: usize = d.get_item("n")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?.extract()?;
+                let p: usize = d.get_item("p")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?.extract()?;
+                let offset: Option<Vec<f64>> = d.get_item("offset")?.map(|v| v.extract()).transpose()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_poisson: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!("glm_poisson: x_data.len()={} != n*p={}", x_data.len(), n * p)));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!("glm_poisson: y_data.len()={} != n={}", y_data.len(), n)));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_poisson: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_poisson: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v < 0.0) {
+                    return Err(PyValueError::new_err("glm_poisson: y_data must be non-negative counts"));
+                }
+                if let Some(ref off) = offset {
+                    if off.len() != n {
+                        return Err(PyValueError::new_err(format!("glm_poisson: offset.len()={} != n={}", off.len(), n)));
+                    }
+                    if off.iter().any(|v| !v.is_finite()) {
+                        return Err(PyValueError::new_err("glm_poisson: offset contains NaN or Inf"));
+                    }
+                }
+                LapsModel::GlmPoisson { x_data, y_data, n, p, offset }
+            }
+            "glm_negbin" | "glm_negative_binomial" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_negbin requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d.get_item("x")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?.extract()?;
+                let y_data: Vec<f64> = d.get_item("y")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?.extract()?;
+                let n: usize = d.get_item("n")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?.extract()?;
+                let p: usize = d.get_item("p")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?.extract()?;
+                let offset: Option<Vec<f64>> = d.get_item("offset")?.map(|v| v.extract()).transpose()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_negbin: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!("glm_negbin: x_data.len()={} != n*p={}", x_data.len(), n * p)));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!("glm_negbin: y_data.len()={} != n={}", y_data.len(), n)));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_negbin: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_negbin: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v < 0.0) {
+                    return Err(PyValueError::new_err("glm_negbin: y_data must be non-negative counts"));
+                }
+                if let Some(ref off) = offset {
+                    if off.len() != n {
+                        return Err(PyValueError::new_err(format!("glm_negbin: offset.len()={} != n={}", off.len(), n)));
+                    }
+                    if off.iter().any(|v| !v.is_finite()) {
+                        return Err(PyValueError::new_err("glm_negbin: offset contains NaN or Inf"));
+                    }
+                }
+                LapsModel::GlmNegBin { x_data, y_data, n, p, offset }
+            }
+            "glm_composed_logistic" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_composed_logistic requires model_data with 'x', 'y', 'n', 'p', 'group_idx', 'n_groups'")
+                })?;
+                let x_data: Vec<f64> = d.get_item("x")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?.extract()?;
+                let y_data: Vec<f64> = d.get_item("y")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?.extract()?;
+                let n: usize = d.get_item("n")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?.extract()?;
+                let p: usize = d.get_item("p")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?.extract()?;
+                let group_idx: Vec<usize> = d.get_item("group_idx")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'group_idx'"))?.extract()?;
+                let n_groups: usize = d.get_item("n_groups")?.ok_or_else(|| PyValueError::new_err("model_data must contain 'n_groups'"))?.extract()?;
+                let re_prior_sigma: f64 = d.get_item("re_prior_sigma")?.map(|v| v.extract()).transpose()?.unwrap_or(1.0);
+                if n == 0 || p == 0 || n_groups == 0 {
+                    return Err(PyValueError::new_err("glm_composed_logistic: n, p, and n_groups must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!("glm_composed_logistic: x_data.len()={} != n*p={}", x_data.len(), n * p)));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!("glm_composed_logistic: y_data.len()={} != n={}", y_data.len(), n)));
+                }
+                if group_idx.len() != n {
+                    return Err(PyValueError::new_err(format!("glm_composed_logistic: group_idx.len()={} != n={}", group_idx.len(), n)));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_composed_logistic: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_composed_logistic: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
+                    return Err(PyValueError::new_err("glm_composed_logistic: y_data must contain only 0.0 or 1.0"));
+                }
+                if group_idx.iter().any(|&g| g >= n_groups) {
+                    return Err(PyValueError::new_err(format!("glm_composed_logistic: group_idx values must be in [0, {})", n_groups)));
+                }
+                if re_prior_sigma <= 0.0 || !re_prior_sigma.is_finite() {
+                    return Err(PyValueError::new_err("glm_composed_logistic: re_prior_sigma must be positive and finite"));
+                }
+                LapsModel::GlmComposedLogistic { x_data, y_data, n, p, group_idx, n_groups, re_prior_sigma }
             }
             other => {
                 return Err(PyValueError::new_err(format!(
-                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'neal_funnel_centered', 'neal_funnel_ncp', 'neal_funnel_riemannian', 'glm_logistic', or a RawCudaModel, got '{other}'"
+                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'neal_funnel_centered', 'neal_funnel_ncp', 'neal_funnel_riemannian', 'glm_logistic', 'glm_linear', 'glm_poisson', 'glm_negbin', 'glm_negative_binomial', 'glm_composed_logistic', or a RawCudaModel, got '{other}'"
                 )));
             }
         }
@@ -9202,6 +10091,7 @@ fn sample_laps_py<'py>(
         report_chains,
         use_diagonal_precond: diagonal_precond,
         n_mass_windows: 3,
+        divergence_threshold,
     };
 
     let laps_result = py
@@ -9740,7 +10630,7 @@ impl PyMetalProfiledDiffSession {
 ///     n_scenarios: number of MC scenarios.
 ///     seed: RNG seed for reproducibility.
 ///     device: "cpu", "cuda", or "metal".
-///     chunk_size: scenarios per batch (default 1_000_000).
+///     chunk_size: scenarios per batch (0 = backend default: CPU 10_000_000, GPU 1_000_000).
 ///
 /// Returns: dict with p_failure, se, ci_lower, ci_upper, component_importance, etc.
 #[pyfunction]
@@ -10081,6 +10971,251 @@ fn render_viz(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// Bioequivalence functions.
+// ---------------------------------------------------------------------------
+
+fn parse_be_design(design: &str) -> PyResult<RustBeDesign> {
+    match design {
+        "2x2" => Ok(RustBeDesign::Crossover2x2),
+        "3x3" => Ok(RustBeDesign::Crossover3x3),
+        "parallel" => Ok(RustBeDesign::Parallel),
+        _ => Err(PyValueError::new_err("design must be '2x2', '3x3', or 'parallel'")),
+    }
+}
+
+/// Average bioequivalence (TOST) analysis from paired log-scale observations.
+///
+/// Constructs a 2x2 crossover BeData from paired test/reference observations
+/// and runs the Two One-Sided Tests (TOST) procedure.
+#[pyfunction]
+#[pyo3(signature = (test_values, ref_values, *, alpha=0.05, limits=(0.80, 1.25), design="2x2"))]
+fn average_be(
+    py: Python<'_>,
+    test_values: Vec<f64>,
+    ref_values: Vec<f64>,
+    alpha: f64,
+    limits: (f64, f64),
+    design: &str,
+) -> PyResult<Py<PyAny>> {
+    let d = parse_be_design(design)?;
+    let n = test_values.len();
+    if n != ref_values.len() {
+        return Err(PyValueError::new_err("test_values and ref_values must have the same length"));
+    }
+    let config = RustBeConfig { alpha, limits, design: d };
+    // Construct BeData: each subject has a Test and Reference observation.
+    let mut subject_id = Vec::with_capacity(2 * n);
+    let mut sequence = Vec::with_capacity(2 * n);
+    let mut period = Vec::with_capacity(2 * n);
+    let mut treatment = Vec::with_capacity(2 * n);
+    let mut log_value = Vec::with_capacity(2 * n);
+    for i in 0..n {
+        let seq = if i < n / 2 { 0 } else { 1 };
+        // Period 1 observation.
+        subject_id.push(i + 1);
+        sequence.push(seq);
+        period.push(1);
+        if seq == 0 {
+            treatment.push(0); // R first
+            log_value.push(ref_values[i]);
+        } else {
+            treatment.push(1); // T first
+            log_value.push(test_values[i]);
+        }
+        // Period 2 observation.
+        subject_id.push(i + 1);
+        sequence.push(seq);
+        period.push(2);
+        if seq == 0 {
+            treatment.push(1); // T second
+            log_value.push(test_values[i]);
+        } else {
+            treatment.push(0); // R second
+            log_value.push(ref_values[i]);
+        }
+    }
+    let data = RustBeData { subject_id, sequence, period, treatment, log_value };
+    let result = rust_average_be(&data, &config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("geometric_mean_ratio", result.geometric_mean_ratio)?;
+    dict.set_item("ci_lower", result.ci_lower)?;
+    dict.set_item("ci_upper", result.ci_upper)?;
+    dict.set_item("pe_log", result.pe_log)?;
+    dict.set_item("se_log", result.se_log)?;
+    dict.set_item("df", result.df)?;
+    dict.set_item("t_lower", result.t_lower)?;
+    dict.set_item("t_upper", result.t_upper)?;
+    dict.set_item("p_lower", result.p_lower)?;
+    dict.set_item("p_upper", result.p_upper)?;
+    dict.set_item("conclusion", format!("{:?}", result.conclusion))?;
+    dict.into_py_any(py)
+}
+
+/// Compute power of a bioequivalence study for a given total sample size.
+#[pyfunction]
+#[pyo3(name = "be_power", signature = (n_total, *, cv=0.30, gmr=0.95, alpha=0.05, design="2x2"))]
+fn be_power_py(
+    _py: Python<'_>,
+    n_total: usize,
+    cv: f64,
+    gmr: f64,
+    alpha: f64,
+    design: &str,
+) -> PyResult<f64> {
+    let d = parse_be_design(design)?;
+    let config = RustBePowerConfig {
+        alpha,
+        target_power: 0.80,
+        cv,
+        gmr,
+        limits: (0.80, 1.25),
+        design: d,
+    };
+    rust_be_power(n_total, &config).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compute minimum sample size to achieve target power for a bioequivalence study.
+#[pyfunction]
+#[pyo3(name = "be_sample_size", signature = (*, cv=0.30, gmr=0.95, target_power=0.80, alpha=0.05, design="2x2"))]
+fn be_sample_size_py(
+    py: Python<'_>,
+    cv: f64,
+    gmr: f64,
+    target_power: f64,
+    alpha: f64,
+    design: &str,
+) -> PyResult<Py<PyAny>> {
+    let d = parse_be_design(design)?;
+    let config = RustBePowerConfig {
+        alpha,
+        target_power,
+        cv,
+        gmr,
+        limits: (0.80, 1.25),
+        design: d,
+    };
+    let result = rust_be_sample_size(&config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("n_per_sequence", result.n_per_sequence)?;
+    dict.set_item("n_total", result.n_total)?;
+    dict.set_item("achieved_power", result.achieved_power)?;
+    dict.into_py_any(py)
+}
+
+// ---------------------------------------------------------------------------
+// Trial simulation functions.
+// ---------------------------------------------------------------------------
+
+fn parse_pk_model_type(s: &str) -> PyResult<RustPkModelType> {
+    match s {
+        "1cpt_oral" => Ok(RustPkModelType::OneCompartmentOral),
+        "2cpt_iv" => Ok(RustPkModelType::TwoCompartmentIv),
+        "2cpt_oral" => Ok(RustPkModelType::TwoCompartmentOral),
+        _ => Err(PyValueError::new_err(
+            "pk_model must be '1cpt_oral', '2cpt_iv', or '2cpt_oral'",
+        )),
+    }
+}
+
+fn parse_trial_error_model(s: &str) -> PyResult<RustTrialErrorModelType> {
+    match s {
+        "additive" => Ok(RustTrialErrorModelType::Additive),
+        "proportional" => Ok(RustTrialErrorModelType::Proportional),
+        _ => Err(PyValueError::new_err(
+            "error_model must be 'additive' or 'proportional'",
+        )),
+    }
+}
+
+/// Simulate a single clinical trial with population PK parameters.
+#[pyfunction]
+#[pyo3(name = "simulate_trial", signature = (*, n_subjects, dose, obs_times, pk_model="1cpt_oral", theta, omega, sigma, error_model="proportional", bioavailability=1.0, seed=42))]
+fn simulate_trial_py(
+    py: Python<'_>,
+    n_subjects: usize,
+    dose: f64,
+    obs_times: Vec<f64>,
+    pk_model: &str,
+    theta: Vec<f64>,
+    omega: Vec<f64>,
+    sigma: f64,
+    error_model: &str,
+    bioavailability: f64,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    let pk = parse_pk_model_type(pk_model)?;
+    let em = parse_trial_error_model(error_model)?;
+    let route = if matches!(pk, RustPkModelType::TwoCompartmentIv) {
+        RustDoseRoute::IvBolus
+    } else {
+        RustDoseRoute::Oral { bioavailability }
+    };
+    let config = RustTrialConfig {
+        n_subjects,
+        dosing: vec![RustDoseEvent { time: 0.0, amount: dose, route }],
+        obs_times,
+        pk_model: pk,
+        population: RustPopulationPkParams {
+            theta,
+            omega,
+            sigma,
+            error_model: em,
+            omega_correlation: None,
+        },
+        seed,
+    };
+    let result = rust_simulate_trial(&config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("concentrations", result.concentrations)?;
+    dict.set_item("individual_params", result.individual_params)?;
+    dict.set_item("auc", result.endpoints.auc)?;
+    dict.set_item("cmax", result.endpoints.cmax)?;
+    dict.set_item("tmax", result.endpoints.tmax)?;
+    dict.set_item("ctrough", result.endpoints.ctrough)?;
+    dict.into_py_any(py)
+}
+
+#[pyfunction]
+#[pyo3(name = "map_estimate", signature = (model, priors, *, max_iter=1000, tol=1e-8, compute_se=true, init=None))]
+fn map_estimate_py<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    priors: Vec<(f64, f64)>,
+    max_iter: usize,
+    tol: f64,
+    compute_se: bool,
+    init: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let posterior_model = extract_posterior_model(model)?;
+    let prior_vec: Vec<RustPrior> = priors
+        .into_iter()
+        .map(|(center, width)| RustPrior::Normal { center, width })
+        .collect();
+    let config = RustMapConfig {
+        max_iter,
+        tol,
+        m: 20,
+        compute_se,
+        compute_shrinkage: true,
+        init,
+    };
+    let result = py
+        .detach(move || posterior_model.run_map_estimate(prior_vec, &config))
+        .map_err(|e| PyValueError::new_err(format!("MAP estimation failed: {}", e)))?;
+    let dict = PyDict::new(py);
+    dict.set_item("params", result.params)?;
+    dict.set_item("se", result.se)?;
+    dict.set_item("nll_posterior", result.nll_posterior)?;
+    dict.set_item("nll", result.nll)?;
+    dict.set_item("log_prior", result.log_prior)?;
+    dict.set_item("n_iter", result.n_iter)?;
+    dict.set_item("converged", result.converged)?;
+    dict.set_item("param_names", result.param_names)?;
+    dict.set_item("shrinkage", result.shrinkage)?;
+    dict.into_py_any(py)
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -10150,6 +11285,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pk_vpc, m)?)?;
     m.add_function(wrap_pyfunction!(pk_gof, m)?)?;
     m.add_function(wrap_pyfunction!(read_nonmem, m)?)?;
+    m.add_function(wrap_pyfunction!(scm, m)?)?;
 
     // Survival: Kaplan-Meier + Log-rank
     m.add_function(wrap_pyfunction!(kaplan_meier, m)?)?;
@@ -10182,6 +11318,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyFunnelModel>()?;
+    m.add_class::<PyFunnelNcpModel>()?;
     m.add_class::<PyStdNormalModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
@@ -10212,6 +11349,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOneCompartmentOralPkNlmeModel>()?;
     m.add_class::<PyTwoCompartmentIvPkModel>()?;
     m.add_class::<PyTwoCompartmentOralPkModel>()?;
+    m.add_class::<PyThreeCompartmentIvPkModel>()?;
+    m.add_class::<PyThreeCompartmentOralPkModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
     m.add_class::<PyFitMinimumResult>()?;
@@ -10237,6 +11376,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc))?;
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc_ce_is))?;
     m.add_function(wrap_pyfunction!(profile_ci_py, m)?)?;
+    m.add_function(wrap_pyfunction!(average_be, m)?)?;
+    m.add_function(wrap_pyfunction!(be_power_py, m)?)?;
+    m.add_function(wrap_pyfunction!(be_sample_size_py, m)?)?;
+    m.add_function(wrap_pyfunction!(simulate_trial_py, m)?)?;
+    m.add_function(wrap_pyfunction!(map_estimate_py, m)?)?;
 
     // Native Rust visualization renderer
     #[cfg(feature = "native-render")]

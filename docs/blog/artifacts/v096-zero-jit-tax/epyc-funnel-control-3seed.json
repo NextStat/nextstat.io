@@ -1,0 +1,137 @@
+{
+  "generated_at_utc": "2026-02-18T10:02:44Z",
+  "rows": [
+    {
+      "backend": "mams",
+      "kind": "centered",
+      "max_r_hat": 1.07853805696464,
+      "min_ebfmi": null,
+      "min_ess_bulk": 214.04000485210815,
+      "min_ess_tail": 221.26722296793938,
+      "seed": 42,
+      "status": "ok",
+      "wall_time_s": 0.042941919004078954
+    },
+    {
+      "backend": "mams",
+      "kind": "centered",
+      "max_r_hat": 1.0353419786063065,
+      "min_ebfmi": null,
+      "min_ess_bulk": 157.70172204986176,
+      "min_ess_tail": 31.217730974004024,
+      "seed": 123,
+      "status": "fail",
+      "wall_time_s": 0.04838460899190977
+    },
+    {
+      "backend": "mams",
+      "kind": "centered",
+      "max_r_hat": 1.0780934997160587,
+      "min_ebfmi": null,
+      "min_ess_bulk": 386.41650454584385,
+      "min_ess_tail": 244.35387307105862,
+      "seed": 777,
+      "status": "ok",
+      "wall_time_s": 0.058985231968108565
+    },
+    {
+      "backend": "nuts",
+      "kind": "centered",
+      "max_r_hat": 2.3843574119059237,
+      "min_ebfmi": null,
+      "min_ess_bulk": 5.067600872591738,
+      "min_ess_tail": 13.770926196940788,
+      "seed": 42,
+      "status": "fail",
+      "wall_time_s": 1.3803853309946135
+    },
+    {
+      "backend": "nuts",
+      "kind": "centered",
+      "max_r_hat": 1.3636224034054387,
+      "min_ebfmi": null,
+      "min_ess_bulk": 13.024629126928952,
+      "min_ess_tail": 72.43282573431563,
+      "seed": 123,
+      "status": "fail",
+      "wall_time_s": 0.5730475090094842
+    },
+    {
+      "backend": "nuts",
+      "kind": "centered",
+      "max_r_hat": 1.9479725133911068,
+      "min_ebfmi": null,
+      "min_ess_bulk": 5.9068818316167135,
+      "min_ess_tail": 16.900439041203875,
+      "seed": 777,
+      "status": "fail",
+      "wall_time_s": 1.184736744966358
+    },
+    {
+      "backend": "mams",
+      "kind": "ncp",
+      "max_r_hat": 1.0066871351908706,
+      "min_ebfmi": null,
+      "min_ess_bulk": 2203.127852285072,
+      "min_ess_tail": 1913.7360448911209,
+      "seed": 42,
+      "status": "ok",
+      "wall_time_s": 0.02348594000795856
+    },
+    {
+      "backend": "mams",
+      "kind": "ncp",
+      "max_r_hat": 1.0100100374027188,
+      "min_ebfmi": null,
+      "min_ess_bulk": 2080.51353861948,
+      "min_ess_tail": 1896.9335498859855,
+      "seed": 123,
+      "status": "ok",
+      "wall_time_s": 0.025975543016102165
+    },
+    {
+      "backend": "mams",
+      "kind": "ncp",
+      "max_r_hat": 1.0048010417133268,
+      "min_ebfmi": null,
+      "min_ess_bulk": 2162.3125299760495,
+      "min_ess_tail": 1923.6001771502058,
+      "seed": 777,
+      "status": "ok",
+      "wall_time_s": 0.020941260969266295
+    },
+    {
+      "backend": "nuts",
+      "kind": "ncp",
+      "max_r_hat": 1.0026114287248404,
+      "min_ebfmi": null,
+      "min_ess_bulk": 4000.0,
+      "min_ess_tail": 2516.1905889260393,
+      "seed": 42,
+      "status": "ok",
+      "wall_time_s": 0.06711847404949367
+    },
+    {
+      "backend": "nuts",
+      "kind": "ncp",
+      "max_r_hat": 1.0027323263999914,
+      "min_ebfmi": null,
+      "min_ess_bulk": 4000.0,
+      "min_ess_tail": 1603.5124808169685,
+      "seed": 123,
+      "status": "ok",
+      "wall_time_s": 0.06403295998461545
+    },
+    {
+      "backend": "nuts",
+      "kind": "ncp",
+      "max_r_hat": 1.0024138098881896,
+      "min_ebfmi": null,
+      "min_ess_bulk": 4000.0,
+      "min_ess_tail": 2384.8039147922755,
+      "seed": 777,
+      "status": "ok",
+      "wall_time_s": 0.05218778201378882
+    }
+  ]
+}

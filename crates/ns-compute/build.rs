@@ -1,3 +1,10 @@
+#[allow(dead_code)]
+fn sha256_file(path: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).unwrap_or_default();
+    format!("{:x}", Sha256::digest(&bytes))
+}
+
 fn main() {
     // Link Apple Accelerate framework when the feature is enabled on macOS.
     #[cfg(all(feature = "accelerate", target_os = "macos"))]
@@ -292,10 +299,14 @@ fn main() {
         let mams_engine_abs = std::fs::canonicalize(&mams_engine)
             .unwrap_or_else(|_| std::path::PathBuf::from(&mams_engine));
         println!("cargo:rustc-env=CUDA_MAMS_ENGINE_PATH={}", mams_engine_abs.display());
+        let engine_hash = sha256_file(&mams_engine);
+        println!("cargo:rustc-env=CUDA_MAMS_ENGINE_SHA256={}", engine_hash);
 
         // --- mams_leapfrog.cu (LAPS: GPU MAMS sampler) ---
         let mams_src = format!("{}/mams_leapfrog.cu", kernel_dir);
         println!("cargo:rerun-if-changed={}", mams_src);
+        let leapfrog_hash = sha256_file(&mams_src);
+        println!("cargo:rustc-env=CUDA_MAMS_LEAPFROG_SHA256={}", leapfrog_hash);
         let mams_ptx = format!("{}/mams_leapfrog.ptx", out_dir);
         if let Ok(override_ptx) = std::env::var("NS_COMPUTE_MAMS_PTX_OVERRIDE")
             && !override_ptx.trim().is_empty()

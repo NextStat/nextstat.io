@@ -35,6 +35,19 @@ __device__ double nll_std_normal(
     return nll;
 }
 
+__device__ double grad_nll_std_normal(
+    const double* x, double* grad, int dim,
+    const double* /*model_data*/)
+{
+    double nll = 0.0;
+    for (int i = 0; i < dim; i++) {
+        double xi = x[i];
+        grad[i] = xi;
+        nll += 0.5 * xi * xi;
+    }
+    return nll;
+}
+
 // Model 1: Eight Schools (non-centered).
 // params: [mu, tau, theta_raw_0..J-1]  (dim = 2+J)
 // model_data: [J, y_0..y_{J-1}, inv_var_0..inv_var_{J-1}, prior_mu_sigma, prior_tau_scale]
@@ -207,6 +220,360 @@ __device__ double nll_glm_logistic(
     return nll;
 }
 
+// Model 6: GLM linear regression with N(0,1) prior on beta, σ=1 fixed.
+// params: [beta_0, ..., beta_{p-1}]
+// model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
+// NLL = 0.5 * sum_i(eta_i - y_i)^2 + 0.5 * sum_j(beta_j^2)
+__device__ void grad_glm_linear(
+    const double* beta, double* grad, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    const double* X = model_data + 2;
+    const double* y = model_data + 2 + n * p;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j]; // prior
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        double residual = eta - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * X[(size_t)i * p + j];
+        }
+    }
+}
+
+__device__ double nll_glm_linear(
+    const double* beta, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    const double* X = model_data + 2;
+    const double* y = model_data + 2 + n * p;
+
+    double nll = 0.0;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5 * beta[j] * beta[j];
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        double r = eta - y[i];
+        nll += 0.5 * r * r;
+    }
+    return nll;
+}
+
+// Model 7: GLM Poisson regression with N(0,1) prior on beta, log link.
+// params: [beta_0, ..., beta_{p-1}]
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag=1)]
+// NLL = sum_i[exp(eta_i) - y_i * eta_i] + 0.5 * sum_j(beta_j^2)
+__device__ void grad_glm_poisson(
+    const double* beta, double* grad, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* X_col = model_data + 3 + n * p + n;
+    const double* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : 0;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j]; // prior
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        // Clamp eta to prevent overflow in exp()
+        if (eta > 50.0) eta = 50.0;
+        if (eta < -50.0) eta = -50.0;
+        double mu = exp(eta);
+        double diff = mu - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X[(size_t)i * p + j];
+        }
+    }
+}
+
+__device__ double nll_glm_poisson(
+    const double* beta, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : 0;
+
+    double nll = 0.0;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5 * beta[j] * beta[j];
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        if (eta > 50.0) eta = 50.0;
+        if (eta < -50.0) eta = -50.0;
+        nll += exp(eta) - y[i] * eta;
+    }
+    return nll;
+}
+
+// Digamma function: asymptotic expansion with recursion for x < 8.
+// Accuracy ~1e-12 for x > 0. Uses ψ(x+1) = ψ(x) + 1/x recurrence.
+__device__ double device_digamma(double x) {
+    double result = 0.0;
+    // Shift x up to ≥ 8 using recurrence ψ(x) = ψ(x+1) - 1/x
+    while (x < 8.0) {
+        result -= 1.0 / x;
+        x += 1.0;
+    }
+    // Asymptotic expansion for x ≥ 8
+    double inv_x = 1.0 / x;
+    double inv_x2 = inv_x * inv_x;
+    result += log(x) - 0.5 * inv_x
+        - inv_x2 * (1.0/12.0 - inv_x2 * (1.0/120.0 - inv_x2 * (1.0/252.0
+        - inv_x2 * (1.0/240.0 - inv_x2 * (1.0/132.0)))));
+    return result;
+}
+
+// Model 8: GLM Negative Binomial regression with N(0,1) prior on beta and log_alpha.
+// params: [beta_0, ..., beta_{p-1}, log_alpha]  (dim = p+1)
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag=1)]
+// alpha = exp(clamp(log_alpha, -10, 8)), theta = 1/alpha
+// NLL = -sum_i[lgamma(y_i+theta) - lgamma(theta) + theta*ln(theta/(theta+mu))
+//        + y_i*ln(mu/(theta+mu))] + 0.5*sum(beta_j^2) + 0.5*log_alpha^2
+__device__ void grad_glm_negbin(
+    const double* x, double* grad, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : 0;
+
+    const double* beta = x;
+    double log_alpha = x[p];
+    double log_alpha_c = fmax(fmin(log_alpha, 8.0), -10.0);
+    double alpha = exp(log_alpha_c);
+    double theta = 1.0 / alpha;
+
+    // Prior gradients
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j];
+    }
+    grad[p] = log_alpha; // prior on log_alpha
+
+    double d_log_alpha = 0.0;
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        if (eta > 50.0) eta = 50.0;
+        if (eta < -50.0) eta = -50.0;
+
+        double mu = exp(eta);
+        double yi = y[i];
+        double denom = theta + mu;
+
+        // Gradient w.r.t. beta_j: d(NLL)/d(beta_j) = sum_i (mu*(yi+theta)/denom - yi) * X_ij / denom * mu ...
+        // Simplified: d(NLL)/d(eta_i) = mu * (1 - (yi + theta)/denom) = mu * (mu - yi) / denom
+        // No — correct form:
+        // NLL_i = -[lgamma(yi+theta) - lgamma(theta) + theta*ln(theta/denom) + yi*ln(mu/denom)]
+        // d(NLL_i)/d(eta_i) = -(yi * mu/denom - yi*mu/denom + ...)
+        // = -(yi/mu * mu - yi*mu/denom) ... let's derive carefully:
+        // d(NLL_i)/d(mu) = -(theta * (-1/denom) + yi * (1/mu - 1/denom)) * (dmu/deta)  — wait,
+        // d(NLL_i)/d(eta_i) = d(NLL_i)/d(mu_i) * d(mu_i)/d(eta_i) = d(NLL_i)/d(mu_i) * mu_i
+        // d(NLL_i)/d(mu_i) = -(theta*(-1/denom) + yi*(1/mu - 1/denom))
+        //                   = -(- theta/denom + yi/mu - yi/denom)
+        //                   = theta/denom - yi/mu + yi/denom
+        //                   = (theta + yi)/denom - yi/mu
+        // d(NLL_i)/d(eta_i) = mu * ((theta + yi)/denom - yi/mu) = mu*(theta+yi)/denom - yi
+        double d_eta = mu * (theta + yi) / denom - yi;
+        for (int j = 0; j < p; j++) {
+            grad[j] += d_eta * X[(size_t)i * p + j];
+        }
+
+        // Gradient w.r.t. log_alpha: chain rule through alpha → theta
+        // d(theta)/d(log_alpha) = d(1/alpha)/d(alpha) * d(alpha)/d(log_alpha) = -1/alpha^2 * alpha = -theta
+        // d(NLL_i)/d(theta) = -(digamma(yi+theta) - digamma(theta) + ln(theta/denom) + theta*(1/theta - 1/denom) - yi/denom)
+        //                   = -(digamma(yi+theta) - digamma(theta) + ln(theta/denom) + 1 - theta/denom - yi/denom)
+        //                   = -(digamma(yi+theta) - digamma(theta) + ln(theta/denom) + 1 - (theta+yi)/denom)
+        double psi_yi_theta = device_digamma(yi + theta);
+        double psi_theta = device_digamma(theta);
+        double d_theta = -(psi_yi_theta - psi_theta + log(theta / denom) + 1.0 - (theta + yi) / denom);
+        // d(NLL_i)/d(log_alpha) = d(NLL_i)/d(theta) * d(theta)/d(log_alpha) = d_theta * (-theta)
+        d_log_alpha += d_theta * (-theta);
+    }
+
+    grad[p] += d_log_alpha;
+}
+
+__device__ double nll_glm_negbin(
+    const double* x, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : 0;
+
+    const double* beta = x;
+    double log_alpha = x[p];
+    double log_alpha_c = fmax(fmin(log_alpha, 8.0), -10.0);
+    double alpha = exp(log_alpha_c);
+    double theta = 1.0 / alpha;
+
+    double nll = 0.0;
+    // Prior
+    for (int j = 0; j < p; j++) {
+        nll += 0.5 * beta[j] * beta[j];
+    }
+    nll += 0.5 * log_alpha * log_alpha;
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        if (eta > 50.0) eta = 50.0;
+        if (eta < -50.0) eta = -50.0;
+
+        double mu = exp(eta);
+        double yi = y[i];
+        double denom = theta + mu;
+
+        // -[lgamma(yi+theta) - lgamma(theta) + theta*ln(theta/denom) + yi*ln(mu/denom)]
+        nll -= lgamma(yi + theta) - lgamma(theta) + theta * log(theta / denom) + yi * log(mu / denom);
+    }
+    return nll;
+}
+
+// Model 9: Composed GLM logistic with random intercept (NCP).
+// params: [beta_0..beta_{p-1}, z_0..z_{G-1}], dim = p + G
+// model_data: [n, p, G, X_row(n*p), y(n), group_idx(n), X_col(n*p), re_prior_sigma]
+// eta_i = X[i,:].beta + re_scale * z_{group_idx[i]}
+// NLL = logistic_likelihood(eta, y) + 0.5*sum(beta_j^2) + 0.5*sum(z_j^2)
+__device__ void grad_glm_composed_logistic(
+    const double* x, double* grad, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int G = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* grp = model_data + 3 + n * p + n;
+    // re_prior_sigma is at end: model_data + 3 + n*p + n + n + n*p
+    double re_scale = model_data[3 + n * p + n + n + n * p];
+
+    const double* beta = x;
+    const double* z_re = x + p;
+
+    // Prior gradient: beta_j, z_j
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j];
+    }
+    for (int j = 0; j < G; j++) {
+        grad[p + j] = z_re[j]; // N(0,1) prior on z
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        int gi = (int)grp[i];
+        if (gi >= 0 && gi < G) {
+            eta += re_scale * z_re[gi];
+        }
+
+        double prob;
+        if (eta >= 0.0) {
+            double e = exp(-eta);
+            prob = 1.0 / (1.0 + e);
+        } else {
+            double e = exp(eta);
+            prob = e / (1.0 + e);
+        }
+        double diff = prob - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X[(size_t)i * p + j];
+        }
+        if (gi >= 0 && gi < G) {
+            grad[p + gi] += diff * re_scale;
+        }
+    }
+}
+
+__device__ double nll_glm_composed_logistic(
+    const double* x, int dim,
+    const double* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int G = (int)model_data[2];
+    const double* X = model_data + 3;
+    const double* y = model_data + 3 + n * p;
+    const double* grp = model_data + 3 + n * p + n;
+    double re_scale = model_data[3 + n * p + n + n + n * p];
+
+    const double* beta = x;
+    const double* z_re = x + p;
+
+    double nll = 0.0;
+    // Prior: 0.5 * sum(beta_j^2) + 0.5 * sum(z_j^2)
+    for (int j = 0; j < p; j++) {
+        nll += 0.5 * beta[j] * beta[j];
+    }
+    for (int j = 0; j < G; j++) {
+        nll += 0.5 * z_re[j] * z_re[j];
+    }
+
+    for (int i = 0; i < n; i++) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X[(size_t)i * p + j] * beta[j];
+        }
+        int gi = (int)grp[i];
+        if (gi >= 0 && gi < G) {
+            eta += re_scale * z_re[gi];
+        }
+        double abs_eta = fabs(eta);
+        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
+    }
+    return nll;
+}
+
 // Model 4: Neal's funnel non-centered parameterization.
 // params: [v, z_1, ..., z_{d-1}]
 // v ~ N(0, 9),  x_i = exp(v/2) * z_i, z_i ~ N(0,1)
@@ -285,6 +652,10 @@ __device__ double user_nll(const double* x, int dim, const double* model_data) {
         case 3: return nll_glm_logistic(x, dim, model_data);
         case 4: return nll_neal_funnel_ncp(x, dim, model_data);
         case 5: return nll_neal_funnel_riemannian(x, dim, model_data);
+        case 6: return nll_glm_linear(x, dim, model_data);
+        case 7: return nll_glm_poisson(x, dim, model_data);
+        case 8: return nll_glm_negbin(x, dim, model_data);
+        case 9: return nll_glm_composed_logistic(x, dim, model_data);
         default: return 1e30;
     }
 }
@@ -297,6 +668,24 @@ __device__ void user_grad(const double* x, double* grad, int dim, const double* 
         case 3: grad_glm_logistic(x, grad, dim, model_data); break;
         case 4: grad_neal_funnel_ncp(x, grad, dim, model_data); break;
         case 5: grad_neal_funnel_riemannian(x, grad, dim, model_data); break;
+        case 6: grad_glm_linear(x, grad, dim, model_data); break;
+        case 7: grad_glm_poisson(x, grad, dim, model_data); break;
+        case 8: grad_glm_negbin(x, grad, dim, model_data); break;
+        case 9: grad_glm_composed_logistic(x, grad, dim, model_data); break;
+    }
+}
+
+// Optional fused grad+nll callback for non-warp paths in mams_engine.cuh.
+#define MAMS_FUSED_GRAD_NLL_DEFINED
+__device__ double user_grad_nll(
+    const double* x, double* grad, int dim, const double* model_data)
+{
+    switch (__mams_model_id) {
+        case 0:
+            return grad_nll_std_normal(x, grad, dim, model_data);
+        default:
+            user_grad(x, grad, dim, model_data);
+            return user_nll(x, dim, model_data);
     }
 }
 
@@ -492,18 +881,17 @@ __device__ double grad_nll_glm_logistic_warp_shmem(
             eta += s_X_col[j * n + i] * beta[j];
         }
 
-        double prob;
+        double prob, log1pexp;
         if (eta >= 0.0) {
             double e = exp(-eta);
             prob = 1.0 / (1.0 + e);
+            log1pexp = eta + log1p(e);
         } else {
             double e = exp(eta);
             prob = e / (1.0 + e);
+            log1pexp = log1p(e);
         }
-
-        double abs_eta = fabs(eta);
-        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - s_y[i] * eta;
-
+        nll += log1pexp - s_y[i] * eta;
         double diff = prob - s_y[i];
         for (int j = 0; j < p; j++) {
             grad[j] += diff * s_X_col[j * n + i];
@@ -553,18 +941,17 @@ __device__ double grad_nll_glm_logistic_warp_global_p(
             eta += X_col[(size_t)j * n + i] * beta[j];
         }
 
-        double prob;
+        double prob, log1pexp;
         if (eta >= 0.0) {
             double e = exp(-eta);
             prob = 1.0 / (1.0 + e);
+            log1pexp = eta + log1p(e);
         } else {
             double e = exp(eta);
             prob = e / (1.0 + e);
+            log1pexp = log1p(e);
         }
-
-        double abs_eta = fabs(eta);
-        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
-
+        nll += log1pexp - y[i] * eta;
         double diff = prob - y[i];
         #pragma unroll
         for (int j = 0; j < P; j++) {
@@ -624,18 +1011,17 @@ __device__ double grad_nll_glm_logistic_warp_global(
             eta += X_col[(size_t)j * n + i] * beta[j];
         }
 
-        double prob;
+        double prob, log1pexp;
         if (eta >= 0.0) {
             double e = exp(-eta);
             prob = 1.0 / (1.0 + e);
+            log1pexp = eta + log1p(e);
         } else {
             double e = exp(eta);
             prob = e / (1.0 + e);
+            log1pexp = log1p(e);
         }
-
-        double abs_eta = fabs(eta);
-        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
-
+        nll += log1pexp - y[i] * eta;
         double diff = prob - y[i];
         for (int j = 0; j < p; j++) {
             grad[j] += diff * X_col[(size_t)j * n + i];
@@ -664,6 +1050,294 @@ __device__ double grad_nll_glm_logistic_warp_global(
     return nll + prior;
 }
 
+/* ---- Warp-cooperative kernels for GLM Linear (model 6) ---- */
+// Fused grad+NLL, global memory. model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
+__device__ double grad_nll_glm_linear_warp_global(
+    const double* beta, double* grad, int dim,
+    const double* model_data, int n, int p, int lane_id)
+{
+    (void)dim;
+    const double* X_col = model_data + 2 + n * p + n;
+    const double* y = model_data + 2 + n * p;
+
+    for (int j = 0; j < p; j++) grad[j] = 0.0;
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+        double residual = eta - y[i];
+        nll += 0.5 * residual * residual;
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * X_col[(size_t)j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) prior += 0.5 * beta[j] * beta[j];
+    return nll + prior;
+}
+
+// Fused grad+NLL, shared memory.
+__device__ double grad_nll_glm_linear_warp_shmem(
+    const double* beta, double* grad, int dim,
+    const double* s_X_col, const double* s_y,
+    int n, int p, int lane_id)
+{
+    (void)dim;
+    for (int j = 0; j < p; j++) grad[j] = 0.0;
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += s_X_col[j * n + i] * beta[j];
+        }
+        double residual = eta - s_y[i];
+        nll += 0.5 * residual * residual;
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * s_X_col[j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) prior += 0.5 * beta[j] * beta[j];
+    return nll + prior;
+}
+
+/* ---- Warp-cooperative kernels for GLM Poisson (model 7) ---- */
+// Fused grad+NLL, global memory.
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag)]
+__device__ double grad_nll_glm_poisson_warp_global(
+    const double* beta, double* grad, int dim,
+    const double* model_data, int n, int p, int lane_id)
+{
+    (void)dim;
+    int offset_flag = (int)model_data[2];
+    const double* X_col = model_data + 3 + n * p + n;
+    const double* y = model_data + 3 + n * p;
+    const double* offset_arr = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : NULL;
+
+    for (int j = 0; j < p; j++) grad[j] = 0.0;
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+        if (offset_arr) eta += offset_arr[i];
+        if (eta > 50.0) eta = 50.0; else if (eta < -50.0) eta = -50.0;
+
+        double exp_eta = exp(eta);
+        nll += exp_eta - y[i] * eta;
+        double diff = exp_eta - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X_col[(size_t)j * n + i];
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) prior += 0.5 * beta[j] * beta[j];
+    return nll + prior;
+}
+
+/* ---- Warp-cooperative kernels for GLM NegBin (model 8) ---- */
+// Fused grad+NLL, global memory.
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag)]
+// x = [beta_0..p-1, log_alpha], dim = p+1
+__device__ double grad_nll_glm_negbin_warp_global(
+    const double* x, double* grad, int dim,
+    const double* model_data, int n, int p, int lane_id)
+{
+    int offset_flag = (int)model_data[2];
+    const double* X_col = model_data + 3 + n * p + n;
+    const double* y = model_data + 3 + n * p;
+    const double* offset_arr = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : NULL;
+
+    const double* beta = x;
+    double log_alpha = x[p];
+    double log_alpha_c = log_alpha;
+    if (log_alpha_c < -10.0) log_alpha_c = -10.0;
+    if (log_alpha_c > 8.0) log_alpha_c = 8.0;
+    double alpha = exp(log_alpha_c);
+    double theta = 1.0 / alpha;
+
+    for (int j = 0; j < dim; j++) grad[j] = 0.0;
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+        if (offset_arr) eta += offset_arr[i];
+        if (eta > 50.0) eta = 50.0; else if (eta < -50.0) eta = -50.0;
+
+        double mu = exp(eta);
+        double yi = y[i];
+        double denom = theta + mu;
+
+        nll -= lgamma(yi + theta) - lgamma(theta) + theta * log(theta / denom) + yi * log(mu / denom);
+        // d(NLL_i)/d(eta_i) = mu*(theta+yi)/denom - yi  (same as scalar kernel)
+        double d_eta = mu * (theta + yi) / denom - yi;
+        for (int j = 0; j < p; j++) {
+            grad[j] += d_eta * X_col[(size_t)j * n + i];
+        }
+        // grad wrt log_alpha: chain rule through alpha → theta
+        double psi_yi_theta = device_digamma(yi + theta);
+        double psi_theta = device_digamma(theta);
+        double dnll_dtheta = -(psi_yi_theta - psi_theta + log(theta / denom) + 1.0 - (theta + yi) / denom);
+        grad[p] += dnll_dtheta * (-theta);
+    }
+
+    // Warp reduction for NLL
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    // Warp reduction for grad[0..p-1] + prior
+    for (int j = 0; j < p; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + beta[j];
+    }
+    // Warp reduction for grad[p] (log_alpha) + prior
+    {
+        double g = grad[p];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        grad[p] = __shfl_sync(0xffffffff, g, 0) + log_alpha;
+    }
+
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) prior += 0.5 * beta[j] * beta[j];
+    prior += 0.5 * log_alpha * log_alpha;
+    return nll + prior;
+}
+
+/* ---- Warp-cooperative kernels for GLM ComposedLogistic (model 9) ---- */
+// Fused grad+NLL, global memory.
+// model_data: [n, p, G, X_row(n*p), y(n), group_idx(n), X_col(n*p), re_prior_sigma]
+// x = [beta_0..p-1, z_0..z_{G-1}], dim = p + G
+__device__ double grad_nll_glm_composed_logistic_warp_global(
+    const double* x, double* grad, int dim,
+    const double* model_data, int n, int p, int lane_id)
+{
+    int G = (int)model_data[2];
+    const double* X_col = model_data + 3 + n * p + n + n;
+    const double* y = model_data + 3 + n * p;
+    const double* group_idx_f = model_data + 3 + n * p + n;
+    double re_scale = model_data[3 + n * p + n + n + n * p];
+
+    const double* beta = x;
+    const double* z = x + p;
+
+    for (int j = 0; j < dim; j++) grad[j] = 0.0;
+    double nll = 0.0;
+
+    for (int i = lane_id; i < n; i += 32) {
+        double eta = 0.0;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[(size_t)j * n + i] * beta[j];
+        }
+        int gi = (int)group_idx_f[i];
+        eta += re_scale * z[gi];
+
+        double prob;
+        if (eta >= 0.0) {
+            double e = exp(-eta);
+            prob = 1.0 / (1.0 + e);
+        } else {
+            double e = exp(eta);
+            prob = e / (1.0 + e);
+        }
+
+        double abs_eta = fabs(eta);
+        nll += fmax(eta, 0.0) + log(1.0 + exp(-abs_eta)) - y[i] * eta;
+
+        double diff = prob - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X_col[(size_t)j * n + i];
+        }
+        grad[p + gi] += diff * re_scale;
+    }
+
+    // Warp reduction for NLL
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        nll += __shfl_down_sync(0xffffffff, nll, offset);
+    }
+    nll = __shfl_sync(0xffffffff, nll, 0);
+
+    // Warp reduction for grad[0..dim-1] + prior
+    for (int j = 0; j < dim; j++) {
+        double g = grad[j];
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) {
+            g += __shfl_down_sync(0xffffffff, g, offset);
+        }
+        double prior_g = (j < p) ? beta[j] : z[j - p];  // N(0,1) prior on all params
+        grad[j] = __shfl_sync(0xffffffff, g, 0) + prior_g;
+    }
+
+    double prior = 0.0;
+    for (int j = 0; j < p; j++) prior += 0.5 * beta[j] * beta[j];
+    for (int j = 0; j < G; j++) prior += 0.5 * z[j] * z[j];
+    return nll + prior;
+}
+
 // Warp dispatch: uses shared memory for GLM, serial fallback for others.
 // s_X_col / s_y pointers are only valid when model_id == 3.
 #define MAMS_WARP_DEFINED
@@ -673,12 +1347,25 @@ __device__ double user_nll_warp(
     const double* s_X_col, const double* s_y,
     int n_obs, int n_feat, int lane_id, int use_shmem)
 {
+    // For models 6-9, use fused grad_nll warp (one pass) and discard gradient.
+    // This avoids duplicating the observation loop for NLL-only.
+    double dummy_grad[128];
     switch (__mams_model_id) {
         case 3:
             if (use_shmem == 1) {
                 return nll_glm_logistic_warp_shmem(x, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
             }
             return nll_glm_logistic_warp_global(x, dim, model_data, n_obs, n_feat, lane_id);
+        case 6:
+            if (use_shmem == 1)
+                return grad_nll_glm_linear_warp_shmem(x, dummy_grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
+            return grad_nll_glm_linear_warp_global(x, dummy_grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 7:
+            return grad_nll_glm_poisson_warp_global(x, dummy_grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 8:
+            return grad_nll_glm_negbin_warp_global(x, dummy_grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 9:
+            return grad_nll_glm_composed_logistic_warp_global(x, dummy_grad, dim, model_data, n_obs, n_feat, lane_id);
         default: return user_nll(x, dim, model_data);
     }
 }
@@ -695,6 +1382,22 @@ __device__ void user_grad_warp(
             } else {
                 grad_glm_logistic_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
             }
+            break;
+        case 6:
+            if (use_shmem == 1) {
+                grad_nll_glm_linear_warp_shmem(x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
+            } else {
+                grad_nll_glm_linear_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
+            }
+            break;
+        case 7:
+            grad_nll_glm_poisson_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
+            break;
+        case 8:
+            grad_nll_glm_negbin_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
+            break;
+        case 9:
+            grad_nll_glm_composed_logistic_warp_global(x, grad, dim, model_data, n_obs, n_feat, lane_id);
             break;
         default: user_grad(x, grad, dim, model_data); break;
     }
@@ -713,6 +1416,22 @@ __device__ double user_grad_nll_warp(
                     x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
             }
             return grad_nll_glm_logistic_warp_global(
+                x, grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 6:
+            if (use_shmem == 1) {
+                return grad_nll_glm_linear_warp_shmem(
+                    x, grad, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
+            }
+            return grad_nll_glm_linear_warp_global(
+                x, grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 7:
+            return grad_nll_glm_poisson_warp_global(
+                x, grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 8:
+            return grad_nll_glm_negbin_warp_global(
+                x, grad, dim, model_data, n_obs, n_feat, lane_id);
+        case 9:
+            return grad_nll_glm_composed_logistic_warp_global(
                 x, grad, dim, model_data, n_obs, n_feat, lane_id);
         default:
             user_grad(x, grad, dim, model_data);

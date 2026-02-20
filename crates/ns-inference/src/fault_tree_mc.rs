@@ -24,9 +24,68 @@ use serde::{Deserialize, Serialize};
 // RNG
 // ---------------------------------------------------------------------------
 
-/// Counter-based scenario RNG. Same (seed, scenario_id) → same draw sequence.
-///
-/// Uses a fast hash-mix to decorrelate nearby (seed, scenario_id) pairs.
+/// SplitMix64 mixer used for counter-based RNG streams.
+#[inline]
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E3779B97F4A7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D049BB133111EB);
+    x ^ (x >> 31)
+}
+
+/// Stateless stream: each scenario gets an independent counter-based RNG sequence.
+#[derive(Debug, Clone)]
+struct CounterRng {
+    key0: u64,
+    key1: u64,
+    draw_idx: u64,
+}
+
+impl CounterRng {
+    #[inline]
+    fn from_seed_scenario(seed: u64, scenario_id: u64) -> Self {
+        let base = seed ^ scenario_id.wrapping_mul(0xD2B74407B1CE6E93);
+        Self {
+            key0: splitmix64(base),
+            key1: splitmix64(base ^ 0xA5A5_A5A5_5A5A_5A5A),
+            draw_idx: 0,
+        }
+    }
+
+    #[inline]
+    fn next_u64(&mut self) -> u64 {
+        let x = self.key0
+            ^ self.key1
+            ^ self.draw_idx.wrapping_mul(0x9E3779B97F4A7C15);
+        self.draw_idx = self.draw_idx.wrapping_add(1);
+        splitmix64(x)
+    }
+
+    #[inline]
+    fn next_uniform01(&mut self) -> f64 {
+        // 53-bit mantissa path, [0, 1).
+        const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
+        ((self.next_u64() >> 11) as f64) * SCALE
+    }
+
+    #[inline]
+    fn next_normal01(&mut self) -> f64 {
+        // Box-Muller (consumes exactly 2 uniforms for deterministic stream budget).
+        let u1 = self.next_uniform01().max(1e-300);
+        let u2 = self.next_uniform01();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f64::consts::PI * u2;
+        r * theta.cos()
+    }
+}
+
+/// Counter-based scenario RNG stream for MC simulation.
+#[inline]
+fn scenario_counter_rng(seed: u64, scenario_id: u64) -> CounterRng {
+    CounterRng::from_seed_scenario(seed, scenario_id)
+}
+
+/// StdRng stream kept for CE-IS where we use rand distributions directly.
 #[inline]
 fn scenario_rng(seed: u64, scenario_id: u64) -> StdRng {
     StdRng::seed_from_u64(seed.wrapping_mul(2654435761).wrapping_add(scenario_id))
@@ -129,13 +188,12 @@ impl FaultTreeSpec {
 /// Sample component failure states for one scenario.
 /// `z` is the shared epistemic normal draw for BernoulliUncertain components.
 #[inline]
-fn sample_components(components: &[FailureMode], rng: &mut StdRng, comp_states: &mut [bool]) {
-    use rand::Rng;
+fn sample_components(components: &[FailureMode], rng: &mut CounterRng, comp_states: &mut [bool]) {
     // First draw: Z for epistemic uncertainty (consumed even if not needed, for budget determinism).
-    let z: f64 = StandardNormal.sample(rng);
+    let z = rng.next_normal01();
 
     for (i, mode) in components.iter().enumerate() {
-        let u: f64 = rng.random();
+        let u = rng.next_uniform01();
         comp_states[i] = match mode {
             FailureMode::Bernoulli { p } => u < *p,
             FailureMode::BernoulliUncertain { mu, sigma } => {
@@ -433,8 +491,8 @@ pub fn fault_tree_mc_metal(
 // CPU engine
 // ---------------------------------------------------------------------------
 
-/// Default chunk size for CPU engine (1M scenarios per chunk).
-pub const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
+/// Default chunk size for CPU engine (10M scenarios per chunk).
+pub const DEFAULT_CHUNK_SIZE: usize = 10_000_000;
 
 /// Run Monte Carlo fault-tree simulation on CPU.
 ///
@@ -472,7 +530,7 @@ pub fn fault_tree_mc_cpu(
                 let mut node_states = vec![false; n_nodes];
 
                 for scenario_id in start..end {
-                    let mut rng = scenario_rng(seed, scenario_id as u64);
+                    let mut rng = scenario_counter_rng(seed, scenario_id as u64);
                     sample_components(&spec.components, &mut rng, &mut comp_states);
                     evaluate_tree(&mut node_states, spec, &comp_states);
 
@@ -915,22 +973,20 @@ mod tests {
     #[test]
     fn test_rng_determinism() {
         // Same (seed, scenario_id) → same draw sequence.
-        let mut rng1 = scenario_rng(42, 100);
-        let mut rng2 = scenario_rng(42, 100);
-        use rand::Rng;
-        let v1: [f64; 5] = std::array::from_fn(|_| rng1.random());
-        let v2: [f64; 5] = std::array::from_fn(|_| rng2.random());
+        let mut rng1 = scenario_counter_rng(42, 100);
+        let mut rng2 = scenario_counter_rng(42, 100);
+        let v1: [f64; 5] = std::array::from_fn(|_| rng1.next_uniform01());
+        let v2: [f64; 5] = std::array::from_fn(|_| rng2.next_uniform01());
         assert_eq!(v1, v2);
     }
 
     #[test]
     fn test_rng_disjoint_substreams() {
         // Different scenario_id → different draws.
-        let mut rng1 = scenario_rng(42, 0);
-        let mut rng2 = scenario_rng(42, 1);
-        use rand::Rng;
-        let v1: f64 = rng1.random();
-        let v2: f64 = rng2.random();
+        let mut rng1 = scenario_counter_rng(42, 0);
+        let mut rng2 = scenario_counter_rng(42, 1);
+        let v1 = rng1.next_uniform01();
+        let v2 = rng2.next_uniform01();
         assert_ne!(v1, v2);
     }
 
@@ -1204,6 +1260,11 @@ mod tests {
         let r3 = fault_tree_mc_cpu(&spec, 50_000, 99, 50_000).unwrap();
         assert_eq!(r1.n_top_failures, r2.n_top_failures);
         assert_eq!(r2.n_top_failures, r3.n_top_failures);
+    }
+
+    #[test]
+    fn test_cpu_default_chunk_size_is_10m_plus() {
+        assert!(DEFAULT_CHUNK_SIZE >= 10_000_000);
     }
 
     // -----------------------------------------------------------------------
@@ -1524,6 +1585,42 @@ mod tests {
             cuda_or.p_failure,
             cuda_or.se
         );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_chunk_size_independence() {
+        use ns_compute::fault_tree_cuda::FaultTreeCudaAccelerator;
+        if !FaultTreeCudaAccelerator::is_available() {
+            eprintln!("CUDA not available; skipping chunk-size invariance test.");
+            return;
+        }
+        let spec = simple_or_tree(0.05, 0.03);
+        let n = 120_000usize;
+        let seed = 99u64;
+        let r1 = fault_tree_mc_cuda(&spec, n, seed, 10_000).unwrap();
+        let r2 = fault_tree_mc_cuda(&spec, n, seed, 40_000).unwrap();
+        let r3 = fault_tree_mc_cuda(&spec, n, seed, 120_000).unwrap();
+        assert_eq!(r1.n_top_failures, r2.n_top_failures);
+        assert_eq!(r2.n_top_failures, r3.n_top_failures);
+    }
+
+    #[test]
+    #[cfg(feature = "metal")]
+    fn test_metal_chunk_size_independence() {
+        use ns_compute::fault_tree_metal::FaultTreeMetalAccelerator;
+        if !FaultTreeMetalAccelerator::is_available() {
+            eprintln!("Metal not available; skipping chunk-size invariance test.");
+            return;
+        }
+        let spec = simple_or_tree(0.05, 0.03);
+        let n = 120_000usize;
+        let seed = 99u64;
+        let r1 = fault_tree_mc_metal(&spec, n, seed, 10_000).unwrap();
+        let r2 = fault_tree_mc_metal(&spec, n, seed, 40_000).unwrap();
+        let r3 = fault_tree_mc_metal(&spec, n, seed, 120_000).unwrap();
+        assert_eq!(r1.n_top_failures, r2.n_top_failures);
+        assert_eq!(r2.n_top_failures, r3.n_top_failures);
     }
 
     #[test]

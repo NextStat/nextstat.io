@@ -4,12 +4,13 @@
   "title": "NextStat Benchmark Result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "suite", "case", "deterministic", "meta", "dataset", "parity", "timing"],
+  "required": ["schema_version", "suite", "case", "deterministic", "environment", "meta", "dataset", "parity", "timing"],
   "properties": {
     "schema_version": { "const": "nextstat.benchmark_result.v1" },
     "suite": { "type": "string", "minLength": 1 },
     "case": { "type": "string", "minLength": 1 },
     "deterministic": { "type": "boolean" },
+    "environment": { "type": "object", "additionalProperties": true },
     "meta": {
       "type": "object",
       "additionalProperties": false,
@@ -75,6 +76,16 @@
           "required": ["number", "repeat", "target_s", "policy", "per_call_s"],
           "properties": {
             "number": { "type": "integer", "minimum": 1 },
+            "number_per_engine": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pyhf", "nextstat"],
+              "properties": {
+                "pyhf": { "type": "integer", "minimum": 1 },
+                "nextstat": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "calibration": { "type": "string" },
             "repeat": { "type": "integer", "minimum": 1 },
             "target_s": { "type": "number", "minimum": 0 },
             "policy": { "type": "string", "enum": ["min", "median"] },

@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 
 ## [Unreleased]
 
+### Added
+
+- **NUTS Pathfinder dense metric initialization** — `init_strategy="pathfinder"` with `metric="dense"` now uses the full MLE covariance matrix (from the Hessian) to initialize a `DenseCholesky` metric, giving warmup a head-start on the dense preconditioner. Falls back to diagonal when Cholesky fails or `metric="diagonal"`.
+- **NUTS dense metric reporting** — `sample()` result now includes `metric_type` ("diagonal" or "dense"), `mass_diag`, and `inv_mass_matrix` (full inverse mass, row-major, only for dense) in `sample_stats`.
+- **NUTS vs CmdStan benchmark suite** — `scripts/benchmarks/bench_nuts_vs_cmdstan.py` comparing ESS/s, R-hat, and divergence rates on StdNormal 10D, Eight Schools, and GLM Logistic models.
+- **LAPS GLM model expansion** — GPU sampler now supports `"glm_linear"`, `"glm_poisson"`, `"glm_negbin"` (negative binomial), and `"glm_composed_logistic"` (logistic + random intercept NCP) in addition to the existing `"glm_logistic"`. Full CUDA (f64) and Metal (f32) kernel support. Poisson and NegBin accept optional `offset` in `model_data`. NegBin estimates dispersion parameter `log_alpha`. ComposedGlm uses non-centered parametrization for group-level random intercepts.
+- **SCM Python API** — `nextstat.scm()` exposes Stepwise Covariate Modeling (forward selection + backward elimination) via Python. Accepts observation-level covariate matrices, auto-centers at median, supports power/proportional/exponential relationships. Returns full audit trace with per-step ΔOFV, p-values, coefficients, and final model parameters. TypedDict return types (`ScmResult`, `ScmStepResult`).
+- **IQ/OQ/PQ validation protocol v2.0.0** — `docs/validation/iq-oq-pq-protocol.md` with 85 numbered test cases across 11 OQ subsections (PK analytical, MLE, FOCE, SAEM, GOF, VPC, SCM, Error Models, LLOQ, NONMEM I/O, Artifacts), PQ cross-validation with NONMEM on Theophylline/Warfarin reference datasets, traceability matrix, and deviation report template. 21 CFR Part 11 / EU Annex 11 / ICH E6(R3) compliant.
+- **3-compartment PK models** — IV bolus and oral absorption with analytical gradients.
+- **Bioequivalence testing** — TOST (average BE), reference-scaled (RSABE), power analysis, and sample size calculation.
+- **MAP estimation** — Maximum A Posteriori estimation with Hessian-based standard errors.
+- **Monte Carlo clinical trial simulation** — simulation engine with PTA (Probability of Target Attainment).
+- **Dose optimization via PTA grid search** — systematic dose finding using PTA target grids.
+- **ODE-based PK models** — transit compartments, Michaelis-Menten elimination, and TMDD (target-mediated drug disposition).
+- **Multi-compartment FOCE/SAEM** — 2-compartment IV and oral population PK estimation.
+- **Allometric scaling and covariate modeling for FOCE** — weight-based allometric exponents and covariate effects in population PK.
+- **IQ/OQ/PQ validation pack** — GxP-ready validation package for pharma environments (21 CFR Part 11 compliant).
+- **Pharma tutorials** — PK modeling guide, NONMEM migration guide, and survival analysis guide.
+- **Pharma benchmark suite** — NS vs NONMEM/Monolix/nlmixr2 comparative benchmarks.
+
 ## [0.9.6] — 2026-02-17
 
 ### Added

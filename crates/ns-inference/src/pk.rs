@@ -3,6 +3,7 @@
 //! Currently implemented:
 //! - 1-compartment PK model (oral dosing, first-order absorption)
 //! - 2-compartment PK models (IV bolus and oral) with analytical gradients
+//! - 3-compartment PK models (IV bolus and oral) with analytical gradients
 //! - Individual and population (NLME) variants
 //!
 //! # Error models
@@ -1629,6 +1630,1218 @@ impl LogDensityModel for TwoCompartmentOralPkModel {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 3-compartment PK models
+// ---------------------------------------------------------------------------
+
+/// Micro-constants and eigenvalues for the 3-compartment model.
+///
+/// Macro parameters `(CL, V1, Q2, V2, Q3, V3)` map to micro-constants:
+/// - `k10 = CL / V1`  (elimination)
+/// - `k12 = Q2 / V1`  (central -> peripheral 1)
+/// - `k21 = Q2 / V2`  (peripheral 1 -> central)
+/// - `k13 = Q3 / V1`  (central -> peripheral 2)
+/// - `k31 = Q3 / V3`  (peripheral 2 -> central)
+///
+/// Eigenvalues `alpha > beta > gamma > 0` of the disposition matrix (roots of cubic).
+#[derive(Debug, Clone, Copy)]
+struct ThreeCptMicro {
+    k21: f64,
+    k31: f64,
+    alpha: f64,
+    beta: f64,
+    gamma: f64,
+}
+
+impl ThreeCptMicro {
+    #[inline]
+    fn from_macro(cl: f64, v1: f64, q2: f64, v2: f64, q3: f64, v3: f64) -> Self {
+        let k10 = cl / v1;
+        let k12 = q2 / v1;
+        let k21 = q2 / v2;
+        let k13 = q3 / v1;
+        let k31 = q3 / v3;
+
+        // Characteristic cubic: lambda^3 - a2*lambda^2 + a1*lambda - a0 = 0
+        // i.e. lambda^3 + (-a2)*lambda^2 + a1*lambda + (-a0) = 0
+        // In monic form x^3 + a*x^2 + b*x + c = 0 with:
+        let a2 = k10 + k12 + k21 + k13 + k31;
+        let a1 = k10 * k21 + k10 * k31 + k21 * k31 + k21 * k13 + k31 * k12;
+        let a0 = k10 * k21 * k31;
+
+        // solve_cubic expects x^3 + a*x^2 + b*x + c = 0
+        let roots = solve_cubic(-a2, a1, -a0);
+
+        Self { k21, k31, alpha: roots[0], beta: roots[1], gamma: roots[2] }
+    }
+}
+
+/// Solve cubic equation `x^3 + a*x^2 + b*x + c = 0`.
+///
+/// Returns 3 real roots sorted descending (`roots[0] >= roots[1] >= roots[2]`).
+/// Uses the trigonometric method (casus irreducibilis) — all 3 roots are real
+/// for PK disposition matrices (guaranteed by the physics).
+fn solve_cubic(a: f64, b: f64, c: f64) -> [f64; 3] {
+    // Depressed cubic substitution: x = t - a/3
+    // t^3 + p*t + q = 0
+    let a_over_3 = a / 3.0;
+    let p = b - a * a / 3.0;
+    let q = 2.0 * a * a * a / 27.0 - a * b / 3.0 + c;
+
+    let disc = -(4.0 * p * p * p + 27.0 * q * q);
+
+    if disc >= 0.0 {
+        // Three real roots (casus irreducibilis)
+        let m = (-p / 3.0).max(0.0);
+        let sqrt_m = m.sqrt();
+
+        if sqrt_m < 1e-15 {
+            // Triple root
+            let r = -a_over_3;
+            return [r, r, r];
+        }
+
+        let cos_arg = (-q / (2.0 * sqrt_m * sqrt_m * sqrt_m)).clamp(-1.0, 1.0);
+        let theta = cos_arg.acos();
+
+        let two_sqrt_m = 2.0 * sqrt_m;
+        let mut r0 = two_sqrt_m * (theta / 3.0).cos() - a_over_3;
+        let mut r1 = two_sqrt_m * ((theta + 2.0 * std::f64::consts::PI) / 3.0).cos() - a_over_3;
+        let mut r2 = two_sqrt_m * ((theta + 4.0 * std::f64::consts::PI) / 3.0).cos() - a_over_3;
+
+        // Sort descending
+        if r0 < r1 {
+            std::mem::swap(&mut r0, &mut r1);
+        }
+        if r0 < r2 {
+            std::mem::swap(&mut r0, &mut r2);
+        }
+        if r1 < r2 {
+            std::mem::swap(&mut r1, &mut r2);
+        }
+
+        [r0, r1, r2]
+    } else {
+        // One real root, two complex conjugate (should not happen for PK, but handle gracefully)
+        let sq = (q * q / 4.0 + p * p * p / 27.0).max(0.0).sqrt();
+        let u = (-q / 2.0 + sq).cbrt();
+        let v = (-q / 2.0 - sq).cbrt();
+        let r = u + v - a_over_3;
+        [r, r, r]
+    }
+}
+
+/// Concentration at time `t` for 3-compartment IV bolus model.
+///
+/// `C(t) = A*exp(-alpha*t) + B*exp(-beta*t) + C_coeff*exp(-gamma*t)`
+///
+/// Parameters: `(CL, V1, Q2, V2, Q3, V3)`.
+#[inline]
+fn conc_iv_3cpt(dose: f64, v1: f64, micro: &ThreeCptMicro, t: f64) -> f64 {
+    let alpha = micro.alpha;
+    let beta = micro.beta;
+    let gamma = micro.gamma;
+    let k21 = micro.k21;
+    let k31 = micro.k31;
+    let pref = dose / v1;
+
+    let denom_a = (beta - alpha) * (gamma - alpha);
+    let denom_b = (alpha - beta) * (gamma - beta);
+    let denom_g = (alpha - gamma) * (beta - gamma);
+
+    // Degenerate case: any eigenvalue pair nearly equal
+    if denom_a.abs() < 1e-12 || denom_b.abs() < 1e-12 || denom_g.abs() < 1e-12 {
+        // Perturb slightly and evaluate
+        let alpha_p = alpha * (1.0 + 1e-8);
+        let beta_p = beta * (1.0 - 1e-8);
+        let da = (beta_p - alpha_p) * (gamma - alpha_p);
+        let db = (alpha_p - beta_p) * (gamma - beta_p);
+        let dg = (alpha_p - gamma) * (beta_p - gamma);
+        let ca = (k21 - alpha_p) * (k31 - alpha_p) / da;
+        let cb = (k21 - beta_p) * (k31 - beta_p) / db;
+        let cg = (k21 - gamma) * (k31 - gamma) / dg;
+        return pref * (ca * (-alpha_p * t).exp() + cb * (-beta_p * t).exp() + cg * (-gamma * t).exp());
+    }
+
+    let coeff_a = (k21 - alpha) * (k31 - alpha) / denom_a;
+    let coeff_b = (k21 - beta) * (k31 - beta) / denom_b;
+    let coeff_g = (k21 - gamma) * (k31 - gamma) / denom_g;
+
+    pref * (coeff_a * (-alpha * t).exp() + coeff_b * (-beta * t).exp() + coeff_g * (-gamma * t).exp())
+}
+
+/// Concentration and partial derivatives for 3-compartment IV bolus model.
+///
+/// Returns `(c, dc/dcl, dc/dv1, dc/dq2, dc/dv2, dc/dq3, dc/dv3)`.
+///
+/// Chain rule: macro params `(CL,V1,Q2,V2,Q3,V3)` -> micro `(k10,k12,k21,k13,k31)`
+/// -> eigenvalues `(alpha,beta,gamma)` -> C(t).
+/// Degenerate cases fall back to central-difference numerical gradient.
+#[inline]
+fn conc_iv_3cpt_and_grad(
+    dose: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+    t: f64,
+) -> (f64, f64, f64, f64, f64, f64, f64) {
+    let k10 = cl / v1;
+    let k12 = q2 / v1;
+    let k21 = q2 / v2;
+    let k13 = q3 / v1;
+    let k31 = q3 / v3;
+
+    let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+    let alpha = micro.alpha;
+    let beta = micro.beta;
+    let gamma = micro.gamma;
+
+    let pref = dose / v1;
+    let ea = (-alpha * t).exp();
+    let eb = (-beta * t).exp();
+    let eg = (-gamma * t).exp();
+
+    let denom_a = (beta - alpha) * (gamma - alpha);
+    let denom_b = (alpha - beta) * (gamma - beta);
+    let denom_g = (alpha - gamma) * (beta - gamma);
+
+    // Degenerate: numerical fallback
+    if denom_a.abs() < 1e-10 || denom_b.abs() < 1e-10 || denom_g.abs() < 1e-10 {
+        let f = |cl_: f64, v1_: f64, q2_: f64, v2_: f64, q3_: f64, v3_: f64| {
+            let m = ThreeCptMicro::from_macro(cl_, v1_, q2_, v2_, q3_, v3_);
+            conc_iv_3cpt(dose, v1_, &m, t)
+        };
+        let c = f(cl, v1, q2, v2, q3, v3);
+        let eps = 1e-7;
+        let dc_dcl = (f(cl + eps, v1, q2, v2, q3, v3) - f(cl - eps, v1, q2, v2, q3, v3)) / (2.0 * eps);
+        let dc_dv1 = (f(cl, v1 + eps, q2, v2, q3, v3) - f(cl, v1 - eps, q2, v2, q3, v3)) / (2.0 * eps);
+        let dc_dq2 = (f(cl, v1, q2 + eps, v2, q3, v3) - f(cl, v1, q2 - eps, v2, q3, v3)) / (2.0 * eps);
+        let dc_dv2 = (f(cl, v1, q2, v2 + eps, q3, v3) - f(cl, v1, q2, v2 - eps, q3, v3)) / (2.0 * eps);
+        let dc_dq3 = (f(cl, v1, q2, v2, q3 + eps, v3) - f(cl, v1, q2, v2, q3 - eps, v3)) / (2.0 * eps);
+        let dc_dv3 = (f(cl, v1, q2, v2, q3, v3 + eps) - f(cl, v1, q2, v2, q3, v3 - eps)) / (2.0 * eps);
+        return (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3);
+    }
+
+    let coeff_a = (k21 - alpha) * (k31 - alpha) / denom_a;
+    let coeff_b = (k21 - beta) * (k31 - beta) / denom_b;
+    let coeff_g = (k21 - gamma) * (k31 - gamma) / denom_g;
+    let c = pref * (coeff_a * ea + coeff_b * eb + coeff_g * eg);
+
+    // --- Partials of C w.r.t. (alpha, beta, gamma, k21, k31) ---
+    // dC/d(eigenvalue) = pref * d(coeff * exp)/d(eigenvalue)
+
+    // For dcoeff_a/dalpha: numerator = (k21-a)(k31-a), denom = (b-a)(g-a)
+    // dcoeff_a/dalpha by quotient rule
+    let na = (k21 - alpha) * (k31 - alpha);
+    let dna_dalpha = -(k31 - alpha) - (k21 - alpha); // = -(k21 + k31 - 2*alpha)
+    let ddenom_a_dalpha = -(gamma - alpha) - (beta - alpha); // = 2*alpha - beta - gamma
+    let dcoeff_a_dalpha = (dna_dalpha * denom_a - na * ddenom_a_dalpha) / (denom_a * denom_a);
+
+    let nb = (k21 - beta) * (k31 - beta);
+    let dnb_dbeta = -(k31 - beta) - (k21 - beta);
+    let ddenom_b_dbeta = -(gamma - beta) - (alpha - beta); // = 2*beta - alpha - gamma
+    let dcoeff_b_dbeta = (dnb_dbeta * denom_b - nb * ddenom_b_dbeta) / (denom_b * denom_b);
+
+    let ng = (k21 - gamma) * (k31 - gamma);
+    let dng_dgamma = -(k31 - gamma) - (k21 - gamma);
+    let ddenom_g_dgamma = -(beta - gamma) - (alpha - gamma); // = 2*gamma - alpha - beta
+    let dcoeff_g_dgamma = (dng_dgamma * denom_g - ng * ddenom_g_dgamma) / (denom_g * denom_g);
+
+    // Cross-derivatives: dcoeff_a/dbeta, dcoeff_a/dgamma, etc.
+    let ddenom_a_dbeta = gamma - alpha; // d((b-a)(g-a))/db = (g-a)
+    let dcoeff_a_dbeta = -na * ddenom_a_dbeta / (denom_a * denom_a);
+
+    let ddenom_a_dgamma = beta - alpha; // d((b-a)(g-a))/dg = (b-a)
+    let dcoeff_a_dgamma = -na * ddenom_a_dgamma / (denom_a * denom_a);
+
+    let ddenom_b_dalpha = gamma - beta;
+    let dcoeff_b_dalpha = -nb * ddenom_b_dalpha / (denom_b * denom_b);
+
+    let ddenom_b_dgamma = alpha - beta;
+    let dcoeff_b_dgamma = -nb * ddenom_b_dgamma / (denom_b * denom_b);
+
+    let ddenom_g_dalpha = beta - gamma;
+    let dcoeff_g_dalpha = -ng * ddenom_g_dalpha / (denom_g * denom_g);
+
+    let ddenom_g_dbeta = alpha - gamma;
+    let dcoeff_g_dbeta = -ng * ddenom_g_dbeta / (denom_g * denom_g);
+
+    // dC/dalpha = pref * [dcoeff_a/dalpha * ea + coeff_a * (-t) * ea + dcoeff_b/dalpha * eb + dcoeff_g/dalpha * eg]
+    let dc_dalpha = pref * (
+        dcoeff_a_dalpha * ea - coeff_a * t * ea
+        + dcoeff_b_dalpha * eb
+        + dcoeff_g_dalpha * eg
+    );
+    let dc_dbeta = pref * (
+        dcoeff_a_dbeta * ea
+        + dcoeff_b_dbeta * eb - coeff_b * t * eb
+        + dcoeff_g_dbeta * eg
+    );
+    let dc_dgamma = pref * (
+        dcoeff_a_dgamma * ea
+        + dcoeff_b_dgamma * eb
+        + dcoeff_g_dgamma * eg - coeff_g * t * eg
+    );
+
+    // dC/dk21 = pref * [(k31-alpha)/denom_a * ea + (k31-beta)/denom_b * eb + (k31-gamma)/denom_g * eg]
+    let dc_dk21 = pref * (
+        (k31 - alpha) / denom_a * ea
+        + (k31 - beta) / denom_b * eb
+        + (k31 - gamma) / denom_g * eg
+    );
+    // dC/dk31 = pref * [(k21-alpha)/denom_a * ea + (k21-beta)/denom_b * eb + (k21-gamma)/denom_g * eg]
+    let dc_dk31 = pref * (
+        (k21 - alpha) / denom_a * ea
+        + (k21 - beta) / denom_b * eb
+        + (k21 - gamma) / denom_g * eg
+    );
+
+    // --- Eigenvalue derivatives w.r.t. micro-constants ---
+    // The characteristic polynomial is:
+    //   P(lambda) = lambda^3 - a2*lambda^2 + a1*lambda - a0
+    // where a2 = k10+k12+k21+k13+k31, a1 = ..., a0 = k10*k21*k31
+    // By implicit differentiation: dlambda/dk = -(dP/dk) / (dP/dlambda)
+    let a2 = k10 + k12 + k21 + k13 + k31;
+    let _a1 = k10 * k21 + k10 * k31 + k21 * k31 + k21 * k13 + k31 * k12;
+    let _a0 = k10 * k21 * k31;
+
+    // dP/dlambda = 3*lambda^2 - 2*a2*lambda + a1
+    let dpdl = |lam: f64| -> f64 { 3.0 * lam * lam - 2.0 * a2 * lam + _a1 };
+
+    let dpdl_a = dpdl(alpha);
+    let dpdl_b = dpdl(beta);
+    let dpdl_g = dpdl(gamma);
+
+    // dP/dk10 = -lambda^2 + (k21+k31)*lambda - k21*k31
+    //         = -(lambda^2 - (k21+k31)*lambda + k21*k31)
+    //         = -(lambda - k21)*(lambda - k31)
+    let dpdk10 = |lam: f64| -> f64 { -(lam - k21) * (lam - k31) };
+    // dP/dk12 = -lambda^2 + k31*lambda  = -lambda*(lambda - k31)
+    let dpdk12 = |lam: f64| -> f64 { -lam * (lam - k31) };
+    // dP/dk21 = -lambda^2 + (k10+k13+k31)*lambda - k10*k31
+    //   Using: da2/dk21 = 1, da1/dk21 = k10+k31+k13, da0/dk21 = k10*k31
+    let dpdk21_fn = |lam: f64| -> f64 {
+        -lam * lam + (k10 + k13 + k31) * lam - k10 * k31
+    };
+    // dP/dk13 = -lambda^2 + k21*lambda  = -lambda*(lambda - k21)
+    let dpdk13 = |lam: f64| -> f64 { -lam * (lam - k21) };
+    // dP/dk31 = -lambda^2 + (k10+k12+k21)*lambda - k10*k21
+    let dpdk31_fn = |lam: f64| -> f64 {
+        -lam * lam + (k10 + k12 + k21) * lam - k10 * k21
+    };
+
+    // dlambda/dk = -(dP/dk) / (dP/dlambda)
+    let safe_div = |num: f64, den: f64| -> f64 {
+        if den.abs() < 1e-30 { 0.0 } else { num / den }
+    };
+
+    let dalpha_dk10 = safe_div(-dpdk10(alpha), dpdl_a);
+    let dalpha_dk12 = safe_div(-dpdk12(alpha), dpdl_a);
+    let dalpha_dk21_e = safe_div(-dpdk21_fn(alpha), dpdl_a);
+    let dalpha_dk13 = safe_div(-dpdk13(alpha), dpdl_a);
+    let dalpha_dk31_e = safe_div(-dpdk31_fn(alpha), dpdl_a);
+
+    let dbeta_dk10 = safe_div(-dpdk10(beta), dpdl_b);
+    let dbeta_dk12 = safe_div(-dpdk12(beta), dpdl_b);
+    let dbeta_dk21_e = safe_div(-dpdk21_fn(beta), dpdl_b);
+    let dbeta_dk13 = safe_div(-dpdk13(beta), dpdl_b);
+    let dbeta_dk31_e = safe_div(-dpdk31_fn(beta), dpdl_b);
+
+    let dgamma_dk10 = safe_div(-dpdk10(gamma), dpdl_g);
+    let dgamma_dk12 = safe_div(-dpdk12(gamma), dpdl_g);
+    let dgamma_dk21_e = safe_div(-dpdk21_fn(gamma), dpdl_g);
+    let dgamma_dk13 = safe_div(-dpdk13(gamma), dpdl_g);
+    let dgamma_dk31_e = safe_div(-dpdk31_fn(gamma), dpdl_g);
+
+    // --- Chain to macro parameters ---
+    let v1_sq = v1 * v1;
+    let v2_sq = v2 * v2;
+    let v3_sq = v3 * v3;
+
+    // CL: only k10 depends on cl (dk10/dcl = 1/v1)
+    let dalpha_dcl = dalpha_dk10 / v1;
+    let dbeta_dcl = dbeta_dk10 / v1;
+    let dgamma_dcl = dgamma_dk10 / v1;
+    let dc_dcl = dc_dalpha * dalpha_dcl + dc_dbeta * dbeta_dcl + dc_dgamma * dgamma_dcl;
+
+    // V1: k10 = cl/v1 -> dk10/dv1 = -cl/v1^2
+    //     k12 = q2/v1 -> dk12/dv1 = -q2/v1^2
+    //     k13 = q3/v1 -> dk13/dv1 = -q3/v1^2
+    //     also pref = dose/v1 -> dpref/dv1 = -dose/v1^2 = -pref/v1
+    let dalpha_dv1 = dalpha_dk10 * (-cl / v1_sq) + dalpha_dk12 * (-q2 / v1_sq) + dalpha_dk13 * (-q3 / v1_sq);
+    let dbeta_dv1 = dbeta_dk10 * (-cl / v1_sq) + dbeta_dk12 * (-q2 / v1_sq) + dbeta_dk13 * (-q3 / v1_sq);
+    let dgamma_dv1 = dgamma_dk10 * (-cl / v1_sq) + dgamma_dk12 * (-q2 / v1_sq) + dgamma_dk13 * (-q3 / v1_sq);
+    let dc_dv1 = dc_dalpha * dalpha_dv1 + dc_dbeta * dbeta_dv1 + dc_dgamma * dgamma_dv1 - c / v1;
+
+    // Q2: k12 = q2/v1 -> dk12/dq2 = 1/v1
+    //     k21 = q2/v2 -> dk21/dq2 = 1/v2
+    let dalpha_dq2 = dalpha_dk12 / v1 + dalpha_dk21_e / v2;
+    let dbeta_dq2 = dbeta_dk12 / v1 + dbeta_dk21_e / v2;
+    let dgamma_dq2 = dgamma_dk12 / v1 + dgamma_dk21_e / v2;
+    let dc_dq2 = dc_dalpha * dalpha_dq2 + dc_dbeta * dbeta_dq2 + dc_dgamma * dgamma_dq2 + dc_dk21 / v2;
+
+    // V2: k21 = q2/v2 -> dk21/dv2 = -q2/v2^2
+    let dk21_dv2 = -q2 / v2_sq;
+    let dalpha_dv2 = dalpha_dk21_e * dk21_dv2;
+    let dbeta_dv2 = dbeta_dk21_e * dk21_dv2;
+    let dgamma_dv2 = dgamma_dk21_e * dk21_dv2;
+    let dc_dv2 = dc_dalpha * dalpha_dv2 + dc_dbeta * dbeta_dv2 + dc_dgamma * dgamma_dv2 + dc_dk21 * dk21_dv2;
+
+    // Q3: k13 = q3/v1 -> dk13/dq3 = 1/v1
+    //     k31 = q3/v3 -> dk31/dq3 = 1/v3
+    let dalpha_dq3 = dalpha_dk13 / v1 + dalpha_dk31_e / v3;
+    let dbeta_dq3 = dbeta_dk13 / v1 + dbeta_dk31_e / v3;
+    let dgamma_dq3 = dgamma_dk13 / v1 + dgamma_dk31_e / v3;
+    let dc_dq3 = dc_dalpha * dalpha_dq3 + dc_dbeta * dbeta_dq3 + dc_dgamma * dgamma_dq3 + dc_dk31 / v3;
+
+    // V3: k31 = q3/v3 -> dk31/dv3 = -q3/v3^2
+    let dk31_dv3 = -q3 / v3_sq;
+    let dalpha_dv3 = dalpha_dk31_e * dk31_dv3;
+    let dbeta_dv3 = dbeta_dk31_e * dk31_dv3;
+    let dgamma_dv3 = dgamma_dk31_e * dk31_dv3;
+    let dc_dv3 = dc_dalpha * dalpha_dv3 + dc_dbeta * dbeta_dv3 + dc_dgamma * dgamma_dv3 + dc_dk31 * dk31_dv3;
+
+    (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3)
+}
+
+/// 3-compartment IV bolus concentration at time `t`.
+///
+/// Parameters: `(CL, V1, Q2, V2, Q3, V3)`.
+///
+/// `C(t) = A*exp(-alpha*t) + B*exp(-beta*t) + C_coeff*exp(-gamma*t)`
+/// where `alpha, beta, gamma` are the three eigenvalues of the disposition matrix.
+#[inline]
+pub fn conc_iv_3cpt_macro(
+    dose: f64,
+    t: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+) -> f64 {
+    let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+    conc_iv_3cpt(dose, v1, &micro, t)
+}
+
+/// Analytical gradients for 3-compartment IV bolus (6 params: cl, v1, q2, v2, q3, v3).
+///
+/// Returns `Vec` of length 6: `[dc/dcl, dc/dv1, dc/dq2, dc/dv2, dc/dq3, dc/dv3]`.
+pub fn grad_conc_iv_3cpt_macro(
+    dose: f64,
+    t: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+) -> Vec<f64> {
+    let (_, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3) =
+        conc_iv_3cpt_and_grad(dose, cl, v1, q2, v2, q3, v3, t);
+    vec![dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3]
+}
+
+/// Concentration at time `t` for 3-compartment oral (first-order absorption) model.
+///
+/// `C(t) = Ka * Dose / V1 * sum_i [ R_i / (Ka - lambda_i) * (exp(-lambda_i*t) - exp(-Ka*t)) ]`
+///
+/// where `R_i = (k21 - lambda_i)(k31 - lambda_i) / prod_{j!=i}(lambda_j - lambda_i)`
+/// and `lambda = {alpha, beta, gamma}`.
+#[inline]
+fn conc_oral_3cpt(
+    dose: f64,
+    bioav: f64,
+    v1: f64,
+    ka: f64,
+    micro: &ThreeCptMicro,
+    t: f64,
+) -> f64 {
+    let alpha = micro.alpha;
+    let beta = micro.beta;
+    let gamma = micro.gamma;
+    let k21 = micro.k21;
+    let k31 = micro.k31;
+
+    let pref = ka * bioav * dose / v1;
+
+    // Residuals (same as IV coefficients)
+    let denom_a = (beta - alpha) * (gamma - alpha);
+    let denom_b = (alpha - beta) * (gamma - beta);
+    let denom_g = (alpha - gamma) * (beta - gamma);
+
+    // Handle degenerate cases
+    let (da, db, dg, alpha_e, beta_e, gamma_e, ka_e) =
+        if denom_a.abs() < 1e-12 || denom_b.abs() < 1e-12 || denom_g.abs() < 1e-12
+            || (ka - alpha).abs() < 1e-12 || (ka - beta).abs() < 1e-12 || (ka - gamma).abs() < 1e-12
+        {
+            let alpha_p = alpha * (1.0 + 2e-8);
+            let beta_p = beta * (1.0 - 2e-8);
+            let gamma_p = gamma * (1.0 + 1e-8);
+            let ka_p = ka * (1.0 + 3e-8);
+            (
+                (beta_p - alpha_p) * (gamma_p - alpha_p),
+                (alpha_p - beta_p) * (gamma_p - beta_p),
+                (alpha_p - gamma_p) * (beta_p - gamma_p),
+                alpha_p, beta_p, gamma_p, ka_p,
+            )
+        } else {
+            (denom_a, denom_b, denom_g, alpha, beta, gamma, ka)
+        };
+
+    let ra = (k21 - alpha_e) * (k31 - alpha_e) / da;
+    let rb = (k21 - beta_e) * (k31 - beta_e) / db;
+    let rg = (k21 - gamma_e) * (k31 - gamma_e) / dg;
+
+    let ek = (-ka_e * t).exp();
+    let ta = ra / (ka_e - alpha_e) * ((-alpha_e * t).exp() - ek);
+    let tb = rb / (ka_e - beta_e) * ((-beta_e * t).exp() - ek);
+    let tg = rg / (ka_e - gamma_e) * ((-gamma_e * t).exp() - ek);
+
+    pref * (ta + tb + tg)
+}
+
+/// Concentration and partial derivatives for 3-compartment oral model.
+///
+/// Returns `(c, dc/dcl, dc/dv1, dc/dq2, dc/dv2, dc/dq3, dc/dv3, dc/dka)`.
+///
+/// Degenerate cases fall back to central-difference numerical gradient.
+#[inline]
+fn conc_oral_3cpt_and_grad(
+    dose: f64,
+    bioav: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+    ka: f64,
+    t: f64,
+) -> (f64, f64, f64, f64, f64, f64, f64, f64) {
+    let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+    let alpha = micro.alpha;
+    let beta = micro.beta;
+    let gamma = micro.gamma;
+    let k21 = micro.k21;
+    let k31 = micro.k31;
+
+    let denom_a = (beta - alpha) * (gamma - alpha);
+    let denom_b = (alpha - beta) * (gamma - beta);
+    let denom_g = (alpha - gamma) * (beta - gamma);
+
+    // Check for degeneracies
+    let degenerate = denom_a.abs() < 1e-10 || denom_b.abs() < 1e-10 || denom_g.abs() < 1e-10
+        || (ka - alpha).abs() < 1e-10 || (ka - beta).abs() < 1e-10 || (ka - gamma).abs() < 1e-10;
+
+    if degenerate {
+        let f = |cl_: f64, v1_: f64, q2_: f64, v2_: f64, q3_: f64, v3_: f64, ka_: f64| {
+            let m = ThreeCptMicro::from_macro(cl_, v1_, q2_, v2_, q3_, v3_);
+            conc_oral_3cpt(dose, bioav, v1_, ka_, &m, t)
+        };
+        let c = f(cl, v1, q2, v2, q3, v3, ka);
+        let eps = 1e-7;
+        let dc_dcl = (f(cl + eps, v1, q2, v2, q3, v3, ka) - f(cl - eps, v1, q2, v2, q3, v3, ka)) / (2.0 * eps);
+        let dc_dv1 = (f(cl, v1 + eps, q2, v2, q3, v3, ka) - f(cl, v1 - eps, q2, v2, q3, v3, ka)) / (2.0 * eps);
+        let dc_dq2 = (f(cl, v1, q2 + eps, v2, q3, v3, ka) - f(cl, v1, q2 - eps, v2, q3, v3, ka)) / (2.0 * eps);
+        let dc_dv2 = (f(cl, v1, q2, v2 + eps, q3, v3, ka) - f(cl, v1, q2, v2 - eps, q3, v3, ka)) / (2.0 * eps);
+        let dc_dq3 = (f(cl, v1, q2, v2, q3 + eps, v3, ka) - f(cl, v1, q2, v2, q3 - eps, v3, ka)) / (2.0 * eps);
+        let dc_dv3 = (f(cl, v1, q2, v2, q3, v3 + eps, ka) - f(cl, v1, q2, v2, q3, v3 - eps, ka)) / (2.0 * eps);
+        let dc_dka = (f(cl, v1, q2, v2, q3, v3, ka + eps) - f(cl, v1, q2, v2, q3, v3, ka - eps)) / (2.0 * eps);
+        return (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka);
+    }
+
+    let pref = ka * bioav * dose / v1;
+    let ea = (-alpha * t).exp();
+    let eb = (-beta * t).exp();
+    let eg = (-gamma * t).exp();
+    let ek = (-ka * t).exp();
+
+    let ra = (k21 - alpha) * (k31 - alpha) / denom_a;
+    let rb = (k21 - beta) * (k31 - beta) / denom_b;
+    let rg = (k21 - gamma) * (k31 - gamma) / denom_g;
+
+    let ka_a = ka - alpha;
+    let ka_b = ka - beta;
+    let ka_g = ka - gamma;
+
+    let fa = ra / ka_a;
+    let fb = rb / ka_b;
+    let fg = rg / ka_g;
+
+    let diff_a = ea - ek;
+    let diff_b = eb - ek;
+    let diff_g = eg - ek;
+
+    let s = fa * diff_a + fb * diff_b + fg * diff_g;
+    let c = pref * s;
+
+    // --- Partial derivatives of S w.r.t. (alpha, beta, gamma, k21, k31, ka) ---
+
+    // For each eigenvalue lambda_i, we need d(f_i * diff_i)/d(lambda_i)
+    // f_i = R_i / (ka - lambda_i), diff_i = exp(-lambda_i*t) - exp(-ka*t)
+    // d(f_i*diff_i)/dlambda_i = (dR_i/dlambda_i / (ka-lambda_i) + R_i / (ka-lambda_i)^2) * diff_i + f_i * (-t)*exp(-lambda_i*t)
+
+    // dR_a/dalpha: R_a = (k21-a)(k31-a) / ((b-a)(g-a))
+    let na = (k21 - alpha) * (k31 - alpha);
+    let dna_dalpha = -(k31 - alpha) - (k21 - alpha);
+    let ddenom_a_dalpha = 2.0 * alpha - beta - gamma;
+    let dra_dalpha = (dna_dalpha * denom_a - na * ddenom_a_dalpha) / (denom_a * denom_a);
+
+    let nb = (k21 - beta) * (k31 - beta);
+    let dnb_dbeta = -(k31 - beta) - (k21 - beta);
+    let ddenom_b_dbeta = 2.0 * beta - alpha - gamma;
+    let drb_dbeta = (dnb_dbeta * denom_b - nb * ddenom_b_dbeta) / (denom_b * denom_b);
+
+    let ng = (k21 - gamma) * (k31 - gamma);
+    let dng_dgamma = -(k31 - gamma) - (k21 - gamma);
+    let ddenom_g_dgamma = 2.0 * gamma - alpha - beta;
+    let drg_dgamma = (dng_dgamma * denom_g - ng * ddenom_g_dgamma) / (denom_g * denom_g);
+
+    // Cross-derivatives of R_i w.r.t. other eigenvalues
+    let dra_dbeta = -na * (gamma - alpha) / (denom_a * denom_a);
+    let dra_dgamma = -na * (beta - alpha) / (denom_a * denom_a);
+
+    let drb_dalpha = -nb * (gamma - beta) / (denom_b * denom_b);
+    let drb_dgamma = -nb * (alpha - beta) / (denom_b * denom_b);
+
+    let drg_dalpha = -ng * (beta - gamma) / (denom_g * denom_g);
+    let drg_dbeta = -ng * (alpha - gamma) / (denom_g * denom_g);
+
+    // dS/dalpha
+    let dfa_dalpha = dra_dalpha / ka_a + ra / (ka_a * ka_a);
+    let dfb_dalpha = drb_dalpha / ka_b;
+    let dfg_dalpha = drg_dalpha / ka_g;
+    let ds_dalpha = dfa_dalpha * diff_a + fa * (-t * ea)
+        + dfb_dalpha * diff_b
+        + dfg_dalpha * diff_g;
+
+    // dS/dbeta
+    let dfa_dbeta = dra_dbeta / ka_a;
+    let dfb_dbeta = drb_dbeta / ka_b + rb / (ka_b * ka_b);
+    let dfg_dbeta = drg_dbeta / ka_g;
+    let ds_dbeta = dfa_dbeta * diff_a
+        + dfb_dbeta * diff_b + fb * (-t * eb)
+        + dfg_dbeta * diff_g;
+
+    // dS/dgamma
+    let dfa_dgamma = dra_dgamma / ka_a;
+    let dfb_dgamma = drb_dgamma / ka_b;
+    let dfg_dgamma = drg_dgamma / ka_g + rg / (ka_g * ka_g);
+    let ds_dgamma = dfa_dgamma * diff_a
+        + dfb_dgamma * diff_b
+        + dfg_dgamma * diff_g + fg * (-t * eg);
+
+    // dS/dk21
+    let dra_dk21 = (k31 - alpha) / denom_a;
+    let drb_dk21 = (k31 - beta) / denom_b;
+    let drg_dk21 = (k31 - gamma) / denom_g;
+    let ds_dk21 = dra_dk21 / ka_a * diff_a + drb_dk21 / ka_b * diff_b + drg_dk21 / ka_g * diff_g;
+
+    // dS/dk31
+    let dra_dk31 = (k21 - alpha) / denom_a;
+    let drb_dk31 = (k21 - beta) / denom_b;
+    let drg_dk31 = (k21 - gamma) / denom_g;
+    let ds_dk31 = dra_dk31 / ka_a * diff_a + drb_dk31 / ka_b * diff_b + drg_dk31 / ka_g * diff_g;
+
+    // dS/dka
+    let ds_dka = -ra / (ka_a * ka_a) * diff_a + fa * (t * ek)
+        - rb / (ka_b * ka_b) * diff_b + fb * (t * ek)
+        - rg / (ka_g * ka_g) * diff_g + fg * (t * ek);
+
+    // --- Eigenvalue derivatives w.r.t. micro-constants (same as IV case) ---
+    let k10 = cl / v1;
+    let k12 = q2 / v1;
+    let k13 = q3 / v1;
+    let a2 = k10 + k12 + k21 + k13 + k31;
+    let _a1 = k10 * k21 + k10 * k31 + k21 * k31 + k21 * k13 + k31 * k12;
+
+    let dpdl = |lam: f64| -> f64 { 3.0 * lam * lam - 2.0 * a2 * lam + _a1 };
+    let dpdl_a = dpdl(alpha);
+    let dpdl_b = dpdl(beta);
+    let dpdl_g = dpdl(gamma);
+
+    let dpdk10 = |lam: f64| -> f64 { -(lam - k21) * (lam - k31) };
+    let dpdk12 = |lam: f64| -> f64 { -lam * (lam - k31) };
+    let dpdk21_fn = |lam: f64| -> f64 { -lam * lam + (k10 + k13 + k31) * lam - k10 * k31 };
+    let dpdk13 = |lam: f64| -> f64 { -lam * (lam - k21) };
+    let dpdk31_fn = |lam: f64| -> f64 { -lam * lam + (k10 + k12 + k21) * lam - k10 * k21 };
+
+    let safe_div = |num: f64, den: f64| -> f64 { if den.abs() < 1e-30 { 0.0 } else { num / den } };
+
+    let dalpha_dk10 = safe_div(-dpdk10(alpha), dpdl_a);
+    let dalpha_dk12 = safe_div(-dpdk12(alpha), dpdl_a);
+    let dalpha_dk21_e = safe_div(-dpdk21_fn(alpha), dpdl_a);
+    let dalpha_dk13 = safe_div(-dpdk13(alpha), dpdl_a);
+    let dalpha_dk31_e = safe_div(-dpdk31_fn(alpha), dpdl_a);
+
+    let dbeta_dk10 = safe_div(-dpdk10(beta), dpdl_b);
+    let dbeta_dk12 = safe_div(-dpdk12(beta), dpdl_b);
+    let dbeta_dk21_e = safe_div(-dpdk21_fn(beta), dpdl_b);
+    let dbeta_dk13 = safe_div(-dpdk13(beta), dpdl_b);
+    let dbeta_dk31_e = safe_div(-dpdk31_fn(beta), dpdl_b);
+
+    let dgamma_dk10 = safe_div(-dpdk10(gamma), dpdl_g);
+    let dgamma_dk12 = safe_div(-dpdk12(gamma), dpdl_g);
+    let dgamma_dk21_e = safe_div(-dpdk21_fn(gamma), dpdl_g);
+    let dgamma_dk13 = safe_div(-dpdk13(gamma), dpdl_g);
+    let dgamma_dk31_e = safe_div(-dpdk31_fn(gamma), dpdl_g);
+
+    // --- Chain to macro parameters ---
+    let v1_sq = v1 * v1;
+    let v2_sq = v2 * v2;
+    let v3_sq = v3 * v3;
+
+    // CL
+    let dalpha_dcl = dalpha_dk10 / v1;
+    let dbeta_dcl = dbeta_dk10 / v1;
+    let dgamma_dcl = dgamma_dk10 / v1;
+    let dc_dcl = pref * (ds_dalpha * dalpha_dcl + ds_dbeta * dbeta_dcl + ds_dgamma * dgamma_dcl);
+
+    // V1
+    let dalpha_dv1 = dalpha_dk10 * (-cl / v1_sq) + dalpha_dk12 * (-q2 / v1_sq) + dalpha_dk13 * (-q3 / v1_sq);
+    let dbeta_dv1 = dbeta_dk10 * (-cl / v1_sq) + dbeta_dk12 * (-q2 / v1_sq) + dbeta_dk13 * (-q3 / v1_sq);
+    let dgamma_dv1 = dgamma_dk10 * (-cl / v1_sq) + dgamma_dk12 * (-q2 / v1_sq) + dgamma_dk13 * (-q3 / v1_sq);
+    let dc_dv1 = (-pref / v1) * s + pref * (ds_dalpha * dalpha_dv1 + ds_dbeta * dbeta_dv1 + ds_dgamma * dgamma_dv1);
+
+    // Q2
+    let dalpha_dq2 = dalpha_dk12 / v1 + dalpha_dk21_e / v2;
+    let dbeta_dq2 = dbeta_dk12 / v1 + dbeta_dk21_e / v2;
+    let dgamma_dq2 = dgamma_dk12 / v1 + dgamma_dk21_e / v2;
+    let dc_dq2 = pref * (ds_dalpha * dalpha_dq2 + ds_dbeta * dbeta_dq2 + ds_dgamma * dgamma_dq2 + ds_dk21 / v2);
+
+    // V2
+    let dk21_dv2 = -q2 / v2_sq;
+    let dalpha_dv2 = dalpha_dk21_e * dk21_dv2;
+    let dbeta_dv2 = dbeta_dk21_e * dk21_dv2;
+    let dgamma_dv2 = dgamma_dk21_e * dk21_dv2;
+    let dc_dv2 = pref * (ds_dalpha * dalpha_dv2 + ds_dbeta * dbeta_dv2 + ds_dgamma * dgamma_dv2 + ds_dk21 * dk21_dv2);
+
+    // Q3
+    let dalpha_dq3 = dalpha_dk13 / v1 + dalpha_dk31_e / v3;
+    let dbeta_dq3 = dbeta_dk13 / v1 + dbeta_dk31_e / v3;
+    let dgamma_dq3 = dgamma_dk13 / v1 + dgamma_dk31_e / v3;
+    let dc_dq3 = pref * (ds_dalpha * dalpha_dq3 + ds_dbeta * dbeta_dq3 + ds_dgamma * dgamma_dq3 + ds_dk31 / v3);
+
+    // V3
+    let dk31_dv3 = -q3 / v3_sq;
+    let dalpha_dv3 = dalpha_dk31_e * dk31_dv3;
+    let dbeta_dv3 = dbeta_dk31_e * dk31_dv3;
+    let dgamma_dv3 = dgamma_dk31_e * dk31_dv3;
+    let dc_dv3 = pref * (ds_dalpha * dalpha_dv3 + ds_dbeta * dbeta_dv3 + ds_dgamma * dgamma_dv3 + ds_dk31 * dk31_dv3);
+
+    // Ka: pref depends on ka (dpref/dka = pref/ka); S depends on ka.
+    let dc_dka = (pref / ka) * s + pref * ds_dka;
+
+    (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka)
+}
+
+/// 3-compartment oral (first-order absorption) concentration at time `t`.
+///
+/// Parameters: `(CL, V1, Q2, V2, Q3, V3, Ka)`.
+///
+/// `C(t) = Ka*F*D/V1 * sum_i [ R_i/(Ka-lambda_i) * (exp(-lambda_i*t) - exp(-Ka*t)) ]`
+#[inline]
+pub fn conc_oral_3cpt_macro(
+    dose: f64,
+    t: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+    ka: f64,
+) -> f64 {
+    let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+    conc_oral_3cpt(dose, 1.0, v1, ka, &micro, t)
+}
+
+/// Analytical gradients for 3-compartment oral model (7 params: cl, v1, q2, v2, q3, v3, ka).
+///
+/// Returns `Vec` of length 7: `[dc/dcl, dc/dv1, dc/dq2, dc/dv2, dc/dq3, dc/dv3, dc/dka]`.
+pub fn grad_conc_oral_3cpt_macro(
+    dose: f64,
+    t: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+    ka: f64,
+) -> Vec<f64> {
+    let (_, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka) =
+        conc_oral_3cpt_and_grad(dose, 1.0, cl, v1, q2, v2, q3, v3, ka, t);
+    vec![dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka]
+}
+
+/// 3-compartment PK model (IV bolus).
+///
+/// Parameters: `(cl, v1, q2, v2, q3, v3)`.
+/// - `cl`: total clearance from central compartment
+/// - `v1`: central volume of distribution
+/// - `q2`: intercompartmental clearance (central <-> peripheral 1)
+/// - `v2`: peripheral 1 volume of distribution
+/// - `q3`: intercompartmental clearance (central <-> peripheral 2)
+/// - `v3`: peripheral 2 volume of distribution
+///
+/// Analytical tri-exponential solution with eigenvalue decomposition (cubic).
+#[derive(Debug, Clone)]
+pub struct ThreeCompartmentIvPkModel {
+    times: Vec<f64>,
+    y: Vec<f64>,
+    dose: f64,
+    error_model: ErrorModel,
+    lloq: Option<f64>,
+    lloq_policy: LloqPolicy,
+}
+
+impl ThreeCompartmentIvPkModel {
+    /// Create a 3-compartment IV PK model.
+    pub fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        error_model: ErrorModel,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        if times.is_empty() {
+            return Err(Error::Validation("times must be non-empty".to_string()));
+        }
+        if times.len() != y.len() {
+            return Err(Error::Validation(format!(
+                "times/y length mismatch: {} vs {}",
+                times.len(),
+                y.len()
+            )));
+        }
+        if times.iter().any(|t| !t.is_finite() || *t < 0.0) {
+            return Err(Error::Validation("times must be finite and >= 0".to_string()));
+        }
+        if y.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(Error::Validation("y must be finite and >= 0".to_string()));
+        }
+        if !dose.is_finite() || dose <= 0.0 {
+            return Err(Error::Validation("dose must be finite and > 0".to_string()));
+        }
+        error_model.validate()?;
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
+        Ok(Self { times, y, dose, error_model, lloq, lloq_policy })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
+    }
+
+    #[inline]
+    fn conc(&self, cl: f64, v1: f64, q2: f64, v2: f64, q3: f64, v3: f64, t: f64) -> f64 {
+        let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+        conc_iv_3cpt(self.dose, v1, &micro, t)
+    }
+
+    #[inline]
+    fn conc_and_grad(
+        &self,
+        cl: f64,
+        v1: f64,
+        q2: f64,
+        v2: f64,
+        q3: f64,
+        v3: f64,
+        t: f64,
+    ) -> (f64, f64, f64, f64, f64, f64, f64) {
+        conc_iv_3cpt_and_grad(self.dose, cl, v1, q2, v2, q3, v3, t)
+    }
+}
+
+impl LogDensityModel for ThreeCompartmentIvPkModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        6
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec!["cl".into(), "v1".into(), "q2".into(), "v2".into(), "q3".into(), "v3".into()]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+        ]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![1.0, 10.0, 0.5, 20.0, 0.3, 30.0]
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != 6 {
+            return Err(Error::Validation(format!("expected 6 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, q2, v2, q3, v3) =
+            (params[0], params[1], params[2], params[3], params[4], params[5]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+        let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+
+        let mut nll = 0.0;
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let c = conc_iv_3cpt(self.dose, v1, &micro, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        nll += em.nll_obs(0.5 * lloq, c);
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
+                }
+                continue;
+            }
+            nll += em.nll_obs(yobs, c);
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != 6 {
+            return Err(Error::Validation(format!("expected 6 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, q2, v2, q3, v3) =
+            (params[0], params[1], params[2], params[3], params[4], params[5]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+
+        let mut g = vec![0.0_f64; 6];
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3) =
+                self.conc_and_grad(cl, v1, q2, v2, q3, v3, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let w = em.dnll_obs_df(0.5 * lloq, c);
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dq2;
+                        g[3] += w * dc_dv2;
+                        g[4] += w * dc_dq3;
+                        g[5] += w * dc_dv3;
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        let w = -pdf / p * dz_dc;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dq2;
+                        g[3] += w * dc_dv2;
+                        g[4] += w * dc_dq3;
+                        g[5] += w * dc_dv3;
+                    }
+                }
+                continue;
+            }
+
+            let w = em.dnll_obs_df(yobs, c);
+            g[0] += w * dc_dcl;
+            g[1] += w * dc_dv1;
+            g[2] += w * dc_dq2;
+            g[3] += w * dc_dv2;
+            g[4] += w * dc_dq3;
+            g[5] += w * dc_dv3;
+        }
+
+        Ok(g)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
+/// 3-compartment PK model (oral, first-order absorption).
+///
+/// Parameters: `(cl, v1, q2, v2, q3, v3, ka)`.
+/// - `cl`: total clearance from central compartment
+/// - `v1`: central volume of distribution
+/// - `q2`: intercompartmental clearance (central <-> peripheral 1)
+/// - `v2`: peripheral 1 volume of distribution
+/// - `q3`: intercompartmental clearance (central <-> peripheral 2)
+/// - `v3`: peripheral 2 volume of distribution
+/// - `ka`: first-order absorption rate constant
+///
+/// Analytical quad-exponential solution (superposition of alpha, beta, gamma, Ka terms).
+#[derive(Debug, Clone)]
+pub struct ThreeCompartmentOralPkModel {
+    times: Vec<f64>,
+    y: Vec<f64>,
+    dose: f64,
+    bioavailability: f64,
+    error_model: ErrorModel,
+    lloq: Option<f64>,
+    lloq_policy: LloqPolicy,
+}
+
+impl ThreeCompartmentOralPkModel {
+    /// Create a 3-compartment oral PK model.
+    pub fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        error_model: ErrorModel,
+        lloq: Option<f64>,
+        lloq_policy: LloqPolicy,
+    ) -> Result<Self> {
+        if times.is_empty() {
+            return Err(Error::Validation("times must be non-empty".to_string()));
+        }
+        if times.len() != y.len() {
+            return Err(Error::Validation(format!(
+                "times/y length mismatch: {} vs {}",
+                times.len(),
+                y.len()
+            )));
+        }
+        if times.iter().any(|t| !t.is_finite() || *t < 0.0) {
+            return Err(Error::Validation("times must be finite and >= 0".to_string()));
+        }
+        if y.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(Error::Validation("y must be finite and >= 0".to_string()));
+        }
+        if !dose.is_finite() || dose <= 0.0 {
+            return Err(Error::Validation("dose must be finite and > 0".to_string()));
+        }
+        if !bioavailability.is_finite() || bioavailability <= 0.0 {
+            return Err(Error::Validation("bioavailability must be finite and > 0".to_string()));
+        }
+        error_model.validate()?;
+        if let Some(lloq) = lloq
+            && (!lloq.is_finite() || lloq < 0.0)
+        {
+            return Err(Error::Validation("lloq must be finite and >= 0".to_string()));
+        }
+        Ok(Self { times, y, dose, bioavailability, error_model, lloq, lloq_policy })
+    }
+
+    /// Access the error model.
+    pub fn error_model(&self) -> &ErrorModel {
+        &self.error_model
+    }
+
+    #[inline]
+    fn conc(
+        &self,
+        cl: f64,
+        v1: f64,
+        q2: f64,
+        v2: f64,
+        q3: f64,
+        v3: f64,
+        ka: f64,
+        t: f64,
+    ) -> f64 {
+        let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+        conc_oral_3cpt(self.dose, self.bioavailability, v1, ka, &micro, t)
+    }
+
+    #[inline]
+    fn conc_and_grad(
+        &self,
+        cl: f64,
+        v1: f64,
+        q2: f64,
+        v2: f64,
+        q3: f64,
+        v3: f64,
+        ka: f64,
+        t: f64,
+    ) -> (f64, f64, f64, f64, f64, f64, f64, f64) {
+        conc_oral_3cpt_and_grad(
+            self.dose,
+            self.bioavailability,
+            cl, v1, q2, v2, q3, v3, ka, t,
+        )
+    }
+}
+
+impl LogDensityModel for ThreeCompartmentOralPkModel {
+    type Prepared<'a>
+        = PreparedModelRef<'a, Self>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        7
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        vec![
+            "cl".into(), "v1".into(), "q2".into(), "v2".into(),
+            "q3".into(), "v3".into(), "ka".into(),
+        ]
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+            (1e-12, f64::INFINITY),
+        ]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![1.0, 10.0, 0.5, 20.0, 0.3, 30.0, 1.5]
+    }
+
+    fn nll(&self, params: &[f64]) -> Result<f64> {
+        if params.len() != 7 {
+            return Err(Error::Validation(format!("expected 7 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, q2, v2, q3, v3, ka) =
+            (params[0], params[1], params[2], params[3], params[4], params[5], params[6]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+        let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+
+        let mut nll = 0.0;
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let c = conc_oral_3cpt(self.dose, self.bioavailability, v1, ka, &micro, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        nll += em.nll_obs(0.5 * lloq, c);
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        nll += -p.ln();
+                    }
+                }
+                continue;
+            }
+            nll += em.nll_obs(yobs, c);
+        }
+        Ok(nll)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != 7 {
+            return Err(Error::Validation(format!("expected 7 parameters, got {}", params.len())));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(Error::Validation("params must be finite and > 0".to_string()));
+        }
+        let (cl, v1, q2, v2, q3, v3, ka) =
+            (params[0], params[1], params[2], params[3], params[4], params[5], params[6]);
+        let em = &self.error_model;
+        let normal = Normal::new(0.0, 1.0).map_err(|e| Error::Validation(e.to_string()))?;
+
+        let mut g = vec![0.0_f64; 7];
+        for (&t, &yobs) in self.times.iter().zip(self.y.iter()) {
+            let (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka) =
+                self.conc_and_grad(cl, v1, q2, v2, q3, v3, ka, t);
+
+            if let Some(lloq) = self.lloq
+                && yobs < lloq
+            {
+                match self.lloq_policy {
+                    LloqPolicy::Ignore => continue,
+                    LloqPolicy::ReplaceHalf => {
+                        let w = em.dnll_obs_df(0.5 * lloq, c);
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dq2;
+                        g[3] += w * dc_dv2;
+                        g[4] += w * dc_dq3;
+                        g[5] += w * dc_dv3;
+                        g[6] += w * dc_dka;
+                    }
+                    LloqPolicy::Censored => {
+                        let z = em.lloq_z(lloq, c);
+                        let p = normal.cdf(z).max(1e-300);
+                        let pdf = normal.pdf(z);
+                        let dz_dc = em.dlloq_z_df(lloq, c);
+                        let w = -pdf / p * dz_dc;
+                        g[0] += w * dc_dcl;
+                        g[1] += w * dc_dv1;
+                        g[2] += w * dc_dq2;
+                        g[3] += w * dc_dv2;
+                        g[4] += w * dc_dq3;
+                        g[5] += w * dc_dv3;
+                        g[6] += w * dc_dka;
+                    }
+                }
+                continue;
+            }
+
+            let w = em.dnll_obs_df(yobs, c);
+            g[0] += w * dc_dcl;
+            g[1] += w * dc_dv1;
+            g[2] += w * dc_dq2;
+            g[3] += w * dc_dv2;
+            g[4] += w * dc_dq3;
+            g[5] += w * dc_dv3;
+            g[6] += w * dc_dka;
+        }
+
+        Ok(g)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedModelRef::new(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2326,6 +3539,293 @@ mod tests {
                 (dc_dka - fd_ka).abs() < 1e-5,
                 "t={t} oral dc/dka: analytical={dc_dka}, fd={fd_ka}"
             );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 3-compartment model tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_solve_cubic_known_roots() {
+        // (x - 3)(x - 2)(x - 1) = x^3 - 6x^2 + 11x - 6
+        let roots = solve_cubic(-6.0, 11.0, -6.0);
+        assert!((roots[0] - 3.0).abs() < 1e-10, "root[0]={}", roots[0]);
+        assert!((roots[1] - 2.0).abs() < 1e-10, "root[1]={}", roots[1]);
+        assert!((roots[2] - 1.0).abs() < 1e-10, "root[2]={}", roots[2]);
+    }
+
+    #[test]
+    fn test_conc_iv_3cpt_single_dose() {
+        let cl = 1.0_f64;
+        let v1 = 10.0;
+        let q2 = 0.5;
+        let v2 = 20.0;
+        let q3 = 0.3;
+        let v3 = 30.0;
+        let dose = 100.0;
+
+        // C(0) = Dose/V1 for IV bolus
+        let c0 = conc_iv_3cpt_macro(dose, 0.0, cl, v1, q2, v2, q3, v3);
+        assert!(
+            (c0 - dose / v1).abs() < 1e-10,
+            "C(0) = D/V1 for 3-cpt IV bolus: c0={c0}, expected={}",
+            dose / v1
+        );
+
+        // C(infinity) -> 0 (3-cpt has slow gamma phase, so use looser bound or longer time)
+        let c_late = conc_iv_3cpt_macro(dose, 1000.0, cl, v1, q2, v2, q3, v3);
+        assert!(c_late < 1e-2, "concentration should decay to ~0 at t=1000, got {c_late}");
+
+        // Concentration decreases from t=0
+        let c_mid = conc_iv_3cpt_macro(dose, 10.0, cl, v1, q2, v2, q3, v3);
+        assert!(c_mid < c0, "concentration should decrease over time");
+        assert!(c_mid > 0.0, "concentration must remain positive");
+
+        // Eigenvalues are sorted properly
+        let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+        assert!(micro.alpha > micro.beta, "alpha > beta");
+        assert!(micro.beta > micro.gamma, "beta > gamma");
+        assert!(micro.gamma > 0.0, "gamma > 0");
+    }
+
+    #[test]
+    fn test_conc_oral_3cpt_peak() {
+        let cl = 1.0_f64;
+        let v1 = 10.0;
+        let q2 = 0.5;
+        let v2 = 20.0;
+        let q3 = 0.3;
+        let v3 = 30.0;
+        let ka = 2.0;
+        let dose = 100.0;
+
+        // C(0) should be ~0 for oral
+        let c0 = conc_oral_3cpt_macro(dose, 0.0, cl, v1, q2, v2, q3, v3, ka);
+        assert!(c0.abs() < 1e-10, "oral 3-cpt C(0) should be ~0, got {c0}");
+
+        // Find peak: should exist at tmax > 0
+        let n_pts = 100;
+        let mut c_max = 0.0_f64;
+        let mut t_max = 0.0_f64;
+        for i in 1..=n_pts {
+            let t = i as f64 * 0.25;
+            let c = conc_oral_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3, ka);
+            if c > c_max {
+                c_max = c;
+                t_max = t;
+            }
+        }
+        assert!(t_max > 0.0, "peak should occur at tmax > 0, got {t_max}");
+        assert!(c_max > 0.5, "oral 3-cpt model should have a visible peak, got {c_max}");
+
+        // C(infinity) -> 0 (3-cpt has slow gamma phase, so use looser bound or longer time)
+        let c_late = conc_oral_3cpt_macro(dose, 1000.0, cl, v1, q2, v2, q3, v3, ka);
+        assert!(c_late < 1e-2, "concentration decays at t=1000, got {c_late}");
+    }
+
+    #[test]
+    fn test_grad_3cpt_iv_fd_parity() {
+        let dose = 100.0;
+        let cl = 1.0;
+        let v1 = 10.0;
+        let q2 = 0.5;
+        let v2 = 20.0;
+        let q3 = 0.3;
+        let v3 = 30.0;
+        let h = 1e-7;
+
+        for t in [0.5, 1.0, 2.0, 5.0, 10.0, 20.0] {
+            let (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3) =
+                conc_iv_3cpt_and_grad(dose, cl, v1, q2, v2, q3, v3, t);
+
+            // Verify concentration consistency
+            let c_check = conc_iv_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3);
+            assert!((c - c_check).abs() < 1e-12, "concentration mismatch at t={t}");
+
+            let f = |cl_: f64, v1_: f64, q2_: f64, v2_: f64, q3_: f64, v3_: f64| {
+                conc_iv_3cpt_macro(dose, t, cl_, v1_, q2_, v2_, q3_, v3_)
+            };
+
+            let grads = [dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3];
+            let params_arr = [cl, v1, q2, v2, q3, v3];
+            let names = ["cl", "v1", "q2", "v2", "q3", "v3"];
+
+            for j in 0..6 {
+                let mut pp = params_arr;
+                let mut pm = params_arr;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (f(pp[0], pp[1], pp[2], pp[3], pp[4], pp[5])
+                    - f(pm[0], pm[1], pm[2], pm[3], pm[4], pm[5]))
+                    / (2.0 * h);
+                assert!(
+                    (grads[j] - fd).abs() < 1e-5,
+                    "t={t} 3-cpt IV dc/d{}: analytical={}, fd={fd}",
+                    names[j],
+                    grads[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_grad_3cpt_oral_fd_parity() {
+        let dose = 100.0;
+        let bioav = 1.0;
+        let cl = 1.0;
+        let v1 = 10.0;
+        let q2 = 0.5;
+        let v2 = 20.0;
+        let q3 = 0.3;
+        let v3 = 30.0;
+        let ka = 2.0;
+        let h = 1e-7;
+
+        for t in [0.5, 1.0, 2.0, 5.0, 10.0, 20.0] {
+            let (c, dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka) =
+                conc_oral_3cpt_and_grad(dose, bioav, cl, v1, q2, v2, q3, v3, ka, t);
+
+            // Verify concentration consistency
+            let micro = ThreeCptMicro::from_macro(cl, v1, q2, v2, q3, v3);
+            let c_check = conc_oral_3cpt(dose, bioav, v1, ka, &micro, t);
+            assert!((c - c_check).abs() < 1e-12, "oral concentration mismatch at t={t}");
+
+            let f = |cl_: f64, v1_: f64, q2_: f64, v2_: f64, q3_: f64, v3_: f64, ka_: f64| {
+                let m = ThreeCptMicro::from_macro(cl_, v1_, q2_, v2_, q3_, v3_);
+                conc_oral_3cpt(dose, bioav, v1_, ka_, &m, t)
+            };
+
+            let grads = [dc_dcl, dc_dv1, dc_dq2, dc_dv2, dc_dq3, dc_dv3, dc_dka];
+            let params_arr = [cl, v1, q2, v2, q3, v3, ka];
+            let names = ["cl", "v1", "q2", "v2", "q3", "v3", "ka"];
+
+            for j in 0..7 {
+                let mut pp = params_arr;
+                let mut pm = params_arr;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (f(pp[0], pp[1], pp[2], pp[3], pp[4], pp[5], pp[6])
+                    - f(pm[0], pm[1], pm[2], pm[3], pm[4], pm[5], pm[6]))
+                    / (2.0 * h);
+                assert!(
+                    (grads[j] - fd).abs() < 1e-5,
+                    "t={t} 3-cpt oral dc/d{}: analytical={}, fd={fd}",
+                    names[j],
+                    grads[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_3cpt_degenerates_to_2cpt() {
+        // When Q3 -> 0 (no transfer to 3rd compartment),
+        // the 3-cpt IV model should approach the 2-cpt IV model.
+        let cl = 1.0_f64;
+        let v1 = 10.0;
+        let q2 = 0.5;
+        let v2 = 20.0;
+        let dose = 100.0;
+
+        // Very small Q3 and large V3 to decouple the 3rd compartment
+        let q3 = 1e-10;
+        let v3 = 1e6;
+
+        for t in [0.5, 1.0, 2.0, 5.0, 10.0, 20.0] {
+            let c_3cpt = conc_iv_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3);
+            let c_2cpt = conc_iv_2cpt_macro(dose, cl, v1, v2, q2, t);
+
+            let rel_err = if c_2cpt.abs() > 1e-10 {
+                (c_3cpt - c_2cpt).abs() / c_2cpt.abs()
+            } else {
+                (c_3cpt - c_2cpt).abs()
+            };
+
+            assert!(
+                rel_err < 1e-4,
+                "t={t}: 3-cpt (Q3~0) should match 2-cpt: c3={c_3cpt}, c2={c_2cpt}, rel_err={rel_err}"
+            );
+        }
+    }
+
+    #[test]
+    fn three_cpt_iv_grad_nll_fd_parity() {
+        let dose = 100.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let y: Vec<f64> = vec![8.0, 6.0, 4.0, 2.0, 0.8, 0.2];
+        let params = [1.0_f64, 10.0, 0.5, 20.0, 0.3, 30.0];
+
+        for em in [
+            ErrorModel::Additive(0.5),
+            ErrorModel::Proportional(0.15),
+            ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 },
+        ] {
+            let model = ThreeCompartmentIvPkModel::new(
+                times.clone(),
+                y.clone(),
+                dose,
+                em,
+                None,
+                LloqPolicy::Censored,
+            )
+            .unwrap();
+
+            let g = model.grad_nll(&params).unwrap();
+            let h = 1e-7;
+            for j in 0..6 {
+                let mut pp = params;
+                let mut pm = params;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
+                assert!(
+                    (g[j] - fd).abs() < 1e-4,
+                    "3-cpt IV {em:?} grad[{j}]: analytical={}, fd={fd}",
+                    g[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn three_cpt_oral_grad_nll_fd_parity() {
+        let dose = 100.0;
+        let bioav = 1.0;
+        let times: Vec<f64> = vec![0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let y: Vec<f64> = vec![2.0, 5.0, 4.0, 2.0, 0.8, 0.2];
+        let params = [1.0_f64, 10.0, 0.5, 20.0, 0.3, 30.0, 1.5];
+
+        for em in [
+            ErrorModel::Additive(0.5),
+            ErrorModel::Proportional(0.15),
+            ErrorModel::Combined { sigma_add: 0.3, sigma_prop: 0.1 },
+        ] {
+            let model = ThreeCompartmentOralPkModel::new(
+                times.clone(),
+                y.clone(),
+                dose,
+                bioav,
+                em,
+                None,
+                LloqPolicy::Censored,
+            )
+            .unwrap();
+
+            let g = model.grad_nll(&params).unwrap();
+            let h = 1e-7;
+            for j in 0..7 {
+                let mut pp = params;
+                let mut pm = params;
+                pp[j] += h;
+                pm[j] -= h;
+                let fd = (model.nll(&pp).unwrap() - model.nll(&pm).unwrap()) / (2.0 * h);
+                assert!(
+                    (g[j] - fd).abs() < 1e-4,
+                    "3-cpt oral {em:?} grad[{j}]: analytical={}, fd={fd}",
+                    g[j]
+                );
+            }
         }
     }
 }

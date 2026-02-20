@@ -147,14 +147,68 @@ const DIVERGENCE_THRESHOLD: f64 = 1000.0;
 /// whether the trajectory is still making progress by testing
 /// `rho · M^{-1} p_left >= 0` and `rho · M^{-1} p_right >= 0`.
 fn is_turning(rho: &[f64], p_left: &[f64], p_right: &[f64], metric: &crate::hmc::Metric) -> bool {
-    let v_left = metric.mul_inv_mass(p_left);
-    let v_right = metric.mul_inv_mass(p_right);
-    let dot_left: f64 = rho.iter().zip(v_left.iter()).map(|(&r, &v)| r * v).sum();
-    let dot_right: f64 = rho.iter().zip(v_right.iter()).map(|(&r, &v)| r * v).sum();
-    if !dot_left.is_finite() || !dot_right.is_finite() {
-        return true;
+    match metric {
+        // Hot path in CPU benchmarks: avoid temporary Vec allocations from
+        // mul_inv_mass() at every generalized U-turn check.
+        crate::hmc::Metric::Diag(inv_mass) => {
+            let mut dot_left = 0.0_f64;
+            let mut dot_right = 0.0_f64;
+            for i in 0..rho.len() {
+                let w = rho[i] * inv_mass[i];
+                dot_left += w * p_left[i];
+                dot_right += w * p_right[i];
+            }
+            if !dot_left.is_finite() || !dot_right.is_finite() {
+                return true;
+            }
+            dot_left < 0.0 || dot_right < 0.0
+        }
+        _ => {
+            let v_left = metric.mul_inv_mass(p_left);
+            let v_right = metric.mul_inv_mass(p_right);
+            let dot_left: f64 = rho.iter().zip(v_left.iter()).map(|(&r, &v)| r * v).sum();
+            let dot_right: f64 = rho.iter().zip(v_right.iter()).map(|(&r, &v)| r * v).sum();
+            if !dot_left.is_finite() || !dot_right.is_finite() {
+                return true;
+            }
+            dot_left < 0.0 || dot_right < 0.0
+        }
     }
-    dot_left < 0.0 || dot_right < 0.0
+}
+
+/// U-turn criterion for `rho = rho_a + rho_b` without materializing a temporary
+/// `Vec` on the hot diagonal-metric path.
+#[inline]
+fn is_turning_sum(
+    rho_a: &[f64],
+    rho_b: &[f64],
+    p_left: &[f64],
+    p_right: &[f64],
+    metric: &crate::hmc::Metric,
+) -> bool {
+    match metric {
+        crate::hmc::Metric::Diag(inv_mass) => {
+            let mut dot_left = 0.0_f64;
+            let mut dot_right = 0.0_f64;
+            for i in 0..rho_a.len() {
+                let rho = rho_a[i] + rho_b[i];
+                let w = rho * inv_mass[i];
+                dot_left += w * p_left[i];
+                dot_right += w * p_right[i];
+            }
+            if !dot_left.is_finite() || !dot_right.is_finite() {
+                return true;
+            }
+            dot_left < 0.0 || dot_right < 0.0
+        }
+        _ => {
+            let mut rho = vec![0.0; rho_a.len()];
+            for i in 0..rho_a.len() {
+                rho[i] = rho_a[i] + rho_b[i];
+            }
+            is_turning(&rho, p_left, p_right, metric)
+        }
+    }
 }
 
 fn log_sum_exp(a: f64, b: f64) -> f64 {
@@ -335,12 +389,7 @@ fn build_tree<M: LogDensityModel + ?Sized>(
         return Ok(inner);
     }
 
-    // Save init subtree's momentum sum and junction momentum before merge
-    // (needed for Stan-style cross-checks between subtrees).
-    let rho_init = inner.p_sum.clone();
-    let p_init_junction = if direction > 0 { inner.p_right.clone() } else { inner.p_left.clone() };
-
-    // Build second half-tree (final subtree) from the edge of the first
+    // Build second half-tree (final subtree) from the edge of the first.
     let edge_state = if direction > 0 {
         HmcState {
             q: inner.q_right.clone(),
@@ -358,10 +407,6 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     };
 
     let outer = build_tree(integrator, &edge_state, depth - 1, direction, h0, metric, rng)?;
-
-    // Save final subtree's junction momentum and momentum sum
-    let p_final_junction = if direction > 0 { outer.p_left.clone() } else { outer.p_right.clone() };
-    let rho_final = outer.p_sum.clone();
 
     // Merge trees
     let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
@@ -388,6 +433,39 @@ fn build_tree<M: LogDensityModel + ?Sized>(
     inner.sum_accept_prob += outer.sum_accept_prob;
     inner.divergent = inner.divergent || outer.divergent;
 
+    // Stan-style generalized U-turn check (3 criteria, Betancourt 2017).
+    //
+    // Check 1: Full merged tree — standard rho · v check on overall endpoints.
+    // Check 2: Init-to-junction — catches U-turns at the boundary between subtrees
+    //          using rho = rho_init + p_final_junction.
+    // Check 3: Junction-to-final — symmetric check from the other side,
+    //          using rho = rho_final + p_init_junction.
+    let (p_left_merged, p_right_merged, p_start, p_end, p_init_junction, p_final_junction) =
+        if direction > 0 {
+            (
+                &inner.p_left,
+                &outer.p_right,
+                &inner.p_left,
+                &outer.p_right,
+                &inner.p_right,
+                &outer.p_left,
+            )
+        } else {
+            (
+                &outer.p_left,
+                &inner.p_right,
+                &inner.p_right,
+                &outer.p_left,
+                &inner.p_left,
+                &outer.p_right,
+            )
+        };
+
+    let turning1 =
+        is_turning_sum(&inner.p_sum, &outer.p_sum, p_left_merged, p_right_merged, metric);
+    let turning2 = is_turning_sum(&inner.p_sum, p_final_junction, p_start, p_final_junction, metric);
+    let turning3 = is_turning_sum(&outer.p_sum, p_init_junction, p_init_junction, p_end, metric);
+
     // Merge p_sum (generalized U-turn criterion)
     for (ps, os) in inner.p_sum.iter_mut().zip(outer.p_sum.iter()) {
         *ps += *os;
@@ -403,25 +481,6 @@ fn build_tree<M: LogDensityModel + ?Sized>(
         inner.p_left = outer.p_left;
         inner.grad_left = outer.grad_left;
     }
-
-    // Stan-style generalized U-turn check (3 criteria, Betancourt 2017).
-    //
-    // Check 1: Full merged tree — standard rho · v check on overall endpoints.
-    // Check 2: Init-to-junction — catches U-turns at the boundary between subtrees
-    //          using rho = rho_init + p_final_junction.
-    // Check 3: Junction-to-final — symmetric check from the other side,
-    //          using rho = rho_final + p_init_junction.
-    let turning1 = is_turning(&inner.p_sum, &inner.p_left, &inner.p_right, metric);
-
-    let rho_cross2: Vec<f64> =
-        rho_init.iter().zip(p_final_junction.iter()).map(|(&a, &b)| a + b).collect();
-    let p_start = if direction > 0 { &inner.p_left } else { &inner.p_right };
-    let turning2 = is_turning(&rho_cross2, p_start, &p_final_junction, metric);
-
-    let rho_cross3: Vec<f64> =
-        rho_final.iter().zip(p_init_junction.iter()).map(|(&a, &b)| a + b).collect();
-    let p_end = if direction > 0 { &inner.p_right } else { &inner.p_left };
-    let turning3 = is_turning(&rho_cross3, &p_init_junction, p_end, metric);
 
     inner.turning = inner.turning || outer.turning || turning1 || turning2 || turning3;
 
@@ -748,7 +807,7 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
     // ---------- Initialization strategy ----------
-    let mut pathfinder_inv_mass: Option<Vec<f64>> = None;
+    let mut pathfinder_metric: Option<crate::hmc::Metric> = None;
 
     let z_init: Vec<f64> = match config.init_strategy {
         InitStrategy::Random => {
@@ -872,11 +931,11 @@ pub fn sample_nuts<M: LogDensityModel>(
             }
         }
         InitStrategy::Pathfinder => {
-            // Pathfinder: full MLE fit with Hessian → position + diagonal inv_mass.
+            // Pathfinder: full MLE fit with Hessian → position + metric (dense or diag).
             // Falls back to random init on failure.
-            match crate::mams::pathfinder_init_nuts(model, &posterior, dim) {
-                Ok((z, mass)) => {
-                    pathfinder_inv_mass = Some(mass);
+            match crate::mams::pathfinder_init_nuts(model, &posterior, dim, config.metric_type) {
+                Ok((z, metric)) => {
+                    pathfinder_metric = Some(metric);
                     z
                 }
                 Err(_) => {
@@ -911,11 +970,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         }
     };
 
-    let metric = if let Some(inv_mass) = pathfinder_inv_mass {
-        crate::hmc::Metric::Diag(inv_mass)
-    } else {
-        crate::hmc::Metric::identity(dim)
-    };
+    let metric = pathfinder_metric.unwrap_or_else(|| crate::hmc::Metric::identity(dim));
     let init_eps = find_reasonable_step_size(&posterior, &z_init, &metric, &mut rng);
 
     let mut adaptation =
@@ -1061,6 +1116,30 @@ pub fn sample_nuts<M: LogDensityModel>(
     }
 
     let mass_diag: Vec<f64> = final_metric.mass_diag();
+    let (inv_mass_matrix, metric_type_name) = match &final_metric {
+        crate::hmc::Metric::Diag(_) => (None, "diagonal".to_string()),
+        crate::hmc::Metric::DenseCholesky { dim: d, l } => {
+            // Reconstruct inv_mass = L L^T (row-major output).
+            // NOTE: nalgebra stores matrices column-major, and `l` was produced by
+            // `ch.l().as_slice()`. The HMC code accesses `l[i*n+j]` which effectively
+            // reads the *transpose* (U = L^T stored row-major). So the actual
+            // factorization used is U^T U = L L^T = inv_mass.
+            // To reconstruct: inv_mass[i,j] = sum_k U[k,i]*U[k,j] = sum_k l[k*n+i]*l[k*n+j]
+            let n = *d;
+            let mut inv_mass = vec![0.0; n * n];
+            for i in 0..n {
+                for j in 0..=i {
+                    let mut acc = 0.0;
+                    for k in 0..n {
+                        acc += l[k * n + i] * l[k * n + j];
+                    }
+                    inv_mass[i * n + j] = acc;
+                    inv_mass[j * n + i] = acc;
+                }
+            }
+            (Some(inv_mass), "dense".to_string())
+        }
+    };
 
     Ok(crate::chain::Chain {
         draws_unconstrained,
@@ -1073,6 +1152,8 @@ pub fn sample_nuts<M: LogDensityModel>(
         max_treedepth: config.max_treedepth,
         step_size: final_eps,
         mass_diag,
+        inv_mass_matrix,
+        metric_type_name,
     })
 }
 
@@ -2159,6 +2240,154 @@ mod tests {
             "SBC sigma ranks deviate from uniform: p={}, counts={:?}",
             p_sigma,
             counts_sigma
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Dense metric tests
+    // -----------------------------------------------------------------------
+
+    /// Highly correlated 2D normal: N(0, Sigma) with rho=0.95.
+    /// Dense metric should capture the correlation.
+    #[derive(Clone, Copy)]
+    struct Correlated2D;
+
+    impl LogDensityModel for Correlated2D {
+        type Prepared<'a>
+            = PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            2
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            vec!["x".to_string(), "y".to_string()]
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            vec![(f64::NEG_INFINITY, f64::INFINITY); 2]
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            vec![0.0, 0.0]
+        }
+
+        fn nll(&self, p: &[f64]) -> ns_core::Result<f64> {
+            // Sigma = [[1, 0.95], [0.95, 1]]
+            // Sigma^{-1} = 1/(1-rho^2) * [[1, -rho], [-rho, 1]]
+            let rho = 0.95;
+            let det_factor = 1.0 / (1.0 - rho * rho);
+            let x = p[0];
+            let y = p[1];
+            let q = det_factor * (x * x - 2.0 * rho * x * y + y * y);
+            let ln2pi = (2.0 * std::f64::consts::PI).ln();
+            // nll = 0.5 * q + 0.5 * ln(det(Sigma)) + ln(2pi)
+            let ln_det = (1.0 - rho * rho).ln();
+            Ok(0.5 * q + 0.5 * ln_det + ln2pi)
+        }
+
+        fn grad_nll(&self, p: &[f64]) -> ns_core::Result<Vec<f64>> {
+            let rho = 0.95;
+            let det_factor = 1.0 / (1.0 - rho * rho);
+            let x = p[0];
+            let y = p[1];
+            Ok(vec![
+                det_factor * (x - rho * y),
+                det_factor * (y - rho * x),
+            ])
+        }
+
+        fn prepared(&self) -> Self::Prepared<'_> {
+            PreparedModelRef::new(self)
+        }
+    }
+
+    #[test]
+    fn test_nuts_dense_metric_correlated() {
+        use crate::chain::sample_nuts_multichain;
+        use crate::diagnostics::compute_diagnostics;
+
+        let model = Correlated2D;
+
+        // Dense metric should handle the correlation
+        let config = NutsConfig {
+            max_treedepth: 10,
+            target_accept: 0.8,
+            metric_type: MetricType::Dense,
+            ..Default::default()
+        };
+        let result = sample_nuts_multichain(&model, 4, 500, 500, 42, config).unwrap();
+        let diag = compute_diagnostics(&result);
+
+        // Basic quality: R-hat < 1.1, reasonable ESS
+        for (i, &rhat) in diag.r_hat.iter().enumerate() {
+            assert!(
+                rhat < 1.1,
+                "R-hat for param {} = {} (should be < 1.1 with dense metric)",
+                result.param_names[i],
+                rhat,
+            );
+        }
+
+        // Check that the chain reports dense metric type
+        assert_eq!(
+            result.chains[0].metric_type_name, "dense",
+            "metric_type_name should be 'dense'"
+        );
+        assert!(
+            result.chains[0].inv_mass_matrix.is_some(),
+            "inv_mass_matrix should be populated for dense metric"
+        );
+    }
+
+    #[test]
+    fn test_nuts_pathfinder_dense_init() {
+        // Pathfinder + dense metric on correlated model
+        let model = Correlated2D;
+
+        let config = NutsConfig {
+            max_treedepth: 10,
+            target_accept: 0.8,
+            init_strategy: InitStrategy::Pathfinder,
+            metric_type: MetricType::Dense,
+            ..Default::default()
+        };
+        let chain = sample_nuts(&model, 500, 200, 42, config).unwrap();
+
+        assert_eq!(chain.draws_constrained.len(), 200);
+        assert_eq!(chain.metric_type_name, "dense");
+        assert!(chain.inv_mass_matrix.is_some());
+
+        // Verify inv_mass_matrix has off-diagonal structure from warmup adaptation.
+        let inv_mass = chain.inv_mass_matrix.as_ref().unwrap();
+        assert_eq!(inv_mass.len(), 4); // 2x2
+        // Off-diagonal should be non-zero for correlated model
+        let off_diag = inv_mass[1].abs(); // (0,1) element
+        assert!(
+            off_diag > 0.1,
+            "off-diagonal of inv_mass should be substantial for rho=0.95 model: {}",
+            off_diag
+        );
+    }
+
+    #[test]
+    fn test_nuts_diagonal_metric_no_inv_mass_matrix() {
+        let model = Correlated2D;
+
+        let config = NutsConfig {
+            max_treedepth: 8,
+            target_accept: 0.8,
+            metric_type: MetricType::Diagonal,
+            ..Default::default()
+        };
+        let chain = sample_nuts(&model, 100, 50, 42, config).unwrap();
+
+        assert_eq!(chain.metric_type_name, "diagonal");
+        assert!(
+            chain.inv_mass_matrix.is_none(),
+            "diagonal metric should not populate inv_mass_matrix"
         );
     }
 }

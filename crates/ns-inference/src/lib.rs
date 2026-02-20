@@ -36,6 +36,8 @@ pub mod adapt;
 pub mod artifacts;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+/// Bioequivalence testing: TOST (ABE), RSABE, power/sample size (Phase 9 Pharma).
+pub mod bioequivalence;
 /// Bootstrap confidence interval utilities (percentile + BCa).
 pub mod bootstrap_ci;
 /// Model builder (composition) MVP for general statistics.
@@ -91,6 +93,8 @@ pub mod nuts;
 pub mod ode;
 /// Adaptive ODE solvers for nonlinear PK/PD systems.
 pub mod ode_adaptive;
+/// Pre-built ODE-based PK systems (transit, Michaelis-Menten, TMDD) and generic ODE PK solver.
+pub mod ode_pk;
 /// Generic numerical optimizer (L-BFGS-B backend).
 pub mod optimizer;
 /// Ordinal regression models (Phase 9 Pack C).
@@ -121,6 +125,8 @@ pub mod timeseries;
 pub mod toybased;
 /// Toy data generation (Asimov + Poisson).
 pub mod toys;
+/// Monte Carlo clinical trial simulation engine.
+pub mod trial_simulation;
 /// Gamma and Tweedie GLM families (Phase 9 Cross-Vertical).
 pub mod tweedie;
 /// Visual Predictive Check (VPC) and GOF diagnostics for population PK.
@@ -171,6 +177,10 @@ pub use artifacts::{
     ReferenceToolVersion, RunBundle, SCHEMA_VERSION, ScmArtifact,
 };
 pub use batch::{fit_toys_batch, is_accelerate_available};
+pub use bioequivalence::{
+    BeConclusion, BeConfig, BeData, BeDesign, BePowerConfig, BePowerResult, BeResult, RsabeConfig,
+    RsabeResult, average_be, be_power, be_sample_size, reference_scaled_be,
+};
 pub use bootstrap_ci::{
     BcaDiagnostics, BootstrapCiMethod, bca_adjusted_alpha, bca_interval,
     estimate_acceleration_from_jackknife, estimate_bias_correction_z0, percentile_interval,
@@ -216,7 +226,7 @@ pub use fault_tree_mc::{
     DEFAULT_CHUNK_SIZE, FailureMode, FaultTreeCeIsConfig, FaultTreeCeIsResult, FaultTreeMcResult,
     FaultTreeNode, FaultTreeSpec, Gate, fault_tree_mc_ce_is, fault_tree_mc_cpu,
 };
-pub use foce::{FoceConfig, FoceEstimator, FoceResult, OmegaMatrix};
+pub use foce::{CovRelationship, CovariateSpec, FoceConfig, FoceEstimator, FoceResult, OmegaMatrix};
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]
@@ -254,9 +264,10 @@ pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
 pub use pd::{EmaxModel, IndirectResponseModel, IndirectResponseType, PkPdLink, SigmoidEmaxModel};
 pub use pk::{
     ErrorModel, LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel,
-    TwoCompartmentIvPkModel, TwoCompartmentOralPkModel,
+    ThreeCompartmentIvPkModel, ThreeCompartmentOralPkModel, TwoCompartmentIvPkModel,
+    TwoCompartmentOralPkModel, conc_iv_3cpt_macro, conc_oral_3cpt_macro,
 };
-pub use posterior::{Posterior, Prior};
+pub use posterior::{MapConfig, MapResult, Posterior, Prior, map_estimate, map_individual_pk};
 #[cfg(feature = "cuda")]
 pub use profile_likelihood::scan_gpu;
 pub use profile_likelihood::scan_histfactory_diag;
@@ -293,6 +304,11 @@ pub use toybased::{
 pub use toybased::{hypotest_qtilde_toys_expected_set_gpu, hypotest_qtilde_toys_gpu};
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
+pub use trial_simulation::{
+    DoseOptResult, ErrorModelType as TrialErrorModelType, MonteCarloConfig, MonteCarloResult,
+    PkModelType, PopulationPkParams, PtaResult, PtaTargetType, PtaTargets, TrialConfig,
+    TrialEndpoints, TrialResult, TrialSummary, find_optimal_dose, simulate_trial, simulate_trials,
+};
 pub use tweedie::{GammaRegressionModel, TweedieRegressionModel};
 pub use unbinned_batch_cpu::{UnbinnedToyBatchResult, fit_unbinned_toys_batch_cpu};
 pub use vpc::{GofRecord, VpcBin, VpcConfig, VpcResult, gof_1cpt_oral, vpc_1cpt_oral};

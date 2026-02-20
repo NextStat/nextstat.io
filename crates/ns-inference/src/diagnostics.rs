@@ -570,7 +570,7 @@ pub fn ess_bulk(chains: &[&[f64]]) -> f64 {
         return 0.0;
     }
 
-    (total_draws / tau).clamp(1.0, total_draws)
+    (total_draws / tau).max(1.0)
 }
 
 /// Compute tail ESS as a conservative tail-mixing proxy.
@@ -692,6 +692,8 @@ mod tests {
                 max_treedepth: max_td,
                 step_size: 0.0,
                 mass_diag: vec![],
+                inv_mass_matrix: None,
+                metric_type_name: "diagonal".to_string(),
             }
         };
 

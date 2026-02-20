@@ -95,4 +95,10 @@ pub trait MamsAccelerator {
 
     /// Parameter dimensionality.
     fn dim(&self) -> usize;
+
+    /// Set the energy error threshold for divergence detection.
+    ///
+    /// The default is 1000.0 (Stan-compatible). Can be set to a model-specific
+    /// value based on dimension or posterior scale.
+    fn set_divergence_threshold(&mut self, _threshold: f64) {}
 }

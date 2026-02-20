@@ -26,7 +26,9 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../scripts/benchmarks"))
 from run_suite import _case_gauss_exp, _write_parquet  # noqa: E402
+from _parse_utils import parse_json_stdout  # noqa: E402
 
 
 def _die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
@@ -116,7 +118,7 @@ def _run_nextstat_cli(
     wall_ms = (time.perf_counter() - t0) * 1000.0
     if proc.returncode != 0:
         raise RuntimeError(f"nextstat failed (rc={proc.returncode}): {proc.stderr[-500:]}")
-    return wall_ms, json.loads(proc.stdout)
+    return wall_ms, parse_json_stdout(proc.stdout)
 
 
 def _run_nextstat_library(

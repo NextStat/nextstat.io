@@ -101,6 +101,316 @@ impl SaemEstimator {
         Self::new(SaemConfig::default())
     }
 
+    // ----- 2-compartment IV ------------------------------------------------
+
+    /// Fit a 2-compartment IV bolus PK model using SAEM (diagonal Ω).
+    ///
+    /// Parameters: `[CL, V1, Q, V2]` (4 fixed effects).
+    pub fn fit_2cpt_iv(
+        &self,
+        times: &[f64],
+        y: &[f64],
+        subject_idx: &[usize],
+        n_subjects: usize,
+        dose: f64,
+        error_model: ErrorModel,
+        theta_init: &[f64],
+        omega_init: &[f64],
+    ) -> Result<(FoceResult, SaemDiagnostics)> {
+        if omega_init.len() != 4 {
+            return Err(Error::Validation("omega_init must have 4 elements for 2-cpt IV".into()));
+        }
+        let om = OmegaMatrix::from_diagonal(omega_init)?;
+        self.fit_2cpt_iv_correlated(times, y, subject_idx, n_subjects, dose, error_model, theta_init, om)
+    }
+
+    /// Fit a 2-compartment IV bolus PK model with correlated random effects using SAEM.
+    pub fn fit_2cpt_iv_correlated(
+        &self,
+        times: &[f64],
+        y: &[f64],
+        subject_idx: &[usize],
+        n_subjects: usize,
+        dose: f64,
+        error_model: ErrorModel,
+        theta_init: &[f64],
+        omega_init: OmegaMatrix,
+    ) -> Result<(FoceResult, SaemDiagnostics)> {
+        if theta_init.len() != 4 {
+            return Err(Error::Validation("theta_init must have 4 elements [CL, V1, Q, V2]".into()));
+        }
+        if omega_init.dim() != 4 {
+            return Err(Error::Validation("omega must be 4×4".into()));
+        }
+        let conc_fn = |theta: &[f64], eta: &[f64], t: f64| -> f64 {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q  = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            pk::conc_iv_2cpt_macro(dose, cl, v1, v2, q, t)
+        };
+        self.fit_generic(times, y, subject_idx, n_subjects, error_model, theta_init, omega_init, 4, &conc_fn)
+    }
+
+    // ----- 2-compartment oral ----------------------------------------------
+
+    /// Fit a 2-compartment oral PK model using SAEM (diagonal Ω).
+    ///
+    /// Parameters: `[CL, V1, Q, V2, Ka]` (5 fixed effects).
+    pub fn fit_2cpt_oral(
+        &self,
+        times: &[f64],
+        y: &[f64],
+        subject_idx: &[usize],
+        n_subjects: usize,
+        dose: f64,
+        bioav: f64,
+        error_model: ErrorModel,
+        theta_init: &[f64],
+        omega_init: &[f64],
+    ) -> Result<(FoceResult, SaemDiagnostics)> {
+        if omega_init.len() != 5 {
+            return Err(Error::Validation("omega_init must have 5 elements for 2-cpt oral".into()));
+        }
+        let om = OmegaMatrix::from_diagonal(omega_init)?;
+        self.fit_2cpt_oral_correlated(times, y, subject_idx, n_subjects, dose, bioav, error_model, theta_init, om)
+    }
+
+    /// Fit a 2-compartment oral PK model with correlated random effects using SAEM.
+    pub fn fit_2cpt_oral_correlated(
+        &self,
+        times: &[f64],
+        y: &[f64],
+        subject_idx: &[usize],
+        n_subjects: usize,
+        dose: f64,
+        bioav: f64,
+        error_model: ErrorModel,
+        theta_init: &[f64],
+        omega_init: OmegaMatrix,
+    ) -> Result<(FoceResult, SaemDiagnostics)> {
+        if theta_init.len() != 5 {
+            return Err(Error::Validation("theta_init must have 5 elements [CL, V1, Q, V2, Ka]".into()));
+        }
+        if omega_init.dim() != 5 {
+            return Err(Error::Validation("omega must be 5×5".into()));
+        }
+        let conc_fn = |theta: &[f64], eta: &[f64], t: f64| -> f64 {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q  = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            let ka = theta[4] * eta[4].exp();
+            pk::conc_oral_2cpt_macro(dose, bioav, cl, v1, v2, q, ka, t)
+        };
+        self.fit_generic(times, y, subject_idx, n_subjects, error_model, theta_init, omega_init, 5, &conc_fn)
+    }
+
+    // ----- Generic SAEM engine ---------------------------------------------
+
+    /// Generic SAEM fitting: concentration function injected via closure.
+    ///
+    /// `conc_fn(theta, eta, t)` returns the individual concentration at time `t`
+    /// given population parameters `theta` and random effects `eta`.
+    fn fit_generic(
+        &self,
+        times: &[f64],
+        y: &[f64],
+        subject_idx: &[usize],
+        n_subjects: usize,
+        error_model: ErrorModel,
+        theta_init: &[f64],
+        omega_init: OmegaMatrix,
+        n_eta: usize,
+        conc_fn: &dyn Fn(&[f64], &[f64], f64) -> f64,
+    ) -> Result<(FoceResult, SaemDiagnostics)> {
+        if times.len() != y.len() || times.len() != subject_idx.len() {
+            return Err(Error::Validation("times/y/subject_idx length mismatch".into()));
+        }
+        error_model.validate()?;
+
+        let n_obs = times.len();
+
+        // Group observations by subject.
+        let mut subj_obs: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n_subjects];
+        for i in 0..n_obs {
+            subj_obs[subject_idx[i]].push((times[i], y[i]));
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(self.config.seed);
+        let mut theta = theta_init.to_vec();
+        let mut omega = omega_init;
+
+        let mut etas: Vec<Vec<f64>> = vec![vec![0.0; n_eta]; n_subjects];
+
+        let omega_sds = omega.sds();
+        let mut proposal_sd: Vec<Vec<f64>> =
+            vec![
+                omega_sds.iter().map(|&s| s * self.config.mcmc_proposal_scale).collect();
+                n_subjects
+            ];
+
+        let mut s1 = vec![0.0; n_eta];
+        let mut s2 = vec![vec![0.0; n_eta]; n_eta];
+
+        let mut ofv_trace = Vec::new();
+        let mut accept_count: Vec<usize> = vec![0; n_subjects];
+        let mut mcmc_total: Vec<usize> = vec![0; n_subjects];
+
+        let total_iter = self.config.n_burn + self.config.n_iter;
+
+        for iter in 0..total_iter {
+            let is_burn = iter < self.config.n_burn;
+            let gamma = if is_burn { 1.0 } else { 1.0 / (iter - self.config.n_burn + 1) as f64 };
+
+            // === E-step: MCMC sampling of etas ===
+            for s in 0..n_subjects {
+                if subj_obs[s].is_empty() {
+                    continue;
+                }
+
+                let current_obj = individual_log_posterior_generic(
+                    &subj_obs[s], &theta, &omega, &error_model, &etas[s], conc_fn,
+                );
+
+                for _chain in 0..self.config.n_chains {
+                    let mut eta_proposed = etas[s].clone();
+                    for k in 0..n_eta {
+                        let noise: f64 = rng.sample(StandardNormal);
+                        eta_proposed[k] += proposal_sd[s][k] * noise;
+                    }
+
+                    let proposed_obj = individual_log_posterior_generic(
+                        &subj_obs[s], &theta, &omega, &error_model, &eta_proposed, conc_fn,
+                    );
+
+                    let log_alpha = proposed_obj - current_obj;
+                    let u: f64 = rng.random();
+                    if u.ln() < log_alpha {
+                        etas[s] = eta_proposed;
+                        accept_count[s] += 1;
+                    }
+                    mcmc_total[s] += 1;
+                }
+
+                if is_burn && mcmc_total[s] > 0 && iter % 20 == 19 {
+                    let accept_rate = accept_count[s] as f64 / mcmc_total[s] as f64;
+                    for k in 0..n_eta {
+                        if accept_rate < self.config.mcmc_target_accept_low {
+                            proposal_sd[s][k] *= 0.8;
+                        } else if accept_rate > self.config.mcmc_target_accept_high {
+                            proposal_sd[s][k] *= 1.2;
+                        }
+                        proposal_sd[s][k] = proposal_sd[s][k].max(1e-6).min(5.0);
+                    }
+                    accept_count[s] = 0;
+                    mcmc_total[s] = 0;
+                }
+            }
+
+            // === Stochastic Approximation: update sufficient statistics ===
+            let mut s1_new = vec![0.0; n_eta];
+            let mut s2_new = vec![vec![0.0; n_eta]; n_eta];
+
+            let active_subjects = subj_obs.iter().filter(|o| !o.is_empty()).count() as f64;
+            if active_subjects == 0.0 {
+                return Err(Error::Validation("no subjects with observations".into()));
+            }
+
+            for s in 0..n_subjects {
+                if subj_obs[s].is_empty() {
+                    continue;
+                }
+                for k in 0..n_eta {
+                    s1_new[k] += etas[s][k] / active_subjects;
+                    for l in 0..n_eta {
+                        s2_new[k][l] += etas[s][k] * etas[s][l] / active_subjects;
+                    }
+                }
+            }
+
+            for k in 0..n_eta {
+                s1[k] = (1.0 - gamma) * s1[k] + gamma * s1_new[k];
+                for l in 0..n_eta {
+                    s2[k][l] = (1.0 - gamma) * s2[k][l] + gamma * s2_new[k][l];
+                }
+            }
+
+            // === M-step: update theta and omega ===
+            for k in 0..n_eta {
+                let shift = s1[k];
+                theta[k] *= shift.exp();
+                theta[k] = theta[k].max(1e-10).min(1e6);
+                for s in 0..n_subjects {
+                    etas[s][k] -= shift;
+                }
+                s1[k] = 0.0;
+            }
+
+            let mut cov = vec![vec![0.0; n_eta]; n_eta];
+            for k in 0..n_eta {
+                for l in 0..n_eta {
+                    cov[k][l] = s2[k][l];
+                }
+            }
+            let min_var = 1e-4;
+            for k in 0..n_eta {
+                cov[k][k] = cov[k][k].max(min_var);
+            }
+
+            if let Ok(om_new) = OmegaMatrix::from_covariance(&cov) {
+                omega = om_new;
+                let new_sds = omega.sds();
+                for s in 0..n_subjects {
+                    for k in 0..n_eta {
+                        proposal_sd[s][k] = new_sds[k] * self.config.mcmc_proposal_scale;
+                    }
+                }
+            }
+
+            if iter % 10 == 0 || iter == total_iter - 1 {
+                let ofv = compute_marginal_ofv_generic(
+                    &subj_obs, &theta, &omega, &error_model, &etas, n_eta, conc_fn,
+                );
+                ofv_trace.push(ofv);
+            }
+        }
+
+        let final_ofv = compute_marginal_ofv_generic(
+            &subj_obs, &theta, &omega, &error_model, &etas, n_eta, conc_fn,
+        );
+
+        let converged = theta.iter().all(|v| v.is_finite())
+            && omega.sds().iter().all(|v| v.is_finite())
+            && final_ofv.is_finite()
+            && self.config.n_iter > 0;
+
+        let acceptance_rates: Vec<f64> = (0..n_subjects)
+            .map(|s| {
+                if mcmc_total[s] > 0 { accept_count[s] as f64 / mcmc_total[s] as f64 } else { 0.0 }
+            })
+            .collect();
+
+        let correlation = omega.correlation();
+        let omega_diag = omega.sds();
+
+        let result = FoceResult {
+            theta,
+            omega: omega_diag,
+            omega_matrix: omega,
+            correlation,
+            eta: etas,
+            ofv: final_ofv,
+            converged,
+            n_iter: self.config.n_burn + self.config.n_iter,
+        };
+
+        let diagnostics =
+            SaemDiagnostics { acceptance_rates, ofv_trace, burn_in_only: self.config.n_iter == 0 };
+
+        Ok((result, diagnostics))
+    }
+
     /// Fit a 1-compartment oral PK model using SAEM (diagonal Ω).
     pub fn fit_1cpt_oral(
         &self,
@@ -436,6 +746,48 @@ fn individual_log_posterior(
     log_lik + prior
 }
 
+/// Log-posterior for one subject's etas using a generic concentration function.
+fn individual_log_posterior_generic(
+    obs: &[(f64, f64)],
+    theta: &[f64],
+    omega: &OmegaMatrix,
+    em: &ErrorModel,
+    eta: &[f64],
+    conc_fn: &dyn Fn(&[f64], &[f64], f64) -> f64,
+) -> f64 {
+    let mut log_lik = 0.0;
+    for &(t, yobs) in obs {
+        let c = conc_fn(theta, eta, t);
+        log_lik -= em.nll_obs(yobs, c.max(1e-30));
+    }
+    let prior = -0.5 * omega.inv_quadratic(eta) - 0.5 * omega.log_det();
+    log_lik + prior
+}
+
+/// Compute a simple OFV for monitoring using a generic concentration function.
+fn compute_marginal_ofv_generic(
+    subj_obs: &[Vec<(f64, f64)>],
+    theta: &[f64],
+    omega: &OmegaMatrix,
+    em: &ErrorModel,
+    etas: &[Vec<f64>],
+    _n_eta: usize,
+    conc_fn: &dyn Fn(&[f64], &[f64], f64) -> f64,
+) -> f64 {
+    let mut ofv = 0.0;
+    for (s, obs) in subj_obs.iter().enumerate() {
+        if obs.is_empty() {
+            continue;
+        }
+        for &(t, yobs) in obs {
+            let c = conc_fn(theta, &etas[s], t);
+            ofv += em.nll_obs(yobs, c.max(1e-30));
+        }
+        ofv += 0.5 * omega.inv_quadratic(&etas[s]);
+    }
+    2.0 * ofv
+}
+
 /// Compute a simple OFV for monitoring (sum of individual NLLs + prior).
 fn compute_marginal_ofv(
     subj_obs: &[Vec<(f64, f64)>],
@@ -712,6 +1064,185 @@ mod tests {
                     ErrorModel::Additive(1.0),
                     &[0.1, 0.2, 0.3],
                     &[0.3, 0.25, 0.3],
+                )
+                .is_err()
+        );
+    }
+
+    // -------------------------------------------------------------------
+    // 2-compartment tests
+    // -------------------------------------------------------------------
+
+    fn make_synthetic_2cpt_iv_data(
+        n_subjects: usize,
+        n_obs: usize,
+        theta_true: &[f64],
+        omega_sds: &[f64],
+        sigma: f64,
+        dose: f64,
+        seed: u64,
+    ) -> (Vec<f64>, Vec<f64>, Vec<usize>) {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+        let mut times = Vec::new();
+        let mut y = Vec::new();
+        let mut subject_idx = Vec::new();
+
+        for s in 0..n_subjects {
+            let eta: Vec<f64> = omega_sds.iter().map(|&sd| {
+                sd * rng.sample::<f64, _>(StandardNormal)
+            }).collect();
+
+            let cl_i = theta_true[0] * eta[0].exp();
+            let v1_i = theta_true[1] * eta[1].exp();
+            let q_i  = theta_true[2] * eta[2].exp();
+            let v2_i = theta_true[3] * eta[3].exp();
+
+            for j in 0..n_obs {
+                let t = (j + 1) as f64 * 24.0 / n_obs as f64;
+                let c = pk::conc_iv_2cpt_macro(dose, cl_i, v1_i, v2_i, q_i, t);
+                let noise: f64 = sigma * rng.sample::<f64, _>(StandardNormal);
+                let y_obs = (c + noise).max(0.01);
+
+                times.push(t);
+                y.push(y_obs);
+                subject_idx.push(s);
+            }
+        }
+        (times, y, subject_idx)
+    }
+
+    fn make_synthetic_2cpt_oral_data(
+        n_subjects: usize,
+        n_obs: usize,
+        theta_true: &[f64],
+        omega_sds: &[f64],
+        sigma: f64,
+        dose: f64,
+        bioav: f64,
+        seed: u64,
+    ) -> (Vec<f64>, Vec<f64>, Vec<usize>) {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+        let mut times = Vec::new();
+        let mut y = Vec::new();
+        let mut subject_idx = Vec::new();
+
+        for s in 0..n_subjects {
+            let eta: Vec<f64> = omega_sds.iter().map(|&sd| {
+                sd * rng.sample::<f64, _>(StandardNormal)
+            }).collect();
+
+            let cl_i = theta_true[0] * eta[0].exp();
+            let v1_i = theta_true[1] * eta[1].exp();
+            let q_i  = theta_true[2] * eta[2].exp();
+            let v2_i = theta_true[3] * eta[3].exp();
+            let ka_i = theta_true[4] * eta[4].exp();
+
+            for j in 0..n_obs {
+                let t = (j + 1) as f64 * 24.0 / n_obs as f64;
+                let c = pk::conc_oral_2cpt_macro(dose, bioav, cl_i, v1_i, v2_i, q_i, ka_i, t);
+                let noise: f64 = sigma * rng.sample::<f64, _>(StandardNormal);
+                let y_obs = (c + noise).max(0.01);
+
+                times.push(t);
+                y.push(y_obs);
+                subject_idx.push(s);
+            }
+        }
+        (times, y, subject_idx)
+    }
+
+    #[test]
+    fn saem_2cpt_iv_convergence() {
+        let theta_true = [2.0, 10.0, 1.5, 20.0];
+        let omega_sds = [0.20, 0.15, 0.20, 0.15];
+        let sigma = 0.5;
+        let dose = 100.0;
+        let n_subjects = 20;
+        let n_obs = 8;
+
+        let (times, y, subject_idx) =
+            make_synthetic_2cpt_iv_data(n_subjects, n_obs, &theta_true, &omega_sds, sigma, dose, 42);
+
+        let config = SaemConfig { n_burn: 50, n_iter: 50, seed: 42, ..Default::default() };
+        let estimator = SaemEstimator::new(config);
+
+        let (result, diag) = estimator
+            .fit_2cpt_iv(
+                &times, &y, &subject_idx, n_subjects, dose,
+                ErrorModel::Additive(sigma),
+                &theta_true,
+                &omega_sds,
+            )
+            .unwrap();
+
+        assert!(result.ofv.is_finite(), "OFV should be finite");
+        assert!(!result.theta.iter().any(|t| !t.is_finite()), "theta should be finite");
+        assert_eq!(result.theta.len(), 4);
+        assert_eq!(result.eta.len(), n_subjects);
+        assert!(!diag.ofv_trace.is_empty(), "should have OFV trace");
+    }
+
+    #[test]
+    fn saem_2cpt_oral_convergence() {
+        let theta_true = [2.0, 10.0, 1.5, 20.0, 1.0];
+        let omega_sds = [0.20, 0.15, 0.20, 0.15, 0.25];
+        let sigma = 0.5;
+        let dose = 100.0;
+        let bioav = 0.8;
+        let n_subjects = 20;
+        let n_obs = 8;
+
+        let (times, y, subject_idx) = make_synthetic_2cpt_oral_data(
+            n_subjects, n_obs, &theta_true, &omega_sds, sigma, dose, bioav, 55,
+        );
+
+        let config = SaemConfig { n_burn: 50, n_iter: 50, seed: 55, ..Default::default() };
+        let estimator = SaemEstimator::new(config);
+
+        let (result, diag) = estimator
+            .fit_2cpt_oral(
+                &times, &y, &subject_idx, n_subjects, dose, bioav,
+                ErrorModel::Additive(sigma),
+                &theta_true,
+                &omega_sds,
+            )
+            .unwrap();
+
+        assert!(result.ofv.is_finite(), "OFV should be finite");
+        assert!(!result.theta.iter().any(|t| !t.is_finite()), "theta should be finite");
+        assert_eq!(result.theta.len(), 5);
+        assert_eq!(result.eta.len(), n_subjects);
+        assert!(!diag.ofv_trace.is_empty(), "should have OFV trace");
+    }
+
+    #[test]
+    fn saem_2cpt_iv_input_validation() {
+        let estimator = SaemEstimator::default_config();
+
+        // Wrong theta length for 2-cpt IV
+        assert!(
+            estimator
+                .fit_2cpt_iv(
+                    &[1.0], &[1.0], &[0], 1, 100.0,
+                    ErrorModel::Additive(1.0),
+                    &[0.1, 0.2, 0.3],  // only 3, need 4
+                    &[0.3, 0.3, 0.3, 0.3],
+                )
+                .is_err()
+        );
+
+        // Wrong omega length for 2-cpt IV
+        assert!(
+            estimator
+                .fit_2cpt_iv(
+                    &[1.0], &[1.0], &[0], 1, 100.0,
+                    ErrorModel::Additive(1.0),
+                    &[0.1, 0.2, 0.3, 0.4],
+                    &[0.3, 0.3, 0.3],  // only 3, need 4
                 )
                 .is_err()
         );

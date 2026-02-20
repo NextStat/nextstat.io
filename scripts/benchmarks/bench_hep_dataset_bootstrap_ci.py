@@ -32,6 +32,8 @@ from typing import Any
 
 import numpy as np
 
+from _parse_utils import parse_json_stdout
+
 
 NORM = NormalDist()
 
@@ -285,7 +287,7 @@ def _run_json(cmd: list[str]) -> tuple[dict[str, Any], float]:
             f"command failed (exit={exc.returncode}): {' '.join(cmd)}; stderr={stderr_short}"
         ) from exc
     wall_s = time.perf_counter() - t0
-    return json.loads(proc.stdout), wall_s
+    return parse_json_stdout(proc.stdout), wall_s
 
 
 def _run_root_write(macro_path: Path, txt_path: Path, out_root: Path) -> None:
