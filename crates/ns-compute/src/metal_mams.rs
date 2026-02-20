@@ -38,6 +38,7 @@ struct MamsArgs {
     n_obs: i32,
     n_feat: i32,
     riemannian: i32,
+    divergence_threshold: f32,
 }
 
 /// Metal accelerator for MAMS transitions.
@@ -90,6 +91,9 @@ pub struct MetalMamsAccelerator {
 
     // Whether this model uses Riemannian (position-dependent metric) dynamics.
     riemannian: bool,
+
+    // Energy error threshold for divergence detection (default: 1000.0).
+    divergence_threshold: f32,
 
     // CPU scratch buffer for f64→f32 conversion (reused)
     scratch_f32: Vec<f32>,
@@ -212,6 +216,7 @@ impl MetalMamsAccelerator {
             n_obs,
             n_feat,
             riemannian,
+            divergence_threshold: 1000.0f32,
             scratch_f32,
         })
     }
@@ -333,6 +338,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
 
         let cmd = self.queue.new_command_buffer();
@@ -413,6 +419,7 @@ impl MetalMamsAccelerator {
                 n_obs: self.n_obs as i32,
                 n_feat: self.n_feat as i32,
                 riemannian: if self.riemannian { 1 } else { 0 },
+                divergence_threshold: self.divergence_threshold,
             };
 
             let enc = cmd.new_compute_command_encoder();
@@ -481,6 +488,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
 
         // Threadgroup memory for GLM data: X_col[p*n] + y[n] in f32
@@ -563,6 +571,7 @@ impl MetalMamsAccelerator {
                 n_obs: self.n_obs as i32,
                 n_feat: self.n_feat as i32,
                 riemannian: if self.riemannian { 1 } else { 0 },
+                divergence_threshold: self.divergence_threshold,
             };
 
             let enc = cmd.new_compute_command_encoder();
@@ -617,6 +626,7 @@ impl MetalMamsAccelerator {
             n_obs: self.n_obs as i32,
             n_feat: self.n_feat as i32,
             riemannian: if self.riemannian { 1 } else { 0 },
+            divergence_threshold: self.divergence_threshold,
         };
         let n_transitions_arg = n_transitions as i32;
 
@@ -868,6 +878,10 @@ impl MamsAccelerator for MetalMamsAccelerator {
 
     fn dim(&self) -> usize {
         self.dim()
+    }
+
+    fn set_divergence_threshold(&mut self, threshold: f64) {
+        self.divergence_threshold = threshold as f32;
     }
 }
 

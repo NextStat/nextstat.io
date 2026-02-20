@@ -321,6 +321,7 @@ enum PosteriorModel {
     Hybrid(RustHybridModel),
     GaussianMean(GaussianMeanModel),
     Funnel(FunnelModel),
+    FunnelNcp(FunnelNcpModel),
     StdNormal(StdNormalModel),
     LinearRegression(RustLinearRegressionModel),
     LogisticRegression(RustLogisticRegressionModel),
@@ -357,6 +358,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
             PosteriorModel::Funnel(m) => m.dim(),
+            PosteriorModel::FunnelNcp(m) => m.dim(),
             PosteriorModel::StdNormal(m) => m.dim(),
             PosteriorModel::LinearRegression(m) => m.dim(),
             PosteriorModel::LogisticRegression(m) => m.dim(),
@@ -393,6 +395,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
             PosteriorModel::Funnel(m) => m.parameter_names(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_names(),
             PosteriorModel::StdNormal(m) => m.parameter_names(),
             PosteriorModel::LinearRegression(m) => m.parameter_names(),
             PosteriorModel::LogisticRegression(m) => m.parameter_names(),
@@ -429,6 +432,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
             PosteriorModel::Funnel(m) => m.parameter_bounds(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_bounds(),
             PosteriorModel::StdNormal(m) => m.parameter_bounds(),
             PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
             PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
@@ -465,6 +469,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
             PosteriorModel::Funnel(m) => m.parameter_init(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_init(),
             PosteriorModel::StdNormal(m) => m.parameter_init(),
             PosteriorModel::LinearRegression(m) => m.parameter_init(),
             PosteriorModel::LogisticRegression(m) => m.parameter_init(),
@@ -501,6 +506,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
             PosteriorModel::Funnel(m) => m.nll(params),
+            PosteriorModel::FunnelNcp(m) => m.nll(params),
             PosteriorModel::StdNormal(m) => m.nll(params),
             PosteriorModel::LinearRegression(m) => m.nll(params),
             PosteriorModel::LogisticRegression(m) => m.nll(params),
@@ -537,6 +543,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
             PosteriorModel::Funnel(m) => m.grad_nll(params),
+            PosteriorModel::FunnelNcp(m) => m.grad_nll(params),
             PosteriorModel::StdNormal(m) => m.grad_nll(params),
             PosteriorModel::LinearRegression(m) => m.grad_nll(params),
             PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
@@ -573,6 +580,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
             PosteriorModel::Funnel(m) => mle.fit(m),
+            PosteriorModel::FunnelNcp(m) => mle.fit(m),
             PosteriorModel::StdNormal(m) => mle.fit(m),
             PosteriorModel::LinearRegression(m) => mle.fit(m),
             PosteriorModel::LogisticRegression(m) => mle.fit(m),
@@ -609,6 +617,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GaussianMean(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Funnel(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::FunnelNcp(m) => mle.fit_from(m, init_pars),
             PosteriorModel::StdNormal(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LinearRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LogisticRegression(m) => mle.fit_from(m, init_pars),
@@ -662,6 +671,9 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::StdNormal(m) => {
@@ -757,6 +769,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::GaussianMean(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::Funnel(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::FunnelNcp(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::StdNormal(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::LinearRegression(m) => {
                 sample_mams_multichain(m, n_chains, seed, config)
@@ -839,6 +852,10 @@ impl PosteriorModel {
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
             PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
@@ -968,6 +985,10 @@ impl PosteriorModel {
                 mle.fit(&w)
             }
             PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -1110,6 +1131,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::FunnelNcp(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
             PosteriorModel::StdNormal(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
@@ -1240,6 +1265,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => dispatch_ci!(m),
             PosteriorModel::GaussianMean(m) => dispatch_ci!(m),
             PosteriorModel::Funnel(m) => dispatch_ci!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_ci!(m),
             PosteriorModel::StdNormal(m) => dispatch_ci!(m),
             PosteriorModel::LinearRegression(m) => dispatch_ci!(m),
             PosteriorModel::LogisticRegression(m) => dispatch_ci!(m),
@@ -1281,6 +1307,8 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
     } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
         Ok(PosteriorModel::Funnel(fm.inner.clone()))
+    } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelNcpModel>>() {
+        Ok(PosteriorModel::FunnelNcp(fm.inner.clone()))
     } else if let Ok(sm) = model.extract::<PyRef<'_, PyStdNormalModel>>() {
         Ok(PosteriorModel::StdNormal(sm.inner.clone()))
     } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
@@ -1335,7 +1363,7 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::EightSchools(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
+            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, FunnelNcpModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
         ))
     }
 }
@@ -3844,6 +3872,176 @@ impl PyFunnelModel {
     #[pyo3(signature = (dim=2))]
     fn new(dim: usize) -> Self {
         Self { inner: FunnelModel::new(dim) }
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Neal's funnel — Non-Centered Parameterization (NCP).
+//
+// v ~ Normal(0, 3)
+// z_i ~ Normal(0, 1)        for i = 1..d-1
+// x_i = exp(v/2) * z_i      (constrained / original parameterization)
+//
+// NLL = v²/18 + 0.5 * Σ z_i²  (independent normals — trivial geometry)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct FunnelNcpModel {
+    d: usize,
+}
+
+impl FunnelNcpModel {
+    fn new(d: usize) -> Self {
+        assert!(d >= 2, "FunnelNcpModel requires d >= 2");
+        Self { d }
+    }
+}
+
+#[derive(Clone)]
+struct PreparedFunnelNcpModel<'a> {
+    model: &'a FunnelNcpModel,
+}
+
+impl PreparedNll for PreparedFunnelNcpModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for FunnelNcpModel {
+    type Prepared<'a>
+        = PreparedFunnelNcpModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.d
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("z[{}]", i));
+        }
+        names
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.d]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0; self.d]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let v = params[0];
+        let sum_z2: f64 = params[1..].iter().map(|zi| zi * zi).sum();
+        // v ~ N(0, 9), z_i ~ N(0, 1) — independent
+        Ok(v * v / 18.0 + 0.5 * sum_z2)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let mut grad = Vec::with_capacity(self.d);
+        grad.push(params[0] / 9.0);
+        for zi in &params[1..] {
+            grad.push(*zi);
+        }
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedFunnelNcpModel { model: self }
+    }
+}
+
+#[allow(dead_code)]
+impl FunnelNcpModel {
+    fn to_constrained(&self, params: &[f64]) -> Vec<f64> {
+        // Transform NCP → original: v stays, x_i = exp(v/2) * z_i
+        let v = params[0];
+        let scale = (v * 0.5).exp();
+        let mut out = Vec::with_capacity(self.d);
+        out.push(v);
+        for zi in &params[1..] {
+            out.push(scale * zi);
+        }
+        out
+    }
+
+    fn constrained_parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("x[{}]", i));
+        }
+        names
+    }
+}
+
+/// Python wrapper for FunnelNcpModel (Neal's funnel, non-centered parameterization).
+#[pyclass(name = "FunnelNcpModel")]
+struct PyFunnelNcpModel {
+    inner: FunnelNcpModel,
+}
+
+#[pymethods]
+impl PyFunnelNcpModel {
+    #[new]
+    #[pyo3(signature = (dim=10))]
+    fn new(dim: usize) -> Self {
+        Self { inner: FunnelNcpModel::new(dim) }
     }
 
     fn n_params(&self) -> usize {
@@ -6513,6 +6711,10 @@ impl PyMaximumLikelihoodEstimator {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
+                    PosteriorModel::FunnelNcp(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
                     PosteriorModel::StdNormal(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
@@ -9045,7 +9247,8 @@ impl PyRawCudaModel {
     max_leapfrog=8192, device_ids=None,
     sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000,
     report_chains=256,
-    diagonal_precond=true
+    diagonal_precond=true,
+    divergence_threshold=1000.0
 ))]
 fn sample_laps_py<'py>(
     py: Python<'py>,
@@ -9066,6 +9269,7 @@ fn sample_laps_py<'py>(
     fused_transitions: usize,
     report_chains: usize,
     diagonal_precond: bool,
+    divergence_threshold: f64,
 ) -> PyResult<Py<PyAny>> {
     use ns_inference::laps::{LapsConfig, LapsModel};
 
@@ -9173,6 +9377,37 @@ fn sample_laps_py<'py>(
                     .get_item("p")?
                     .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
                     .extract()?;
+                // Validate dimensions and values
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_logistic: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: x_data.len()={} != n*p={}*{}={}",
+                        x_data.len(),
+                        n,
+                        p,
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_logistic: y_data must contain only 0.0 or 1.0",
+                    ));
+                }
                 LapsModel::GlmLogistic { x_data, y_data, n, p }
             }
             other => {
@@ -9202,6 +9437,7 @@ fn sample_laps_py<'py>(
         report_chains,
         use_diagonal_precond: diagonal_precond,
         n_mass_windows: 3,
+        divergence_threshold,
     };
 
     let laps_result = py
@@ -10182,6 +10418,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyFunnelModel>()?;
+    m.add_class::<PyFunnelNcpModel>()?;
     m.add_class::<PyStdNormalModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;

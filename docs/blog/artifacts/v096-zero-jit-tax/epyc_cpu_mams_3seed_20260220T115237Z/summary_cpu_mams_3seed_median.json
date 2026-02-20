@@ -1,0 +1,45 @@
+{
+  "out_dir": "/tmp/epyc_cpu_mams_3seed_20260220T115237Z",
+  "seeds": [
+    42,
+    123,
+    777
+  ],
+  "per_seed_files": [
+    "/tmp/epyc_cpu_mams_3seed_20260220T115237Z/seed_123/gpu_triple_bench.json",
+    "/tmp/epyc_cpu_mams_3seed_20260220T115237Z/seed_42/gpu_triple_bench.json",
+    "/tmp/epyc_cpu_mams_3seed_20260220T115237Z/seed_777/gpu_triple_bench.json"
+  ],
+  "median": {
+    "std_normal_10d": {
+      "wall_s": 0.02179174800403416,
+      "wall_sampling": 0.02179174800403416,
+      "min_ess": 1723.8163042188548,
+      "max_rhat": 1.0043292354148647,
+      "n_grad_evals": 6025.0,
+      "ess_per_grad": 0.2834556584248024,
+      "grad_per_sec": 276547.38778240193,
+      "ess_per_s_sampling": 79104.08581724312
+    },
+    "eight_schools": {
+      "wall_s": 0.021057607955299318,
+      "wall_sampling": 0.021057607955299318,
+      "min_ess": 1683.6470610160811,
+      "max_rhat": 1.0103100921942276,
+      "n_grad_evals": 12288.0,
+      "ess_per_grad": 0.16008814880822297,
+      "grad_per_sec": 629891.107677404,
+      "ess_per_s_sampling": 79954.33596209477
+    },
+    "glm_logistic": {
+      "wall_s": 14.442631768994033,
+      "wall_sampling": 14.442631768994033,
+      "min_ess": 1193.1249481309937,
+      "max_rhat": 1.0085190254493823,
+      "n_grad_evals": 8000.0,
+      "ess_per_grad": 0.14914061851637422,
+      "grad_per_sec": 553.9156663382287,
+      "ess_per_s_sampling": 82.61132508359299
+    }
+  }
+}

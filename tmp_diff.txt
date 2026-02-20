@@ -1,0 +1,1625 @@
+diff --git a/benchmarks/gpu_triple_bench.py b/benchmarks/gpu_triple_bench.py
+index 3da0e47..575bbbf 100644
+--- a/benchmarks/gpu_triple_bench.py
++++ b/benchmarks/gpu_triple_bench.py
+@@ -176,6 +176,7 @@ def bench_ns_laps(
+     n_report_chains = result.get("n_report_chains", result.get("n_chains"))
+     n_grad_evals = _extract_stats(result.get("sample_stats", {}), max_chains=n_report_chains)
+     ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
++    grad_per_sec = (n_grad_evals / wall_s) if (n_grad_evals and wall_s > 0) else None
+ 
+     return {"engine": "NS_LAPS_GPU", "model": model_name, "wall_s": wall_s,
+             "wall_warm": float(wall_warm), "min_ess": min_ess, "max_rhat": max_rhat,
+@@ -187,7 +188,8 @@ def bench_ns_laps(
+             "effective_sync_interval": sync_interval,
+             "effective_max_leapfrog": max_leapfrog,
+             "n_chains": n_chains, "n_samples": n_samples,
+-            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
++            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad,
++            "grad_per_sec": grad_per_sec}
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -240,11 +242,13 @@ def bench_ns_cpu_mams(model_name, n_chains, n_warmup, n_samples, seed):
+ 
+     n_grad_evals = _extract_stats(result.get("sample_stats", {}), max_chains=n_chains)
+     ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
++    grad_per_sec = (n_grad_evals / wall_s) if (n_grad_evals and wall_s > 0) else None
+ 
+     return {"engine": "NS_CPU_MAMS", "model": model_name, "wall_s": wall_s,
+             "wall_warm": None, "min_ess": min_ess, "max_rhat": max_rhat,
+             "n_chains": n_chains, "n_samples": n_samples,
+-            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
++            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad,
++            "grad_per_sec": grad_per_sec}
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -424,6 +428,7 @@ def bench_blackjax(model_name, n_chains, n_warmup, n_samples, seed, report_chain
+     # same chain budget to avoid denominator asymmetry vs NS LAPS reporting.
+     n_grad_evals = int(n_steps * n_report * n_samples)
+     ess_per_grad = (min_ess / n_grad_evals) if (min_ess is not None and n_grad_evals) else None
++    grad_per_sec_warm = (n_grad_evals / wall_warm) if (n_grad_evals and wall_warm > 0) else None
+ 
+     return {"engine": "BlackJAX_GPU", "model": model_name,
+             "wall_s": wall_cold, "wall_warm": wall_warm,
+@@ -435,7 +440,8 @@ def bench_blackjax(model_name, n_chains, n_warmup, n_samples, seed, report_chain
+             "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+             "warmup_s": wall_warmup,
+             "cold_sampling_s": wall_cold_sampling,
+-            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad}
++            "n_grad_evals": n_grad_evals, "ess_per_grad": ess_per_grad,
++            "grad_per_sec": grad_per_sec_warm}
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -568,7 +574,7 @@ def main():
+     print(f"{'='*128}")
+     header = (
+         f"{'Model':<18} | {'Engine':<16} | {'Cold(s)':<9} | {'Warm(s)':<9} | "
+-        f"{'min_ESS':<11} | {'ESS/s(warm)':<12} | {'ESS/grad':<10} | {'R-hat':<8} | "
++        f"{'min_ESS':<11} | {'ESS/s(warm)':<12} | {'ESS/grad':<10} | {'grad/s':<10} | {'R-hat':<8} | "
+         f"{'Q':<5} | {'Rpt':>4} | {'Chains':>6}"
+     )
+     print(header)
+@@ -576,7 +582,7 @@ def main():
+ 
+     for r in results:
+         if "error" in r:
+-            print(f"{r['model']:<18} | {r['engine']:<16} | {'FAIL':<9} | {'':<9} | {'':<11} | {'':<12} | {'':<8} | {'':<5} | {'':>4} | {'':<6}")
++            print(f"{r['model']:<18} | {r['engine']:<16} | {'FAIL':<9} | {'':<9} | {'':<11} | {'':<12} | {'':<10} | {'':<10} | {'':<8} | {'':<5} | {'':>4} | {'':<6}")
+             continue
+ 
+         wall_cold = r.get("wall_s", 0)
+@@ -592,18 +598,18 @@ def main():
+         n_report = r.get("n_report_chains", "")
+         ess_per_s = min_ess / wall_warm if min_ess and wall_warm and wall_warm > 0 else None
+         ess_per_grad = r.get("ess_per_grad")
++        grad_per_s = r.get("grad_per_sec")
+         n_ch = r.get("n_chains", "?")
+         wall_warm_txt = f"{wall_warm:<9.2f}" if wall_warm is not None else f"{'N/A':<9}"
+ 
+         print(
+             f"{r['model']:<18} | {r['engine']:<16} | {wall_cold:<9.2f} | {wall_warm_txt} | "
+-            f"{fmt(min_ess):<11} | {fmt(ess_per_s):<12} | {fmt(ess_per_grad,4):<10} | {fmt(max_rhat,4):<8} | "
++            f"{fmt(min_ess):<11} | {fmt(ess_per_s):<12} | {fmt(ess_per_grad,4):<10} | {fmt(grad_per_s):<10} | {fmt(max_rhat,4):<8} | "
+             f"{str(quality):<5} | {str(n_report):>4} | {n_ch:>6}"
+         )
+ 
+     # Save JSON with environment snapshot
+     out_path = out_dir / "gpu_triple_bench.json"
+-    legacy_out_path = out_dir / "a100_triple_bench.json"
+     artifact = {
+         "environment": env,
+         "config": {
+@@ -620,9 +626,6 @@ def main():
+     with open(out_path, "w") as f:
+         json.dump(artifact, f, indent=2, default=str)
+     print(f"\nJSON: {out_path}")
+-    # Backward compatibility for older tooling/scripts.
+-    with open(legacy_out_path, "w") as f:
+-        json.dump(artifact, f, indent=2, default=str)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/benchmarks/nextstat-public-benchmarks/suites/bayesian/report.py b/benchmarks/nextstat-public-benchmarks/suites/bayesian/report.py
+index ce238f2..5a7c393 100644
+--- a/benchmarks/nextstat-public-benchmarks/suites/bayesian/report.py
++++ b/benchmarks/nextstat-public-benchmarks/suites/bayesian/report.py
+@@ -56,8 +56,8 @@ def main() -> int:
+     # -- Detailed results table --
+     lines.append("## Detailed results")
+     lines.append("")
+-    lines.append("| Case | Backend | Status | Wall (s) | min ESS_bulk | min ESS_tail | max R-hat | min ESS_bulk/s |")
+-    lines.append("|---|---|---|---:|---:|---:|---:|---:|")
++    lines.append("| Case | Backend | Status | Wall (s) | min ESS_bulk | min ESS_tail | max R-hat | ESS/grad | min ESS_bulk/s |")
++    lines.append("|---|---|---|---:|---:|---:|---:|---:|---:|")
+     for c in cases:
+         status = str(c.get("status") or "unknown")
+         lines.append(
+@@ -71,6 +71,7 @@ def main() -> int:
+                     _fmt(c.get("min_ess_bulk")),
+                     _fmt(c.get("min_ess_tail")),
+                     _fmt(c.get("max_r_hat")),
++                    _fmt(c.get("ess_per_grad"), digits=4),
+                     _fmt(c.get("min_ess_bulk_per_sec")),
+                 ]
+             )
+@@ -78,6 +79,36 @@ def main() -> int:
+         )
+     lines.append("")
+ 
++    # -- ESS/sec decomposition table --
++    decomp_rows = [c for c in cases if c.get("status") == "ok" and _safe_float(c.get("ess_per_grad")) is not None]
++    if decomp_rows:
++        lines.append("## ESS/sec Decomposition")
++        lines.append("")
++        lines.append("`ESS/sec = (ESS/grad) × (grad/sec)`")
++        lines.append("")
++        lines.append("| Case | Backend | ESS/grad | grad/s | ESS_bulk/s | Product check |")
++        lines.append("|---|---|---:|---:|---:|---:|")
++        for c in decomp_rows:
++            epg = _safe_float(c.get("ess_per_grad"))
++            gps = _safe_float(c.get("grad_per_sec"))
++            eps = _safe_float(c.get("min_ess_bulk_per_sec"))
++            prod = (epg * gps) if (epg is not None and gps is not None) else None
++            lines.append(
++                "| "
++                + " | ".join(
++                    [
++                        str(c.get("case") or "unknown"),
++                        str(c.get("backend") or "unknown"),
++                        _fmt(epg, digits=4),
++                        _fmt(gps),
++                        _fmt(eps),
++                        _fmt(prod),
++                    ]
++                )
++                + " |"
++            )
++        lines.append("")
++
+     # -- Posterior parity (NextStat dense vs diagonal) --
+     parity = obj.get("parity") if isinstance(obj.get("parity"), dict) else {}
+     parity_rows = parity.get("rows") if isinstance(parity.get("rows"), list) else []
+diff --git a/benchmarks/nextstat-public-benchmarks/suites/bayesian/run.py b/benchmarks/nextstat-public-benchmarks/suites/bayesian/run.py
+index f57d464..23814c0 100644
+--- a/benchmarks/nextstat-public-benchmarks/suites/bayesian/run.py
++++ b/benchmarks/nextstat-public-benchmarks/suites/bayesian/run.py
+@@ -521,11 +521,28 @@ def main() -> int:
+         ess_bulk_vals = [v for v in (_safe_float(x) for x in ess_bulk.values()) if v is not None]
+         ess_tail_vals = [v for v in (_safe_float(x) for x in ess_tail.values()) if v is not None]
+ 
+-        timing = {
++        # Extract gradient evaluations from sample_stats.n_leapfrog
++        n_grad_evals: int | None = None
++        sample_stats = r.get("sample_stats") if isinstance(r.get("sample_stats"), dict) else {}
++        n_leapfrog = sample_stats.get("n_leapfrog")
++        if isinstance(n_leapfrog, list):
++            total = 0
++            for chain in n_leapfrog:
++                if isinstance(chain, list):
++                    total += sum(int(x) for x in chain)
++            if total > 0:
++                n_grad_evals = total
++
++        timing: dict[str, Any] = {
+             "wall_time_s": float(wall),
+             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
+             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
+         }
++        if n_grad_evals is not None:
++            timing["n_grad_evals"] = n_grad_evals
++            if ess_bulk_vals:
++                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals)
++            timing["grad_per_sec"] = float(n_grad_evals) / max(float(wall), 1e-12)
+ 
+         param_names = list(map(str, (r.get("param_names") or []))) if isinstance(r.get("param_names"), list) else []
+ 
+@@ -778,6 +795,15 @@ model {
+         except Exception:
+             pass
+ 
++        # Extract gradient evaluations from n_leapfrog__
++        n_grad_evals_stan: int | None = None
++        try:
++            lf_draws = fit.draws_pd(vars=["n_leapfrog__"])
++            if "n_leapfrog__" in lf_draws.columns:
++                n_grad_evals_stan = int(lf_draws["n_leapfrog__"].sum())
++        except Exception:
++            pass
++
+         summary = {
+             "divergence_rate": divergence_rate,
+             "max_treedepth_rate": max_treedepth_rate,
+@@ -786,11 +812,16 @@ model {
+             "min_ess_tail": min_ess_tail,
+             "min_ebfmi": min_ebfmi,
+         }
+-        timing = {
++        timing: dict[str, Any] = {
+             "wall_time_s": float(wall),
+             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
+             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
+         }
++        if n_grad_evals_stan is not None and n_grad_evals_stan > 0:
++            timing["n_grad_evals"] = n_grad_evals_stan
++            if ess_bulk_vals:
++                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_stan)
++            timing["grad_per_sec"] = float(n_grad_evals_stan) / max(float(wall), 1e-12)
+ 
+         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
+         doc.update(
+@@ -925,6 +956,15 @@ model {
+         except Exception:
+             pass
+ 
++        # Extract gradient evaluations from n_steps (PyMC stores leapfrog steps here)
++        n_grad_evals_pymc: int | None = None
++        try:
++            n_steps = idata.sample_stats.get("n_steps")
++            if n_steps is not None:
++                n_grad_evals_pymc = int(n_steps.sum().to_numpy())
++        except Exception:
++            pass
++
+         summary = {
+             "divergence_rate": divergence_rate,
+             "max_treedepth_rate": max_treedepth_rate,
+@@ -933,11 +973,16 @@ model {
+             "min_ess_tail": min_ess_tail,
+             "min_ebfmi": min_ebfmi,
+         }
+-        timing = {
++        timing: dict[str, Any] = {
+             "wall_time_s": float(wall),
+             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
+             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
+         }
++        if n_grad_evals_pymc is not None and n_grad_evals_pymc > 0:
++            timing["n_grad_evals"] = n_grad_evals_pymc
++            if ess_bulk_vals:
++                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_pymc)
++            timing["grad_per_sec"] = float(n_grad_evals_pymc) / max(float(wall), 1e-12)
+ 
+         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
+         doc.update(
+@@ -1098,6 +1143,15 @@ model {
+         except Exception:
+             pass
+ 
++        # Extract gradient evaluations from num_steps (NumPyro name for leapfrog steps)
++        n_grad_evals_numpyro: int | None = None
++        try:
++            num_steps = idata.sample_stats.get("num_steps")
++            if num_steps is not None:
++                n_grad_evals_numpyro = int(num_steps.sum().to_numpy())
++        except Exception:
++            pass
++
+         summary = {
+             "divergence_rate": divergence_rate,
+             "max_treedepth_rate": max_treedepth_rate,
+@@ -1106,11 +1160,16 @@ model {
+             "min_ess_tail": min_ess_tail,
+             "min_ebfmi": min_ebfmi,
+         }
+-        timing = {
++        timing: dict[str, Any] = {
+             "wall_time_s": float(wall),
+             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
+             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
+         }
++        if n_grad_evals_numpyro is not None and n_grad_evals_numpyro > 0:
++            timing["n_grad_evals"] = n_grad_evals_numpyro
++            if ess_bulk_vals:
++                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_numpyro)
++            timing["grad_per_sec"] = float(n_grad_evals_numpyro) / max(float(wall), 1e-12)
+ 
+         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
+         doc.update(
+diff --git a/benchmarks/nextstat-public-benchmarks/suites/bayesian/suite.py b/benchmarks/nextstat-public-benchmarks/suites/bayesian/suite.py
+index 0bfa4d4..75bc3d3 100644
+--- a/benchmarks/nextstat-public-benchmarks/suites/bayesian/suite.py
++++ b/benchmarks/nextstat-public-benchmarks/suites/bayesian/suite.py
+@@ -171,6 +171,10 @@ def main() -> int:
+                 worst_score = score
+                 worst_case = f"{case_id}::{backend}"
+ 
++            n_grad_evals = _maybe_float(obj.get("timing", {}).get("n_grad_evals"))
++            ess_per_grad = _maybe_float(obj.get("timing", {}).get("ess_per_grad"))
++            grad_per_sec = _maybe_float(obj.get("timing", {}).get("grad_per_sec"))
++
+             sha = sha256_file(out_path) if out_path.exists() else "0" * 64
+             index_cases.append(
+                 {
+@@ -184,6 +188,9 @@ def main() -> int:
+                     "min_ess_tail": min_ess_tail,
+                     "max_r_hat": max_r_hat,
+                     "min_ess_bulk_per_sec": min_ess_bulk_per_sec,
++                    "n_grad_evals": int(n_grad_evals) if n_grad_evals is not None else None,
++                    "ess_per_grad": ess_per_grad,
++                    "grad_per_sec": grad_per_sec,
+                 }
+             )
+ 
+diff --git a/crates/ns-compute/Cargo.toml b/crates/ns-compute/Cargo.toml
+index c9b2a21..32ade4c 100644
+--- a/crates/ns-compute/Cargo.toml
++++ b/crates/ns-compute/Cargo.toml
+@@ -33,6 +33,9 @@ metal = { workspace = true, optional = true }
+ objc = { workspace = true, optional = true }
+ block = { workspace = true, optional = true }
+ 
++[build-dependencies]
++sha2 = { workspace = true }
++
+ [dev-dependencies]
+ approx.workspace = true
+ proptest.workspace = true
+diff --git a/crates/ns-compute/build.rs b/crates/ns-compute/build.rs
+index c563539..d9a3b40 100644
+--- a/crates/ns-compute/build.rs
++++ b/crates/ns-compute/build.rs
+@@ -1,3 +1,10 @@
++#[allow(dead_code)]
++fn sha256_file(path: &str) -> String {
++    use sha2::{Digest, Sha256};
++    let bytes = std::fs::read(path).unwrap_or_default();
++    format!("{:x}", Sha256::digest(&bytes))
++}
++
+ fn main() {
+     // Link Apple Accelerate framework when the feature is enabled on macOS.
+     #[cfg(all(feature = "accelerate", target_os = "macos"))]
+@@ -292,10 +299,14 @@ fn main() {
+         let mams_engine_abs = std::fs::canonicalize(&mams_engine)
+             .unwrap_or_else(|_| std::path::PathBuf::from(&mams_engine));
+         println!("cargo:rustc-env=CUDA_MAMS_ENGINE_PATH={}", mams_engine_abs.display());
++        let engine_hash = sha256_file(&mams_engine);
++        println!("cargo:rustc-env=CUDA_MAMS_ENGINE_SHA256={}", engine_hash);
+ 
+         // --- mams_leapfrog.cu (LAPS: GPU MAMS sampler) ---
+         let mams_src = format!("{}/mams_leapfrog.cu", kernel_dir);
+         println!("cargo:rerun-if-changed={}", mams_src);
++        let leapfrog_hash = sha256_file(&mams_src);
++        println!("cargo:rustc-env=CUDA_MAMS_LEAPFROG_SHA256={}", leapfrog_hash);
+         let mams_ptx = format!("{}/mams_leapfrog.ptx", out_dir);
+         if let Ok(override_ptx) = std::env::var("NS_COMPUTE_MAMS_PTX_OVERRIDE")
+             && !override_ptx.trim().is_empty()
+diff --git a/crates/ns-compute/src/lib.rs b/crates/ns-compute/src/lib.rs
+index 4dcba50..3467168 100644
+--- a/crates/ns-compute/src/lib.rs
++++ b/crates/ns-compute/src/lib.rs
+@@ -22,6 +22,8 @@
+ #![warn(missing_docs)]
+ #![warn(clippy::all)]
+ 
++/// Build-time SHA-256 checksums for CUDA kernel sources (always available).
++pub mod checksums;
+ pub mod cpu;
+ /// Device-agnostic GPU accelerator abstraction (always available).
+ pub mod gpu_accel;
+diff --git a/crates/ns-inference/src/laps.rs b/crates/ns-inference/src/laps.rs
+index 99d589e..950f0cb 100644
+--- a/crates/ns-inference/src/laps.rs
++++ b/crates/ns-inference/src/laps.rs
+@@ -431,18 +431,15 @@ fn compute_initial_params(model: &LapsModel, config: &LapsConfig) -> (f64, f64)
+ /// The full trajectory length (L/eps steps, up to max_leapfrog) is only used
+ /// during warmup and sampling.
+ ///
+-/// For cold start: first finds a stable burn-in eps (adapts to gradient scale),
+-/// runs burn-in, then searches UP from that eps. This handles both easy models
+-/// (std_normal, eps~1) and data-heavy models (GLM n=5000, eps~0.001).
++/// Two phases:
++/// - **Phase A**: find a stable eps (one that doesn't immediately diverge).
++/// - **Phase C**: search UP from stable_eps to find optimal eps.
+ #[cfg(any(feature = "cuda", feature = "metal"))]
+ fn find_initial_eps_gpu<A: MamsAccelerator>(
+     accel: &mut A,
+     l: f64,
+-    _dim: usize,
+     config: &LapsConfig,
+-    cold_start: bool,
+     fast_glm: bool,
+-    presolve_applied: bool,
+ ) -> Result<(f64, usize)> {
+     let search_max_steps: usize = if fast_glm { 32 } else { 50 };
+     let eps_floor = (l / (config.max_leapfrog.max(1) as f64)).max(1e-6);
+@@ -471,27 +468,6 @@ fn find_initial_eps_gpu<A: MamsAccelerator>(
+         }
+     }
+ 
+-    // Phase B (cold only): burn-in at stable_eps to move toward typical set.
+-    // With init_scale ≈ posterior_std, chains start within ~2σ of origin.
+-    // For no-warmup runs we use a shorter burn-in to reduce startup overhead
+-    // while keeping the robust cold-start behavior.
+-    // Skip if pre-solve already moved chains near the mode.
+-    if cold_start && !presolve_applied {
+-        accel.set_uniform_eps(stable_eps)?;
+-        let n_steps = ((l / stable_eps).round() as usize).clamp(1, search_max_steps);
+-        let burnin_iters = if config.n_warmup == 0 {
+-            if fast_glm { 8 } else { 12 }
+-        } else if fast_glm {
+-            20
+-        } else {
+-            50
+-        };
+-        for _ in 0..burnin_iters {
+-            accel.transition_auto(l, n_steps, false)?;
+-            launches += 1;
+-        }
+-    }
+-
+     // Phase C: search UP from stable_eps to find optimal eps.
+     // Increase by 1.5x while acceptance stays > 0.65. When it drops below 0.5,
+     // back off. This is a monotonic search — no need for bidirectional.
+@@ -968,9 +944,9 @@ fn sample_laps_single_gpu_generic<A: MamsAccelerator>(
+             (0.45 * l).max(1e-6)
+         }
+     } else {
+-        // Cold start: ~8 stability probes + 200 burn-in + up to 20*3 = 60 search ≈ 270
++        // Cold start: ~8 stability probes + up to 20*3 = 60 search ≈ 70
+         let (found_eps, eps_launches) =
+-            find_initial_eps_gpu(&mut accel, l, dim, &config, true, fast_glm, presolve_applied)?;
++            find_initial_eps_gpu(&mut accel, l, &config, fast_glm)?;
+         n_kernel_launches += eps_launches;
+         found_eps
+     };
+@@ -1082,7 +1058,7 @@ fn sample_laps_single_gpu_generic<A: MamsAccelerator>(
+             }
+ 
+             let (new_eps, eps_launches) =
+-                find_initial_eps_gpu(&mut accel, l, dim, &config, false, fast_glm, false)?;
++                find_initial_eps_gpu(&mut accel, l, &config, fast_glm)?;
+             n_kernel_launches += eps_launches;
+ 
+             da_vec =
+@@ -1394,11 +1370,8 @@ fn sample_laps_multi_gpu(
+                         } else if let Ok((found_eps, launches)) = find_initial_eps_gpu(
+                             &mut accel,
+                             l_local,
+-                            dim,
+                             config,
+-                            true,
+                             fast_glm,
+-                            presolve_applied,
+                         ) {
+                             *shared_init_eps.lock().unwrap() = found_eps;
+                             n_kernel_launches += launches;
+@@ -1550,7 +1523,7 @@ fn sample_laps_multi_gpu(
+                                 )
+                             } else {
+                                 match find_initial_eps_gpu(
+-                                    &mut accel, l_local, dim, config, false, fast_glm, false,
++                                    &mut accel, l_local, config, fast_glm,
+                                 ) {
+                                     Ok((e, launches)) => {
+                                         n_kernel_launches += launches;
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_123/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_123/a100_triple_bench.json
+deleted file mode 100644
+index c185a00..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_123/a100_triple_bench.json
++++ /dev/null
+@@ -1,70 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 123,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 15.51668828073889,
+-      "wall_warm": 0.312342562712729,
+-      "min_ess": 701.6439021280247,
+-      "max_rhat": 1.2745362111213807,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 1.5844129672436222,
+-      "tuned_n_steps": 2,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 11.271967940963805,
+-      "cold_sampling_s": 4.2447203397750854,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.0013703982463437983
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_42/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_42/a100_triple_bench.json
+deleted file mode 100644
+index 21ce327..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_42/a100_triple_bench.json
++++ /dev/null
+@@ -1,70 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 42,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 14.970215173438191,
+-      "wall_warm": 0.41182927042245865,
+-      "min_ess": 706.4536069542903,
+-      "max_rhat": 1.2732423216503075,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.8550356102215334,
+-      "tuned_n_steps": 4,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.72369895875454,
+-      "cold_sampling_s": 4.246516214683652,
+-      "n_grad_evals": 1024000,
+-      "ess_per_grad": 0.0006898961005412991
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_777/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_777/a100_triple_bench.json
+deleted file mode 100644
+index 96bb838..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z/seed_777/a100_triple_bench.json
++++ /dev/null
+@@ -1,70 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 777,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 15.643418425694108,
+-      "wall_warm": 0.41300621908158064,
+-      "min_ess": 726.635663079643,
+-      "max_rhat": 1.259952875122534,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.7529016989211099,
+-      "tuned_n_steps": 4,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 11.396216888912022,
+-      "cold_sampling_s": 4.247201536782086,
+-      "n_grad_evals": 1024000,
+-      "ess_per_grad": 0.0007096051397262139
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_123/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_123/a100_triple_bench.json
+deleted file mode 100644
+index a2cb7fc..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_123/a100_triple_bench.json
++++ /dev/null
+@@ -1,75 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 123,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 1.4031757963821292,
+-      "wall_warm": 0.271473367,
+-      "min_ess": 80990.45422892024,
+-      "max_rhat": 1.0147054051014242,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.00169128,
+-        "warmup_s": 0.046426344999999994,
+-        "sampling_s": 0.271473367
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 16384,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.10545632061057322
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_42/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_42/a100_triple_bench.json
+deleted file mode 100644
+index 2b26947..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_42/a100_triple_bench.json
++++ /dev/null
+@@ -1,75 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 42,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 1.4037135588005185,
+-      "wall_warm": 0.25787086900000006,
+-      "min_ess": 53514.233001917375,
+-      "max_rhat": 1.0083257626827569,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001669031,
+-        "warmup_s": 0.044976812,
+-        "sampling_s": 0.25787086900000006
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 16384,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.06967999088791325
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_777/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_777/a100_triple_bench.json
+deleted file mode 100644
+index c86ff0f..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z/seed_777/a100_triple_bench.json
++++ /dev/null
+@@ -1,75 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 777,
+-    "report_chains": 256,
+-    "models": [
+-      "neal_funnel_10d"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "neal_funnel_10d",
+-      "wall_s": 1.4054422583431005,
+-      "wall_warm": 0.25885028099999996,
+-      "min_ess": 54767.84130427259,
+-      "max_rhat": 1.0057075114610559,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001383638,
+-        "warmup_s": 0.048086082,
+-        "sampling_s": 0.25885028099999996
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 16384,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.07131229336493826
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_123/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_123/a100_triple_bench.json
+deleted file mode 100644
+index 63c0e32..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_123/a100_triple_bench.json
++++ /dev/null
+@@ -1,182 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 123,
+-    "report_chains": 256,
+-    "models": [
+-      "std_normal_10d",
+-      "eight_schools",
+-      "glm_logistic"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 1.4993610177189112,
+-      "wall_warm": 0.23299498,
+-      "min_ess": 158905.87231715047,
+-      "max_rhat": 1.0058935032456713,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001389079,
+-        "warmup_s": 0.189237454,
+-        "sampling_s": 0.23299498
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.3103630318694345
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 14.063894481398165,
+-      "wall_warm": 0.2189009040594101,
+-      "min_ess": 1717.6801664939699,
+-      "max_rhat": 1.1009631471467656,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 2.8752533690263316,
+-      "tuned_n_steps": 1,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.330282128416002,
+-      "cold_sampling_s": 3.7336123529821634,
+-      "n_grad_evals": 256000,
+-      "ess_per_grad": 0.00670968815036707
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 1.4247591039165854,
+-      "wall_warm": 0.23375861299999998,
+-      "min_ess": 81440.42809246897,
+-      "max_rhat": 1.0065516308716413,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.000768884,
+-        "warmup_s": 0.059964031,
+-        "sampling_s": 0.23375861299999998
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.10604222407873563
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 11.538244457915425,
+-      "wall_warm": 0.3458975488319993,
+-      "min_ess": 34045.357062364914,
+-      "max_rhat": 1.0058986542706982,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 1.349768234044303,
+-      "tuned_n_steps": 2,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 8.098240959458053,
+-      "cold_sampling_s": 3.440003498457372,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.06649483801243147
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 23.820923226885498,
+-      "wall_warm": 9.252022159,
+-      "min_ess": 77852.0313812661,
+-      "max_rhat": 1.0084818286419155,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001461111,
+-        "warmup_s": 12.15589198,
+-        "sampling_s": 9.252022159
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.95,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.10136983252769025
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 99.68972603324801,
+-      "wall_warm": 86.69377145916224,
+-      "min_ess": 19582.594114142703,
+-      "max_rhat": 1.0121855226450518,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.15492871228978394,
+-      "tuned_n_steps": 29,
+-      "tuned_L": 4.47213595499958,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.482856410555542,
+-      "cold_sampling_s": 89.20686962269247,
+-      "n_grad_evals": 7424000,
+-      "ess_per_grad": 0.0026377416640817218
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_42/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_42/a100_triple_bench.json
+deleted file mode 100644
+index 8010681..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_42/a100_triple_bench.json
++++ /dev/null
+@@ -1,182 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 42,
+-    "report_chains": 256,
+-    "models": [
+-      "std_normal_10d",
+-      "eight_schools",
+-      "glm_logistic"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 1.5540441032499075,
+-      "wall_warm": 0.24027190399999998,
+-      "min_ess": 163573.57880744504,
+-      "max_rhat": 1.0093807428342674,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001428863,
+-        "warmup_s": 0.199226564,
+-        "sampling_s": 0.24027190399999998
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.3194796461082911
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 14.082722781226039,
+-      "wall_warm": 0.2286735074594617,
+-      "min_ess": 1770.7953941309515,
+-      "max_rhat": 1.1061887612847383,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 2.875111915360532,
+-      "tuned_n_steps": 1,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.03440522402525,
+-      "cold_sampling_s": 4.0483175572007895,
+-      "n_grad_evals": 256000,
+-      "ess_per_grad": 0.0069171695083240295
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 1.4211452836170793,
+-      "wall_warm": 0.24189209599999997,
+-      "min_ess": 69787.61432558805,
+-      "max_rhat": 1.0064913717619535,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.000695743,
+-        "warmup_s": 0.054242828,
+-        "sampling_s": 0.24189209599999997
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.09086928948644277
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 11.769479082897305,
+-      "wall_warm": 0.3408883037045598,
+-      "min_ess": 20533.436592050184,
+-      "max_rhat": 1.0114843737781467,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 1.5286887527939192,
+-      "tuned_n_steps": 2,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 8.226681614294648,
+-      "cold_sampling_s": 3.5427974686026573,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.040104368343848014
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 23.75435317493975,
+-      "wall_warm": 9.263770952000002,
+-      "min_ess": 76749.5937750138,
+-      "max_rhat": 1.008741158353186,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001475422,
+-        "warmup_s": 12.166154738,
+-        "sampling_s": 9.263770952000002
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.95,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.09993436689454921
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 90.61460866034031,
+-      "wall_warm": 77.76452716812491,
+-      "min_ess": 16572.831892161357,
+-      "max_rhat": 1.0136983006124403,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.17121608158544963,
+-      "tuned_n_steps": 26,
+-      "tuned_L": 4.47213595499958,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.85708384308964,
+-      "cold_sampling_s": 79.75752481725067,
+-      "n_grad_evals": 6656000,
+-      "ess_per_grad": 0.0024899086376444345
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_777/a100_triple_bench.json b/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_777/a100_triple_bench.json
+deleted file mode 100644
+index 4a45fd0..0000000
+--- a/docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z/seed_777/a100_triple_bench.json
++++ /dev/null
+@@ -1,182 +0,0 @@
+-{
+-  "environment": {
+-    "python_version": "3.12.3",
+-    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+-    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+-    "system": "Linux",
+-    "machine": "x86_64",
+-    "node": "beeb3e6dd6df",
+-    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+-    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+-    "gpus": [
+-      {
+-        "name": "Tesla V100-PCIE-16GB",
+-        "driver": "580.95.05",
+-        "compute_capability": "7.0",
+-        "memory_mb": "16384",
+-        "power_limit_w": "250.00",
+-        "compute_mode": "Default"
+-      }
+-    ],
+-    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+-    "cuda_visible_devices": null,
+-    "jax": {
+-      "jax": "0.9.0.1",
+-      "jaxlib": "0.9.0.1",
+-      "backend": "gpu",
+-      "device": "Tesla V100-PCIE-16GB",
+-      "compilation_cache_dir": null
+-    },
+-    "nextstat_version": "0.9.6",
+-    "packages": {
+-      "blackjax": "1.3",
+-      "arviz": "0.23.4",
+-      "scipy": "1.17.0",
+-      "numpy": "2.4.0"
+-    }
+-  },
+-  "config": {
+-    "n_chains_gpu": 4096,
+-    "n_chains_cpu": 4,
+-    "n_warmup": 500,
+-    "n_samples": 1000,
+-    "seed": 777,
+-    "report_chains": 256,
+-    "models": [
+-      "std_normal_10d",
+-      "eight_schools",
+-      "glm_logistic"
+-    ]
+-  },
+-  "results": [
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 1.554020468145609,
+-      "wall_warm": 0.24383177699999997,
+-      "min_ess": 159752.77129213774,
+-      "max_rhat": 1.0061922774437562,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001504163,
+-        "warmup_s": 0.197082158,
+-        "sampling_s": 0.24383177699999997
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 512000,
+-      "ess_per_grad": 0.3120171314299565
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "std_normal_10d",
+-      "wall_s": 13.582968866452575,
+-      "wall_warm": 0.2253688545897603,
+-      "min_ess": 17660.372844260288,
+-      "max_rhat": 1.0132964515684055,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 2.875165329195604,
+-      "tuned_n_steps": 1,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 9.981455262750387,
+-      "cold_sampling_s": 3.6015136037021875,
+-      "n_grad_evals": 256000,
+-      "ess_per_grad": 0.06898583142289175
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 1.4327153833582997,
+-      "wall_warm": 0.240660275,
+-      "min_ess": 75681.76635144453,
+-      "max_rhat": 1.00553995608449,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.000728886,
+-        "warmup_s": 0.047941368000000005,
+-        "sampling_s": 0.240660275
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.9,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.0985439666034434
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "eight_schools",
+-      "wall_s": 11.875644044950604,
+-      "wall_warm": 0.3723271507769823,
+-      "min_ess": 28019.636703267603,
+-      "max_rhat": 1.0079868759022037,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.9355394174942772,
+-      "tuned_n_steps": 3,
+-      "tuned_L": 3.1622776601683795,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 8.288514408282936,
+-      "cold_sampling_s": 3.587129636667669,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.03648390195737969
+-    },
+-    {
+-      "engine": "NS_LAPS_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 23.790776170790195,
+-      "wall_warm": 9.25411056,
+-      "min_ess": 89228.24185315016,
+-      "max_rhat": 1.0086325184694143,
+-      "quality_status": "ok",
+-      "quality_failures": [],
+-      "n_report_chains": 256,
+-      "phase_times": {
+-        "init_s": 0.001510606,
+-        "warmup_s": 12.156976335,
+-        "sampling_s": 9.25411056
+-      },
+-      "effective_n_warmup": 500,
+-      "effective_target_accept": 0.95,
+-      "effective_sync_interval": 50,
+-      "effective_max_leapfrog": 8192,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_grad_evals": 768000,
+-      "ess_per_grad": 0.11618260657962261
+-    },
+-    {
+-      "engine": "BlackJAX_GPU",
+-      "model": "glm_logistic",
+-      "wall_s": 87.31001298408955,
+-      "wall_warm": 74.69342312496156,
+-      "min_ess": 39375.561029525146,
+-      "max_rhat": 1.0054555880745626,
+-      "n_chains": 4096,
+-      "n_samples": 1000,
+-      "n_report_chains": 256,
+-      "tuned_step_size": 0.17986596561216606,
+-      "tuned_n_steps": 25,
+-      "tuned_L": 4.47213595499958,
+-      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+-      "warmup_s": 10.159856939688325,
+-      "cold_sampling_s": 77.15015604440123,
+-      "n_grad_evals": 6400000,
+-      "ess_per_grad": 0.006152431410863304
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/bindings/ns-py/src/lib.rs b/bindings/ns-py/src/lib.rs
+index f6d710d..d33dd04 100644
+--- a/bindings/ns-py/src/lib.rs
++++ b/bindings/ns-py/src/lib.rs
+@@ -9375,6 +9375,31 @@ fn sample_laps_py<'py>(
+                     .get_item("p")?
+                     .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
+                     .extract()?;
++                // Validate dimensions and values
++                if n == 0 || p == 0 {
++                    return Err(PyValueError::new_err("glm_logistic: n and p must be > 0"));
++                }
++                if x_data.len() != n * p {
++                    return Err(PyValueError::new_err(format!(
++                        "glm_logistic: x_data.len()={} != n*p={}*{}={}",
++                        x_data.len(), n, p, n * p
++                    )));
++                }
++                if y_data.len() != n {
++                    return Err(PyValueError::new_err(format!(
++                        "glm_logistic: y_data.len()={} != n={}",
++                        y_data.len(), n
++                    )));
++                }
++                if x_data.iter().any(|v| !v.is_finite()) {
++                    return Err(PyValueError::new_err("glm_logistic: x_data contains NaN or Inf"));
++                }
++                if y_data.iter().any(|v| !v.is_finite()) {
++                    return Err(PyValueError::new_err("glm_logistic: y_data contains NaN or Inf"));
++                }
++                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
++                    return Err(PyValueError::new_err("glm_logistic: y_data must contain only 0.0 or 1.0"));
++                }
+                 LapsModel::GlmLogistic { x_data, y_data, n, p }
+             }
+             other => {
+diff --git a/crates/ns-inference/tests/laps_nan_potential_test.rs b/crates/ns-inference/tests/laps_nan_potential_test.rs
+new file mode 100644
+index 0000000..4f3f8e0
+--- /dev/null
++++ b/crates/ns-inference/tests/laps_nan_potential_test.rs
+@@ -0,0 +1,48 @@
++//! Regression test: first-call NaN potential_old must not trigger divergence.
++//!
++//! The CUDA/Metal MAMS kernels initialize `potential_old = NaN` as a sentinel.
++//! On first call, `!isfinite(potential_old)` triggers unconditional accept.
++//! If this guard is broken, all chains diverge on the first transition.
++//!
++//! Run: `cargo test -p ns-inference --test laps_nan_potential_test --features cuda -- --ignored`
++
++#![cfg(any(feature = "cuda", feature = "metal"))]
++
++use ns_inference::laps::{LapsConfig, LapsModel, sample_laps};
++
++/// With n_warmup=1, n_samples=1 the first kernel launch always has potential_old=NaN.
++/// If the isfinite guard is broken, all chains diverge and positions are NaN.
++#[test]
++#[ignore] // Requires GPU — run with --ignored
++fn test_first_call_nan_potential_accepted() {
++    let model = LapsModel::StdNormal { dim: 2 };
++    let config = LapsConfig {
++        n_chains: 64,
++        n_warmup: 1,
++        n_samples: 1,
++        report_chains: 64,
++        seed: 42,
++        ..Default::default()
++    };
++    let result = sample_laps(&model, config).expect("LAPS sampling failed");
++
++    // First transition must accept (not diverge)
++    let n_div: usize = result
++        .sampler_result
++        .chains
++        .iter()
++        .flat_map(|c| c.divergences.iter())
++        .filter(|&&d| d)
++        .count();
++    assert_eq!(n_div, 0, "first-call NaN potential must not trigger divergence");
++
++    // Positions must be finite
++    for (ci, chain) in result.sampler_result.chains.iter().enumerate() {
++        for (di, &v) in chain.draws_constrained[0].iter().enumerate() {
++            assert!(
++                v.is_finite(),
++                "chain {ci} dim {di}: first-call draw must be finite, got {v}"
++            );
++        }
++    }
++}
+diff --git a/docs/references/python-api.md b/docs/references/python-api.md
+index fd0f738..718d4bf 100644
+--- a/docs/references/python-api.md
++++ b/docs/references/python-api.md
+@@ -100,7 +100,7 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
+ - `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
+ - `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + diagonal inverse Hessian as initial mass matrix for faster warmup).
+ - `nextstat.sample_mams(model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, target_accept=0.9, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when Pathfinder provides a Hessian-derived mass matrix, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (recommended for well-conditioned posteriors; avoid on funnel-like geometries).
+-- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Two-phase warmup: Phase 1 (unadjusted MCLMC) + Phase 2 (exact MH). `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, or a `RawCudaModel` instance. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
++- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Four-phase warmup: Phase 1 (fast DA, step-size adapt) + Phase 2 (DA + Welford, mass matrix) + Phase 3 (DA with new metric) + Phase 4 (L tuning + equilibrate). All phases use exact MH. `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, or a `RawCudaModel` instance. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
+ - `nextstat.RawCudaModel(dim, cuda_src, *, data=None, param_names=None)` — User-defined CUDA model for LAPS JIT compilation via NVRTC. The `cuda_src` must define `__device__ double user_nll(const double* x, int dim, const double* model_data)` and `__device__ void user_grad(const double* x, double* grad, int dim, const double* model_data)`. The `data` array is uploaded to GPU as `model_data`. PTX is cached to disk (`~/.cache/nextstat/ptx/`) keyed by SHA-256(source + GPU arch). Requires `cuda` feature.
+ - `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all three methods (nuts/mams/laps).
+ - `nextstat.bayes.to_inferencedata(raw) -> InferenceData` — convert a raw sampling dict into ArviZ `InferenceData`.

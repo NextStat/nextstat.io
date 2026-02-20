@@ -46,6 +46,7 @@ Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
 FunnelModel = _get("FunnelModel")
+FunnelNcpModel = _get("FunnelNcpModel")
 StdNormalModel = _get("StdNormalModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
@@ -378,6 +379,7 @@ __all__ = [
     "HybridModel",
     "GaussianMeanModel",
     "FunnelModel",
+    "FunnelNcpModel",
     "StdNormalModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",

@@ -33,6 +33,9 @@ metal = { workspace = true, optional = true }
 objc = { workspace = true, optional = true }
 block = { workspace = true, optional = true }
 
+[build-dependencies]
+sha2 = { workspace = true }
+
 [dev-dependencies]
 approx.workspace = true
 proptest.workspace = true

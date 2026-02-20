@@ -540,6 +540,7 @@ struct MamsArgs {
     int n_obs;
     int n_feat;
     int riemannian;
+    float divergence_threshold;
 };
 
 /* ---------- Main kernel: mams_transition --------------------------------- */
@@ -659,7 +660,7 @@ kernel void mams_transition(
         }
 
         float current_w = (potential - potential_old) + total_delta_k;
-        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) {
+        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > args.divergence_threshold)) {
             divergent = 1;
             break;
         }
@@ -847,7 +848,7 @@ kernel void mams_transition_fused(
             }
 
             float current_w = (potential - potential_old) + total_delta_k;
-            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) {
+            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > args.divergence_threshold)) {
                 divergent = 1;
                 break;
             }

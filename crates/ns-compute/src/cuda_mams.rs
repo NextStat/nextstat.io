@@ -178,6 +178,8 @@ pub struct CudaMamsAccelerator {
     n_feat: usize,
     // Optional cuBLAS evaluator for GLM initialization.
     glm_cublas_eval: Option<CudaGlmCublasEvaluator>,
+    // Energy error threshold for divergence detection (default: 1000.0).
+    divergence_threshold: f64,
 }
 
 pub use crate::mams_trait::{BatchResult, TransitionDiagnostics};
@@ -312,6 +314,7 @@ impl CudaMamsAccelerator {
             n_obs,
             n_feat,
             glm_cublas_eval,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -403,6 +406,7 @@ impl CudaMamsAccelerator {
             n_obs: 0,
             n_feat: 0,
             glm_cublas_eval: None,
+            divergence_threshold: 1000.0,
         })
     }
 
@@ -670,6 +674,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&store_idx_arg);
         builder.arg(&n_report_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch: {e}")))?;
@@ -762,6 +767,7 @@ impl CudaMamsAccelerator {
             builder.arg(&mut self.d_accum_energy);
             builder.arg(&store_idx_arg);
             builder.arg(&n_report_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder.launch(config).map_err(|e| cuda_err(format!("launch batch[{s}]: {e}")))?;
@@ -897,6 +903,7 @@ impl CudaMamsAccelerator {
         builder.arg(&n_obs_arg);
         builder.arg(&n_feat_arg);
         builder.arg(&warp_use_shmem_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch warp: {e}")))?;
@@ -982,6 +989,7 @@ impl CudaMamsAccelerator {
             builder.arg(&n_obs_arg);
             builder.arg(&n_feat_arg);
             builder.arg(&warp_use_shmem_arg);
+            builder.arg(&self.divergence_threshold);
 
             unsafe {
                 builder
@@ -1085,6 +1093,7 @@ impl CudaMamsAccelerator {
         builder.arg(&mut self.d_accum_energy);
         builder.arg(&n_report_arg);
         builder.arg(&n_transitions_arg);
+        builder.arg(&self.divergence_threshold);
 
         unsafe {
             builder.launch(config).map_err(|e| cuda_err(format!("launch fused: {e}")))?;
@@ -1278,5 +1287,9 @@ impl crate::mams_trait::MamsAccelerator for CudaMamsAccelerator {
 
     fn dim(&self) -> usize {
         self.dim()
+    }
+
+    fn set_divergence_threshold(&mut self, threshold: f64) {
+        self.divergence_threshold = threshold;
     }
 }

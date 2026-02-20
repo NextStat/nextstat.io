@@ -471,6 +471,25 @@ class FunnelModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class FunnelNcpModel:
+    """Neal's funnel in non-centered parameterization (NCP).
+
+    Parameters are (v, z_1, ..., z_{d-1}) where v ~ N(0,9), z_i ~ N(0,1).
+    Original parameters: x_i = exp(v/2) * z_i.
+    """
+
+    def __init__(self, dim: int = 10) -> None: ...
+
+    def n_params(self) -> int: ...
+    def dim(self) -> int: ...
+    def nll(self, params: List[float]) -> float: ...
+    def grad_nll(self, params: List[float]) -> List[float]: ...
+
+    def parameter_names(self) -> List[str]: ...
+    def suggested_init(self) -> List[float]: ...
+    def suggested_bounds(self) -> List[Tuple[float, float]]: ...
+
+
 class StdNormalModel:
     def __init__(self, dim: int = ...) -> None: ...
 
@@ -1533,6 +1552,9 @@ def sample(
 def sample(
     model: Union[
         GaussianMeanModel,
+        FunnelModel,
+        FunnelNcpModel,
+        StdNormalModel,
         LinearRegressionModel,
         LogisticRegressionModel,
         OrderedLogitModel,
@@ -1608,6 +1630,9 @@ def sample_mams(
 def sample_mams(
     model: Union[
         GaussianMeanModel,
+        FunnelModel,
+        FunnelNcpModel,
+        StdNormalModel,
         LinearRegressionModel,
         LogisticRegressionModel,
         OrderedLogitModel,
@@ -1680,6 +1705,7 @@ def sample_laps(
     fused_transitions: int = ...,
     report_chains: int = ...,
     diagonal_precond: bool = ...,
+    divergence_threshold: float = ...,
 ) -> SamplerResult: ...
 
 
