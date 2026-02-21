@@ -243,7 +243,7 @@ jobs:
       - name: Find unbinned baseline artifact
         if: always()
         id: unbinned_baseline
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;
@@ -292,7 +292,7 @@ jobs:
 
       - name: Download baseline validation artifact
         if: steps.unbinned_baseline.outputs.found == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
