@@ -189,7 +189,7 @@ jobs:
       # ort-sys downloads prebuilt ONNX Runtime binaries into the OS cache dir:
       # ~/.cache/dfbin/... on Linux. Cache it to avoid repeated downloads.
       - name: Cache ONNX Runtime binaries (ort-sys)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/dfbin
           key: ${{ runner.os }}-ort-dfbin-${{ hashFiles('Cargo.lock') }}
