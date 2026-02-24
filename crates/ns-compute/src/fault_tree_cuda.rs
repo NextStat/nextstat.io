@@ -140,9 +140,11 @@ impl FaultTreeCudaAccelerator {
             let n_comp_arg = self.n_components;
             let n_nodes_arg = self.n_nodes;
             let top_node_arg = self.top_node;
-            let seed_arg = seed.wrapping_add((offset as u64).wrapping_mul(0x9E3779B97F4A7C15));
-            let seed_lo: u32 = (seed_arg & 0xFFFF_FFFF) as u32;
-            let seed_hi: u32 = (seed_arg >> 32) as u32;
+            let seed_lo: u32 = (seed & 0xFFFF_FFFF) as u32;
+            let seed_hi: u32 = (seed >> 32) as u32;
+            let scenario_offset = offset as u64;
+            let scenario_offset_lo: u32 = (scenario_offset & 0xFFFF_FFFF) as u32;
+            let scenario_offset_hi: u32 = (scenario_offset >> 32) as u32;
             let n_scenarios_arg = this_chunk as i32;
 
             let mut builder = self.stream.launch_builder(&self.kernel);
@@ -159,6 +161,8 @@ impl FaultTreeCudaAccelerator {
             builder.arg(&top_node_arg);
             builder.arg(&seed_lo);
             builder.arg(&seed_hi);
+            builder.arg(&scenario_offset_lo);
+            builder.arg(&scenario_offset_hi);
             builder.arg(&n_scenarios_arg);
 
             unsafe {

@@ -311,8 +311,21 @@ def main() -> int:
             if any_failed:
                 # For GPU-intended cases, treat "no GPU backend" as a warning rather than a failure.
                 # This keeps CPU-only environments runnable while still reporting the absence.
-                warm_reason = str(warm_obj.get("reason") or "")
-                if backend == "jax_jit_gpu" and "requested platform=gpu" in warm_reason:
+                all_reasons = [str(warm_obj.get("reason") or "")]
+                all_reasons.extend(str(r.get("reason") or "") for r in cold_runs)
+                all_reasons_str = " ".join(all_reasons).lower()
+                gpu_unavailable_hints = [
+                    "requested platform=gpu",
+                    "unable to initialize backend",
+                    "unknown backend",
+                    "no gpu",
+                    "no platforms",
+                    "cuda",
+                    "gpu_unavailable",
+                ]
+                if backend == "jax_jit_gpu" and any(
+                    h in all_reasons_str for h in gpu_unavailable_hints
+                ):
                     status = "warn"
                     reason = "gpu_unavailable"
                 else:

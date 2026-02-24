@@ -135,6 +135,46 @@ print("Best-fit POI:", result.bestfit[poi_idx])
 print("Uncertainty:", result.uncertainties[poi_idx])
 ```
 
+### Population PK (`nlme_foce`) with multi-cpt FO/ITS/IMP
+
+```python
+import nextstat
+
+times = [0.5, 1.0, 2.0, 4.0, 8.0] * 4
+subject_idx = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3]
+y = [8.0, 6.2, 4.1, 2.6, 1.2] * 4
+
+fit_fo = nextstat.nlme_foce(
+    times,
+    y,
+    subject_idx,
+    4,
+    model="2cpt_iv",
+    method="fo",
+    doses=[120.0],  # length-1 broadcasts to all subjects
+    theta_init=[1.2, 15.0, 0.8, 20.0],
+    omega_init=[0.2, 0.2, 0.2, 0.2],
+    error_model="additive",
+    sigma=0.1,
+)
+
+fit_imp = nextstat.nlme_foce(
+    times,
+    y,
+    subject_idx,
+    4,
+    model="3cpt_iv",
+    method="imp",
+    doses=[120.0],
+    theta_init=[1.1, 14.0, 0.7, 18.0, 0.5, 28.0],
+    omega_init=[0.2] * 6,
+    imp_n_iter=5,
+    imp_n_samples=100,
+    error_model="additive",
+    sigma=0.1,
+)
+```
+
 ### Unbinned (event-level) API
 
 Compile an event-level likelihood from an `unbinned_spec_v0` JSON/YAML file and run fits/scans:

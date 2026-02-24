@@ -52,3 +52,31 @@ Purpose: tight microbenchmarks for performance regressions (SIMD, NLL kernels, N
 - Outputs:
   - `target/criterion/` (Criterion HTML + summaries)
 
+## 4) GPU Triple Harness (LAPS vs MAMS vs BlackJAX)
+
+Path: `benchmarks/gpu_triple_bench.py`
+
+Purpose: apples-to-apples GPU benchmark for:
+
+- `NS_LAPS_GPU`
+- `NS_CPU_MAMS`
+- `BlackJAX_GPU`
+
+Key metric semantics (current, canonical):
+
+- `wall_s`: total run wall time for the engine row.
+- `wall_sampling`: sampling-phase wall time used for throughput metrics.
+- `ESS/s(samp)`: `min_ess / wall_sampling`.
+- `ESS/grad`: `min_ess / n_grad_evals`.
+- `grad/s`: `n_grad_evals / wall_sampling`.
+
+Output artifact:
+
+- `gpu_triple_bench.json` only.
+- Legacy alias `a100_triple_bench.json` is removed to avoid GPU-name confusion on non-A100 hosts (for example V100/GEX44).
+
+Operational note (shared GPU host):
+
+- When running LAPS and BlackJAX in the same process on one GPU, disable JAX preallocation to avoid CUDA OOM/resource contention:
+  - `XLA_PYTHON_CLIENT_PREALLOCATE=false`
+  - `XLA_PYTHON_CLIENT_ALLOCATOR=platform`

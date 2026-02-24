@@ -1,0 +1,211 @@
+{
+  "root": "/tmp/epyc_cpu_mams_scaling_20260220T120216Z",
+  "n_files": 12,
+  "n_rows": 36,
+  "summary": [
+    {
+      "chains": 4,
+      "model": "eight_schools",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.020635983091779053,
+      "wall_sampling_median": 0.020635983091779053,
+      "min_ess_median": 1683.6470610160811,
+      "ess_per_sec_median": 87320.90281046108,
+      "ess_per_grad_median": 0.16008814880822297,
+      "grad_per_sec_median": 642760.7514993604,
+      "max_rhat_median": 1.0103100921942276,
+      "n_grad_evals_median": 12288.0
+    },
+    {
+      "chains": 4,
+      "model": "glm_logistic",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 14.502032795920968,
+      "wall_sampling_median": 14.502032795920968,
+      "min_ess_median": 1193.1249481309937,
+      "ess_per_sec_median": 75.45316497805787,
+      "ess_per_grad_median": 0.14914061851637422,
+      "grad_per_sec_median": 551.6468010091788,
+      "max_rhat_median": 1.0085190254493823,
+      "n_grad_evals_median": 8000.0
+    },
+    {
+      "chains": 4,
+      "model": "std_normal_10d",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.022183945984579623,
+      "wall_sampling_median": 0.022183945984579623,
+      "min_ess_median": 1723.8163042188548,
+      "ess_per_sec_median": 77705.57615931377,
+      "ess_per_grad_median": 0.2834556584248024,
+      "grad_per_sec_median": 262982.9699394011,
+      "max_rhat_median": 1.0043292354148647,
+      "n_grad_evals_median": 6025.0
+    },
+    {
+      "chains": 8,
+      "model": "eight_schools",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.03526705410331488,
+      "wall_sampling_median": 0.03526705410331488,
+      "min_ess_median": 3650.0825737931523,
+      "ess_per_sec_median": 98407.96689690919,
+      "ess_per_grad_median": 0.1538090074575272,
+      "grad_per_sec_median": 675276.1353481334,
+      "max_rhat_median": 1.0095325447455181,
+      "n_grad_evals_median": 23815.0
+    },
+    {
+      "chains": 8,
+      "model": "glm_logistic",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 14.857404512935318,
+      "wall_sampling_median": 14.857404512935318,
+      "min_ess_median": 2311.9228181814356,
+      "ess_per_sec_median": 150.30517512111243,
+      "ess_per_grad_median": 0.14449517613633972,
+      "grad_per_sec_median": 1057.0486915346983,
+      "max_rhat_median": 1.007156301840432,
+      "n_grad_evals_median": 16000.0
+    },
+    {
+      "chains": 8,
+      "model": "std_normal_10d",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.04070066998247057,
+      "wall_sampling_median": 0.04070066998247057,
+      "min_ess_median": 3554.1863885311145,
+      "ess_per_sec_median": 87325.00939325745,
+      "ess_per_grad_median": 0.2854768183559128,
+      "grad_per_sec_median": 305891.77046378126,
+      "max_rhat_median": 1.0039990006636654,
+      "n_grad_evals_median": 12450.0
+    },
+    {
+      "chains": 16,
+      "model": "eight_schools",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.08088363998103887,
+      "wall_sampling_median": 0.08088363998103887,
+      "min_ess_median": 7303.737579356906,
+      "ess_per_sec_median": 85769.42019036922,
+      "ess_per_grad_median": 0.16129008517327137,
+      "grad_per_sec_median": 603459.4883643006,
+      "max_rhat_median": 1.008839695222903,
+      "n_grad_evals_median": 47809.0
+    },
+    {
+      "chains": 16,
+      "model": "glm_logistic",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 19.880482084001414,
+      "wall_sampling_median": 19.880482084001414,
+      "min_ess_median": 4685.448434164969,
+      "ess_per_sec_median": 235.65406790964647,
+      "ess_per_grad_median": 0.14642026356765528,
+      "grad_per_sec_median": 1609.618914913116,
+      "max_rhat_median": 1.0056979722141284,
+      "n_grad_evals_median": 32000.0
+    },
+    {
+      "chains": 16,
+      "model": "std_normal_10d",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.08504794305190444,
+      "wall_sampling_median": 0.08504794305190444,
+      "min_ess_median": 7769.072383512287,
+      "ess_per_sec_median": 93050.80881114348,
+      "ess_per_grad_median": 0.2972556008383948,
+      "grad_per_sec_median": 310895.2321617368,
+      "max_rhat_median": 1.0032623609511184,
+      "n_grad_evals_median": 26136.0
+    },
+    {
+      "chains": 32,
+      "model": "eight_schools",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.15574275108519942,
+      "wall_sampling_median": 0.15574275108519942,
+      "min_ess_median": 15494.523909147807,
+      "ess_per_sec_median": 96089.27795501405,
+      "ess_per_grad_median": 0.16974740277821979,
+      "grad_per_sec_median": 597055.0754502292,
+      "max_rhat_median": 1.0062837167323857,
+      "n_grad_evals_median": 92987.0
+    },
+    {
+      "chains": 32,
+      "model": "glm_logistic",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 22.366704492014833,
+      "wall_sampling_median": 22.366704492014833,
+      "min_ess_median": 9439.54794502812,
+      "ess_per_sec_median": 419.0516439766062,
+      "ess_per_grad_median": 0.1474929366410644,
+      "grad_per_sec_median": 2848.2068077013046,
+      "max_rhat_median": 1.0051312303705975,
+      "n_grad_evals_median": 64000.0
+    },
+    {
+      "chains": 32,
+      "model": "std_normal_10d",
+      "seeds": [
+        42,
+        123,
+        777
+      ],
+      "wall_s_median": 0.15592628601007164,
+      "wall_sampling_median": 0.15592628601007164,
+      "min_ess_median": 15262.657138137549,
+      "ess_per_sec_median": 97883.7983555364,
+      "ess_per_grad_median": 0.3074111691703267,
+      "grad_per_sec_median": 318413.27893100114,
+      "max_rhat_median": 1.0025668231932672,
+      "n_grad_evals_median": 49888.0
+    }
+  ]
+}

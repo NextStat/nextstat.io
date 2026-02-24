@@ -21,6 +21,7 @@ using namespace metal;
 
 constant int MAX_DIM = 128;
 constant int MAX_DIM_SIMD = 32;
+constant int MAX_DIM_SIMD_HI = 96;
 
 /* ---------- Philox-4x32 inline RNG --------------------------------------- */
 
@@ -273,6 +274,331 @@ inline float nll_glm_logistic(
     return nll;
 }
 
+// Model 6: GLM linear regression with N(0,1) prior on beta, σ=1 fixed.
+// params: [beta_0, ..., beta_{p-1}]
+// model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
+inline void grad_glm_linear(
+    thread const float* beta, thread float* grad, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    device const float* X = model_data + 2;
+    device const float* y = model_data + 2 + n * p;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j]; // prior
+    }
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        float residual = eta - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * X[i * p + j];
+        }
+    }
+}
+
+inline float nll_glm_linear(
+    thread const float* beta, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    device const float* X = model_data + 2;
+    device const float* y = model_data + 2 + n * p;
+
+    float nll = 0.0f;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5f * beta[j] * beta[j];
+    }
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        float r = eta - y[i];
+        nll += 0.5f * r * r;
+    }
+    return nll;
+}
+
+// Model 7: GLM Poisson regression with N(0,1) prior on beta.
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag=1)]
+inline void grad_glm_poisson(
+    thread const float* beta, thread float* grad, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j];
+    }
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+        float mu = exp(eta);
+        float diff = mu - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X[i * p + j];
+        }
+    }
+}
+
+inline float nll_glm_poisson(
+    thread const float* beta, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    float nll = 0.0f;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5f * beta[j] * beta[j];
+    }
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+        nll += exp(eta) - y[i] * eta;
+    }
+    return nll;
+}
+
+// Digamma function for f32: asymptotic expansion with recursion for x < 8.
+inline float digamma_f(float x) {
+    float result = 0.0f;
+    while (x < 8.0f) {
+        result -= 1.0f / x;
+        x += 1.0f;
+    }
+    float inv_x = 1.0f / x;
+    float inv_x2 = inv_x * inv_x;
+    result += log(x) - 0.5f * inv_x
+        - inv_x2 * (1.0f/12.0f - inv_x2 * (1.0f/120.0f - inv_x2 * (1.0f/252.0f)));
+    return result;
+}
+
+// lgamma for f32: Metal stdlib does NOT provide lgamma.
+// Stirling approximation with recursion for small x.
+inline float lgamma_f(float x) {
+    // Reflection for x < 0.5: lgamma(x) = ln(π/sin(πx)) - lgamma(1-x)
+    if (x < 0.5f) {
+        return log(3.14159265f / sin(3.14159265f * x)) - lgamma_f(1.0f - x);
+    }
+    // Shift x up until x >= 8 for good Stirling convergence
+    float shift = 0.0f;
+    while (x < 8.0f) {
+        shift -= log(x);
+        x += 1.0f;
+    }
+    // Stirling series: lgamma(x) = 0.5*ln(2π) + (x-0.5)*ln(x) - x + sum(B_{2k}...)
+    float inv_x = 1.0f / x;
+    float inv_x2 = inv_x * inv_x;
+    float result = 0.9189385332f  // 0.5 * ln(2π)
+        + (x - 0.5f) * log(x) - x
+        + inv_x * (1.0f/12.0f - inv_x2 * (1.0f/360.0f - inv_x2 * (1.0f/1260.0f
+            - inv_x2 * (1.0f/1680.0f))));
+    return result + shift;
+}
+
+// Model 8: GLM Negative Binomial regression (f32).
+// params: [beta_0..p-1, log_alpha], dim = p+1
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag=1)]
+inline void grad_glm_negbin(
+    thread const float* x, thread float* grad, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    thread const float* beta = x;
+    float log_alpha = x[p];
+    float log_alpha_c = clamp(log_alpha, -10.0f, 8.0f);
+    float alpha = exp(log_alpha_c);
+    float theta = 1.0f / alpha;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j];
+    }
+    grad[p] = log_alpha;
+
+    float d_log_alpha = 0.0f;
+
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+
+        float mu = exp(eta);
+        float yi = y[i];
+        float denom = theta + mu;
+
+        float d_eta = mu * (theta + yi) / denom - yi;
+        for (int j = 0; j < p; j++) {
+            grad[j] += d_eta * X[i * p + j];
+        }
+
+        float psi_yi_theta = digamma_f(yi + theta);
+        float psi_theta = digamma_f(theta);
+        float d_theta = -(psi_yi_theta - psi_theta + log(theta / denom) + 1.0f - (theta + yi) / denom);
+        d_log_alpha += d_theta * (-theta);
+    }
+    // When log_alpha is outside clamp range, likelihood is flat → zero gradient.
+    if (log_alpha <= -10.0f || log_alpha >= 8.0f) {
+        d_log_alpha = 0.0f;
+    }
+    grad[p] += d_log_alpha;
+}
+
+inline float nll_glm_negbin(
+    thread const float* x, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int offset_flag = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    thread const float* beta = x;
+    float log_alpha = x[p];
+    float log_alpha_c = clamp(log_alpha, -10.0f, 8.0f);
+    float alpha = exp(log_alpha_c);
+    float theta = 1.0f / alpha;
+
+    float nll = 0.0f;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5f * beta[j] * beta[j];
+    }
+    nll += 0.5f * log_alpha * log_alpha;
+
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        if (offset_flag == 1) eta += offset[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+
+        float mu = exp(eta);
+        float yi = y[i];
+        float denom = theta + mu;
+
+        nll -= lgamma_f(yi + theta) - lgamma_f(theta) + theta * log(theta / denom) + yi * log(mu / denom);
+    }
+    return nll;
+}
+
+// Model 9: Composed GLM logistic with random intercept (NCP, f32).
+// params: [beta_0..p-1, z_0..z_{G-1}], dim = p+G
+// model_data: [n, p, G, X_row(n*p), y(n), group_idx(n), X_col(n*p), re_prior_sigma]
+inline void grad_glm_composed_logistic(
+    thread const float* x, thread float* grad, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int G = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* grp = model_data + 3 + n * p + n;
+    float re_scale = model_data[3 + n * p + n + n + n * p];
+
+    thread const float* beta = x;
+    thread const float* z_re = x + p;
+
+    for (int j = 0; j < p; j++) {
+        grad[j] = beta[j];
+    }
+    for (int j = 0; j < G; j++) {
+        grad[p + j] = z_re[j];
+    }
+
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        int gi = (int)grp[i];
+        if (gi >= 0 && gi < G) {
+            eta += re_scale * z_re[gi];
+        }
+        float prob = sigmoid_f(eta);
+        float diff = prob - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X[i * p + j];
+        }
+        if (gi >= 0 && gi < G) {
+            grad[p + gi] += diff * re_scale;
+        }
+    }
+}
+
+inline float nll_glm_composed_logistic(
+    thread const float* x, int dim,
+    device const float* model_data)
+{
+    int n = (int)model_data[0];
+    int p = (int)model_data[1];
+    int G = (int)model_data[2];
+    device const float* X = model_data + 3;
+    device const float* y = model_data + 3 + n * p;
+    device const float* grp = model_data + 3 + n * p + n;
+    float re_scale = model_data[3 + n * p + n + n + n * p];
+
+    thread const float* beta = x;
+    thread const float* z_re = x + p;
+
+    float nll = 0.0f;
+    for (int j = 0; j < p; j++) {
+        nll += 0.5f * beta[j] * beta[j];
+    }
+    for (int j = 0; j < G; j++) {
+        nll += 0.5f * z_re[j] * z_re[j];
+    }
+
+    for (int i = 0; i < n; i++) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X[i * p + j] * beta[j];
+        }
+        int gi = (int)grp[i];
+        if (gi >= 0 && gi < G) {
+            eta += re_scale * z_re[gi];
+        }
+        float abs_eta = abs(eta);
+        nll += max(eta, 0.0f) + log(1.0f + exp(-abs_eta)) - y[i] * eta;
+    }
+    return nll;
+}
+
 // Model 4: NealFunnel — non-centered parameterization.
 // params: [v, z_1, ..., z_{d-1}]
 // Potential: U(v,z) = v^2/18 + sum(z_i^2)/2
@@ -438,6 +764,10 @@ inline float model_nll(
         case 3: return nll_glm_logistic(x, dim, model_data);
         case 4: return nll_neal_funnel_ncp(x, dim, model_data);
         case 5: return nll_neal_funnel_riemannian(x, dim, model_data);
+        case 6: return nll_glm_linear(x, dim, model_data);
+        case 7: return nll_glm_poisson(x, dim, model_data);
+        case 8: return nll_glm_negbin(x, dim, model_data);
+        case 9: return nll_glm_composed_logistic(x, dim, model_data);
         default: return 1e30f;
     }
 }
@@ -453,6 +783,10 @@ inline void model_grad(
         case 3: grad_glm_logistic(x, grad, dim, model_data); break;
         case 4: grad_neal_funnel_ncp(x, grad, dim, model_data); break;
         case 5: grad_neal_funnel_riemannian(x, grad, dim, model_data); break;
+        case 6: grad_glm_linear(x, grad, dim, model_data); break;
+        case 7: grad_glm_poisson(x, grad, dim, model_data); break;
+        case 8: grad_glm_negbin(x, grad, dim, model_data); break;
+        case 9: grad_glm_composed_logistic(x, grad, dim, model_data); break;
     }
 }
 
@@ -540,6 +874,7 @@ struct MamsArgs {
     int n_obs;
     int n_feat;
     int riemannian;
+    float divergence_threshold;
 };
 
 /* ---------- Main kernel: mams_transition --------------------------------- */
@@ -659,7 +994,7 @@ kernel void mams_transition(
         }
 
         float current_w = (potential - potential_old) + total_delta_k;
-        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) {
+        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > args.divergence_threshold)) {
             divergent = 1;
             break;
         }
@@ -847,7 +1182,7 @@ kernel void mams_transition_fused(
             }
 
             float current_w = (potential - potential_old) + total_delta_k;
-            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) {
+            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > args.divergence_threshold)) {
                 divergent = 1;
                 break;
             }
@@ -946,10 +1281,17 @@ inline float grad_nll_glm_simd_tg(
             eta += s_X_col[j * n + i] * beta[j];
         }
 
-        float prob = sigmoid_f(eta);
-        float abs_eta = abs(eta);
-        nll += max(eta, 0.0f) + log(1.0f + exp(-abs_eta)) - s_y[i] * eta;
-
+        float prob, log1pexp;
+        if (eta >= 0.0f) {
+            float e = exp(-eta);
+            prob = 1.0f / (1.0f + e);
+            log1pexp = eta + log(1.0f + e);
+        } else {
+            float e = exp(eta);
+            prob = e / (1.0f + e);
+            log1pexp = log(1.0f + e);
+        }
+        nll += log1pexp - s_y[i] * eta;
         float diff = prob - s_y[i];
         for (int j = 0; j < p; j++) {
             grad[j] += diff * s_X_col[j * n + i];
@@ -988,9 +1330,17 @@ inline float grad_nll_glm_simd_global_p##P_VAL(                                \
         for (int j = 0; j < P_VAL; j++) {                                      \
             eta += X_col[j * n + i] * beta[j];                                \
         }                                                                      \
-        float prob = sigmoid_f(eta);                                           \
-        float abs_eta = abs(eta);                                              \
-        nll += max(eta, 0.0f) + log(1.0f + exp(-abs_eta)) - y[i] * eta;       \
+        float prob, log1pexp;                                                  \
+        if (eta >= 0.0f) {                                                     \
+            float e = exp(-eta);                                               \
+            prob = 1.0f / (1.0f + e);                                          \
+            log1pexp = eta + log(1.0f + e);                                    \
+        } else {                                                               \
+            float e = exp(eta);                                                \
+            prob = e / (1.0f + e);                                             \
+            log1pexp = log(1.0f + e);                                          \
+        }                                                                      \
+        nll += log1pexp - y[i] * eta;                                         \
         float diff = prob - y[i];                                              \
         for (int j = 0; j < P_VAL; j++) {                                      \
             grad[j] += diff * X_col[j * n + i];                               \
@@ -1039,10 +1389,17 @@ inline float grad_nll_glm_simd_global(
             eta += X_col[j * n + i] * beta[j];
         }
 
-        float prob = sigmoid_f(eta);
-        float abs_eta = abs(eta);
-        nll += max(eta, 0.0f) + log(1.0f + exp(-abs_eta)) - y[i] * eta;
-
+        float prob, log1pexp;
+        if (eta >= 0.0f) {
+            float e = exp(-eta);
+            prob = 1.0f / (1.0f + e);
+            log1pexp = eta + log(1.0f + e);
+        } else {
+            float e = exp(eta);
+            prob = e / (1.0f + e);
+            log1pexp = log(1.0f + e);
+        }
+        nll += log1pexp - y[i] * eta;
         float diff = prob - y[i];
         for (int j = 0; j < p; j++) {
             grad[j] += diff * X_col[j * n + i];
@@ -1062,210 +1419,457 @@ inline float grad_nll_glm_simd_global(
     return nll + prior;
 }
 
-kernel void mams_transition_simdgroup(
-    device float* g_x              [[buffer(0)]],
-    device float* g_u              [[buffer(1)]],
-    device float* g_potential      [[buffer(2)]],
-    device float* g_grad           [[buffer(3)]],
-    device const float* d_eps      [[buffer(4)]],
-    device const float* inv_mass   [[buffer(5)]],
-    device const float* model_data [[buffer(6)]],
-    device int* accepted           [[buffer(7)]],
-    device float* energy_error     [[buffer(8)]],
-    device float* g_sample_buf     [[buffer(9)]],
-    device float* g_accum_potential [[buffer(10)]],
-    device int* g_accum_accepted   [[buffer(11)]],
-    device float* g_accum_energy   [[buffer(12)]],
-    constant MamsArgs& args        [[buffer(13)]],
-    threadgroup float* tg_mem      [[threadgroup(0)]],
-    uint tid [[thread_position_in_grid]],
+/* ---- SIMD-cooperative GLM Linear (model 6) ---- */
+// Fused grad+NLL, global memory. model_data: [n, p, X_row(n*p), y(n), X_col(n*p)]
+inline float grad_nll_glm_linear_simd_global(
+    thread const float* beta, thread float* grad, int dim,
+    device const float* model_data, int n, int p, uint lane_id)
+{
+    device const float* X_col = model_data + 2 + n * p + n;
+    device const float* y = model_data + 2 + n * p;
+
+    for (int j = 0; j < p; j++) grad[j] = 0.0f;
+    float nll = 0.0f;
+
+    for (int i = (int)lane_id; i < n; i += 32) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[j * n + i] * beta[j];
+        }
+        float residual = eta - y[i];
+        nll += 0.5f * residual * residual;
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * X_col[j * n + i];
+        }
+    }
+
+    nll = simd_sum(nll);
+    for (int j = 0; j < p; j++) {
+        grad[j] = simd_sum(grad[j]) + beta[j];
+    }
+    float prior = 0.0f;
+    for (int j = 0; j < p; j++) prior += 0.5f * beta[j] * beta[j];
+    return nll + prior;
+}
+
+// Threadgroup memory variant
+inline float grad_nll_glm_linear_simd_tg(
+    thread const float* beta, thread float* grad, int dim,
+    threadgroup const float* s_X_col, threadgroup const float* s_y,
+    int n, int p, uint lane_id)
+{
+    for (int j = 0; j < p; j++) grad[j] = 0.0f;
+    float nll = 0.0f;
+
+    for (int i = (int)lane_id; i < n; i += 32) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += s_X_col[j * n + i] * beta[j];
+        }
+        float residual = eta - s_y[i];
+        nll += 0.5f * residual * residual;
+        for (int j = 0; j < p; j++) {
+            grad[j] += residual * s_X_col[j * n + i];
+        }
+    }
+
+    nll = simd_sum(nll);
+    for (int j = 0; j < p; j++) {
+        grad[j] = simd_sum(grad[j]) + beta[j];
+    }
+    float prior = 0.0f;
+    for (int j = 0; j < p; j++) prior += 0.5f * beta[j] * beta[j];
+    return nll + prior;
+}
+
+/* ---- SIMD-cooperative GLM Poisson (model 7) ---- */
+// Fused grad+NLL, global memory.
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag)]
+inline float grad_nll_glm_poisson_simd_global(
+    thread const float* beta, thread float* grad, int dim,
+    device const float* model_data, int n, int p, uint lane_id)
+{
+    int offset_flag = (int)model_data[2];
+    device const float* X_col = model_data + 3 + n * p + n;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset_arr = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    for (int j = 0; j < p; j++) grad[j] = 0.0f;
+    float nll = 0.0f;
+
+    for (int i = (int)lane_id; i < n; i += 32) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[j * n + i] * beta[j];
+        }
+        if (offset_arr) eta += offset_arr[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+
+        float exp_eta = exp(eta);
+        nll += exp_eta - y[i] * eta;
+        float diff = exp_eta - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X_col[j * n + i];
+        }
+    }
+
+    nll = simd_sum(nll);
+    for (int j = 0; j < p; j++) {
+        grad[j] = simd_sum(grad[j]) + beta[j];
+    }
+    float prior = 0.0f;
+    for (int j = 0; j < p; j++) prior += 0.5f * beta[j] * beta[j];
+    return nll + prior;
+}
+
+/* ---- SIMD-cooperative GLM NegBin (model 8) ---- */
+// Fused grad+NLL, global memory.
+// x = [beta_0..p-1, log_alpha], dim = p+1
+// model_data: [n, p, offset_flag, X_row(n*p), y(n), X_col(n*p), offset(n if flag)]
+inline float grad_nll_glm_negbin_simd_global(
+    thread const float* x, thread float* grad, int dim,
+    device const float* model_data, int n, int p, uint lane_id)
+{
+    int offset_flag = (int)model_data[2];
+    device const float* X_col = model_data + 3 + n * p + n;
+    device const float* y = model_data + 3 + n * p;
+    device const float* offset_arr = (offset_flag == 1) ? (model_data + 3 + n * p + n + n * p) : nullptr;
+
+    thread const float* beta = x;
+    float log_alpha = x[p];
+    float log_alpha_c = clamp(log_alpha, -10.0f, 8.0f);
+    float alpha = exp(log_alpha_c);
+    float theta = 1.0f / alpha;
+
+    for (int j = 0; j < dim; j++) grad[j] = 0.0f;
+    float nll = 0.0f;
+
+    for (int i = (int)lane_id; i < n; i += 32) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[j * n + i] * beta[j];
+        }
+        if (offset_arr) eta += offset_arr[i];
+        eta = clamp(eta, -50.0f, 50.0f);
+
+        float mu = exp(eta);
+        float yi = y[i];
+        float denom = theta + mu;
+        nll -= lgamma_f(yi + theta) - lgamma_f(theta) + theta * log(theta / denom) + yi * log(mu / denom);
+
+        // d(NLL_i)/d(eta_i) = mu*(theta+yi)/denom - yi  (same as scalar kernel)
+        float d_eta = mu * (theta + yi) / denom - yi;
+        for (int j = 0; j < p; j++) {
+            grad[j] += d_eta * X_col[j * n + i];
+        }
+        float psi_yi_theta = digamma_f(yi + theta);
+        float psi_theta = digamma_f(theta);
+        float dnll_dtheta = -(psi_yi_theta - psi_theta + log(theta / denom) + 1.0f - (theta + yi) / denom);
+        grad[p] += dnll_dtheta * (-theta);
+    }
+
+    nll = simd_sum(nll);
+    for (int j = 0; j < p; j++) {
+        grad[j] = simd_sum(grad[j]) + beta[j];
+    }
+    {
+        float likelihood_grad = simd_sum(grad[p]);
+        // When log_alpha is outside clamp range, likelihood is flat → zero gradient.
+        if (log_alpha <= -10.0f || log_alpha >= 8.0f) {
+            likelihood_grad = 0.0f;
+        }
+        grad[p] = likelihood_grad + log_alpha;
+    }
+
+    float prior = 0.0f;
+    for (int j = 0; j < p; j++) prior += 0.5f * beta[j] * beta[j];
+    prior += 0.5f * log_alpha * log_alpha;
+    return nll + prior;
+}
+
+/* ---- SIMD-cooperative GLM ComposedLogistic (model 9) ---- */
+// Fused grad+NLL, global memory.
+// model_data: [n, p, G, X_row(n*p), y(n), group_idx(n), X_col(n*p), re_prior_sigma]
+// x = [beta_0..p-1, z_0..z_{G-1}], dim = p + G
+inline float grad_nll_glm_composed_logistic_simd_global(
+    thread const float* x, thread float* grad, int dim,
+    device const float* model_data, int n, int p, uint lane_id)
+{
+    int G = (int)model_data[2];
+    device const float* X_col = model_data + 3 + n * p + n + n;
+    device const float* y = model_data + 3 + n * p;
+    device const float* group_idx_f = model_data + 3 + n * p + n;
+    float re_scale = model_data[3 + n * p + n + n + n * p];
+
+    thread const float* beta = x;
+    thread const float* z = x + p;
+
+    for (int j = 0; j < dim; j++) grad[j] = 0.0f;
+    float nll = 0.0f;
+
+    for (int i = (int)lane_id; i < n; i += 32) {
+        float eta = 0.0f;
+        for (int j = 0; j < p; j++) {
+            eta += X_col[j * n + i] * beta[j];
+        }
+        int gi = (int)group_idx_f[i];
+        eta += re_scale * z[gi];
+
+        float prob;
+        if (eta >= 0.0f) {
+            float e = exp(-eta);
+            prob = 1.0f / (1.0f + e);
+        } else {
+            float e = exp(eta);
+            prob = e / (1.0f + e);
+        }
+
+        float abs_eta = abs(eta);
+        nll += max(eta, 0.0f) + log(1.0f + exp(-abs_eta)) - y[i] * eta;
+
+        float diff = prob - y[i];
+        for (int j = 0; j < p; j++) {
+            grad[j] += diff * X_col[j * n + i];
+        }
+        grad[p + gi] += diff * re_scale;
+    }
+
+    nll = simd_sum(nll);
+    for (int j = 0; j < dim; j++) {
+        float prior_g = (j < p) ? beta[j] : z[j - p];
+        grad[j] = simd_sum(grad[j]) + prior_g;
+    }
+    float prior = 0.0f;
+    for (int j = 0; j < p; j++) prior += 0.5f * beta[j] * beta[j];
+    for (int j = 0; j < G; j++) prior += 0.5f * z[j] * z[j];
+    return nll + prior;
+}
+
+/* ---------- Macro-generated SIMD group kernels ------------------------------ */
+/* DW = dim limit for thread-local arrays. Two instantiations: 32 and 96.     */
+
+#define MAMS_SIMDGROUP_BODY(DW) \
+    int chain = (int)(tid / 32); \
+    if (chain >= args.n_chains) return; \
+    \
+    int dim = args.dim; \
+    int model_id = args.model_id; \
+    float l = args.l; \
+    int n_obs = args.n_obs; \
+    int n_feat = args.n_feat; \
+    \
+    /* Cooperative load of model data into threadgroup memory */ \
+    bool use_tg = ((model_id == 3 || model_id == 6) && n_obs > 0 && n_feat > 0 && \
+                   n_obs * n_feat <= 8000); \
+    threadgroup float* s_X_col = tg_mem; \
+    threadgroup float* s_y = tg_mem + n_obs * n_feat; \
+    \
+    if (use_tg) { \
+        device const float* X_col = model_data + 2 + n_obs * n_feat + n_obs; \
+        device const float* y_src = model_data + 2 + n_obs * n_feat; \
+        int n_total = n_obs * n_feat; \
+        for (int idx = (int)lane_id; idx < n_total; idx += 32) { \
+            s_X_col[idx] = X_col[idx]; \
+        } \
+        for (int idx = (int)lane_id; idx < n_obs; idx += 32) { \
+            s_y[idx] = y_src[idx]; \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+    } \
+    \
+    float eps = d_eps[chain]; \
+    int n_steps = (int)(l / eps + 0.5f); \
+    if (n_steps < 1) n_steps = 1; \
+    if (n_steps > args.max_leapfrog) n_steps = args.max_leapfrog; \
+    \
+    float dm1 = (float)(dim - 1); \
+    if (dm1 < 0.5f) dm1 = 1.0f; \
+    \
+    float x[DW], u[DW], grad_reg[DW]; \
+    int off = chain * dim; \
+    for (int i = 0; i < dim; i++) { \
+        x[i] = g_x[off + i]; \
+        u[i] = g_u[off + i]; \
+        grad_reg[i] = g_grad[off + i]; \
+    } \
+    float potential = g_potential[chain]; \
+    \
+    ulong seed = ((ulong)args.seed_hi << 32) | (ulong)args.seed_lo; \
+    PhiloxState rng; \
+    philox_init(rng, seed ^ ((ulong)args.iteration * 0x9E3779B97F4A7C15ULL), chain); \
+    \
+    /* 1. Partial velocity refresh */ \
+    float angle = eps / l; \
+    float cos_a = cos(angle); \
+    float sin_a = sin(angle); \
+    \
+    float z[DW]; \
+    float u_dot_z = 0.0f; \
+    for (int i = 0; i < dim; i++) { \
+        z[i] = philox_normal(rng); \
+        u_dot_z += u[i] * z[i]; \
+    } \
+    float z_perp_norm_sq = 0.0f; \
+    for (int i = 0; i < dim; i++) { \
+        z[i] -= u_dot_z * u[i]; \
+        z_perp_norm_sq += z[i] * z[i]; \
+    } \
+    float z_perp_norm = sqrt(z_perp_norm_sq); \
+    if (z_perp_norm > 1e-12f) { \
+        float inv_norm = 1.0f / z_perp_norm; \
+        float u_new_norm_sq = 0.0f; \
+        for (int i = 0; i < dim; i++) { \
+            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a; \
+            u_new_norm_sq += u[i] * u[i]; \
+        } \
+        float u_new_norm = sqrt(u_new_norm_sq); \
+        float inv = 1.0f / u_new_norm; \
+        for (int i = 0; i < dim; i++) u[i] *= inv; \
+    } \
+    \
+    /* 2. Save pre-trajectory state */ \
+    float x_old[DW], u_old[DW], grad_old[DW]; \
+    float potential_old = potential; \
+    for (int i = 0; i < dim; i++) { \
+        x_old[i] = x[i]; \
+        u_old[i] = u[i]; \
+        grad_old[i] = grad_reg[i]; \
+    } \
+    \
+    /* 3. Isokinetic leapfrog (SIMD-cooperative grad/nll) */ \
+    float total_delta_k = 0.0f; \
+    int divergent = 0; \
+    \
+    for (int s = 0; s < n_steps; s++) { \
+        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5f, dim, dm1); \
+        a_step(x, u, inv_mass, eps, dim); \
+        \
+        if (model_id == 3) { \
+            if (use_tg) { \
+                potential = grad_nll_glm_simd_tg( \
+                    x, grad_reg, dim, s_X_col, s_y, n_obs, n_feat, lane_id); \
+            } else { \
+                potential = grad_nll_glm_simd_global( \
+                    x, grad_reg, dim, model_data, n_obs, n_feat, lane_id); \
+            } \
+        } else if (model_id == 6) { \
+            if (use_tg) { \
+                potential = grad_nll_glm_linear_simd_tg( \
+                    x, grad_reg, dim, s_X_col, s_y, n_obs, n_feat, lane_id); \
+            } else { \
+                potential = grad_nll_glm_linear_simd_global( \
+                    x, grad_reg, dim, model_data, n_obs, n_feat, lane_id); \
+            } \
+        } else if (model_id == 7) { \
+            potential = grad_nll_glm_poisson_simd_global( \
+                x, grad_reg, dim, model_data, n_obs, n_feat, lane_id); \
+        } else if (model_id == 8) { \
+            potential = grad_nll_glm_negbin_simd_global( \
+                x, grad_reg, dim, model_data, n_obs, n_feat, lane_id); \
+        } else if (model_id == 9) { \
+            potential = grad_nll_glm_composed_logistic_simd_global( \
+                x, grad_reg, dim, model_data, n_obs, n_feat, lane_id); \
+        } else { \
+            model_grad(x, grad_reg, dim, model_data, model_id); \
+            potential = model_nll(x, dim, model_data, model_id); \
+        } \
+        \
+        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5f, dim, dm1); \
+        \
+        float current_w = (potential - potential_old) + total_delta_k; \
+        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) { \
+            divergent = 1; \
+            break; \
+        } \
+    } \
+    \
+    for (int i = 0; i < dim; i++) { \
+        if (!isfinite(x[i])) { divergent = 1; break; } \
+    } \
+    \
+    /* 4. MH accept/reject */ \
+    int acc = 0; \
+    float w = 0.0f; \
+    int first_call = !isfinite(potential_old); \
+    \
+    if (divergent && !first_call) { \
+        for (int i = 0; i < dim; i++) { \
+            x[i] = x_old[i]; \
+            u[i] = -u_old[i]; \
+            grad_reg[i] = grad_old[i]; \
+        } \
+        potential = potential_old; \
+        w = INFINITY; \
+    } else if (first_call) { \
+        acc = 1; \
+        w = 0.0f; \
+    } else { \
+        float delta_v = potential - potential_old; \
+        w = delta_v + total_delta_k; \
+        \
+        if (args.enable_mh) { \
+            float w_clamped = clamp(w, -80.0f, 80.0f); \
+            if (isfinite(w) && (w <= 0.0f || philox_uniform(rng) < exp(-w_clamped))) { \
+                acc = 1; \
+            } else { \
+                for (int i = 0; i < dim; i++) { \
+                    x[i] = x_old[i]; \
+                    u[i] = -u_old[i]; \
+                    grad_reg[i] = grad_old[i]; \
+                } \
+                potential = potential_old; \
+            } \
+        } else { \
+            acc = 1; \
+        } \
+    } \
+    \
+    /* 5. Store state back (ONLY lane 0 writes) */ \
+    if (lane_id == 0) { \
+        for (int i = 0; i < dim; i++) { \
+            g_x[off + i] = x[i]; \
+            g_u[off + i] = u[i]; \
+            g_grad[off + i] = grad_reg[i]; \
+        } \
+        g_potential[chain] = potential; \
+        accepted[chain] = acc; \
+        energy_error[chain] = w; \
+        \
+        if (args.n_report > 0 && chain < args.n_report) { \
+            int slot = args.store_idx * args.n_report + chain; \
+            g_accum_potential[slot] = potential; \
+            g_accum_accepted[slot] = acc; \
+            g_accum_energy[slot] = w; \
+            int pos_off = slot * dim; \
+            for (int i = 0; i < dim; i++) { \
+                g_sample_buf[pos_off + i] = x[i]; \
+            } \
+        } \
+    }
+
+#define MAMS_SIMDGROUP_PARAMS \
+    device float* g_x              [[buffer(0)]], \
+    device float* g_u              [[buffer(1)]], \
+    device float* g_potential      [[buffer(2)]], \
+    device float* g_grad           [[buffer(3)]], \
+    device const float* d_eps      [[buffer(4)]], \
+    device const float* inv_mass   [[buffer(5)]], \
+    device const float* model_data [[buffer(6)]], \
+    device int* accepted           [[buffer(7)]], \
+    device float* energy_error     [[buffer(8)]], \
+    device float* g_sample_buf     [[buffer(9)]], \
+    device float* g_accum_potential [[buffer(10)]], \
+    device int* g_accum_accepted   [[buffer(11)]], \
+    device float* g_accum_energy   [[buffer(12)]], \
+    constant MamsArgs& args        [[buffer(13)]], \
+    threadgroup float* tg_mem      [[threadgroup(0)]], \
+    uint tid [[thread_position_in_grid]], \
     uint lane_id [[thread_index_in_simdgroup]]
-) {
-    int chain = (int)(tid / 32);
-    if (chain >= args.n_chains) return;
 
-    int dim = args.dim;
-    int model_id = args.model_id;
-    float l = args.l;
-    int n_obs = args.n_obs;
-    int n_feat = args.n_feat;
+kernel void mams_transition_simdgroup(MAMS_SIMDGROUP_PARAMS) {
+    MAMS_SIMDGROUP_BODY(MAX_DIM_SIMD);
+}
 
-    // Cooperative load of model data into threadgroup memory (GLM only)
-    bool use_tg = (model_id == 3 && n_obs > 0 && n_feat > 0 &&
-                   n_obs * n_feat <= 8000);
-    threadgroup float* s_X_col = tg_mem;
-    threadgroup float* s_y = tg_mem + n_obs * n_feat;
-
-    if (use_tg) {
-        device const float* X_col = model_data + 2 + n_obs * n_feat + n_obs;
-        device const float* y_src = model_data + 2 + n_obs * n_feat;
-
-        int n_total = n_obs * n_feat;
-        // Use all threads in the SIMD group for cooperative load
-        for (int idx = (int)lane_id; idx < n_total; idx += 32) {
-            s_X_col[idx] = X_col[idx];
-        }
-        for (int idx = (int)lane_id; idx < n_obs; idx += 32) {
-            s_y[idx] = y_src[idx];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-
-    // Load per-chain step size (all lanes load same chain)
-    float eps = d_eps[chain];
-    int n_steps = (int)(l / eps + 0.5f);
-    if (n_steps < 1) n_steps = 1;
-    if (n_steps > args.max_leapfrog) n_steps = args.max_leapfrog;
-
-    float dm1 = (float)(dim - 1);
-    if (dm1 < 0.5f) dm1 = 1.0f;
-
-    // All lanes load the same chain state (replicated in registers)
-    float x[MAX_DIM_SIMD], u[MAX_DIM_SIMD], grad_reg[MAX_DIM_SIMD];
-    int off = chain * dim;
-    for (int i = 0; i < dim; i++) {
-        x[i] = g_x[off + i];
-        u[i] = g_u[off + i];
-        grad_reg[i] = g_grad[off + i];
-    }
-    float potential = g_potential[chain];
-
-    // All lanes get identical Philox state
-    ulong seed = ((ulong)args.seed_hi << 32) | (ulong)args.seed_lo;
-    PhiloxState rng;
-    philox_init(rng, seed ^ ((ulong)args.iteration * 0x9E3779B97F4A7C15ULL), chain);
-
-    // ---------- 1. Partial velocity refresh (identical across lanes) ----------
-    float angle = eps / l;
-    float cos_a = cos(angle);
-    float sin_a = sin(angle);
-
-    float z[MAX_DIM_SIMD];
-    float u_dot_z = 0.0f;
-    for (int i = 0; i < dim; i++) {
-        z[i] = philox_normal(rng);
-        u_dot_z += u[i] * z[i];
-    }
-    float z_perp_norm_sq = 0.0f;
-    for (int i = 0; i < dim; i++) {
-        z[i] -= u_dot_z * u[i];
-        z_perp_norm_sq += z[i] * z[i];
-    }
-    float z_perp_norm = sqrt(z_perp_norm_sq);
-    if (z_perp_norm > 1e-12f) {
-        float inv_norm = 1.0f / z_perp_norm;
-        float u_new_norm_sq = 0.0f;
-        for (int i = 0; i < dim; i++) {
-            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-            u_new_norm_sq += u[i] * u[i];
-        }
-        float u_new_norm = sqrt(u_new_norm_sq);
-        float inv = 1.0f / u_new_norm;
-        for (int i = 0; i < dim; i++) u[i] *= inv;
-    }
-
-    // ---------- 2. Save pre-trajectory state ----------
-    float x_old[MAX_DIM_SIMD], u_old[MAX_DIM_SIMD], grad_old[MAX_DIM_SIMD];
-    float potential_old = potential;
-    for (int i = 0; i < dim; i++) {
-        x_old[i] = x[i];
-        u_old[i] = u[i];
-        grad_old[i] = grad_reg[i];
-    }
-
-    // ---------- 3. Isokinetic leapfrog (SIMD-cooperative grad/nll) ----------
-    float total_delta_k = 0.0f;
-    int divergent = 0;
-
-    for (int s = 0; s < n_steps; s++) {
-        // b_step: identical across all lanes (deterministic, O(dim))
-        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5f, dim, dm1);
-        a_step(x, u, inv_mass, eps, dim);
-
-        // SIMD-cooperative grad + NLL
-        if (model_id == 3) {
-            if (use_tg) {
-                potential = grad_nll_glm_simd_tg(
-                    x, grad_reg, dim, s_X_col, s_y, n_obs, n_feat, lane_id);
-            } else {
-                potential = grad_nll_glm_simd_global(
-                    x, grad_reg, dim, model_data, n_obs, n_feat, lane_id);
-            }
-        } else {
-            model_grad(x, grad_reg, dim, model_data, model_id);
-            potential = model_nll(x, dim, model_data, model_id);
-        }
-
-        total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5f, dim, dm1);
-
-        float current_w = (potential - potential_old) + total_delta_k;
-        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0f)) {
-            divergent = 1;
-            break;
-        }
-    }
-
-    for (int i = 0; i < dim; i++) {
-        if (!isfinite(x[i])) { divergent = 1; break; }
-    }
-
-    // ---------- 4. MH accept/reject (RNG identical across lanes) ----------
-    int acc = 0;
-    float w = 0.0f;
-    int first_call = !isfinite(potential_old);
-
-    if (divergent && !first_call) {
-        for (int i = 0; i < dim; i++) {
-            x[i] = x_old[i];
-            u[i] = -u_old[i];
-            grad_reg[i] = grad_old[i];
-        }
-        potential = potential_old;
-        w = INFINITY;
-    } else if (first_call) {
-        acc = 1;
-        w = 0.0f;
-    } else {
-        float delta_v = potential - potential_old;
-        w = delta_v + total_delta_k;
-
-        if (args.enable_mh) {
-            float w_clamped = clamp(w, -80.0f, 80.0f);
-            if (isfinite(w) && (w <= 0.0f || philox_uniform(rng) < exp(-w_clamped))) {
-                acc = 1;
-            } else {
-                for (int i = 0; i < dim; i++) {
-                    x[i] = x_old[i];
-                    u[i] = -u_old[i];
-                    grad_reg[i] = grad_old[i];
-                }
-                potential = potential_old;
-            }
-        } else {
-            acc = 1;
-        }
-    }
-
-    // ---------- 5. Store state back (ONLY lane 0 writes) ----------
-    if (lane_id == 0) {
-        for (int i = 0; i < dim; i++) {
-            g_x[off + i] = x[i];
-            g_u[off + i] = u[i];
-            g_grad[off + i] = grad_reg[i];
-        }
-        g_potential[chain] = potential;
-        accepted[chain] = acc;
-        energy_error[chain] = w;
-
-        if (args.n_report > 0 && chain < args.n_report) {
-            int slot = args.store_idx * args.n_report + chain;
-            g_accum_potential[slot] = potential;
-            g_accum_accepted[slot] = acc;
-            g_accum_energy[slot] = w;
-            int pos_off = slot * dim;
-            for (int i = 0; i < dim; i++) {
-                g_sample_buf[pos_off + i] = x[i];
-            }
-        }
-    }
+kernel void mams_transition_simdgroup_hi(MAMS_SIMDGROUP_PARAMS) {
+    MAMS_SIMDGROUP_BODY(MAX_DIM_SIMD_HI);
 }

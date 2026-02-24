@@ -300,6 +300,8 @@ impl Bijector for SigmoidBijector {
 /// Each parameter gets its own bijector, selected from bounds.
 pub struct ParameterTransform {
     bijectors: Vec<Box<dyn Bijector>>,
+    /// True when all bijectors are identity (all bounds are `(-inf, inf)`).
+    all_identity: bool,
 }
 
 impl ParameterTransform {
@@ -360,7 +362,17 @@ impl ParameterTransform {
             })
             .collect();
 
-        Self { bijectors }
+        let all_identity =
+            bounds.iter().all(|&(lo, hi)| lo == f64::NEG_INFINITY && hi == f64::INFINITY);
+        Self { bijectors, all_identity }
+    }
+
+    /// Returns `true` when all bijectors are identity (all bounds are `(-inf, inf)`).
+    ///
+    /// When true, `forward(z) == z`, `log_abs_det_jacobian == 0`, etc., enabling
+    /// fast-paths in callers that can skip the entire transform chain.
+    pub fn is_all_identity(&self) -> bool {
+        self.all_identity
     }
 
     /// Like [`Self::from_bounds`], but uses softplus for positive parameters `(0, +inf)`.

@@ -19,20 +19,31 @@ fn metal_err(msg: impl std::fmt::Display) -> ns_core::Error {
 
 /// Pre-flattened fault tree data ready for GPU upload (same layout as CUDA).
 pub struct FlatFaultTreeData {
+    /// Component distribution types (e.g. exponential, Weibull).
     pub comp_types: Vec<i32>,
+    /// Component distribution parameters (f64, converted to f32 on upload).
     pub comp_params: Vec<f64>,
+    /// Gate/node types (AND, OR, k-of-n, etc.).
     pub node_types: Vec<i32>,
+    /// Gate-specific data (e.g. k for k-of-n gates).
     pub node_data: Vec<i32>,
+    /// Start offsets into `children_flat` for each node.
     pub children_offsets: Vec<i32>,
+    /// Flattened child indices for all nodes.
     pub children_flat: Vec<i32>,
+    /// Number of basic components (leaves).
     pub n_components: usize,
+    /// Total number of nodes (gates + components).
     pub n_nodes: usize,
+    /// Index of the top-level gate.
     pub top_node: usize,
 }
 
 /// Result from GPU fault-tree MC.
 pub struct FaultTreeMetalResult {
+    /// Number of MC trials where the top event occurred.
     pub n_top_failures: u64,
+    /// Per-component count of failures coinciding with top-event failure.
     pub comp_fail_given_top: Vec<u64>,
 }
 
@@ -130,9 +141,11 @@ impl FaultTreeMetalAccelerator {
         let mut offset = 0usize;
         while offset < n_scenarios {
             let this_chunk = (n_scenarios - offset).min(chunk_size);
-            let chunk_seed = seed.wrapping_add((offset as u64).wrapping_mul(0x9E3779B97F4A7C15));
-            let seed_lo = (chunk_seed & 0xFFFFFFFF) as u32;
-            let seed_hi = (chunk_seed >> 32) as u32;
+            let seed_lo = (seed & 0xFFFFFFFF) as u32;
+            let seed_hi = (seed >> 32) as u32;
+            let scenario_offset = offset as u64;
+            let scenario_offset_lo = (scenario_offset & 0xFFFFFFFF) as u32;
+            let scenario_offset_hi = (scenario_offset >> 32) as u32;
             let n_scenarios_arg = this_chunk as i32;
 
             let cmd = self.queue.new_command_buffer();
@@ -166,6 +179,16 @@ impl FaultTreeMetalAccelerator {
             encoder.set_bytes(12, mem::size_of::<u32>() as u64, &seed_hi as *const u32 as *const _);
             encoder.set_bytes(
                 13,
+                mem::size_of::<u32>() as u64,
+                &scenario_offset_lo as *const u32 as *const _,
+            );
+            encoder.set_bytes(
+                14,
+                mem::size_of::<u32>() as u64,
+                &scenario_offset_hi as *const u32 as *const _,
+            );
+            encoder.set_bytes(
+                15,
                 mem::size_of::<i32>() as u64,
                 &n_scenarios_arg as *const i32 as *const _,
             );

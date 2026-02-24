@@ -48,6 +48,8 @@ def main() -> int:
     ap.add_argument("--baseline-repeat", type=int, default=1)
     ap.add_argument("--skip-baselines", action="store_true")
     ap.add_argument("--smoke", action="store_true", help="Fast mode: fewer cases, lower repeat, skip baselines.")
+    ap.add_argument("--run-all-baselines", action="store_true",
+                    help="Run baselines even on large-N cases (for speedup data).")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir).resolve()
@@ -64,12 +66,14 @@ def main() -> int:
         ]
     else:
         # Baselines can be much slower than NextStat (e.g. statsmodels Kalman).
-        # We keep parity checks on small cases, and use large-N cases for throughput only.
+        # We keep parity checks on small cases, and use large-N cases for throughput only
+        # (unless --run-all-baselines is set, which enables speedup measurement).
+        skip_large = not args.run_all_baselines
         suite_cases = [
             {"case_id": "kalman_local_level_500", "kind": "kalman_local_level", "n": 500, "skip_baselines": False},
-            {"case_id": "kalman_local_level_5000", "kind": "kalman_local_level", "n": 5000, "skip_baselines": True},
+            {"case_id": "kalman_local_level_5000", "kind": "kalman_local_level", "n": 5000, "skip_baselines": skip_large},
             {"case_id": "garch11_1000", "kind": "garch11", "n": 1000, "skip_baselines": False},
-            {"case_id": "garch11_5000", "kind": "garch11", "n": 5000, "skip_baselines": True},
+            {"case_id": "garch11_5000", "kind": "garch11", "n": 5000, "skip_baselines": skip_large},
         ]
 
     index_cases = []

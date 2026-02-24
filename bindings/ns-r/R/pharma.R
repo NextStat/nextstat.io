@@ -1,8 +1,10 @@
 #' @title FOCE/FOCEI Estimation for Population PK
 #'
-#' @description Fit a 1-compartment oral PK model using First-Order Conditional
-#'   Estimation (FOCE/FOCEI). This is the standard NLME estimation method used
-#'   in pharmacometrics.
+#' @description Fit population PK models with FOCE-family methods:
+#'   \code{"foce"}, \code{"focei"}, \code{"fo"} (first-order),
+#'   \code{"its"} (iterative two-stage), and \code{"imp"} (importance sampling).
+#'   Supported models are \code{"1cpt_iv"}, \code{"1cpt_oral"}, \code{"2cpt_iv"},
+#'   \code{"2cpt_oral"}, \code{"3cpt_iv"}, and \code{"3cpt_oral"}.
 #'
 #' @param times Numeric vector of observation times.
 #' @param dv Numeric vector of observed concentrations (dependent variable).
@@ -14,23 +16,40 @@
 #'   or \code{"combined"}.
 #' @param sigma Numeric, residual error SD (for additive/proportional) or
 #'   numeric vector of length 2 (for combined: \code{c(sigma_add, sigma_prop)}).
-#' @param theta_init Numeric vector of length 3: initial population parameters
-#'   \code{c(CL, V, Ka)}.
-#' @param omega_init Numeric vector of length 3: initial random effect SDs
-#'   \code{c(omega_CL, omega_V, omega_Ka)}.
+#' @param theta_init Initial population parameters. Length must match \code{model}:
+#'   2 (\code{1cpt_iv}), 3 (\code{1cpt_oral}), 4 (\code{2cpt_iv}), 5 (\code{2cpt_oral}),
+#'   6 (\code{3cpt_iv}), or 7 (\code{3cpt_oral}).
+#' @param omega_init Initial random effect SDs with same length as \code{theta_init}.
+#' @param model Character model selector:
+#'   \code{"1cpt_iv"}, \code{"1cpt_oral"}, \code{"2cpt_iv"}, \code{"2cpt_oral"},
+#'   \code{"3cpt_iv"}, \code{"3cpt_oral"}.
+#' @param method Character estimation method:
+#'   \code{"foce"}, \code{"focei"}, \code{"fo"}, \code{"its"}, \code{"imp"}.
 #' @param interaction Logical, use FOCEI (default \code{TRUE}) or FOCE.
 #' @param max_outer_iter Maximum outer iterations (default 100).
 #' @param tol Convergence tolerance (default 1e-4).
+#' @param its_max_iter ITS outer iterations.
+#' @param its_max_individual_iter ITS per-subject iterations.
+#' @param its_tol ITS convergence tolerance.
+#' @param its_omega_damping ITS Omega damping.
+#' @param imp_n_iter IMP EM iterations.
+#' @param imp_n_samples IMP Monte Carlo samples per subject.
+#' @param imp_proposal_scale IMP proposal scale.
+#' @param imp_seed IMP RNG seed.
+#' @param imp_tol IMP convergence tolerance.
+#' @param imp_e_only IMP E-only mode.
 #'
 #' @return A named list with components:
 #'   \describe{
 #'     \item{theta}{Numeric vector of fitted population parameters.}
 #'     \item{omega}{Numeric vector of fitted random effect SDs.}
-#'     \item{eta}{Matrix of individual random effects (n_subjects x 3).}
+#'     \item{eta}{Matrix of individual random effects (n_subjects x n_theta).}
 #'     \item{ofv}{Objective function value (-2 log L).}
 #'     \item{converged}{Logical.}
 #'     \item{n_iter}{Number of iterations.}
 #'     \item{correlation}{Correlation matrix of random effects.}
+#'     \item{imp}{IMP diagnostics list (\code{ofv_trace}, \code{ess_fraction_trace},
+#'       \code{max_weight_trace}) when \code{method="imp"}, otherwise \code{NULL}.}
 #'   }
 #'
 #' @examples
@@ -41,19 +60,43 @@
 #'   dose = 100, theta_init = c(0.133, 8, 0.8),
 #'   omega_init = c(0.3, 0.25, 0.3), sigma = 0.5
 #' )
+#' fit2 <- ns_foce(
+#'   times = dat$TIME, dv = dat$DV, id = dat$ID - 1,
+#'   n_subjects = length(unique(dat$ID)),
+#'   dose = 100,
+#'   model = "2cpt_iv",
+#'   method = "fo",
+#'   theta_init = c(1.2, 15, 0.9, 20),
+#'   omega_init = rep(0.2, 4),
+#'   sigma = 0.1
+#' )
 #' fit$theta
 #' }
 #' @export
 ns_foce <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
                     error_model = "additive", sigma = 1.0,
                     theta_init, omega_init,
+                    model = "1cpt_oral",
+                    method = "focei",
                     interaction = TRUE,
-                    max_outer_iter = 100L, tol = 1e-4) {
+                    max_outer_iter = 100L, tol = 1e-4,
+                    its_max_iter = 30L,
+                    its_max_individual_iter = 60L,
+                    its_tol = 1e-4,
+                    its_omega_damping = 0.3,
+                    imp_n_iter = 15L,
+                    imp_n_samples = 300L,
+                    imp_proposal_scale = 1.0,
+                    imp_seed = 42L,
+                    imp_tol = 1e-4,
+                    imp_e_only = FALSE) {
   stopifnot(
     is.numeric(times), is.numeric(dv), is.numeric(id),
     length(times) == length(dv), length(times) == length(id),
-    is.numeric(theta_init), length(theta_init) == 3,
-    is.numeric(omega_init), length(omega_init) == 3,
+    is.numeric(theta_init), length(theta_init) >= 2, length(theta_init) <= 7,
+    is.numeric(omega_init), length(omega_init) >= 2, length(omega_init) <= 7,
+    model %in% c("1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"),
+    method %in% c("foce", "focei", "fo", "its", "imp"),
     error_model %in% c("additive", "proportional", "combined")
   )
   .Call(
@@ -62,17 +105,32 @@ ns_foce <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
     as.integer(n_subjects), as.numeric(dose), as.numeric(bioav),
     as.character(error_model), as.numeric(sigma),
     as.numeric(theta_init), as.numeric(omega_init),
+    as.character(model), as.character(method),
     as.logical(interaction),
     as.integer(max_outer_iter), as.numeric(tol),
+    as.integer(its_max_iter), as.integer(its_max_individual_iter),
+    as.numeric(its_tol), as.numeric(its_omega_damping),
+    as.integer(imp_n_iter), as.integer(imp_n_samples),
+    as.numeric(imp_proposal_scale), as.integer(imp_seed),
+    as.numeric(imp_tol), as.logical(imp_e_only),
     PACKAGE = "nextstat"
   )
 }
 
+#' @title NLME FOCE Interface
+#'
+#' @description Alias for \code{ns_foce()} provided for cross-language
+#'   \code{nlme_*} API parity.
+#'
+#' @inheritParams ns_foce
+#' @return Same as \code{ns_foce()}.
+#' @export
+nlme_foce <- ns_foce
+
 #' @title SAEM Estimation for Population PK
 #'
-#' @description Fit a 1-compartment oral PK model using Stochastic
-#'   Approximation EM (SAEM). More robust than FOCE for complex nonlinear
-#'   models. This is the core algorithm used by Monolix.
+#' @description Fit population PK models using Stochastic Approximation EM
+#'   (SAEM). More robust than FOCE for complex nonlinear models.
 #'
 #' @inheritParams ns_foce
 #' @param n_burn Integer, number of burn-in iterations (default 200).
@@ -84,7 +142,7 @@ ns_foce <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
 #'   \describe{
 #'     \item{theta}{Numeric vector of fitted population parameters.}
 #'     \item{omega}{Numeric vector of fitted random effect SDs.}
-#'     \item{eta}{Matrix of individual random effects (n_subjects x 3).}
+#'     \item{eta}{Matrix of individual random effects (n_subjects x n_theta).}
 #'     \item{ofv}{Objective function value (-2 log L).}
 #'     \item{converged}{Logical.}
 #'     \item{n_iter}{Total iterations (burn-in + estimation).}
@@ -106,13 +164,15 @@ ns_foce <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
 ns_saem <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
                     error_model = "additive", sigma = 1.0,
                     theta_init, omega_init,
+                    model = "1cpt_oral",
                     n_burn = 200L, n_iter = 100L, n_chains = 1L,
                     seed = 12345L, tol = 1e-4) {
   stopifnot(
     is.numeric(times), is.numeric(dv), is.numeric(id),
     length(times) == length(dv), length(times) == length(id),
-    is.numeric(theta_init), length(theta_init) == 3,
-    is.numeric(omega_init), length(omega_init) == 3,
+    is.numeric(theta_init), length(theta_init) >= 2, length(theta_init) <= 7,
+    is.numeric(omega_init), length(omega_init) >= 2, length(omega_init) <= 7,
+    model %in% c("1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"),
     error_model %in% c("additive", "proportional", "combined")
   )
   .Call(
@@ -121,11 +181,22 @@ ns_saem <- function(times, dv, id, n_subjects, dose, bioav = 1.0,
     as.integer(n_subjects), as.numeric(dose), as.numeric(bioav),
     as.character(error_model), as.numeric(sigma),
     as.numeric(theta_init), as.numeric(omega_init),
+    as.character(model),
     as.integer(n_burn), as.integer(n_iter), as.integer(n_chains),
     as.integer(seed), as.numeric(tol),
     PACKAGE = "nextstat"
   )
 }
+
+#' @title NLME SAEM Interface
+#'
+#' @description Alias for \code{ns_saem()} provided for cross-language
+#'   \code{nlme_*} API parity.
+#'
+#' @inheritParams ns_saem
+#' @return Same as \code{ns_saem()}.
+#' @export
+nlme_saem <- ns_saem
 
 #' @title Emax PD Model Prediction
 #'

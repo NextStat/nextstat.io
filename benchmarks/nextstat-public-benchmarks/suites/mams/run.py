@@ -178,20 +178,26 @@ def _posterior_summary_nextstat(raw: dict[str, Any]) -> dict[str, Any]:
 # NextStat backends
 # ---------------------------------------------------------------------------
 
-def _run_nextstat_mams(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+def _run_nextstat_backend(model_obj: Any, cfg: dict[str, Any], *, method: str) -> dict[str, Any]:
     import nextstat  # type: ignore
 
-    t0 = time.perf_counter()
-    r = nextstat.sample(
-        model_obj,
-        method="mams",
-        n_chains=cfg["n_chains"],
-        n_warmup=cfg["n_warmup"],
-        n_samples=cfg["n_samples"],
-        seed=cfg["seed"],
-        target_accept=cfg["target_accept"],
-    )
-    wall = time.perf_counter() - t0
+    def _run_once(seed: int) -> tuple[float, dict[str, Any]]:
+        t0 = time.perf_counter()
+        kwargs: dict[str, Any] = dict(
+            n_chains=cfg["n_chains"],
+            n_warmup=cfg["n_warmup"],
+            n_samples=cfg["n_samples"],
+            seed=seed,
+            target_accept=cfg["target_accept"],
+        )
+        if method == "mams":
+            kwargs["method"] = "mams"
+        r = nextstat.sample(model_obj, **kwargs)
+        wall = time.perf_counter() - t0
+        return wall, r
+
+    cold_wall, _ = _run_once(int(cfg["seed"]))
+    warm_wall, r = _run_once(int(cfg["seed"]) + 1)
 
     diag = r.get("diagnostics") if isinstance(r.get("diagnostics"), dict) else {}
     summary = _diag_summary_nextstat(diag)
@@ -200,7 +206,10 @@ def _run_nextstat_mams(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
     total_grad, mean_accept = _extract_stats(stats)
 
     return {
-        "wall_time_s": wall,
+        "wall_time_s": cold_wall,
+        "cold_start_s": cold_wall,
+        "warm_start_s": warm_wall,
+        "jit_overhead_s": max(0.0, cold_wall - warm_wall),
         "n_grad_evals": total_grad,
         "min_ess_bulk": summary["min_ess_bulk"],
         "min_ess_tail": summary["min_ess_tail"],
@@ -208,37 +217,14 @@ def _run_nextstat_mams(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
         "accept_rate": mean_accept,
         "posterior_summary": _posterior_summary_nextstat(r),
     }
+
+
+def _run_nextstat_mams(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+    return _run_nextstat_backend(model_obj, cfg, method="mams")
 
 
 def _run_nextstat_nuts(model_obj: Any, cfg: dict[str, Any]) -> dict[str, Any]:
-    import nextstat  # type: ignore
-
-    t0 = time.perf_counter()
-    r = nextstat.sample(
-        model_obj,
-        n_chains=cfg["n_chains"],
-        n_warmup=cfg["n_warmup"],
-        n_samples=cfg["n_samples"],
-        seed=cfg["seed"],
-        target_accept=cfg["target_accept"],
-    )
-    wall = time.perf_counter() - t0
-
-    diag = r.get("diagnostics") if isinstance(r.get("diagnostics"), dict) else {}
-    summary = _diag_summary_nextstat(diag)
-
-    stats = r.get("sample_stats") if isinstance(r.get("sample_stats"), dict) else {}
-    total_grad, mean_accept = _extract_stats(stats)
-
-    return {
-        "wall_time_s": wall,
-        "n_grad_evals": total_grad,
-        "min_ess_bulk": summary["min_ess_bulk"],
-        "min_ess_tail": summary["min_ess_tail"],
-        "max_r_hat": summary["max_r_hat"],
-        "accept_rate": mean_accept,
-        "posterior_summary": _posterior_summary_nextstat(r),
-    }
+    return _run_nextstat_backend(model_obj, cfg, method="nuts")
 
 
 # ---------------------------------------------------------------------------

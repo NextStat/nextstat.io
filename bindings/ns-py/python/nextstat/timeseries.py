@@ -195,6 +195,54 @@ def sv_logchi2_fit(
     return _sv_logchi2_fit_python(series, log_eps=float(log_eps))
 
 
+def egarch11_fit(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+) -> Mapping[str, Any]:
+    """Fit an EGARCH(1,1) model by MLE.
+
+    Returns dict with params (mu, omega, alpha, gamma, beta),
+    conditional_variance, conditional_sigma, log_likelihood, converged.
+    """
+    from . import _core
+
+    series = _as_finite_series(ys, name="ys")
+    core_fn = getattr(_core, "egarch11_fit", None)
+    if core_fn is not None:
+        return core_fn(series, max_iter=int(max_iter), tol=float(tol))
+    raise NotImplementedError("egarch11_fit requires Rust backend")
+
+
+def gjr_garch11_fit(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+    persistence_max: float = 0.999,
+    min_var: float = 1e-18,
+) -> Mapping[str, Any]:
+    """Fit a GJR-GARCH(1,1) model by MLE.
+
+    Returns dict with params (mu, omega, alpha, gamma, beta),
+    conditional_variance, conditional_sigma, log_likelihood, converged.
+    """
+    from . import _core
+
+    series = _as_finite_series(ys, name="ys")
+    core_fn = getattr(_core, "gjr_garch11_fit", None)
+    if core_fn is not None:
+        return core_fn(
+            series,
+            max_iter=int(max_iter),
+            tol=float(tol),
+            persistence_max=float(persistence_max),
+            min_var=float(min_var),
+        )
+    raise NotImplementedError("gjr_garch11_fit requires Rust backend")
+
+
 def _as_finite_series(values: Sequence[float], *, name: str) -> list[float]:
     series = [float(v) for v in values]
     if len(series) < 2:

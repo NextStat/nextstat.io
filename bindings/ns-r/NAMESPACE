@@ -2,6 +2,8 @@ useDynLib(nextstat, .registration = TRUE)
 
 export(ns_normal_logpdf)
 export(ns_ols_fit)
+export(nlme_foce)
+export(nlme_saem)
 export(nextstat_fit)
 export(nextstat_hypotest)
 export(nextstat_upper_limit)

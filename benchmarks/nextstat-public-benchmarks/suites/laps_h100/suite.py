@@ -56,6 +56,7 @@ MATRIX: dict[str, list[dict[str, Any]]] = {
         {"label": "std_normal",   "n_chains": 65536, "devices": "0,1,2,3", "dim": 100, "model": "std_normal"},
         {"label": "eight_schools","n_chains": 65536, "devices": "0,1,2,3", "dim": 10,  "model": "eight_schools"},
         {"label": "neal_funnel",  "n_chains": 65536, "devices": "0,1,2,3", "dim": 10,  "model": "neal_funnel"},
+        {"label": "glm_logistic_n5000_p20", "n_chains": 65536, "devices": "0,1,2,3", "dim": 20, "model": "glm_logistic", "glm_n": 5000, "glm_p": 20},
     ],
 }
 
@@ -90,6 +91,10 @@ def run_case(
         "--fused", str(case.get("fused", 0)),
         "--out", str(out_dir),
     ]
+    if case.get("model") == "glm_logistic":
+        cmd.extend(["--glm-n", str(int(case.get("glm_n", 5000)))])
+        if case.get("glm_p") is not None:
+            cmd.extend(["--glm-p", str(int(case.get("glm_p")))])  # override default --dim
     if "devices" in case:
         cmd.extend(["--devices", case["devices"]])
 

@@ -1,0 +1,5 @@
+Subject 001: Male, Age 63, Stage IIIB, ECOG 1. Received 75 mg/m2 docetaxel IV. Progressed at day 84. Weight 78 kg.
+Subject 002: Female, Age 58, Stage IV, ECOG 0. Received 20 mg oral erlotinib daily. Lost to follow-up at week 12. Weight 62 kg.
+Subject 003: Male, Age 71, Stage IIIA, ECOG 2. Received 100 mg IV carboplatin. Died at 6 months. Weight 85 kg.
+Subject 004: Female, Age 45, Stage II, ECOG 0. Received 50 mg oral capecitabine BID. Alive and stable at 2 years. Weight 70 kg.
+Subject 005: Male, Age 66, Stage IV, ECOG 1. Received 200 mg IV pembrolizumab. Relapsed at day 142. Weight 90 kg.

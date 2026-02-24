@@ -17,6 +17,7 @@ use pyo3::wrap_pyfunction;
 
 use nalgebra::{DMatrix, DVector};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 // Re-export types from core crates
 use ns_ad::tape::Tape as AdTape;
@@ -59,7 +60,24 @@ use ns_inference::timeseries::simulate::{
 };
 use ns_inference::timeseries::volatility::{
     Garch11Config as RustGarch11Config, SvLogChi2Config as RustSvLogChi2Config,
+    Egarch11Config as RustEgarch11Config, GjrGarch11Config as RustGjrGarch11Config,
     garch11_fit as rust_garch11_fit, sv_logchi2_fit as rust_sv_logchi2_fit,
+    egarch11_fit as rust_egarch11_fit, gjr_garch11_fit as rust_gjr_garch11_fit,
+};
+use ns_inference::competing_risks::{
+    cumulative_incidence as rust_cumulative_incidence,
+    gray_test as rust_gray_test,
+    fine_gray_fit as rust_fine_gray_fit,
+};
+use ns_inference::ode_pk::{
+    ParameterizedTransitOde, MichaelisMentenPkOde, TmddOde,
+    OdePkSolver, OdeSolverOptions, OdeSolverType,
+    ode_pk_nll as rust_ode_pk_nll,
+};
+use ns_inference::pd::{
+    EmaxModel as RustEmaxModel, SigmoidEmaxModel as RustSigmoidEmaxModel,
+    IndirectResponseModel as RustIndirectResponseModel,
+    IndirectResponseType as RustIndirectResponseType,
 };
 use ns_inference::transforms::ParameterTransform;
 use ns_inference::tweedie::{
@@ -67,27 +85,50 @@ use ns_inference::tweedie::{
     TweedieRegressionModel as RustTweedieRegressionModel,
 };
 use ns_inference::{
-    CensoringType as RustCensoringType, ComposedGlmModel as RustComposedGlmModel,
-    CoxPhModel as RustCoxPhModel, CoxTies as RustCoxTies, ErrorModel as RustErrorModel,
+    BeConfig as RustBeConfig, BeData as RustBeData, BeDesign as RustBeDesign,
+    BePowerConfig as RustBePowerConfig, BootstrapCiMethod as RustBootstrapCiMethod,
+    BootstrapSaemResult as RustBootstrapSaemResult, CensoringType as RustCensoringType,
+    ComposedGlmModel as RustComposedGlmModel, CovRelationship as RustCovRelationship,
+    CovariateCandidate as RustCovariateCandidate,
+    CovariateRelationship as RustCovariateRelationship, CovariateSpec as RustCovariateSpec,
+    CoxPhModel as RustCoxPhModel, CoxTies as RustCoxTies, DoseEvent as RustDoseEvent,
+    DoseRoute as RustDoseRoute, DosingRegimen as RustDosingRegimen,
+    ErrorModel as RustErrorModel,
     ExponentialSurvivalModel as RustExponentialSurvivalModel, FoceConfig as RustFoceConfig,
-    FoceEstimator as RustFoceEstimator,
+    FoceEstimator as RustFoceEstimator, ImpConfig as RustImpConfig,
     IntervalCensoredExponentialModel as RustIntervalCensoredExponentialModel,
     IntervalCensoredLogNormalModel as RustIntervalCensoredLogNormalModel,
     IntervalCensoredWeibullAftModel as RustIntervalCensoredWeibullAftModel,
-    IntervalCensoredWeibullModel as RustIntervalCensoredWeibullModel,
-    LinearRegressionModel as RustLinearRegressionModel, LloqPolicy as RustLloqPolicy,
-    LogNormalAftModel as RustLogNormalAftModel,
-    LogisticRegressionModel as RustLogisticRegressionModel, ModelBuilder as RustModelBuilder,
-    NonmemDataset as RustNonmemDataset, OmegaMatrix as RustOmegaMatrix,
-    OneCompartmentOralPkModel as RustOneCompartmentOralPkModel,
+    IntervalCensoredWeibullModel as RustIntervalCensoredWeibullModel, IovSpec as RustIovSpec,
+    ItsConfig as RustItsConfig, LinearRegressionModel as RustLinearRegressionModel,
+    LloqPolicy as RustLloqPolicy, LogNormalAftModel as RustLogNormalAftModel,
+    LogisticRegressionModel as RustLogisticRegressionModel, MapConfig as RustMapConfig,
+    MapResult as RustMapResult, ModelBuilder as RustModelBuilder,
+    NonmemDataset as RustNonmemDataset, NpdeConfig as RustNpdeConfig,
+    OmegaMatrix as RustOmegaMatrix, OneCompartmentOralPkModel as RustOneCompartmentOralPkModel,
     OneCompartmentOralPkNlmeModel as RustOneCompartmentOralPkNlmeModel,
     OrderedLogitModel as RustOrderedLogitModel, OrderedProbitModel as RustOrderedProbitModel,
-    PoissonRegressionModel as RustPoissonRegressionModel, SaemConfig as RustSaemConfig,
-    SaemEstimator as RustSaemEstimator, TwoCompartmentIvPkModel as RustTwoCompartmentIvPkModel,
+    PkModelKind as RustPkModelKind, PkModelType as RustPkModelType,
+    PoissonRegressionModel as RustPoissonRegressionModel,
+    PopulationPkParams as RustPopulationPkParams, Posterior as RustPosterior, Prior as RustPrior,
+    RandomEffectTransform as RustRandomEffectTransform,
+    SaemConfig as RustSaemConfig, SaemEstimator as RustSaemEstimator, ScmConfig as RustScmConfig,
+    ScmEstimator as RustScmEstimator, ThreeCompartmentIvPkModel as RustThreeCompartmentIvPkModel,
+    ThreeCompartmentOralPkModel as RustThreeCompartmentOralPkModel,
+    TimeCovariateInterpolation as RustTimeCovariateInterpolation,
+    TimeVaryingCovariatePoint as RustTimeVaryingCovariatePoint,
+    TimeVaryingCovariateSpec as RustTimeVaryingCovariateSpec, TrialConfig as RustTrialConfig,
+    TrialErrorModelType as RustTrialErrorModelType,
+    TwoCompartmentIvPkModel as RustTwoCompartmentIvPkModel,
     TwoCompartmentOralPkModel as RustTwoCompartmentOralPkModel, VpcConfig as RustVpcConfig,
-    WeibullSurvivalModel as RustWeibullSurvivalModel, gof_1cpt_oral as rust_gof_1cpt_oral,
-    hypotest::AsymptoticCLsContext as RustCLsCtx, ols_fit as rust_ols_fit,
-    profile_likelihood as pl, vpc_1cpt_oral as rust_vpc_1cpt_oral,
+    WeibullSurvivalModel as RustWeibullSurvivalModel, XptDataset as RustXptDataset,
+    XptValue as RustXptValue, XptVarType as RustXptVarType, XptVariable as RustXptVariable,
+    average_be as rust_average_be, be_power as rust_be_power,
+    be_sample_size as rust_be_sample_size, bootstrap_saem as rust_bootstrap_saem,
+    conc_iv_3cpt_macro, conc_oral_3cpt_macro, gof_pk as rust_gof_pk,
+    hypotest::AsymptoticCLsContext as RustCLsCtx, map_estimate as rust_map_estimate,
+    npde_pk as rust_npde_pk, ols_fit as rust_ols_fit, profile_likelihood as pl,
+    simulate_trial as rust_simulate_trial, vpc_pk as rust_vpc_pk,
 };
 use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
@@ -186,6 +227,15 @@ fn sampler_result_to_py_gates<'py>(
     sample_stats.set_item("energy", energy)?;
     sample_stats.set_item("step_size", step_sizes)?;
     sample_stats.set_item("n_leapfrog", n_leapfrog)?;
+
+    // Metric info (from first chain; all chains share the same metric type)
+    if let Some(c0) = result.chains.first() {
+        sample_stats.set_item("metric_type", &c0.metric_type_name)?;
+        if let Some(ref inv_mass) = c0.inv_mass_matrix {
+            sample_stats.set_item("inv_mass_matrix", inv_mass.clone())?;
+        }
+        sample_stats.set_item("mass_diag", c0.mass_diag.clone())?;
+    }
 
     // Build "diagnostics" dict
     let diagnostics_dict = PyDict::new(py);
@@ -321,6 +371,7 @@ enum PosteriorModel {
     Hybrid(RustHybridModel),
     GaussianMean(GaussianMeanModel),
     Funnel(FunnelModel),
+    FunnelNcp(FunnelNcpModel),
     StdNormal(StdNormalModel),
     LinearRegression(RustLinearRegressionModel),
     LogisticRegression(RustLogisticRegressionModel),
@@ -342,6 +393,8 @@ enum PosteriorModel {
     OneCompartmentOralPkNlme(RustOneCompartmentOralPkNlmeModel),
     TwoCompartmentIvPk(RustTwoCompartmentIvPkModel),
     TwoCompartmentOralPk(RustTwoCompartmentOralPkModel),
+    ThreeCompartmentIvPk(RustThreeCompartmentIvPkModel),
+    ThreeCompartmentOralPk(RustThreeCompartmentOralPkModel),
     GammaRegression(RustGammaRegressionModel),
     TweedieRegression(RustTweedieRegressionModel),
     Gev(RustGevModel),
@@ -357,6 +410,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.dim(),
             PosteriorModel::GaussianMean(m) => m.dim(),
             PosteriorModel::Funnel(m) => m.dim(),
+            PosteriorModel::FunnelNcp(m) => m.dim(),
             PosteriorModel::StdNormal(m) => m.dim(),
             PosteriorModel::LinearRegression(m) => m.dim(),
             PosteriorModel::LogisticRegression(m) => m.dim(),
@@ -374,6 +428,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.dim(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.dim(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.dim(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.dim(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.dim(),
             PosteriorModel::GammaRegression(m) => m.dim(),
             PosteriorModel::TweedieRegression(m) => m.dim(),
             PosteriorModel::Gev(m) => m.dim(),
@@ -393,6 +449,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_names(),
             PosteriorModel::GaussianMean(m) => m.parameter_names(),
             PosteriorModel::Funnel(m) => m.parameter_names(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_names(),
             PosteriorModel::StdNormal(m) => m.parameter_names(),
             PosteriorModel::LinearRegression(m) => m.parameter_names(),
             PosteriorModel::LogisticRegression(m) => m.parameter_names(),
@@ -410,6 +467,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_names(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_names(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_names(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_names(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_names(),
             PosteriorModel::GammaRegression(m) => m.parameter_names(),
             PosteriorModel::TweedieRegression(m) => m.parameter_names(),
             PosteriorModel::Gev(m) => m.parameter_names(),
@@ -429,6 +488,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_bounds(),
             PosteriorModel::GaussianMean(m) => m.parameter_bounds(),
             PosteriorModel::Funnel(m) => m.parameter_bounds(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_bounds(),
             PosteriorModel::StdNormal(m) => m.parameter_bounds(),
             PosteriorModel::LinearRegression(m) => m.parameter_bounds(),
             PosteriorModel::LogisticRegression(m) => m.parameter_bounds(),
@@ -446,6 +506,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_bounds(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_bounds(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_bounds(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_bounds(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_bounds(),
             PosteriorModel::GammaRegression(m) => m.parameter_bounds(),
             PosteriorModel::TweedieRegression(m) => m.parameter_bounds(),
             PosteriorModel::Gev(m) => m.parameter_bounds(),
@@ -465,6 +527,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.parameter_init(),
             PosteriorModel::GaussianMean(m) => m.parameter_init(),
             PosteriorModel::Funnel(m) => m.parameter_init(),
+            PosteriorModel::FunnelNcp(m) => m.parameter_init(),
             PosteriorModel::StdNormal(m) => m.parameter_init(),
             PosteriorModel::LinearRegression(m) => m.parameter_init(),
             PosteriorModel::LogisticRegression(m) => m.parameter_init(),
@@ -482,6 +545,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.parameter_init(),
             PosteriorModel::TwoCompartmentIvPk(m) => m.parameter_init(),
             PosteriorModel::TwoCompartmentOralPk(m) => m.parameter_init(),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.parameter_init(),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.parameter_init(),
             PosteriorModel::GammaRegression(m) => m.parameter_init(),
             PosteriorModel::TweedieRegression(m) => m.parameter_init(),
             PosteriorModel::Gev(m) => m.parameter_init(),
@@ -501,6 +566,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.nll(params),
             PosteriorModel::GaussianMean(m) => m.nll(params),
             PosteriorModel::Funnel(m) => m.nll(params),
+            PosteriorModel::FunnelNcp(m) => m.nll(params),
             PosteriorModel::StdNormal(m) => m.nll(params),
             PosteriorModel::LinearRegression(m) => m.nll(params),
             PosteriorModel::LogisticRegression(m) => m.nll(params),
@@ -518,6 +584,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.nll(params),
             PosteriorModel::TwoCompartmentIvPk(m) => m.nll(params),
             PosteriorModel::TwoCompartmentOralPk(m) => m.nll(params),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.nll(params),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.nll(params),
             PosteriorModel::GammaRegression(m) => m.nll(params),
             PosteriorModel::TweedieRegression(m) => m.nll(params),
             PosteriorModel::Gev(m) => m.nll(params),
@@ -537,6 +605,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => m.grad_nll(params),
             PosteriorModel::GaussianMean(m) => m.grad_nll(params),
             PosteriorModel::Funnel(m) => m.grad_nll(params),
+            PosteriorModel::FunnelNcp(m) => m.grad_nll(params),
             PosteriorModel::StdNormal(m) => m.grad_nll(params),
             PosteriorModel::LinearRegression(m) => m.grad_nll(params),
             PosteriorModel::LogisticRegression(m) => m.grad_nll(params),
@@ -554,6 +623,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => m.grad_nll(params),
             PosteriorModel::TwoCompartmentIvPk(m) => m.grad_nll(params),
             PosteriorModel::TwoCompartmentOralPk(m) => m.grad_nll(params),
+            PosteriorModel::ThreeCompartmentIvPk(m) => m.grad_nll(params),
+            PosteriorModel::ThreeCompartmentOralPk(m) => m.grad_nll(params),
             PosteriorModel::GammaRegression(m) => m.grad_nll(params),
             PosteriorModel::TweedieRegression(m) => m.grad_nll(params),
             PosteriorModel::Gev(m) => m.grad_nll(params),
@@ -573,6 +644,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit(m),
             PosteriorModel::GaussianMean(m) => mle.fit(m),
             PosteriorModel::Funnel(m) => mle.fit(m),
+            PosteriorModel::FunnelNcp(m) => mle.fit(m),
             PosteriorModel::StdNormal(m) => mle.fit(m),
             PosteriorModel::LinearRegression(m) => mle.fit(m),
             PosteriorModel::LogisticRegression(m) => mle.fit(m),
@@ -590,6 +662,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit(m),
             PosteriorModel::TwoCompartmentIvPk(m) => mle.fit(m),
             PosteriorModel::TwoCompartmentOralPk(m) => mle.fit(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => mle.fit(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => mle.fit(m),
             PosteriorModel::GammaRegression(m) => mle.fit(m),
             PosteriorModel::TweedieRegression(m) => mle.fit(m),
             PosteriorModel::Gev(m) => mle.fit(m),
@@ -609,6 +683,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GaussianMean(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Funnel(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::FunnelNcp(m) => mle.fit_from(m, init_pars),
             PosteriorModel::StdNormal(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LinearRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::LogisticRegression(m) => mle.fit_from(m, init_pars),
@@ -626,6 +701,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TwoCompartmentIvPk(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TwoCompartmentOralPk(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ThreeCompartmentIvPk(m) => mle.fit_from(m, init_pars),
+            PosteriorModel::ThreeCompartmentOralPk(m) => mle.fit_from(m, init_pars),
             PosteriorModel::GammaRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::TweedieRegression(m) => mle.fit_from(m, init_pars),
             PosteriorModel::Gev(m) => mle.fit_from(m, init_pars),
@@ -662,6 +739,9 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::StdNormal(m) => {
@@ -715,6 +795,12 @@ impl PosteriorModel {
             PosteriorModel::TwoCompartmentOralPk(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
+                sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
+            }
             PosteriorModel::GammaRegression(m) => {
                 sample_nuts_multichain_with_seeds(m, n_warmup, n_samples, &seeds, config)
             }
@@ -757,6 +843,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::GaussianMean(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::Funnel(m) => sample_mams_multichain(m, n_chains, seed, config),
+            PosteriorModel::FunnelNcp(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::StdNormal(m) => sample_mams_multichain(m, n_chains, seed, config),
             PosteriorModel::LinearRegression(m) => {
                 sample_mams_multichain(m, n_chains, seed, config)
@@ -790,6 +877,12 @@ impl PosteriorModel {
                 sample_mams_multichain(m, n_chains, seed, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                sample_mams_multichain(m, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 sample_mams_multichain(m, n_chains, seed, config)
             }
             PosteriorModel::GammaRegression(m) => sample_mams_multichain(m, n_chains, seed, config),
@@ -842,6 +935,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
+            PosteriorModel::FunnelNcp(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
             PosteriorModel::StdNormal(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
@@ -907,6 +1004,14 @@ impl PosteriorModel {
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_mams_multichain(&w, n_chains, seed, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_mams_multichain(&w, n_chains, seed, config)
             }
@@ -971,6 +1076,10 @@ impl PosteriorModel {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
+            PosteriorModel::FunnelNcp(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
             PosteriorModel::StdNormal(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
@@ -1036,6 +1145,14 @@ impl PosteriorModel {
                 mle.fit(&w)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                mle.fit(&w)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 mle.fit(&w)
             }
@@ -1078,6 +1195,55 @@ impl PosteriorModel {
         }
     }
 
+    fn run_map_estimate(
+        &self,
+        priors: Vec<RustPrior>,
+        config: &RustMapConfig,
+    ) -> NsResult<RustMapResult> {
+        macro_rules! dispatch_map {
+            ($m:expr) => {{
+                let posterior = RustPosterior::new($m).with_priors(priors)?;
+                rust_map_estimate(&posterior, config)
+            }};
+        }
+        match self {
+            PosteriorModel::HistFactory(m) => dispatch_map!(m),
+            PosteriorModel::Unbinned(m) => dispatch_map!(m),
+            PosteriorModel::Hybrid(m) => dispatch_map!(m),
+            PosteriorModel::GaussianMean(m) => dispatch_map!(m),
+            PosteriorModel::Funnel(m) => dispatch_map!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_map!(m),
+            PosteriorModel::StdNormal(m) => dispatch_map!(m),
+            PosteriorModel::LinearRegression(m) => dispatch_map!(m),
+            PosteriorModel::LogisticRegression(m) => dispatch_map!(m),
+            PosteriorModel::OrderedLogit(m) => dispatch_map!(m),
+            PosteriorModel::OrderedProbit(m) => dispatch_map!(m),
+            PosteriorModel::PoissonRegression(m) => dispatch_map!(m),
+            PosteriorModel::NegativeBinomialRegression(m) => dispatch_map!(m),
+            PosteriorModel::ComposedGlm(m) => dispatch_map!(m),
+            PosteriorModel::LmmMarginal(m) => dispatch_map!(m),
+            PosteriorModel::ExponentialSurvival(m) => dispatch_map!(m),
+            PosteriorModel::WeibullSurvival(m) => dispatch_map!(m),
+            PosteriorModel::LogNormalAft(m) => dispatch_map!(m),
+            PosteriorModel::CoxPh(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::GammaRegression(m) => dispatch_map!(m),
+            PosteriorModel::TweedieRegression(m) => dispatch_map!(m),
+            PosteriorModel::Gev(m) => dispatch_map!(m),
+            PosteriorModel::Gpd(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibull(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibullAft(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredExponential(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredLogNormal(m) => dispatch_map!(m),
+            PosteriorModel::EightSchools(m) => dispatch_map!(m),
+        }
+    }
+
     fn sample_nuts_multichain_map(
         &self,
         n_chains: usize,
@@ -1107,6 +1273,10 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::Funnel(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::FunnelNcp(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
@@ -1175,6 +1345,14 @@ impl PosteriorModel {
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
             PosteriorModel::TwoCompartmentOralPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentIvPk(m) => {
+                let w = WithPriors { model: m.clone(), priors };
+                sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
+            }
+            PosteriorModel::ThreeCompartmentOralPk(m) => {
                 let w = WithPriors { model: m.clone(), priors };
                 sample_nuts_multichain_with_seeds(&w, n_warmup, n_samples, &seeds, config)
             }
@@ -1240,6 +1418,7 @@ impl PosteriorModel {
             PosteriorModel::Hybrid(m) => dispatch_ci!(m),
             PosteriorModel::GaussianMean(m) => dispatch_ci!(m),
             PosteriorModel::Funnel(m) => dispatch_ci!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_ci!(m),
             PosteriorModel::StdNormal(m) => dispatch_ci!(m),
             PosteriorModel::LinearRegression(m) => dispatch_ci!(m),
             PosteriorModel::LogisticRegression(m) => dispatch_ci!(m),
@@ -1261,6 +1440,8 @@ impl PosteriorModel {
             PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch_ci!(m),
             PosteriorModel::TwoCompartmentIvPk(m) => dispatch_ci!(m),
             PosteriorModel::TwoCompartmentOralPk(m) => dispatch_ci!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch_ci!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch_ci!(m),
             PosteriorModel::GammaRegression(m) => dispatch_ci!(m),
             PosteriorModel::TweedieRegression(m) => dispatch_ci!(m),
             PosteriorModel::Gev(m) => dispatch_ci!(m),
@@ -1281,6 +1462,8 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::GaussianMean(gm.inner.clone()))
     } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelModel>>() {
         Ok(PosteriorModel::Funnel(fm.inner.clone()))
+    } else if let Ok(fm) = model.extract::<PyRef<'_, PyFunnelNcpModel>>() {
+        Ok(PosteriorModel::FunnelNcp(fm.inner.clone()))
     } else if let Ok(sm) = model.extract::<PyRef<'_, PyStdNormalModel>>() {
         Ok(PosteriorModel::StdNormal(sm.inner.clone()))
     } else if let Ok(lr) = model.extract::<PyRef<'_, PyLinearRegressionModel>>() {
@@ -1315,6 +1498,10 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::TwoCompartmentIvPk(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyTwoCompartmentOralPkModel>>() {
         Ok(PosteriorModel::TwoCompartmentOralPk(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyThreeCompartmentIvPkModel>>() {
+        Ok(PosteriorModel::ThreeCompartmentIvPk(m.inner.clone()))
+    } else if let Ok(m) = model.extract::<PyRef<'_, PyThreeCompartmentOralPkModel>>() {
+        Ok(PosteriorModel::ThreeCompartmentOralPk(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyGammaRegressionModel>>() {
         Ok(PosteriorModel::GammaRegression(m.inner.clone()))
     } else if let Ok(m) = model.extract::<PyRef<'_, PyTweedieRegressionModel>>() {
@@ -1335,7 +1522,7 @@ fn extract_posterior_model(model: &Bound<'_, PyAny>) -> PyResult<PosteriorModel>
         Ok(PosteriorModel::EightSchools(m.inner.clone()))
     } else {
         Err(PyValueError::new_err(
-            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
+            "Unsupported model type. Expected HistFactoryModel, UnbinnedModel, GaussianMeanModel, FunnelModel, FunnelNcpModel, StdNormalModel, a regression model, OrderedLogitModel, OrderedProbitModel, ComposedGlmModel, LmmMarginalModel, a survival model, an interval-censored model, a PK model, GammaRegressionModel, TweedieRegressionModel, GevModel, GpdModel, or EightSchoolsModel.",
         ))
     }
 }
@@ -1582,6 +1769,31 @@ impl<M: LogDensityModel> LogDensityModel for WithPriors<M> {
 
     fn prepared(&self) -> Self::Prepared<'_> {
         ns_core::traits::PreparedModelRef::new(self)
+    }
+
+    fn prefer_fused_eval_grad(&self) -> bool {
+        self.model.prefer_fused_eval_grad()
+    }
+
+    fn nll_grad_prepared(
+        &self,
+        _prepared: &Self::Prepared<'_>,
+        params: &[f64],
+    ) -> NsResult<(f64, Vec<f64>)> {
+        // Delegate to inner model's fused eval, then overlay prior terms in-place.
+        let inner_prepared = self.model.prepared();
+        let (mut nll, mut grad) = self.model.nll_grad_prepared(&inner_prepared, params)?;
+        for (i, pr) in self.priors.iter().enumerate() {
+            match pr {
+                Prior::Flat => {}
+                Prior::Normal { center, width } => {
+                    let pull = (params[i] - center) / width;
+                    nll += 0.5 * pull * pull;
+                    grad[i] += (params[i] - center) / (width * width);
+                }
+            }
+        }
+        Ok((nll, grad))
     }
 }
 
@@ -2792,6 +3004,575 @@ fn sv_logchi2_fit(
 }
 
 // ---------------------------------------------------------------------------
+// Volatility: EGARCH(1,1) + GJR-GARCH(1,1).
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (ys, *, max_iter=1000, tol=1e-6))]
+fn egarch11_fit(
+    py: Python<'_>,
+    ys: Vec<f64>,
+    max_iter: u64,
+    tol: f64,
+) -> PyResult<Py<PyAny>> {
+    let cfg = RustEgarch11Config {
+        optimizer: ns_inference::optimizer::OptimizerConfig { max_iter, tol, ..Default::default() },
+        ..Default::default()
+    };
+
+    let fit = rust_egarch11_fit(&ys, cfg)
+        .map_err(|e| PyValueError::new_err(format!("egarch11_fit failed: {e}")))?;
+
+    let params = PyDict::new(py);
+    params.set_item("mu", fit.params.mu)?;
+    params.set_item("omega", fit.params.omega)?;
+    params.set_item("alpha", fit.params.alpha)?;
+    params.set_item("gamma", fit.params.gamma)?;
+    params.set_item("beta", fit.params.beta)?;
+
+    let out = PyDict::new(py);
+    out.set_item("params", params)?;
+    out.set_item("log_likelihood", fit.log_likelihood)?;
+    out.set_item("conditional_variance", fit.conditional_variance.clone())?;
+    out.set_item(
+        "conditional_sigma",
+        fit.conditional_variance.iter().map(|v| v.max(0.0).sqrt()).collect::<Vec<_>>(),
+    )?;
+    out.set_item("converged", fit.optimization.converged)?;
+    out.set_item("n_iter", fit.optimization.n_iter)?;
+    out.set_item("n_fev", fit.optimization.n_fev)?;
+    out.set_item("n_gev", fit.optimization.n_gev)?;
+    out.set_item("fval", fit.optimization.fval)?;
+    out.set_item("message", fit.optimization.message)?;
+
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (ys, *, max_iter=1000, tol=1e-6, persistence_max=0.999, min_var=1e-18))]
+fn gjr_garch11_fit(
+    py: Python<'_>,
+    ys: Vec<f64>,
+    max_iter: u64,
+    tol: f64,
+    persistence_max: f64,
+    min_var: f64,
+) -> PyResult<Py<PyAny>> {
+    let cfg = RustGjrGarch11Config {
+        persistence_max,
+        min_var,
+        optimizer: ns_inference::optimizer::OptimizerConfig { max_iter, tol, ..Default::default() },
+        ..Default::default()
+    };
+
+    let fit = rust_gjr_garch11_fit(&ys, cfg)
+        .map_err(|e| PyValueError::new_err(format!("gjr_garch11_fit failed: {e}")))?;
+
+    let params = PyDict::new(py);
+    params.set_item("mu", fit.params.mu)?;
+    params.set_item("omega", fit.params.omega)?;
+    params.set_item("alpha", fit.params.alpha)?;
+    params.set_item("gamma", fit.params.gamma)?;
+    params.set_item("beta", fit.params.beta)?;
+
+    let out = PyDict::new(py);
+    out.set_item("params", params)?;
+    out.set_item("log_likelihood", fit.log_likelihood)?;
+    out.set_item("conditional_variance", fit.conditional_variance.clone())?;
+    out.set_item(
+        "conditional_sigma",
+        fit.conditional_variance.iter().map(|v| v.max(0.0).sqrt()).collect::<Vec<_>>(),
+    )?;
+    out.set_item("converged", fit.optimization.converged)?;
+    out.set_item("n_iter", fit.optimization.n_iter)?;
+    out.set_item("n_fev", fit.optimization.n_fev)?;
+    out.set_item("n_gev", fit.optimization.n_gev)?;
+    out.set_item("fval", fit.optimization.fval)?;
+    out.set_item("message", fit.optimization.message)?;
+
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacodynamic (PD) models: Emax, Sigmoid-Emax, IDR.
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (e0, emax, ec50, conc))]
+fn emax_predict(
+    py: Python<'_>,
+    e0: f64,
+    emax: f64,
+    ec50: f64,
+    conc: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let model = RustEmaxModel::new(e0, emax, ec50)
+        .map_err(|e| PyValueError::new_err(format!("EmaxModel: {e}")))?;
+    let predictions = model.predict_vec(&conc);
+
+    let out = PyDict::new(py);
+    out.set_item("predictions", predictions)?;
+    out.set_item("e0", e0)?;
+    out.set_item("emax", emax)?;
+    out.set_item("ec50", ec50)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (e0, emax, ec50, conc, obs, *, error_model="additive", sigma=0.05, sigma_add=None))]
+fn emax_nll(
+    e0: f64,
+    emax: f64,
+    ec50: f64,
+    conc: Vec<f64>,
+    obs: Vec<f64>,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+) -> PyResult<f64> {
+    let model = RustEmaxModel::new(e0, emax, ec50)
+        .map_err(|e| PyValueError::new_err(format!("EmaxModel: {e}")))?;
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let nll = model.nll(&conc, &obs, &em)
+        .map_err(|e| PyValueError::new_err(format!("emax_nll: {e}")))?;
+    Ok(nll)
+}
+
+#[pyfunction]
+#[pyo3(signature = (e0, emax, ec50, gamma, conc))]
+fn sigmoid_emax_predict(
+    py: Python<'_>,
+    e0: f64,
+    emax: f64,
+    ec50: f64,
+    gamma: f64,
+    conc: Vec<f64>,
+) -> PyResult<Py<PyAny>> {
+    let model = RustSigmoidEmaxModel::new(e0, emax, ec50, gamma)
+        .map_err(|e| PyValueError::new_err(format!("SigmoidEmaxModel: {e}")))?;
+    let predictions = model.predict_vec(&conc);
+
+    let out = PyDict::new(py);
+    out.set_item("predictions", predictions)?;
+    out.set_item("e0", e0)?;
+    out.set_item("emax", emax)?;
+    out.set_item("ec50", ec50)?;
+    out.set_item("gamma", gamma)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (e0, emax, ec50, gamma, conc, obs, *, error_model="additive", sigma=0.05, sigma_add=None))]
+fn sigmoid_emax_nll(
+    e0: f64,
+    emax: f64,
+    ec50: f64,
+    gamma: f64,
+    conc: Vec<f64>,
+    obs: Vec<f64>,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+) -> PyResult<f64> {
+    let model = RustSigmoidEmaxModel::new(e0, emax, ec50, gamma)
+        .map_err(|e| PyValueError::new_err(format!("SigmoidEmaxModel: {e}")))?;
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let nll = model.nll(&conc, &obs, &em)
+        .map_err(|e| PyValueError::new_err(format!("sigmoid_emax_nll: {e}")))?;
+    Ok(nll)
+}
+
+fn parse_idr_type(s: &str) -> PyResult<RustIndirectResponseType> {
+    match s.to_ascii_lowercase().replace('-', "_").as_str() {
+        "inhibit_production" | "type_i" | "type1" => Ok(RustIndirectResponseType::InhibitProduction),
+        "inhibit_loss" | "type_ii" | "type2" => Ok(RustIndirectResponseType::InhibitLoss),
+        "stimulate_production" | "type_iii" | "type3" => Ok(RustIndirectResponseType::StimulateProduction),
+        "stimulate_loss" | "type_iv" | "type4" => Ok(RustIndirectResponseType::StimulateLoss),
+        _ => Err(PyValueError::new_err(
+            "idr_type must be 'inhibit_production', 'inhibit_loss', 'stimulate_production', or 'stimulate_loss'",
+        )),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (idr_type, kin, kout, max_effect, c50, conc_times, conc_values, output_times, *, r0=None))]
+fn idr_simulate(
+    py: Python<'_>,
+    idr_type: &str,
+    kin: f64,
+    kout: f64,
+    max_effect: f64,
+    c50: f64,
+    conc_times: Vec<f64>,
+    conc_values: Vec<f64>,
+    output_times: Vec<f64>,
+    r0: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    let ty = parse_idr_type(idr_type)?;
+    let model = RustIndirectResponseModel::new(ty, kin, kout, max_effect, c50)
+        .map_err(|e| PyValueError::new_err(format!("IndirectResponseModel: {e}")))?;
+
+    if conc_times.len() != conc_values.len() {
+        return Err(PyValueError::new_err("conc_times and conc_values must have the same length"));
+    }
+    let conc_profile: Vec<(f64, f64)> = conc_times.into_iter().zip(conc_values).collect();
+
+    let response = model.simulate(&conc_profile, &output_times, r0, None)
+        .map_err(|e| PyValueError::new_err(format!("idr_simulate: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("times", output_times)?;
+    out.set_item("response", response)?;
+    out.set_item("baseline", model.baseline())?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (idr_type, kin, kout, max_effect, c50, conc_times, conc_values, obs_times, obs_values, *, error_model="additive", sigma=0.05, sigma_add=None, r0=None))]
+fn idr_nll(
+    idr_type: &str,
+    kin: f64,
+    kout: f64,
+    max_effect: f64,
+    c50: f64,
+    conc_times: Vec<f64>,
+    conc_values: Vec<f64>,
+    obs_times: Vec<f64>,
+    obs_values: Vec<f64>,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+    r0: Option<f64>,
+) -> PyResult<f64> {
+    let ty = parse_idr_type(idr_type)?;
+    let model = RustIndirectResponseModel::new(ty, kin, kout, max_effect, c50)
+        .map_err(|e| PyValueError::new_err(format!("IndirectResponseModel: {e}")))?;
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+
+    if conc_times.len() != conc_values.len() {
+        return Err(PyValueError::new_err("conc_times and conc_values must have the same length"));
+    }
+    let conc_profile: Vec<(f64, f64)> = conc_times.into_iter().zip(conc_values).collect();
+
+    let nll = model.nll(&conc_profile, &obs_times, &obs_values, &em, r0)
+        .map_err(|e| PyValueError::new_err(format!("idr_nll: {e}")))?;
+    Ok(nll)
+}
+
+// ---------------------------------------------------------------------------
+// Competing Risks: CIF, Gray's test, Fine-Gray regression.
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (times, events, target_cause, *, conf_level=0.95))]
+fn cumulative_incidence(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<u32>,
+    target_cause: u32,
+    conf_level: f64,
+) -> PyResult<Py<PyAny>> {
+    let est = rust_cumulative_incidence(&times, &events, target_cause, conf_level)
+        .map_err(|e| PyValueError::new_err(format!("cumulative_incidence: {e}")))?;
+
+    let step_times: Vec<f64> = est.steps.iter().map(|s| s.time).collect();
+    let cif_values: Vec<f64> = est.steps.iter().map(|s| s.cif).collect();
+    let se_values: Vec<f64> = est.steps.iter().map(|s| s.se).collect();
+    let ci_lower: Vec<f64> = est.steps.iter().map(|s| s.ci_lower).collect();
+    let ci_upper: Vec<f64> = est.steps.iter().map(|s| s.ci_upper).collect();
+
+    let out = PyDict::new(py);
+    out.set_item("cause", est.cause)?;
+    out.set_item("times", step_times)?;
+    out.set_item("cif", cif_values)?;
+    out.set_item("se", se_values)?;
+    out.set_item("ci_lower", ci_lower)?;
+    out.set_item("ci_upper", ci_upper)?;
+    out.set_item("n", est.n)?;
+    out.set_item("n_events", est.n_events)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, groups, target_cause))]
+fn gray_test(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<u32>,
+    groups: Vec<usize>,
+    target_cause: u32,
+) -> PyResult<Py<PyAny>> {
+    let result = rust_gray_test(&times, &events, &groups, target_cause)
+        .map_err(|e| PyValueError::new_err(format!("gray_test: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("statistic", result.statistic)?;
+    out.set_item("df", result.df)?;
+    out.set_item("p_value", result.p_value)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (times, events, x, p, target_cause))]
+fn fine_gray_fit(
+    py: Python<'_>,
+    times: Vec<f64>,
+    events: Vec<u32>,
+    x: Vec<f64>,
+    p: usize,
+    target_cause: u32,
+) -> PyResult<Py<PyAny>> {
+    let n = times.len();
+    if x.len() != n * p {
+        return Err(PyValueError::new_err(format!(
+            "x must have length n*p = {}*{} = {}, got {}",
+            n, p, n * p, x.len()
+        )));
+    }
+    let x_mat: Vec<Vec<f64>> = (0..n).map(|i| x[i * p..(i + 1) * p].to_vec()).collect();
+
+    let result = rust_fine_gray_fit(&times, &events, &x_mat, target_cause)
+        .map_err(|e| PyValueError::new_err(format!("fine_gray_fit: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("coefficients", result.coefficients)?;
+    out.set_item("se", result.se)?;
+    out.set_item("z", result.z)?;
+    out.set_item("p_values", result.p_values)?;
+    out.set_item("n", result.n)?;
+    out.set_item("n_events", result.n_events)?;
+    out.set_item("log_likelihood", result.log_likelihood)?;
+    Ok(out.into_any().unbind())
+}
+
+// ---------------------------------------------------------------------------
+// ODE PK models: Transit, Michaelis-Menten, TMDD.
+// ---------------------------------------------------------------------------
+
+fn parse_dose_route_ode(s: &str) -> PyResult<RustDoseRoute> {
+    let s_lower = s.to_ascii_lowercase();
+    if s_lower == "iv" || s_lower == "iv_bolus" {
+        Ok(RustDoseRoute::IvBolus)
+    } else if s_lower == "oral" {
+        Ok(RustDoseRoute::Oral { bioavailability: 1.0 })
+    } else if let Some(rest) = s_lower.strip_prefix("oral_f") {
+        let f: f64 = rest
+            .parse()
+            .map_err(|_| PyValueError::new_err(format!("invalid oral bioavailability: {s}")))?;
+        Ok(RustDoseRoute::Oral { bioavailability: f })
+    } else if let Some(rest) = s_lower.strip_prefix("infusion_") {
+        let dur_str = rest.trim_end_matches('h');
+        let dur: f64 = dur_str
+            .parse()
+            .map_err(|_| PyValueError::new_err(format!("invalid infusion duration: {s}")))?;
+        Ok(RustDoseRoute::Infusion { duration: dur })
+    } else {
+        Err(PyValueError::new_err(format!(
+            "dose_route must be 'iv', 'oral', 'oral_f0.8', or 'infusion_1h', got '{s}'"
+        )))
+    }
+}
+
+fn build_ode_system(
+    model_type: &str,
+    params: &[f64],
+) -> PyResult<(Box<dyn ns_inference::ode_adaptive::OdeSystem>, usize, usize)> {
+    // Returns (system, dose_compartment_default, obs_compartment_default)
+    match model_type {
+        "transit_1cpt" => {
+            if params.len() != 4 {
+                return Err(PyValueError::new_err(
+                    "transit_1cpt needs 4 params: [n_transit, ktr, cl, v1]",
+                ));
+            }
+            let n_transit = params[0] as usize;
+            let sys = ParameterizedTransitOde {
+                n_transit,
+                n_compartments: 1,
+                ktr: params[1],
+                cl: params[2],
+                v1: params[3],
+                q: 0.0,
+                v2: 0.0,
+            };
+            Ok((Box::new(sys), 0, n_transit)) // dose to first transit, observe central
+        }
+        "transit_2cpt" => {
+            if params.len() != 6 {
+                return Err(PyValueError::new_err(
+                    "transit_2cpt needs 6 params: [n_transit, ktr, cl, v1, q, v2]",
+                ));
+            }
+            let n_transit = params[0] as usize;
+            let sys = ParameterizedTransitOde {
+                n_transit,
+                n_compartments: 2,
+                ktr: params[1],
+                cl: params[2],
+                v1: params[3],
+                q: params[4],
+                v2: params[5],
+            };
+            Ok((Box::new(sys), 0, n_transit))
+        }
+        "mm_1cpt" => {
+            if params.len() != 3 {
+                return Err(PyValueError::new_err(
+                    "mm_1cpt needs 3 params: [vmax, km, v1]",
+                ));
+            }
+            let sys = MichaelisMentenPkOde::new_1cpt(params[0], params[1], params[2]);
+            Ok((Box::new(sys), 0, 0))
+        }
+        "mm_2cpt" => {
+            if params.len() != 5 {
+                return Err(PyValueError::new_err(
+                    "mm_2cpt needs 5 params: [vmax, km, v1, q, v2]",
+                ));
+            }
+            let sys =
+                MichaelisMentenPkOde::new_2cpt(params[0], params[1], params[2], params[3], params[4]);
+            Ok((Box::new(sys), 0, 0))
+        }
+        "tmdd" => {
+            if params.len() != 7 {
+                return Err(PyValueError::new_err(
+                    "tmdd needs 7 params: [kon, koff, kel, ksyn, kdeg, kint, v]",
+                ));
+            }
+            let sys = TmddOde::new(
+                params[0], params[1], params[2], params[3], params[4], params[5], params[6],
+            );
+            Ok((Box::new(sys), 0, 0))
+        }
+        _ => Err(PyValueError::new_err(format!(
+            "model_type must be 'transit_1cpt', 'transit_2cpt', 'mm_1cpt', 'mm_2cpt', or 'tmdd', got '{model_type}'"
+        ))),
+    }
+}
+
+fn parse_ode_solver_type(s: &str) -> PyResult<OdeSolverType> {
+    match s.to_ascii_lowercase().as_str() {
+        "rk45" => Ok(OdeSolverType::Rk45),
+        "esdirk4" => Ok(OdeSolverType::Esdirk4),
+        "lsoda" => Ok(OdeSolverType::Lsoda),
+        _ => Err(PyValueError::new_err(
+            "solver must be 'rk45', 'esdirk4', or 'lsoda'",
+        )),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (model_type, params, dose_times, dose_amounts, dose_routes, obs_times, *, obs_compartment=None, dose_compartment=None, solver="rk45", rtol=1e-8, atol=1e-10))]
+fn ode_pk_solve(
+    py: Python<'_>,
+    model_type: &str,
+    params: Vec<f64>,
+    dose_times: Vec<f64>,
+    dose_amounts: Vec<f64>,
+    dose_routes: Vec<String>,
+    obs_times: Vec<f64>,
+    obs_compartment: Option<usize>,
+    dose_compartment: Option<usize>,
+    solver: &str,
+    rtol: f64,
+    atol: f64,
+) -> PyResult<Py<PyAny>> {
+    let (system, default_dose_cpt, default_obs_cpt) = build_ode_system(model_type, &params)?;
+
+    let n_doses = dose_times.len();
+    if dose_amounts.len() != n_doses || dose_routes.len() != n_doses {
+        return Err(PyValueError::new_err(
+            "dose_times, dose_amounts, dose_routes must have the same length",
+        ));
+    }
+
+    let doses: Vec<RustDoseEvent> = dose_times
+        .into_iter()
+        .zip(dose_amounts)
+        .zip(dose_routes)
+        .map(|((t, a), r)| {
+            Ok(RustDoseEvent {
+                time: t,
+                amount: a,
+                route: parse_dose_route_ode(&r)?,
+            })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let solver_type = parse_ode_solver_type(solver)?;
+    let opts = OdeSolverOptions { rtol, atol, ..Default::default() };
+    let pk_solver = OdePkSolver::new(system, solver_type, opts);
+
+    let dose_cpt = dose_compartment.unwrap_or(default_dose_cpt);
+    let obs_cpt = obs_compartment.unwrap_or(default_obs_cpt);
+
+    let result = pk_solver
+        .solve(&doses, &obs_times, dose_cpt, obs_cpt)
+        .map_err(|e| PyValueError::new_err(format!("ode_pk_solve: {e}")))?;
+
+    let out = PyDict::new(py);
+    out.set_item("concentrations", result.concentrations)?;
+    out.set_item("times", result.times)?;
+    out.set_item("auc", result.auc)?;
+    out.set_item("cmax", result.cmax)?;
+    out.set_item("tmax", result.tmax)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (model_type, params, dose_times, dose_amounts, dose_routes, obs_times, obs_values, *, sigma=0.05, obs_compartment=None, dose_compartment=None, solver="rk45", rtol=1e-8, atol=1e-10))]
+#[allow(clippy::too_many_arguments)]
+fn ode_pk_nll_py(
+    model_type: &str,
+    params: Vec<f64>,
+    dose_times: Vec<f64>,
+    dose_amounts: Vec<f64>,
+    dose_routes: Vec<String>,
+    obs_times: Vec<f64>,
+    obs_values: Vec<f64>,
+    sigma: f64,
+    obs_compartment: Option<usize>,
+    dose_compartment: Option<usize>,
+    solver: &str,
+    rtol: f64,
+    atol: f64,
+) -> PyResult<f64> {
+    let (system, default_dose_cpt, default_obs_cpt) = build_ode_system(model_type, &params)?;
+
+    let n_doses = dose_times.len();
+    if dose_amounts.len() != n_doses || dose_routes.len() != n_doses {
+        return Err(PyValueError::new_err(
+            "dose_times, dose_amounts, dose_routes must have the same length",
+        ));
+    }
+
+    let doses: Vec<RustDoseEvent> = dose_times
+        .into_iter()
+        .zip(dose_amounts)
+        .zip(dose_routes)
+        .map(|((t, a), r)| {
+            Ok(RustDoseEvent {
+                time: t,
+                amount: a,
+                route: parse_dose_route_ode(&r)?,
+            })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let solver_type = parse_ode_solver_type(solver)?;
+    let opts = OdeSolverOptions { rtol, atol, ..Default::default() };
+    let pk_solver = OdePkSolver::new(system, solver_type, opts);
+
+    let dose_cpt = dose_compartment.unwrap_or(default_dose_cpt);
+    let obs_cpt = obs_compartment.unwrap_or(default_obs_cpt);
+
+    let nll = rust_ode_pk_nll(&pk_solver, &doses, &obs_times, &obs_values, dose_cpt, obs_cpt, sigma)
+        .map_err(|e| PyValueError::new_err(format!("ode_pk_nll: {e}")))?;
+    Ok(nll)
+}
+
+// ---------------------------------------------------------------------------
 // Econometrics & Causal Inference (Phase 12).
 // ---------------------------------------------------------------------------
 
@@ -3844,6 +4625,176 @@ impl PyFunnelModel {
     #[pyo3(signature = (dim=2))]
     fn new(dim: usize) -> Self {
         Self { inner: FunnelModel::new(dim) }
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Neal's funnel — Non-Centered Parameterization (NCP).
+//
+// v ~ Normal(0, 3)
+// z_i ~ Normal(0, 1)        for i = 1..d-1
+// x_i = exp(v/2) * z_i      (constrained / original parameterization)
+//
+// NLL = v²/18 + 0.5 * Σ z_i²  (independent normals — trivial geometry)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct FunnelNcpModel {
+    d: usize,
+}
+
+impl FunnelNcpModel {
+    fn new(d: usize) -> Self {
+        assert!(d >= 2, "FunnelNcpModel requires d >= 2");
+        Self { d }
+    }
+}
+
+#[derive(Clone)]
+struct PreparedFunnelNcpModel<'a> {
+    model: &'a FunnelNcpModel,
+}
+
+impl PreparedNll for PreparedFunnelNcpModel<'_> {
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        self.model.nll(params)
+    }
+}
+
+impl LogDensityModel for FunnelNcpModel {
+    type Prepared<'a>
+        = PreparedFunnelNcpModel<'a>
+    where
+        Self: 'a;
+
+    fn dim(&self) -> usize {
+        self.d
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("z[{}]", i));
+        }
+        names
+    }
+
+    fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(f64::NEG_INFINITY, f64::INFINITY); self.d]
+    }
+
+    fn parameter_init(&self) -> Vec<f64> {
+        vec![0.0; self.d]
+    }
+
+    fn nll(&self, params: &[f64]) -> NsResult<f64> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let v = params[0];
+        let sum_z2: f64 = params[1..].iter().map(|zi| zi * zi).sum();
+        // v ~ N(0, 9), z_i ~ N(0, 1) — independent
+        Ok(v * v / 18.0 + 0.5 * sum_z2)
+    }
+
+    fn grad_nll(&self, params: &[f64]) -> NsResult<Vec<f64>> {
+        if params.len() != self.d {
+            return Err(NsError::Validation(format!(
+                "expected {} parameters, got {}",
+                self.d,
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite()) {
+            return Err(NsError::Validation("params must be finite".to_string()));
+        }
+        let mut grad = Vec::with_capacity(self.d);
+        grad.push(params[0] / 9.0);
+        for zi in &params[1..] {
+            grad.push(*zi);
+        }
+        Ok(grad)
+    }
+
+    fn prepared(&self) -> Self::Prepared<'_> {
+        PreparedFunnelNcpModel { model: self }
+    }
+}
+
+#[allow(dead_code)]
+impl FunnelNcpModel {
+    fn to_constrained(&self, params: &[f64]) -> Vec<f64> {
+        // Transform NCP → original: v stays, x_i = exp(v/2) * z_i
+        let v = params[0];
+        let scale = (v * 0.5).exp();
+        let mut out = Vec::with_capacity(self.d);
+        out.push(v);
+        for zi in &params[1..] {
+            out.push(scale * zi);
+        }
+        out
+    }
+
+    fn constrained_parameter_names(&self) -> Vec<String> {
+        let mut names = vec!["v".to_string()];
+        for i in 1..self.d {
+            names.push(format!("x[{}]", i));
+        }
+        names
+    }
+}
+
+/// Python wrapper for FunnelNcpModel (Neal's funnel, non-centered parameterization).
+#[pyclass(name = "FunnelNcpModel")]
+struct PyFunnelNcpModel {
+    inner: FunnelNcpModel,
+}
+
+#[pymethods]
+impl PyFunnelNcpModel {
+    #[new]
+    #[pyo3(signature = (dim=10))]
+    fn new(dim: usize) -> Self {
+        Self { inner: FunnelNcpModel::new(dim) }
     }
 
     fn n_params(&self) -> usize {
@@ -5523,8 +6474,28 @@ fn parse_error_model(
             })?;
             Ok(RustErrorModel::Combined { sigma_add: sa, sigma_prop: sigma })
         }
+        "exponential" => Ok(RustErrorModel::Exponential(sigma)),
+        "power" => {
+            // Reuse sigma_add slot as power exponent for backward compatibility.
+            let power = sigma_add.unwrap_or(1.0);
+            Ok(RustErrorModel::Power { sigma, power })
+        }
         _ => Err(PyValueError::new_err(
-            "error_model must be 'additive', 'proportional', or 'combined'",
+            "error_model must be 'additive', 'proportional', 'combined', 'exponential', or 'power'",
+        )),
+    }
+}
+
+fn parse_pk_model_kind(model: &str) -> PyResult<RustPkModelKind> {
+    match model.to_ascii_lowercase().as_str() {
+        "1cpt_oral" => Ok(RustPkModelKind::OneCptOral),
+        "1cpt_iv" => Ok(RustPkModelKind::OneCptIv),
+        "2cpt_iv" => Ok(RustPkModelKind::TwoCptIv),
+        "2cpt_oral" => Ok(RustPkModelKind::TwoCptOral),
+        "3cpt_iv" => Ok(RustPkModelKind::ThreeCptIv),
+        "3cpt_oral" => Ok(RustPkModelKind::ThreeCptOral),
+        _ => Err(PyValueError::new_err(
+            "model must be one of: '1cpt_oral', '1cpt_iv', '2cpt_iv', '2cpt_oral', '3cpt_iv', '3cpt_oral'",
         )),
     }
 }
@@ -5943,46 +6914,895 @@ impl PyTwoCompartmentOralPkModel {
 }
 
 // ---------------------------------------------------------------------------
+// 3-compartment PK concentration helpers (delegating to pk.rs).
+// ---------------------------------------------------------------------------
+
+#[inline]
+fn conc_iv_3cpt_py(dose: f64, cl: f64, v1: f64, q2: f64, v2: f64, q3: f64, v3: f64, t: f64) -> f64 {
+    conc_iv_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3)
+}
+
+#[inline]
+fn conc_oral_3cpt_py(
+    dose: f64,
+    bioav: f64,
+    cl: f64,
+    v1: f64,
+    q2: f64,
+    v2: f64,
+    q3: f64,
+    v3: f64,
+    ka: f64,
+    t: f64,
+) -> f64 {
+    conc_oral_3cpt_macro(dose * bioav, t, cl, v1, q2, v2, q3, v3, ka)
+}
+
+// ---------------------------------------------------------------------------
+// 3-compartment PK models.
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ThreeCompartmentIvPkModel` (IV bolus, 6 params: CL, V1, Q2, V2, Q3, V3).
+#[pyclass(name = "ThreeCompartmentIvPkModel")]
+struct PyThreeCompartmentIvPkModel {
+    inner: RustThreeCompartmentIvPkModel,
+    times: Vec<f64>,
+    dose: f64,
+}
+
+#[pymethods]
+impl PyThreeCompartmentIvPkModel {
+    #[new]
+    #[pyo3(signature = (times, y, *, dose, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        error_model: &str,
+        sigma: f64,
+        sigma_add: Option<f64>,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let em = parse_error_model(error_model, sigma, sigma_add)?;
+        let lp = parse_lloq_policy(lloq_policy)?;
+        let times_for_pred = times.clone();
+        let inner = RustThreeCompartmentIvPkModel::new(times, y, dose, em, lloq, lp)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner, times: times_for_pred, dose })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn predict(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        if params.len() != 6 {
+            return Err(PyValueError::new_err(format!(
+                "expected 6 parameters (CL, V1, Q2, V2, Q3, V3), got {}",
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(PyValueError::new_err("params must be finite and > 0"));
+        }
+        let cl = params[0];
+        let v1 = params[1];
+        let q2 = params[2];
+        let v2 = params[3];
+        let q3 = params[4];
+        let v3 = params[5];
+        Ok(self
+            .times
+            .iter()
+            .map(|&t| conc_iv_3cpt_py(self.dose, cl, v1, q2, v2, q3, v3, t))
+            .collect())
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+/// Python wrapper for `ThreeCompartmentOralPkModel` (oral, 7 params: CL, V1, Q2, V2, Q3, V3, Ka).
+#[pyclass(name = "ThreeCompartmentOralPkModel")]
+struct PyThreeCompartmentOralPkModel {
+    inner: RustThreeCompartmentOralPkModel,
+    times: Vec<f64>,
+    dose: f64,
+    bioavailability: f64,
+}
+
+#[pymethods]
+impl PyThreeCompartmentOralPkModel {
+    #[new]
+    #[pyo3(signature = (times, y, *, dose, bioavailability=1.0, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored"))]
+    fn new(
+        times: Vec<f64>,
+        y: Vec<f64>,
+        dose: f64,
+        bioavailability: f64,
+        error_model: &str,
+        sigma: f64,
+        sigma_add: Option<f64>,
+        lloq: Option<f64>,
+        lloq_policy: &str,
+    ) -> PyResult<Self> {
+        let em = parse_error_model(error_model, sigma, sigma_add)?;
+        let lp = parse_lloq_policy(lloq_policy)?;
+        let times_for_pred = times.clone();
+        let inner =
+            RustThreeCompartmentOralPkModel::new(times, y, dose, bioavailability, em, lloq, lp)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner, times: times_for_pred, dose, bioavailability })
+    }
+
+    fn n_params(&self) -> usize {
+        self.inner.dim()
+    }
+
+    fn dim(&self) -> usize {
+        self.n_params()
+    }
+
+    fn nll(&self, params: Vec<f64>) -> PyResult<f64> {
+        self.inner
+            .nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("NLL computation failed: {}", e)))
+    }
+
+    fn grad_nll(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        self.inner
+            .grad_nll(&params)
+            .map_err(|e| PyValueError::new_err(format!("Gradient computation failed: {}", e)))
+    }
+
+    fn predict(&self, params: Vec<f64>) -> PyResult<Vec<f64>> {
+        if params.len() != 7 {
+            return Err(PyValueError::new_err(format!(
+                "expected 7 parameters (CL, V1, Q2, V2, Q3, V3, Ka), got {}",
+                params.len()
+            )));
+        }
+        if params.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+            return Err(PyValueError::new_err("params must be finite and > 0"));
+        }
+        let cl = params[0];
+        let v1 = params[1];
+        let q2 = params[2];
+        let v2 = params[3];
+        let q3 = params[4];
+        let v3 = params[5];
+        let ka = params[6];
+        Ok(self
+            .times
+            .iter()
+            .map(|&t| {
+                conc_oral_3cpt_py(self.dose, self.bioavailability, cl, v1, q2, v2, q3, v3, ka, t)
+            })
+            .collect())
+    }
+
+    fn parameter_names(&self) -> Vec<String> {
+        self.inner.parameter_names()
+    }
+
+    fn suggested_init(&self) -> Vec<f64> {
+        self.inner.parameter_init()
+    }
+
+    fn suggested_bounds(&self) -> Vec<(f64, f64)> {
+        self.inner.parameter_bounds()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Population PK functions (FOCE, SAEM, VPC, GOF, NONMEM).
 // ---------------------------------------------------------------------------
 
-/// FOCE/FOCEI population PK estimation for 1-compartment oral model.
+/// FOCE/FOCEI population PK estimation with model dispatch.
 #[pyfunction]
-#[pyo3(signature = (times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, max_outer_iter=100, max_inner_iter=20, tol=1e-4, interaction=true))]
-fn nlme_foce(
-    py: Python<'_>,
+#[pyo3(signature = (times, y, subject_idx, n_subjects, *, model="1cpt_oral", method="focei", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, omega_matrix=None, omega_fixed=None, diagonal_omega=false, max_outer_iter=100, max_inner_iter=20, tol=1e-4, rel_tol=1e-8, interaction=true, omega_damping=0.7, omega_max_ratio=100.0, estimate_sigma=true, lloq=None, its_max_iter=30, its_max_individual_iter=60, its_tol=1e-4, its_omega_damping=0.3, imp_n_iter=15, imp_n_samples=300, imp_proposal_scale=1.0, imp_seed=42, imp_tol=1e-4, imp_e_only=false, time_varying_covariates=None, iov=None, random_effect_transforms=None, regimens=None))]
+fn nlme_foce<'py>(
+    py: Python<'py>,
     times: Vec<f64>,
     y: Vec<f64>,
     subject_idx: Vec<usize>,
     n_subjects: usize,
-    dose: f64,
+    model: &str,
+    method: &str,
+    doses: Vec<f64>,
     bioavailability: f64,
     error_model: &str,
     sigma: f64,
     sigma_add: Option<f64>,
     theta_init: Vec<f64>,
     omega_init: Vec<f64>,
+    omega_matrix: Option<Vec<Vec<f64>>>,
+    omega_fixed: Option<Vec<bool>>,
+    diagonal_omega: bool,
     max_outer_iter: usize,
     max_inner_iter: usize,
     tol: f64,
+    rel_tol: f64,
     interaction: bool,
+    omega_damping: f64,
+    omega_max_ratio: f64,
+    estimate_sigma: bool,
+    lloq: Option<f64>,
+    its_max_iter: usize,
+    its_max_individual_iter: usize,
+    its_tol: f64,
+    its_omega_damping: f64,
+    imp_n_iter: usize,
+    imp_n_samples: usize,
+    imp_proposal_scale: f64,
+    imp_seed: u64,
+    imp_tol: f64,
+    imp_e_only: bool,
+    time_varying_covariates: Option<&Bound<'py, PyList>>,
+    iov: Option<&Bound<'py, PyDict>>,
+    random_effect_transforms: Option<&Bound<'py, PyList>>,
+    regimens: Option<&Bound<'py, PyList>>,
 ) -> PyResult<Py<PyAny>> {
     let em = parse_error_model(error_model, sigma, sigma_add)?;
-    let config = RustFoceConfig { max_outer_iter, max_inner_iter, tol, interaction };
+    let omega_fixed_vec = omega_fixed.unwrap_or_default();
+    let config = RustFoceConfig {
+        max_outer_iter,
+        max_inner_iter,
+        tol,
+        rel_tol,
+        interaction,
+        omega_damping,
+        omega_max_ratio,
+        estimate_sigma,
+        lloq,
+        omega_fixed: omega_fixed_vec.clone(),
+        diagonal_omega,
+    };
     let estimator = RustFoceEstimator::new(config);
-    let result = estimator
-        .fit_1cpt_oral(
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
+
+    let expected_n = match model {
+        "1cpt_iv" => 2usize,
+        "1cpt_oral" => 3usize,
+        "2cpt_iv" => 4usize,
+        "2cpt_oral" => 5usize,
+        "3cpt_iv" => 6usize,
+        "3cpt_oral" => 7usize,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown model '{}'. Supported: '1cpt_iv', '1cpt_oral', '2cpt_iv', '2cpt_oral', '3cpt_iv', '3cpt_oral'.",
+                other
+            )));
+        }
+    };
+    if theta_init.len() != expected_n {
+        return Err(PyValueError::new_err(format!(
+            "model '{}' requires {} theta parameters, got {}",
+            model,
+            expected_n,
+            theta_init.len()
+        )));
+    }
+    if omega_matrix.is_none() && omega_init.len() != expected_n {
+        return Err(PyValueError::new_err(format!(
+            "model '{}' requires {} omega_init values, got {}",
+            model,
+            expected_n,
+            omega_init.len()
+        )));
+    }
+
+    // For omega_fixed dims, replace zero/near-zero SD with a tiny placeholder
+    // so OmegaMatrix construction succeeds; the FOCE loop will hold these at the
+    // initial value via apply_omega_fixed_matrix.
+    let omega_init = {
+        let mut oi = omega_init;
+        for (k, &fixed) in omega_fixed_vec.iter().enumerate() {
+            if fixed && k < oi.len() && oi[k] <= 0.0 {
+                oi[k] = 1e-10;
+            }
+        }
+        oi
+    };
+    let omega_full = if let Some(ref mat) = omega_matrix {
+        RustOmegaMatrix::from_covariance(mat).map_err(|e| PyValueError::new_err(e.to_string()))?
+    } else {
+        RustOmegaMatrix::from_diagonal(&omega_init)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+    };
+    let omega_diag = omega_full.sds();
+    let tv_specs = if let Some(tv) = time_varying_covariates {
+        Some(parse_time_varying_covariates(tv, n_subjects)?)
+    } else {
+        None
+    };
+    let iov_spec =
+        if let Some(iov_dict) = iov { Some(parse_iov_spec(iov_dict, n_subjects)?) } else { None };
+    if tv_specs.is_some() && iov_spec.is_some() {
+        return Err(PyValueError::new_err(
+            "Use either time_varying_covariates or iov in one nlme_foce call (combined mode is not yet exposed).",
+        ));
+    }
+
+    let its_cfg = RustItsConfig {
+        max_iter: its_max_iter,
+        max_individual_iter: its_max_individual_iter,
+        tol: its_tol,
+        omega_damping: its_omega_damping,
+    };
+    let imp_cfg = RustImpConfig {
+        n_iter: imp_n_iter,
+        n_samples: imp_n_samples,
+        proposal_scale: imp_proposal_scale,
+        seed: imp_seed,
+        tol: imp_tol,
+        e_only: imp_e_only,
+    };
+
+    let method_lc = method.to_ascii_lowercase();
+    let has_tv = tv_specs.is_some();
+    let has_iov = iov_spec.is_some();
+    if (has_tv || has_iov) && !(model == "1cpt_oral" && (method_lc == "foce" || method_lc == "focei")) {
+        return Err(PyValueError::new_err(
+            "time_varying_covariates/iov are currently supported only for model='1cpt_oral' with method='foce' or 'focei'.",
+        ));
+    }
+    let transforms = if let Some(tr) = random_effect_transforms {
+        Some(parse_random_effect_transforms(tr, expected_n)?)
+    } else {
+        None
+    };
+    let has_transforms = transforms.is_some();
+    if has_transforms && !(method_lc == "foce" || method_lc == "focei") {
+        return Err(PyValueError::new_err(
+            "random_effect_transforms are currently supported only with method='foce' or 'focei'.",
+        ));
+    }
+    let parsed_regimens = if let Some(regs) = regimens {
+        Some(parse_regimens(regs, n_subjects, model, bioavailability)?)
+    } else {
+        None
+    };
+    let has_regimens = parsed_regimens.is_some();
+    if has_regimens
+        && !(matches!(
+            model,
+            "1cpt_iv" | "1cpt_oral" | "2cpt_iv" | "2cpt_oral" | "3cpt_iv" | "3cpt_oral"
+        ) && (method_lc == "foce" || method_lc == "focei"))
+    {
+        return Err(PyValueError::new_err(
+            "regimens are supported for all models with method='foce' or 'focei'.",
+        ));
+    }
+    let mode_count = has_tv as u8 + has_iov as u8 + has_transforms as u8 + has_regimens as u8;
+    if mode_count > 1 {
+        return Err(PyValueError::new_err(
+            "Use only one of: time_varying_covariates, iov, random_effect_transforms, regimens.",
+        ));
+    }
+    let mut imp_diag_opt: Option<ns_inference::ImpDiagnostics> = None;
+    let result = match (model, method_lc.as_str()) {
+        ("1cpt_iv", "foce") | ("1cpt_iv", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_1cpt_iv_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_1cpt_iv_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_1cpt_iv_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+        ("1cpt_oral", "foce") | ("1cpt_oral", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_1cpt_oral_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tv) = tv_specs.as_ref() {
+                estimator.fit_1cpt_oral_with_time_varying_covariates(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    &omega_diag,
+                    tv,
+                )
+            } else if let Some(iov_cfg) = iov_spec.as_ref() {
+                estimator.fit_1cpt_oral_with_iov(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    &omega_diag,
+                    iov_cfg,
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_1cpt_oral_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_1cpt_oral_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+        ("2cpt_iv", "foce") | ("2cpt_iv", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_2cpt_iv_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_2cpt_iv_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_2cpt_iv_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+        ("2cpt_oral", "foce") | ("2cpt_oral", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_2cpt_oral_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_2cpt_oral_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_2cpt_oral_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+        ("3cpt_iv", "foce") | ("3cpt_iv", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_3cpt_iv_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_3cpt_iv_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_3cpt_iv_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+        ("3cpt_oral", "foce") | ("3cpt_oral", "focei") => {
+            if let Some(regs) = parsed_regimens.as_ref() {
+                estimator.fit_3cpt_oral_with_regimens_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    regs,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            } else if let Some(tr) = transforms.as_ref() {
+                estimator.fit_3cpt_oral_with_transforms_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                    tr,
+                )
+            } else {
+                estimator.fit_3cpt_oral_correlated(
+                    &times,
+                    &y,
+                    &subject_idx,
+                    n_subjects,
+                    &doses,
+                    bioavailability,
+                    em,
+                    &theta_init,
+                    omega_full.clone(),
+                )
+            }
+        }
+
+        ("1cpt_iv", "fo") => estimator.fit_1cpt_iv_fo_correlated(
             &times,
             &y,
             &subject_idx,
             n_subjects,
-            dose,
+            &doses,
+            em,
+            &theta_init,
+            omega_full.clone(),
+        ),
+        ("1cpt_oral", "fo") => estimator.fit_1cpt_oral_fo_correlated(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
             bioavailability,
             em,
             &theta_init,
-            &omega_init,
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            omega_full.clone(),
+        ),
+        ("2cpt_iv", "fo") => estimator.fit_2cpt_iv_fo_correlated(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            em,
+            &theta_init,
+            omega_full.clone(),
+        ),
+        ("2cpt_oral", "fo") => estimator.fit_2cpt_oral_fo_correlated(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            omega_full.clone(),
+        ),
+        ("3cpt_iv", "fo") => estimator.fit_3cpt_iv_fo(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            em,
+            &theta_init,
+            &omega_diag,
+        ),
+        ("3cpt_oral", "fo") => estimator.fit_3cpt_oral_fo(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega_diag,
+        ),
+
+        ("1cpt_iv", "its") => estimator.fit_1cpt_iv_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+        ("1cpt_oral", "its") => estimator.fit_1cpt_oral_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+        ("2cpt_iv", "its") => estimator.fit_2cpt_iv_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+        ("2cpt_oral", "its") => estimator.fit_2cpt_oral_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+        ("3cpt_iv", "its") => estimator.fit_3cpt_iv_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+        ("3cpt_oral", "its") => estimator.fit_3cpt_oral_its(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega_diag,
+            its_cfg.clone(),
+        ),
+
+        ("1cpt_iv", "imp") => estimator
+            .fit_1cpt_iv_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+        ("1cpt_oral", "imp") => estimator
+            .fit_1cpt_oral_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+        ("2cpt_iv", "imp") => estimator
+            .fit_2cpt_iv_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+        ("2cpt_oral", "imp") => estimator
+            .fit_2cpt_oral_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+        ("3cpt_iv", "imp") => estimator
+            .fit_3cpt_iv_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+        ("3cpt_oral", "imp") => estimator
+            .fit_3cpt_oral_imp(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_diag,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_diag_opt = Some(d);
+                r
+            }),
+
+        (_, other_method) => Err(ns_core::Error::Validation(format!(
+            "Unknown method '{}'. Supported: 'foce', 'focei', 'fo', 'its', 'imp'.",
+            other_method
+        ))),
+    }
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     let dict = PyDict::new(py);
     dict.set_item("theta", result.theta.clone())?;
@@ -5993,25 +7813,930 @@ fn nlme_foce(
     dict.set_item("ofv", result.ofv)?;
     dict.set_item("converged", result.converged)?;
     dict.set_item("n_iter", result.n_iter)?;
+    dict.set_item("sigma", result.sigma)?;
+    dict.set_item("sigma_init", result.sigma_init)?;
+    if let Some(cov) = &result.covariance_step {
+        let cov_dict = PyDict::new(py);
+        cov_dict.set_item("parameter_names", cov.parameter_names.clone())?;
+        cov_dict.set_item("r_matrix", cov.r_matrix.clone())?;
+        cov_dict.set_item("s_matrix", cov.s_matrix.clone())?;
+        cov_dict.set_item("covariance", cov.covariance.clone())?;
+        cov_dict.set_item("robust_covariance", cov.robust_covariance.clone())?;
+        cov_dict.set_item("se", cov.se.clone())?;
+        cov_dict.set_item("rse_pct", cov.rse_pct.clone())?;
+        cov_dict.set_item("r_eigenvalues", cov.r_eigenvalues.clone())?;
+        cov_dict.set_item("r_condition_number", cov.r_condition_number)?;
+        dict.set_item("covariance_step", cov_dict)?;
+    } else {
+        dict.set_item("covariance_step", py.None())?;
+    }
+    if let Some(imp_diag) = imp_diag_opt {
+        let imp_dict = PyDict::new(py);
+        imp_dict.set_item("ofv_trace", imp_diag.ofv_trace)?;
+        imp_dict.set_item("ess_fraction_trace", imp_diag.ess_fraction_trace)?;
+        imp_dict.set_item("max_weight_trace", imp_diag.max_weight_trace)?;
+        dict.set_item("imp", imp_dict)?;
+    } else {
+        dict.set_item("imp", py.None())?;
+    }
     dict.into_py_any(py)
 }
 
-/// SAEM population PK estimation for 1-compartment oral model.
-#[pyfunction]
-#[pyo3(signature = (times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4))]
-fn nlme_saem(
+/// Parse a Python list of covariate dicts into `Vec<RustCovariateSpec>`.
+///
+/// Each dict: `{"param_idx": int, "values": list[float], "reference": float, "relationship": str}`
+/// Relationship: "power" (with optional "exponent": float, default 0.75), "exponential",
+/// "proportional", "categorical".
+fn parse_covariates(
+    covariates: &Bound<'_, PyList>,
+    n_subjects: usize,
+) -> PyResult<Vec<RustCovariateSpec>> {
+    let mut specs = Vec::with_capacity(covariates.len());
+    for item in covariates.iter() {
+        let d = item
+            .cast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("each covariate must be a dict"))?;
+        let param_idx: usize = d
+            .get_item("param_idx")?
+            .ok_or_else(|| PyValueError::new_err("covariate dict missing 'param_idx'"))?
+            .extract()?;
+        let values: Vec<f64> = d
+            .get_item("values")?
+            .ok_or_else(|| PyValueError::new_err("covariate dict missing 'values'"))?
+            .extract()?;
+        if values.len() != n_subjects {
+            return Err(PyValueError::new_err(format!(
+                "covariate values length ({}) != n_subjects ({})",
+                values.len(),
+                n_subjects
+            )));
+        }
+        let reference: f64 = d
+            .get_item("reference")?
+            .ok_or_else(|| PyValueError::new_err("covariate dict missing 'reference'"))?
+            .extract()?;
+        let rel_str: String = d
+            .get_item("relationship")?
+            .ok_or_else(|| PyValueError::new_err("covariate dict missing 'relationship'"))?
+            .extract()?;
+        let relationship = match rel_str.to_ascii_lowercase().as_str() {
+            "power" => {
+                let exp: f64 = d
+                    .get_item("exponent")?
+                    .map(|v| v.extract::<f64>())
+                    .transpose()?
+                    .unwrap_or(0.75);
+                RustCovRelationship::Power { exponent: exp, estimate_exponent: false }
+            }
+            "exponential" => RustCovRelationship::Exponential,
+            "proportional" => RustCovRelationship::Proportional,
+            "categorical" => RustCovRelationship::Categorical,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown covariate relationship '{}'. Use 'power', 'exponential', 'proportional', or 'categorical'.",
+                    other
+                )));
+            }
+        };
+        specs.push(RustCovariateSpec { param_idx, values, reference, relationship });
+    }
+    Ok(specs)
+}
+
+/// Parse time-varying covariates:
+///
+/// Each dict:
+/// {
+///   "param_idx": int,
+///   "trajectories": [  # len = n_subjects
+///     [(t0, v0), (t1, v1), ...],    # or [{"time": t, "value": v}, ...]
+///     ...
+///   ],
+///   "reference": float,
+///   "relationship": "power"|"exponential"|"proportional"|"categorical",
+///   "interpolation": "locf"|"linear"   # optional, default locf
+/// }
+fn parse_time_varying_covariates(
+    covariates: &Bound<'_, PyList>,
+    n_subjects: usize,
+) -> PyResult<Vec<RustTimeVaryingCovariateSpec>> {
+    let mut specs = Vec::with_capacity(covariates.len());
+    for item in covariates.iter() {
+        let d = item
+            .cast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("each time-varying covariate must be a dict"))?;
+        let param_idx: usize = d
+            .get_item("param_idx")?
+            .ok_or_else(|| PyValueError::new_err("time-varying covariate missing 'param_idx'"))?
+            .extract()?;
+        let reference: f64 = d
+            .get_item("reference")?
+            .ok_or_else(|| PyValueError::new_err("time-varying covariate missing 'reference'"))?
+            .extract()?;
+        let rel_str: String = d
+            .get_item("relationship")?
+            .ok_or_else(|| PyValueError::new_err("time-varying covariate missing 'relationship'"))?
+            .extract()?;
+        let relationship = match rel_str.to_ascii_lowercase().as_str() {
+            "power" => {
+                let exp: f64 = d
+                    .get_item("exponent")?
+                    .map(|v| v.extract::<f64>())
+                    .transpose()?
+                    .unwrap_or(0.75);
+                RustCovRelationship::Power { exponent: exp, estimate_exponent: false }
+            }
+            "exponential" => RustCovRelationship::Exponential,
+            "proportional" => RustCovRelationship::Proportional,
+            "categorical" => RustCovRelationship::Categorical,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown time-varying covariate relationship '{}'. Use 'power', 'exponential', 'proportional', or 'categorical'.",
+                    other
+                )));
+            }
+        };
+        let interp = d
+            .get_item("interpolation")?
+            .map(|v| v.extract::<String>())
+            .transpose()?
+            .unwrap_or_else(|| "locf".to_string());
+        let interpolation = match interp.to_ascii_lowercase().as_str() {
+            "locf" => RustTimeCovariateInterpolation::Locf,
+            "linear" => RustTimeCovariateInterpolation::Linear,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown interpolation '{}'. Use 'locf' or 'linear'.",
+                    other
+                )));
+            }
+        };
+
+        let trajectories_any = d.get_item("trajectories")?.ok_or_else(|| {
+            PyValueError::new_err("time-varying covariate missing 'trajectories'")
+        })?;
+        let trajectories_list = trajectories_any.cast::<PyList>().map_err(|_| {
+            PyValueError::new_err("'trajectories' must be a list of per-subject trajectories")
+        })?;
+        if trajectories_list.len() != n_subjects {
+            return Err(PyValueError::new_err(format!(
+                "time-varying trajectories length ({}) != n_subjects ({})",
+                trajectories_list.len(),
+                n_subjects
+            )));
+        }
+        let mut trajectories: Vec<Vec<RustTimeVaryingCovariatePoint>> =
+            Vec::with_capacity(n_subjects);
+        for subj_item in trajectories_list.iter() {
+            let subj_list = subj_item.cast::<PyList>().map_err(|_| {
+                PyValueError::new_err(
+                    "each subject trajectory must be a list of (time, value) pairs or dict points",
+                )
+            })?;
+            let mut pts: Vec<RustTimeVaryingCovariatePoint> = Vec::with_capacity(subj_list.len());
+            for p in subj_list.iter() {
+                if let Ok((t, v)) = p.extract::<(f64, f64)>() {
+                    pts.push(RustTimeVaryingCovariatePoint { time: t, value: v });
+                    continue;
+                }
+                let pd = p.cast::<PyDict>().map_err(|_| {
+                    PyValueError::new_err(
+                        "trajectory point must be (time, value) tuple or {'time':..., 'value':...}",
+                    )
+                })?;
+                let t: f64 = pd
+                    .get_item("time")?
+                    .ok_or_else(|| PyValueError::new_err("trajectory point missing 'time'"))?
+                    .extract()?;
+                let v: f64 = pd
+                    .get_item("value")?
+                    .ok_or_else(|| PyValueError::new_err("trajectory point missing 'value'"))?
+                    .extract()?;
+                pts.push(RustTimeVaryingCovariatePoint { time: t, value: v });
+            }
+            trajectories.push(pts);
+        }
+
+        specs.push(RustTimeVaryingCovariateSpec {
+            param_idx,
+            trajectories,
+            reference,
+            relationship,
+            interpolation,
+        });
+    }
+    Ok(specs)
+}
+
+/// Parse IOV spec dict:
+/// {
+///   "param_indices": [int, ...],
+///   "occasion_start_times": [[t0, t1, ...], ...],  # len = n_subjects
+///   "omega_iov_init": [float, ...]                 # len = len(param_indices)
+/// }
+fn parse_iov_spec(iov: &Bound<'_, PyDict>, n_subjects: usize) -> PyResult<RustIovSpec> {
+    let param_indices: Vec<usize> = iov
+        .get_item("param_indices")?
+        .ok_or_else(|| PyValueError::new_err("IOV dict missing 'param_indices'"))?
+        .extract()?;
+    let occasion_start_times: Vec<Vec<f64>> = iov
+        .get_item("occasion_start_times")?
+        .ok_or_else(|| PyValueError::new_err("IOV dict missing 'occasion_start_times'"))?
+        .extract()?;
+    let omega_iov_init: Vec<f64> = iov
+        .get_item("omega_iov_init")?
+        .ok_or_else(|| PyValueError::new_err("IOV dict missing 'omega_iov_init'"))?
+        .extract()?;
+    if occasion_start_times.len() != n_subjects {
+        return Err(PyValueError::new_err(format!(
+            "IOV occasion_start_times length ({}) != n_subjects ({})",
+            occasion_start_times.len(),
+            n_subjects
+        )));
+    }
+    Ok(RustIovSpec { param_indices, occasion_start_times, omega_iov_init })
+}
+
+fn parse_random_effect_transforms(
+    transforms: &Bound<'_, PyList>,
+    expected_n: usize,
+) -> PyResult<Vec<RustRandomEffectTransform>> {
+    if transforms.len() != expected_n {
+        return Err(PyValueError::new_err(format!(
+            "random_effect_transforms length ({}) must equal model dimension ({expected_n})",
+            transforms.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(expected_n);
+    for item in transforms.iter() {
+        if let Ok(kind) = item.extract::<String>() {
+            let tr = match kind.to_ascii_lowercase().as_str() {
+                "lognormal" | "log_normal" | "log-normal" => RustRandomEffectTransform::LogNormal,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "Unknown transform '{}'. Use 'lognormal' or a dict with type='logit_normal'.",
+                        other
+                    )));
+                }
+            };
+            out.push(tr);
+            continue;
+        }
+        let d = item.cast::<PyDict>().map_err(|_| {
+            PyValueError::new_err(
+                "each random effect transform must be a string or dict {'type', ...}",
+            )
+        })?;
+        let t: String = d
+            .get_item("type")?
+            .ok_or_else(|| PyValueError::new_err("transform dict missing 'type'"))?
+            .extract()?;
+        let tr = match t.to_ascii_lowercase().as_str() {
+            "lognormal" | "log_normal" | "log-normal" => RustRandomEffectTransform::LogNormal,
+            "logitnormal" | "logit_normal" | "logit-normal" => {
+                let lower: f64 = d
+                    .get_item("lower")?
+                    .ok_or_else(|| PyValueError::new_err("logit_normal transform missing 'lower'"))?
+                    .extract()?;
+                let upper: f64 = d
+                    .get_item("upper")?
+                    .ok_or_else(|| PyValueError::new_err("logit_normal transform missing 'upper'"))?
+                    .extract()?;
+                RustRandomEffectTransform::LogitNormal { lower, upper }
+            }
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown transform type '{}'. Use 'lognormal' or 'logit_normal'.",
+                    other
+                )));
+            }
+        };
+        out.push(tr);
+    }
+    Ok(out)
+}
+
+fn parse_dose_route(
+    route_val: Option<&Bound<'_, PyAny>>,
+    model: &str,
+    default_bioavailability: f64,
+    duration_val: Option<f64>,
+    event_dict: &Bound<'_, PyDict>,
+) -> PyResult<RustDoseRoute> {
+    if let Some(route_obj) = route_val {
+        if let Ok(route_name) = route_obj.extract::<String>() {
+            return match route_name.to_ascii_lowercase().as_str() {
+                "iv_bolus" | "ivbolus" | "bolus" => Ok(RustDoseRoute::IvBolus),
+                "oral" => {
+                    let bioavailability: f64 = event_dict
+                        .get_item("bioavailability")?
+                        .map(|v| v.extract::<f64>())
+                        .transpose()?
+                        .unwrap_or(default_bioavailability);
+                    Ok(RustDoseRoute::Oral { bioavailability })
+                }
+                "infusion" | "iv_infusion" | "ivinfusion" => {
+                    let duration = duration_val
+                        .or_else(|| {
+                            event_dict
+                                .get_item("duration")
+                                .ok()
+                                .flatten()
+                                .and_then(|v| v.extract::<f64>().ok())
+                        })
+                        .ok_or_else(|| {
+                            PyValueError::new_err(
+                                "infusion route requires 'duration' in event dict",
+                            )
+                        })?;
+                    Ok(RustDoseRoute::Infusion { duration })
+                }
+                other => Err(PyValueError::new_err(format!(
+                    "Unknown route '{}'. Use iv_bolus/oral/infusion.",
+                    other
+                ))),
+            };
+        }
+        let route_dict = route_obj.cast::<PyDict>().map_err(|_| {
+            PyValueError::new_err("route must be string or dict {'type', ...}")
+        })?;
+        let route_type: String = route_dict
+            .get_item("type")?
+            .ok_or_else(|| PyValueError::new_err("route dict missing 'type'"))?
+            .extract()?;
+        return match route_type.to_ascii_lowercase().as_str() {
+            "iv_bolus" | "ivbolus" | "bolus" => Ok(RustDoseRoute::IvBolus),
+            "oral" => {
+                let bioavailability: f64 = route_dict
+                    .get_item("bioavailability")?
+                    .map(|v| v.extract::<f64>())
+                    .transpose()?
+                    .unwrap_or(default_bioavailability);
+                Ok(RustDoseRoute::Oral { bioavailability })
+            }
+            "infusion" | "iv_infusion" | "ivinfusion" => {
+                let duration: f64 = route_dict
+                    .get_item("duration")?
+                    .ok_or_else(|| PyValueError::new_err("infusion route missing 'duration'"))?
+                    .extract()?;
+                Ok(RustDoseRoute::Infusion { duration })
+            }
+            other => Err(PyValueError::new_err(format!(
+                "Unknown route type '{}'. Use iv_bolus/oral/infusion.",
+                other
+            ))),
+        };
+    }
+
+    match model {
+        "2cpt_iv" | "1cpt_iv" | "3cpt_iv" => Ok(RustDoseRoute::IvBolus),
+        _ => Ok(RustDoseRoute::Oral { bioavailability: default_bioavailability }),
+    }
+}
+
+fn parse_regimens(
+    regimens: &Bound<'_, PyList>,
+    n_subjects: usize,
+    model: &str,
+    default_bioavailability: f64,
+) -> PyResult<Vec<RustDosingRegimen>> {
+    if regimens.len() != n_subjects {
+        return Err(PyValueError::new_err(format!(
+            "regimens length ({}) must equal n_subjects ({n_subjects})",
+            regimens.len()
+        )));
+    }
+    let mut out: Vec<RustDosingRegimen> = Vec::with_capacity(n_subjects);
+    for subj in regimens.iter() {
+        let subj_dict = subj
+            .cast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("each regimen must be a dict"))?;
+        let events_any = subj_dict
+            .get_item("events")?
+            .ok_or_else(|| PyValueError::new_err("each regimen dict must include 'events'"))?;
+        let events_list = events_any
+            .cast::<PyList>()
+            .map_err(|_| PyValueError::new_err("'events' must be a list of event dicts"))?;
+        let mut events: Vec<RustDoseEvent> = Vec::with_capacity(events_list.len());
+        for ev in events_list.iter() {
+            let evd = ev
+                .cast::<PyDict>()
+                .map_err(|_| PyValueError::new_err("each dosing event must be a dict"))?;
+            let time: f64 = evd
+                .get_item("time")?
+                .ok_or_else(|| PyValueError::new_err("event missing 'time'"))?
+                .extract()?;
+            let amount: f64 = evd
+                .get_item("amount")?
+                .ok_or_else(|| PyValueError::new_err("event missing 'amount'"))?
+                .extract()?;
+            let route_obj = evd.get_item("route")?;
+            let duration = evd.get_item("duration")?.map(|v| v.extract::<f64>()).transpose()?;
+            let route = parse_dose_route(route_obj.as_ref(), model, default_bioavailability, duration, &evd)?;
+            events.push(RustDoseEvent { time, amount, route });
+        }
+        let regimen = RustDosingRegimen::from_events(events)
+            .map_err(|e| PyValueError::new_err(format!("invalid regimen: {}", e)))?;
+        out.push(regimen);
+    }
+    Ok(out)
+}
+
+/// Pack SAEM result + diagnostics into a Python dict.
+fn pack_saem_result(
     py: Python<'_>,
+    result: &ns_inference::FoceResult,
+    diag: &ns_inference::SaemDiagnostics,
+    return_theta_trace: bool,
+) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new(py);
+    dict.set_item("theta", result.theta.clone())?;
+    dict.set_item("omega", result.omega.clone())?;
+    dict.set_item("omega_matrix", result.omega_matrix.to_matrix())?;
+    dict.set_item("correlation", result.correlation.clone())?;
+    dict.set_item("eta", result.eta.clone())?;
+    dict.set_item("ofv", result.ofv)?;
+    dict.set_item("converged", result.converged)?;
+    dict.set_item("n_iter", result.n_iter)?;
+    dict.set_item("sigma", result.sigma)?;
+    dict.set_item("sigma_init", result.sigma_init)?;
+
+    let saem_dict = PyDict::new(py);
+    saem_dict.set_item("acceptance_rates", diag.acceptance_rates.clone())?;
+    saem_dict.set_item("ofv_trace", diag.ofv_trace.clone())?;
+    saem_dict.set_item("burn_in_only", diag.burn_in_only)?;
+    if return_theta_trace && !diag.theta_trace.is_empty() {
+        saem_dict.set_item("theta_trace", diag.theta_trace.clone())?;
+    }
+    if !diag.relative_change.is_empty() {
+        saem_dict.set_item("relative_change", diag.relative_change.clone())?;
+    }
+    if let Some(ref gs) = diag.geweke_scores {
+        saem_dict.set_item("geweke_scores", gs.clone())?;
+    }
+    dict.set_item("saem", saem_dict)?;
+    dict.into_py_any(py)
+}
+
+/// SAEM population PK estimation with model dispatch.
+///
+/// Supported models: "1cpt_iv" (2θ), "1cpt_oral" (3θ), "2cpt_iv" (4θ),
+/// "2cpt_oral" (5θ), "3cpt_iv" (6θ), "3cpt_oral" (7θ).
+#[pyfunction]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, omega_matrix=None, covariates=None, time_varying_covariates=None, iov=None, random_effect_transforms=None, regimens=None, n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4, return_theta_trace=false, lloq=None))]
+fn nlme_saem<'py>(
+    py: Python<'py>,
     times: Vec<f64>,
     y: Vec<f64>,
     subject_idx: Vec<usize>,
     n_subjects: usize,
-    dose: f64,
+    model: &str,
+    doses: Vec<f64>,
     bioavailability: f64,
     error_model: &str,
     sigma: f64,
     sigma_add: Option<f64>,
     theta_init: Vec<f64>,
     omega_init: Vec<f64>,
+    omega_matrix: Option<Vec<Vec<f64>>>,
+    covariates: Option<&Bound<'py, PyList>>,
+    time_varying_covariates: Option<&Bound<'py, PyList>>,
+    iov: Option<&Bound<'py, PyDict>>,
+    random_effect_transforms: Option<&Bound<'py, PyList>>,
+    regimens: Option<&Bound<'py, PyList>>,
+    n_burn: usize,
+    n_iter: usize,
+    n_chains: usize,
+    seed: u64,
+    tol: f64,
+    return_theta_trace: bool,
+    lloq: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
+
+    // Validate theta_init length per model.
+    let expected_n = match model {
+        "1cpt_iv" => 2,
+        "1cpt_oral" => 3,
+        "2cpt_iv" => 4,
+        "2cpt_oral" => 5,
+        "3cpt_iv" => 6,
+        "3cpt_oral" => 7,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown model '{}'. Supported: '1cpt_iv', '1cpt_oral', '2cpt_iv', '2cpt_oral', '3cpt_iv', '3cpt_oral'.",
+                other
+            )));
+        }
+    };
+    if theta_init.len() != expected_n {
+        return Err(PyValueError::new_err(format!(
+            "model '{}' requires {} theta parameters, got {}",
+            model,
+            expected_n,
+            theta_init.len()
+        )));
+    }
+
+    let config = RustSaemConfig {
+        n_burn,
+        n_iter,
+        n_chains,
+        seed,
+        tol,
+        store_theta_trace: return_theta_trace,
+        lloq,
+        ..Default::default()
+    };
+    let estimator = RustSaemEstimator::new(config);
+
+    // Parse covariates if provided.
+    let cov_specs = if let Some(cov_list) = covariates {
+        parse_covariates(cov_list, n_subjects)?
+    } else {
+        Vec::new()
+    };
+    let tv_cov_specs = if let Some(tv_list) = time_varying_covariates {
+        parse_time_varying_covariates(tv_list, n_subjects)?
+    } else {
+        Vec::new()
+    };
+    let iov_spec =
+        if let Some(iov_dict) = iov { Some(parse_iov_spec(iov_dict, n_subjects)?) } else { None };
+    let has_covariates = !cov_specs.is_empty();
+    let has_tv_covariates = !tv_cov_specs.is_empty();
+    let has_iov = iov_spec.is_some();
+    let transforms = if let Some(tr) = random_effect_transforms {
+        Some(parse_random_effect_transforms(tr, expected_n)?)
+    } else {
+        None
+    };
+    let parsed_regimens = if let Some(regs) = regimens {
+        Some(parse_regimens(regs, n_subjects, model, bioavailability)?)
+    } else {
+        None
+    };
+    let has_transforms = transforms.is_some();
+    let has_regimens = parsed_regimens.is_some();
+    let mode_count = has_covariates as u8
+        + has_tv_covariates as u8
+        + has_iov as u8
+        + has_transforms as u8
+        + has_regimens as u8;
+    if mode_count > 1 {
+        return Err(PyValueError::new_err(
+            "Use only one of: covariates, time_varying_covariates, iov, random_effect_transforms, regimens.",
+        ));
+    }
+    if (has_tv_covariates || has_iov) && model != "1cpt_oral" {
+        return Err(PyValueError::new_err(
+            "time_varying_covariates and iov are currently supported only for model='1cpt_oral' in nlme_saem.",
+        ));
+    }
+    if has_regimens
+        && !matches!(
+            model,
+            "1cpt_iv" | "1cpt_oral" | "2cpt_iv" | "2cpt_oral" | "3cpt_iv" | "3cpt_oral"
+        )
+    {
+        return Err(PyValueError::new_err(
+            "regimens are supported for all models in nlme_saem.",
+        ));
+    }
+
+    // Build OmegaMatrix: prefer full matrix, fallback to diagonal.
+    let omega = if let Some(ref mat) = omega_matrix {
+        RustOmegaMatrix::from_covariance(mat).map_err(|e| PyValueError::new_err(e.to_string()))?
+    } else {
+        RustOmegaMatrix::from_diagonal(&omega_init)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+    };
+
+    // Dispatch to the appropriate model fit method.
+    let (result, diag) = if has_covariates {
+        match model {
+            "1cpt_iv" => Err(ns_core::Error::Validation(
+                "covariates mode is not yet implemented for model='1cpt_iv' in nlme_saem."
+                    .to_string(),
+            )),
+            "1cpt_oral" => estimator.fit_1cpt_oral_with_covariates(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_init,
+                &cov_specs,
+            ),
+            "2cpt_iv" => estimator.fit_2cpt_iv_with_covariates(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                &omega_init,
+                &cov_specs,
+            ),
+            "2cpt_oral" => estimator.fit_2cpt_oral_with_covariates(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_init,
+                &cov_specs,
+            ),
+            "3cpt_iv" => estimator.fit_3cpt_iv_with_covariates(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                &omega_init,
+                &cov_specs,
+            ),
+            "3cpt_oral" => estimator.fit_3cpt_oral_with_covariates(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                &omega_init,
+                &cov_specs,
+            ),
+            _ => unreachable!(),
+        }
+    } else if has_tv_covariates {
+        estimator.fit_1cpt_oral_with_time_varying_covariates(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega.sds(),
+            &tv_cov_specs,
+        )
+    } else if let Some(ref iov_cfg) = iov_spec {
+        estimator.fit_1cpt_oral_with_iov(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            &doses,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega.sds(),
+            iov_cfg,
+        )
+    } else if let Some(tr) = transforms.as_ref() {
+        match model {
+            "1cpt_iv" => estimator.fit_1cpt_iv_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            "1cpt_oral" => estimator.fit_1cpt_oral_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            "2cpt_iv" => estimator.fit_2cpt_iv_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            "2cpt_oral" => estimator.fit_2cpt_oral_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            "3cpt_iv" => estimator.fit_3cpt_iv_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            "3cpt_oral" => estimator.fit_3cpt_oral_with_transforms_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+                tr,
+            ),
+            _ => unreachable!(),
+        }
+    } else if let Some(regs) = parsed_regimens.as_ref() {
+        match model {
+            "1cpt_iv" => estimator.fit_1cpt_iv_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "1cpt_oral" => estimator.fit_1cpt_oral_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "2cpt_iv" => estimator.fit_2cpt_iv_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "2cpt_oral" => estimator.fit_2cpt_oral_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "3cpt_iv" => estimator.fit_3cpt_iv_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "3cpt_oral" => estimator.fit_3cpt_oral_with_regimens_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                regs,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            _ => unreachable!(),
+        }
+    } else {
+        match model {
+            "1cpt_iv" => estimator.fit_1cpt_iv_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "1cpt_oral" => estimator.fit_1cpt_oral_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "2cpt_iv" => estimator.fit_2cpt_iv_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "2cpt_oral" => estimator.fit_2cpt_oral_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "3cpt_iv" => estimator.fit_3cpt_iv_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            "3cpt_oral" => estimator.fit_3cpt_oral_correlated(
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &doses,
+                bioavailability,
+                em,
+                &theta_init,
+                omega.clone(),
+            ),
+            _ => unreachable!(),
+        }
+    }
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    pack_saem_result(py, &result, &diag, return_theta_trace)
+}
+
+/// Nonparametric bootstrap for SAEM: resample subjects, refit, collect CIs/SEs.
+#[pyfunction]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta, omega, covariates=None, n_bootstrap=200, conf_level=0.95, ci_method="percentile", n_burn=200, n_iter=100, n_chains=1, seed=42, tol=1e-4))]
+fn bootstrap_nlme<'py>(
+    py: Python<'py>,
+    times: Vec<f64>,
+    y: Vec<f64>,
+    subject_idx: Vec<usize>,
+    n_subjects: usize,
+    model: &str,
+    doses: Vec<f64>,
+    bioavailability: f64,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+    theta: Vec<f64>,
+    omega: Vec<f64>,
+    covariates: Option<&Bound<'py, PyList>>,
+    n_bootstrap: usize,
+    conf_level: f64,
+    ci_method: &str,
     n_burn: usize,
     n_iter: usize,
     n_chains: usize,
@@ -6019,50 +8744,232 @@ fn nlme_saem(
     tol: f64,
 ) -> PyResult<Py<PyAny>> {
     let em = parse_error_model(error_model, sigma, sigma_add)?;
-    let config = RustSaemConfig { n_burn, n_iter, n_chains, seed, tol, ..Default::default() };
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
+
+    let (expected_n, n_eta) = match model {
+        "1cpt_oral" => (3usize, 3usize),
+        "2cpt_iv" => (4, 4),
+        "2cpt_oral" => (5, 5),
+        "3cpt_iv" => (6, 6),
+        "3cpt_oral" => (7, 7),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown model '{}'. Supported: '1cpt_oral', '2cpt_iv', '2cpt_oral', '3cpt_iv', '3cpt_oral'.",
+                other
+            )));
+        }
+    };
+    if theta.len() != expected_n {
+        return Err(PyValueError::new_err(format!(
+            "model '{}' requires {} theta parameters, got {}",
+            model,
+            expected_n,
+            theta.len()
+        )));
+    }
+
+    let method = match ci_method.to_ascii_lowercase().as_str() {
+        "percentile" => RustBootstrapCiMethod::Percentile,
+        "bca" => RustBootstrapCiMethod::Bca,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown ci_method '{}'. Use 'percentile' or 'bca'.",
+                other
+            )));
+        }
+    };
+
+    let cov_specs = if let Some(cov_list) = covariates {
+        parse_covariates(cov_list, n_subjects)?
+    } else {
+        Vec::new()
+    };
+
+    let config = RustSaemConfig {
+        n_burn,
+        n_iter,
+        n_chains,
+        seed,
+        tol,
+        store_theta_trace: false,
+        ..Default::default()
+    };
     let estimator = RustSaemEstimator::new(config);
-    let (result, diag) = estimator
-        .fit_1cpt_oral(
-            &times,
-            &y,
-            &subject_idx,
-            n_subjects,
-            dose,
-            bioavailability,
-            em,
-            &theta_init,
-            &omega_init,
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    // Build the concentration closure per model type.
+    let result: Result<RustBootstrapSaemResult, _> = match model {
+        "1cpt_oral" => {
+            let conc_fn = |th: &[f64], eta: &[f64], d: f64, t: f64| -> f64 {
+                let cl = th[0] * eta[0].exp();
+                let v = th[1] * eta[1].exp();
+                let ka = th[2] * eta[2].exp();
+                ns_inference::pk::conc_oral(d, bioavailability, cl, v, ka, t)
+            };
+            rust_bootstrap_saem(
+                &estimator,
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &theta,
+                &omega,
+                n_bootstrap,
+                conf_level,
+                method,
+                seed,
+                &conc_fn,
+                n_eta,
+                em,
+                &doses,
+                &cov_specs,
+            )
+        }
+        "2cpt_iv" => {
+            let conc_fn = |th: &[f64], eta: &[f64], d: f64, t: f64| -> f64 {
+                let cl = th[0] * eta[0].exp();
+                let v1 = th[1] * eta[1].exp();
+                let q = th[2] * eta[2].exp();
+                let v2 = th[3] * eta[3].exp();
+                ns_inference::pk::conc_iv_2cpt_macro(d, cl, v1, v2, q, t)
+            };
+            rust_bootstrap_saem(
+                &estimator,
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &theta,
+                &omega,
+                n_bootstrap,
+                conf_level,
+                method,
+                seed,
+                &conc_fn,
+                n_eta,
+                em,
+                &doses,
+                &cov_specs,
+            )
+        }
+        "2cpt_oral" => {
+            let conc_fn = |th: &[f64], eta: &[f64], d: f64, t: f64| -> f64 {
+                let cl = th[0] * eta[0].exp();
+                let v1 = th[1] * eta[1].exp();
+                let q = th[2] * eta[2].exp();
+                let v2 = th[3] * eta[3].exp();
+                let ka = th[4] * eta[4].exp();
+                ns_inference::pk::conc_oral_2cpt_macro(d, bioavailability, cl, v1, v2, q, ka, t)
+            };
+            rust_bootstrap_saem(
+                &estimator,
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &theta,
+                &omega,
+                n_bootstrap,
+                conf_level,
+                method,
+                seed,
+                &conc_fn,
+                n_eta,
+                em,
+                &doses,
+                &cov_specs,
+            )
+        }
+        "3cpt_iv" => {
+            let conc_fn = |th: &[f64], eta: &[f64], d: f64, t: f64| -> f64 {
+                let cl = th[0] * eta[0].exp();
+                let v1 = th[1] * eta[1].exp();
+                let q2 = th[2] * eta[2].exp();
+                let v2 = th[3] * eta[3].exp();
+                let q3 = th[4] * eta[4].exp();
+                let v3 = th[5] * eta[5].exp();
+                conc_iv_3cpt_macro(d, t, cl, v1, q2, v2, q3, v3)
+            };
+            rust_bootstrap_saem(
+                &estimator,
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &theta,
+                &omega,
+                n_bootstrap,
+                conf_level,
+                method,
+                seed,
+                &conc_fn,
+                n_eta,
+                em,
+                &doses,
+                &cov_specs,
+            )
+        }
+        "3cpt_oral" => {
+            let conc_fn = |th: &[f64], eta: &[f64], d: f64, t: f64| -> f64 {
+                let effective_dose = d * bioavailability;
+                let cl = th[0] * eta[0].exp();
+                let v1 = th[1] * eta[1].exp();
+                let q2 = th[2] * eta[2].exp();
+                let v2 = th[3] * eta[3].exp();
+                let q3 = th[4] * eta[4].exp();
+                let v3 = th[5] * eta[5].exp();
+                let ka = th[6] * eta[6].exp();
+                conc_oral_3cpt_macro(effective_dose, t, cl, v1, q2, v2, q3, v3, ka)
+            };
+            rust_bootstrap_saem(
+                &estimator,
+                &times,
+                &y,
+                &subject_idx,
+                n_subjects,
+                &theta,
+                &omega,
+                n_bootstrap,
+                conf_level,
+                method,
+                seed,
+                &conc_fn,
+                n_eta,
+                em,
+                &doses,
+                &cov_specs,
+            )
+        }
+        _ => unreachable!(),
+    };
+
+    let bs = result.map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     let dict = PyDict::new(py);
-    dict.set_item("theta", result.theta.clone())?;
-    dict.set_item("omega", result.omega.clone())?;
-    dict.set_item("omega_matrix", result.omega_matrix.to_matrix())?;
-    dict.set_item("correlation", result.correlation.clone())?;
-    dict.set_item("eta", result.eta.clone())?;
-    dict.set_item("ofv", result.ofv)?;
-    dict.set_item("converged", result.converged)?;
-    dict.set_item("n_iter", result.n_iter)?;
-
-    let saem_dict = PyDict::new(py);
-    saem_dict.set_item("acceptance_rates", diag.acceptance_rates.clone())?;
-    saem_dict.set_item("ofv_trace", diag.ofv_trace.clone())?;
-    saem_dict.set_item("burn_in_only", diag.burn_in_only)?;
-    dict.set_item("saem", saem_dict)?;
+    dict.set_item(
+        "theta_ci",
+        bs.theta_ci.iter().map(|&(lo, hi)| vec![lo, hi]).collect::<Vec<_>>(),
+    )?;
+    dict.set_item(
+        "omega_ci",
+        bs.omega_ci.iter().map(|&(lo, hi)| vec![lo, hi]).collect::<Vec<_>>(),
+    )?;
+    dict.set_item("theta_se", bs.theta_se)?;
+    dict.set_item("omega_se", bs.omega_se)?;
+    dict.set_item("n_successful", bs.n_successful)?;
     dict.into_py_any(py)
 }
 
-/// Visual Predictive Check for 1-compartment oral model.
+/// Visual Predictive Check with PK model dispatch.
 #[pyfunction]
-#[pyo3(signature = (times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=200, quantiles=None, n_bins=10, seed=42, pi_level=0.90))]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=200, quantiles=None, n_bins=10, seed=42, pi_level=0.90))]
 fn pk_vpc(
     py: Python<'_>,
     times: Vec<f64>,
     y: Vec<f64>,
     subject_idx: Vec<usize>,
     n_subjects: usize,
-    dose: f64,
+    model: &str,
+    doses: Vec<f64>,
     bioavailability: f64,
     theta: Vec<f64>,
     omega_matrix: Vec<Vec<f64>>,
@@ -6075,7 +8982,9 @@ fn pk_vpc(
     seed: u64,
     pi_level: f64,
 ) -> PyResult<Py<PyAny>> {
+    let model_kind = parse_pk_model_kind(model)?;
     let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
     let omega = RustOmegaMatrix::from_covariance(&omega_matrix)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let config = RustVpcConfig {
@@ -6085,12 +8994,13 @@ fn pk_vpc(
         seed,
         pi_level,
     };
-    let result = rust_vpc_1cpt_oral(
+    let result = rust_vpc_pk(
+        model_kind,
         &times,
         &y,
         &subject_idx,
         n_subjects,
-        dose,
+        &doses,
         bioavailability,
         &theta,
         &omega,
@@ -6117,15 +9027,16 @@ fn pk_vpc(
     dict.into_py_any(py)
 }
 
-/// Goodness of Fit for 1-compartment oral model.
+/// Goodness-of-fit diagnostics with PK model dispatch.
 #[pyfunction]
-#[pyo3(signature = (times, y, subject_idx, *, dose, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None))]
+#[pyo3(signature = (times, y, subject_idx, *, model="1cpt_oral", doses, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None))]
 fn pk_gof(
     py: Python<'_>,
     times: Vec<f64>,
     y: Vec<f64>,
     subject_idx: Vec<usize>,
-    dose: f64,
+    model: &str,
+    doses: Vec<f64>,
     bioavailability: f64,
     theta: Vec<f64>,
     eta: Vec<Vec<f64>>,
@@ -6133,10 +9044,22 @@ fn pk_gof(
     sigma: f64,
     sigma_add: Option<f64>,
 ) -> PyResult<Py<PyAny>> {
+    let model_kind = parse_pk_model_kind(model)?;
     let em = parse_error_model(error_model, sigma, sigma_add)?;
-    let records =
-        rust_gof_1cpt_oral(&times, &y, &subject_idx, dose, bioavailability, &theta, &eta, &em)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let n_subjects = eta.len();
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
+    let records = rust_gof_pk(
+        model_kind,
+        &times,
+        &y,
+        &subject_idx,
+        &doses,
+        bioavailability,
+        &theta,
+        &eta,
+        &em,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     let list = PyList::empty(py);
     for r in &records {
@@ -6153,6 +9076,64 @@ fn pk_gof(
     list.into_py_any(py)
 }
 
+/// NPDE diagnostics with PK model dispatch.
+#[pyfunction]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=1000, seed=42))]
+fn pk_npde(
+    py: Python<'_>,
+    times: Vec<f64>,
+    y: Vec<f64>,
+    subject_idx: Vec<usize>,
+    n_subjects: usize,
+    model: &str,
+    doses: Vec<f64>,
+    bioavailability: f64,
+    theta: Vec<f64>,
+    omega_matrix: Vec<Vec<f64>>,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+    n_sim: usize,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    let model_kind = parse_pk_model_kind(model)?;
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let doses = if doses.len() == 1 { vec![doses[0]; n_subjects] } else { doses };
+    let omega = RustOmegaMatrix::from_covariance(&omega_matrix)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let cfg = RustNpdeConfig { n_sim, seed };
+    let result = rust_npde_pk(
+        model_kind,
+        &times,
+        &y,
+        &subject_idx,
+        n_subjects,
+        &doses,
+        bioavailability,
+        &theta,
+        &omega,
+        &em,
+        &cfg,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    let recs = PyList::empty(py);
+    for r in &result.records {
+        let d = PyDict::new(py);
+        d.set_item("subject", r.subject)?;
+        d.set_item("time", r.time)?;
+        d.set_item("dv", r.dv)?;
+        d.set_item("percentile", r.percentile)?;
+        d.set_item("npde", r.npde)?;
+        recs.append(d)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("records", recs)?;
+    out.set_item("mean", result.mean)?;
+    out.set_item("variance", result.variance)?;
+    out.into_py_any(py)
+}
+
 /// Parse NONMEM-format CSV dataset.
 #[pyfunction]
 fn read_nonmem(py: Python<'_>, csv_text: &str) -> PyResult<Py<PyAny>> {
@@ -6165,6 +9146,381 @@ fn read_nonmem(py: Python<'_>, csv_text: &str) -> PyResult<Py<PyAny>> {
     dict.set_item("times", times)?;
     dict.set_item("dv", dv)?;
     dict.set_item("subject_idx", subject_idx)?;
+    dict.into_py_any(py)
+}
+
+/// Read CDISC .xpt (SAS Transport v5) file.
+///
+/// Returns a list of dicts, one per dataset in the file.
+/// Each dict has keys: name, label, variables, data.
+#[pyfunction]
+fn read_xpt(py: Python<'_>, path: &str) -> PyResult<Py<PyAny>> {
+    let datasets =
+        ns_inference::read_xpt(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    xpt_datasets_to_py(py, &datasets)
+}
+
+/// Write CDISC .xpt (SAS Transport v5) file.
+///
+/// Takes a path and a list of dataset dicts (same format as read_xpt output).
+#[pyfunction]
+fn write_xpt(py: Python<'_>, path: &str, datasets: &Bound<'_, PyList>) -> PyResult<Py<PyAny>> {
+    let rust_datasets = py_to_xpt_datasets(datasets)?;
+    ns_inference::write_xpt(path, &rust_datasets)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    py.None().into_py_any(py)
+}
+
+/// Convert a .xpt dataset to NONMEM format by auto-detecting SDTM/ADaM columns.
+///
+/// Takes a single dataset dict (from read_xpt output) and returns a NONMEM dict.
+#[pyfunction]
+fn xpt_to_nonmem(py: Python<'_>, dataset: &Bound<'_, PyDict>) -> PyResult<Py<PyAny>> {
+    let rust_ds = py_dict_to_xpt_dataset(dataset)?;
+    let nonmem =
+        ns_inference::xpt_to_nonmem(&rust_ds).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let (times, dv, subject_idx) = nonmem.observation_data();
+    let dict = PyDict::new(py);
+    dict.set_item("n_subjects", nonmem.n_subjects())?;
+    dict.set_item("subject_ids", nonmem.subject_ids().to_vec())?;
+    dict.set_item("times", times)?;
+    dict.set_item("dv", dv)?;
+    dict.set_item("subject_idx", subject_idx)?;
+    dict.into_py_any(py)
+}
+
+/// Convert Rust XptDataset list to Python list of dicts.
+fn xpt_datasets_to_py(py: Python<'_>, datasets: &[RustXptDataset]) -> PyResult<Py<PyAny>> {
+    let list = PyList::empty(py);
+    for ds in datasets {
+        let d = PyDict::new(py);
+        d.set_item("name", &ds.name)?;
+        d.set_item("label", &ds.label)?;
+
+        // Variables
+        let vars_list = PyList::empty(py);
+        for var in &ds.variables {
+            let vd = PyDict::new(py);
+            vd.set_item("name", &var.name)?;
+            vd.set_item("label", &var.label)?;
+            vd.set_item(
+                "var_type",
+                match var.var_type {
+                    RustXptVarType::Numeric => "numeric",
+                    RustXptVarType::Character => "character",
+                },
+            )?;
+            vd.set_item("length", var.length)?;
+            vd.set_item("format", &var.format)?;
+            vars_list.append(vd)?;
+        }
+        d.set_item("variables", vars_list)?;
+
+        // Data: list of lists
+        let data_list = PyList::empty(py);
+        for row in &ds.data {
+            let row_list = PyList::empty(py);
+            for val in row {
+                match val {
+                    RustXptValue::Numeric(v) => row_list.append(*v)?,
+                    RustXptValue::Missing => row_list.append(py.None())?,
+                    RustXptValue::Character(s) => row_list.append(s)?,
+                }
+            }
+            data_list.append(row_list)?;
+        }
+        d.set_item("data", data_list)?;
+
+        list.append(d)?;
+    }
+    list.into_py_any(py)
+}
+
+/// Convert a Python dict to a Rust XptDataset.
+fn py_dict_to_xpt_dataset(d: &Bound<'_, PyDict>) -> PyResult<RustXptDataset> {
+    let name: String = d
+        .get_item("name")?
+        .ok_or_else(|| PyValueError::new_err("missing 'name' key"))?
+        .extract()?;
+    let label: String = d
+        .get_item("label")?
+        .ok_or_else(|| PyValueError::new_err("missing 'label' key"))?
+        .extract()?;
+
+    let vars_any =
+        d.get_item("variables")?.ok_or_else(|| PyValueError::new_err("missing 'variables' key"))?;
+    let vars_list = vars_any
+        .cast::<PyList>()
+        .map_err(|_| PyValueError::new_err("'variables' must be a list"))?;
+
+    let mut variables = Vec::new();
+    for item in vars_list.iter() {
+        let vd = item
+            .cast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("each variable must be a dict"))?;
+        let vname: String = vd
+            .get_item("name")?
+            .ok_or_else(|| PyValueError::new_err("variable missing 'name'"))?
+            .extract()?;
+        let vlabel: String =
+            vd.get_item("label")?.map(|v| v.extract()).unwrap_or(Ok(String::new()))?;
+        let vtype_str: String = vd
+            .get_item("var_type")?
+            .ok_or_else(|| PyValueError::new_err("variable missing 'var_type'"))?
+            .extract()?;
+        let var_type = match vtype_str.as_str() {
+            "numeric" => RustXptVarType::Numeric,
+            "character" => RustXptVarType::Character,
+            other => return Err(PyValueError::new_err(format!("unknown var_type: {other}"))),
+        };
+        let length: usize = vd
+            .get_item("length")?
+            .ok_or_else(|| PyValueError::new_err("variable missing 'length'"))?
+            .extract()?;
+        let format: String =
+            vd.get_item("format")?.map(|v| v.extract()).unwrap_or(Ok(String::new()))?;
+
+        variables.push(RustXptVariable { name: vname, label: vlabel, var_type, length, format });
+    }
+
+    let data_any =
+        d.get_item("data")?.ok_or_else(|| PyValueError::new_err("missing 'data' key"))?;
+    let data_list =
+        data_any.cast::<PyList>().map_err(|_| PyValueError::new_err("'data' must be a list"))?;
+
+    let mut data = Vec::new();
+    for row_item in data_list.iter() {
+        let row_list = row_item
+            .cast::<PyList>()
+            .map_err(|_| PyValueError::new_err("each data row must be a list"))?;
+        let mut row = Vec::new();
+        for (col_idx, val) in row_list.iter().enumerate() {
+            let var_type =
+                variables.get(col_idx).map(|v| v.var_type).unwrap_or(RustXptVarType::Numeric);
+            if val.is_none() {
+                row.push(RustXptValue::Missing);
+            } else {
+                match var_type {
+                    RustXptVarType::Numeric => {
+                        let v: f64 = val.extract().map_err(|_| {
+                            PyValueError::new_err(format!(
+                                "cannot convert value to float at column {col_idx}"
+                            ))
+                        })?;
+                        row.push(RustXptValue::Numeric(v));
+                    }
+                    RustXptVarType::Character => {
+                        let s: String = val.extract().map_err(|_| {
+                            PyValueError::new_err(format!(
+                                "cannot convert value to string at column {col_idx}"
+                            ))
+                        })?;
+                        row.push(RustXptValue::Character(s));
+                    }
+                }
+            }
+        }
+        data.push(row);
+    }
+
+    Ok(RustXptDataset { name, label, variables, data })
+}
+
+/// Convert a Python list of dataset dicts to Rust XptDataset vec.
+fn py_to_xpt_datasets(datasets: &Bound<'_, PyList>) -> PyResult<Vec<RustXptDataset>> {
+    let mut result = Vec::new();
+    for item in datasets.iter() {
+        let d = item
+            .cast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("each dataset must be a dict"))?;
+        result.push(py_dict_to_xpt_dataset(&d)?);
+    }
+    Ok(result)
+}
+
+/// Stepwise Covariate Modeling (SCM) for 1-compartment oral PK model.
+///
+/// Forward selection + backward elimination of covariate–parameter
+/// relationships using ΔOFV (χ²(1) likelihood ratio test).
+#[pyfunction]
+#[pyo3(signature = (times, y, subject_idx, n_subjects, covariates, covariate_names, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, param_names=None, relationships=None, forward_alpha=0.05, backward_alpha=0.01, max_outer_iter=100, max_inner_iter=20, tol=1e-4, rel_tol=1e-8))]
+fn scm(
+    py: Python<'_>,
+    times: Vec<f64>,
+    y: Vec<f64>,
+    subject_idx: Vec<usize>,
+    n_subjects: usize,
+    covariates: Vec<Vec<f64>>,
+    covariate_names: Vec<String>,
+    dose: f64,
+    bioavailability: f64,
+    error_model: &str,
+    sigma: f64,
+    sigma_add: Option<f64>,
+    theta_init: Vec<f64>,
+    omega_init: Vec<f64>,
+    param_names: Option<Vec<String>>,
+    relationships: Option<Vec<String>>,
+    forward_alpha: f64,
+    backward_alpha: f64,
+    max_outer_iter: usize,
+    max_inner_iter: usize,
+    tol: f64,
+    rel_tol: f64,
+) -> PyResult<Py<PyAny>> {
+    let em = parse_error_model(error_model, sigma, sigma_add)?;
+    let foce_cfg = RustFoceConfig {
+        max_outer_iter,
+        max_inner_iter,
+        tol,
+        rel_tol,
+        interaction: true,
+        omega_damping: 0.7,
+        omega_max_ratio: 100.0,
+        estimate_sigma: true,
+        lloq: None,
+        omega_fixed: Vec::new(),
+        diagonal_omega: false,
+    };
+    let omega = RustOmegaMatrix::from_diagonal(&omega_init)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let pnames = param_names.unwrap_or_else(|| vec!["CL".into(), "V".into(), "Ka".into()]);
+
+    // Validate covariates dimensions.
+    let n_obs = times.len();
+    if covariates.len() != covariate_names.len() {
+        return Err(PyValueError::new_err(
+            "covariates and covariate_names must have the same length",
+        ));
+    }
+    for (i, cov) in covariates.iter().enumerate() {
+        if cov.len() != n_obs {
+            return Err(PyValueError::new_err(format!(
+                "covariate '{}' has {} values, expected {} (n_obs)",
+                covariate_names[i],
+                cov.len(),
+                n_obs,
+            )));
+        }
+    }
+
+    // Extract per-subject covariate values (first observation per subject).
+    let mut subj_first: Vec<Option<usize>> = vec![None; n_subjects];
+    for (i, &s) in subject_idx.iter().enumerate() {
+        if s < n_subjects && subj_first[s].is_none() {
+            subj_first[s] = Some(i);
+        }
+    }
+
+    // Build candidate list: each covariate × each PK parameter.
+    let mut candidates: Vec<RustCovariateCandidate> = Vec::new();
+    for (ci, cov_name) in covariate_names.iter().enumerate() {
+        let rel = if let Some(ref rels) = relationships {
+            if ci < rels.len() {
+                match rels[ci].to_ascii_lowercase().as_str() {
+                    "power" => RustCovariateRelationship::Power,
+                    "proportional" => RustCovariateRelationship::Proportional,
+                    "exponential" => RustCovariateRelationship::Exponential,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "Unknown relationship '{other}'. Use 'power', 'proportional', or 'exponential'.",
+                        )));
+                    }
+                }
+            } else {
+                RustCovariateRelationship::Power
+            }
+        } else {
+            RustCovariateRelationship::Power
+        };
+
+        // Per-subject values.
+        let subj_vals: Vec<f64> = (0..n_subjects)
+            .map(|s| subj_first[s].map(|idx| covariates[ci][idx]).unwrap_or(0.0))
+            .collect();
+
+        // Centering: median.
+        let mut sorted = subj_vals.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let center = if sorted.len() % 2 == 0 {
+            0.5 * (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2])
+        } else {
+            sorted[sorted.len() / 2]
+        };
+
+        // Test this covariate on each PK parameter.
+        for pidx in 0..pnames.len().min(3) {
+            candidates.push(RustCovariateCandidate {
+                name: format!("{}_on_{}", cov_name, pnames[pidx]),
+                param_index: pidx,
+                values: subj_vals.clone(),
+                center,
+                relationship: rel,
+            });
+        }
+    }
+
+    let config = RustScmConfig { forward_alpha, backward_alpha, foce: foce_cfg };
+    let estimator = RustScmEstimator::new(config);
+
+    let result = estimator
+        .run_1cpt_oral(
+            &times,
+            &y,
+            &subject_idx,
+            n_subjects,
+            dose,
+            bioavailability,
+            em,
+            &theta_init,
+            &omega,
+            &candidates,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    // Convert ScmStep → PyDict.
+    let step_to_dict = |py: Python<'_>, s: &ns_inference::ScmStep| -> PyResult<Py<PyAny>> {
+        let d = PyDict::new(py);
+        d.set_item("name", &s.name)?;
+        d.set_item("param_index", s.param_index)?;
+        d.set_item(
+            "relationship",
+            match s.relationship {
+                RustCovariateRelationship::Power => "power",
+                RustCovariateRelationship::Proportional => "proportional",
+                RustCovariateRelationship::Exponential => "exponential",
+            },
+        )?;
+        d.set_item("delta_ofv", s.delta_ofv)?;
+        d.set_item("p_value", s.p_value)?;
+        d.set_item("coefficient", s.coefficient)?;
+        d.set_item("included", s.included)?;
+        d.into_py_any(py)
+    };
+
+    let selected = PyList::empty(py);
+    for s in &result.selected {
+        selected.append(step_to_dict(py, s)?)?;
+    }
+    let forward_trace = PyList::empty(py);
+    for s in &result.forward_trace {
+        forward_trace.append(step_to_dict(py, s)?)?;
+    }
+    let backward_trace = PyList::empty(py);
+    for s in &result.backward_trace {
+        backward_trace.append(step_to_dict(py, s)?)?;
+    }
+
+    let dict = PyDict::new(py);
+    dict.set_item("selected", selected)?;
+    dict.set_item("forward_trace", forward_trace)?;
+    dict.set_item("backward_trace", backward_trace)?;
+    dict.set_item("base_ofv", result.base_ofv)?;
+    dict.set_item("final_ofv", result.ofv)?;
+    dict.set_item("n_forward_steps", result.forward_trace.len())?;
+    dict.set_item("n_backward_steps", result.backward_trace.len())?;
+    dict.set_item("theta", result.theta.clone())?;
+    dict.set_item("omega", result.omega.to_matrix())?;
     dict.into_py_any(py)
 }
 
@@ -6513,6 +9869,10 @@ impl PyMaximumLikelihoodEstimator {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
+                    PosteriorModel::FunnelNcp(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
                     PosteriorModel::StdNormal(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
@@ -6578,6 +9938,14 @@ impl PyMaximumLikelihoodEstimator {
                         None => mle.fit_minimum(&m),
                     },
                     PosteriorModel::TwoCompartmentOralPk(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::ThreeCompartmentIvPk(m) => match init_slice {
+                        Some(ip) => mle.fit_minimum_from(&m, ip),
+                        None => mle.fit_minimum(&m),
+                    },
+                    PosteriorModel::ThreeCompartmentOralPk(m) => match init_slice {
                         Some(ip) => mle.fit_minimum_from(&m, ip),
                         None => mle.fit_minimum(&m),
                     },
@@ -8127,6 +11495,661 @@ fn ranking_gpu_impl<'py>(py: Python<'py>, model: &PyHistFactoryModel) -> PyResul
         .collect()
 }
 
+fn build_ode_options(
+    rtol: f64,
+    atol: f64,
+    h0: f64,
+    h_min: f64,
+    h_max: f64,
+    max_steps: usize,
+    dense_output: bool,
+) -> ns_inference::ode_adaptive::OdeOptions {
+    ns_inference::ode_adaptive::OdeOptions {
+        rtol,
+        atol,
+        h0,
+        h_min,
+        h_max,
+        max_steps,
+        dense_output,
+    }
+}
+
+struct LinearOdeSystem {
+    a: DMatrix<f64>,
+}
+
+impl ns_inference::ode_adaptive::OdeSystem for LinearOdeSystem {
+    fn ndim(&self) -> usize {
+        self.a.nrows()
+    }
+
+    fn rhs(&self, _t: f64, y: &[f64], dydt: &mut [f64]) {
+        let n = self.a.nrows();
+        for i in 0..n {
+            let mut s = 0.0;
+            for j in 0..n {
+                s += self.a[(i, j)] * y[j];
+            }
+            dydt[i] = s;
+        }
+    }
+}
+
+struct LinearParamOdeSystem {
+    mats: Vec<DMatrix<f64>>,
+    n: usize,
+}
+
+impl ns_inference::ode_adaptive::ParamOdeSystem for LinearParamOdeSystem {
+    fn ndim(&self) -> usize {
+        self.n
+    }
+
+    fn nparams(&self) -> usize {
+        self.mats.len()
+    }
+
+    fn rhs_param(&self, _t: f64, y: &[f64], params: &[f64], dydt: &mut [f64]) {
+        let n = self.n;
+        for i in 0..n {
+            let mut s = 0.0;
+            for p in 0..self.mats.len() {
+                let coef = params[p];
+                let a = &self.mats[p];
+                for j in 0..n {
+                    s += coef * a[(i, j)] * y[j];
+                }
+            }
+            dydt[i] = s;
+        }
+    }
+
+    fn jacobian_y(&self, _t: f64, _y: &[f64], params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        let n = self.n;
+        jac.resize(n, vec![0.0; n]);
+        for row in jac.iter_mut() {
+            row.resize(n, 0.0);
+            for v in row.iter_mut() {
+                *v = 0.0;
+            }
+        }
+        for p in 0..self.mats.len() {
+            let coef = params[p];
+            let a = &self.mats[p];
+            for i in 0..n {
+                for j in 0..n {
+                    jac[i][j] += coef * a[(i, j)];
+                }
+            }
+        }
+    }
+
+    fn jacobian_params(&self, _t: f64, y: &[f64], _params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        let n = self.n;
+        let np = self.mats.len();
+        jac.resize(n, vec![0.0; np]);
+        for row in jac.iter_mut() {
+            row.resize(np, 0.0);
+        }
+        for p in 0..np {
+            let a = &self.mats[p];
+            for i in 0..n {
+                let mut s = 0.0;
+                for j in 0..n {
+                    s += a[(i, j)] * y[j];
+                }
+                jac[i][p] = s;
+            }
+        }
+    }
+}
+
+fn set_callback_error(slot: &Arc<Mutex<Option<String>>>, msg: String) {
+    if let Ok(mut guard) = slot.lock() && guard.is_none() {
+        *guard = Some(msg);
+    }
+}
+
+fn take_callback_error(slot: &Arc<Mutex<Option<String>>>) -> Option<String> {
+    match slot.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(_) => Some("callback adapter internal error: mutex poisoned".to_string()),
+    }
+}
+
+fn validate_vec_finite(name: &str, values: &[f64], expected_len: usize) -> Result<(), String> {
+    if values.len() != expected_len {
+        return Err(format!(
+            "{} returned length {}, expected {}",
+            name,
+            values.len(),
+            expected_len
+        ));
+    }
+    if values.iter().any(|v| !v.is_finite()) {
+        return Err(format!("{} returned non-finite values", name));
+    }
+    Ok(())
+}
+
+fn validate_mat_finite(
+    name: &str,
+    mat: &[Vec<f64>],
+    expected_rows: usize,
+    expected_cols: usize,
+) -> Result<(), String> {
+    if mat.len() != expected_rows {
+        return Err(format!(
+            "{} returned {} rows, expected {}",
+            name,
+            mat.len(),
+            expected_rows
+        ));
+    }
+    for (i, row) in mat.iter().enumerate() {
+        if row.len() != expected_cols {
+            return Err(format!(
+                "{} row {} has length {}, expected {}",
+                name,
+                i,
+                row.len(),
+                expected_cols
+            ));
+        }
+        if row.iter().any(|v| !v.is_finite()) {
+            return Err(format!("{} row {} contains non-finite values", name, i));
+        }
+    }
+    Ok(())
+}
+
+struct PythonOdeCallbackSystem {
+    n: usize,
+    rhs: Py<PyAny>,
+    jac: Option<Py<PyAny>>,
+    error: Arc<Mutex<Option<String>>>,
+}
+
+impl ns_inference::ode_adaptive::OdeSystem for PythonOdeCallbackSystem {
+    fn ndim(&self) -> usize {
+        self.n
+    }
+
+    fn rhs(&self, t: f64, y: &[f64], dydt: &mut [f64]) {
+        Python::attach(|py| {
+            let call_res: PyResult<Vec<f64>> = (|| {
+                let out = self.rhs.bind(py).call1((t, y.to_vec()))?;
+                out.extract::<Vec<f64>>()
+            })();
+            match call_res {
+                Ok(vec_out) => {
+                    if let Err(msg) = validate_vec_finite("rhs", &vec_out, self.n) {
+                        set_callback_error(&self.error, msg);
+                        dydt.fill(0.0);
+                        return;
+                    }
+                    dydt.copy_from_slice(&vec_out);
+                }
+                Err(e) => {
+                    set_callback_error(&self.error, format!("rhs callback failed: {}", e));
+                    dydt.fill(0.0);
+                }
+            }
+        });
+    }
+
+    fn jacobian(&self, t: f64, y: &[f64], jac: &mut Vec<Vec<f64>>) {
+        if let Some(jac_cb) = &self.jac {
+            Python::attach(|py| {
+                let call_res: PyResult<Vec<Vec<f64>>> = (|| {
+                    let out = jac_cb.bind(py).call1((t, y.to_vec()))?;
+                    out.extract::<Vec<Vec<f64>>>()
+                })();
+                match call_res {
+                    Ok(mat) => {
+                        if let Err(msg) = validate_mat_finite("jac", &mat, self.n, self.n) {
+                            set_callback_error(&self.error, msg);
+                            jac.resize(self.n, vec![0.0; self.n]);
+                            return;
+                        }
+                        *jac = mat;
+                    }
+                    Err(e) => {
+                        set_callback_error(&self.error, format!("jac callback failed: {}", e));
+                        jac.resize(self.n, vec![0.0; self.n]);
+                    }
+                }
+            });
+            return;
+        }
+
+        let n = self.n;
+        let eps = 1e-8;
+        let mut yp = y.to_vec();
+        let mut fp = vec![0.0; n];
+        let mut fm = vec![0.0; n];
+        jac.resize(n, vec![0.0; n]);
+        for row in jac.iter_mut() {
+            row.resize(n, 0.0);
+        }
+        for j in 0..n {
+            let orig = yp[j];
+            let h = eps * (1.0 + orig.abs());
+            yp[j] = orig + h;
+            self.rhs(t, &yp, &mut fp);
+            yp[j] = orig - h;
+            self.rhs(t, &yp, &mut fm);
+            yp[j] = orig;
+            for i in 0..n {
+                jac[i][j] = (fp[i] - fm[i]) / (2.0 * h);
+            }
+        }
+    }
+}
+
+struct PythonParamOdeCallbackSystem {
+    n: usize,
+    np: usize,
+    rhs: Py<PyAny>,
+    jac_y: Option<Py<PyAny>>,
+    jac_params: Option<Py<PyAny>>,
+    error: Arc<Mutex<Option<String>>>,
+}
+
+impl ns_inference::ode_adaptive::ParamOdeSystem for PythonParamOdeCallbackSystem {
+    fn ndim(&self) -> usize {
+        self.n
+    }
+
+    fn nparams(&self) -> usize {
+        self.np
+    }
+
+    fn rhs_param(&self, t: f64, y: &[f64], params: &[f64], dydt: &mut [f64]) {
+        Python::attach(|py| {
+            let call_res: PyResult<Vec<f64>> = (|| {
+                let out = self.rhs.bind(py).call1((t, y.to_vec(), params.to_vec()))?;
+                out.extract::<Vec<f64>>()
+            })();
+            match call_res {
+                Ok(vec_out) => {
+                    if let Err(msg) = validate_vec_finite("rhs", &vec_out, self.n) {
+                        set_callback_error(&self.error, msg);
+                        dydt.fill(0.0);
+                        return;
+                    }
+                    dydt.copy_from_slice(&vec_out);
+                }
+                Err(e) => {
+                    set_callback_error(&self.error, format!("rhs callback failed: {}", e));
+                    dydt.fill(0.0);
+                }
+            }
+        });
+    }
+
+    fn jacobian_y(&self, t: f64, y: &[f64], params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        if let Some(jac_cb) = &self.jac_y {
+            Python::attach(|py| {
+                let call_res: PyResult<Vec<Vec<f64>>> = (|| {
+                    let out = jac_cb.bind(py).call1((t, y.to_vec(), params.to_vec()))?;
+                    out.extract::<Vec<Vec<f64>>>()
+                })();
+                match call_res {
+                    Ok(mat) => {
+                        if let Err(msg) = validate_mat_finite("jac_y", &mat, self.n, self.n) {
+                            set_callback_error(&self.error, msg);
+                            jac.resize(self.n, vec![0.0; self.n]);
+                            return;
+                        }
+                        *jac = mat;
+                    }
+                    Err(e) => {
+                        set_callback_error(&self.error, format!("jac_y callback failed: {}", e));
+                        jac.resize(self.n, vec![0.0; self.n]);
+                    }
+                }
+            });
+            return;
+        }
+
+        let n = self.n;
+        let eps = 1e-8;
+        let mut yp = y.to_vec();
+        let mut fp = vec![0.0; n];
+        let mut fm = vec![0.0; n];
+        jac.resize(n, vec![0.0; n]);
+        for row in jac.iter_mut() {
+            row.resize(n, 0.0);
+        }
+        for j in 0..n {
+            let orig = yp[j];
+            let h = eps * (1.0 + orig.abs());
+            yp[j] = orig + h;
+            self.rhs_param(t, &yp, params, &mut fp);
+            yp[j] = orig - h;
+            self.rhs_param(t, &yp, params, &mut fm);
+            yp[j] = orig;
+            for i in 0..n {
+                jac[i][j] = (fp[i] - fm[i]) / (2.0 * h);
+            }
+        }
+    }
+
+    fn jacobian_params(&self, t: f64, y: &[f64], params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        if let Some(jac_cb) = &self.jac_params {
+            Python::attach(|py| {
+                let call_res: PyResult<Vec<Vec<f64>>> = (|| {
+                    let out = jac_cb.bind(py).call1((t, y.to_vec(), params.to_vec()))?;
+                    out.extract::<Vec<Vec<f64>>>()
+                })();
+                match call_res {
+                    Ok(mat) => {
+                        if let Err(msg) = validate_mat_finite("jac_params", &mat, self.n, self.np)
+                        {
+                            set_callback_error(&self.error, msg);
+                            jac.resize(self.n, vec![0.0; self.np]);
+                            return;
+                        }
+                        *jac = mat;
+                    }
+                    Err(e) => {
+                        set_callback_error(
+                            &self.error,
+                            format!("jac_params callback failed: {}", e),
+                        );
+                        jac.resize(self.n, vec![0.0; self.np]);
+                    }
+                }
+            });
+            return;
+        }
+
+        let n = self.n;
+        let np = self.np;
+        let eps = 1e-8;
+        let mut pp = params.to_vec();
+        let mut fp = vec![0.0; n];
+        let mut fm = vec![0.0; n];
+        jac.resize(n, vec![0.0; np]);
+        for row in jac.iter_mut() {
+            row.resize(np, 0.0);
+        }
+        for j in 0..np {
+            let orig = pp[j];
+            let h = eps * (1.0 + orig.abs());
+            pp[j] = orig + h;
+            self.rhs_param(t, y, &pp, &mut fp);
+            pp[j] = orig - h;
+            self.rhs_param(t, y, &pp, &mut fm);
+            pp[j] = orig;
+            for i in 0..n {
+                jac[i][j] = (fp[i] - fm[i]) / (2.0 * h);
+            }
+        }
+    }
+}
+
+/// LSODA-style adaptive integration for linear systems `dy/dt = A y`.
+#[pyfunction]
+#[pyo3(signature = (a, y0, t0, t1, *, rtol=1e-6, atol=1e-9, h0=0.0, h_min=1e-14, h_max=f64::INFINITY, max_steps=100000, dense_output=true))]
+fn lsoda(
+    py: Python<'_>,
+    a: Vec<Vec<f64>>,
+    y0: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    rtol: f64,
+    atol: f64,
+    h0: f64,
+    h_min: f64,
+    h_max: f64,
+    max_steps: usize,
+    dense_output: bool,
+) -> PyResult<Py<PyAny>> {
+    let a = dmatrix_from_nested("A", a)?;
+    if a.nrows() != a.ncols() {
+        return Err(PyValueError::new_err("A must be square"));
+    }
+    if y0.len() != a.nrows() {
+        return Err(PyValueError::new_err(format!(
+            "y0 length ({}) must match system dimension ({})",
+            y0.len(),
+            a.nrows()
+        )));
+    }
+    let sys = LinearOdeSystem { a };
+    let opts = build_ode_options(rtol, atol, h0, h_min, h_max, max_steps, dense_output);
+    let sol = ns_inference::ode_adaptive::lsoda(&sys, &y0, t0, t1, &opts)
+        .map_err(|e| PyValueError::new_err(format!("lsoda failed: {}", e)))?;
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Forward sensitivity solve for linear parametric systems:
+/// `dy/dt = (sum_p params[p] * A_p) y`.
+#[pyfunction]
+#[pyo3(signature = (a_params, params, y0, t0, t1, *, solver="lsoda", rtol=1e-6, atol=1e-9, h0=0.0, h_min=1e-14, h_max=f64::INFINITY, max_steps=100000, dense_output=true))]
+fn forward_sensitivity_solve(
+    py: Python<'_>,
+    a_params: Vec<Vec<Vec<f64>>>,
+    params: Vec<f64>,
+    y0: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    solver: &str,
+    rtol: f64,
+    atol: f64,
+    h0: f64,
+    h_min: f64,
+    h_max: f64,
+    max_steps: usize,
+    dense_output: bool,
+) -> PyResult<Py<PyAny>> {
+    if a_params.is_empty() {
+        return Err(PyValueError::new_err("a_params must not be empty"));
+    }
+    let np = a_params.len();
+    if params.len() != np {
+        return Err(PyValueError::new_err(format!(
+            "params length ({}) must equal number of A_p matrices ({np})",
+            params.len()
+        )));
+    }
+    let mats: Vec<DMatrix<f64>> = a_params
+        .into_iter()
+        .enumerate()
+        .map(|(i, m)| dmatrix_from_nested(&format!("a_params[{i}]"), m))
+        .collect::<PyResult<Vec<_>>>()?;
+    let n = mats[0].nrows();
+    if mats[0].ncols() != n {
+        return Err(PyValueError::new_err("a_params[0] must be square"));
+    }
+    for (i, m) in mats.iter().enumerate() {
+        if m.nrows() != n || m.ncols() != n {
+            return Err(PyValueError::new_err(format!(
+                "a_params[{i}] must be {}x{}, got {}x{}",
+                n,
+                n,
+                m.nrows(),
+                m.ncols()
+            )));
+        }
+    }
+    if y0.len() != n {
+        return Err(PyValueError::new_err(format!(
+            "y0 length ({}) must match state dimension ({n})",
+            y0.len()
+        )));
+    }
+    let sys = LinearParamOdeSystem { mats, n };
+    let opts = build_ode_options(rtol, atol, h0, h_min, h_max, max_steps, dense_output);
+    let solver_kind = match solver.to_ascii_lowercase().as_str() {
+        "rk45" => ns_inference::ode_adaptive::SensitivitySolver::Rk45,
+        "esdirk4" => ns_inference::ode_adaptive::SensitivitySolver::Esdirk4,
+        "lsoda" => ns_inference::ode_adaptive::SensitivitySolver::Lsoda,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown solver '{}'; expected 'rk45', 'esdirk4', or 'lsoda'",
+                other
+            )));
+        }
+    };
+    let sol = ns_inference::ode_adaptive::forward_sensitivity_solve(
+        &sys,
+        &params,
+        &y0,
+        t0,
+        t1,
+        &opts,
+        solver_kind,
+    )
+    .map_err(|e| PyValueError::new_err(format!("forward_sensitivity_solve failed: {}", e)))?;
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    out.set_item("sens", sol.sens)?;
+    Ok(out.into_any().unbind())
+}
+
+/// LSODA-style adaptive integration using Python callbacks.
+///
+/// `rhs(t, y) -> list[float]` is required.
+/// Optional `jac(t, y) -> list[list[float]]` supplies `∂f/∂y`.
+#[pyfunction]
+#[pyo3(signature = (rhs, y0, t0, t1, *, jac=None, rtol=1e-6, atol=1e-9, h0=0.0, h_min=1e-14, h_max=f64::INFINITY, max_steps=100000, dense_output=true))]
+fn lsoda_callback(
+    py: Python<'_>,
+    rhs: Py<PyAny>,
+    y0: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    jac: Option<Py<PyAny>>,
+    rtol: f64,
+    atol: f64,
+    h0: f64,
+    h_min: f64,
+    h_max: f64,
+    max_steps: usize,
+    dense_output: bool,
+) -> PyResult<Py<PyAny>> {
+    if y0.is_empty() {
+        return Err(PyValueError::new_err("y0 must not be empty"));
+    }
+    if !rhs.bind(py).is_callable() {
+        return Err(PyValueError::new_err("rhs must be callable"));
+    }
+    if let Some(jac_cb) = jac.as_ref() && !jac_cb.bind(py).is_callable() {
+        return Err(PyValueError::new_err("jac must be callable"));
+    }
+    let callback_error = Arc::new(Mutex::new(None::<String>));
+    let sys = PythonOdeCallbackSystem {
+        n: y0.len(),
+        rhs,
+        jac,
+        error: callback_error.clone(),
+    };
+    let opts = build_ode_options(rtol, atol, h0, h_min, h_max, max_steps, dense_output);
+    let sol_res = ns_inference::ode_adaptive::lsoda(&sys, &y0, t0, t1, &opts);
+    if let Some(msg) = take_callback_error(&callback_error) {
+        return Err(PyValueError::new_err(format!("lsoda callback error: {}", msg)));
+    }
+    let sol = sol_res.map_err(|e| PyValueError::new_err(format!("lsoda failed: {}", e)))?;
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Forward sensitivity solve using Python callbacks.
+///
+/// Required callback:
+/// - `rhs(t, y, params) -> list[float]`
+///
+/// Optional Jacobian callbacks:
+/// - `jac_y(t, y, params) -> list[list[float]]`
+/// - `jac_params(t, y, params) -> list[list[float]]`
+#[pyfunction]
+#[pyo3(signature = (rhs, params, y0, t0, t1, *, jac_y=None, jac_params=None, solver="lsoda", rtol=1e-6, atol=1e-9, h0=0.0, h_min=1e-14, h_max=f64::INFINITY, max_steps=100000, dense_output=true))]
+fn forward_sensitivity_solve_callback(
+    py: Python<'_>,
+    rhs: Py<PyAny>,
+    params: Vec<f64>,
+    y0: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    jac_y: Option<Py<PyAny>>,
+    jac_params: Option<Py<PyAny>>,
+    solver: &str,
+    rtol: f64,
+    atol: f64,
+    h0: f64,
+    h_min: f64,
+    h_max: f64,
+    max_steps: usize,
+    dense_output: bool,
+) -> PyResult<Py<PyAny>> {
+    if y0.is_empty() {
+        return Err(PyValueError::new_err("y0 must not be empty"));
+    }
+    if !rhs.bind(py).is_callable() {
+        return Err(PyValueError::new_err("rhs must be callable"));
+    }
+    if let Some(cb) = jac_y.as_ref() && !cb.bind(py).is_callable() {
+        return Err(PyValueError::new_err("jac_y must be callable"));
+    }
+    if let Some(cb) = jac_params.as_ref() && !cb.bind(py).is_callable() {
+        return Err(PyValueError::new_err("jac_params must be callable"));
+    }
+    let solver_kind = match solver.to_ascii_lowercase().as_str() {
+        "rk45" => ns_inference::ode_adaptive::SensitivitySolver::Rk45,
+        "esdirk4" => ns_inference::ode_adaptive::SensitivitySolver::Esdirk4,
+        "lsoda" => ns_inference::ode_adaptive::SensitivitySolver::Lsoda,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown solver '{}'; expected 'rk45', 'esdirk4', or 'lsoda'",
+                other
+            )));
+        }
+    };
+    let callback_error = Arc::new(Mutex::new(None::<String>));
+    let sys = PythonParamOdeCallbackSystem {
+        n: y0.len(),
+        np: params.len(),
+        rhs,
+        jac_y,
+        jac_params,
+        error: callback_error.clone(),
+    };
+    let opts = build_ode_options(rtol, atol, h0, h_min, h_max, max_steps, dense_output);
+    let sol_res = ns_inference::ode_adaptive::forward_sensitivity_solve(
+        &sys,
+        &params,
+        &y0,
+        t0,
+        t1,
+        &opts,
+        solver_kind,
+    );
+    if let Some(msg) = take_callback_error(&callback_error) {
+        return Err(PyValueError::new_err(format!(
+            "forward_sensitivity_solve callback error: {}",
+            msg
+        )));
+    }
+    let sol = sol_res.map_err(|e| {
+        PyValueError::new_err(format!("forward_sensitivity_solve failed: {}", e))
+    })?;
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    out.set_item("sens", sol.sens)?;
+    Ok(out.into_any().unbind())
+}
+
 /// Fixed-step RK4 integration for a linear ODE system `dy/dt = A y`.
 ///
 /// Returns a dict: {"t": [...], "y": [[...], ...]}.
@@ -8144,6 +12167,37 @@ fn rk4_linear(
     let a = dmatrix_from_nested("A", a)?;
     let sol = ns_inference::ode::rk4_linear(&a, &y0, t0, t1, dt, max_steps)
         .map_err(|e| PyValueError::new_err(format!("rk4_linear failed: {}", e)))?;
+
+    let out = PyDict::new(py);
+    out.set_item("t", sol.t)?;
+    out.set_item("y", sol.y)?;
+    Ok(out.into_any().unbind())
+}
+
+/// Fixed-step RK4 integration for a linear fixed-delay DDE system:
+///
+/// `dy/dt = A y(t) + B y(t - tau)`, with constant pre-history `y(t<=t0)=y_history`.
+///
+/// Returns a dict: {"t": [...], "y": [[...], ...]}.
+#[pyfunction]
+#[pyo3(signature = (a, b, y0, y_history, t0, t1, tau, dt, *, max_steps=100000))]
+fn rk4_linear_dde(
+    py: Python<'_>,
+    a: Vec<Vec<f64>>,
+    b: Vec<Vec<f64>>,
+    y0: Vec<f64>,
+    y_history: Vec<f64>,
+    t0: f64,
+    t1: f64,
+    tau: f64,
+    dt: f64,
+    max_steps: usize,
+) -> PyResult<Py<PyAny>> {
+    let a = dmatrix_from_nested("A", a)?;
+    let b = dmatrix_from_nested("B", b)?;
+    let sol =
+        ns_inference::ode_dde::rk4_linear_dde(&a, &b, &y0, &y_history, t0, t1, tau, dt, max_steps)
+            .map_err(|e| PyValueError::new_err(format!("rk4_linear_dde failed: {}", e)))?;
 
     let out = PyDict::new(py);
     out.set_item("t", sol.t)?;
@@ -9035,7 +13089,8 @@ impl PyRawCudaModel {
 /// as `sample_mams()` plus `wall_time_s` and `n_kernel_launches`.
 ///
 /// The `model` argument can be:
-/// - A string name: "std_normal", "eight_schools", "neal_funnel", "neal_funnel_centered", "glm_logistic"
+/// - A string name: "std_normal", "eight_schools", "neal_funnel", "neal_funnel_centered",
+///   "glm_logistic", "glm_linear", "glm_poisson", "glm_negbin", "glm_composed_logistic"
 /// - A `RawCudaModel` instance for JIT-compiled user-defined models
 #[cfg(any(feature = "cuda", feature = "metal"))]
 #[pyfunction]
@@ -9045,7 +13100,8 @@ impl PyRawCudaModel {
     max_leapfrog=8192, device_ids=None,
     sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000,
     report_chains=256,
-    diagonal_precond=true
+    diagonal_precond=true,
+    divergence_threshold=1000.0
 ))]
 fn sample_laps_py<'py>(
     py: Python<'py>,
@@ -9066,6 +13122,7 @@ fn sample_laps_py<'py>(
     fused_transitions: usize,
     report_chains: usize,
     diagonal_precond: bool,
+    divergence_threshold: f64,
 ) -> PyResult<Py<PyAny>> {
     use ns_inference::laps::{LapsConfig, LapsModel};
 
@@ -9173,11 +13230,311 @@ fn sample_laps_py<'py>(
                     .get_item("p")?
                     .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
                     .extract()?;
+                // Validate dimensions and values
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_logistic: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: x_data.len()={} != n*p={}*{}={}",
+                        x_data.len(),
+                        n,
+                        p,
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_logistic: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_logistic: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_logistic: y_data must contain only 0.0 or 1.0",
+                    ));
+                }
                 LapsModel::GlmLogistic { x_data, y_data, n, p }
+            }
+            "glm_linear" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_linear requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d
+                    .get_item("x")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?
+                    .extract()?;
+                let y_data: Vec<f64> = d
+                    .get_item("y")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?
+                    .extract()?;
+                let n: usize = d
+                    .get_item("n")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?
+                    .extract()?;
+                let p: usize = d
+                    .get_item("p")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
+                    .extract()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_linear: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_linear: x_data.len()={} != n*p={}",
+                        x_data.len(),
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_linear: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_linear: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_linear: y_data contains NaN or Inf"));
+                }
+                LapsModel::GlmLinear { x_data, y_data, n, p }
+            }
+            "glm_poisson" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_poisson requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d
+                    .get_item("x")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?
+                    .extract()?;
+                let y_data: Vec<f64> = d
+                    .get_item("y")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?
+                    .extract()?;
+                let n: usize = d
+                    .get_item("n")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?
+                    .extract()?;
+                let p: usize = d
+                    .get_item("p")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
+                    .extract()?;
+                let offset: Option<Vec<f64>> =
+                    d.get_item("offset")?.map(|v| v.extract()).transpose()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_poisson: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_poisson: x_data.len()={} != n*p={}",
+                        x_data.len(),
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_poisson: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_poisson: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_poisson: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v < 0.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_poisson: y_data must be non-negative counts",
+                    ));
+                }
+                if let Some(ref off) = offset {
+                    if off.len() != n {
+                        return Err(PyValueError::new_err(format!(
+                            "glm_poisson: offset.len()={} != n={}",
+                            off.len(),
+                            n
+                        )));
+                    }
+                    if off.iter().any(|v| !v.is_finite()) {
+                        return Err(PyValueError::new_err(
+                            "glm_poisson: offset contains NaN or Inf",
+                        ));
+                    }
+                }
+                LapsModel::GlmPoisson { x_data, y_data, n, p, offset }
+            }
+            "glm_negbin" | "glm_negative_binomial" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_negbin requires model_data with 'x', 'y', 'n', 'p'")
+                })?;
+                let x_data: Vec<f64> = d
+                    .get_item("x")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?
+                    .extract()?;
+                let y_data: Vec<f64> = d
+                    .get_item("y")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?
+                    .extract()?;
+                let n: usize = d
+                    .get_item("n")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?
+                    .extract()?;
+                let p: usize = d
+                    .get_item("p")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
+                    .extract()?;
+                let offset: Option<Vec<f64>> =
+                    d.get_item("offset")?.map(|v| v.extract()).transpose()?;
+                if n == 0 || p == 0 {
+                    return Err(PyValueError::new_err("glm_negbin: n and p must be > 0"));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_negbin: x_data.len()={} != n*p={}",
+                        x_data.len(),
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_negbin: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_negbin: x_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err("glm_negbin: y_data contains NaN or Inf"));
+                }
+                if y_data.iter().any(|v| *v < 0.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_negbin: y_data must be non-negative counts",
+                    ));
+                }
+                if let Some(ref off) = offset {
+                    if off.len() != n {
+                        return Err(PyValueError::new_err(format!(
+                            "glm_negbin: offset.len()={} != n={}",
+                            off.len(),
+                            n
+                        )));
+                    }
+                    if off.iter().any(|v| !v.is_finite()) {
+                        return Err(PyValueError::new_err(
+                            "glm_negbin: offset contains NaN or Inf",
+                        ));
+                    }
+                }
+                LapsModel::GlmNegBin { x_data, y_data, n, p, offset }
+            }
+            "glm_composed_logistic" => {
+                let d = model_data.ok_or_else(|| {
+                    PyValueError::new_err("glm_composed_logistic requires model_data with 'x', 'y', 'n', 'p', 'group_idx', 'n_groups'")
+                })?;
+                let x_data: Vec<f64> = d
+                    .get_item("x")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'x'"))?
+                    .extract()?;
+                let y_data: Vec<f64> = d
+                    .get_item("y")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'y'"))?
+                    .extract()?;
+                let n: usize = d
+                    .get_item("n")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'n'"))?
+                    .extract()?;
+                let p: usize = d
+                    .get_item("p")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'p'"))?
+                    .extract()?;
+                let group_idx: Vec<usize> = d
+                    .get_item("group_idx")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'group_idx'"))?
+                    .extract()?;
+                let n_groups: usize = d
+                    .get_item("n_groups")?
+                    .ok_or_else(|| PyValueError::new_err("model_data must contain 'n_groups'"))?
+                    .extract()?;
+                let re_prior_sigma: f64 =
+                    d.get_item("re_prior_sigma")?.map(|v| v.extract()).transpose()?.unwrap_or(1.0);
+                if n == 0 || p == 0 || n_groups == 0 {
+                    return Err(PyValueError::new_err(
+                        "glm_composed_logistic: n, p, and n_groups must be > 0",
+                    ));
+                }
+                if x_data.len() != n * p {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_composed_logistic: x_data.len()={} != n*p={}",
+                        x_data.len(),
+                        n * p
+                    )));
+                }
+                if y_data.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_composed_logistic: y_data.len()={} != n={}",
+                        y_data.len(),
+                        n
+                    )));
+                }
+                if group_idx.len() != n {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_composed_logistic: group_idx.len()={} != n={}",
+                        group_idx.len(),
+                        n
+                    )));
+                }
+                if x_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err(
+                        "glm_composed_logistic: x_data contains NaN or Inf",
+                    ));
+                }
+                if y_data.iter().any(|v| !v.is_finite()) {
+                    return Err(PyValueError::new_err(
+                        "glm_composed_logistic: y_data contains NaN or Inf",
+                    ));
+                }
+                if y_data.iter().any(|v| *v != 0.0 && *v != 1.0) {
+                    return Err(PyValueError::new_err(
+                        "glm_composed_logistic: y_data must contain only 0.0 or 1.0",
+                    ));
+                }
+                if group_idx.iter().any(|&g| g >= n_groups) {
+                    return Err(PyValueError::new_err(format!(
+                        "glm_composed_logistic: group_idx values must be in [0, {})",
+                        n_groups
+                    )));
+                }
+                if re_prior_sigma <= 0.0 || !re_prior_sigma.is_finite() {
+                    return Err(PyValueError::new_err(
+                        "glm_composed_logistic: re_prior_sigma must be positive and finite",
+                    ));
+                }
+                LapsModel::GlmComposedLogistic {
+                    x_data,
+                    y_data,
+                    n,
+                    p,
+                    group_idx,
+                    n_groups,
+                    re_prior_sigma,
+                }
             }
             other => {
                 return Err(PyValueError::new_err(format!(
-                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'neal_funnel_centered', 'neal_funnel_ncp', 'neal_funnel_riemannian', 'glm_logistic', or a RawCudaModel, got '{other}'"
+                    "model must be 'std_normal', 'eight_schools', 'neal_funnel', 'neal_funnel_centered', 'neal_funnel_ncp', 'neal_funnel_riemannian', 'glm_logistic', 'glm_linear', 'glm_poisson', 'glm_negbin', 'glm_negative_binomial', 'glm_composed_logistic', or a RawCudaModel, got '{other}'"
                 )));
             }
         }
@@ -9202,6 +13559,7 @@ fn sample_laps_py<'py>(
         report_chains,
         use_diagonal_precond: diagonal_precond,
         n_mass_windows: 3,
+        divergence_threshold,
     };
 
     let laps_result = py
@@ -9740,7 +14098,7 @@ impl PyMetalProfiledDiffSession {
 ///     n_scenarios: number of MC scenarios.
 ///     seed: RNG seed for reproducibility.
 ///     device: "cpu", "cuda", or "metal".
-///     chunk_size: scenarios per batch (default 1_000_000).
+///     chunk_size: scenarios per batch (0 = backend default: CPU 10_000_000, GPU 1_000_000).
 ///
 /// Returns: dict with p_failure, se, ci_lower, ci_upper, component_importance, etc.
 #[pyfunction]
@@ -10081,6 +14439,227 @@ fn render_viz(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// Bioequivalence functions.
+// ---------------------------------------------------------------------------
+
+fn parse_be_design(design: &str) -> PyResult<RustBeDesign> {
+    match design {
+        "2x2" => Ok(RustBeDesign::Crossover2x2),
+        "3x3" => Ok(RustBeDesign::Crossover3x3),
+        "parallel" => Ok(RustBeDesign::Parallel),
+        _ => Err(PyValueError::new_err("design must be '2x2', '3x3', or 'parallel'")),
+    }
+}
+
+/// Average bioequivalence (TOST) analysis from paired log-scale observations.
+///
+/// Constructs a 2x2 crossover BeData from paired test/reference observations
+/// and runs the Two One-Sided Tests (TOST) procedure.
+#[pyfunction]
+#[pyo3(signature = (test_values, ref_values, *, alpha=0.05, limits=(0.80, 1.25), design="2x2"))]
+fn average_be(
+    py: Python<'_>,
+    test_values: Vec<f64>,
+    ref_values: Vec<f64>,
+    alpha: f64,
+    limits: (f64, f64),
+    design: &str,
+) -> PyResult<Py<PyAny>> {
+    let d = parse_be_design(design)?;
+    let n = test_values.len();
+    if n != ref_values.len() {
+        return Err(PyValueError::new_err("test_values and ref_values must have the same length"));
+    }
+    let config = RustBeConfig { alpha, limits, design: d };
+    // Construct BeData: each subject has a Test and Reference observation.
+    let mut subject_id = Vec::with_capacity(2 * n);
+    let mut sequence = Vec::with_capacity(2 * n);
+    let mut period = Vec::with_capacity(2 * n);
+    let mut treatment = Vec::with_capacity(2 * n);
+    let mut log_value = Vec::with_capacity(2 * n);
+    for i in 0..n {
+        let seq = if i < n / 2 { 0 } else { 1 };
+        // Period 1 observation.
+        subject_id.push(i + 1);
+        sequence.push(seq);
+        period.push(1);
+        if seq == 0 {
+            treatment.push(0); // R first
+            log_value.push(ref_values[i]);
+        } else {
+            treatment.push(1); // T first
+            log_value.push(test_values[i]);
+        }
+        // Period 2 observation.
+        subject_id.push(i + 1);
+        sequence.push(seq);
+        period.push(2);
+        if seq == 0 {
+            treatment.push(1); // T second
+            log_value.push(test_values[i]);
+        } else {
+            treatment.push(0); // R second
+            log_value.push(ref_values[i]);
+        }
+    }
+    let data = RustBeData { subject_id, sequence, period, treatment, log_value };
+    let result =
+        rust_average_be(&data, &config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("geometric_mean_ratio", result.geometric_mean_ratio)?;
+    dict.set_item("ci_lower", result.ci_lower)?;
+    dict.set_item("ci_upper", result.ci_upper)?;
+    dict.set_item("pe_log", result.pe_log)?;
+    dict.set_item("se_log", result.se_log)?;
+    dict.set_item("df", result.df)?;
+    dict.set_item("t_lower", result.t_lower)?;
+    dict.set_item("t_upper", result.t_upper)?;
+    dict.set_item("p_lower", result.p_lower)?;
+    dict.set_item("p_upper", result.p_upper)?;
+    dict.set_item("conclusion", format!("{:?}", result.conclusion))?;
+    dict.into_py_any(py)
+}
+
+/// Compute power of a bioequivalence study for a given total sample size.
+#[pyfunction]
+#[pyo3(name = "be_power", signature = (n_total, *, cv=0.30, gmr=0.95, alpha=0.05, design="2x2"))]
+fn be_power_py(
+    _py: Python<'_>,
+    n_total: usize,
+    cv: f64,
+    gmr: f64,
+    alpha: f64,
+    design: &str,
+) -> PyResult<f64> {
+    let d = parse_be_design(design)?;
+    let config =
+        RustBePowerConfig { alpha, target_power: 0.80, cv, gmr, limits: (0.80, 1.25), design: d };
+    rust_be_power(n_total, &config).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compute minimum sample size to achieve target power for a bioequivalence study.
+#[pyfunction]
+#[pyo3(name = "be_sample_size", signature = (*, cv=0.30, gmr=0.95, target_power=0.80, alpha=0.05, design="2x2"))]
+fn be_sample_size_py(
+    py: Python<'_>,
+    cv: f64,
+    gmr: f64,
+    target_power: f64,
+    alpha: f64,
+    design: &str,
+) -> PyResult<Py<PyAny>> {
+    let d = parse_be_design(design)?;
+    let config =
+        RustBePowerConfig { alpha, target_power, cv, gmr, limits: (0.80, 1.25), design: d };
+    let result = rust_be_sample_size(&config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("n_per_sequence", result.n_per_sequence)?;
+    dict.set_item("n_total", result.n_total)?;
+    dict.set_item("achieved_power", result.achieved_power)?;
+    dict.into_py_any(py)
+}
+
+// ---------------------------------------------------------------------------
+// Trial simulation functions.
+// ---------------------------------------------------------------------------
+
+fn parse_pk_model_type(s: &str) -> PyResult<RustPkModelType> {
+    match s {
+        "1cpt_oral" => Ok(RustPkModelType::OneCompartmentOral),
+        "2cpt_iv" => Ok(RustPkModelType::TwoCompartmentIv),
+        "2cpt_oral" => Ok(RustPkModelType::TwoCompartmentOral),
+        _ => Err(PyValueError::new_err("pk_model must be '1cpt_oral', '2cpt_iv', or '2cpt_oral'")),
+    }
+}
+
+fn parse_trial_error_model(s: &str) -> PyResult<RustTrialErrorModelType> {
+    match s {
+        "additive" => Ok(RustTrialErrorModelType::Additive),
+        "proportional" => Ok(RustTrialErrorModelType::Proportional),
+        _ => Err(PyValueError::new_err("error_model must be 'additive' or 'proportional'")),
+    }
+}
+
+/// Simulate a single clinical trial with population PK parameters.
+#[pyfunction]
+#[pyo3(name = "simulate_trial", signature = (*, n_subjects, dose, obs_times, pk_model="1cpt_oral", theta, omega, sigma, error_model="proportional", bioavailability=1.0, seed=42))]
+fn simulate_trial_py(
+    py: Python<'_>,
+    n_subjects: usize,
+    dose: f64,
+    obs_times: Vec<f64>,
+    pk_model: &str,
+    theta: Vec<f64>,
+    omega: Vec<f64>,
+    sigma: f64,
+    error_model: &str,
+    bioavailability: f64,
+    seed: u64,
+) -> PyResult<Py<PyAny>> {
+    let pk = parse_pk_model_type(pk_model)?;
+    let em = parse_trial_error_model(error_model)?;
+    let route = if matches!(pk, RustPkModelType::TwoCompartmentIv) {
+        RustDoseRoute::IvBolus
+    } else {
+        RustDoseRoute::Oral { bioavailability }
+    };
+    let config = RustTrialConfig {
+        n_subjects,
+        dosing: vec![RustDoseEvent { time: 0.0, amount: dose, route }],
+        obs_times,
+        pk_model: pk,
+        population: RustPopulationPkParams {
+            theta,
+            omega,
+            sigma,
+            error_model: em,
+            omega_correlation: None,
+        },
+        seed,
+    };
+    let result = rust_simulate_trial(&config).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dict = PyDict::new(py);
+    dict.set_item("concentrations", result.concentrations)?;
+    dict.set_item("individual_params", result.individual_params)?;
+    dict.set_item("auc", result.endpoints.auc)?;
+    dict.set_item("cmax", result.endpoints.cmax)?;
+    dict.set_item("tmax", result.endpoints.tmax)?;
+    dict.set_item("ctrough", result.endpoints.ctrough)?;
+    dict.into_py_any(py)
+}
+
+#[pyfunction]
+#[pyo3(name = "map_estimate", signature = (model, priors, *, max_iter=1000, tol=1e-8, compute_se=true, init=None))]
+fn map_estimate_py<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    priors: Vec<(f64, f64)>,
+    max_iter: usize,
+    tol: f64,
+    compute_se: bool,
+    init: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    let posterior_model = extract_posterior_model(model)?;
+    let prior_vec: Vec<RustPrior> =
+        priors.into_iter().map(|(center, width)| RustPrior::Normal { center, width }).collect();
+    let config = RustMapConfig { max_iter, tol, m: 20, compute_se, compute_shrinkage: true, init };
+    let result = py
+        .detach(move || posterior_model.run_map_estimate(prior_vec, &config))
+        .map_err(|e| PyValueError::new_err(format!("MAP estimation failed: {}", e)))?;
+    let dict = PyDict::new(py);
+    dict.set_item("params", result.params)?;
+    dict.set_item("se", result.se)?;
+    dict.set_item("nll_posterior", result.nll_posterior)?;
+    dict.set_item("nll", result.nll)?;
+    dict.set_item("log_prior", result.log_prior)?;
+    dict.set_item("n_iter", result.n_iter)?;
+    dict.set_item("converged", result.converged)?;
+    dict.set_item("param_names", result.param_names)?;
+    dict.set_item("shrinkage", result.shrinkage)?;
+    dict.into_py_any(py)
+}
+
 /// Python submodule: nextstat._core
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -10114,7 +14693,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asimov_data, m)?)?;
     m.add_function(wrap_pyfunction!(poisson_toys, m)?)?;
     m.add_function(wrap_pyfunction!(ranking, m)?)?;
+    m.add_function(wrap_pyfunction!(lsoda, m)?)?;
+    m.add_function(wrap_pyfunction!(lsoda_callback, m)?)?;
+    m.add_function(wrap_pyfunction!(forward_sensitivity_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(forward_sensitivity_solve_callback, m)?)?;
     m.add_function(wrap_pyfunction!(rk4_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(rk4_linear_dde, m)?)?;
     m.add_function(wrap_pyfunction!(ols_fit, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest, m)?)?;
     m.add_function(wrap_pyfunction!(hypotest_toys, m)?)?;
@@ -10135,6 +14719,21 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(kalman_simulate, m)?)?;
     m.add_function(wrap_pyfunction!(garch11_fit, m)?)?;
     m.add_function(wrap_pyfunction!(sv_logchi2_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(egarch11_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(gjr_garch11_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(emax_predict, m)?)?;
+    m.add_function(wrap_pyfunction!(emax_nll, m)?)?;
+    m.add_function(wrap_pyfunction!(sigmoid_emax_predict, m)?)?;
+    m.add_function(wrap_pyfunction!(sigmoid_emax_nll, m)?)?;
+    m.add_function(wrap_pyfunction!(idr_simulate, m)?)?;
+    m.add_function(wrap_pyfunction!(idr_nll, m)?)?;
+    m.add_function(wrap_pyfunction!(cumulative_incidence, m)?)?;
+    m.add_function(wrap_pyfunction!(gray_test, m)?)?;
+    m.add_function(wrap_pyfunction!(fine_gray_fit, m)?)?;
+
+    // ODE PK models: Transit, Michaelis-Menten, TMDD
+    m.add_function(wrap_pyfunction!(ode_pk_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(ode_pk_nll_py, m)?)?;
 
     // Econometrics & Causal Inference
     m.add_function(wrap_pyfunction!(panel_fe, m)?)?;
@@ -10147,9 +14746,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Pharmacometrics: Population PK
     m.add_function(wrap_pyfunction!(nlme_foce, m)?)?;
     m.add_function(wrap_pyfunction!(nlme_saem, m)?)?;
+    m.add_function(wrap_pyfunction!(bootstrap_nlme, m)?)?;
     m.add_function(wrap_pyfunction!(pk_vpc, m)?)?;
     m.add_function(wrap_pyfunction!(pk_gof, m)?)?;
+    m.add_function(wrap_pyfunction!(pk_npde, m)?)?;
     m.add_function(wrap_pyfunction!(read_nonmem, m)?)?;
+    m.add_function(wrap_pyfunction!(read_xpt, m)?)?;
+    m.add_function(wrap_pyfunction!(write_xpt, m)?)?;
+    m.add_function(wrap_pyfunction!(xpt_to_nonmem, m)?)?;
+    m.add_function(wrap_pyfunction!(scm, m)?)?;
 
     // Survival: Kaplan-Meier + Log-rank
     m.add_function(wrap_pyfunction!(kaplan_meier, m)?)?;
@@ -10182,6 +14787,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyFunnelModel>()?;
+    m.add_class::<PyFunnelNcpModel>()?;
     m.add_class::<PyStdNormalModel>()?;
     m.add_class::<PyLinearRegressionModel>()?;
     m.add_class::<PyLogisticRegressionModel>()?;
@@ -10212,6 +14818,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOneCompartmentOralPkNlmeModel>()?;
     m.add_class::<PyTwoCompartmentIvPkModel>()?;
     m.add_class::<PyTwoCompartmentOralPkModel>()?;
+    m.add_class::<PyThreeCompartmentIvPkModel>()?;
+    m.add_class::<PyThreeCompartmentOralPkModel>()?;
     m.add_class::<PyMaximumLikelihoodEstimator>()?;
     m.add_class::<PyFitResult>()?;
     m.add_class::<PyFitMinimumResult>()?;
@@ -10237,6 +14845,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc))?;
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc_ce_is))?;
     m.add_function(wrap_pyfunction!(profile_ci_py, m)?)?;
+    m.add_function(wrap_pyfunction!(average_be, m)?)?;
+    m.add_function(wrap_pyfunction!(be_power_py, m)?)?;
+    m.add_function(wrap_pyfunction!(be_sample_size_py, m)?)?;
+    m.add_function(wrap_pyfunction!(simulate_trial_py, m)?)?;
+    m.add_function(wrap_pyfunction!(map_estimate_py, m)?)?;
 
     // Native Rust visualization renderer
     #[cfg(feature = "native-render")]

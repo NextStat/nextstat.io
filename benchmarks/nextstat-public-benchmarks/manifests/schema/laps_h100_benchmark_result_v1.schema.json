@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/laps_h100_benchmark_result_v1.schema.json",
+  "title": "NextStat LAPS (CUDA) Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "label", "config", "metrics", "environment"],
+  "properties": {
+    "schema_version": { "const": "nextstat.laps_h100_benchmark_result.v1" },
+    "schema": { "type": "string" },
+    "label": { "type": "string", "minLength": 1 },
+    "config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["model", "dim", "n_chains", "n_warmup", "n_samples", "seed"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "dim": { "type": "integer", "minimum": 1 },
+        "n_chains": { "type": "integer", "minimum": 1 },
+        "n_warmup": { "type": "integer", "minimum": 0 },
+        "n_samples": { "type": "integer", "minimum": 1 },
+        "seed": { "type": "integer" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["wall_time_s", "samples_per_sec"],
+      "properties": {
+        "wall_time_s": { "type": "number", "minimum": 0 },
+        "samples_per_sec": { "type": "number", "minimum": 0 }
+      }
+    },
+    "environment": { "type": "object", "additionalProperties": true }
+  }
+}
+

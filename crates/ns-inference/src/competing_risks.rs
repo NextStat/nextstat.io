@@ -597,6 +597,16 @@ fn compute_censoring_km(times: &[f64], events: &[u32], order: &[usize], n: usize
 /// 1. Subjects still at risk (not yet had any event or been censored).
 /// 2. Subjects who had a competing event before t, with weight G(t)/G(T_i)
 ///    where T_i is their competing event time and G is the censoring KM.
+///
+/// ## Algorithm: forward sweep with incremental risk sets
+///
+/// Decompose risk set statistics at event time t_k into two parts:
+///   A(t_k) = Σ_{T_i ≥ t_k} exp(x_i'β)              (at-risk subjects, weight 1)
+///   B(t_k) = Σ_{T_i < t_k, competing} exp(x_i'β)/G(T_i)  (IPCW base)
+///   S0(t_k) = A(t_k) + G(t_k) × B(t_k)
+///
+/// Processing event times forward: A shrinks, B grows. Each subject is
+/// touched exactly once → O(n×p²) total instead of O(n×m×p²).
 fn fg_partial_loglik(
     order: &[usize],
     times: &[f64],
@@ -609,7 +619,7 @@ fn fg_partial_loglik(
 ) -> (f64, Vec<f64>, Vec<f64>) {
     let n = order.len();
 
-    // Compute exp(x_i' * beta) for all subjects.
+    // Compute exp(x_i' * beta) for all subjects in sorted order.
     let mut exp_xb = vec![0.0_f64; n];
     for i in 0..n {
         let idx = order[i];
@@ -621,76 +631,106 @@ fn fg_partial_loglik(
         exp_xb[i] = ns_prob::math::exp_clamped(xb);
     }
 
-    // Compute the current censoring KM value at each event time for
-    // re-weighting competing-event subjects.
-    //
-    // For efficiency, we sweep backwards (risk set accumulation).
-    // But for Fine-Gray, we sweep forward and accumulate the risk set.
-    //
-    // At each event time t_k of the target cause:
-    //   Risk set R(t_k) = {i: T_i >= t_k} ∪ {i: T_i < t_k and event_i = competing}
-    //   with weight w_i = G(t_k) / G(T_i) for the competing-event subjects.
-    //
-    // For simplicity and correctness, we use a direct computation approach.
-
-    let mut ll = 0.0_f64;
-    let mut grad = vec![0.0_f64; p];
-    let mut hess = vec![0.0_f64; p * p];
-
-    // Identify event times of the target cause.
+    // Identify target event positions in sorted order.
     let mut event_positions = Vec::new();
     for i in 0..n {
         if events[order[i]] == target_cause {
             event_positions.push(i);
         }
     }
+    let m = event_positions.len();
+    if m == 0 {
+        return (0.0, vec![0.0; p], vec![0.0; p * p]);
+    }
 
-    for &ev_pos in &event_positions {
-        let ev_idx = order[ev_pos];
-        let t_event = times[ev_idx];
-        let g_at_event = censor_km[ev_pos]; // G(t_event-)
-
-        // Build weighted risk set: sum of w_i * exp(x_i' * beta) and weighted x_i.
-        let mut s0 = 0.0_f64;
-        let mut s1 = vec![0.0_f64; p];
-        let mut s2 = vec![0.0_f64; p * p];
-
-        for i in 0..n {
-            let idx = order[i];
-            let ti = times[idx];
-
-            let w = if ti >= t_event {
-                // Still at risk at t_event (regardless of event type).
-                1.0
-            } else if events[idx] > 0 && events[idx] != target_cause {
-                // Competing event before t_event: IPCW weight.
-                let gi = censor_km[i]; // G(T_i-)
-                if gi > 1e-15 { g_at_event / gi } else { 0.0 }
-            } else {
-                // Censored before t_event or target event before t_event: not in risk set.
-                0.0
-            };
-
-            if w <= 0.0 {
-                continue;
-            }
-
-            let w_exp = w * exp_xb[i];
-            let xi = &x_flat[idx * p..(idx + 1) * p];
-
-            s0 += w_exp;
-            for j in 0..p {
-                s1[j] += w_exp * xi[j];
-            }
-            for j in 0..p {
-                for k in 0..p {
-                    s2[j * p + k] += w_exp * xi[j] * xi[k];
-                }
+    // Initialize A = sum over ALL subjects (everyone at risk at earliest time).
+    let mut a0 = 0.0_f64;
+    let mut a1 = vec![0.0_f64; p];
+    let mut a2 = vec![0.0_f64; p * p];
+    for i in 0..n {
+        let idx = order[i];
+        let xi = &x_flat[idx * p..(idx + 1) * p];
+        let exi = exp_xb[i];
+        a0 += exi;
+        for j in 0..p {
+            a1[j] += exi * xi[j];
+        }
+        for j in 0..p {
+            let exi_xj = exi * xi[j];
+            for k in 0..p {
+                a2[j * p + k] += exi_xj * xi[k];
             }
         }
+    }
+
+    // B = empty (no competing events before first event time).
+    let mut b0 = 0.0_f64;
+    let mut b1 = vec![0.0_f64; p];
+    let mut b2 = vec![0.0_f64; p * p];
+
+    let mut ll = 0.0_f64;
+    let mut grad = vec![0.0_f64; p];
+    let mut hess = vec![0.0_f64; p * p];
+    let mut s1_tmp = vec![0.0_f64; p]; // reusable buffer
+
+    let mut cursor = 0usize;
+
+    for ek in 0..m {
+        let ev_pos = event_positions[ek];
+        let ev_idx = order[ev_pos];
+        let t_event = times[ev_idx];
+
+        // Advance cursor: remove subjects with time STRICTLY < t_event from A.
+        // Competing-event subjects move to B; others just leave.
+        while cursor < n && times[order[cursor]] < t_event {
+            let idx = order[cursor];
+            let exi = exp_xb[cursor];
+            let xi = &x_flat[idx * p..(idx + 1) * p];
+
+            // Remove from A.
+            a0 -= exi;
+            for j in 0..p {
+                a1[j] -= exi * xi[j];
+            }
+            for j in 0..p {
+                let exi_xj = exi * xi[j];
+                for k in 0..p {
+                    a2[j * p + k] -= exi_xj * xi[k];
+                }
+            }
+
+            // If competing event, add to B (base = exp(xb) / G(T_i)).
+            if events[idx] > 0 && events[idx] != target_cause {
+                let gi = censor_km[cursor];
+                if gi > 1e-15 {
+                    let base = exi / gi;
+                    b0 += base;
+                    for j in 0..p {
+                        b1[j] += base * xi[j];
+                    }
+                    for j in 0..p {
+                        let base_xj = base * xi[j];
+                        for k in 0..p {
+                            b2[j * p + k] += base_xj * xi[k];
+                        }
+                    }
+                }
+            }
+
+            cursor += 1;
+        }
+
+        // Risk set statistics: S = A + G(t_event) × B
+        let g_at_event = censor_km[ev_pos];
+        let s0 = a0 + g_at_event * b0;
 
         if s0 <= 0.0 {
             continue;
+        }
+
+        // Compute S1 once for gradient and Hessian.
+        for j in 0..p {
+            s1_tmp[j] = a1[j] + g_at_event * b1[j];
         }
 
         // Partial log-likelihood contribution.
@@ -702,13 +742,14 @@ fn fg_partial_loglik(
 
         let inv_s0 = 1.0 / s0;
         for j in 0..p {
-            grad[j] += xi_ev[j] - s1[j] * inv_s0;
+            grad[j] += xi_ev[j] - s1_tmp[j] * inv_s0;
         }
 
         let inv_s0_sq = inv_s0 * inv_s0;
         for j in 0..p {
             for k in 0..p {
-                hess[j * p + k] -= s2[j * p + k] * inv_s0 - s1[j] * s1[k] * inv_s0_sq;
+                let s2_jk = a2[j * p + k] + g_at_event * b2[j * p + k];
+                hess[j * p + k] -= s2_jk * inv_s0 - s1_tmp[j] * s1_tmp[k] * inv_s0_sq;
             }
         }
     }
@@ -1011,5 +1052,44 @@ mod tests {
         assert!((normal_quantile(0.5) - 0.0).abs() < 1e-6);
         assert!((normal_quantile(0.975) - 1.96).abs() < 0.01);
         assert!((normal_quantile(0.025) + 1.96).abs() < 0.01);
+    }
+
+    #[test]
+    fn fine_gray_large_n_with_competing() {
+        // Stress test: n=2000, p=5, ~40% target, ~20% competing, ~40% censored.
+        // Verifies correctness of the forward-sweep risk set accumulation
+        // with a realistic mix of event types and covariates.
+        let n = 2000usize;
+        let p = 5usize;
+        let mut times = Vec::with_capacity(n);
+        let mut events = Vec::with_capacity(n);
+        let mut x = Vec::with_capacity(n);
+        // Simple LCG for deterministic pseudo-random data.
+        let mut rng = 12345u64;
+        for _ in 0..n {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let u = (rng >> 33) as f64 / (1u64 << 31) as f64; // [0, 1)
+            times.push(1.0 + u * 100.0);
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let v = (rng >> 33) as f64 / (1u64 << 31) as f64;
+            events.push(if v < 0.4 { 1 } else if v < 0.6 { 2 } else { 0 });
+            let mut row = Vec::with_capacity(p);
+            for _ in 0..p {
+                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let w = (rng >> 33) as f64 / (1u64 << 31) as f64;
+                row.push(w - 0.5);
+            }
+            x.push(row);
+        }
+        let result = fine_gray_fit(&times, &events, &x, 1).unwrap();
+        assert_eq!(result.n, n);
+        assert_eq!(result.coefficients.len(), p);
+        assert_eq!(result.se.len(), p);
+        assert!(result.log_likelihood.is_finite(), "LL not finite: {}", result.log_likelihood);
+        for j in 0..p {
+            assert!(result.coefficients[j].is_finite(), "coef[{}] not finite", j);
+            assert!(result.se[j] > 0.0, "SE[{}] should be > 0, got {}", j, result.se[j]);
+            assert!(result.se[j] < 10.0, "SE[{}] suspiciously large: {}", j, result.se[j]);
+        }
     }
 }

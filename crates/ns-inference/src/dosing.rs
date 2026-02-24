@@ -47,6 +47,42 @@ pub struct DosingRegimen {
     events: Vec<DoseEvent>,
 }
 
+/// Solve the depressed cubic x³ + ax² + bx + c = 0 via the trigonometric method.
+///
+/// Returns three real eigenvalues sorted descending (alpha > beta > gamma).
+/// Used for 3-compartment PK models where all roots are positive and real.
+fn solve_cubic_eigenvalues(a: f64, b: f64, c: f64) -> (f64, f64, f64) {
+    let q = (a * a - 3.0 * b) / 9.0;
+    let r = (2.0 * a * a * a - 9.0 * a * b + 27.0 * c) / 54.0;
+    let q3 = q * q * q;
+    let disc = r * r - q3;
+    if disc < 0.0 {
+        // Three real roots (typical for PK)
+        let theta = (r / q3.sqrt()).clamp(-1.0, 1.0).acos();
+        let sq = -2.0 * q.sqrt();
+        let mut r1 = sq * (theta / 3.0).cos() - a / 3.0;
+        let mut r2 = sq * ((theta + 2.0 * std::f64::consts::PI) / 3.0).cos() - a / 3.0;
+        let mut r3 = sq * ((theta - 2.0 * std::f64::consts::PI) / 3.0).cos() - a / 3.0;
+        // Sort descending: alpha > beta > gamma
+        if r1 < r2 {
+            std::mem::swap(&mut r1, &mut r2);
+        }
+        if r1 < r3 {
+            std::mem::swap(&mut r1, &mut r3);
+        }
+        if r2 < r3 {
+            std::mem::swap(&mut r2, &mut r3);
+        }
+        (r1, r2, r3)
+    } else {
+        // One real root + two complex (shouldn't happen for PK)
+        let aa = -(r.signum()) * (r.abs() + disc.sqrt()).cbrt();
+        let bb = if aa.abs() > 1e-30 { q / aa } else { 0.0 };
+        let root = aa + bb - a / 3.0;
+        (root, root * 0.99, root * 0.98) // fallback
+    }
+}
+
 impl DosingRegimen {
     /// Create a regimen from a list of dose events.
     ///
@@ -345,6 +381,245 @@ impl DosingRegimen {
         c
     }
 
+    /// Concentration at time `t` for a 3-compartment IV model via superposition.
+    ///
+    /// Parameters: `cl`, `v1`, `v2`, `q2`, `v3`, `q3`.
+    /// Only IV bolus and infusion routes are valid (oral routes are skipped).
+    pub fn conc_3cpt_iv(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q2: f64,
+        v3: f64,
+        q3: f64,
+        t: f64,
+    ) -> f64 {
+        let k10 = cl / v1;
+        let k12 = q2 / v1;
+        let k21 = q2 / v2;
+        let k13 = q3 / v1;
+        let k31 = q3 / v3;
+
+        // Characteristic cubic: x³ + a*x² + b*x + c = 0
+        let a = -(k10 + k12 + k21 + k13 + k31);
+        let b = k10 * k21 + k10 * k31 + k21 * k31 + k12 * k31 + k13 * k21;
+        let c_coeff = -(k10 * k21 * k31);
+
+        let (alpha, beta, gamma) = solve_cubic_eigenvalues(a, b, c_coeff);
+
+        let mut c = 0.0;
+        for ev in &self.events {
+            let dt = t - ev.time;
+            if dt < 0.0 {
+                continue;
+            }
+            match ev.route {
+                DoseRoute::IvBolus => {
+                    // C(t) = (D/V1) * [A*exp(-alpha*t) + B*exp(-beta*t) + G*exp(-gamma*t)]
+                    let mut dab = (alpha - beta) * (alpha - gamma);
+                    let mut dbb = (beta - alpha) * (beta - gamma);
+                    let mut dgb = (gamma - alpha) * (gamma - beta);
+                    // Handle degenerate eigenvalues
+                    if dab.abs() < 1e-12 {
+                        dab = if dab >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dbb.abs() < 1e-12 {
+                        dbb = if dbb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dgb.abs() < 1e-12 {
+                        dgb = if dgb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    let coeff_a = (alpha - k21) * (alpha - k31) / dab;
+                    let coeff_b = (beta - k21) * (beta - k31) / dbb;
+                    let coeff_g = (gamma - k21) * (gamma - k31) / dgb;
+                    c += (ev.amount / v1)
+                        * (coeff_a * (-alpha * dt).exp()
+                            + coeff_b * (-beta * dt).exp()
+                            + coeff_g * (-gamma * dt).exp());
+                }
+                DoseRoute::Infusion { duration } => {
+                    let rate = ev.amount / duration;
+                    let mut dab = (alpha - beta) * (alpha - gamma);
+                    let mut dbb = (beta - alpha) * (beta - gamma);
+                    let mut dgb = (gamma - alpha) * (gamma - beta);
+                    if dab.abs() < 1e-12 {
+                        dab = if dab >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dbb.abs() < 1e-12 {
+                        dbb = if dbb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dgb.abs() < 1e-12 {
+                        dgb = if dgb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    let coeff_a = (alpha - k21) * (alpha - k31) / dab;
+                    let coeff_b = (beta - k21) * (beta - k31) / dbb;
+                    let coeff_g = (gamma - k21) * (gamma - k31) / dgb;
+                    let inv_a = 1.0 / alpha;
+                    let inv_b = 1.0 / beta;
+                    let inv_g = 1.0 / gamma;
+
+                    if dt <= duration {
+                        let ia = coeff_a * inv_a * (1.0 - (-alpha * dt).exp());
+                        let ib = coeff_b * inv_b * (1.0 - (-beta * dt).exp());
+                        let ig = coeff_g * inv_g * (1.0 - (-gamma * dt).exp());
+                        c += (rate / v1) * (ia + ib + ig);
+                    } else {
+                        let ia_end = coeff_a * inv_a * (1.0 - (-alpha * duration).exp());
+                        let ib_end = coeff_b * inv_b * (1.0 - (-beta * duration).exp());
+                        let ig_end = coeff_g * inv_g * (1.0 - (-gamma * duration).exp());
+                        let tail_a = (-alpha * (dt - duration)).exp();
+                        let tail_b = (-beta * (dt - duration)).exp();
+                        let tail_g = (-gamma * (dt - duration)).exp();
+                        c += (rate / v1)
+                            * (ia_end * tail_a + ib_end * tail_b + ig_end * tail_g);
+                    }
+                }
+                DoseRoute::Oral { .. } => {
+                    // Oral route not valid for IV-only 3-cpt model; skip silently.
+                }
+            }
+        }
+        c
+    }
+
+    /// Concentration at time `t` for a 3-compartment oral model via superposition.
+    ///
+    /// Parameters: `cl`, `v1`, `v2`, `q2`, `v3`, `q3`, `ka`.
+    /// Supports all three dose routes.
+    pub fn conc_3cpt_oral(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q2: f64,
+        v3: f64,
+        q3: f64,
+        ka: f64,
+        t: f64,
+    ) -> f64 {
+        let k10 = cl / v1;
+        let k12 = q2 / v1;
+        let k21 = q2 / v2;
+        let k13 = q3 / v1;
+        let k31 = q3 / v3;
+
+        // Characteristic cubic: x³ + a*x² + b*x + c = 0
+        let a = -(k10 + k12 + k21 + k13 + k31);
+        let b = k10 * k21 + k10 * k31 + k21 * k31 + k12 * k31 + k13 * k21;
+        let c_coeff = -(k10 * k21 * k31);
+
+        let (alpha, beta, gamma) = solve_cubic_eigenvalues(a, b, c_coeff);
+
+        let mut c = 0.0;
+        for ev in &self.events {
+            let dt = t - ev.time;
+            if dt < 0.0 {
+                continue;
+            }
+            match ev.route {
+                DoseRoute::IvBolus => {
+                    // Same as conc_3cpt_iv bolus path
+                    let mut dab = (alpha - beta) * (alpha - gamma);
+                    let mut dbb = (beta - alpha) * (beta - gamma);
+                    let mut dgb = (gamma - alpha) * (gamma - beta);
+                    if dab.abs() < 1e-12 {
+                        dab = if dab >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dbb.abs() < 1e-12 {
+                        dbb = if dbb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dgb.abs() < 1e-12 {
+                        dgb = if dgb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    let coeff_a = (alpha - k21) * (alpha - k31) / dab;
+                    let coeff_b = (beta - k21) * (beta - k31) / dbb;
+                    let coeff_g = (gamma - k21) * (gamma - k31) / dgb;
+                    c += (ev.amount / v1)
+                        * (coeff_a * (-alpha * dt).exp()
+                            + coeff_b * (-beta * dt).exp()
+                            + coeff_g * (-gamma * dt).exp());
+                }
+                DoseRoute::Oral { bioavailability } => {
+                    // 4-exponential: ka adds a 4th rate constant
+                    // C(t) = (ka*F*D/V1) * sum_i [ (ei-k21)*(ei-k31) / prod_{j!=i}(ei-ej) * exp(-ei*t) ]
+                    // where eigenvalues are {alpha, beta, gamma, ka}
+                    let pref = ka * bioavailability * ev.amount / v1;
+
+                    // Use ka or perturbed ka to avoid degenerate denominators
+                    let eigenvals = [alpha, beta, gamma];
+                    let mut ka_eff = ka;
+                    for &ev_val in &eigenvals {
+                        if (ka_eff - ev_val).abs() < 1e-8 {
+                            ka_eff = ev_val * (1.0 + 1e-8);
+                        }
+                    }
+
+                    // Four terms: residue at s=-ei for (s+k21)(s+k31)/[(s+a)(s+b)(s+g)(s+ka)]
+                    // Residue_i = (k21-ei)(k31-ei) / prod_{j!=i}(ej-ei)
+                    let rates = [alpha, beta, gamma, ka_eff];
+                    let mut contrib = 0.0;
+                    for i in 0..4 {
+                        let ei = rates[i];
+                        let num = (k21 - ei) * (k31 - ei);
+                        let mut denom = 1.0;
+                        for j in 0..4 {
+                            if j != i {
+                                let d = rates[j] - ei;
+                                if d.abs() < 1e-12 {
+                                    denom *= if d >= 0.0 { 1e-12 } else { -1e-12 };
+                                } else {
+                                    denom *= d;
+                                }
+                            }
+                        }
+                        contrib += (num / denom) * (-ei * dt).exp();
+                    }
+                    c += pref * contrib;
+                }
+                DoseRoute::Infusion { duration } => {
+                    // Same as conc_3cpt_iv infusion path
+                    let rate = ev.amount / duration;
+                    let mut dab = (alpha - beta) * (alpha - gamma);
+                    let mut dbb = (beta - alpha) * (beta - gamma);
+                    let mut dgb = (gamma - alpha) * (gamma - beta);
+                    if dab.abs() < 1e-12 {
+                        dab = if dab >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dbb.abs() < 1e-12 {
+                        dbb = if dbb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    if dgb.abs() < 1e-12 {
+                        dgb = if dgb >= 0.0 { 1e-12 } else { -1e-12 };
+                    }
+                    let coeff_a = (alpha - k21) * (alpha - k31) / dab;
+                    let coeff_b = (beta - k21) * (beta - k31) / dbb;
+                    let coeff_g = (gamma - k21) * (gamma - k31) / dgb;
+                    let inv_a = 1.0 / alpha;
+                    let inv_b = 1.0 / beta;
+                    let inv_g = 1.0 / gamma;
+
+                    if dt <= duration {
+                        let ia = coeff_a * inv_a * (1.0 - (-alpha * dt).exp());
+                        let ib = coeff_b * inv_b * (1.0 - (-beta * dt).exp());
+                        let ig = coeff_g * inv_g * (1.0 - (-gamma * dt).exp());
+                        c += (rate / v1) * (ia + ib + ig);
+                    } else {
+                        let ia_end = coeff_a * inv_a * (1.0 - (-alpha * duration).exp());
+                        let ib_end = coeff_b * inv_b * (1.0 - (-beta * duration).exp());
+                        let ig_end = coeff_g * inv_g * (1.0 - (-gamma * duration).exp());
+                        let tail_a = (-alpha * (dt - duration)).exp();
+                        let tail_b = (-beta * (dt - duration)).exp();
+                        let tail_g = (-gamma * (dt - duration)).exp();
+                        c += (rate / v1)
+                            * (ia_end * tail_a + ib_end * tail_b + ig_end * tail_g);
+                    }
+                }
+            }
+        }
+        c
+    }
+
     /// Compute concentration-time profile at given observation times.
     ///
     /// Uses 1-compartment oral model via superposition.
@@ -372,6 +647,42 @@ impl DosingRegimen {
         times: &[f64],
     ) -> Vec<f64> {
         times.iter().map(|&t| self.conc_2cpt_oral(cl, v1, v2, q, ka, t)).collect()
+    }
+
+    /// Compute concentration-time profile at given observation times.
+    ///
+    /// Uses 3-compartment IV model via superposition.
+    pub fn predict_3cpt_iv(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q2: f64,
+        v3: f64,
+        q3: f64,
+        times: &[f64],
+    ) -> Vec<f64> {
+        times.iter().map(|&t| self.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, t)).collect()
+    }
+
+    /// Compute concentration-time profile at given observation times.
+    ///
+    /// Uses 3-compartment oral model via superposition.
+    pub fn predict_3cpt_oral(
+        &self,
+        cl: f64,
+        v1: f64,
+        v2: f64,
+        q2: f64,
+        v3: f64,
+        q3: f64,
+        ka: f64,
+        times: &[f64],
+    ) -> Vec<f64> {
+        times
+            .iter()
+            .map(|&t| self.conc_3cpt_oral(cl, v1, v2, q2, v3, q3, ka, t))
+            .collect()
     }
 }
 
@@ -610,5 +921,127 @@ mod tests {
         let reg = DosingRegimen::from_events(events).unwrap();
         let times: Vec<f64> = reg.events().iter().map(|e| e.time).collect();
         assert_eq!(times, vec![0.0, 12.0, 24.0]);
+    }
+
+    #[test]
+    fn three_cpt_iv_superposition() {
+        let dose = 100.0;
+        let reg = DosingRegimen::repeated(dose, 12.0, 3, DoseRoute::IvBolus).unwrap();
+
+        let cl = 1.0;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q2 = 0.5;
+        let v3 = 30.0;
+        let q3 = 0.3;
+
+        // C(0) = D/V1 for first IV bolus
+        let c0 = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 0.0);
+        assert!(
+            (c0 - dose / v1).abs() < 1e-8,
+            "C(0) = D/V1: got {c0}, expected {}",
+            dose / v1
+        );
+
+        // Monotone decay between doses (no new dose added in [0.1, 11.9])
+        let mut prev = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 0.1);
+        for i in 1..20 {
+            let ti = 0.1 + i as f64 * 0.5;
+            if ti >= 12.0 {
+                break;
+            }
+            let ci = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, ti);
+            assert!(
+                ci <= prev + 1e-12,
+                "non-monotone decay at t={ti}: prev={prev}, curr={ci}"
+            );
+            prev = ci;
+        }
+
+        // After second dose, concentration jumps
+        let c_before_2 = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 11.99);
+        let c_after_2 = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 12.0);
+        assert!(c_after_2 > c_before_2, "concentration jumps at second dose");
+
+        // predict_3cpt_iv returns correct length with finite positive values
+        let concs =
+            reg.predict_3cpt_iv(cl, v1, v2, q2, v3, q3, &[0.0, 6.0, 12.0, 18.0, 24.0, 30.0]);
+        assert_eq!(concs.len(), 6);
+        assert!(concs.iter().all(|c| c.is_finite() && *c > 0.0));
+    }
+
+    #[test]
+    fn three_cpt_oral_superposition() {
+        let dose = 100.0;
+        let reg = DosingRegimen::repeated(
+            dose,
+            12.0,
+            3,
+            DoseRoute::Oral { bioavailability: 1.0 },
+        )
+        .unwrap();
+
+        let cl = 1.0;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q2 = 0.5;
+        let v3 = 30.0;
+        let q3 = 0.3;
+        let ka = 2.0;
+
+        // Oral C(0) ≈ 0
+        let c0 = reg.conc_3cpt_oral(cl, v1, v2, q2, v3, q3, ka, 0.0);
+        assert!(c0.abs() < 1e-10, "oral C(0) ≈ 0: got {c0}");
+
+        // All concentrations positive at later times
+        let concs = reg.predict_3cpt_oral(
+            cl,
+            v1,
+            v2,
+            q2,
+            v3,
+            q3,
+            ka,
+            &[0.0, 0.5, 1.0, 6.0, 12.0, 25.0, 48.0],
+        );
+        assert_eq!(concs.len(), 7);
+        assert!(concs[0].abs() < 1e-10, "oral C(0) ≈ 0");
+        assert!(concs[1] > 0.0, "absorption produces positive concentration");
+        assert!(concs.iter().all(|c| c.is_finite()));
+        assert!(concs.iter().skip(1).all(|c| *c > 0.0));
+    }
+
+    #[test]
+    fn three_cpt_iv_infusion() {
+        let reg = DosingRegimen::single_infusion(100.0, 2.0).unwrap();
+        let cl = 1.0;
+        let v1 = 10.0;
+        let v2 = 20.0;
+        let q2 = 0.5;
+        let v3 = 30.0;
+        let q3 = 0.3;
+
+        // C(0) = 0 for infusion
+        let c_start = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 0.0);
+        assert!(c_start.abs() < 1e-10, "C(0) = 0 for infusion: got {c_start}");
+
+        // Concentration rises during infusion
+        let c_during = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 1.0);
+        assert!(c_during > 0.0, "concentration rises during infusion: got {c_during}");
+
+        // Concentration decays after infusion ends
+        let c_end = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 2.0);
+        let c_after = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 10.0);
+        assert!(
+            c_after < c_end,
+            "concentration decays after infusion: c_end={c_end}, c_after={c_after}"
+        );
+
+        // Monotone rise during infusion
+        let c_half = reg.conc_3cpt_iv(cl, v1, v2, q2, v3, q3, 0.5);
+        assert!(
+            c_during > c_half,
+            "monotone rise during infusion: c(0.5)={c_half}, c(1.0)={c_during}"
+        );
     }
 }

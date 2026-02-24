@@ -1,0 +1,83 @@
+{
+  "schema": "nextstat.v100.builtinwarmup.multiseed.v1",
+  "base_dir": "docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z",
+  "seeds": [
+    42,
+    123,
+    777
+  ],
+  "models": {
+    "eight_schools": {
+      "NS_LAPS_GPU": {
+        "median_wall_warm_s": 0.240660275,
+        "median_min_ess": 75681.76635144453,
+        "median_ess_per_s_warm": 314475.52510045347,
+        "median_ess_per_grad": 0.0985439666034434,
+        "median_rhat": 1.0064913717619535,
+        "median_tuned_n_steps": null,
+        "median_tuned_step_size": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_warm_s": 0.3458975488319993,
+        "median_min_ess": 28019.636703267603,
+        "median_ess_per_s_warm": 75255.42159575383,
+        "median_ess_per_grad": 0.040104368343848014,
+        "median_rhat": 1.0079868759022037,
+        "median_tuned_n_steps": 2,
+        "median_tuned_step_size": 1.349768234044303
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 4.178775673993397,
+        "ess_per_grad": 2.4571878494268815
+      }
+    },
+    "glm_logistic": {
+      "NS_LAPS_GPU": {
+        "median_wall_warm_s": 9.25411056,
+        "median_min_ess": 77852.0313812661,
+        "median_ess_per_s_warm": 8414.596295095851,
+        "median_ess_per_grad": 0.10136983252769025,
+        "median_rhat": 1.0086325184694143,
+        "median_tuned_n_steps": null,
+        "median_tuned_step_size": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_warm_s": 77.76452716812491,
+        "median_min_ess": 19582.594114142703,
+        "median_ess_per_s_warm": 225.88236484056105,
+        "median_ess_per_grad": 0.0026377416640817218,
+        "median_rhat": 1.0121855226450518,
+        "median_tuned_n_steps": 26,
+        "median_tuned_step_size": 0.17121608158544963
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 37.25211705232186,
+        "ess_per_grad": 38.43053848223616
+      }
+    },
+    "std_normal_10d": {
+      "NS_LAPS_GPU": {
+        "median_wall_warm_s": 0.24027190399999998,
+        "median_min_ess": 159752.77129213774,
+        "median_ess_per_s_warm": 680785.2940119251,
+        "median_ess_per_grad": 0.3120171314299565,
+        "median_rhat": 1.0061922774437562,
+        "median_tuned_n_steps": null,
+        "median_tuned_step_size": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_warm_s": 0.2253688545897603,
+        "median_min_ess": 1770.7953941309515,
+        "median_ess_per_s_warm": 7846.839070284463,
+        "median_ess_per_grad": 0.0069171695083240295,
+        "median_rhat": 1.1009631471467656,
+        "median_tuned_n_steps": 1,
+        "median_tuned_step_size": 2.875165329195604
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 86.759176263729,
+        "ess_per_grad": 45.107631243455764
+      }
+    }
+  }
+}

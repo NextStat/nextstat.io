@@ -24,6 +24,7 @@
     "deterministic": { "type": "boolean" },
     "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
     "reason": { "type": ["string", "null"] },
+    "environment": { "type": "object", "additionalProperties": true },
     "meta": {
       "type": "object",
       "additionalProperties": false,
@@ -137,4 +138,3 @@
     }
   }
 }
-

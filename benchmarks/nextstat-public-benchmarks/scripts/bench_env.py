@@ -105,6 +105,9 @@ def _competitor_versions() -> dict[str, str | None]:
         "blackjax", "numpyro", "cmdstanpy", "pymc", "arviz",
         "statsmodels", "sklearn", "glum", "linearmodels",
         "lifelines", "pyhf", "scipy", "numpy",
+        # Suites with optional/extra competitors.
+        "arch", "pykalman", "pyfixest", "chainladder", "pymare",
+        "zfit", "pyextremes", "pharmpy", "emcee", "iminuit",
     ]
     # Distribution names can differ from import names.
     dist_name = {

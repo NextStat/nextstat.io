@@ -57,6 +57,14 @@ suppressPackageStartupMessages({
   library(cmdstanr)
 })
 
+env_cmdstan <- Sys.getenv("CMDSTAN", unset = "")
+if (nzchar(env_cmdstan) && dir.exists(env_cmdstan)) {
+  tryCatch(
+    cmdstanr::set_cmdstan_path(env_cmdstan),
+    error = function(e) NULL
+  )
+}
+
 case <- fromJSON(in_path)
 spec <- case$dataset$spec
 case_id <- if (!is.null(case$case)) as.character(case$case) else "unknown"

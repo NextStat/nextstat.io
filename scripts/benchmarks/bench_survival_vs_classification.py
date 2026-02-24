@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from _parse_utils import parse_json_stdout
+
 
 def generate_data_with_censoring(
     n: int, censoring_fraction: float, seed: int = 42
@@ -126,7 +128,7 @@ def fit_cox_ph_nextstat(data: dict) -> dict:
         capture_output=True, text=True, check=True,
     )
     Path(tmp_path).unlink(missing_ok=True)
-    out = json.loads(r.stdout)
+    out = parse_json_stdout(r.stdout)
     return {
         "coefficients": [c["coefficient"] for c in out["coefficients"]],
         "hazard_ratios": [c["hazard_ratio"] for c in out["coefficients"]],

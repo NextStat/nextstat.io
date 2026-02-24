@@ -21,6 +21,88 @@ use serde::{Deserialize, Serialize};
 use crate::foce::OmegaMatrix;
 use crate::pk::{self, ErrorModel};
 
+/// Population PK model kind for VPC/GOF dispatch.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PkModelKind {
+    OneCptOral,
+    OneCptIv,
+    TwoCptIv,
+    TwoCptOral,
+    ThreeCptIv,
+    ThreeCptOral,
+}
+
+fn expected_n_theta(model: PkModelKind) -> usize {
+    match model {
+        PkModelKind::OneCptOral => 3,
+        PkModelKind::OneCptIv => 2,
+        PkModelKind::TwoCptIv => 4,
+        PkModelKind::TwoCptOral => 5,
+        PkModelKind::ThreeCptIv => 6,
+        PkModelKind::ThreeCptOral => 7,
+    }
+}
+
+#[inline]
+fn conc_model(
+    model: PkModelKind,
+    dose: f64,
+    bioav: f64,
+    theta: &[f64],
+    eta: &[f64],
+    t: f64,
+) -> f64 {
+    match model {
+        PkModelKind::OneCptOral => {
+            let cl = theta[0] * eta[0].exp();
+            let v = theta[1] * eta[1].exp();
+            let ka = theta[2] * eta[2].exp();
+            pk::conc_oral(dose, bioav, cl, v, ka, t)
+        }
+        PkModelKind::OneCptIv => {
+            let cl = theta[0] * eta[0].exp();
+            let v = theta[1] * eta[1].exp();
+            let ke = cl / v;
+            (dose / v) * (-ke * t).exp()
+        }
+        PkModelKind::TwoCptIv => {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            pk::conc_iv_2cpt_macro(dose, cl, v1, v2, q, t)
+        }
+        PkModelKind::TwoCptOral => {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            let ka = theta[4] * eta[4].exp();
+            pk::conc_oral_2cpt_macro(dose, bioav, cl, v1, v2, q, ka, t)
+        }
+        PkModelKind::ThreeCptIv => {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q2 = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            let q3 = theta[4] * eta[4].exp();
+            let v3 = theta[5] * eta[5].exp();
+            pk::conc_iv_3cpt_macro(dose, t, cl, v1, q2, v2, q3, v3)
+        }
+        PkModelKind::ThreeCptOral => {
+            let cl = theta[0] * eta[0].exp();
+            let v1 = theta[1] * eta[1].exp();
+            let q2 = theta[2] * eta[2].exp();
+            let v2 = theta[3] * eta[3].exp();
+            let q3 = theta[4] * eta[4].exp();
+            let v3 = theta[5] * eta[5].exp();
+            let ka = theta[6] * eta[6].exp();
+            pk::conc_oral_3cpt_macro(dose * bioav, t, cl, v1, q2, v2, q3, v3, ka)
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // GOF diagnostics
 // ---------------------------------------------------------------------------
@@ -48,7 +130,8 @@ pub struct GofRecord {
 ///
 /// # Arguments
 /// - `times`, `y`, `subject_idx`: observation data
-/// - `dose`, `bioav`: dosing
+/// - `doses`: per-subject doses (length = n_subjects)
+/// - `bioav`: bioavailability
 /// - `theta`: fitted population parameters `[CL, V, Ka]`
 /// - `etas`: conditional modes per subject `eta[subject][param]`
 /// - `error_model`: residual error model
@@ -56,36 +139,57 @@ pub fn gof_1cpt_oral(
     times: &[f64],
     y: &[f64],
     subject_idx: &[usize],
-    dose: f64,
+    doses: &[f64],
     bioav: f64,
     theta: &[f64],
     etas: &[Vec<f64>],
     error_model: &ErrorModel,
 ) -> Result<Vec<GofRecord>> {
-    if theta.len() != 3 {
-        return Err(Error::Validation("theta must have 3 elements".into()));
+    gof_pk(PkModelKind::OneCptOral, times, y, subject_idx, doses, bioav, theta, etas, error_model)
+}
+
+/// Compute GOF diagnostics for supported PK model kinds.
+pub fn gof_pk(
+    model: PkModelKind,
+    times: &[f64],
+    y: &[f64],
+    subject_idx: &[usize],
+    doses: &[f64],
+    bioav: f64,
+    theta: &[f64],
+    etas: &[Vec<f64>],
+    error_model: &ErrorModel,
+) -> Result<Vec<GofRecord>> {
+    let n_theta = expected_n_theta(model);
+    if theta.len() != n_theta {
+        return Err(Error::Validation(format!(
+            "theta must have {n_theta} elements for model {:?}",
+            model
+        )));
     }
     if times.len() != y.len() || times.len() != subject_idx.len() {
         return Err(Error::Validation("times/y/subject_idx length mismatch".into()));
     }
+    if doses.len() != etas.len() {
+        return Err(Error::Validation(format!(
+            "doses length {} != n_subjects {}",
+            doses.len(),
+            etas.len()
+        )));
+    }
 
     let n_obs = times.len();
     let mut records = Vec::with_capacity(n_obs);
+    let zeros = vec![0.0; n_theta];
 
     for i in 0..n_obs {
         let s = subject_idx[i];
         let t = times[i];
         let dv = y[i];
+        let dose = doses[s];
 
-        // Population prediction (eta = 0).
-        let pred = pk::conc_oral(dose, bioav, theta[0], theta[1], theta[2], t);
-
-        // Individual prediction (at conditional mode).
-        let eta = &etas[s];
-        let cl_i = theta[0] * eta[0].exp();
-        let v_i = theta[1] * eta[1].exp();
-        let ka_i = theta[2] * eta[2].exp();
-        let ipred = pk::conc_oral(dose, bioav, cl_i, v_i, ka_i, t);
+        let pred = conc_model(model, dose, bioav, theta, &zeros, t);
+        let ipred = conc_model(model, dose, bioav, theta, &etas[s], t);
 
         // Residual variance at IPRED.
         let var = error_model.variance(ipred.max(1e-30));
@@ -170,7 +274,7 @@ pub fn vpc_1cpt_oral(
     y: &[f64],
     subject_idx: &[usize],
     n_subjects: usize,
-    dose: f64,
+    doses: &[f64],
     bioav: f64,
     theta: &[f64],
     omega: &OmegaMatrix,
@@ -188,6 +292,13 @@ pub fn vpc_1cpt_oral(
     }
     if times.len() != y.len() || times.len() != subject_idx.len() {
         return Err(Error::Validation("times/y/subject_idx mismatch".into()));
+    }
+    if doses.len() != n_subjects {
+        return Err(Error::Validation(format!(
+            "doses length {} != n_subjects {}",
+            doses.len(),
+            n_subjects
+        )));
     }
     if config.quantiles.is_empty() {
         return Err(Error::Validation("quantiles must not be empty".into()));
@@ -251,7 +362,7 @@ pub fn vpc_1cpt_oral(
             let cl_i = theta[0] * eta[0].exp();
             let v_i = theta[1] * eta[1].exp();
             let ka_i = theta[2] * eta[2].exp();
-            let c = pk::conc_oral(dose, bioav, cl_i, v_i, ka_i, t);
+            let c = pk::conc_oral(doses[s], bioav, cl_i, v_i, ka_i, t);
 
             // Add residual noise.
             let sd = error_model.variance(c.max(1e-30)).sqrt().max(1e-30);
@@ -274,6 +385,137 @@ pub fn vpc_1cpt_oral(
     let pi_lo = (1.0 - config.pi_level) / 2.0;
     let pi_hi = 1.0 - pi_lo;
 
+    let mut bins = Vec::with_capacity(config.n_bins);
+    for b in 0..config.n_bins {
+        let mut pi_lower = Vec::with_capacity(n_q);
+        let mut pi_median = Vec::with_capacity(n_q);
+        let mut pi_upper = Vec::with_capacity(n_q);
+
+        for qi in 0..n_q {
+            pi_lower.push(percentile(&sim_quantiles[b][qi], pi_lo));
+            pi_median.push(percentile(&sim_quantiles[b][qi], 0.50));
+            pi_upper.push(percentile(&sim_quantiles[b][qi], pi_hi));
+        }
+
+        bins.push(VpcBin {
+            time: bin_centers[b],
+            n_obs: obs_by_bin[b].len(),
+            obs_quantiles: obs_quantiles[b].clone(),
+            sim_pi_lower: pi_lower,
+            sim_pi_median: pi_median,
+            sim_pi_upper: pi_upper,
+        });
+    }
+
+    Ok(VpcResult { bins, quantiles: config.quantiles.clone(), n_sim: config.n_sim })
+}
+
+/// Run a VPC with model dispatch for supported PK model kinds.
+pub fn vpc_pk(
+    model: PkModelKind,
+    times: &[f64],
+    y: &[f64],
+    subject_idx: &[usize],
+    n_subjects: usize,
+    doses: &[f64],
+    bioav: f64,
+    theta: &[f64],
+    omega: &OmegaMatrix,
+    error_model: &ErrorModel,
+    config: &VpcConfig,
+) -> Result<VpcResult> {
+    use rand::SeedableRng;
+    use rand_distr::{Distribution, Normal as RandNormal};
+
+    let n_theta = expected_n_theta(model);
+    if theta.len() != n_theta {
+        return Err(Error::Validation(format!(
+            "theta must have {n_theta} elements for model {:?}",
+            model
+        )));
+    }
+    if omega.dim() != n_theta {
+        return Err(Error::Validation(format!("omega must be {n_theta}×{n_theta}")));
+    }
+    if times.len() != y.len() || times.len() != subject_idx.len() {
+        return Err(Error::Validation("times/y/subject_idx mismatch".into()));
+    }
+    if doses.len() != n_subjects {
+        return Err(Error::Validation(format!(
+            "doses length {} != n_subjects {}",
+            doses.len(),
+            n_subjects
+        )));
+    }
+    if config.quantiles.is_empty() {
+        return Err(Error::Validation("quantiles must not be empty".into()));
+    }
+
+    let n_obs = times.len();
+    let n_q = config.quantiles.len();
+    let chol = omega.cholesky();
+    let n_eta = n_theta;
+
+    let t_min = times.iter().cloned().fold(f64::INFINITY, f64::min);
+    let t_max = times.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let bin_width = (t_max - t_min) / config.n_bins as f64;
+    let bin_edges: Vec<f64> = (0..=config.n_bins).map(|i| t_min + i as f64 * bin_width).collect();
+    let bin_centers: Vec<f64> =
+        (0..config.n_bins).map(|i| 0.5 * (bin_edges[i] + bin_edges[i + 1])).collect();
+
+    let mut obs_by_bin: Vec<Vec<f64>> = vec![Vec::new(); config.n_bins];
+    for i in 0..n_obs {
+        let bin = ((times[i] - t_min) / bin_width).floor() as usize;
+        let bin = bin.min(config.n_bins - 1);
+        obs_by_bin[bin].push(y[i]);
+    }
+    let obs_quantiles: Vec<Vec<f64>> = obs_by_bin
+        .iter()
+        .map(|vals| config.quantiles.iter().map(|&q| percentile(vals, q)).collect())
+        .collect();
+
+    let mut sim_quantiles: Vec<Vec<Vec<f64>>> =
+        vec![vec![Vec::with_capacity(config.n_sim); n_q]; config.n_bins];
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
+    let std_normal = RandNormal::new(0.0_f64, 1.0).unwrap();
+
+    for _ in 0..config.n_sim {
+        let mut sim_etas: Vec<Vec<f64>> = Vec::with_capacity(n_subjects);
+        for _ in 0..n_subjects {
+            let z: Vec<f64> = (0..n_eta).map(|_| std_normal.sample(&mut rng)).collect();
+            let mut eta = vec![0.0; n_eta];
+            for ii in 0..n_eta {
+                for jj in 0..=ii {
+                    eta[ii] += chol[ii][jj] * z[jj];
+                }
+            }
+            sim_etas.push(eta);
+        }
+
+        let mut sim_by_bin: Vec<Vec<f64>> = vec![Vec::new(); config.n_bins];
+        for i in 0..n_obs {
+            let s = subject_idx[i];
+            let t = times[i];
+            let c = conc_model(model, doses[s], bioav, theta, &sim_etas[s], t);
+
+            let sd = error_model.variance(c.max(1e-30)).sqrt().max(1e-30);
+            let sim_y = c + sd * std_normal.sample(&mut rng);
+
+            let bin = ((t - t_min) / bin_width).floor() as usize;
+            let bin = bin.min(config.n_bins - 1);
+            sim_by_bin[bin].push(sim_y.max(0.0));
+        }
+
+        for b in 0..config.n_bins {
+            for (qi, &q) in config.quantiles.iter().enumerate() {
+                sim_quantiles[b][qi].push(percentile(&sim_by_bin[b], q));
+            }
+        }
+    }
+
+    let pi_lo = (1.0 - config.pi_level) / 2.0;
+    let pi_hi = 1.0 - pi_lo;
     let mut bins = Vec::with_capacity(config.n_bins);
     for b in 0..config.n_bins {
         let mut pi_lower = Vec::with_capacity(n_q);
@@ -382,9 +624,10 @@ mod tests {
         let (times, y, subject_idx, etas) = generate_pop_data(n_subjects, 42);
         let theta = [1.2, 15.0, 2.0];
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let records =
-            gof_1cpt_oral(&times, &y, &subject_idx, 100.0, 1.0, &theta, &etas, &em).unwrap();
+            gof_1cpt_oral(&times, &y, &subject_idx, &doses, 1.0, &theta, &etas, &em).unwrap();
 
         assert_eq!(records.len(), times.len());
         for r in &records {
@@ -411,9 +654,10 @@ mod tests {
         let (times, y, subject_idx, etas) = generate_pop_data(n_subjects, 77);
         let theta = [1.2, 15.0, 2.0];
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let records =
-            gof_1cpt_oral(&times, &y, &subject_idx, 100.0, 1.0, &theta, &etas, &em).unwrap();
+            gof_1cpt_oral(&times, &y, &subject_idx, &doses, 1.0, &theta, &etas, &em).unwrap();
 
         let mean_iwres: f64 = records.iter().map(|r| r.iwres).sum::<f64>() / records.len() as f64;
         // IWRES should be roughly centered around 0 (not exactly, since etas are true).
@@ -427,6 +671,7 @@ mod tests {
         let theta = [1.2, 15.0, 2.0];
         let omega = OmegaMatrix::from_diagonal(&[0.2, 0.2, 0.2]).unwrap();
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let cfg = VpcConfig { n_sim: 50, n_bins: 5, seed: 42, ..VpcConfig::default() };
 
@@ -435,7 +680,7 @@ mod tests {
             &y,
             &subject_idx,
             n_subjects,
-            100.0,
+            &doses,
             1.0,
             &theta,
             &omega,
@@ -473,6 +718,7 @@ mod tests {
         let theta = [1.2, 15.0, 2.0];
         let omega = OmegaMatrix::from_diagonal(&[0.2, 0.2, 0.2]).unwrap();
         let em = ErrorModel::Additive(0.05);
+        let doses = vec![100.0; n_subjects];
 
         let cfg = VpcConfig { n_sim: 100, n_bins: 5, seed: 42, ..VpcConfig::default() };
 
@@ -481,7 +727,7 @@ mod tests {
             &y,
             &subject_idx,
             n_subjects,
-            100.0,
+            &doses,
             1.0,
             &theta,
             &omega,
@@ -535,7 +781,7 @@ mod tests {
             &[2.0],
             &[0],
             1,
-            100.0,
+            &[100.0],
             1.0,
             &[1.0, 10.0], // wrong length
             &omega,
@@ -544,5 +790,70 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("theta"));
+    }
+
+    #[test]
+    fn gof_dispatch_2cpt_iv_smoke() {
+        let n_subjects = 4usize;
+        let times = vec![0.5, 1.0, 2.0, 4.0];
+        let mut all_t = Vec::new();
+        let mut all_y = Vec::new();
+        let mut subj = Vec::new();
+        let doses = vec![100.0; n_subjects];
+        let theta = vec![1.2, 15.0, 1.0, 20.0];
+        let eta = vec![vec![0.0; 4]; n_subjects];
+        for s in 0..n_subjects {
+            for &t in &times {
+                all_t.push(t);
+                all_y.push(pk::conc_iv_2cpt_macro(
+                    doses[s], theta[0], theta[1], theta[3], theta[2], t,
+                ));
+                subj.push(s);
+            }
+        }
+        let em = ErrorModel::Proportional(0.1);
+        let out =
+            gof_pk(PkModelKind::TwoCptIv, &all_t, &all_y, &subj, &doses, 1.0, &theta, &eta, &em)
+                .unwrap();
+        assert_eq!(out.len(), all_t.len());
+    }
+
+    #[test]
+    fn vpc_dispatch_2cpt_iv_smoke() {
+        let n_subjects = 6usize;
+        let times = vec![0.5, 1.0, 2.0, 4.0, 8.0];
+        let mut all_t = Vec::new();
+        let mut all_y = Vec::new();
+        let mut subj = Vec::new();
+        let doses = vec![100.0; n_subjects];
+        let theta = vec![1.2, 15.0, 1.0, 20.0];
+        for s in 0..n_subjects {
+            for &t in &times {
+                all_t.push(t);
+                all_y.push(pk::conc_iv_2cpt_macro(
+                    doses[s], theta[0], theta[1], theta[3], theta[2], t,
+                ));
+                subj.push(s);
+            }
+        }
+        let omega = OmegaMatrix::from_diagonal(&[0.2, 0.2, 0.2, 0.2]).unwrap();
+        let em = ErrorModel::Proportional(0.1);
+        let cfg = VpcConfig { n_sim: 30, n_bins: 4, seed: 17, ..VpcConfig::default() };
+        let out = vpc_pk(
+            PkModelKind::TwoCptIv,
+            &all_t,
+            &all_y,
+            &subj,
+            n_subjects,
+            &doses,
+            1.0,
+            &theta,
+            &omega,
+            &em,
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(out.n_sim, 30);
+        assert_eq!(out.bins.len(), 4);
     }
 }

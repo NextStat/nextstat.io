@@ -3021,7 +3021,7 @@ struct ToyScalarArgs {
     uint n_toys;
     ulong seed;
     uint total_pdf_aux_f32;
-    uint _pad0;
+    uint obs_capacity;   // 0 = no guard (two-pass), >0 = fused capacity bound
     uint _pad1;
 };
 
@@ -3359,6 +3359,11 @@ kernel void unbinned_toy_sample_obs_1d(
     uint end = g_toy_offsets[toy + 1u];
     uint n_events = end - start;
 
+    // Fused path capacity guard: skip toy if events exceed pre-allocated buffer.
+    if (s.obs_capacity > 0u && end > s.obs_capacity) {
+        return;
+    }
+
     float a = g_obs_lo[0];
     float b = g_obs_hi[0];
 
@@ -3406,13 +3411,20 @@ kernel void unbinned_toy_sample_obs_1d(
         float u = u01_open(&state) * nu_tot;
         uint chosen = 0u;
         if (s_cached_n_procs == s.n_procs && s_cached_n_procs > 0u) {
-            chosen = s_cached_n_procs - 1u;
-            for (uint p = 0u; p < s_cached_n_procs; p++) {
-                if (u <= s_proc_cdf[p]) {
-                    chosen = p;
-                    break;
-                }
+            // Branchless binary search — O(log n_procs), zero SIMD divergence.
+            // All threads iterate the same number of times (size depends only on
+            // n_procs which is uniform across threadgroup).
+            // select() compiles to predicated move — no branch penalty.
+            uint lo = 0u;
+            uint sz = s_cached_n_procs;
+            while (sz > 1u) {
+                uint h = sz >> 1u;
+                uint mid = lo + h;
+                lo = select(lo, mid, s_proc_cdf[mid] < u);
+                sz -= h;
             }
+            chosen = select(lo, min(lo + 1u, s_cached_n_procs - 1u),
+                            s_proc_cdf[lo] < u);
         } else {
             float cum = 0.0f;
             chosen = (s.n_procs > 0u) ? (s.n_procs - 1u) : 0u;
@@ -3595,6 +3607,23 @@ kernel void unbinned_toy_sample_obs_1d(
         uint out_idx = start + i;
         g_obs_flat_out[out_idx] = x;
     }
+}
+
+/// Sequential prefix scan: g_toy_offsets[i] = sum(g_counts[0..i-1]).
+/// Dispatch: 1 threadgroup × 1 thread. Point is avoiding host roundtrip, not parallel scan.
+kernel void unbinned_toy_prefix_scan(
+    const device uint* g_counts     [[buffer(0)]],
+    device uint* g_toy_offsets      [[buffer(1)]],
+    constant uint& n_toys           [[buffer(2)]],
+    uint tid [[thread_position_in_grid]]
+) {
+    if (tid != 0u) return;
+    uint cum = 0u;
+    for (uint i = 0u; i < n_toys; i++) {
+        g_toy_offsets[i] = cum;
+        cum += g_counts[i];
+    }
+    g_toy_offsets[n_toys] = cum;
 }
 
 kernel void unbinned_batch_nll_only(

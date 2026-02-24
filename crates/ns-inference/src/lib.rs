@@ -36,6 +36,8 @@ pub mod adapt;
 pub mod artifacts;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+/// Bioequivalence testing: TOST (ABE), RSABE, power/sample size (Phase 9 Pharma).
+pub mod bioequivalence;
 /// Bootstrap confidence interval utilities (percentile + BCa).
 pub mod bootstrap_ci;
 /// Model builder (composition) MVP for general statistics.
@@ -85,12 +87,18 @@ pub mod meta_analysis;
 pub mod mle;
 /// NONMEM-format dataset reader for pharmacometric analysis (Phase 13).
 pub mod nonmem;
+/// NPDE diagnostics for pharmacometrics.
+pub mod npde;
 /// NUTS tree-building and sampling.
 pub mod nuts;
 /// Ordinary differential equation (ODE) solvers (Phase 13 baseline).
 pub mod ode;
 /// Adaptive ODE solvers for nonlinear PK/PD systems.
 pub mod ode_adaptive;
+/// Delay Differential Equation (DDE) solvers (fixed-delay, method-of-steps).
+pub mod ode_dde;
+/// Pre-built ODE-based PK systems (transit, Michaelis-Menten, TMDD) and generic ODE PK solver.
+pub mod ode_pk;
 /// Generic numerical optimizer (L-BFGS-B backend).
 pub mod optimizer;
 /// Ordinal regression models (Phase 9 Pack C).
@@ -121,10 +129,14 @@ pub mod timeseries;
 pub mod toybased;
 /// Toy data generation (Asimov + Poisson).
 pub mod toys;
+/// Monte Carlo clinical trial simulation engine.
+pub mod trial_simulation;
 /// Gamma and Tweedie GLM families (Phase 9 Cross-Vertical).
 pub mod tweedie;
 /// Visual Predictive Check (VPC) and GOF diagnostics for population PK.
 pub mod vpc;
+/// CDISC .xpt (SAS Transport v5) reader/writer for SDTM/ADaM datasets.
+pub mod xpt;
 
 /// Differentiable NLL session for PyTorch zero-copy integration (requires `cuda` feature).
 #[cfg(feature = "cuda")]
@@ -171,6 +183,10 @@ pub use artifacts::{
     ReferenceToolVersion, RunBundle, SCHEMA_VERSION, ScmArtifact,
 };
 pub use batch::{fit_toys_batch, is_accelerate_available};
+pub use bioequivalence::{
+    BeConclusion, BeConfig, BeData, BeDesign, BePowerConfig, BePowerResult, BeResult, RsabeConfig,
+    RsabeResult, average_be, be_power, be_sample_size, reference_scaled_be,
+};
 pub use bootstrap_ci::{
     BcaDiagnostics, BootstrapCiMethod, bca_adjusted_alpha, bca_interval,
     estimate_acceleration_from_jackknife, estimate_bias_correction_z0, percentile_interval,
@@ -216,7 +232,12 @@ pub use fault_tree_mc::{
     DEFAULT_CHUNK_SIZE, FailureMode, FaultTreeCeIsConfig, FaultTreeCeIsResult, FaultTreeMcResult,
     FaultTreeNode, FaultTreeSpec, Gate, fault_tree_mc_ce_is, fault_tree_mc_cpu,
 };
-pub use foce::{FoceConfig, FoceEstimator, FoceResult, OmegaMatrix};
+pub use foce::{
+    CovRelationship, CovariateSpec, FoceConfig, FoceEstimator, FoceResult, ImpConfig,
+    ImpDiagnostics, IovSpec, ItsConfig, OmegaMatrix, RandomEffectTransform,
+    TimeCovariateInterpolation, TimeVaryingCovariatePoint, TimeVaryingCovariateSpec,
+    sigma_from_error_model,
+};
 #[cfg(feature = "cuda")]
 pub use gpu_batch::{fit_toys_batch_gpu, fit_toys_from_data_gpu, is_cuda_available};
 #[cfg(feature = "cuda")]
@@ -243,9 +264,14 @@ pub use mle::ranking_gpu;
 pub use mle::ranking_metal;
 pub use mle::{MaximumLikelihoodEstimator, RankingEntry};
 pub use nonmem::{NonmemDataset, NonmemRecord};
+pub use npde::{NpdeConfig, NpdeRecord, NpdeResult, npde_pk};
 pub use nuts::{InitStrategy, MetricType, NutsConfig, sample_nuts};
 pub use ode::{OdeSolution, rk4_linear};
-pub use ode_adaptive::{OdeOptions, OdeSystem, esdirk4, rk45, solve_at_times};
+pub use ode_adaptive::{
+    OdeOptions, OdeSensitivitySolution, OdeSystem, ParamOdeSystem, SensitivitySolver, esdirk4,
+    forward_sensitivity_solve, lsoda, rk45, solve_at_times,
+};
+pub use ode_dde::{rk4_linear_dde, rk4_linear_dde_scalar};
 pub use optimizer::{
     LbfgsbOptimizer, ObjectiveFunction, OptimizationResult, OptimizerConfig, OptimizerStrategy,
     ToyFitConfig,
@@ -253,10 +279,11 @@ pub use optimizer::{
 pub use ordinal::{OrderedLogitModel, OrderedProbitModel};
 pub use pd::{EmaxModel, IndirectResponseModel, IndirectResponseType, PkPdLink, SigmoidEmaxModel};
 pub use pk::{
-    ErrorModel, LloqPolicy, OneCompartmentOralPkModel, OneCompartmentOralPkNlmeModel,
-    TwoCompartmentIvPkModel, TwoCompartmentOralPkModel,
+    ErrorModel, LloqPolicy, OneCompartmentOralPkLaplaceNlmeModel, OneCompartmentOralPkModel,
+    OneCompartmentOralPkNlmeModel, ThreeCompartmentIvPkModel, ThreeCompartmentOralPkModel,
+    TwoCompartmentIvPkModel, TwoCompartmentOralPkModel, conc_iv_3cpt_macro, conc_oral_3cpt_macro,
 };
-pub use posterior::{Posterior, Prior};
+pub use posterior::{MapConfig, MapResult, Posterior, Prior, map_estimate, map_individual_pk};
 #[cfg(feature = "cuda")]
 pub use profile_likelihood::scan_gpu;
 pub use profile_likelihood::scan_histfactory_diag;
@@ -270,7 +297,7 @@ pub use regression::{
     LinearRegressionModel, LogisticRegressionModel, NegativeBinomialRegressionModel,
     PoissonRegressionModel, ols_fit,
 };
-pub use saem::{SaemConfig, SaemDiagnostics, SaemEstimator};
+pub use saem::{BootstrapSaemResult, SaemConfig, SaemDiagnostics, SaemEstimator, bootstrap_saem};
 pub use scm::{
     CovariateCandidate, CovariateRelationship, ScmConfig, ScmEstimator, ScmResult, ScmStep,
 };
@@ -293,6 +320,15 @@ pub use toybased::{
 pub use toybased::{hypotest_qtilde_toys_expected_set_gpu, hypotest_qtilde_toys_gpu};
 pub use toys::{asimov_main, poisson_main_from_expected, poisson_main_toys};
 pub use transforms::ParameterTransform;
+pub use trial_simulation::{
+    DoseOptResult, ErrorModelType as TrialErrorModelType, MonteCarloConfig, MonteCarloResult,
+    PkModelType, PopulationPkParams, PtaResult, PtaTargetType, PtaTargets, TrialConfig,
+    TrialEndpoints, TrialResult, TrialSummary, find_optimal_dose, simulate_trial, simulate_trials,
+};
 pub use tweedie::{GammaRegressionModel, TweedieRegressionModel};
 pub use unbinned_batch_cpu::{UnbinnedToyBatchResult, fit_unbinned_toys_batch_cpu};
-pub use vpc::{GofRecord, VpcBin, VpcConfig, VpcResult, gof_1cpt_oral, vpc_1cpt_oral};
+pub use vpc::{
+    GofRecord, PkModelKind, VpcBin, VpcConfig, VpcResult, gof_1cpt_oral, gof_pk, vpc_1cpt_oral,
+    vpc_pk,
+};
+pub use xpt::{XptDataset, XptValue, XptVarType, XptVariable, read_xpt, write_xpt, xpt_to_nonmem};

@@ -1,0 +1,139 @@
+{
+  "artifact": "v100-multi-seed-matrix-canonical",
+  "schema": "nextstat.v100.canonical.multiseed.v2",
+  "generated_at_utc": "2026-02-18T23:20:00Z",
+  "seeds": [
+    42,
+    123,
+    777
+  ],
+  "methodology": {
+    "blackjax_warmup": "builtin adjusted_mclmc_find_L_and_step_size",
+    "blackjax_sampling_uses_inverse_mass_matrix": true,
+    "report_chains": 256,
+    "n_chains": 4096,
+    "n_warmup": 500,
+    "n_samples": 1000
+  },
+  "source_dirs": {
+    "main_3models": "docs/blog/artifacts/v096-zero-jit-tax/v100_v096_builtinwarmup_3seed_20260218T224654Z",
+    "ns_funnel": "docs/blog/artifacts/v096-zero-jit-tax/v100_ns_funnel_3seed_20260218T231337Z",
+    "blackjax_funnel": "docs/blog/artifacts/v096-zero-jit-tax/v100_bj_funnel_builtin3seed_20260218T231204Z"
+  },
+  "models": {
+    "eight_schools": {
+      "NS_LAPS_GPU": {
+        "median_wall_cold_s": 1.4247591039165854,
+        "median_wall_warm_s": 0.240660275,
+        "median_min_ess": 75681.76635144453,
+        "median_ess_per_s_warm": 314475.52510045347,
+        "median_ess_per_grad": 0.0985439666034434,
+        "median_rhat": 1.0064913717619535,
+        "median_tuned_step_size": null,
+        "median_tuned_n_steps": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_cold_s": 11.769479082897305,
+        "median_wall_warm_s": 0.3458975488319993,
+        "median_min_ess": 28019.636703267603,
+        "median_ess_per_s_warm": 75255.42159575383,
+        "median_ess_per_grad": 0.040104368343848014,
+        "median_rhat": 1.0079868759022037,
+        "median_tuned_step_size": 1.349768234044303,
+        "median_tuned_n_steps": 2
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 4.178775673993397,
+        "ess_per_grad": 2.4571878494268815
+      }
+    },
+    "glm_logistic": {
+      "NS_LAPS_GPU": {
+        "median_wall_cold_s": 23.790776170790195,
+        "median_wall_warm_s": 9.25411056,
+        "median_min_ess": 77852.0313812661,
+        "median_ess_per_s_warm": 8414.596295095851,
+        "median_ess_per_grad": 0.10136983252769025,
+        "median_rhat": 1.0086325184694143,
+        "median_tuned_step_size": null,
+        "median_tuned_n_steps": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_cold_s": 90.61460866034031,
+        "median_wall_warm_s": 77.76452716812491,
+        "median_min_ess": 19582.594114142703,
+        "median_ess_per_s_warm": 225.88236484056105,
+        "median_ess_per_grad": 0.0026377416640817218,
+        "median_rhat": 1.0121855226450518,
+        "median_tuned_step_size": 0.17121608158544963,
+        "median_tuned_n_steps": 26
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 37.25211705232186,
+        "ess_per_grad": 38.43053848223616
+      }
+    },
+    "neal_funnel_10d": {
+      "NS_LAPS_GPU": {
+        "median_wall_cold_s": 1.4037135588005185,
+        "median_wall_warm_s": 0.25885028099999996,
+        "median_min_ess": 54767.84130427259,
+        "median_ess_per_s_warm": 211581.1545295274,
+        "median_ess_per_grad": 0.07131229336493826,
+        "median_rhat": 1.0083257626827569,
+        "median_tuned_step_size": null,
+        "median_tuned_n_steps": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_cold_s": 15.51668828073889,
+        "median_wall_warm_s": 0.41182927042245865,
+        "median_min_ess": 706.4536069542903,
+        "median_ess_per_s_warm": 1759.3818918647119,
+        "median_ess_per_grad": 0.0007096051397262139,
+        "median_rhat": 1.2732423216503075,
+        "median_tuned_step_size": 0.8550356102215334,
+        "median_tuned_n_steps": 4
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 120.25879969997838,
+        "ess_per_grad": 100.49573963409087
+      }
+    },
+    "std_normal_10d": {
+      "NS_LAPS_GPU": {
+        "median_wall_cold_s": 1.554020468145609,
+        "median_wall_warm_s": 0.24027190399999998,
+        "median_min_ess": 159752.77129213774,
+        "median_ess_per_s_warm": 680785.2940119251,
+        "median_ess_per_grad": 0.3120171314299565,
+        "median_rhat": 1.0061922774437562,
+        "median_tuned_step_size": null,
+        "median_tuned_n_steps": null
+      },
+      "BlackJAX_GPU": {
+        "median_wall_cold_s": 14.063894481398165,
+        "median_wall_warm_s": 0.2253688545897603,
+        "median_min_ess": 1770.7953941309515,
+        "median_ess_per_s_warm": 7846.839070284463,
+        "median_ess_per_grad": 0.0069171695083240295,
+        "median_rhat": 1.1009631471467656,
+        "median_tuned_step_size": 2.875165329195604,
+        "median_tuned_n_steps": 1
+      },
+      "ratio_NS_over_BJ": {
+        "ess_per_s_warm": 86.759176263729,
+        "ess_per_grad": 45.107631243455764
+      }
+    }
+  },
+  "comparability": {
+    "matched_targets": [
+      "std_normal_10d",
+      "eight_schools",
+      "glm_logistic"
+    ],
+    "not_like_for_like": [
+      "neal_funnel_10d (NS uses NCP, BlackJAX uses centered)"
+    ]
+  }
+}

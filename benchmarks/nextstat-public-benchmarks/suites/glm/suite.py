@@ -72,6 +72,8 @@ def main() -> int:
     ap.add_argument("--repeat-override", type=int, default=0,
                     help="Override per-case repeat count (0 = use defaults)")
     ap.add_argument("--deterministic", action="store_true")
+    ap.add_argument("--high-dim", action="store_true",
+                    help="Add high-dimensional cases (p=100, p=500) for n=10k logistic/poisson.")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir).resolve()
@@ -80,6 +82,20 @@ def main() -> int:
 
     run_py = Path(__file__).resolve().parent / "run.py"
     suite_cases = _build_cases()
+
+    # High-dimensional cases: logistic + poisson at n=10k with p=100 and p=500.
+    # These stress-test matrix operations where Python overhead dominates.
+    if args.high_dim:
+        for p_hd in [100, 500]:
+            for family in ["logistic", "poisson"]:
+                suite_cases.append({
+                    "case_id": f"{family}_10k_p{p_hd}",
+                    "family": family,
+                    "n": 10_000,
+                    # Baselines can be very slow at p=500; keep repeats low and rely on 3-seed medians.
+                    "repeat": 5,
+                    "p_override": p_hd,
+                })
 
     index_cases = []
     n_ok = 0
@@ -94,6 +110,7 @@ def main() -> int:
         n = int(c["n"])
         repeat = int(args.repeat_override) if int(args.repeat_override) > 0 else int(c["repeat"])
 
+        p_val = int(c.get("p_override", args.p))
         out_path = cases_dir / f"{case_id}.json"
         cmd = [
             sys.executable,
@@ -101,7 +118,7 @@ def main() -> int:
             "--case", case_id,
             "--family", family,
             "--n", str(n),
-            "--p", str(int(args.p)),
+            "--p", str(p_val),
             "--out", str(out_path),
             "--seed", str(int(args.seed)),
             "--repeat", str(repeat),
@@ -109,7 +126,7 @@ def main() -> int:
         if args.deterministic:
             cmd.append("--deterministic")
 
-        print(f"  [{case_id}] family={family} n={n} p={args.p} repeat={repeat} ...", flush=True)
+        print(f"  [{case_id}] family={family} n={n} p={p_val} repeat={repeat} ...", flush=True)
         proc = subprocess.run(cmd)
 
         try:

@@ -200,6 +200,22 @@ python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
   --slurm-time 08:00:00
 ```
 
+Auto matrix from preflight cores (no manual `--shards-list`):
+
+```bash
+python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
+  --scheduler htcondor \
+  --config /shared/nextstat/benchmarks/unbinned/specs/pf31_gauss_exp_2m.json \
+  --n-toys 10000 \
+  --seed 42 \
+  --threads 1 \
+  --nextstat-bin /shared/nextstat/target/release/nextstat \
+  --out-root /shared/nextstat_runs \
+  --preflight-json /shared/nextstat_runs/preflight.json \
+  --auto-shards-base physical \
+  --shard-factors 0.5,1.0,1.5,2.0,3.0
+```
+
 After jobs finish:
 
 ```bash
@@ -217,7 +233,10 @@ and automatically run collect+merge after each run directory finishes:
 python3 scripts/farm/pf32_unbinned_shard_sweep.py submit \
   --sweep-json /shared/nextstat_runs/pf32_hep_2m10k.sweep.json \
   --mode transfer \
-  --poll-s 10
+  --poll-s 10 \
+  --submit-retries 2 \
+  --retry-backoff-s 5 \
+  --continue-on-error
 ```
 
 ### Snapshot: HTCondor Shard Sweep (bench+coolify, transfer mode, 2GB)

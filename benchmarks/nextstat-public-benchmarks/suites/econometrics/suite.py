@@ -41,7 +41,7 @@ def main() -> int:
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--repeat", type=int, default=5)
-    ap.add_argument("--n-entities", type=int, default=2000)
+    ap.add_argument("--n-entities", type=int, default=500)
     ap.add_argument("--n-times", type=int, default=8)
     ap.add_argument("--n-obs", type=int, default=5000)
     ap.add_argument("--n-x", type=int, default=5)

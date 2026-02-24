@@ -64,6 +64,29 @@ Notes:
 - BLAS/OMP thread env vars are pinned to 1 by default to avoid oversubscription.
 - Shard seeds are deterministic: `seed_i = base_seed + toy_start_i`.
 - Use `--dry-run` first to verify shard plan without launching jobs.
+- Fault tolerance knobs:
+  - `--max-retries N --retry-backoff-s S`: retry transient SSH/SCP failures per shard.
+  - `--resume --run-id <existing_run_id>`: rerun only failed shards from existing manifest.
+
+### 3b) Adaptive weighting (heterogeneous farm)
+
+Use previous manifests to weight hosts by observed throughput (toys/s):
+
+```bash
+python3 scripts/farm/run_unbinned_fit_toys_cluster.py \
+  --hosts-file hosts.txt \
+  --preflight-json tmp/farm/preflight.json \
+  --config /absolute/path/to/spec.json \
+  --n-toys 10000 \
+  --seed 42 \
+  --threads physical \
+  --weight-mode adaptive \
+  --adaptive-from-manifest tmp/farm/runs/<old_run_1>/manifest.json \
+  --adaptive-from-manifest tmp/farm/runs/<old_run_2>/manifest.json \
+  --adaptive-fallback physical \
+  --adaptive-alpha 0.8 \
+  --local-out-dir tmp/farm/runs
+```
 
 ## 4) Merge shard outputs
 
@@ -172,6 +195,36 @@ Collect + merge are identical to the SLURM flow (use the same `manifest.json`).
 For scaling studies, use:
 - `scripts/farm/pf32_unbinned_shard_sweep.py` (render/collect/merge/summarize across a list of shard counts)
 
+Manual matrix:
+
+```bash
+python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
+  --scheduler htcondor \
+  --config /shared/spec.json \
+  --n-toys 10000 \
+  --seed 42 \
+  --threads 1 \
+  --nextstat-bin /shared/nextstat/target/release/nextstat \
+  --out-root /shared/runs \
+  --shards-list 40,74,120,160,240
+```
+
+Auto matrix from preflight cores (`physical` or `logical`):
+
+```bash
+python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
+  --scheduler htcondor \
+  --config /shared/spec.json \
+  --n-toys 10000 \
+  --seed 42 \
+  --threads 1 \
+  --nextstat-bin /shared/nextstat/target/release/nextstat \
+  --out-root /shared/runs \
+  --preflight-json /shared/preflight.json \
+  --auto-shards-base physical \
+  --shard-factors 0.5,1.0,1.5,2.0,3.0
+```
+
 HTCondor-only convenience: you can run the sweep sequentially from the submit node
 (avoids cross-run contention) and automatically run collect+merge after each run directory finishes:
 
@@ -179,5 +232,8 @@ HTCondor-only convenience: you can run the sweep sequentially from the submit no
 python3 scripts/farm/pf32_unbinned_shard_sweep.py submit \
   --sweep-json /shared/runs/<sweep_id>.sweep.json \
   --mode transfer \
-  --poll-s 10
+  --poll-s 10 \
+  --submit-retries 2 \
+  --retry-backoff-s 5 \
+  --continue-on-error
 ```

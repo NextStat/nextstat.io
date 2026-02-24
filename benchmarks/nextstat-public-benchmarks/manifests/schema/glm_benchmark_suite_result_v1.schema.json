@@ -30,8 +30,10 @@
           "path": { "type": "string", "minLength": 1 },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+          "reason": { "type": ["string", "null"] },
           "family": { "type": "string", "enum": ["linear", "logistic", "poisson", "negbin"] },
           "n": { "type": "integer", "minimum": 0 },
+          "n_evaluations": { "type": "integer", "minimum": 0 },
           "wall_time_median_s": { "type": "number", "minimum": 0 },
           "parity_status": { "type": "string", "enum": ["ok", "warn", "skipped"] },
           "converged": { "type": "boolean" }
@@ -52,4 +54,3 @@
     }
   }
 }
-

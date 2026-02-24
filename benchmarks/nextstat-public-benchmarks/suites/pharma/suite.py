@@ -50,14 +50,25 @@ def _write_baseline_failed(path: Path, *, baseline: str, case_id: str, reason: s
     path.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
 
 
+def _tail_text(path: Path, max_chars: int = 800) -> str:
+    try:
+        txt = path.read_text(errors="replace")
+    except Exception:
+        return "-"
+    txt = txt.strip()
+    if not txt:
+        return "-"
+    return txt[-max_chars:]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--fit", action="store_true")
     ap.add_argument("--fit-repeat", type=int, default=3)
-    ap.add_argument("--run-baselines", action="store_true", help="Run external R baselines (nlmixr2/torsten) on FOCE/SAEM cases.")
-    ap.add_argument("--baselines", default="nlmixr2,torsten", help="Comma-separated baselines to run when --run-baselines is set.")
+    ap.add_argument("--run-baselines", action="store_true", help="Run external baseline engines on FOCE/SAEM cases.")
+    ap.add_argument("--baselines", default="nlmixr2,torsten,saemix,mas,pharmpy", help="Comma-separated baselines to run when --run-baselines is set.")
     ap.add_argument("--baseline-repeat", type=int, default=5, help="Timed repeat count for baseline fits.")
     ap.add_argument("--torsten-iter", type=int, default=1200, help="Optimizer iterations for torsten/cmdstan baseline.")
     ap.add_argument("--rscript", default="Rscript", help="Rscript executable for baseline runners.")
@@ -219,22 +230,36 @@ def main() -> int:
     if args.run_baselines:
         baselines_dir = out_dir / "baselines"
         baselines_dir.mkdir(parents=True, exist_ok=True)
+        logs_dir = baselines_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
         requested = [x.strip().lower() for x in str(args.baselines).split(",") if x.strip()]
-        allowed = {"nlmixr2", "torsten"}
+        allowed = {"nlmixr2", "torsten", "saemix", "mas", "pharmpy"}
         enabled = [b for b in requested if b in allowed]
         unknown = [b for b in requested if b not in allowed]
         if unknown:
             print(f"  [warn] ignoring unknown baselines: {','.join(unknown)}", flush=True)
 
         base_env = os.environ.copy()
+        repo_r_libs = (Path(__file__).resolve().parents[4] / ".r_libs")
         if str(args.baseline_r_libs_user).strip():
             base_env["R_LIBS_USER"] = str(args.baseline_r_libs_user).strip()
+        elif repo_r_libs.exists():
+            base_env["R_LIBS_USER"] = str(repo_r_libs)
         if str(args.baseline_cmdstan).strip():
             base_env["CMDSTAN"] = str(args.baseline_cmdstan).strip()
+        else:
+            cmdstan_root = Path(__file__).resolve().parents[4] / ".cache" / "cmdstan"
+            if cmdstan_root.exists():
+                candidates = sorted(cmdstan_root.glob("cmdstan-*"))
+                if candidates:
+                    base_env["CMDSTAN"] = str(candidates[-1])
 
         root = Path(__file__).resolve().parent
         nlmixr2_runner = root / "baselines" / "nlmixr2" / "run.R"
         torsten_runner = root / "baselines" / "torsten" / "run.R"
+        saemix_runner = root / "baselines" / "saemix" / "run.R"
+        mas_runner = root / "baselines" / "mas" / "run.py"
+        pharmpy_runner = root / "baselines" / "pharmpy" / "run.py"
 
         for c in suite_cases:
             case_id = str(c["case_id"])
@@ -255,7 +280,7 @@ def main() -> int:
                         "--method", method,
                         "--repeat", str(int(args.baseline_repeat)),
                     ]
-                else:
+                elif baseline == "torsten":
                     cmd = [
                         str(args.rscript), str(torsten_runner),
                         "--in", str(case_json),
@@ -263,10 +288,51 @@ def main() -> int:
                         "--repeat", str(int(args.baseline_repeat)),
                         "--iter", str(int(args.torsten_iter)),
                     ]
+                elif baseline == "saemix":
+                    method = "saemix"
+                    cmd = [
+                        str(args.rscript), str(saemix_runner),
+                        "--in", str(case_json),
+                        "--out", str(out_path),
+                        "--method", method,
+                        "--repeat", str(int(args.baseline_repeat)),
+                    ]
+                elif baseline == "mas":
+                    cmd = [
+                        sys.executable, str(mas_runner),
+                        "--in", str(case_json),
+                        "--out", str(out_path),
+                        "--repeat", str(int(args.baseline_repeat)),
+                    ]
+                else:
+                    cmd = [
+                        sys.executable, str(pharmpy_runner),
+                        "--in", str(case_json),
+                        "--out", str(out_path),
+                        "--repeat", str(int(args.baseline_repeat)),
+                    ]
 
                 print(f"  Baseline: {baseline} / {case_id} ...", flush=True)
+                log_path = logs_dir / f"{baseline}_{case_id}.log"
                 try:
-                    subprocess.check_call(cmd, env=base_env)
+                    with log_path.open("w") as logf:
+                        proc = subprocess.run(
+                            cmd,
+                            env=base_env,
+                            stdout=logf,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            check=False,
+                        )
+                    if proc.returncode != 0:
+                        tail = _tail_text(log_path, max_chars=1200)
+                        reason = (
+                            f"runner_error:rc={proc.returncode}:"
+                            f"log_tail={tail}"
+                        )
+                        _write_baseline_failed(out_path, baseline=baseline, case_id=case_id, reason=reason)
+                        if not args.baseline_continue_on_error:
+                            raise subprocess.CalledProcessError(proc.returncode, cmd)
                 except Exception as e:
                     reason = f"runner_error:{type(e).__name__}:{e}"
                     _write_baseline_failed(out_path, baseline=baseline, case_id=case_id, reason=reason)

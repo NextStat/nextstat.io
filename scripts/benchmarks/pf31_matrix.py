@@ -5,6 +5,8 @@ Tests 1->2->3->4 GPU scaling for device-resident sharded toy pipeline.
 """
 import subprocess, json, time, os
 
+from _parse_utils import parse_json_stdout
+
 BIN = "/root/nextstat.io/target/release/nextstat"
 SPEC = "/tmp/pf31_bench/spec.json"
 OUTDIR = "/tmp/pf31_bench/results"
@@ -47,7 +49,7 @@ for n_toys in [200, 500]:
         with open(outfile, "w") as f:
             f.write(proc.stdout)
 
-        d = json.loads(proc.stdout)
+        d = parse_json_stdout(proc.stdout)
         r = d["results"]
         conv = r["n_converged"]
         errs = r["n_error"]

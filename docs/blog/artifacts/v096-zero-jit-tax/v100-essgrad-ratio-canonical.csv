@@ -1,0 +1,5 @@
+model,ratio_ns_over_bj_ess_per_grad,ratio_ns_over_bj_ess_per_s_warm,matched_target
+eight_schools,2.4571878494268815,4.178775673993397,True
+glm_logistic,38.43053848223616,37.25211705232186,True
+neal_funnel_10d,100.49573963409087,120.25879969997838,False
+std_normal_10d,45.107631243455764,86.759176263729,True

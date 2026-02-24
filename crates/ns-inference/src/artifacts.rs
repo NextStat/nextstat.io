@@ -522,6 +522,9 @@ mod tests {
             ofv: 123.456,
             converged: true,
             n_iter: 15,
+            sigma: 0.5,
+            sigma_init: 0.5,
+            covariance_step: None,
         };
         NlmeArtifact::from_foce(
             &foce_result,
