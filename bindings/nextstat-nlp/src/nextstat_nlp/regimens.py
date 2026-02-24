@@ -29,7 +29,7 @@ _REGIMEN_SCHEMA: Dict[str, str] = {
 
 _ROUTE_ALIASES: Dict[str, str] = {
     "iv": "IV", "intravenous": "IV",
-    "oral": "oral", "po": "oral", "by mouth": "oral",
+    "oral": "oral", "orally": "oral", "po": "oral", "by mouth": "oral",
     "sc": "SC", "subcutaneous": "SC", "subq": "SC",
     "im": "IM", "intramuscular": "IM",
     "topical": "topical",
@@ -49,6 +49,8 @@ _FREQ_ALIASES: Dict[str, str] = {
     "weekly": "weekly", "qw": "weekly", "once weekly": "weekly",
 }
 
+_KNOWN_UNITS = {"mg", "mg/kg", "mcg", "g", "iu"}
+
 
 def _canonicalize_route(raw: str) -> str:
     key = raw.strip().lower()
@@ -58,6 +60,63 @@ def _canonicalize_route(raw: str) -> str:
 def _canonicalize_freq(raw: str) -> str:
     key = raw.strip().lower()
     return _FREQ_ALIASES.get(key, raw.strip())
+
+
+def _canonicalize_units(raw: str) -> str:
+    u = raw.strip().lower()
+    u = u.replace("μg", "mcg").replace("ug", "mcg")
+    # Strip punctuation commonly produced by NER (e.g., "mg.", "mg/day").
+    u = re.sub(r"[^a-z0-9/]+", "", u)
+    if u in _KNOWN_UNITS:
+        return u
+    return ""
+
+
+def _guess_route_from_text(text: str) -> str:
+    t = text.lower()
+    # Prefer longer keys first (e.g., "intravenous" before "iv").
+    for k in sorted(_ROUTE_ALIASES.keys(), key=len, reverse=True):
+        if " " in k:
+            if k in t:
+                return _ROUTE_ALIASES[k]
+            continue
+        if re.search(rf"\b{re.escape(k)}\b", t):
+            return _ROUTE_ALIASES[k]
+    # Fallback: common patterns without strict word boundaries.
+    if "intraven" in t:
+        return "IV"
+    if "infusion" in t:
+        return "IV"
+    return ""
+
+
+def _guess_freq_from_text(text: str) -> str:
+    t = text.lower()
+    for k in sorted(_FREQ_ALIASES.keys(), key=len, reverse=True):
+        if " " in k:
+            if k in t:
+                return _FREQ_ALIASES[k]
+            continue
+        if re.search(rf"\b{re.escape(k)}\b", t):
+            return _FREQ_ALIASES[k]
+    # Common qNh pattern.
+    m = re.search(r"\bq\s*(\d{1,2})\s*h\b", t)
+    if m:
+        return f"Q{int(m.group(1))}H"
+    return ""
+
+
+def _guess_duration_from_text(text: str) -> Optional[float]:
+    # Try to pull the common infusion phrasing "over 2 hours".
+    m = re.search(
+        r"\bover\s+([0-9]+(?:\.[0-9]+)?)\s*(hours?|days?|weeks?|months?|years?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        # parse_time expects the numeric + unit chunk.
+        return parse_time(f"{m.group(1)} {m.group(2)}")
+    return None
 
 
 def extract_regimens(
@@ -114,11 +173,23 @@ def extract_regimens(
             if dose_val is None:
                 continue  # Skip records without a dose
 
-            units = unit_spans[idx].text.strip() if idx < len(unit_spans) else "mg"
-            route = _canonicalize_route(route_spans[idx].text) if idx < len(route_spans) else ""
-            freq = _canonicalize_freq(freq_spans[idx].text) if idx < len(freq_spans) else ""
+            units_raw = unit_spans[idx].text.strip() if idx < len(unit_spans) else "mg"
+            units = _canonicalize_units(units_raw) or "mg"
+
+            route_raw = route_spans[idx].text if idx < len(route_spans) else ""
+            route = _canonicalize_route(route_raw)
+            if not route or route == route_raw.strip():
+                route = _guess_route_from_text(text) or route
+
+            freq_raw = freq_spans[idx].text if idx < len(freq_spans) else ""
+            freq = _canonicalize_freq(freq_raw)
+            if not freq or freq == freq_raw.strip():
+                freq = _guess_freq_from_text(text) or freq
+
             start = parse_time(start_spans[idx].text) if idx < len(start_spans) else None
             dur = parse_time(dur_spans[idx].text) if idx < len(dur_spans) else None
+            if dur is None:
+                dur = _guess_duration_from_text(text)
             occ_val = parse_numeric(occ_spans[idx].text) if idx < len(occ_spans) else None
             occ_id = int(occ_val) if occ_val is not None else None
 
