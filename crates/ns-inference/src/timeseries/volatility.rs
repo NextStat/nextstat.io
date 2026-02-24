@@ -455,6 +455,9 @@ pub struct Egarch11Fit {
 
 const SQRT_2_OVER_PI: f64 = 0.797_884_560_802_865_4; // sqrt(2/π)
 
+/// Maximum absolute log-variance to prevent exp overflow during optimization.
+const LOG_H_CLAMP: f64 = 50.0;
+
 fn egarch11_loglik(y: &[f64], p: Egarch11Params) -> Result<(f64, Vec<f64>)> {
     if y.is_empty() {
         return Err(Error::Validation("y must be non-empty".to_string()));
@@ -469,13 +472,17 @@ fn egarch11_loglik(y: &[f64], p: Egarch11Params) -> Result<(f64, Vec<f64>)> {
     let mut log_h = vec![0.0_f64; y.len()];
     // Unconditional log-variance: if |beta| < 1, log(h) = omega / (1 - beta).
     let denom = 1.0 - p.beta;
-    log_h[0] = if denom.abs() > 1e-12 { p.omega / denom } else { p.omega };
+    log_h[0] = if denom.abs() > 1e-12 {
+        (p.omega / denom).clamp(-LOG_H_CLAMP, LOG_H_CLAMP)
+    } else {
+        p.omega.clamp(-LOG_H_CLAMP, LOG_H_CLAMP)
+    };
 
     for t in 1..y.len() {
         let h_prev = log_h[t - 1].exp().max(1e-30);
         let z = eps[t - 1] / h_prev.sqrt();
         let g = p.alpha * (z.abs() - SQRT_2_OVER_PI) + p.gamma * z;
-        log_h[t] = p.omega + g + p.beta * log_h[t - 1];
+        log_h[t] = (p.omega + g + p.beta * log_h[t - 1]).clamp(-LOG_H_CLAMP, LOG_H_CLAMP);
     }
 
     let mut h = vec![0.0_f64; y.len()];
@@ -484,7 +491,7 @@ fn egarch11_loglik(y: &[f64], p: Egarch11Params) -> Result<(f64, Vec<f64>)> {
         let ht = log_h[t].exp().max(1e-30);
         h[t] = ht;
         let quad = (eps[t] * eps[t]) / ht;
-        ll += -0.5 * (LN_2PI + ht.ln() + quad);
+        ll += -0.5 * (LN_2PI + log_h[t] + quad);
     }
     Ok((ll, h))
 }
@@ -512,6 +519,124 @@ impl ObjectiveFunction for Egarch11Objective {
             Err(_) => Ok(1e30),
         }
     }
+
+    /// Analytical gradient of the negative log-likelihood for EGARCH(1,1).
+    ///
+    /// Uses the log-variance recursion L_t = log(h_t) to derive ∂L_t/∂θ
+    /// via a single forward pass with recursive coefficient
+    /// c = β − (α·sign(z) + γ)·z/2.
+    fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != 5 {
+            return Err(Error::Validation(
+                "expected 5 params (mu, omega, alpha, gamma, beta)".to_string(),
+            ));
+        }
+        let mu = params[0];
+        let omega = params[1];
+        let alpha = params[2];
+        let gamma_p = params[3];
+        let beta = params[4];
+
+        if !mu.is_finite()
+            || !omega.is_finite()
+            || !alpha.is_finite()
+            || !gamma_p.is_finite()
+            || !beta.is_finite()
+        {
+            let n = params.len();
+            let mut grad = vec![0.0; n];
+            for i in 0..n {
+                let h = 1e-8 * params[i].abs().max(1.0);
+                let mut pp = params.to_vec();
+                pp[i] += h;
+                let fp = self.eval(&pp)?;
+                pp[i] = params[i] - h;
+                let fm = self.eval(&pp)?;
+                grad[i] = (fp - fm) / (2.0 * h);
+            }
+            return Ok(grad);
+        }
+
+        let y = &self.y;
+        let t_len = y.len();
+        let eps: Vec<f64> = y.iter().map(|&v| v - mu).collect();
+
+        // Initial log-variance: L_0 = ω/(1−β) if |β|<1
+        let denom = 1.0 - beta;
+        let l0_raw = if denom.abs() > 1e-12 { omega / denom } else { omega };
+        let l0 = l0_raw.clamp(-LOG_H_CLAMP, LOG_H_CLAMP);
+        let l0_clamped = l0_raw.abs() > LOG_H_CLAMP;
+
+        // ∂L_0/∂θ (zero if clamped)
+        let (mut dl_mu, mut dl_omega, mut dl_alpha, mut dl_gamma, mut dl_beta) = if l0_clamped {
+            (0.0, 0.0, 0.0, 0.0, 0.0)
+        } else if denom.abs() > 1e-12 {
+            let inv_d = 1.0 / denom;
+            (0.0, inv_d, 0.0, 0.0, omega * inv_d * inv_d)
+        } else {
+            (0.0, 1.0, 0.0, 0.0, 0.0)
+        };
+
+        let mut g_mu = 0.0_f64;
+        let mut g_omega = 0.0_f64;
+        let mut g_alpha = 0.0_f64;
+        let mut g_gamma = 0.0_f64;
+        let mut g_beta = 0.0_f64;
+
+        let mut l_prev = l0;
+        for t in 0..t_len {
+            let lt;
+            if t > 0 {
+                let h_prev = l_prev.exp().max(1e-30);
+                let sqrt_h = h_prev.sqrt();
+                let z = eps[t - 1] / sqrt_h;
+                let sign_z = if z > 0.0 {
+                    1.0
+                } else if z < 0.0 {
+                    -1.0
+                } else {
+                    0.0
+                };
+                let asign_g = alpha * sign_z + gamma_p;
+                let c = beta - asign_g * z * 0.5;
+
+                let lt_raw =
+                    omega + alpha * (z.abs() - SQRT_2_OVER_PI) + gamma_p * z + beta * l_prev;
+                lt = lt_raw.clamp(-LOG_H_CLAMP, LOG_H_CLAMP);
+
+                if lt_raw.abs() <= LOG_H_CLAMP {
+                    dl_mu = -asign_g / sqrt_h + c * dl_mu;
+                    dl_omega = 1.0 + c * dl_omega;
+                    dl_alpha = (z.abs() - SQRT_2_OVER_PI) + c * dl_alpha;
+                    dl_gamma = z + c * dl_gamma;
+                    dl_beta = l_prev + c * dl_beta;
+                } else {
+                    dl_mu = 0.0;
+                    dl_omega = 0.0;
+                    dl_alpha = 0.0;
+                    dl_gamma = 0.0;
+                    dl_beta = 0.0;
+                }
+            } else {
+                lt = l0;
+            }
+
+            let ht = lt.exp().max(1e-30);
+            let et = eps[t];
+            let et2_over_h = et * et / ht;
+            let factor = 0.5 * (1.0 - et2_over_h);
+
+            g_omega += factor * dl_omega;
+            g_alpha += factor * dl_alpha;
+            g_gamma += factor * dl_gamma;
+            g_beta += factor * dl_beta;
+            g_mu += factor * dl_mu - et / ht;
+
+            l_prev = lt;
+        }
+
+        Ok(vec![g_mu, g_omega, g_alpha, g_gamma, g_beta])
+    }
 }
 
 /// Fit an EGARCH(1,1) model by maximum likelihood.
@@ -526,12 +651,16 @@ pub fn egarch11_fit(y: &[f64], cfg: Egarch11Config) -> Result<Egarch11Fit> {
     }
 
     let mu0 = mean(y);
+    let v0 = var_pop(y, mu0).max(1e-12);
+    // Variance targeting: omega = log(var) * (1 - beta_init)
+    let beta_init = 0.95;
+    let omega_init = v0.ln() * (1.0 - beta_init);
     let init = cfg.init.unwrap_or(Egarch11Params {
         mu: mu0,
-        omega: -0.1,
+        omega: omega_init,
         alpha: 0.1,
         gamma: -0.05,
-        beta: 0.95,
+        beta: beta_init,
     });
     let init_params = vec![init.mu, init.omega, init.alpha, init.gamma, init.beta];
 
@@ -699,6 +828,123 @@ impl ObjectiveFunction for GjrGarch11Objective {
             Err(_) => Ok(1e30),
         }
     }
+
+    /// Analytical gradient of the negative log-likelihood for GJR-GARCH(1,1).
+    ///
+    /// Single forward pass computing h_t and ∂h_t/∂θ via the GJR recursion:
+    /// h_t = ω + α·ε²_{t-1} + γ·ε²_{t-1}·I(ε<0) + β·h_{t-1}
+    fn gradient(&self, params: &[f64]) -> Result<Vec<f64>> {
+        if params.len() != 5 {
+            return Err(Error::Validation(
+                "expected 5 params (mu, omega, alpha, gamma, beta)".to_string(),
+            ));
+        }
+        let mu = params[0];
+        let omega = params[1];
+        let alpha = params[2];
+        let gamma_p = params[3];
+        let beta = params[4];
+
+        if !mu.is_finite()
+            || !omega.is_finite()
+            || !alpha.is_finite()
+            || !gamma_p.is_finite()
+            || !beta.is_finite()
+            || omega <= 0.0
+            || alpha < 0.0
+            || gamma_p < 0.0
+            || beta < 0.0
+            || alpha + beta + 0.5 * gamma_p >= self.persistence_max
+        {
+            let n = params.len();
+            let mut grad = vec![0.0; n];
+            for i in 0..n {
+                let h = 1e-8 * params[i].abs().max(1.0);
+                let mut pp = params.to_vec();
+                pp[i] += h;
+                let fp = self.eval(&pp)?;
+                pp[i] = params[i] - h;
+                let fm = self.eval(&pp)?;
+                grad[i] = (fp - fm) / (2.0 * h);
+            }
+            return Ok(grad);
+        }
+
+        let y = &self.y;
+        let t_len = y.len();
+        let min_var = self.min_var.max(0.0);
+        let eps: Vec<f64> = y.iter().map(|&v| v - mu).collect();
+
+        let persistence = alpha + beta + 0.5 * gamma_p;
+        let denom = 1.0 - persistence;
+        let h0 = if denom > 1e-12 {
+            (omega / denom).max(min_var.max(1e-12))
+        } else {
+            let m = mean(&eps);
+            var_pop(&eps, m).max(min_var.max(1e-12))
+        };
+
+        // ∂h_0/∂θ — unconditional variance h0 = ω/(1 − α − β − γ/2)
+        let (mut dh_mu, mut dh_omega, mut dh_alpha, mut dh_gamma, mut dh_beta) = if denom > 1e-12 {
+            let inv_d = 1.0 / denom;
+            (0.0, inv_d, omega * inv_d * inv_d, 0.5 * omega * inv_d * inv_d, omega * inv_d * inv_d)
+        } else {
+            (0.0, 0.0, 0.0, 0.0, 0.0)
+        };
+
+        let mut g_mu = 0.0_f64;
+        let mut g_omega = 0.0_f64;
+        let mut g_alpha = 0.0_f64;
+        let mut g_gamma = 0.0_f64;
+        let mut g_beta = 0.0_f64;
+
+        let mut h_prev = h0;
+        for t in 0..t_len {
+            let ht = if t == 0 {
+                h0
+            } else {
+                let ep = eps[t - 1];
+                let ep2 = ep * ep;
+                let indicator = if ep < 0.0 { 1.0 } else { 0.0 };
+                let raw = omega + alpha * ep2 + gamma_p * ep2 * indicator + beta * h_prev;
+                let ht = raw.max(min_var);
+                if raw >= min_var {
+                    let new_mu = -2.0 * ep * (alpha + gamma_p * indicator) + beta * dh_mu;
+                    let new_omega = 1.0 + beta * dh_omega;
+                    let new_alpha = ep2 + beta * dh_alpha;
+                    let new_gamma = ep2 * indicator + beta * dh_gamma;
+                    let new_beta = h_prev + beta * dh_beta;
+                    dh_mu = new_mu;
+                    dh_omega = new_omega;
+                    dh_alpha = new_alpha;
+                    dh_gamma = new_gamma;
+                    dh_beta = new_beta;
+                } else {
+                    dh_mu = 0.0;
+                    dh_omega = 0.0;
+                    dh_alpha = 0.0;
+                    dh_gamma = 0.0;
+                    dh_beta = 0.0;
+                }
+                ht
+            };
+
+            let et = eps[t];
+            let inv_h = 1.0 / ht;
+            let et2_inv_h2 = et * et * inv_h * inv_h;
+            let factor = 0.5 * (inv_h - et2_inv_h2);
+
+            g_omega += factor * dh_omega;
+            g_alpha += factor * dh_alpha;
+            g_gamma += factor * dh_gamma;
+            g_beta += factor * dh_beta;
+            g_mu += factor * dh_mu - et * inv_h;
+
+            h_prev = ht;
+        }
+
+        Ok(vec![g_mu, g_omega, g_alpha, g_gamma, g_beta])
+    }
 }
 
 /// Fit a GJR-GARCH(1,1) model by maximum likelihood.
@@ -863,11 +1109,33 @@ mod tests {
         ];
         let obj = Garch11Objective { y, alpha_beta_max: 0.999, min_var: 1e-18 };
         let params = [0.001, 0.02, 0.08, 0.88];
+        assert_gradient_vs_numerical(&obj, &params, "GARCH(1,1)");
+    }
 
-        // Analytical gradient
-        let g_analytical = obj.gradient(&params).unwrap();
+    #[test]
+    fn egarch11_analytical_gradient_vs_numerical() {
+        let y: Vec<f64> = vec![
+            0.1, -0.2, 0.05, 0.3, -0.15, 0.02, 0.01, -0.4, 0.35, -0.1, 0.05, -0.02, 0.12, -0.08,
+            0.22, -0.31, 0.14, -0.06, 0.09, 0.03,
+        ];
+        let obj = Egarch11Objective { y };
+        let params = [0.001, -0.05, 0.12, -0.08, 0.92];
+        assert_gradient_vs_numerical(&obj, &params, "EGARCH(1,1)");
+    }
 
-        // Numerical gradient (central differences)
+    #[test]
+    fn gjr_garch11_analytical_gradient_vs_numerical() {
+        let y: Vec<f64> = vec![
+            0.1, -0.2, 0.05, 0.3, -0.15, 0.02, 0.01, -0.4, 0.35, -0.1, 0.05, -0.02, 0.12, -0.08,
+            0.22, -0.31, 0.14, -0.06, 0.09, 0.03,
+        ];
+        let obj = GjrGarch11Objective { y, persistence_max: 0.999, min_var: 1e-18 };
+        let params = [0.001, 0.02, 0.05, 0.06, 0.85];
+        assert_gradient_vs_numerical(&obj, &params, "GJR-GARCH(1,1)");
+    }
+
+    fn assert_gradient_vs_numerical(obj: &dyn ObjectiveFunction, params: &[f64], name: &str) {
+        let g_analytical = obj.gradient(params).unwrap();
         let n = params.len();
         let mut g_numerical = vec![0.0; n];
         for i in 0..n {
@@ -879,7 +1147,6 @@ mod tests {
             let fm = obj.eval(&pp).unwrap();
             g_numerical[i] = (fp - fm) / (2.0 * eps);
         }
-
         for i in 0..n {
             let rel = if g_numerical[i].abs() > 1e-10 {
                 (g_analytical[i] - g_numerical[i]).abs() / g_numerical[i].abs()
@@ -888,7 +1155,8 @@ mod tests {
             };
             assert!(
                 rel < 1e-4,
-                "gradient[{}]: analytical={:.8e}, numerical={:.8e}, rel_diff={:.4e}",
+                "{} gradient[{}]: analytical={:.8e}, numerical={:.8e}, rel_diff={:.4e}",
+                name,
                 i,
                 g_analytical[i],
                 g_numerical[i],

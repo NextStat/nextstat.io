@@ -63,6 +63,8 @@ def run_laps(
     *,
     model: str,
     dim: int,
+    glm_n: int,
+    glm_p: int | None,
     n_chains: int,
     n_warmup: int,
     n_samples: int,
@@ -82,6 +84,21 @@ def run_laps(
             "y": [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0],
             "sigma": [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0],
         }
+    if model == "glm_logistic":
+        # GLM models require x/y/n/p. Data generation happens outside timing.
+        #
+        # Note: we keep `--dim` for the Gaussian/funnel models. For GLM, use
+        # `--glm-p` (or fall back to dim if unset) plus `--glm-n`.
+        import numpy as np
+
+        p = int(glm_p) if glm_p is not None else int(dim)
+        n = int(glm_n)
+        rng = np.random.default_rng(seed)
+        X = rng.standard_normal((n, p))
+        beta_true = rng.standard_normal(p) * 0.5
+        logits = X @ beta_true
+        y = (rng.uniform(size=n) < 1.0 / (1.0 + np.exp(-logits))).astype(float)
+        model_data = {"x": X.ravel().tolist(), "y": y.tolist(), "n": n, "p": p}
 
     t0 = time.perf_counter()
     result = nextstat.sample(
@@ -104,11 +121,21 @@ def run_laps(
     diag = result.get("diagnostics", {})
     ds = _diag_summary(diag)
 
-    phase_times = {
-        "init": _safe_float(result.get("phase_times", [0, 0, 0])[0]) if "phase_times" in result else None,
-        "warmup": _safe_float(result.get("phase_times", [0, 0, 0])[1]) if "phase_times" in result else None,
-        "sampling": _safe_float(result.get("phase_times", [0, 0, 0])[2]) if "phase_times" in result else None,
-    }
+    raw_pt = result.get("phase_times")
+    if isinstance(raw_pt, dict):
+        phase_times = {
+            "init": _safe_float(raw_pt.get("init")),
+            "warmup": _safe_float(raw_pt.get("warmup")),
+            "sampling": _safe_float(raw_pt.get("sampling")),
+        }
+    elif isinstance(raw_pt, (list, tuple)) and len(raw_pt) >= 3:
+        phase_times = {
+            "init": _safe_float(raw_pt[0]),
+            "warmup": _safe_float(raw_pt[1]),
+            "sampling": _safe_float(raw_pt[2]),
+        }
+    else:
+        phase_times = {"init": None, "warmup": None, "sampling": None}
 
     # Acceptance rate from sample_stats
     sample_stats = result.get("sample_stats", {})
@@ -153,6 +180,10 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--devices", default=None,
                     help="Comma-separated device IDs (default: auto-detect)")
+    ap.add_argument("--glm-n", type=int, default=5000,
+                    help="For glm_logistic: number of observations (default: 5000)")
+    ap.add_argument("--glm-p", type=int, default=None,
+                    help="For glm_logistic: number of features (default: --dim)")
     ap.add_argument("--target-accept", type=float, default=0.9)
     ap.add_argument("--sync-interval", type=int, default=100)
     ap.add_argument("--welford-chains", type=int, default=256)
@@ -173,6 +204,8 @@ def main() -> int:
     metrics = run_laps(
         model=args.model,
         dim=args.dim,
+        glm_n=args.glm_n,
+        glm_p=args.glm_p,
         n_chains=args.n_chains,
         n_warmup=args.n_warmup,
         n_samples=args.n_samples,
@@ -188,7 +221,10 @@ def main() -> int:
     env = print_environment()
 
     doc = {
+        # Keep "schema" for backward compatibility with older artifacts, but validate against
+        # the shared validator that expects "schema_version".
         "schema": SCHEMA,
+        "schema_version": SCHEMA,
         "label": args.label,
         "config": {
             "model": args.model,

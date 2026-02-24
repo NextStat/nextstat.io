@@ -2,7 +2,7 @@
  * Monte Carlo Fault-Tree Simulation Metal Kernel.
  *
  * Architecture: 1 thread = 1 scenario, grid-stride via thread_position_in_grid.
- * Inline Philox-4x32 RNG (no external RNG library).
+ * Counter-based RNG stream (no external RNG library).
  * Box-Muller for normal sampling (BernoulliUncertain Z).
  * Atomic counters for TOP failure + component importance.
  *
@@ -23,40 +23,22 @@
 #include <metal_atomic>
 using namespace metal;
 
-/* ---------- Philox-4x32 inline RNG --------------------------------------- */
+/* ---------- Counter-based RNG (SplitMix64 hash stream) -------------------- */
 
-constant uint PHILOX_M0 = 0xD2511F53u;
-constant uint PHILOX_M1 = 0xCD9E8D57u;
-constant uint PHILOX_W0 = 0x9E3779B9u;
-constant uint PHILOX_W1 = 0xBB67AE85u;
-
-struct PhiloxState {
-    uint counter[4];
-    uint key[2];
-};
-
-inline uint philox_mulhi(uint a, uint b) {
-    return (uint)(((ulong)a * (ulong)b) >> 32);
+inline ulong splitmix64(ulong x) {
+    x += 0x9E3779B97F4A7C15ul;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ul;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBul;
+    return x ^ (x >> 31);
 }
 
-inline void philox_round(thread uint* ctr, thread uint* key) {
-    uint lo0 = ctr[0];
-    uint lo1 = ctr[2];
-    uint hi0 = philox_mulhi(PHILOX_M0, lo0);
-    uint hi1 = philox_mulhi(PHILOX_M1, lo1);
-    ctr[0] = hi1 ^ ctr[1] ^ key[0];
-    ctr[1] = lo1;
-    ctr[2] = hi0 ^ ctr[3] ^ key[1];
-    ctr[3] = lo0;
-    key[0] += PHILOX_W0;
-    key[1] += PHILOX_W1;
-}
-
-inline void philox4x32(thread PhiloxState& s) {
-    philox_round(s.counter, s.key);
-    philox_round(s.counter, s.key);
-    philox_round(s.counter, s.key);
-    philox_round(s.counter, s.key);
+inline uint counter_u32(uint seed_lo, uint seed_hi, ulong global_sid, ulong draw_idx) {
+    ulong seed64 = ((ulong)seed_hi << 32) | (ulong)seed_lo;
+    ulong x =
+        seed64
+        ^ (global_sid * 0xD2B74407B1CE6E93ul)
+        ^ (draw_idx * 0x9E3779B97F4A7C15ul);
+    return (uint)splitmix64(x);
 }
 
 inline float u32_to_uniform(uint x) {
@@ -95,30 +77,18 @@ kernel void fault_tree_mc_kernel(
     constant int& top_node             [[buffer(10)]],
     constant uint& seed_lo             [[buffer(11)]],
     constant uint& seed_hi             [[buffer(12)]],
-    constant int& n_scenarios          [[buffer(13)]],
+    constant uint& scenario_offset_lo  [[buffer(13)]],
+    constant uint& scenario_offset_hi  [[buffer(14)]],
+    constant int& n_scenarios          [[buffer(15)]],
     uint tid [[thread_position_in_grid]]
 ) {
     if ((int)tid >= n_scenarios) return;
 
-    int sid = (int)tid;
-
-    // RNG: xoshiro128**-inspired. High-quality, fast, no lambda issues.
-    uint rng_s0 = seed_lo ^ ((uint)sid * 0x9E3779B9u + 1u);
-    uint rng_s1 = seed_hi ^ ((uint)sid * 0x517CC1B7u + 1u);
-    uint rng_s2 = seed_lo ^ (seed_hi + (uint)sid + 0x6C62272Eu);
-    uint rng_s3 = (uint)sid ^ (seed_lo * 0x61C88647u + seed_hi);
-    // Warm up
-    for (int _w = 0; _w < 4; _w++) {
-        uint t = rng_s1 << 9;
-        rng_s2 ^= rng_s0; rng_s3 ^= rng_s1; rng_s1 ^= rng_s2; rng_s0 ^= rng_s3;
-        rng_s2 ^= t; rng_s3 = (rng_s3 << 11) | (rng_s3 >> 21);
-    }
+    ulong scenario_offset = ((ulong)scenario_offset_hi << 32) | (ulong)scenario_offset_lo;
+    ulong global_sid = scenario_offset + (ulong)tid;
+    ulong draw_idx = 0ul;
     #define NEXT_UNIFORM(result) { \
-        uint _r = rng_s1 * 5; \
-        _r = ((_r << 7) | (_r >> 25)) * 9; \
-        uint _t = rng_s1 << 9; \
-        rng_s2 ^= rng_s0; rng_s3 ^= rng_s1; rng_s1 ^= rng_s2; rng_s0 ^= rng_s3; \
-        rng_s2 ^= _t; rng_s3 = (rng_s3 << 11) | (rng_s3 >> 21); \
+        uint _r = counter_u32(seed_lo, seed_hi, global_sid, draw_idx++); \
         result = u32_to_uniform(_r); \
     }
 

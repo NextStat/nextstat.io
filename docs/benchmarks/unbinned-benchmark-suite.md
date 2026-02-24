@@ -75,8 +75,8 @@ Report:
 - `docs/benchmarks/cross-framework-unbinned-cpu-symmetric-2026-02-11.md`
 
 Raw artifact:
-- baseline: `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_diag2_20260211T225229Z.json`
-- tuned (`--opt-m 20 --opt-smooth-bounds`): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_tune2_m20smooth_20260211T225807Z.json`
+- baseline: `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_diag2_20260211T225229Z.json`
+- tuned (`--opt-m 20 --opt-smooth-bounds`): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_tune2_m20smooth_20260211T225807Z.json`
 
 ## 2. Criterion Micro-Benchmarks
 

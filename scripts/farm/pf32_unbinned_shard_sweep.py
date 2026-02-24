@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import re
 import subprocess
@@ -79,6 +80,47 @@ def _split_int_list(s: str) -> list[int]:
     return out
 
 
+def _split_float_list(s: str) -> list[float]:
+    out: list[float] = []
+    for part in (s or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        out.append(float(part))
+    if not out:
+        raise ValueError("empty list")
+    if any(x <= 0.0 for x in out):
+        raise ValueError("all values must be > 0")
+    return out
+
+
+def _auto_shards_from_preflight(preflight_json: Path, base: str, factors: list[float]) -> tuple[list[int], int]:
+    data = _load_json(preflight_json)
+    stats = data.get("stats")
+    if not isinstance(stats, list):
+        raise ValueError(f"invalid preflight JSON (missing stats[]): {preflight_json}")
+    total = 0
+    key = "physical_cores" if base == "physical" else "logical_cores"
+    for item in stats:
+        if not isinstance(item, dict):
+            continue
+        if not bool(item.get("ok")):
+            continue
+        val = item.get(key)
+        if isinstance(val, int) and val > 0:
+            total += val
+    if total <= 0:
+        raise ValueError(f"no reachable {key} in preflight JSON: {preflight_json}")
+
+    shards = sorted(
+        {
+            max(1, int(math.ceil(total * f)))
+            for f in factors
+        }
+    )
+    return shards, total
+
+
 @dataclass(frozen=True)
 class RunRef:
     shards: int
@@ -92,7 +134,22 @@ def cmd_render(args: argparse.Namespace) -> int:
     out_root = args.out_root.expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
 
-    shards_list = _split_int_list(args.shards_list)
+    auto_total_cores = None
+    if args.shards_list:
+        shards_list = _split_int_list(args.shards_list)
+    else:
+        if args.preflight_json is None:
+            raise SystemExit("render requires either --shards-list or --preflight-json + --shard-factors")
+        factors = _split_float_list(args.shard_factors)
+        shards_list, auto_total_cores = _auto_shards_from_preflight(
+            preflight_json=Path(args.preflight_json).expanduser().resolve(),
+            base=args.auto_shards_base,
+            factors=factors,
+        )
+        print(
+            f"auto shards from preflight ({args.auto_shards_base} cores={auto_total_cores}, "
+            f"factors={','.join(str(f) for f in factors)}): {','.join(str(s) for s in shards_list)}"
+        )
     runs: list[RunRef] = []
 
     render_script = _resolve_tool("render_unbinned_fit_toys_scheduler.py")
@@ -148,6 +205,10 @@ def cmd_render(args: argparse.Namespace) -> int:
         "threads": int(args.threads),
         "nextstat_bin": args.nextstat_bin,
         "out_root": str(out_root),
+        "shards_mode": "manual" if args.shards_list else "auto",
+        "auto_shards_base": args.auto_shards_base if not args.shards_list else None,
+        "auto_shards_total_cores": auto_total_cores,
+        "shard_factors": args.shard_factors if not args.shards_list else None,
         "runs": [
             {"shards": r.shards, "run_id": r.run_id, "run_dir": str(r.run_dir)}
             for r in runs
@@ -167,9 +228,10 @@ def _submit_one_condor(sub_path: Path) -> int:
         capture_output=True,
     )
     if cp.returncode != 0:
-        sys.stderr.write(cp.stdout)
-        sys.stderr.write(cp.stderr)
-        raise SystemExit(cp.returncode)
+        raise RuntimeError(
+            f"condor_submit failed (rc={cp.returncode}) for {sub_path}\n"
+            f"{cp.stdout}\n{cp.stderr}"
+        )
 
     # Preserve submit output in stdout for run logs.
     sys.stdout.write(cp.stdout)
@@ -177,7 +239,7 @@ def _submit_one_condor(sub_path: Path) -> int:
 
     m = re.search(r"submitted to cluster\\s+(\\d+)", cp.stdout)
     if not m:
-        raise SystemExit(f"failed to parse cluster id from condor_submit output for {sub_path}")
+        raise RuntimeError(f"failed to parse cluster id from condor_submit output for {sub_path}")
     return int(m.group(1))
 
 
@@ -196,6 +258,11 @@ def _condor_cluster_active(cluster_id: int) -> bool:
 
 def cmd_submit(args: argparse.Namespace) -> int:
     """Sequential runner for HTCondor sweeps (one run dir at a time)."""
+    if int(args.submit_retries) < 0:
+        raise SystemExit("--submit-retries must be >= 0")
+    if float(args.retry_backoff_s) < 0:
+        raise SystemExit("--retry-backoff-s must be >= 0")
+
     sweep_path = Path(args.sweep_json).expanduser().resolve()
     sweep = _load_json(sweep_path)
 
@@ -209,12 +276,18 @@ def cmd_submit(args: argparse.Namespace) -> int:
     submit_file = "condor_job_transfer.sub" if args.mode == "transfer" else "condor_job.sub"
     collect_script = _resolve_tool("collect_unbinned_fit_toys_scheduler.py")
     merge_script = _resolve_tool("merge_unbinned_toys_results.py")
+    n_failed_runs = 0
 
     for r in runs:
         run_dir = Path(r["run_dir"]).expanduser().resolve()
         sub_path = run_dir / submit_file
         if not sub_path.exists():
-            raise SystemExit(f"missing submit file: {sub_path}")
+            msg = f"missing submit file: {sub_path}"
+            n_failed_runs += 1
+            if not args.continue_on_error:
+                raise SystemExit(msg)
+            print(f"ERROR: {msg}")
+            continue
 
         meta_path = run_dir / "submit_meta.json"
         if meta_path.exists() and not args.force:
@@ -223,7 +296,41 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
         t0 = dt.datetime.now(tz=dt.timezone.utc).isoformat()
         print(f"=== submit: {run_dir} ({submit_file}) ===")
-        cluster_id = _submit_one_condor(sub_path)
+        cluster_id: int | None = None
+        submit_error: str | None = None
+        submit_attempts = 0
+        for attempt in range(max(1, int(args.submit_retries) + 1)):
+            submit_attempts = attempt + 1
+            try:
+                cluster_id = _submit_one_condor(sub_path)
+                submit_error = None
+                break
+            except Exception as exc:
+                submit_error = str(exc)
+                if attempt + 1 < max(1, int(args.submit_retries) + 1):
+                    time.sleep(max(0.0, float(args.retry_backoff_s)) * (2 ** attempt))
+
+        if cluster_id is None:
+            n_failed_runs += 1
+            t1 = dt.datetime.now(tz=dt.timezone.utc).isoformat()
+            _write_json(
+                meta_path,
+                {
+                    "schema_version": "nextstat.pf32_htcondor_submit_meta.v1",
+                    "created_at_utc": t0,
+                    "finished_at_utc": t1,
+                    "cluster_id": None,
+                    "submit_file": submit_file,
+                    "status": "failed_submit",
+                    "submit_attempts": submit_attempts,
+                    "error": submit_error,
+                },
+            )
+            if not args.continue_on_error:
+                raise SystemExit(submit_error or f"failed to submit {sub_path}")
+            print(f"ERROR: failed to submit {sub_path}: {submit_error}")
+            continue
+
         print(f"cluster_id={cluster_id}")
 
         while _condor_cluster_active(cluster_id):
@@ -231,6 +338,43 @@ def cmd_submit(args: argparse.Namespace) -> int:
             time.sleep(float(args.poll_s))
 
         t1 = dt.datetime.now(tz=dt.timezone.utc).isoformat()
+        post_error: str | None = None
+
+        if not args.no_collect:
+            try:
+                _run(
+                    [
+                        sys.executable,
+                        str(collect_script),
+                        "--manifest",
+                        str(run_dir / "manifest.json"),
+                        "--in-place",
+                    ]
+                )
+            except SystemExit as exc:
+                post_error = f"collect failed (rc={exc.code})"
+        if not args.no_merge and post_error is None:
+            try:
+                _run(
+                    [
+                        sys.executable,
+                        str(merge_script),
+                        "--manifest",
+                        str(run_dir / "manifest.json"),
+                        "--out",
+                        str(run_dir / "merged.out.json"),
+                    ]
+                )
+            except SystemExit as exc:
+                post_error = f"merge failed (rc={exc.code})"
+
+        status = "ok" if post_error is None else "failed_post"
+        if post_error is not None:
+            n_failed_runs += 1
+            if not args.continue_on_error:
+                raise SystemExit(post_error)
+            print(f"ERROR: {post_error} for {run_dir}")
+
         _write_json(
             meta_path,
             {
@@ -239,32 +383,13 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 "finished_at_utc": t1,
                 "cluster_id": cluster_id,
                 "submit_file": submit_file,
+                "status": status,
+                "submit_attempts": submit_attempts,
+                "error": post_error,
             },
         )
 
-        if not args.no_collect:
-            _run(
-                [
-                    sys.executable,
-                    str(collect_script),
-                    "--manifest",
-                    str(run_dir / "manifest.json"),
-                    "--in-place",
-                ]
-            )
-        if not args.no_merge:
-            _run(
-                [
-                    sys.executable,
-                    str(merge_script),
-                    "--manifest",
-                    str(run_dir / "manifest.json"),
-                    "--out",
-                    str(run_dir / "merged.out.json"),
-                ]
-            )
-
-    return 0
+    return 0 if n_failed_runs == 0 else 2
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
@@ -367,6 +492,9 @@ def cmd_summarize(args: argparse.Namespace) -> int:
 
     rows = [_summarize_one(Path(r["run_dir"])) for r in runs]
     rows.sort(key=lambda x: int(x.get("shards") or 0))
+    baseline = next((r for r in rows if isinstance(r.get("makespan_s"), (int, float)) and float(r["makespan_s"]) > 0), None)
+    baseline_shards = int(baseline["shards"]) if baseline else None
+    baseline_makespan = float(baseline["makespan_s"]) if baseline else None
 
     out_md = Path(args.out_md).expanduser().resolve()
     out_md.parent.mkdir(parents=True, exist_ok=True)
@@ -382,17 +510,32 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     lines.append(f"- threads: `{sweep.get('threads')}`")
     lines.append("")
 
-    lines.append("| Shards | ok/total | Makespan | Throughput | n_converged | n_error | Run dir |")
-    lines.append("|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("| Shards | ok/total | Makespan | Throughput | Speedup | Efficiency | n_converged | n_error | Run dir |")
+    lines.append("|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for r in rows:
         shards = r["shards"]
         ok_total = f'{r["ok_shards"]}/{r["ok_shards"] + r["failed_shards"]}'
         makespan = "-" if r["makespan_s"] is None else f'{r["makespan_s"]:.2f}s'
         tps = "-" if r["toys_per_s"] is None else f'{r["toys_per_s"]:.3f} toys/s'
+        speedup = "-"
+        eff = "-"
+        if (
+            baseline_shards is not None
+            and baseline_makespan is not None
+            and isinstance(r["makespan_s"], (int, float))
+            and float(r["makespan_s"]) > 0
+        ):
+            sp = baseline_makespan / float(r["makespan_s"])
+            speedup = f"{sp:.2f}x"
+            if shards > 0 and baseline_shards > 0:
+                eff_v = sp / (float(shards) / float(baseline_shards))
+                eff = f"{eff_v:.2f}"
         n_conv = "-" if r["n_converged"] is None else str(r["n_converged"])
         n_err = "-" if r["n_error"] is None else str(r["n_error"])
         run_dir = r["run_dir"]
-        lines.append(f"| {shards} | {ok_total} | {makespan} | {tps} | {n_conv} | {n_err} | `{run_dir}` |")
+        lines.append(
+            f"| {shards} | {ok_total} | {makespan} | {tps} | {speedup} | {eff} | {n_conv} | {n_err} | `{run_dir}` |"
+        )
 
     out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {out_md}")
@@ -412,7 +555,19 @@ def main() -> int:
     ap_r.add_argument("--nextstat-bin", required=True)
     ap_r.add_argument("--out-root", type=Path, required=True)
     ap_r.add_argument("--sweep-id", default=None)
-    ap_r.add_argument("--shards-list", required=True, help="comma list, e.g. 50,100,200,400")
+    ap_r.add_argument("--shards-list", default=None, help="comma list, e.g. 50,100,200,400")
+    ap_r.add_argument("--preflight-json", type=Path, default=None, help="preflight JSON for auto shard matrix")
+    ap_r.add_argument(
+        "--auto-shards-base",
+        choices=["physical", "logical"],
+        default="physical",
+        help="base core count for auto shard matrix (used when --shards-list is omitted)",
+    )
+    ap_r.add_argument(
+        "--shard-factors",
+        default="0.5,1.0,1.5,2.0,3.0",
+        help="comma list of shard multipliers for auto matrix (used when --shards-list is omitted)",
+    )
     ap_r.add_argument("--slurm-cpus-per-task", type=int, default=None)
     ap_r.add_argument("--slurm-time", default=None)
     ap_r.add_argument("--condor-request-cpus", type=int, default=None)
@@ -427,6 +582,9 @@ def main() -> int:
     ap_sub.add_argument("--no-collect", action="store_true", default=False)
     ap_sub.add_argument("--no-merge", action="store_true", default=False)
     ap_sub.add_argument("--force", action="store_true", default=False)
+    ap_sub.add_argument("--submit-retries", type=int, default=0, help="retry condor_submit failures per run")
+    ap_sub.add_argument("--retry-backoff-s", type=float, default=5.0, help="submit retry base backoff seconds")
+    ap_sub.add_argument("--continue-on-error", action="store_true", default=False, help="continue sweep on failed run submit/collect/merge")
     ap_sub.set_defaults(func=cmd_submit)
 
     ap_c = sub.add_parser("collect")

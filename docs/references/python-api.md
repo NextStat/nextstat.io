@@ -98,9 +98,9 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 ### Sampling
 
 - `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
-- `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + diagonal inverse Hessian as initial mass matrix for faster warmup).
+- `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", metric="diagonal", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + Hessian-derived metric as initial mass matrix for faster warmup; produces dense metric when `metric="dense"` or `metric="auto"` for dim ≤ 32). `metric`: `"diagonal"` (default, CmdStan-compatible), `"dense"` (full covariance, better for correlated posteriors), or `"auto"` (dense for dim ≤ 32, diagonal otherwise). The `sample_stats` dict in results includes `metric_type` ("diagonal"/"dense"), `mass_diag`, and `inv_mass_matrix` (row-major, only for dense metric).
 - `nextstat.sample_mams(model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, target_accept=0.9, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when Pathfinder provides a Hessian-derived mass matrix, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (recommended for well-conditioned posteriors; avoid on funnel-like geometries).
-- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Two-phase warmup: Phase 1 (unadjusted MCLMC) + Phase 2 (exact MH). `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, or a `RawCudaModel` instance. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
+- `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000, divergence_threshold=1000.0) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Four-phase warmup: Phase 1 (fast DA, step-size adapt) + Phase 2 (DA + Welford, mass matrix) + Phase 3 (DA with new metric) + Phase 4 (L tuning + equilibrate). All phases use exact MH. `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, `"glm_linear"`, `"glm_poisson"`, `"glm_negbin"` (or `"glm_negative_binomial"`), `"glm_composed_logistic"`, or a `RawCudaModel` instance. GLM models require `model_data` with `x`, `y`, `n`, `p`. Poisson/NegBin accept optional `offset` (length-n array). NegBin samples an additional `log_alpha` dispersion parameter (dim = p+1). ComposedLogistic requires `group_idx`, `n_groups`, and optional `re_prior_sigma` (default 1.0); dim = p + n_groups. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
 - `nextstat.RawCudaModel(dim, cuda_src, *, data=None, param_names=None)` — User-defined CUDA model for LAPS JIT compilation via NVRTC. The `cuda_src` must define `__device__ double user_nll(const double* x, int dim, const double* model_data)` and `__device__ void user_grad(const double* x, double* grad, int dim, const double* model_data)`. The `data` array is uploaded to GPU as `model_data`. PTX is cached to disk (`~/.cache/nextstat/ptx/`) keyed by SHA-256(source + GPU arch). Requires `cuda` feature.
 - `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all three methods (nuts/mams/laps).
 - `nextstat.bayes.to_inferencedata(raw) -> InferenceData` — convert a raw sampling dict into ArviZ `InferenceData`.
@@ -182,6 +182,7 @@ print(raw["diagnostics"]["quality"]["status"])  # "ok" / "warn" / "fail"
 
 - `nextstat.ols_fit(x, y, *, include_intercept=True) -> list[float]` — closed-form OLS.
 - `nextstat.rk4_linear(a, y0, t0, t1, dt, *, max_steps=100000) -> dict` — RK4 ODE solver for linear systems.
+- `nextstat.rk4_linear_dde(a, b, y0, y_history, t0, t1, tau, dt, *, max_steps=100000) -> dict` — fixed-step RK4 for linear delay differential equations `dy/dt = A y(t) + B y(t - tau)` (method-of-steps, requires `dt <= tau`).
 - `nextstat.set_eval_mode(mode: str) -> None` — set evaluation mode (`"fast"` or `"parity"`).
 - `nextstat.set_threads(threads: int) -> bool` — best-effort: configure the global Rayon thread pool size (returns `True` if applied).
 - `nextstat.get_eval_mode() -> str` — query current evaluation mode.
@@ -446,9 +447,16 @@ Volatility models for financial time series. Available via the `nextstat.volatil
 - `nextstat.volatility.sv(ys, *, max_iter=1000, tol=1e-6, log_eps=1e-12) -> dict` — fit approximate stochastic volatility (SV) via log(χ²₁) Gaussian approximation + Kalman MLE.
   - Returns: `params` (`{mu, phi, sigma}`), `smoothed_h` (log-variance), `smoothed_sigma` (exp(h/2)), `log_likelihood`, `converged`, `n_iter`, `message`.
 
+- `nextstat.volatility.egarch(ys, *, max_iter=1000, tol=1e-6) -> dict` — fit EGARCH(1,1) by MLE. Nelson (1991) log-variance formulation with leverage.
+  - Returns: `params` (`{mu, omega, alpha, gamma, beta}`), `conditional_variance`, `conditional_sigma`, `log_likelihood`, `converged`, `n_iter`, `message`.
+- `nextstat.volatility.gjr_garch(ys, *, max_iter=1000, tol=1e-6, persistence_max=0.999, min_var=1e-18) -> dict` — fit GJR-GARCH(1,1) by MLE. Glosten–Jagannathan–Runkle threshold GARCH.
+  - Returns: `params` (`{mu, omega, alpha, gamma, beta}`), `conditional_variance`, `conditional_sigma`, `log_likelihood`, `converged`, `n_iter`, `message`.
+
 Low-level (same functions, no wrapper):
 - `nextstat._core.garch11_fit(ys, *, max_iter, tol, alpha_beta_max, min_var) -> dict`
 - `nextstat._core.sv_logchi2_fit(ys, *, max_iter, tol, log_eps) -> dict`
+- `nextstat._core.egarch11_fit(ys, *, max_iter, tol) -> dict`
+- `nextstat._core.gjr_garch11_fit(ys, *, max_iter, tol, persistence_max, min_var) -> dict`
 
 ```python
 from nextstat.volatility import garch, sv
@@ -476,26 +484,287 @@ print(f"Smoothed sigma: {s['smoothed_sigma'][:5]}")
   - `predict(params) -> list[float]` — predicted concentrations.
 - `TwoCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored")` — 2-compartment oral PK (5 params: CL, V1, V2, Q, Ka). Supports additive/proportional/combined error models.
   - `predict(params) -> list[float]` — predicted concentrations.
+- `ThreeCompartmentIvPkModel(times, y, *, dose, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored")` — 3-compartment IV bolus PK (6 params: CL, V1, Q2, V2, Q3, V3). Analytical macro-constant solution with eigenvalue gradients.
+  - `predict(params) -> list[float]` — predicted concentrations.
+- `ThreeCompartmentOralPkModel(times, y, *, dose, bioavailability=1.0, error_model="additive", sigma=0.05, sigma_add=None, lloq=None, lloq_policy="censored")` — 3-compartment oral PK (7 params: CL, V1, Q2, V2, Q3, V3, Ka). Analytical macro-constant solution.
+  - `predict(params) -> list[float]` — predicted concentrations.
 
 All PK models implement the `LogDensityModel` interface: `nll(params)`, `grad_nll(params)`, `parameter_names()`, `suggested_init()`, `suggested_bounds()`, `n_params()`, `dim()`.
+
+#### Competing Risks
+
+- `nextstat._core.cumulative_incidence(times, events, target_cause, *, conf_level=0.95) -> dict` — Aalen-Johansen CIF estimator.
+  - Returns: `cause`, `times`, `cif`, `se`, `ci_lower`, `ci_upper`, `n`, `n_events`.
+- `nextstat._core.gray_test(times, events, groups, target_cause) -> dict` — Gray's K-sample test for comparing CIF.
+  - Returns: `statistic`, `df`, `p_value`.
+- `nextstat._core.fine_gray_fit(times, events, x, p, target_cause) -> dict` — Fine-Gray subdistribution hazard regression.
+  - `x` is a flat row-major covariate matrix (n × p).
+  - Returns: `coefficients`, `se`, `z`, `p_values`, `n`, `n_events`, `log_likelihood`.
+
+#### Pharmacodynamic (PD) Models
+
+Direct-effect and indirect-response models for dose-response analysis.
+
+- `nextstat._core.emax_predict(e0, emax, ec50, conc) -> dict` — Emax model predictions.
+  - Returns: `predictions` (list), `e0`, `emax`, `ec50`.
+- `nextstat._core.emax_nll(e0, emax, ec50, conc, obs, *, error_model="additive", sigma=0.05) -> float` — Emax negative log-likelihood.
+- `nextstat._core.sigmoid_emax_predict(e0, emax, ec50, gamma, conc) -> dict` — Sigmoid-Emax (Hill) predictions.
+  - Returns: `predictions` (list), `e0`, `emax`, `ec50`, `gamma`.
+- `nextstat._core.sigmoid_emax_nll(e0, emax, ec50, gamma, conc, obs, *, error_model="additive", sigma=0.05) -> float` — Sigmoid-Emax negative log-likelihood.
+- `nextstat._core.idr_simulate(idr_type, kin, kout, max_effect, c50, conc_times, conc_values, output_times, *, r0=None) -> dict` — Indirect response model ODE simulation.
+  - `idr_type`: `"inhibit_production"`, `"inhibit_loss"`, `"stimulate_production"`, `"stimulate_loss"` (or `"type1"`–`"type4"`).
+  - Returns: `times`, `response`, `baseline`.
+- `nextstat._core.idr_nll(idr_type, kin, kout, max_effect, c50, conc_times, conc_values, obs_times, obs_values, *, error_model="additive", sigma=0.05, r0=None) -> float` — IDR negative log-likelihood.
+
+#### ODE PK Models
+
+- `nextstat._core.ode_pk_solve(model_type, params, dose_times, dose_amounts, dose_routes, obs_times, *, obs_compartment=None, dose_compartment=None, solver="rk45", rtol=1e-8, atol=1e-10) -> dict` — Solve ODE-based PK models.
+  - `model_type`: `"transit_1cpt"`, `"transit_2cpt"`, `"mm_1cpt"`, `"mm_2cpt"`, `"tmdd"`.
+  - `params`: model-specific parameter list (transit_1cpt: `[n_transit, ktr, cl, v1]`; transit_2cpt: `[n_transit, ktr, cl, v1, q, v2]`; mm_1cpt: `[vmax, km, v1]`; mm_2cpt: `[vmax, km, v1, q, v2]`; tmdd: `[kon, koff, kel, ksyn, kdeg, kint, v]`).
+  - `dose_routes`: list of `"iv"`, `"oral"`, `"oral_f0.8"` (custom bioavailability), `"infusion_1h"`.
+  - `solver`: `"rk45"` (non-stiff), `"esdirk4"` (stiff, recommended for TMDD), `"lsoda"` (automatic).
+  - Returns: `concentrations`, `times`, `auc`, `cmax`, `tmax`.
+- `nextstat._core.ode_pk_nll_py(model_type, params, dose_times, dose_amounts, dose_routes, obs_times, obs_values, *, sigma=0.05, obs_compartment=None, dose_compartment=None, solver="rk45", rtol=1e-8, atol=1e-10) -> float` — Compute additive Gaussian NLL for ODE PK models. Same arguments as `ode_pk_solve` plus `obs_values` and `sigma`.
 
 #### Population PK (NLME)
 
 - `OneCompartmentOralPkNlmeModel(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, sigma=0.05, lloq=None, lloq_policy="censored")` — population PK (NLME with per-subject random effects). `LogDensityModel` interface.
 
-- `nextstat.nlme_foce(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, max_outer_iter=100, max_inner_iter=20, tol=1e-4, interaction=True) -> dict` — FOCE/FOCEI population estimation (1-cpt oral). Returns `theta`, `omega`, `omega_matrix`, `correlation`, `eta`, `ofv`, `converged`, `n_iter`.
+- `nextstat.nlme_foce(times, y, subject_idx, n_subjects, *, model="1cpt_oral", method="focei", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, omega_matrix=None, omega_fixed=None, diagonal_omega=False, max_outer_iter=100, max_inner_iter=20, tol=1e-4, rel_tol=1e-8, interaction=True, omega_damping=0.7, omega_max_ratio=100.0, estimate_sigma=True, lloq=None, its_max_iter=30, its_max_individual_iter=60, its_tol=1e-4, its_omega_damping=0.3, imp_n_iter=15, imp_n_samples=300, imp_proposal_scale=1.0, imp_seed=42, imp_tol=1e-4, imp_e_only=False, time_varying_covariates=None, iov=None, random_effect_transforms=None, regimens=None) -> FoceResult` — FOCE/FOCEI/FO/ITS/IMP population estimation with multi-model dispatch. `doses` is per-subject (or length 1 for broadcast). `omega_fixed` is a per-parameter boolean list that fixes specific random effects to their initial values (e.g. `[False, False, True]` to fix Ka). `diagonal_omega=True` forces a diagonal Ω matrix (no off-diagonal correlations). `time_varying_covariates` and `iov` are currently exposed for `model="1cpt_oral"` with `method in {"foce","focei"}` and are mutually exclusive per call. Returns `theta`, `omega`, `omega_matrix`, `correlation`, `eta`, `ofv`, `converged`, `n_iter`, `sigma`, `sigma_init`.
 
-- `nextstat.nlme_saem(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4) -> dict` — SAEM population estimation (1-cpt oral). Returns FOCE-result dict plus `saem` sub-dict with `acceptance_rates`, `ofv_trace`, `burn_in_only`.
+- `nextstat.nlme_saem(times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, omega_matrix=None, covariates=None, time_varying_covariates=None, iov=None, n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4, return_theta_trace=False, lloq=None) -> SaemResult` — SAEM population estimation with multi-model dispatch and covariate support. `model`: `"1cpt_oral"` (θ: CL, V, Ka), `"2cpt_iv"` (θ: CL, V1, Q, V2), `"2cpt_oral"` (θ: CL, V1, Q, V2, Ka), `"3cpt_iv"` (θ: CL, V1, Q2, V2, Q3, V3), `"3cpt_oral"` (θ: CL, V1, Q2, V2, Q3, V3, Ka). `doses` is per-subject (or length 1 for broadcast). Only one of `covariates`, `time_varying_covariates`, `iov` can be provided per call; `time_varying_covariates` and `iov` are currently exposed for `model="1cpt_oral"`. `return_theta_trace=True` enables per-iteration θ trace in diagnostics.
+
+  **`SaemResult` (TypedDict):**
+  - `theta`, `omega`, `omega_matrix`, `correlation`, `eta`, `ofv`, `converged`, `n_iter`
+  - `saem: SaemDiagnosticsResult` — `acceptance_rates`, `ofv_trace`, `burn_in_only`, `theta_trace` (if requested), `relative_change`, `geweke_scores`
+
+  **`CovariateDict` (TypedDict):**
+  - `param_idx: int` — index into θ vector
+  - `values: list[float]` — per-subject covariate values
+  - `reference: float` — centering value (e.g. median weight)
+  - `relationship: "power" | "exponential" | "proportional" | "categorical"`
+  - `exponent: float` — fixed exponent (e.g. 0.75 for allometric)
+
+  **`TimeVaryingCovariateDict` (TypedDict):**
+  - `param_idx: int` — index into θ vector
+  - `trajectories: list[list[tuple[float, float] | {"time": float, "value": float}]]` — per-subject time series
+  - `reference: float` — centering value
+  - `relationship: "power" | "exponential" | "proportional"`
+  - `exponent: float` — used for `"power"` relationship
+  - `interpolation: "locf" | "linear"`
+
+  **`IovDict` (TypedDict):**
+  - `param_indices: list[int]` — θ indices with inter-occasion variability
+  - `occasion_start_times: list[list[float]]` — per-subject occasion boundaries
+  - `omega_iov_init: list[float]` — IOV SD initial values (same length as `param_indices`)
+
+- `nextstat.bootstrap_nlme(times, y, subject_idx, n_subjects, *, model="1cpt_oral", doses, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta, omega, covariates=None, n_bootstrap=200, conf_level=0.95, ci_method="percentile", n_burn=200, n_iter=100, n_chains=1, seed=42, tol=1e-4) -> BootstrapNlmeResult` — nonparametric bootstrap for NLME parameter uncertainty. Resamples subjects, refits SAEM, collects θ/Ω distributions.
+
+  **`BootstrapNlmeResult` (TypedDict):**
+  - `theta_ci: list[list[float]]` — per-parameter [lower, upper]
+  - `omega_ci: list[list[float]]` — per-omega [lower, upper]
+  - `theta_se: list[float]`, `omega_se: list[float]`
+  - `n_successful: int`
+
+**Estimation Methods** (`method=` in `nlme_foce`):
+
+| Method | Description | When to use |
+|--------|-------------|-------------|
+| `"focei"` | FOCE with Interaction (default). Laplace approximation with individual-level η re-optimization and η–ε interaction. | General purpose; recommended default. |
+| `"foce"` | FOCE without Interaction. Same as FOCEI but drops the η–ε interaction term. | Faster; adequate when residual error is small relative to BSV. |
+| `"fo"` | First Order. Linearizes at η=0 (no individual optimization). Equivalent to `interaction=False` with a single outer pass. | Quick exploratory fits; large datasets where FOCE is too slow. |
+| `"its"` | Iterative Two-Stage. Maps `ItsConfig` params onto the FOCE engine: `its_max_iter` → outer iterations, `its_max_individual_iter` → inner iterations, `its_omega_damping` → omega blend. | Robust starting values for FOCE/SAEM; multi-stage workflows. |
+| `"imp"` | Importance Sampling MC-EM. True IS-EM: MAP + importance sampling from N(η̂, scale²Ω), weighted M-step for Ω, gradient-based θ update. Returns `(FoceResult, ImpDiagnostics)`. | Most robust for ill-conditioned models; gold-standard SE via sampling. |
+
+**IMP-specific parameters** (prefixed `imp_`):
+- `imp_n_iter` (15) — number of IS-EM iterations
+- `imp_n_samples` (300) — importance samples per subject per iteration
+- `imp_proposal_scale` (1.0) — proposal variance multiplier
+- `imp_seed` (42) — RNG seed for reproducibility
+- `imp_tol` (1e-4) — convergence tolerance on relative OFV change
+- `imp_e_only` (False) — if True, run E-step only (no parameter updates)
+
+**Error Models** (`error_model=`):
+
+| Model | Formula | Parameter(s) |
+|-------|---------|-------------|
+| `"additive"` | y = f + ε, ε ~ N(0, σ²) | `sigma` |
+| `"proportional"` | y = f·(1 + ε), ε ~ N(0, σ²) | `sigma` |
+| `"combined"` | y = f·(1 + ε₁) + ε₂, ε ~ N(0, σ²) | `sigma` (prop), `sigma_add` (add) |
+| `"exponential"` | ln(y) = ln(f) + ε, ε ~ N(0, σ²) | `sigma` |
+| `"power"` | y = f + f^γ · ε, ε ~ N(0, σ²) | `sigma`, power γ estimated |
+
+**Random Effect Transforms** (`random_effect_transforms=`):
+
+By default, individual parameters use log-normal transforms: θᵢ = θ_pop · exp(ηᵢ). For bounded parameters (e.g., bioavailability ∈ [0, 1]), use logit-normal:
+
+```python
+result = nextstat.nlme_foce(
+    ...,
+    random_effect_transforms=[
+        "lognormal",  # CL: θ·exp(η) (default)
+        "lognormal",  # V: θ·exp(η)
+        {"type": "logit_normal", "lower": 0.0, "upper": 1.0},  # Ka bounded
+    ],
+)
+```
+
+**Dosing Regimens** (`regimens=`):
+
+For multi-dose studies, pass per-subject dosing regimens instead of scalar `doses`:
+
+```python
+regimen = {
+    "events": [
+        {"time": 0.0, "amount": 100.0, "route": {"type": "oral", "bioavailability": 1.0}},
+        {"time": 12.0, "amount": 100.0, "route": {"type": "oral", "bioavailability": 1.0}},
+        {"time": 24.0, "amount": 50.0, "route": {"type": "iv_bolus"}},
+    ]
+}
+result = nextstat.nlme_foce(
+    ..., regimens=[regimen] * n_subjects,  # one per subject
+)
+```
+
+Route types: `"iv_bolus"`, `"oral"` (with optional `bioavailability`), `"infusion"` (with `duration`).
+
+**Inter-Occasion Variability (IOV)** (`iov=`):
+
+For studies with multiple occasions (e.g., crossover), IOV adds per-occasion random effects:
+
+```python
+result = nextstat.nlme_foce(
+    ...,
+    model="1cpt_oral",
+    iov={
+        "param_indices": [0, 1],  # CL, V have IOV
+        "occasion_start_times": [[0.0, 24.0]] * n_subjects,  # 2 occasions per subject
+        "omega_iov_init": [0.1, 0.1],  # IOV SD for CL, V
+    },
+)
+```
+
+**Time-Varying Covariates** (`time_varying_covariates=`):
+
+For covariates that change over time (e.g., body weight, renal function):
+
+```python
+result = nextstat.nlme_foce(
+    ...,
+    model="1cpt_oral",
+    time_varying_covariates=[{
+        "param_idx": 0,  # CL
+        "trajectories": [
+            [{"time": 0.0, "value": 70.0}, {"time": 24.0, "value": 72.0}],  # subject 0
+            [{"time": 0.0, "value": 85.0}, {"time": 24.0, "value": 84.0}],  # subject 1
+        ],
+        "reference": 70.0,
+        "relationship": "power",
+        "exponent": 0.75,
+        "interpolation": "locf",  # "locf" (last observation carried forward) or "linear"
+    }],
+)
+```
+
+**Covariance Step** (returned in `FoceResult` and `SaemResult`):
+
+Both `nlme_foce` and `nlme_saem` compute the covariance step automatically when the model converges. Access via `result["covariance_step"]`:
+
+```python
+cov = result["covariance_step"]
+if cov is not None:
+    print("Standard errors:", cov["se"])
+    print("RSE%:", cov["rse_pct"])
+    print("R matrix:", cov["r_matrix"])          # Hessian of OFV
+    print("S matrix:", cov["s_matrix"])          # Outer product of per-subject gradients
+    print("Covariance:", cov["covariance"])      # R⁻¹
+    print("Robust cov:", cov["robust_covariance"])  # R⁻¹ S R⁻¹ (sandwich)
+    print("R eigenvalues:", cov["r_eigenvalues"])
+    print("Condition number:", cov["r_condition_number"])
+    print("Parameter names:", cov["parameter_names"])
+```
 
 #### Model Diagnostics
 
-- `nextstat.pk_vpc(times, y, subject_idx, n_subjects, *, dose, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=200, quantiles=None, n_bins=10, seed=42, pi_level=0.90) -> dict` — Visual Predictive Check (1-cpt oral). Returns `bins` (list of per-bin quantile comparisons), `quantiles`, `n_sim`.
+- `nextstat.pk_vpc(times, y, subject_idx, n_subjects, *, doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=200, quantiles=None, n_bins=10, seed=42, pi_level=0.90) -> dict` — Visual Predictive Check. `doses` is per-subject (or length 1 for broadcast). Returns `bins` (list of per-bin quantile comparisons), `quantiles`, `n_sim`.
 
-- `nextstat.pk_gof(times, y, subject_idx, *, dose, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None) -> list[dict]` — Goodness of Fit (1-cpt oral). Returns per-observation records with `subject`, `time`, `dv`, `pred`, `ipred`, `iwres`, `cwres`.
+- `nextstat.pk_gof(times, y, subject_idx, *, doses, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None) -> list[dict]` — Goodness of Fit. `doses` is per-subject (or length 1 for broadcast). Returns per-observation records with `subject`, `time`, `dv`, `pred`, `ipred`, `iwres`, `cwres`.
+
+- `nextstat.pk_npde(times, y, subject_idx, n_subjects, *, doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=500, seed=42) -> dict` — Normalized Prediction Distribution Errors. Simulation-based GOF diagnostic: simulates `n_sim` replicates, computes per-observation NPDE by comparing observed DV to simulated distribution. Returns `records` (list of per-observation dicts with `subject`, `time`, `dv`, `npde`, `pd`), `mean_npde`, `var_npde`, `shapiro_w`, `shapiro_p`. Well-calibrated model → NPDE ~ N(0,1), mean ≈ 0, variance ≈ 1.
+
+#### Stepwise Covariate Modeling (SCM)
+
+- `nextstat.scm(times, y, subject_idx, n_subjects, covariates, covariate_names, *, dose, bioavailability=1.0, error_model="proportional", sigma=0.1, sigma_add=None, theta_init, omega_init, param_names=None, relationships=None, forward_alpha=0.05, backward_alpha=0.01, max_outer_iter=100, max_inner_iter=20, tol=1e-4, rel_tol=0.0) -> ScmResult` — Stepwise Covariate Modeling (1-cpt oral). Forward selection + backward elimination of covariate–parameter relationships using ΔOFV (χ²(1) likelihood ratio test). `covariates` is a list of per-covariate observation vectors (each length `n_obs`); per-subject values extracted from first observation. Auto-centers at median. `relationships`: `"power"` (default), `"proportional"`, `"exponential"`.
+
+  **`ScmResult` (TypedDict):**
+  - `selected: list[ScmStepResult]` — final selected covariates
+  - `forward_trace`, `backward_trace: list[ScmStepResult]`
+  - `base_ofv`, `final_ofv: float`
+  - `n_forward_steps`, `n_backward_steps: int`
+  - `theta: list[float]`, `omega: list[list[float]]`
+
+  **`ScmStepResult` (TypedDict):**
+  - `name: str`, `param_index: int`, `relationship: str`
+  - `delta_ofv: float`, `p_value: float`, `coefficient: float`, `included: bool`
+
+#### MAP Estimation
+
+- `nextstat.map_estimate(model, priors, *, max_iter=1000, tol=1e-8, compute_se=True, init=None) -> MapEstimateResult` — Maximum A Posteriori estimation for any `LogDensityModel`. `priors` is a list of `(mean, sd)` tuples defining Normal priors on each parameter. Useful for individual Bayesian PK estimation with population priors.
+
+  **`MapEstimateResult` (TypedDict):**
+  - `params: list[float]` — MAP point estimate
+  - `se: list[float] | None` — posterior standard errors (if `compute_se=True`)
+  - `nll_posterior: float` — negative log-posterior at MAP
+  - `nll: float` — negative log-likelihood at MAP
+  - `log_prior: float` — log-prior at MAP
+  - `n_iter: int`, `converged: bool`
+  - `param_names: list[str] | None`
+  - `shrinkage: list[float] | None` — shrinkage toward prior mean
+
+#### Bioequivalence
+
+- `nextstat.average_be(test_values, ref_values, *, alpha=0.05, limits=(0.80, 1.25), design="2x2") -> BeResult` — Average bioequivalence (TOST) for 2×2 crossover design. Input values must be **log-transformed** (e.g. `ln(AUC)`). The `design` parameter selects the crossover layout.
+
+  **`BeResult` (TypedDict):**
+  - `geometric_mean_ratio: float`, `ci_lower: float`, `ci_upper: float`
+  - `pe_log: float`, `se_log: float`, `df: float`
+  - `t_lower: float`, `t_upper: float`, `p_lower: float`, `p_upper: float`
+  - `conclusion: str` — `"bioequivalent"` or `"not bioequivalent"`
+
+- `nextstat.be_power(n_total, *, cv=0.30, gmr=0.95, alpha=0.05, design="2x2") -> float` — Statistical power for an ABE study given sample size and intra-subject CV.
+
+- `nextstat.be_sample_size(*, cv=0.30, gmr=0.95, target_power=0.80, alpha=0.05, design="2x2") -> BeSampleSizeResult` — Minimum sample size for target power.
+
+  **`BeSampleSizeResult` (TypedDict):**
+  - `n_per_sequence: int`, `n_total: int`, `achieved_power: float`
+
+#### Clinical Trial Simulation
+
+- `nextstat.simulate_trial(*, n_subjects, dose, obs_times, pk_model="1cpt_oral", theta, omega, sigma, error_model="proportional", bioavailability=1.0, seed=42) -> TrialSimResult` — Monte Carlo clinical trial simulation with population PK. Generates individual parameters from Ω, simulates concentrations with residual error. `pk_model`: `"1cpt_oral"`, `"2cpt_iv"`, `"2cpt_oral"`, `"3cpt_iv"`, `"3cpt_oral"`.
+
+  **`TrialSimResult` (TypedDict):**
+  - `concentrations: list[list[float]]` — per-subject concentration profiles
+  - `individual_params: list[list[float]]` — per-subject PK parameters
+  - `auc: list[float]`, `cmax: list[float]`, `tmax: list[float]`, `ctrough: list[float]`
 
 #### Data I/O
 
-- `nextstat.read_nonmem(csv_text) -> dict` — parse NONMEM-format CSV. Returns `n_subjects`, `subject_ids`, `times`, `dv`, `subject_idx`.
+- `nextstat.read_nonmem(csv_text) -> dict` — parse NONMEM-format CSV. Filters EVID=1 (dose) records, returns observation data. Returns `n_subjects`, `subject_ids`, `times`, `dv`, `subject_idx`.
+
+- `nextstat.read_xpt(path) -> list[XptDataset]` — read CDISC .xpt (SAS Transport v5) file. Returns list of datasets. Pure Rust parser, no SAS dependency.
+
+- `nextstat.write_xpt(path, datasets) -> None` — write CDISC .xpt (SAS Transport v5) file from Python data.
+
+- `nextstat.xpt_to_nonmem(dataset) -> dict` — convert XPT dataset to NONMEM format by auto-detecting SDTM/ADaM columns (ID, TIME, DV, EVID, AMT, etc.).
+
+  **`XptDataset` (TypedDict):**
+  - `name: str`, `label: str`
+  - `variables: list[XptVariable]` — column descriptors
+  - `data: list[list[Any]]` — row-major data
+
+  **`XptVariable` (TypedDict):**
+  - `name: str`, `label: str`
+  - `var_type: "numeric" | "character"`, `length: int`, `format: str`
 
 ### Test / utility models
 

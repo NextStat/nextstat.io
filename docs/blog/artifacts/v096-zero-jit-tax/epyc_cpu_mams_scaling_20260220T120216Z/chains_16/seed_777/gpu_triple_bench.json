@@ -1,0 +1,70 @@
+{
+  "environment": {
+    "python_version": "3.12.3",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "x86_64",
+    "node": "nextstat-bench",
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "nextstat_version": "0.9.6",
+    "packages": {
+      "numpy": "2.4.2"
+    }
+  },
+  "config": {
+    "n_chains_gpu": 4096,
+    "n_chains_cpu": 16,
+    "n_warmup": 500,
+    "n_samples": 1000,
+    "seed": 777,
+    "report_chains": 256,
+    "models": [
+      "std_normal_10d",
+      "eight_schools",
+      "glm_logistic"
+    ]
+  },
+  "results": [
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "std_normal_10d",
+      "wall_s": 0.08506944391410798,
+      "wall_sampling": 0.08506944391410798,
+      "min_ess": 7205.521709972454,
+      "max_rhat": 1.0035860266541432,
+      "n_chains": 16,
+      "n_samples": 1000,
+      "n_grad_evals": 24377,
+      "ess_per_grad": 0.29558689379219977,
+      "grad_per_sec": 286554.12423540367
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "eight_schools",
+      "wall_s": 0.08830341801512986,
+      "wall_sampling": 0.08830341801512986,
+      "min_ess": 7303.737579356906,
+      "max_rhat": 1.008839695222903,
+      "n_chains": 16,
+      "n_samples": 1000,
+      "n_grad_evals": 42517,
+      "ess_per_grad": 0.1717839353519041,
+      "grad_per_sec": 481487.59080554685
+    },
+    {
+      "engine": "NS_CPU_MAMS",
+      "model": "glm_logistic",
+      "wall_s": 21.43361557996832,
+      "wall_sampling": 21.43361557996832,
+      "min_ess": 4685.448434164969,
+      "max_rhat": 1.0045109977775228,
+      "n_chains": 16,
+      "n_samples": 1000,
+      "n_grad_evals": 32000,
+      "ess_per_grad": 0.14642026356765528,
+      "grad_per_sec": 1492.9818947535355
+    }
+  ]
+}

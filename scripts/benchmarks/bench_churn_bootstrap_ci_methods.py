@@ -23,6 +23,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from _parse_utils import parse_json_stdout
+
 
 TRUE_HR_DEFAULT = {
     "plan_basic": 0.65,
@@ -117,7 +119,7 @@ def _run_bootstrap(
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
     wall_s = time.perf_counter() - t0
-    out = json.loads(proc.stdout)
+    out = parse_json_stdout(proc.stdout)
 
     coefs = out.get("coefficients", [])
     widths = []

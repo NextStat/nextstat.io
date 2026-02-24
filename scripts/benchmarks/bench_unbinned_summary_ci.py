@@ -25,6 +25,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from _parse_utils import parse_json_stdout
+
 
 def _find_nextstat_binary(repo_root: Path) -> Path:
     candidates = [
@@ -125,7 +127,7 @@ def _run_once(
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
     wall_s = time.perf_counter() - t0
-    out = json.loads(proc.stdout)
+    out = parse_json_stdout(proc.stdout)
 
     summary = out.get("summary")
     if not isinstance(summary, dict):

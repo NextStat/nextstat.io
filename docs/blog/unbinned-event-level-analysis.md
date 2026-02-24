@@ -353,7 +353,7 @@ Snapshot (Criterion medians, local run, 2026-02-11):
 ### 8.6 PF3.1 multi-GPU toy matrix snapshot (2x H100, CUDA)
 
 Runtime matrix snapshot from `benchmarks/unbinned/artifacts/2026-02-11/pf31_matrix_20260211T182402Z/summary.json`
-(stand: TensorDock 2x H100 80GB, CUDA, 4 vCPU):
+(stand: cloud 2x H100 80GB, CUDA, 4 vCPU):
 
 | Mode | 10k toys | 50k toys | 100k toys |
 |---|---:|---:|---:|
@@ -436,10 +436,10 @@ Latest rerun on GEX44 after CUDA optimizer stabilization and branch-level routin
 
 - stand: GEX44, RTX 4000 SFF Ada 20GB, CUDA 12.0
 - artifacts:
-  - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_20260213T091253Z/summary_200.json`
-  - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_scale.json`
-  - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_2m_50.json`
-  - `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_cb_dcb_scale.json`
+  - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_20260213T091253Z/summary_200.json`
+  - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_scale_20260213T091410Z/summary_scale.json`
+  - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_scale_20260213T091410Z/summary_2m_50.json`
+  - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_scale_20260213T091410Z/summary_cb_dcb_scale.json`
 
 10k-event spec (Gauss+Exp):
 

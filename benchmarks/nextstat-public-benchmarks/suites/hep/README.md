@@ -2,6 +2,10 @@
 
 This is a minimal HEP benchmark seed: **NLL parity + timing** (and optional **MLE fit timing**) for a tiny HistFactory workspace.
 
+Methodology notes:
+- `pyhf` backend is fixed to `numpy` inside the harness for reproducibility.
+- NLL timing is calibrated per engine to the same `target_s` window; raw artifact records `number_per_engine`.
+
 Inputs:
 - `datasets/simple_workspace.json` (tiny, in-repo fixture)
 

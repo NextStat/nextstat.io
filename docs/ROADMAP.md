@@ -240,7 +240,7 @@ mixture models with 10+ components. Automatically benefits from G1.
 NextStat's core engine (L-BFGS + analytical gradients + SIMD + Rayon) is directly
 applicable to pharmacometrics and clinical biostatistics. CPU-only speed is a
 competitive advantage: pharma workloads are small-N (50–5K subjects), latency-bound,
-and GPU is irrelevant. See `.internal/pharma-biotech-strategy.md` for full analysis.
+and GPU is irrelevant.
 
 ### Phase 1: Foundation ⬜ (Q1 2026, ~8–10 weeks)
 
@@ -274,7 +274,6 @@ Validation target: reproduce Warfarin + Theophylline reference results from NONM
 
 Features that unlock multiple market verticals simultaneously (insurance,
 epidemiology, quant finance, genomics, reliability engineering, A/B testing).
-See `.internal/market-verticals-analysis.md` for full analysis.
 
 ### High-ROI cross-vertical features ⬜
 

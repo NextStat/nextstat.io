@@ -1,6 +1,7 @@
 # Rust
 /target/
 **/target/
+.nextstat-cargo-target/
 **/*.rs.bk
 *.pdb
 
@@ -16,6 +17,10 @@
 .cargo-home/
 .rustup/
 .pip-cache/
+.r-lib/
+.r_libs/
+.cmdstan/
+.cache/
 
 # Python
 __pycache__/
@@ -56,8 +61,8 @@ env/
 .vscode/
 *.code-workspace
 
-# Claude local settings
-.claude/settings.local.json
+# Claude (all agent configs are internal)
+.claude/
 
 # IntelliJ
 *.iml
@@ -96,6 +101,7 @@ $RECYCLE.BIN/
 
 # Testing
 .pytest_cache/
+.mypy_cache/
 .coverage
 .coverage.*
 htmlcov/
@@ -117,6 +123,10 @@ bench_results/**/unbinned_spec_summary_ci.json
 # Do NOT ignore the whole tree, otherwise new benchmark code can be silently hidden.
 benchmarks/nextstat-public-benchmarks/artifacts/
 benchmarks/nextstat-public-benchmarks/manifests/snapshots/
+benchmarks/nextstat-public-benchmarks/.venv/
+benchmarks/nextstat-public-benchmarks/out/
+benchmarks/nextstat-public-benchmarks/tmp/
+benchmarks/artifacts/
 
 # Documentation
 target/doc/
@@ -133,6 +143,7 @@ docs/quickstarts/out/
 
 # Logs
 *.log
+test_logs/
 
 # Environment variables
 .env
@@ -142,6 +153,9 @@ docs/quickstarts/out/
 tmp/
 temp/
 *.tmp
+tmp_diff.txt
+tmp_pharmpy_*/
+pharmpy_*/
 
 # IDE settings
 .settings/
@@ -158,8 +172,29 @@ flamegraph.svg
 *.dSYM/
 *.pdb
 
+# nextstat-nlp (Swift/MLX)
+bindings/nextstat-nlp/tools/gliner2_mlx_cli/.build/
+bindings/nextstat-nlp/tools/gliner2_mlx_cli/.tmp/
+bindings/nextstat-nlp/tools/gliner2_mlx_cli/*.metallib
+
 # Maturin
 *.whl
 /target-pyo3/
 /target-pyo3-2/
 /target-metal-bench/
+hero-v4-dark.png
+hero-v4-econ.png
+hero-v4-light.png
+hero-v4-pharma.png
+landing-dark-full.png
+landing-dark-hero.png
+landing-light-hero.png
+prod-cloud-nextstat-io.png
+scroll-footer.png
+scroll-how-code.png
+scroll-verticals.png
+v3-dark-full.png
+v3-dark-hero.png
+v3-dark-top.png
+v3-light-full.png
+v3-light-hero.png

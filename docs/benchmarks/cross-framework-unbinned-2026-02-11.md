@@ -394,7 +394,7 @@ All runs use the **same NextStat binary** (built from the same commit):
 
 ```bash
 # 1. Build NextStat (release, on Hetzner GEX44)
-cd /root/nextstat.io
+cd $NEXTSTAT_ROOT
 git pull --ff-only
 cargo build --release -p ns-cli
 
@@ -406,8 +406,8 @@ for N in 10000 100000 1000000; do
   for SEED in 42 43; do
     TAG=$(echo ${N} | numfmt --to=si | tr '[:upper:]' '[:lower:]')
     conda run -n bench bash -c "
-      NS_CLI_BIN=/root/nextstat.io/target/release/nextstat \
-      python /root/nextstat.io/benchmarks/unbinned/run_suite.py \
+      NS_CLI_BIN=$NEXTSTAT_BIN \
+      python $NEXTSTAT_ROOT/benchmarks/unbinned/run_suite.py \
         --cases gauss_exp,cb_exp \
         --n-events ${N} \
         --seed ${SEED} \
@@ -421,8 +421,8 @@ for N in 10000 100000 1000000; do
   for SEED in 42 43; do
     conda run -n bench bash -c "
       MOREFIT_BIN=/root/morefit/morefit_gauss_exp \
-      NS_CLI_BIN=/root/nextstat.io/target/release/nextstat \
-      python /root/nextstat.io/benchmarks/unbinned/run_suite.py \
+      NS_CLI_BIN=$NEXTSTAT_BIN \
+      python $NEXTSTAT_ROOT/benchmarks/unbinned/run_suite.py \
         --cases gauss_exp \
         --n-events ${N} \
         --seed ${SEED} \

@@ -13,8 +13,8 @@ This report is the apples-to-apples CPU rerun for `gauss_exp` on:
 - seeds: `42`, `43` (median of seeds reported)
 
 Artifacts:
-- Baseline (default optimizer): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_diag2_20260211T225229Z.json`
-- Tuned (`--opt-m 20 --opt-smooth-bounds`): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_tune2_m20smooth_20260211T225807Z.json`
+- Baseline (default optimizer): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_diag2_20260211T225229Z.json`
+- Tuned (`--opt-m 20 --opt-smooth-bounds`): `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_tune2_m20smooth_20260211T225807Z.json`
 
 ## 1) Protocol
 

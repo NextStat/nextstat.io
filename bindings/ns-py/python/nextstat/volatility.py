@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 
 from .timeseries import garch11_fit as _garch11_fit
 from .timeseries import sv_logchi2_fit as _sv_logchi2_fit
+from .timeseries import egarch11_fit as _egarch11_fit
+from .timeseries import gjr_garch11_fit as _gjr_garch11_fit
 
 
 def garch(
@@ -98,4 +100,78 @@ def sv(
     )
 
 
-__all__ = ["garch", "sv"]
+def egarch(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+) -> Mapping[str, Any]:
+    """Fit an EGARCH(1,1) model by maximum likelihood.
+
+    Parameters
+    ----------
+    ys : array-like of float
+        Return series (e.g. log-returns).
+    max_iter : int
+        Maximum L-BFGS-B iterations.
+    tol : float
+        Optimizer convergence tolerance.
+
+    Returns
+    -------
+    dict
+        - **params** — ``{mu, omega, alpha, gamma, beta}``
+        - **conditional_variance** — ``list[float]``, per-observation h_t
+        - **conditional_sigma** — ``list[float]``, sqrt(h_t)
+        - **log_likelihood** — ``float``
+        - **converged** — ``bool``
+        - **n_iter** — ``int``
+        - **message** — ``str``
+    """
+    return _egarch11_fit(ys, max_iter=int(max_iter), tol=float(tol))
+
+
+def gjr_garch(
+    ys: Sequence[float],
+    *,
+    max_iter: int = 1000,
+    tol: float = 1e-6,
+    persistence_max: float = 0.999,
+    min_var: float = 1e-18,
+) -> Mapping[str, Any]:
+    """Fit a GJR-GARCH(1,1) model by maximum likelihood.
+
+    Parameters
+    ----------
+    ys : array-like of float
+        Return series (e.g. log-returns).
+    max_iter : int
+        Maximum L-BFGS-B iterations.
+    tol : float
+        Optimizer convergence tolerance.
+    persistence_max : float
+        Upper bound on alpha + beta + gamma/2 (stationarity constraint).
+    min_var : float
+        Floor for conditional variance (numerical safety).
+
+    Returns
+    -------
+    dict
+        - **params** — ``{mu, omega, alpha, gamma, beta}``
+        - **conditional_variance** — ``list[float]``, per-observation h_t
+        - **conditional_sigma** — ``list[float]``, sqrt(h_t)
+        - **log_likelihood** — ``float``
+        - **converged** — ``bool``
+        - **n_iter** — ``int``
+        - **message** — ``str``
+    """
+    return _gjr_garch11_fit(
+        ys,
+        max_iter=int(max_iter),
+        tol=float(tol),
+        persistence_max=float(persistence_max),
+        min_var=float(min_var),
+    )
+
+
+__all__ = ["garch", "sv", "egarch", "gjr_garch"]

@@ -521,11 +521,28 @@ def main() -> int:
         ess_bulk_vals = [v for v in (_safe_float(x) for x in ess_bulk.values()) if v is not None]
         ess_tail_vals = [v for v in (_safe_float(x) for x in ess_tail.values()) if v is not None]
 
-        timing = {
+        # Extract gradient evaluations from sample_stats.n_leapfrog
+        n_grad_evals: int | None = None
+        sample_stats = r.get("sample_stats") if isinstance(r.get("sample_stats"), dict) else {}
+        n_leapfrog = sample_stats.get("n_leapfrog")
+        if isinstance(n_leapfrog, list):
+            total = 0
+            for chain in n_leapfrog:
+                if isinstance(chain, list):
+                    total += sum(int(x) for x in chain)
+            if total > 0:
+                n_grad_evals = total
+
+        timing: dict[str, Any] = {
             "wall_time_s": float(wall),
             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
         }
+        if n_grad_evals is not None:
+            timing["n_grad_evals"] = n_grad_evals
+            if ess_bulk_vals:
+                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals)
+            timing["grad_per_sec"] = float(n_grad_evals) / max(float(wall), 1e-12)
 
         param_names = list(map(str, (r.get("param_names") or []))) if isinstance(r.get("param_names"), list) else []
 
@@ -778,6 +795,15 @@ model {
         except Exception:
             pass
 
+        # Extract gradient evaluations from n_leapfrog__
+        n_grad_evals_stan: int | None = None
+        try:
+            lf_draws = fit.draws_pd(vars=["n_leapfrog__"])
+            if "n_leapfrog__" in lf_draws.columns:
+                n_grad_evals_stan = int(lf_draws["n_leapfrog__"].sum())
+        except Exception:
+            pass
+
         summary = {
             "divergence_rate": divergence_rate,
             "max_treedepth_rate": max_treedepth_rate,
@@ -786,11 +812,16 @@ model {
             "min_ess_tail": min_ess_tail,
             "min_ebfmi": min_ebfmi,
         }
-        timing = {
+        timing: dict[str, Any] = {
             "wall_time_s": float(wall),
             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
         }
+        if n_grad_evals_stan is not None and n_grad_evals_stan > 0:
+            timing["n_grad_evals"] = n_grad_evals_stan
+            if ess_bulk_vals:
+                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_stan)
+            timing["grad_per_sec"] = float(n_grad_evals_stan) / max(float(wall), 1e-12)
 
         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
         doc.update(
@@ -925,6 +956,15 @@ model {
         except Exception:
             pass
 
+        # Extract gradient evaluations from n_steps (PyMC stores leapfrog steps here)
+        n_grad_evals_pymc: int | None = None
+        try:
+            n_steps = idata.sample_stats.get("n_steps")
+            if n_steps is not None:
+                n_grad_evals_pymc = int(n_steps.sum().to_numpy())
+        except Exception:
+            pass
+
         summary = {
             "divergence_rate": divergence_rate,
             "max_treedepth_rate": max_treedepth_rate,
@@ -933,11 +973,16 @@ model {
             "min_ess_tail": min_ess_tail,
             "min_ebfmi": min_ebfmi,
         }
-        timing = {
+        timing: dict[str, Any] = {
             "wall_time_s": float(wall),
             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
         }
+        if n_grad_evals_pymc is not None and n_grad_evals_pymc > 0:
+            timing["n_grad_evals"] = n_grad_evals_pymc
+            if ess_bulk_vals:
+                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_pymc)
+            timing["grad_per_sec"] = float(n_grad_evals_pymc) / max(float(wall), 1e-12)
 
         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
         doc.update(
@@ -1035,14 +1080,6 @@ model {
         )
 
         rng_key = jax.random.PRNGKey(int(cfg["seed"]))
-        # JIT warmup: tiny MCMC run to compile kernels (not timed)
-        try:
-            jit_kernel = NUTS(model_fn, target_accept_prob=float(cfg["target_accept"]), max_tree_depth=int(cfg["max_treedepth"]))
-            jit_mcmc = MCMC(jit_kernel, num_warmup=5, num_samples=5, num_chains=1, progress_bar=False)
-            jit_mcmc.run(jax.random.PRNGKey(9999), *model_args, **model_kwargs)
-            del jit_mcmc, jit_kernel
-        except Exception:
-            pass
 
         t0 = time.perf_counter()
         try:
@@ -1106,6 +1143,15 @@ model {
         except Exception:
             pass
 
+        # Extract gradient evaluations from num_steps (NumPyro name for leapfrog steps)
+        n_grad_evals_numpyro: int | None = None
+        try:
+            num_steps = idata.sample_stats.get("num_steps")
+            if num_steps is not None:
+                n_grad_evals_numpyro = int(num_steps.sum().to_numpy())
+        except Exception:
+            pass
+
         summary = {
             "divergence_rate": divergence_rate,
             "max_treedepth_rate": max_treedepth_rate,
@@ -1114,11 +1160,16 @@ model {
             "min_ess_tail": min_ess_tail,
             "min_ebfmi": min_ebfmi,
         }
-        timing = {
+        timing: dict[str, Any] = {
             "wall_time_s": float(wall),
             "ess_bulk_per_sec": _ess_per_sec(ess_vals=ess_bulk_vals, wall_time_s=float(wall)),
             "ess_tail_per_sec": _ess_per_sec(ess_vals=ess_tail_vals, wall_time_s=float(wall)),
         }
+        if n_grad_evals_numpyro is not None and n_grad_evals_numpyro > 0:
+            timing["n_grad_evals"] = n_grad_evals_numpyro
+            if ess_bulk_vals:
+                timing["ess_per_grad"] = float(min(ess_bulk_vals)) / float(n_grad_evals_numpyro)
+            timing["grad_per_sec"] = float(n_grad_evals_numpyro) / max(float(wall), 1e-12)
 
         doc = _base_doc(args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
         doc.update(

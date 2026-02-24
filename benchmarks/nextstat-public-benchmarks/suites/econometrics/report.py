@@ -42,7 +42,36 @@ def main() -> int:
         parity = str(c.get("parity_status", ""))
         n_obs = int(c.get("n_obs", 0) or 0)
         med = float(c.get("wall_time_median_s", 0.0) or 0.0)
-        lines.append(f"- `{case}` ({kind}): status={status}, parity={parity}, n_obs={n_obs}, median={med:.6f}s")
+
+        base_name = None
+        base_med = None
+        speedup = None
+        try:
+            rel_path = c.get("path")
+            if isinstance(rel_path, str) and rel_path:
+                case_obj = load_json(suite_path.parent / rel_path)
+                tb = case_obj.get("timing_baseline", {}) or {}
+                if isinstance(tb, dict):
+                    base_name = tb.get("name")
+                    base_med = (tb.get("wall_time_s", {}) or {}).get("median")
+                    try:
+                        base_med = float(base_med) if base_med is not None else None
+                    except Exception:
+                        base_med = None
+        except Exception:
+            pass
+
+        if base_med is not None and med > 0:
+            speedup = base_med / med
+
+        base_str = (
+            f", baseline={base_name} {base_med:.6f}s, speedup={speedup:.2f}x"
+            if (base_name is not None and base_med is not None and speedup is not None)
+            else ""
+        )
+        lines.append(
+            f"- `{case}` ({kind}): status={status}, parity={parity}, n_obs={n_obs}, ns_median={med:.6f}s{base_str}"
+        )
 
     out_path.write_text("\n".join(lines) + "\n")
     return 0
@@ -50,4 +79,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

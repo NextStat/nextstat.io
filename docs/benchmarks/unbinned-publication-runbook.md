@@ -166,8 +166,8 @@ PF31_HOST=<gpu-host> \
 PF31_PORT=<ssh-port> \
 PF31_USER=root \
 PF31_KEY=~/.ssh/<key> \
-PF31_REMOTE_REPO=/root/nextstat.io \
-PF31_BIN=/root/nextstat.io/target/release/nextstat \
+PF31_REMOTE_REPO=$NEXTSTAT_ROOT \
+PF31_BIN=$NEXTSTAT_BIN \
 PF31_GPU_DEVICE_SETS="0;0,1" \
 PF31_THREADS=1 \
 bash scripts/benchmarks/pf31_publication_matrix.sh
@@ -188,8 +188,8 @@ PF31_HOST=88.198.23.172 \
 PF31_PORT=22 \
 PF31_USER=root \
 PF31_KEY=~/.ssh/rundesk_hetzner \
-PF31_REMOTE_REPO=/root/nextstat.io \
-PF31_BIN=/root/nextstat.io/target/release/nextstat \
+PF31_REMOTE_REPO=$NEXTSTAT_ROOT \
+PF31_BIN=$NEXTSTAT_BIN \
 PF31_GPU_DEVICE_SETS=0 \
 PF31_THREADS=20 \
 bash scripts/benchmarks/pf31_publication_matrix.sh

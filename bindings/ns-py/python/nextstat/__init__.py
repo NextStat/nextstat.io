@@ -46,6 +46,7 @@ Posterior = _get("Posterior")
 
 GaussianMeanModel = _get("GaussianMeanModel")
 FunnelModel = _get("FunnelModel")
+FunnelNcpModel = _get("FunnelNcpModel")
 StdNormalModel = _get("StdNormalModel")
 LinearRegressionModel = _get("LinearRegressionModel")
 LogisticRegressionModel = _get("LogisticRegressionModel")
@@ -69,9 +70,22 @@ TwoCompartmentIvPkModel = _get("TwoCompartmentIvPkModel")
 TwoCompartmentOralPkModel = _get("TwoCompartmentOralPkModel")
 nlme_foce = _get("nlme_foce")
 nlme_saem = _get("nlme_saem")
+bootstrap_nlme = _get("bootstrap_nlme")
 pk_vpc = _get("pk_vpc")
 pk_gof = _get("pk_gof")
+pk_npde = _get("pk_npde")
 read_nonmem = _get("read_nonmem")
+read_xpt = _get("read_xpt")
+write_xpt = _get("write_xpt")
+xpt_to_nonmem = _get("xpt_to_nonmem")
+scm = _get("scm")
+ThreeCompartmentIvPkModel = _get("ThreeCompartmentIvPkModel")
+ThreeCompartmentOralPkModel = _get("ThreeCompartmentOralPkModel")
+average_be = _get("average_be")
+be_power = _get("be_power")
+be_sample_size = _get("be_sample_size")
+simulate_trial = _get("simulate_trial")
+map_estimate = _get("map_estimate")
 GammaRegressionModel = _get("GammaRegressionModel")
 TweedieRegressionModel = _get("TweedieRegressionModel")
 GevModel = _get("GevModel")
@@ -91,7 +105,12 @@ MetalProfiledDifferentiableSession = _get("MetalProfiledDifferentiableSession")
 asimov_data = _get("asimov_data")
 poisson_toys = _get("poisson_toys")
 ranking = _get("ranking")
+lsoda = _get("lsoda")
+lsoda_callback = _get("lsoda_callback")
+forward_sensitivity_solve = _get("forward_sensitivity_solve")
+forward_sensitivity_solve_callback = _get("forward_sensitivity_solve_callback")
 rk4_linear = _get("rk4_linear")
+rk4_linear_dde = _get("rk4_linear_dde")
 read_root_histogram = _get("read_root_histogram")
 workspace_audit = _get("workspace_audit")
 cls_curve = _get("cls_curve")
@@ -378,6 +397,7 @@ __all__ = [
     "HybridModel",
     "GaussianMeanModel",
     "FunnelModel",
+    "FunnelNcpModel",
     "StdNormalModel",
     "LinearRegressionModel",
     "LogisticRegressionModel",
@@ -397,6 +417,8 @@ __all__ = [
     "IntervalCensoredLogNormalModel",
     "OneCompartmentOralPkModel",
     "OneCompartmentOralPkNlmeModel",
+    "ThreeCompartmentIvPkModel",
+    "ThreeCompartmentOralPkModel",
     "GammaRegressionModel",
     "TweedieRegressionModel",
     "GevModel",
@@ -412,6 +434,7 @@ __all__ = [
     "asimov_data",
     "poisson_toys",
     "rk4_linear",
+    "rk4_linear_dde",
     "ols_fit",
     "set_eval_mode",
     "set_threads",
@@ -435,6 +458,24 @@ __all__ = [
     # Survival
     "kaplan_meier",
     "log_rank_test",
+    # CDISC .xpt I/O
+    "read_xpt",
+    "write_xpt",
+    "xpt_to_nonmem",
+    # Pharma
+    "average_be",
+    "be_power",
+    "be_sample_size",
+    "simulate_trial",
+    "map_estimate",
+    "pk_vpc",
+    "pk_gof",
+    "pk_npde",
+    "nlme_foce",
+    "nlme_saem",
+    "bootstrap_nlme",
+    "scm",
+    "read_nonmem",
     # Churn
     "churn_generate_data",
     "churn_retention",

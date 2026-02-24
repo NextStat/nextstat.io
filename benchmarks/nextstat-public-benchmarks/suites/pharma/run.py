@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import math
 import platform
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import nextstat
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from scripts.bench_env import collect_environment
@@ -55,6 +57,28 @@ def bench_wall_time_raw(fn: Callable[[], Any], *, repeat: int = 3) -> list[float
         fn()
         times.append(time.perf_counter() - t0)
     return times
+
+
+def _nlme_dose_kwarg_name() -> str:
+    """Return supported NLME dose kwarg name (`doses` preferred, `dose` legacy)."""
+    foce_params = inspect.signature(nextstat.nlme_foce).parameters
+    saem_params = inspect.signature(nextstat.nlme_saem).parameters
+    if "doses" in foce_params and "doses" in saem_params:
+        return "doses"
+    if "dose" in foce_params and "dose" in saem_params:
+        return "dose"
+    raise RuntimeError(
+        "Unsupported nextstat NLME API: expected both nlme_foce/nlme_saem to expose "
+        "either `doses` or `dose` keyword"
+    )
+
+
+def _nlme_dose_kwargs(dose: float, dose_kw: str) -> dict[str, Any]:
+    if dose_kw == "doses":
+        return {"doses": [float(dose)]}
+    if dose_kw == "dose":
+        return {"dose": float(dose)}
+    raise ValueError(f"Unsupported NLME dose kwarg: {dose_kw}")
 
 
 def _conc_oral_1cpt(dose: float, bioav: float, cl: float, v: float, ka: float, t: float) -> float:
@@ -223,7 +247,7 @@ def generate_pk_2cpt_oral(*, n_obs: int, seed: int, dose: float, sigma: float) -
     bioav = 1.0
 
     n_obs = int(n_obs)
-    times = [0.2 + i * 0.3 for i in range(n_obs)]
+    times = sorted(np.geomspace(0.25, 24.0, n_obs).tolist())
 
     k10 = cl / v1
     k12 = q / v1
@@ -267,6 +291,7 @@ def generate_pk_2cpt_oral(*, n_obs: int, seed: int, dose: float, sigma: float) -
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    dose_kw = _nlme_dose_kwarg_name()
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", default="pk_1c_oral", help="Case id for reporting.")
     ap.add_argument("--out", required=True, help="Output JSON path.")
@@ -390,6 +415,7 @@ def main() -> int:
             "python": sys.version.split()[0],
             "platform": platform.platform(),
             "nextstat_version": nextstat.__version__,
+            "nlme_dose_kwarg": dose_kw,
         },
         "dataset": {"id": dataset_id, "sha256": dataset_sha, "spec": spec},
         "model": {
@@ -458,10 +484,11 @@ def main() -> int:
             def foce_fit():
                 return nextstat.nlme_foce(
                     spec["times"], spec["y"], spec["subject_idx"], int(spec["n_subjects"]),
-                    dose=float(spec["dose"]), bioavailability=1.0,
+                    bioavailability=1.0,
                     error_model=em, sigma=sigma_val, sigma_add=sigma_add_val,
                     theta_init=theta_init, omega_init=omega_init,
                     max_outer_iter=300, max_inner_iter=30, tol=1e-4, interaction=True,
+                    **_nlme_dose_kwargs(float(spec["dose"]), dose_kw),
                 )
 
             foce_fit()  # warmup
@@ -510,10 +537,11 @@ def main() -> int:
             def saem_fit():
                 return nextstat.nlme_saem(
                     spec["times"], spec["y"], spec["subject_idx"], int(spec["n_subjects"]),
-                    dose=float(spec["dose"]), bioavailability=1.0,
+                    bioavailability=1.0,
                     error_model=em, sigma=sigma_val, sigma_add=sigma_add_val,
                     theta_init=theta_init, omega_init=omega_init,
                     n_burn=200, n_iter=100, n_chains=1, seed=12345, tol=1e-4,
+                    **_nlme_dose_kwargs(float(spec["dose"]), dose_kw),
                 )
 
             saem_fit()  # warmup

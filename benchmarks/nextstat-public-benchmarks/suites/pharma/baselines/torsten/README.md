@@ -30,3 +30,4 @@ Arguments:
 Notes:
 - For this benchmark family we use an analytic Stan model (no ODE solver required).
 - `baseline="torsten"` is kept for compatibility with the benchmark taxonomy.
+- Runner reads `CMDSTAN` from env and calls `cmdstanr::set_cmdstan_path()` when set.

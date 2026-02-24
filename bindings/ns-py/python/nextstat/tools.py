@@ -895,6 +895,527 @@ _TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    # -------------------------------------------------------------------
+    # Pharma / NLME tools
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_pharma_fit",
+            "description": (
+                "Fit a nonlinear mixed-effects (NLME) population PK model using FOCE, FOCEI, or SAEM. "
+                "Supports 1/2/3-compartment models with IV or oral absorption. "
+                "Returns population parameters (theta), random-effect variances (omega), individual ETAs, OFV, and convergence info."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "times": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Flat array of observation times across all subjects.",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Flat array of observed concentrations (same length as times).",
+                    },
+                    "subject_idx": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Subject index for each observation (0-based).",
+                    },
+                    "n_subjects": {
+                        "type": "integer",
+                        "description": "Total number of subjects.",
+                    },
+                    "doses": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Per-subject dose amounts (length = n_subjects).",
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"],
+                        "description": "PK compartment model. Default: 1cpt_oral.",
+                        "default": "1cpt_oral",
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["foce", "focei", "fo", "saem"],
+                        "description": "Estimation method. Default: focei.",
+                        "default": "focei",
+                    },
+                    "error_model": {
+                        "type": "string",
+                        "enum": ["additive", "proportional", "combined"],
+                        "description": "Residual error model. Default: proportional.",
+                        "default": "proportional",
+                    },
+                    "theta_init": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Initial population PK parameter estimates (e.g. [Ka, CL, V] for 1cpt_oral).",
+                    },
+                    "omega_init": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Initial omega diagonal elements (IIV variances).",
+                    },
+                    "sigma": {
+                        "type": "number",
+                        "description": "Initial residual error magnitude. Default: 0.1.",
+                        "default": 0.1,
+                    },
+                    "bioavailability": {
+                        "type": "number",
+                        "description": "Bioavailability fraction (0-1). Default: 1.0.",
+                        "default": 1.0,
+                    },
+                    "execution": _EXECUTION_SCHEMA,
+                },
+                "required": ["times", "y", "subject_idx", "n_subjects", "doses", "theta_init", "omega_init"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_pharma_vpc",
+            "description": (
+                "Run a Visual Predictive Check (VPC) for a fitted population PK model. "
+                "Simulates n_sim replicate datasets, returns observed and simulated quantile bands "
+                "(median, 5th, 95th percentiles) for visual comparison."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "times": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Flat array of observation times.",
+                    },
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Flat array of observed concentrations.",
+                    },
+                    "subject_idx": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Subject index for each observation.",
+                    },
+                    "n_subjects": {
+                        "type": "integer",
+                        "description": "Total number of subjects.",
+                    },
+                    "doses": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Per-subject dose amounts.",
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral"],
+                        "description": "PK model type.",
+                    },
+                    "theta": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Fitted population parameters.",
+                    },
+                    "omega_matrix": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Fitted omega covariance matrix.",
+                    },
+                    "sigma": {
+                        "type": "number",
+                        "description": "Fitted residual error.",
+                    },
+                    "error_model": {
+                        "type": "string",
+                        "enum": ["additive", "proportional", "combined"],
+                        "default": "proportional",
+                    },
+                    "n_sim": {
+                        "type": "integer",
+                        "description": "Number of simulated datasets. Default: 200.",
+                        "default": 200,
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "default": 42,
+                    },
+                },
+                "required": ["times", "y", "subject_idx", "n_subjects", "doses", "model", "theta", "omega_matrix", "sigma"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_trial_simulate",
+            "description": (
+                "Simulate a clinical PK trial: generate concentration profiles for n_subjects "
+                "with inter-individual variability. Returns concentrations, individual parameters, "
+                "AUC, Cmax, Tmax, and Ctrough for each subject."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n_subjects": {
+                        "type": "integer",
+                        "description": "Number of virtual subjects.",
+                    },
+                    "dose": {
+                        "type": "number",
+                        "description": "Dose amount.",
+                    },
+                    "obs_times": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Observation time points.",
+                    },
+                    "pk_model": {
+                        "type": "string",
+                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral"],
+                        "default": "1cpt_oral",
+                    },
+                    "theta": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Population PK parameters.",
+                    },
+                    "omega": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Omega diagonal (IIV variances).",
+                    },
+                    "sigma": {
+                        "type": "number",
+                        "description": "Residual error magnitude.",
+                    },
+                    "error_model": {
+                        "type": "string",
+                        "enum": ["additive", "proportional", "combined"],
+                        "default": "proportional",
+                    },
+                    "seed": {"type": "integer", "default": 42},
+                },
+                "required": ["n_subjects", "dose", "obs_times", "theta", "omega", "sigma"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_bioequivalence",
+            "description": (
+                "Run average bioequivalence (ABE) analysis on a 2x2 crossover study. "
+                "Returns geometric mean ratio, 90% CI, and BE conclusion. "
+                "Optionally compute power or sample size."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["test", "power", "sample_size"],
+                        "description": "test=run ABE, power=compute power, sample_size=compute N.",
+                        "default": "test",
+                    },
+                    "test_values": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Log-transformed AUC/Cmax for test formulation (for 'test' operation).",
+                    },
+                    "ref_values": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Log-transformed AUC/Cmax for reference formulation (for 'test' operation).",
+                    },
+                    "cv": {
+                        "type": "number",
+                        "description": "Intra-subject CV (for power/sample_size). Default: 0.30.",
+                        "default": 0.30,
+                    },
+                    "gmr": {
+                        "type": "number",
+                        "description": "Assumed geometric mean ratio (for power/sample_size). Default: 0.95.",
+                        "default": 0.95,
+                    },
+                    "n_total": {
+                        "type": "integer",
+                        "description": "Total sample size (for 'power' operation).",
+                    },
+                    "target_power": {
+                        "type": "number",
+                        "description": "Target power (for 'sample_size'). Default: 0.80.",
+                        "default": 0.80,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    # -------------------------------------------------------------------
+    # Safety / Reliability tools
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_fault_tree_mc",
+            "description": (
+                "Run Monte Carlo simulation on a fault tree (FTA). "
+                "Returns P(top event failure), confidence interval, and Birnbaum component importance measures. "
+                "Supports Bernoulli, uncertain Bernoulli (logit-normal), and Weibull mission-time failure modes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "spec": {
+                        "type": "object",
+                        "description": (
+                            "Fault tree specification: {components: [{type, ...}], nodes: [{Component: idx} or {Gate: {gate, children}}], top_event: idx}. "
+                            "Component types: {type:'bernoulli', p:float}, {type:'bernoulli_uncertain', mu:float, sigma:float}, "
+                            "{type:'weibull_mission', k:float, lambda:float, mission_time:float}. "
+                            "Gate types: 'And', 'Or'."
+                        ),
+                    },
+                    "n_scenarios": {
+                        "type": "integer",
+                        "description": "Number of Monte Carlo scenarios. Default: 1000000.",
+                        "default": 1000000,
+                    },
+                    "seed": {"type": "integer", "default": 42},
+                    "device": {
+                        "type": "string",
+                        "enum": ["cpu", "cuda"],
+                        "default": "cpu",
+                    },
+                },
+                "required": ["spec"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_fault_tree_ce_is",
+            "description": (
+                "Run Cross-Entropy Importance Sampling (CE-IS) on a fault tree for rare-event probability estimation. "
+                "More efficient than crude MC when P(failure) is very small (< 1e-4). "
+                "Returns P(failure), SE, CI, number of CE levels, and coefficient of variation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "spec": {
+                        "type": "object",
+                        "description": "Fault tree specification (same format as nextstat_fault_tree_mc).",
+                    },
+                    "n_per_level": {
+                        "type": "integer",
+                        "description": "Samples per CE level. Default: 10000.",
+                        "default": 10000,
+                    },
+                    "elite_fraction": {
+                        "type": "number",
+                        "description": "Elite fraction for CE update. Default: 0.01.",
+                        "default": 0.01,
+                    },
+                    "max_levels": {
+                        "type": "integer",
+                        "description": "Max CE iterations. Default: 20.",
+                        "default": 20,
+                    },
+                    "seed": {"type": "integer", "default": 42},
+                },
+                "required": ["spec"],
+            },
+        },
+    },
+    # -------------------------------------------------------------------
+    # Dose-response tools
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_dose_response",
+            "description": (
+                "Evaluate or fit an Emax or Sigmoid Emax dose-response model. "
+                "Returns predicted response at given concentrations, or NLL for parameter fitting."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string",
+                        "enum": ["emax", "sigmoid_emax"],
+                        "description": "Dose-response model type.",
+                    },
+                    "e0": {"type": "number", "description": "Baseline effect (placebo)."},
+                    "emax": {"type": "number", "description": "Maximum drug effect."},
+                    "ec50": {"type": "number", "description": "Concentration at 50% Emax."},
+                    "gamma": {
+                        "type": "number",
+                        "description": "Hill coefficient (only for sigmoid_emax). Default: 1.",
+                        "default": 1.0,
+                    },
+                    "conc": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Concentration values for prediction.",
+                    },
+                    "obs": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Observed responses (if provided, returns NLL instead of predictions).",
+                    },
+                },
+                "required": ["model", "e0", "emax", "ec50", "conc"],
+            },
+        },
+    },
+    # -------------------------------------------------------------------
+    # Competing risks tools
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_competing_risks",
+            "description": (
+                "Analyze competing risks data: compute cumulative incidence functions (CIF), "
+                "Gray's test for group comparison, or Fine-Gray subdistribution hazard regression."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["cif", "gray_test", "fine_gray"],
+                        "description": "cif=cumulative incidence, gray_test=group comparison, fine_gray=regression.",
+                    },
+                    "times": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Event/censoring times.",
+                    },
+                    "events": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Event type (0=censored, 1=cause1, 2=cause2, ...).",
+                    },
+                    "target_cause": {
+                        "type": "integer",
+                        "description": "Cause of interest. Default: 1.",
+                        "default": 1,
+                    },
+                    "groups": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Group labels (required for gray_test).",
+                    },
+                    "x": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Flat covariate matrix (required for fine_gray).",
+                    },
+                    "p": {
+                        "type": "integer",
+                        "description": "Number of covariates (required for fine_gray).",
+                    },
+                },
+                "required": ["operation", "times", "events"],
+            },
+        },
+    },
+    # -------------------------------------------------------------------
+    # Econometrics: event study
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_event_study",
+            "description": (
+                "Run an event study (dynamic DiD) with leads and lags around treatment. "
+                "Returns period-specific treatment effects and confidence intervals for parallel trends testing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "y": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Outcome variable.",
+                    },
+                    "entity": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Entity identifiers.",
+                    },
+                    "time": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Time period identifiers.",
+                    },
+                    "treat_time": {
+                        "type": "array",
+                        "items": {"type": ["integer", "null"]},
+                        "description": "Treatment onset time for each entity (null if never treated).",
+                    },
+                    "n_leads": {
+                        "type": "integer",
+                        "description": "Number of pre-treatment leads. Default: 3.",
+                        "default": 3,
+                    },
+                    "n_lags": {
+                        "type": "integer",
+                        "description": "Number of post-treatment lags. Default: 3.",
+                        "default": 3,
+                    },
+                    "cluster": {
+                        "type": "string",
+                        "enum": ["entity", "time", "two_way"],
+                        "default": "entity",
+                    },
+                },
+                "required": ["y", "entity", "time", "treat_time"],
+            },
+        },
+    },
+    # -------------------------------------------------------------------
+    # Volatility tools
+    # -------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "nextstat_garch_fit",
+            "description": (
+                "Fit a GARCH(1,1), EGARCH(1,1), or GJR-GARCH(1,1) volatility model to a return series. "
+                "Returns estimated parameters (omega, alpha, beta, and model-specific terms), "
+                "log-likelihood, conditional variances, and standardized residuals."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "returns": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Return series (e.g. log-returns of asset prices).",
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["garch", "egarch", "gjr_garch"],
+                        "description": "Volatility model. Default: garch.",
+                        "default": "garch",
+                    },
+                },
+                "required": ["returns"],
+            },
+        },
+    },
 ]
 
 
@@ -1502,6 +2023,208 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             result = nextstat.mack_chain_ladder(triangle)
         else:
             result = nextstat.chain_ladder(triangle)
+        return dict(result)
+
+    # -------------------------------------------------------------------
+    # Pharma / NLME tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_pharma_fit":
+        method = arguments.get("method", "focei")
+        model_type = arguments.get("model", "1cpt_oral")
+        error_model = arguments.get("error_model", "proportional")
+        sigma = float(arguments.get("sigma", 0.1))
+        bioavailability = float(arguments.get("bioavailability", 1.0))
+        theta_init = arguments["theta_init"]
+        omega_init = arguments["omega_init"]
+
+        common = dict(
+            times=arguments["times"],
+            y=arguments["y"],
+            subject_idx=arguments["subject_idx"],
+            n_subjects=int(arguments["n_subjects"]),
+            model=model_type,
+            doses=arguments["doses"],
+            bioavailability=bioavailability,
+            error_model=error_model,
+            sigma=sigma,
+            theta_init=theta_init,
+            omega_init=omega_init,
+        )
+
+        if method == "saem":
+            result = nextstat.nlme_saem(**common)
+        else:
+            common["method"] = method
+            result = nextstat.nlme_foce(**common)
+        return dict(result)
+
+    if name == "nextstat_pharma_vpc":
+        result = nextstat.pk_vpc(
+            times=arguments["times"],
+            y=arguments["y"],
+            subject_idx=arguments["subject_idx"],
+            n_subjects=int(arguments["n_subjects"]),
+            model=arguments["model"],
+            doses=arguments["doses"],
+            theta=arguments["theta"],
+            omega_matrix=arguments["omega_matrix"],
+            sigma=float(arguments["sigma"]),
+            error_model=arguments.get("error_model", "proportional"),
+            n_sim=int(arguments.get("n_sim", 200)),
+            seed=int(arguments.get("seed", 42)),
+        )
+        return dict(result)
+
+    if name == "nextstat_trial_simulate":
+        result = nextstat.simulate_trial(
+            n_subjects=int(arguments["n_subjects"]),
+            dose=float(arguments["dose"]),
+            obs_times=arguments["obs_times"],
+            pk_model=arguments.get("pk_model", "1cpt_oral"),
+            theta=arguments["theta"],
+            omega=arguments["omega"],
+            sigma=float(arguments["sigma"]),
+            error_model=arguments.get("error_model", "proportional"),
+            seed=int(arguments.get("seed", 42)),
+        )
+        return dict(result)
+
+    if name == "nextstat_bioequivalence":
+        op = arguments.get("operation", "test")
+        if op == "test":
+            result = nextstat.average_be(
+                arguments["test_values"],
+                arguments["ref_values"],
+            )
+            return dict(result)
+        elif op == "power":
+            power = nextstat.be_power(
+                int(arguments["n_total"]),
+                cv=float(arguments.get("cv", 0.30)),
+                gmr=float(arguments.get("gmr", 0.95)),
+            )
+            return {"power": float(power)}
+        elif op == "sample_size":
+            result = nextstat.be_sample_size(
+                cv=float(arguments.get("cv", 0.30)),
+                gmr=float(arguments.get("gmr", 0.95)),
+                target_power=float(arguments.get("target_power", 0.80)),
+            )
+            return dict(result)
+        else:
+            raise ValueError(f"Unknown BE operation: {op!r}")
+
+    # -------------------------------------------------------------------
+    # Safety / Reliability tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_fault_tree_mc":
+        result = nextstat.fault_tree_mc(
+            arguments["spec"],
+            int(arguments.get("n_scenarios", 1_000_000)),
+            seed=int(arguments.get("seed", 42)),
+            device=arguments.get("device", "cpu"),
+        )
+        return dict(result)
+
+    if name == "nextstat_fault_tree_ce_is":
+        result = nextstat.fault_tree_mc_ce_is(
+            arguments["spec"],
+            n_per_level=int(arguments.get("n_per_level", 10_000)),
+            elite_fraction=float(arguments.get("elite_fraction", 0.01)),
+            max_levels=int(arguments.get("max_levels", 20)),
+            seed=int(arguments.get("seed", 42)),
+        )
+        return dict(result)
+
+    # -------------------------------------------------------------------
+    # Dose-response tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_dose_response":
+        model_type = arguments["model"]
+        e0 = float(arguments["e0"])
+        emax = float(arguments["emax"])
+        ec50 = float(arguments["ec50"])
+        conc = arguments["conc"]
+        obs = arguments.get("obs")
+
+        if model_type == "emax":
+            if obs is not None:
+                nll = nextstat.emax_nll(e0, emax, ec50, conc, obs)
+                return {"model": "emax", "nll": float(nll)}
+            pred = nextstat.emax_predict(e0, emax, ec50, conc)
+            return {"model": "emax", **dict(pred)}
+        elif model_type == "sigmoid_emax":
+            gamma = float(arguments.get("gamma", 1.0))
+            if obs is not None:
+                nll = nextstat.sigmoid_emax_nll(e0, emax, ec50, gamma, conc, obs)
+                return {"model": "sigmoid_emax", "nll": float(nll)}
+            pred = nextstat.sigmoid_emax_predict(e0, emax, ec50, gamma, conc)
+            return {"model": "sigmoid_emax", **dict(pred)}
+        else:
+            raise ValueError(f"Unknown dose-response model: {model_type!r}")
+
+    # -------------------------------------------------------------------
+    # Competing risks tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_competing_risks":
+        op = arguments["operation"]
+        times = arguments["times"]
+        events = arguments["events"]
+        target_cause = int(arguments.get("target_cause", 1))
+
+        if op == "cif":
+            result = nextstat.cumulative_incidence(times, events, target_cause)
+            return dict(result)
+        elif op == "gray_test":
+            groups = arguments["groups"]
+            result = nextstat.gray_test(times, events, groups, target_cause)
+            return dict(result)
+        elif op == "fine_gray":
+            x = arguments["x"]
+            p = int(arguments["p"])
+            result = nextstat.fine_gray_fit(times, events, x, p, target_cause)
+            return dict(result)
+        else:
+            raise ValueError(f"Unknown competing risks operation: {op!r}")
+
+    # -------------------------------------------------------------------
+    # Econometrics: event study
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_event_study":
+        import nextstat.econometrics as econ
+
+        result = econ.event_study_fit(
+            y=arguments["y"],
+            entity=arguments["entity"],
+            time=arguments["time"],
+            treat_time=arguments["treat_time"],
+            n_leads=int(arguments.get("n_leads", 3)),
+            n_lags=int(arguments.get("n_lags", 3)),
+            cluster=arguments.get("cluster", "entity"),
+        )
+        return dict(result)
+
+    # -------------------------------------------------------------------
+    # Volatility tools
+    # -------------------------------------------------------------------
+
+    if name == "nextstat_garch_fit":
+        returns = arguments["returns"]
+        model_type = arguments.get("model", "garch")
+
+        if model_type == "garch":
+            result = nextstat.garch11_fit(returns)
+        elif model_type == "egarch":
+            result = nextstat.egarch11_fit(returns)
+        elif model_type == "gjr_garch":
+            result = nextstat.gjr_garch11_fit(returns)
+        else:
+            raise ValueError(f"Unknown GARCH model: {model_type!r}")
         return dict(result)
 
     raise ValueError(f"Unknown tool: {name!r}. Available: {get_tool_names()}")

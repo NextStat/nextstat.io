@@ -1,0 +1,3 @@
+Patient 101: 500 mg IV infusion starting day 1 for 14 days, QD dosing, occasion 1.
+Patient 102: 250 mg oral twice daily starting day 1 for 28 days, BID dosing, occasion 1.
+Patient 103: 100 mcg SC injection once daily starting week 2 for 6 weeks, QD, occasion 2.

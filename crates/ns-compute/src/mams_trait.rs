@@ -90,9 +90,24 @@ pub trait MamsAccelerator {
     /// Whether the warp/simdgroup-cooperative kernel is available and beneficial.
     fn supports_warp(&self) -> bool;
 
+    /// Whether the high-dim warp kernel (dim ≤ 96) is available and beneficial.
+    ///
+    /// For models like ComposedLogistic with dim=p+G > 32 but ≤ 96, the _hi
+    /// variant uses register spill to L1 but still provides 32× observation
+    /// parallelism over the scalar kernel.
+    fn supports_warp_hi(&self) -> bool {
+        false
+    }
+
     /// Number of chains.
     fn n_chains(&self) -> usize;
 
     /// Parameter dimensionality.
     fn dim(&self) -> usize;
+
+    /// Set the energy error threshold for divergence detection.
+    ///
+    /// The default is 1000.0 (Stan-compatible). Can be set to a model-specific
+    /// value based on dimension or posterior scale.
+    fn set_divergence_threshold(&mut self, _threshold: f64) {}
 }

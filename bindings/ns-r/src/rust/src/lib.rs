@@ -530,24 +530,356 @@ fn ns_foce(
     sigma: Vec<f64>,
     theta_init: Vec<f64>,
     omega_init: Vec<f64>,
+    model: &str,
+    method: &str,
     interaction: bool,
     max_outer_iter: i32,
     tol: f64,
+    its_max_iter: i32,
+    its_max_individual_iter: i32,
+    its_tol: f64,
+    its_omega_damping: f64,
+    imp_n_iter: i32,
+    imp_n_samples: i32,
+    imp_proposal_scale: f64,
+    imp_seed: i32,
+    imp_tol: f64,
+    imp_e_only: bool,
 ) -> extendr_api::Result<List> {
     setup_runtime(1);
     let em = parse_error_model_r(error_model, &sigma)?;
     let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+    let n_sub = n_subjects as usize;
+    let doses = vec![dose; n_sub];
 
     let config = ns_inference::foce::FoceConfig {
         max_outer_iter: max_outer_iter as usize,
         max_inner_iter: 20,
         tol,
         interaction,
+        ..ns_inference::foce::FoceConfig::default()
     };
     let estimator = ns_inference::foce::FoceEstimator::new(config);
-    let result = estimator
-        .fit_1cpt_oral(&times, &dv, &subject_idx, n_subjects as usize, dose, bioav, em, &theta_init, &omega_init)
-        .map_err(|e| Error::Other(format!("FOCE failed: {e}")))?;
+    let its_cfg = ns_inference::foce::ItsConfig {
+        max_iter: its_max_iter.max(1) as usize,
+        max_individual_iter: its_max_individual_iter.max(1) as usize,
+        tol: its_tol,
+        omega_damping: its_omega_damping,
+    };
+    let imp_cfg = ns_inference::foce::ImpConfig {
+        n_iter: imp_n_iter.max(1) as usize,
+        n_samples: imp_n_samples.max(2) as usize,
+        proposal_scale: imp_proposal_scale,
+        seed: imp_seed as u64,
+        tol: imp_tol,
+        e_only: imp_e_only,
+    };
+
+    let method_lc = method.to_ascii_lowercase();
+    let mut imp_trace: Option<(Vec<f64>, Vec<f64>, Vec<f64>)> = None;
+    let result = match (model, method_lc.as_str()) {
+        ("1cpt_iv", "foce") | ("1cpt_iv", "focei") => estimator.fit_1cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("1cpt_oral", "foce") | ("1cpt_oral", "focei") => estimator.fit_1cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("2cpt_iv", "foce") | ("2cpt_iv", "focei") => estimator.fit_2cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("2cpt_oral", "foce") | ("2cpt_oral", "focei") => estimator.fit_2cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("3cpt_iv", "foce") | ("3cpt_iv", "focei") => estimator.fit_3cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("3cpt_oral", "foce") | ("3cpt_oral", "focei") => estimator.fit_3cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+
+        ("1cpt_iv", "fo") => estimator.fit_1cpt_iv_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("1cpt_oral", "fo") => estimator.fit_1cpt_oral_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("2cpt_iv", "fo") => estimator.fit_2cpt_iv_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("2cpt_oral", "fo") => estimator.fit_2cpt_oral_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("3cpt_iv", "fo") => estimator.fit_3cpt_iv_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        ("3cpt_oral", "fo") => estimator.fit_3cpt_oral_fo(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+
+        ("1cpt_iv", "its") => estimator.fit_1cpt_iv_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+        ("1cpt_oral", "its") => estimator.fit_1cpt_oral_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+        ("2cpt_iv", "its") => estimator.fit_2cpt_iv_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+        ("2cpt_oral", "its") => estimator.fit_2cpt_oral_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+        ("3cpt_iv", "its") => estimator.fit_3cpt_iv_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+        ("3cpt_oral", "its") => estimator.fit_3cpt_oral_its(
+            &times,
+            &dv,
+            &subject_idx,
+            n_sub,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+            its_cfg.clone(),
+        ),
+
+        ("1cpt_iv", "imp") => estimator
+            .fit_1cpt_iv_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        ("1cpt_oral", "imp") => estimator
+            .fit_1cpt_oral_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                bioav,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        ("2cpt_iv", "imp") => estimator
+            .fit_2cpt_iv_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        ("2cpt_oral", "imp") => estimator
+            .fit_2cpt_oral_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                bioav,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        ("3cpt_iv", "imp") => estimator
+            .fit_3cpt_iv_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        ("3cpt_oral", "imp") => estimator
+            .fit_3cpt_oral_imp(
+                &times,
+                &dv,
+                &subject_idx,
+                n_sub,
+                &doses,
+                bioav,
+                em,
+                &theta_init,
+                &omega_init,
+                imp_cfg.clone(),
+            )
+            .map(|(r, d)| {
+                imp_trace = Some((d.ofv_trace, d.ess_fraction_trace, d.max_weight_trace));
+                r
+            }),
+        (_, m) => Err(ns_core::Error::Validation(format!(
+            "unsupported method '{m}' for model '{model}'"
+        ))),
+    }
+    .map_err(|e| Error::Other(format!("FOCE/FO/ITS/IMP failed: {e}")))?;
 
     // Convert eta (Vec<Vec<f64>>) to flat matrix for R (n_subjects x 3).
     let eta_flat: Vec<f64> = result.eta.iter().flat_map(|row| row.iter().copied()).collect();
@@ -559,6 +891,17 @@ fn ns_foce(
         result.correlation.iter().map(|row| Robj::from(row.clone())).collect::<Vec<Robj>>(),
     );
 
+    let imp_obj: Robj = if let Some((ofv_trace, ess_fraction_trace, max_weight_trace)) = imp_trace {
+        list!(
+            ofv_trace = ofv_trace,
+            ess_fraction_trace = ess_fraction_trace,
+            max_weight_trace = max_weight_trace
+        )
+        .into()
+    } else {
+        Robj::from(())
+    };
+
     Ok(list!(
         theta = result.theta,
         omega = result.omega,
@@ -566,7 +909,8 @@ fn ns_foce(
         ofv = result.ofv,
         converged = result.converged,
         n_iter = result.n_iter as i32,
-        correlation = corr
+        correlation = corr,
+        imp = imp_obj
     ))
 }
 
@@ -586,6 +930,7 @@ fn ns_saem(
     sigma: Vec<f64>,
     theta_init: Vec<f64>,
     omega_init: Vec<f64>,
+    model: &str,
     n_burn: i32,
     n_iter: i32,
     n_chains: i32,
@@ -605,9 +950,78 @@ fn ns_saem(
         ..ns_inference::saem::SaemConfig::default()
     };
     let estimator = ns_inference::saem::SaemEstimator::new(config);
-    let (result, diagnostics) = estimator
-        .fit_1cpt_oral(&times, &dv, &subject_idx, n_subjects as usize, dose, bioav, em, &theta_init, &omega_init)
-        .map_err(|e| Error::Other(format!("SAEM failed: {e}")))?;
+    let doses = vec![dose; n_subjects as usize];
+    let (result, diagnostics) = match model {
+        "1cpt_iv" => estimator.fit_1cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        "1cpt_oral" => estimator.fit_1cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        "2cpt_iv" => estimator.fit_2cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        "2cpt_oral" => estimator.fit_2cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        "3cpt_iv" => estimator.fit_3cpt_iv(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        "3cpt_oral" => estimator.fit_3cpt_oral(
+            &times,
+            &dv,
+            &subject_idx,
+            n_subjects as usize,
+            &doses,
+            bioav,
+            em,
+            &theta_init,
+            &omega_init,
+        ),
+        other => {
+            return Err(Error::Other(format!(
+                "unknown model: {other}; expected 1cpt_iv/1cpt_oral/2cpt_iv/2cpt_oral/3cpt_iv/3cpt_oral"
+            )));
+        }
+    }
+    .map_err(|e| Error::Other(format!("SAEM failed: {e}")))?;
 
     let eta_flat: Vec<f64> = result.eta.iter().flat_map(|row| row.iter().copied()).collect();
     let n_sub = result.eta.len();
@@ -644,6 +1058,7 @@ fn ns_vpc(
 ) -> extendr_api::Result<List> {
     setup_runtime(1);
     let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+    let doses = vec![dose; n_subjects as usize];
     let om = ns_inference::foce::OmegaMatrix::from_diagonal(&omega)
         .map_err(|e| Error::Other(format!("omega: {e}")))?;
     let em = ns_inference::pk::ErrorModel::Additive(sigma);
@@ -655,7 +1070,7 @@ fn ns_vpc(
         pi_level: 0.90,
     };
     let result = ns_inference::vpc_1cpt_oral(
-        &times, &dv, &subject_idx, n_subjects as usize, dose, 1.0, &theta, &om, &em, &config,
+        &times, &dv, &subject_idx, n_subjects as usize, &doses, 1.0, &theta, &om, &em, &config,
     )
     .map_err(|e| Error::Other(format!("VPC failed: {e}")))?;
 
@@ -689,7 +1104,7 @@ fn ns_gof(
     times: Vec<f64>,
     dv: Vec<f64>,
     id: Vec<i32>,
-    _n_subjects: i32,
+    n_subjects: i32,
     dose: f64,
     theta: Vec<f64>,
     _omega: Vec<f64>,
@@ -698,6 +1113,7 @@ fn ns_gof(
 ) -> extendr_api::Result<List> {
     setup_runtime(1);
     let subject_idx: Vec<usize> = id.iter().map(|&i| i as usize).collect();
+    let doses = vec![dose; n_subjects as usize];
     let em = ns_inference::pk::ErrorModel::Additive(sigma);
 
     // Convert R matrix to Vec<Vec<f64>>.
@@ -713,7 +1129,7 @@ fn ns_gof(
     }
 
     let records = ns_inference::gof_1cpt_oral(
-        &times, &dv, &subject_idx, dose, 1.0, &theta, &etas, &em,
+        &times, &dv, &subject_idx, &doses, 1.0, &theta, &etas, &em,
     )
     .map_err(|e| Error::Other(format!("GOF failed: {e}")))?;
 

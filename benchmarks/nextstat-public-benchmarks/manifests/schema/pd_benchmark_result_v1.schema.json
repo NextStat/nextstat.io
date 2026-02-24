@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/pd_benchmark_result_v1.schema.json",
+  "title": "NextStat PD Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite", "case", "environment", "status"],
+  "properties": {
+    "schema_version": { "const": "nextstat.pd_benchmark_result.v1" },
+    "suite": { "const": "pd_models" },
+    "case": { "type": "string", "minLength": 1 },
+    "environment": { "type": "object", "additionalProperties": true },
+    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+    "reason": { "type": ["string", "null"] },
+    "dataset": { "type": "object", "additionalProperties": true },
+    "config": { "type": "object", "additionalProperties": true },
+    "parity": { "type": "object", "additionalProperties": true },
+    "timing": { "type": "object", "additionalProperties": true },
+    "results": { "type": "object", "additionalProperties": true }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["ok", "warn"] } } },
+      "then": { "required": ["dataset", "config", "parity", "timing", "results"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } } },
+      "then": { "required": ["reason"] }
+    }
+  ]
+}
+

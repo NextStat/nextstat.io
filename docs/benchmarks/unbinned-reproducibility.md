@@ -86,7 +86,7 @@ python3 benchmarks/unbinned/bench_cpu_symmetry.py \
 ```
 
 Example artifact from this protocol:
-- baseline: `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_diag2_20260211T225229Z.json`
+- baseline: `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_diag2_20260211T225229Z.json`
 
 Tuned run (recommended for constrained unbinned fits):
 
@@ -101,7 +101,7 @@ python3 benchmarks/unbinned/bench_cpu_symmetry.py \
 ```
 
 Example tuned artifact:
-- `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_gex44_tune2_m20smooth_20260211T225807Z.json`
+- `benchmarks/unbinned/artifacts/2026-02-11/bench_symm_cpu_rtx4000_tune2_m20smooth_20260211T225807Z.json`
 
 ### 1.5 PF3.1 CUDA sharded toy-fit matrix (remote)
 
@@ -111,8 +111,8 @@ artifacts (`*.meta.json`, `*.metrics.json`, `*.out.json`, `*.err`) locally.
 ```bash
 PF31_HOST=88.198.23.172 \
 PF31_KEY=~/.ssh/rundesk_hetzner \
-PF31_BIN=/root/nextstat.io/target/release/nextstat \
-PF31_SPEC=/root/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
+PF31_BIN=$NEXTSTAT_BIN \
+PF31_SPEC=$NEXTSTAT_ROOT/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
 PF31_TOYS=10000,100000 \
 PF31_SHARDS=2,4,8 \
 bash scripts/benchmarks/pf31_remote_matrix.sh

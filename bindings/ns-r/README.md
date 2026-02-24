@@ -10,6 +10,49 @@ R CMD INSTALL --library=tmp/r-lib bindings/ns-r
 R -q -e 'library(nextstat, lib.loc="tmp/r-lib"); print(ns_normal_logpdf(c(-1,0,1))); print(ns_ols_fit(matrix(c(1,2,3,4),2,2), c(1,2)))'
 ```
 
+## Run tests (`testthat`)
+
+`testthat::test_file()` in this setup is single-file, so run all files via `lapply`.
+
+```bash
+# one file
+Rscript -e '.libPaths(c(".r-lib", .libPaths())); library(testthat); library(nextstat); testthat::test_file("bindings/ns-r/tests/testthat/test-<name>.R")'
+
+# all files in bindings/ns-r/tests/testthat
+Rscript -e '.libPaths(c(".r-lib", .libPaths())); library(testthat); library(nextstat); f <- list.files("bindings/ns-r/tests/testthat", pattern="^test-.*[.][Rr]$", full.names=TRUE); invisible(lapply(f, testthat::test_file))'
+```
+
+## Population PK (`nlme_*` API)
+
+`ns_foce()` and `nlme_foce()` are equivalent interfaces. They support:
+- models: `"1cpt_oral"`, `"2cpt_iv"`, `"2cpt_oral"`, `"3cpt_iv"`, `"3cpt_oral"`
+- methods: `"foce"`, `"focei"`, `"fo"`, `"its"`, `"imp"`
+
+```r
+dat <- list(
+  times = rep(c(0.5, 1, 2, 4, 8), times = 4),
+  id = rep(0:3, each = 5),
+  dv = rep(c(8, 6, 4, 2.5, 1.2), times = 4)
+)
+
+fit_fo <- nlme_foce(
+  times = dat$times, dv = dat$dv, id = dat$id, n_subjects = 4,
+  dose = 120, model = "2cpt_iv", method = "fo",
+  theta_init = c(1.2, 15.0, 0.8, 20.0),
+  omega_init = c(0.2, 0.2, 0.2, 0.2),
+  error_model = "additive", sigma = 0.1
+)
+
+fit_imp <- nlme_foce(
+  times = dat$times, dv = dat$dv, id = dat$id, n_subjects = 4,
+  dose = 120, model = "3cpt_iv", method = "imp",
+  theta_init = c(1.1, 14.0, 0.7, 18.0, 0.5, 28.0),
+  omega_init = rep(0.2, 6),
+  imp_n_iter = 5, imp_n_samples = 100,
+  error_model = "additive", sigma = 0.1
+)
+```
+
 ## HistFactory fit (pyhf JSON)
 
 ```r

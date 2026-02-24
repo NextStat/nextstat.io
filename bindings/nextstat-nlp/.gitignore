@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+dist/
+*.egg-info/
+
+# Swift/MLX CLI build outputs
+/tools/gliner2_mlx_cli/.build/
+/tools/gliner2_mlx_cli/.tmp/
+/tools/gliner2_mlx_cli/*.metallib
+
+# Generic build/cache
+.build/
+.tmp/

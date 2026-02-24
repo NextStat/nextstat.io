@@ -14,6 +14,7 @@ import json
 import math
 import os
 import shlex
+import statistics
 import subprocess
 import sys
 import time
@@ -72,6 +73,9 @@ class ShardResult:
     local_stderr: str | None
     remote_dir: str
     error: str | None = None
+    attempts: int = 1
+    recovered_from_retry: bool = False
+    resumed: bool = False
 
 
 def read_hosts(path: Path) -> list[HostEntry]:
@@ -202,6 +206,72 @@ def resolve_weight(entry: HostEntry, preflight: dict[str, PreflightStat], mode: 
     if val is None or val <= 0:
         return 1.0
     return float(val)
+
+
+def _collect_host_throughput_from_manifest(path: Path) -> dict[str, list[float]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    results = data.get("results")
+    if not isinstance(results, list):
+        return {}
+    by_host: dict[str, list[float]] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != "ok":
+            continue
+        host = item.get("host")
+        if not isinstance(host, str) or not host:
+            continue
+        n_toys = item.get("n_toys")
+        elapsed_s = item.get("elapsed_s")
+        if not isinstance(n_toys, (int, float)) or not isinstance(elapsed_s, (int, float)):
+            continue
+        n_toys_f = float(n_toys)
+        elapsed_f = float(elapsed_s)
+        if n_toys_f <= 0.0 or elapsed_f <= 0.0:
+            continue
+        by_host.setdefault(host, []).append(n_toys_f / elapsed_f)
+    return by_host
+
+
+def load_adaptive_weights(paths: list[Path]) -> dict[str, float]:
+    if not paths:
+        return {}
+    raw: dict[str, list[float]] = {}
+    for path in paths:
+        if not path.exists():
+            raise ValueError(f"adaptive manifest not found: {path}")
+        one = _collect_host_throughput_from_manifest(path)
+        for host, vals in one.items():
+            raw.setdefault(host, []).extend(vals)
+    out: dict[str, float] = {}
+    for host, vals in raw.items():
+        if vals:
+            out[host] = float(statistics.median(vals))
+    return out
+
+
+def resolve_weight_with_adaptive(
+    entry: HostEntry,
+    preflight: dict[str, PreflightStat],
+    mode: str,
+    adaptive_weights: dict[str, float],
+    adaptive_fallback: str,
+    adaptive_alpha: float,
+) -> float:
+    if mode != "adaptive":
+        return resolve_weight(entry, preflight, mode)
+
+    base = resolve_weight(entry, preflight, adaptive_fallback)
+    hist = adaptive_weights.get(entry.host)
+    if hist is None:
+        return base
+
+    alpha = max(0.0, min(1.0, float(adaptive_alpha)))
+    blended = alpha * float(hist) + (1.0 - alpha) * float(base)
+    if not math.isfinite(blended) or blended <= 0.0:
+        return base
+    return blended
 
 
 def split_toys(weights: list[float], n_toys: int) -> list[int]:
@@ -335,7 +405,7 @@ def build_target(user: str | None, host: str) -> str:
     return host
 
 
-def run_shard(plan: ShardPlan, args: argparse.Namespace, local_run_dir: Path, remote_run_root: str) -> ShardResult:
+def run_shard_once(plan: ShardPlan, args: argparse.Namespace, local_run_dir: Path, remote_run_root: str) -> ShardResult:
     user = plan.user if plan.user else args.ssh_user
     target = build_target(user, plan.host)
 
@@ -536,6 +606,24 @@ def run_shard(plan: ShardPlan, args: argparse.Namespace, local_run_dir: Path, re
     )
 
 
+def run_shard(plan: ShardPlan, args: argparse.Namespace, local_run_dir: Path, remote_run_root: str) -> ShardResult:
+    attempts = 0
+    last: ShardResult | None = None
+    max_attempts = max(1, int(args.max_retries) + 1)
+    for i in range(max_attempts):
+        attempts += 1
+        res = run_shard_once(plan, args, local_run_dir, remote_run_root)
+        res.attempts = attempts
+        res.recovered_from_retry = bool(i > 0 and res.status == "ok")
+        last = res
+        if res.status in {"ok", "planned"}:
+            return res
+        if i + 1 < max_attempts:
+            time.sleep(max(0.0, float(args.retry_backoff_s)) * (2 ** i))
+    assert last is not None
+    return last
+
+
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Run nextstat unbinned-fit-toys across an SSH CPU farm and emit shard manifest."
@@ -553,9 +641,28 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument(
         "--weight-mode",
-        choices=["uniform", "physical", "logical"],
+        choices=["uniform", "physical", "logical", "adaptive"],
         default="physical",
         help="toy split weights when host weight=... is not set",
+    )
+    ap.add_argument(
+        "--adaptive-from-manifest",
+        type=Path,
+        action="append",
+        default=[],
+        help="manifest.json from previous runs (repeat flag). Used only with --weight-mode adaptive",
+    )
+    ap.add_argument(
+        "--adaptive-fallback",
+        choices=["uniform", "physical", "logical"],
+        default="physical",
+        help="fallback weight mode for hosts without historical throughput (adaptive mode only)",
+    )
+    ap.add_argument(
+        "--adaptive-alpha",
+        type=float,
+        default=1.0,
+        help="blend factor for adaptive weight: alpha*history + (1-alpha)*fallback (0..1)",
     )
 
     ap.add_argument("--nextstat-bin", default="nextstat", help="remote nextstat binary path")
@@ -600,6 +707,13 @@ def parse_args() -> argparse.Namespace:
         help="set OMP/BLAS env vars to 1 on remote (default: true)",
     )
     ap.add_argument("--allow-partial", action="store_true", help="exit 0 if at least one shard succeeded")
+    ap.add_argument("--max-retries", type=int, default=0, help="per-shard retries on failure")
+    ap.add_argument("--retry-backoff-s", type=float, default=5.0, help="base retry backoff seconds")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="resume from existing local run manifest and skip already successful shards",
+    )
     ap.add_argument("--dry-run", action="store_true")
     return ap.parse_args()
 
@@ -615,11 +729,69 @@ def print_plan(plans: list[ShardPlan]) -> None:
 
 def print_results(results: list[ShardResult]) -> None:
     print()
-    print("shard  host                          status   rc    elapsed_s  toys")
-    print("-----  ----------------------------  -------  ----  ---------  --------")
+    print("shard  host                          status   rc    elapsed_s  toys      att  flags")
+    print("-----  ----------------------------  -------  ----  ---------  --------  ---  -----")
     for r in sorted(results, key=lambda x: x.shard_index):
         rc = "-" if r.rc is None else str(r.rc)
-        print(f"{r.shard_index:>5}  {r.host:<28}  {r.status:<7}  {rc:>4}  {r.elapsed_s:>9.2f}  {r.n_toys:>8}")
+        flags: list[str] = []
+        if r.recovered_from_retry:
+            flags.append("retry-ok")
+        if r.resumed:
+            flags.append("resumed")
+        flag_s = ",".join(flags) if flags else "-"
+        print(
+            f"{r.shard_index:>5}  {r.host:<28}  {r.status:<7}  {rc:>4}  "
+            f"{r.elapsed_s:>9.2f}  {r.n_toys:>8}  {r.attempts:>3}  {flag_s}"
+        )
+
+
+def _load_resume_ok_results(manifest_path: Path) -> dict[int, dict[str, Any]]:
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    results = data.get("results")
+    if not isinstance(results, list):
+        return {}
+    out: dict[int, dict[str, Any]] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != "ok":
+            continue
+        idx = item.get("shard_index")
+        if not isinstance(idx, int):
+            continue
+        local_output = item.get("local_output")
+        if isinstance(local_output, str) and Path(local_output).exists():
+            out[idx] = item
+    return out
+
+
+def _resumed_result(plan: ShardPlan, prev: dict[str, Any], local_run_dir: Path, remote_run_root: str) -> ShardResult:
+    shard_name = f"shard_{plan.shard_index:03d}_{safe_name(plan.host)}"
+    local_dir = local_run_dir / "shards" / shard_name
+    remote_dir = f"{remote_run_root.rstrip('/')}/{shard_name}"
+    return ShardResult(
+        shard_index=plan.shard_index,
+        host=plan.host,
+        target=str(prev.get("target") or build_target(plan.user, plan.host)),
+        status="ok",
+        n_toys=plan.n_toys,
+        toy_start=plan.toy_start,
+        seed=plan.seed,
+        threads=plan.threads,
+        weight=plan.weight,
+        rc=int(prev["rc"]) if isinstance(prev.get("rc"), int) else 0,
+        elapsed_s=float(prev.get("elapsed_s") or 0.0),
+        local_dir=str(prev.get("local_dir") or local_dir),
+        local_output=str(prev.get("local_output")) if prev.get("local_output") else None,
+        local_metrics=str(prev.get("local_metrics")) if prev.get("local_metrics") else None,
+        local_stdout=str(prev.get("local_stdout")) if prev.get("local_stdout") else None,
+        local_stderr=str(prev.get("local_stderr")) if prev.get("local_stderr") else None,
+        remote_dir=str(prev.get("remote_dir") or remote_dir),
+        error=None,
+        attempts=0,
+        recovered_from_retry=False,
+        resumed=True,
+    )
 
 
 def main() -> int:
@@ -629,15 +801,32 @@ def main() -> int:
         raise SystemExit("--n-toys must be > 0")
     if args.seed < 0:
         raise SystemExit("--seed must be >= 0")
+    if args.max_retries < 0:
+        raise SystemExit("--max-retries must be >= 0")
+    if not (0.0 <= float(args.adaptive_alpha) <= 1.0):
+        raise SystemExit("--adaptive-alpha must be in [0, 1]")
 
     hosts = read_hosts(args.hosts_file)
     preflight = load_preflight(args.preflight_json)
+    adaptive_manifests = [Path(p).expanduser().resolve() for p in args.adaptive_from_manifest]
+    if args.weight_mode == "adaptive" and not adaptive_manifests:
+        raise SystemExit("--weight-mode adaptive requires at least one --adaptive-from-manifest path")
+    adaptive_weights = load_adaptive_weights(adaptive_manifests) if args.weight_mode == "adaptive" else {}
 
     weights: list[float] = []
     threads: list[int] = []
     ports: list[int] = []
     for entry in hosts:
-        weights.append(resolve_weight(entry, preflight, args.weight_mode))
+        weights.append(
+            resolve_weight_with_adaptive(
+                entry=entry,
+                preflight=preflight,
+                mode=args.weight_mode,
+                adaptive_weights=adaptive_weights,
+                adaptive_fallback=args.adaptive_fallback,
+                adaptive_alpha=args.adaptive_alpha,
+            )
+        )
         threads.append(resolve_threads(entry, preflight, args.threads))
         ports.append(entry.port if entry.port is not None else args.ssh_port)
 
@@ -675,17 +864,34 @@ def main() -> int:
     print(f"run_id={run_id}")
     print(f"local_run_dir={local_run_dir}")
     print(f"remote_run_root={remote_run_root}")
+    if args.weight_mode == "adaptive":
+        print(f"adaptive_hosts={len(adaptive_weights)} fallback={args.adaptive_fallback} alpha={args.adaptive_alpha:.2f}")
     print_plan(plans)
 
     results: list[ShardResult] = []
+    resume_manifest_path = local_run_dir / "manifest.json"
+    resume_ok: dict[int, dict[str, Any]] = {}
+    if args.resume and resume_manifest_path.exists():
+        resume_ok = _load_resume_ok_results(resume_manifest_path)
+        if resume_ok:
+            print(f"resume: keeping {len(resume_ok)} successful shard(s) from {resume_manifest_path}")
+
+    plans_to_run: list[ShardPlan] = []
+    for p in plans:
+        prev = resume_ok.get(p.shard_index)
+        if prev is not None:
+            results.append(_resumed_result(p, prev, local_run_dir, remote_run_root))
+        else:
+            plans_to_run.append(p)
+
     if args.dry_run:
-        results = [run_shard(plan, args, local_run_dir, remote_run_root) for plan in plans]
+        results.extend(run_shard(plan, args, local_run_dir, remote_run_root) for plan in plans_to_run)
     else:
-        max_jobs = args.jobs if args.jobs > 0 else min(len(plans), max(1, os.cpu_count() or 1))
+        max_jobs = args.jobs if args.jobs > 0 else min(len(plans_to_run), max(1, os.cpu_count() or 1))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, max_jobs)) as ex:
             futs = [
                 ex.submit(run_shard, plan, args, local_run_dir, remote_run_root)
-                for plan in plans
+                for plan in plans_to_run
             ]
             for fut in concurrent.futures.as_completed(futs):
                 results.append(fut.result())
@@ -703,6 +909,14 @@ def main() -> int:
         "seed": args.seed,
         "threads": args.threads,
         "weight_mode": args.weight_mode,
+        "adaptive_from_manifest": [str(p) for p in adaptive_manifests],
+        "adaptive_fallback": args.adaptive_fallback,
+        "adaptive_alpha": args.adaptive_alpha,
+        "adaptive_host_weight": adaptive_weights,
+        "max_retries": args.max_retries,
+        "retry_backoff_s": args.retry_backoff_s,
+        "resume": bool(args.resume),
+        "resumed_ok_shards": len(resume_ok),
         "nextstat_bin": args.nextstat_bin,
         "remote_workdir": args.remote_workdir,
         "remote_run_root": remote_run_root,

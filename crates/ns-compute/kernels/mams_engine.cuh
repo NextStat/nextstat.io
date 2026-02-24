@@ -12,6 +12,10 @@
  *   __device__ double user_nll(const double* x, int dim, const double* model_data);
  *   __device__ void   user_grad(const double* x, double* grad, int dim, const double* model_data);
  *
+ * Optional fast path:
+ *   #define MAMS_FUSED_GRAD_NLL_DEFINED
+ *   __device__ double user_grad_nll(const double* x, double* grad, int dim, const double* model_data);
+ *
  * The kernel calls user_nll() and user_grad() for model evaluation.
  * Build-time (nvcc) and JIT (NVRTC) paths both use this header.
  *
@@ -105,6 +109,12 @@ __device__ __forceinline__ int mams_is_funnel_model(int model_id) {
 
 __device__ __forceinline__ double mams_refresh_angle(double eps, double l, int model_id) {
     double angle = eps / l;
+    if (model_id == 0) {
+        // StdNormal benefits from stronger refresh to reduce long-range
+        // autocorrelation in short-budget massively parallel runs.
+        const double kStdNormalAngleFloor = 0.35;
+        if (angle < kStdNormalAngleFloor) angle = kStdNormalAngleFloor;
+    }
     if (mams_is_funnel_model(model_id)) {
         // Empirical floor for funnel-like geometries: avoid near-identity refresh.
         const double kFunnelAngleFloor = 0.20;
@@ -113,18 +123,57 @@ __device__ __forceinline__ double mams_refresh_angle(double eps, double l, int m
     return angle;
 }
 
+__device__ __forceinline__ void mams_partial_refresh(
+    double* u,
+    int dim,
+    double cos_a,
+    double sin_a,
+    PhiloxState* rng,
+    double* z_buf)
+{
+    double u_dot_z = 0.0;
+    for (int i = 0; i < dim; i++) {
+        z_buf[i] = philox_normal(rng);
+        u_dot_z += u[i] * z_buf[i];
+    }
+
+    double z_perp_norm_sq = 0.0;
+    for (int i = 0; i < dim; i++) {
+        z_buf[i] -= u_dot_z * u[i];
+        z_perp_norm_sq += z_buf[i] * z_buf[i];
+    }
+
+    double z_perp_norm = sqrt(z_perp_norm_sq);
+    if (z_perp_norm <= 1e-12) return;
+
+    double inv_norm = 1.0 / z_perp_norm;
+    double u_new_norm_sq = 0.0;
+    for (int i = 0; i < dim; i++) {
+        u[i] = u[i] * cos_a + z_buf[i] * inv_norm * sin_a;
+        u_new_norm_sq += u[i] * u[i];
+    }
+
+    double u_new_norm = sqrt(u_new_norm_sq);
+    if (u_new_norm <= 1e-12) return;
+
+    double inv = 1.0 / u_new_norm;
+    for (int i = 0; i < dim; i++) {
+        u[i] *= inv;
+    }
+}
+
 /* ---------- Integrator steps --------------------------------------------- */
 
-// B-step: half-step velocity update on unit sphere.
+// B-step with precomputed sqrt(inv_mass): half-step velocity update on unit sphere.
 // Returns delta_k contribution.
-__device__ double b_step(
-    double* u, const double* grad, const double* inv_mass,
+__device__ __forceinline__ double b_step_precond(
+    double* u, const double* grad, const double* sqrt_inv_mass,
     double half_eps, int dim, double dm1)
 {
     // Preconditioned gradient: g_tilde_i = sqrt(inv_mass_i) * grad_i
     double g_norm_sq = 0.0;
     for (int i = 0; i < dim; i++) {
-        double gi = sqrt(inv_mass[i]) * grad[i];
+        double gi = sqrt_inv_mass[i] * grad[i];
         g_norm_sq += gi * gi;
     }
     double g_norm = sqrt(g_norm_sq);
@@ -133,7 +182,7 @@ __device__ double b_step(
     // e = g_tilde / |g_tilde|, compute e_dot_u
     double e_dot_u = 0.0;
     for (int i = 0; i < dim; i++) {
-        double ei = sqrt(inv_mass[i]) * grad[i] / g_norm;
+        double ei = sqrt_inv_mass[i] * grad[i] / g_norm;
         e_dot_u += ei * u[i];
     }
     if (e_dot_u > 1.0) e_dot_u = 1.0;
@@ -149,7 +198,7 @@ __device__ double b_step(
     // u_new = u * c_u - e * c_e, then renormalize
     double u_norm_sq = 0.0;
     for (int i = 0; i < dim; i++) {
-        double ei = sqrt(inv_mass[i]) * grad[i] / g_norm;
+        double ei = sqrt_inv_mass[i] * grad[i] / g_norm;
         u[i] = u[i] * c_u - ei * c_e;
         u_norm_sq += u[i] * u[i];
     }
@@ -159,7 +208,7 @@ __device__ double b_step(
         for (int i = 0; i < dim; i++) u[i] *= inv;
     } else {
         for (int i = 0; i < dim; i++) {
-            u[i] = -sqrt(inv_mass[i]) * grad[i] / g_norm;
+            u[i] = -sqrt_inv_mass[i] * grad[i] / g_norm;
         }
     }
 
@@ -167,6 +216,18 @@ __device__ double b_step(
     double arg = 0.5 * zeta_m1 * (1.0 + e_dot_u);
     if (arg < -1.0 + 1e-50) arg = -1.0 + 1e-50;
     return dm1 * (delta + log1p(arg));
+}
+
+// Backward-compatible wrapper when precomputed sqrt(inv_mass) is unavailable.
+__device__ __forceinline__ double b_step(
+    double* u, const double* grad, const double* inv_mass,
+    double half_eps, int dim, double dm1)
+{
+    double sqrt_inv_mass[MAX_DIM];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass[i] = sqrt(inv_mass[i]);
+    }
+    return b_step_precond(u, grad, sqrt_inv_mass, half_eps, dim, dm1);
 }
 
 // A-step: full-step position update.
@@ -177,6 +238,17 @@ __device__ void a_step(
     for (int i = 0; i < dim; i++) {
         x[i] += eps * sqrt(inv_mass[i]) * u[i];
     }
+}
+
+__device__ __forceinline__ double mams_eval_grad_nll(
+    const double* x, double* grad, int dim, const double* model_data)
+{
+#ifdef MAMS_FUSED_GRAD_NLL_DEFINED
+    return user_grad_nll(x, grad, dim, model_data);
+#else
+    user_grad(x, grad, dim, model_data);
+    return user_nll(x, dim, model_data);
+#endif
 }
 
 /* ---------- Riemannian steps for Neal Funnel (model_id=5) --------------- */
@@ -300,7 +372,8 @@ extern "C" __global__ void mams_transition(
     int*    __restrict__ g_accum_accepted,   // [batch_stride * n_report]
     double* __restrict__ g_accum_energy,     // [batch_stride * n_report]
     int store_idx,                           // slot in ring buffer (0..batch_stride-1)
-    int n_report                             // chains to accumulate (0 = disabled)
+    int n_report,                            // chains to accumulate (0 = disabled)
+    double divergence_threshold              // energy error threshold for divergence detection
 ) {
     int chain = blockIdx.x * blockDim.x + threadIdx.x;
     if (chain >= n_chains) return;
@@ -336,30 +409,8 @@ extern "C" __global__ void mams_transition(
     double cos_a = cos(angle);
     double sin_a = sin(angle);
 
-    // Sample z ~ N(0,I) and project out u-component
     double z[MAX_DIM];
-    double u_dot_z = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] = philox_normal(&rng);
-        u_dot_z += u[i] * z[i];
-    }
-    double z_perp_norm_sq = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] -= u_dot_z * u[i];
-        z_perp_norm_sq += z[i] * z[i];
-    }
-    double z_perp_norm = sqrt(z_perp_norm_sq);
-    if (z_perp_norm > 1e-12) {
-        double inv_norm = 1.0 / z_perp_norm;
-        double u_new_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-            u_new_norm_sq += u[i] * u[i];
-        }
-        double u_new_norm = sqrt(u_new_norm_sq);
-        double inv = 1.0 / u_new_norm;
-        for (int i = 0; i < dim; i++) u[i] *= inv;
-    }
+    mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
     // ---------- 2. Save pre-trajectory state for MH ----------
     double x_old[MAX_DIM], u_old[MAX_DIM], grad_old[MAX_DIM];
@@ -374,27 +425,30 @@ extern "C" __global__ void mams_transition(
     double total_delta_k = 0.0;
     int divergent = 0;
     int is_riemannian = (model_id == 5);
+    double sqrt_inv_mass_local[MAX_DIM];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+    }
 
     for (int s = 0; s < n_steps; s++) {
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
             a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
         } else {
-            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             a_step(x, u, inv_mass, eps, dim);
         }
-        // Recompute gradient + potential
-        user_grad(x, grad, dim, model_data);
-        potential = user_nll(x, dim, model_data);
+        // Recompute gradient + potential (fused path when available).
+        potential = mams_eval_grad_nll(x, grad, dim, model_data);
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad, x, inv_mass, eps * 0.5, dim, dm1);
         } else {
-            total_delta_k += b_step(u, grad, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
         }
 
         // Early termination check (skip on first call when potential_old = NaN)
         double current_w = (potential - potential_old) + total_delta_k;
-        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0)) {
+        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > divergence_threshold)) {
             divergent = 1;
             break;
         }
@@ -513,7 +567,8 @@ extern "C" __global__ void mams_transition_fused(
     double* __restrict__ g_accum_energy,
     int n_report,
     // Fused-specific
-    int n_transitions         // number of transitions to execute
+    int n_transitions,        // number of transitions to execute
+    double divergence_threshold
 ) {
     int chain = blockIdx.x * blockDim.x + threadIdx.x;
     if (chain >= n_chains) return;
@@ -555,28 +610,7 @@ extern "C" __global__ void mams_transition_fused(
         double sin_a = sin(angle);
 
         double z[MAX_DIM];
-        double u_dot_z = 0.0;
-        for (int i = 0; i < dim; i++) {
-            z[i] = philox_normal(&rng);
-            u_dot_z += u[i] * z[i];
-        }
-        double z_perp_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            z[i] -= u_dot_z * u[i];
-            z_perp_norm_sq += z[i] * z[i];
-        }
-        double z_perp_norm = sqrt(z_perp_norm_sq);
-        if (z_perp_norm > 1e-12) {
-            double inv_norm = 1.0 / z_perp_norm;
-            double u_new_norm_sq = 0.0;
-            for (int i = 0; i < dim; i++) {
-                u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-                u_new_norm_sq += u[i] * u[i];
-            }
-            double u_new_norm = sqrt(u_new_norm_sq);
-            double inv = 1.0 / u_new_norm;
-            for (int i = 0; i < dim; i++) u[i] *= inv;
-        }
+        mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
         // --- 2. Save pre-trajectory state ---
         double x_old[MAX_DIM], u_old[MAX_DIM], grad_old[MAX_DIM];
@@ -591,25 +625,30 @@ extern "C" __global__ void mams_transition_fused(
         double total_delta_k = 0.0;
         int divergent = 0;
         int is_riemannian = (model_id == 5);
+        double sqrt_inv_mass_local[MAX_DIM];
+        for (int i = 0; i < dim; i++) {
+            sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+        }
 
         for (int s = 0; s < n_steps; s++) {
             if (is_riemannian) {
                 total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
                 a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
             } else {
-                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+                total_delta_k +=
+                    b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
                 a_step(x, u, inv_mass, eps, dim);
             }
-            user_grad(x, grad_reg, dim, model_data);
-            potential = user_nll(x, dim, model_data);
+            potential = mams_eval_grad_nll(x, grad_reg, dim, model_data);
             if (is_riemannian) {
                 total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
             } else {
-                total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+                total_delta_k +=
+                    b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             }
 
             double current_w = (potential - potential_old) + total_delta_k;
-            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0)) {
+            if (isfinite(potential_old) && (!isfinite(current_w) || current_w > divergence_threshold)) {
                 divergent = 1;
                 break;
             }
@@ -735,58 +774,46 @@ __device__ double user_grad_nll_warp(
 }
 #endif
 
-/* Maximum parameter dimension for warp kernel.
- * The warp kernel targets low-dimensional, data-heavy models (e.g. GLM with
- * dim=6 and N=200 obs). Using MAX_DIM=128 here would put 7*128=896 doubles
- * into local memory per thread, and with 32 lanes × 4096 chains = 131k threads,
- * that's ~940 MB of local memory → cache thrashing, slower than scalar.
- * With MAX_DIM_WARP=32, all arrays fit in registers (~112 per thread). */
+/* Maximum parameter dimension for warp kernel variants.
+ * DW=32: low-dim GLM (dim≤32), all arrays fit in registers (~112 per thread).
+ * DW=96: high-dim models like ComposedLogistic (dim=p+G up to 96).
+ *        Register spill to L1 is outweighed by 32× observation parallelism. */
 #define MAX_DIM_WARP 32
+#define MAX_DIM_WARP_HI 96
 
-extern "C" __global__ void mams_transition_warp(
-    // Per-chain state [K * dim] — persistent across iterations
+/* ---------- Templated warp body (shared by _warp and _warp_hi) ---------- */
+
+template<int DW>
+__device__ void mams_transition_warp_body(
+    // Per-chain state [K * dim]
     double* __restrict__ g_x,
     double* __restrict__ g_u,
     double* __restrict__ g_potential,
     double* __restrict__ g_grad,
-    // Sampler params — per-chain step size
-    const double* __restrict__ d_eps,   // [K] per-chain step sizes
-    double l,
-    int max_leapfrog,
-    int dim,
+    const double* __restrict__ d_eps,
+    double l, int max_leapfrog, int dim,
     const double* __restrict__ inv_mass,
     int enable_mh,
-    // Model data
     const double* __restrict__ model_data,
     int model_id,
-    // RNG
-    unsigned long long seed,
-    int iteration,
-    // Chain count
+    unsigned long long seed, int iteration,
     int n_chains,
-    // Output
     int* __restrict__ accepted,
     double* __restrict__ energy_error,
-    // Accumulation buffers
     double* __restrict__ g_sample_buf,
     double* __restrict__ g_accum_potential,
     int*    __restrict__ g_accum_accepted,
     double* __restrict__ g_accum_energy,
-    int store_idx,
-    int n_report,
-    // Warp-specific: data dimensions for shared memory layout
-    int n_obs,    // number of observations (rows of X)
-    int n_feat,   // number of features (columns of X)
-    int warp_use_shmem // whether to use shared-memory transpose
+    int store_idx, int n_report,
+    int n_obs, int n_feat, int warp_use_shmem,
+    double divergence_threshold,
+    double* s_data
 ) {
     int global_thread = blockIdx.x * blockDim.x + threadIdx.x;
     int chain = global_thread / 32;
     int lane_id = threadIdx.x % 32;
 
     // --- Optional cooperative shared memory load ---
-    // For GLM, host layout is [n, p, X_row(n*p), y(n), X_col(n*p)].
-    // Shared memory receives X_col directly (no runtime transpose).
-    extern __shared__ double s_data[];
     double* s_X_col = s_data;               // [n_feat × n_obs] column-major
     double* s_y = s_data + n_obs * n_feat;  // [n_obs]
 
@@ -794,7 +821,6 @@ extern "C" __global__ void mams_transition_warp(
         const double* X_col = model_data + 2 + n_obs * n_feat + n_obs;
         const double* y_src = model_data + 2 + n_obs * n_feat;
 
-        // Cooperative copy: all threads in block participate
         int n_total = n_obs * n_feat;
         for (int idx = threadIdx.x; idx < n_total; idx += blockDim.x) {
             s_X_col[idx] = X_col[idx];
@@ -809,7 +835,6 @@ extern "C" __global__ void mams_transition_warp(
 
     __mams_model_id = model_id;
 
-    // Load per-chain step size (lane 0 loads, broadcast to all lanes via __shfl_sync)
     double eps;
     if (lane_id == 0) {
         eps = d_eps[chain];
@@ -822,8 +847,7 @@ extern "C" __global__ void mams_transition_warp(
     double dm1 = (double)(dim - 1);
     if (dm1 < 0.5) dm1 = 1.0;
 
-    // All lanes load the same chain state (replicated in registers)
-    double x[MAX_DIM_WARP], u[MAX_DIM_WARP], grad_reg[MAX_DIM_WARP];
+    double x[DW], u[DW], grad_reg[DW];
     size_t off = (size_t)chain * dim;
     for (int i = 0; i < dim; i++) {
         x[i] = g_x[off + i];
@@ -832,41 +856,19 @@ extern "C" __global__ void mams_transition_warp(
     }
     double potential = g_potential[chain];
 
-    // All lanes get identical Philox state (same chain → same sequence)
     PhiloxState rng;
     philox_init(&rng, seed ^ ((unsigned long long)iteration * 0x9E3779B97F4A7C15ULL), chain);
 
-    // ---------- 1. Partial velocity refresh (identical across all lanes) ----------
+    // ---------- 1. Partial velocity refresh ----------
     double angle = mams_refresh_angle(eps, l, model_id);
     double cos_a = cos(angle);
     double sin_a = sin(angle);
 
-    double z[MAX_DIM_WARP];
-    double u_dot_z = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] = philox_normal(&rng);
-        u_dot_z += u[i] * z[i];
-    }
-    double z_perp_norm_sq = 0.0;
-    for (int i = 0; i < dim; i++) {
-        z[i] -= u_dot_z * u[i];
-        z_perp_norm_sq += z[i] * z[i];
-    }
-    double z_perp_norm = sqrt(z_perp_norm_sq);
-    if (z_perp_norm > 1e-12) {
-        double inv_norm = 1.0 / z_perp_norm;
-        double u_new_norm_sq = 0.0;
-        for (int i = 0; i < dim; i++) {
-            u[i] = u[i] * cos_a + z[i] * inv_norm * sin_a;
-            u_new_norm_sq += u[i] * u[i];
-        }
-        double u_new_norm = sqrt(u_new_norm_sq);
-        double inv = 1.0 / u_new_norm;
-        for (int i = 0; i < dim; i++) u[i] *= inv;
-    }
+    double z[DW];
+    mams_partial_refresh(u, dim, cos_a, sin_a, &rng, z);
 
     // ---------- 2. Save pre-trajectory state ----------
-    double x_old[MAX_DIM_WARP], u_old[MAX_DIM_WARP], grad_old[MAX_DIM_WARP];
+    double x_old[DW], u_old[DW], grad_old[DW];
     double potential_old = potential;
     for (int i = 0; i < dim; i++) {
         x_old[i] = x[i];
@@ -878,26 +880,29 @@ extern "C" __global__ void mams_transition_warp(
     double total_delta_k = 0.0;
     int divergent = 0;
     int is_riemannian = (model_id == 5);
+    double sqrt_inv_mass_local[DW];
+    for (int i = 0; i < dim; i++) {
+        sqrt_inv_mass_local[i] = sqrt(inv_mass[i]);
+    }
 
     for (int s = 0; s < n_steps; s++) {
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
             a_step_riemannian_funnel(x, u, inv_mass, eps, dim);
         } else {
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
             a_step(x, u, inv_mass, eps, dim);
         }
-        // Warp-cooperative grad + nll (single fused callback)
         potential = user_grad_nll_warp(
             x, grad_reg, dim, model_data, s_X_col, s_y, n_obs, n_feat, lane_id, warp_use_shmem);
         if (is_riemannian) {
             total_delta_k += b_step_riemannian_funnel(u, grad_reg, x, inv_mass, eps * 0.5, dim, dm1);
         } else {
-            total_delta_k += b_step(u, grad_reg, inv_mass, eps * 0.5, dim, dm1);
+            total_delta_k += b_step_precond(u, grad_reg, sqrt_inv_mass_local, eps * 0.5, dim, dm1);
         }
 
         double current_w = (potential - potential_old) + total_delta_k;
-        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > 1000.0)) {
+        if (isfinite(potential_old) && (!isfinite(current_w) || current_w > divergence_threshold)) {
             divergent = 1;
             break;
         }
@@ -907,7 +912,7 @@ extern "C" __global__ void mams_transition_warp(
         if (!isfinite(x[i])) { divergent = 1; break; }
     }
 
-    // ---------- 4. MH accept/reject (RNG identical across lanes) ----------
+    // ---------- 4. MH accept/reject ----------
     int acc = 0;
     double w = 0.0;
     int first_call = !isfinite(potential_old);
@@ -965,6 +970,54 @@ extern "C" __global__ void mams_transition_warp(
             }
         }
     }
+}
+
+/* ---------- Warp kernel wrappers ---------------------------------------- */
+
+extern "C" __global__ void mams_transition_warp(
+    double* __restrict__ g_x, double* __restrict__ g_u,
+    double* __restrict__ g_potential, double* __restrict__ g_grad,
+    const double* __restrict__ d_eps, double l, int max_leapfrog, int dim,
+    const double* __restrict__ inv_mass, int enable_mh,
+    const double* __restrict__ model_data, int model_id,
+    unsigned long long seed, int iteration, int n_chains,
+    int* __restrict__ accepted, double* __restrict__ energy_error,
+    double* __restrict__ g_sample_buf, double* __restrict__ g_accum_potential,
+    int* __restrict__ g_accum_accepted, double* __restrict__ g_accum_energy,
+    int store_idx, int n_report,
+    int n_obs, int n_feat, int warp_use_shmem,
+    double divergence_threshold
+) {
+    extern __shared__ double s_data[];
+    mams_transition_warp_body<MAX_DIM_WARP>(
+        g_x, g_u, g_potential, g_grad, d_eps, l, max_leapfrog, dim,
+        inv_mass, enable_mh, model_data, model_id, seed, iteration, n_chains,
+        accepted, energy_error, g_sample_buf, g_accum_potential,
+        g_accum_accepted, g_accum_energy, store_idx, n_report,
+        n_obs, n_feat, warp_use_shmem, divergence_threshold, s_data);
+}
+
+extern "C" __global__ void mams_transition_warp_hi(
+    double* __restrict__ g_x, double* __restrict__ g_u,
+    double* __restrict__ g_potential, double* __restrict__ g_grad,
+    const double* __restrict__ d_eps, double l, int max_leapfrog, int dim,
+    const double* __restrict__ inv_mass, int enable_mh,
+    const double* __restrict__ model_data, int model_id,
+    unsigned long long seed, int iteration, int n_chains,
+    int* __restrict__ accepted, double* __restrict__ energy_error,
+    double* __restrict__ g_sample_buf, double* __restrict__ g_accum_potential,
+    int* __restrict__ g_accum_accepted, double* __restrict__ g_accum_energy,
+    int store_idx, int n_report,
+    int n_obs, int n_feat, int warp_use_shmem,
+    double divergence_threshold
+) {
+    extern __shared__ double s_data[];
+    mams_transition_warp_body<MAX_DIM_WARP_HI>(
+        g_x, g_u, g_potential, g_grad, d_eps, l, max_leapfrog, dim,
+        inv_mass, enable_mh, model_data, model_id, seed, iteration, n_chains,
+        accepted, energy_error, g_sample_buf, g_accum_potential,
+        g_accum_accepted, g_accum_energy, store_idx, n_report,
+        n_obs, n_feat, warp_use_shmem, divergence_threshold, s_data);
 }
 
 #endif /* MAMS_ENGINE_CUH */

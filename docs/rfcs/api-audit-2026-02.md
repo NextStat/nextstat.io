@@ -261,7 +261,7 @@ This is correct — each layer follows its ecosystem conventions.
 
 Since there are almost no external users yet, all P0 changes were applied directly without a deprecation cycle. Old functions (`ranking_gpu`, `fit_toys_batch_gpu`, `unbinned_hypotest`, `unbinned_profile_scan`, `upper_limits_root`, etc.) were removed from `__init__.py` and `__all__`. The Rust `_impl` functions are still available internally but not exported.
 
-Internal API conventions documented in `docs/internal/api-conventions.md` to prevent future inconsistencies.
+Internal API conventions documented to prevent future inconsistencies.
 
 ---
 

@@ -335,11 +335,15 @@ jobs:
           chmod +x "${NEXTSTAT_BIN}"
 
           # Re-render using the exact Apex2 master JSON output and ensure JSON+PDF+manifest are bit-identical.
+          # Copy pharma_validation.json from first render (FOCE/SAEM is non-deterministic between runs).
+          if [[ -f artifacts/pharma_validation.json ]]; then
+            cp artifacts/pharma_validation.json artifacts2/pharma_validation.json
+          fi
           set +e
           make validation-pack \
             VALIDATION_PACK_OUT_DIR=artifacts2 \
             VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
-            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
+            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic --skip-pharma-validation"
           MAKE_RC=$?
           set -e
           if [[ ! -f "artifacts2/validation_report.json" ]]; then

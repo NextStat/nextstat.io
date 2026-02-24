@@ -56,8 +56,8 @@ def main() -> int:
     # -- Detailed results table --
     lines.append("## Detailed results")
     lines.append("")
-    lines.append("| Case | Backend | Status | Wall (s) | min ESS_bulk | min ESS_tail | max R-hat | min ESS_bulk/s |")
-    lines.append("|---|---|---|---:|---:|---:|---:|---:|")
+    lines.append("| Case | Backend | Status | Wall (s) | min ESS_bulk | min ESS_tail | max R-hat | ESS/grad | min ESS_bulk/s |")
+    lines.append("|---|---|---|---:|---:|---:|---:|---:|---:|")
     for c in cases:
         status = str(c.get("status") or "unknown")
         lines.append(
@@ -71,12 +71,43 @@ def main() -> int:
                     _fmt(c.get("min_ess_bulk")),
                     _fmt(c.get("min_ess_tail")),
                     _fmt(c.get("max_r_hat")),
+                    _fmt(c.get("ess_per_grad"), digits=4),
                     _fmt(c.get("min_ess_bulk_per_sec")),
                 ]
             )
             + " |"
         )
     lines.append("")
+
+    # -- ESS/sec decomposition table --
+    decomp_rows = [c for c in cases if c.get("status") == "ok" and _safe_float(c.get("ess_per_grad")) is not None]
+    if decomp_rows:
+        lines.append("## ESS/sec Decomposition")
+        lines.append("")
+        lines.append("`ESS/sec = (ESS/grad) × (grad/sec)`")
+        lines.append("")
+        lines.append("| Case | Backend | ESS/grad | grad/s | ESS_bulk/s | Product check |")
+        lines.append("|---|---|---:|---:|---:|---:|")
+        for c in decomp_rows:
+            epg = _safe_float(c.get("ess_per_grad"))
+            gps = _safe_float(c.get("grad_per_sec"))
+            eps = _safe_float(c.get("min_ess_bulk_per_sec"))
+            prod = (epg * gps) if (epg is not None and gps is not None) else None
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(c.get("case") or "unknown"),
+                        str(c.get("backend") or "unknown"),
+                        _fmt(epg, digits=4),
+                        _fmt(gps),
+                        _fmt(eps),
+                        _fmt(prod),
+                    ]
+                )
+                + " |"
+            )
+        lines.append("")
 
     # -- Posterior parity (NextStat dense vs diagonal) --
     parity = obj.get("parity") if isinstance(obj.get("parity"), dict) else {}

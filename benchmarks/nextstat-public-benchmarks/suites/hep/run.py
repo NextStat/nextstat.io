@@ -56,10 +56,49 @@ def pyhf_nll(model, data, params) -> float:
 
 def map_params_by_name(src_names, src_params, dst_names, dst_init):
     dst_index = {name: i for i, name in enumerate(dst_names)}
+    missing = [name for name in src_names if name not in dst_index]
+    if missing:
+        raise KeyError(f"Missing destination parameters for mapping: {missing}")
     out = list(dst_init)
     for name, value in zip(src_names, src_params):
         out[dst_index[name]] = float(value)
     return out
+
+
+def select_workspace_measurement(
+    workspace: dict[str, Any], requested_name: str | None
+) -> tuple[dict[str, Any], str]:
+    measurements = workspace.get("measurements")
+    if not isinstance(measurements, list) or not measurements:
+        raise ValueError("Workspace has no measurements")
+
+    selected: dict[str, Any] | None = None
+    if requested_name:
+        for m in measurements:
+            if isinstance(m, dict) and str(m.get("name", "")) == requested_name:
+                selected = m
+                break
+        if selected is None:
+            available = [
+                str(m.get("name", "")) for m in measurements if isinstance(m, dict)
+            ]
+            raise ValueError(
+                f"Requested measurement '{requested_name}' not found. Available: {available}"
+            )
+    else:
+        first = measurements[0]
+        if not isinstance(first, dict):
+            raise ValueError("Workspace measurement entry has invalid shape")
+        selected = first
+
+    selected_name = str(selected.get("name", "")).strip()
+    if not selected_name:
+        raise ValueError("Selected measurement has empty name")
+
+    # Keep only the selected measurement so both engines evaluate the same POI/measurement.
+    ws_selected = dict(workspace)
+    ws_selected["measurements"] = [selected]
+    return ws_selected, selected_name
 
 
 def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 5) -> float:
@@ -74,7 +113,10 @@ def bench_time_per_call(fn: Callable[[], Any], *, target_s: float = 0.25, repeat
 
 
 def bench_time_per_call_raw(
-    fn: Callable[[], Any], *, target_s: float = 0.25, repeat: int = 5
+    fn: Callable[[], Any],
+    *,
+    target_s: float = 0.25,
+    repeat: int = 5,
 ) -> tuple[int, list[float]]:
     number = 1
     while True:
@@ -122,8 +164,15 @@ def main() -> int:
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    workspace: dict[str, Any] = json.loads(ws_path.read_text())
-    pyhf_model, pyhf_data = pyhf_model_and_data(workspace, args.measurement_name)
+    # Fix benchmark backend for reproducibility/fairness.
+    # Without this, externally configured backends can silently change performance.
+    pyhf.set_backend("numpy")
+
+    workspace_raw: dict[str, Any] = json.loads(ws_path.read_text())
+    workspace, selected_measurement = select_workspace_measurement(
+        workspace_raw, args.measurement_name
+    )
+    pyhf_model, pyhf_data = pyhf_model_and_data(workspace, selected_measurement)
     pyhf_params = list(pyhf_model.config.suggested_init())
 
     ns_model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
@@ -155,11 +204,8 @@ def main() -> int:
 
     target_s = float(args.target_s)
     repeat = int(args.repeat)
-    number, pyhf_times = bench_time_per_call_raw(f_pyhf, target_s=target_s, repeat=repeat)
-    number2, ns_times = bench_time_per_call_raw(f_ns, target_s=target_s, repeat=repeat)
-    # Keep a single shared `number` in the raw metadata. If they differ, record the larger
-    # and keep the arrays as-is (this is fine for reporting).
-    number = max(number, number2)
+    number_pyhf, pyhf_times = bench_time_per_call_raw(f_pyhf, target_s=target_s, repeat=repeat)
+    number_nextstat, ns_times = bench_time_per_call_raw(f_ns, target_s=target_s, repeat=repeat)
     pyhf_t = min(pyhf_times)
     ns_t = min(ns_times)
     speedup = pyhf_t / ns_t if ns_t > 0 else float("inf")
@@ -201,7 +247,13 @@ def main() -> int:
             "nll_time_s_per_call": {"pyhf": float(pyhf_t), "nextstat": float(ns_t)},
             "speedup_pyhf_over_nextstat": float(speedup),
             "raw": {
-                "number": int(number),
+                # Legacy single calibration counter kept for compatibility.
+                "number": int(max(number_pyhf, number_nextstat)),
+                "number_per_engine": {
+                    "pyhf": int(number_pyhf),
+                    "nextstat": int(number_nextstat),
+                },
+                "calibration": "per_engine_target_s",
                 "repeat": int(repeat),
                 "target_s": float(target_s),
                 "policy": "min",

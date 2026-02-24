@@ -678,6 +678,313 @@ pub fn solve_at_times<S: OdeSystem>(
 }
 
 // ---------------------------------------------------------------------------
+// LSODA-style auto-switch solver
+// ---------------------------------------------------------------------------
+
+fn jacobian_infinity_norm<S: OdeSystem>(sys: &S, t: f64, y: &[f64]) -> f64 {
+    let n = sys.ndim();
+    let mut jac = vec![vec![0.0; n]; n];
+    sys.jacobian(t, y, &mut jac);
+    jac.iter().map(|row| row.iter().map(|v| v.abs()).sum::<f64>()).fold(0.0, f64::max)
+}
+
+/// LSODA-style adaptive solver with automatic stiff/non-stiff switching.
+///
+/// Uses a practical heuristic:
+/// - non-stiff phase: `rk45` (Adams-like explicit behavior)
+/// - stiff phase: `esdirk4` (BDF-like implicit behavior)
+///
+/// The solver evaluates a stiffness indicator from the local Jacobian norm
+/// and switches integrators on-the-fly across integration windows.
+pub fn lsoda<S: OdeSystem>(
+    sys: &S,
+    y0: &[f64],
+    t0: f64,
+    t1: f64,
+    opts: &OdeOptions,
+) -> Result<OdeSolution> {
+    opts.validate()?;
+    let n = sys.ndim();
+    if y0.len() != n {
+        return Err(Error::Validation(format!("lsoda: y0.len()={} != ndim()={n}", y0.len())));
+    }
+    if !t0.is_finite() || !t1.is_finite() {
+        return Err(Error::Validation("lsoda: t0/t1 must be finite".into()));
+    }
+    if t1 < t0 {
+        return Err(Error::Validation("lsoda: requires t1 >= t0".into()));
+    }
+    let span = t1 - t0;
+    if span == 0.0 {
+        return Ok(OdeSolution { t: vec![t0], y: vec![y0.to_vec()] });
+    }
+
+    let mut out = OdeSolution { t: Vec::new(), y: Vec::new() };
+    if opts.dense_output {
+        out.t.push(t0);
+        out.y.push(y0.to_vec());
+    }
+
+    let mut t = t0;
+    let mut y = y0.to_vec();
+    let mut used_steps = 0usize;
+    let mut base_h = opts.initial_step(span);
+    if base_h <= 0.0 {
+        base_h = (span * 1e-3).max(opts.h_min);
+    }
+
+    // Initial stiffness decision.
+    let mut stiff = jacobian_infinity_norm(sys, t, &y) * base_h > 3.0;
+    let mut window = (span / 20.0).max(base_h * 8.0).max(opts.h_min * 10.0);
+    window = window.min(opts.h_max).max(opts.h_min);
+
+    while t < t1 {
+        if used_steps >= opts.max_steps {
+            return Err(Error::Validation(format!(
+                "lsoda: exceeded max_steps={} at t={t:.6e} before reaching t1={t1:.6e}",
+                opts.max_steps
+            )));
+        }
+
+        let t_next = (t + window).min(t1);
+        let mut seg_opts = opts.clone();
+        seg_opts.dense_output = true;
+        seg_opts.h0 = seg_opts.h0.min((t_next - t).max(opts.h_min));
+        seg_opts.max_steps = opts.max_steps.saturating_sub(used_steps).max(16);
+
+        let seg_res = if stiff {
+            esdirk4(sys, &y, t, t_next, &seg_opts)
+        } else {
+            rk45(sys, &y, t, t_next, &seg_opts)
+        };
+
+        let seg = match seg_res {
+            Ok(s) => s,
+            Err(e) => {
+                // LSODA-like recovery: retry stiff solver after explicit failure.
+                if !stiff {
+                    stiff = true;
+                    continue;
+                }
+                return Err(e);
+            }
+        };
+
+        if seg.t.len() < 2 || seg.y.is_empty() {
+            return Err(Error::Validation(
+                "lsoda: internal segment solver returned empty output".into(),
+            ));
+        }
+
+        // Merge segment (skip first point; it equals current state).
+        for i in 1..seg.t.len() {
+            if opts.dense_output {
+                out.t.push(seg.t[i]);
+                out.y.push(seg.y[i].clone());
+            }
+        }
+
+        t = *seg.t.last().unwrap();
+        y = seg.y.last().unwrap().clone();
+        used_steps += seg.t.len().saturating_sub(1);
+
+        if t >= t1 {
+            break;
+        }
+
+        // Re-evaluate stiffness for next window.
+        let local_h = (t_next - (t_next - window)).max(opts.h_min);
+        let stiff_indicator = jacobian_infinity_norm(sys, t, &y) * local_h;
+        if stiff {
+            if stiff_indicator < 0.5 {
+                stiff = false;
+            }
+        } else if stiff_indicator > 8.0 {
+            stiff = true;
+        }
+    }
+
+    if !opts.dense_output {
+        out.t.push(t);
+        out.y.push(y);
+    }
+
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Forward sensitivities
+// ---------------------------------------------------------------------------
+
+/// ODE with explicit parameter vector for forward sensitivity integration.
+pub trait ParamOdeSystem {
+    /// Number of state variables.
+    fn ndim(&self) -> usize;
+    /// Number of parameters.
+    fn nparams(&self) -> usize;
+    /// RHS `dy/dt = f(t, y, p)`.
+    fn rhs_param(&self, t: f64, y: &[f64], params: &[f64], dydt: &mut [f64]);
+
+    /// Jacobian wrt state, `J_y = ∂f/∂y`.
+    fn jacobian_y(&self, t: f64, y: &[f64], params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        let n = self.ndim();
+        let eps = 1e-8;
+        let mut yp = y.to_vec();
+        let mut fp = vec![0.0; n];
+        let mut fm = vec![0.0; n];
+        jac.resize(n, vec![0.0; n]);
+        for row in jac.iter_mut() {
+            row.resize(n, 0.0);
+        }
+        for j in 0..n {
+            let orig = yp[j];
+            let h = eps * (1.0 + orig.abs());
+            yp[j] = orig + h;
+            self.rhs_param(t, &yp, params, &mut fp);
+            yp[j] = orig - h;
+            self.rhs_param(t, &yp, params, &mut fm);
+            yp[j] = orig;
+            for i in 0..n {
+                jac[i][j] = (fp[i] - fm[i]) / (2.0 * h);
+            }
+        }
+    }
+
+    /// Jacobian wrt parameters, `J_p = ∂f/∂p` (shape `n × np`).
+    fn jacobian_params(&self, t: f64, y: &[f64], params: &[f64], jac: &mut Vec<Vec<f64>>) {
+        let n = self.ndim();
+        let np = self.nparams();
+        let eps = 1e-8;
+        let mut pp = params.to_vec();
+        let mut fp = vec![0.0; n];
+        let mut fm = vec![0.0; n];
+        jac.resize(n, vec![0.0; np]);
+        for row in jac.iter_mut() {
+            row.resize(np, 0.0);
+        }
+        for j in 0..np {
+            let orig = pp[j];
+            let h = eps * (1.0 + orig.abs());
+            pp[j] = orig + h;
+            self.rhs_param(t, y, &pp, &mut fp);
+            pp[j] = orig - h;
+            self.rhs_param(t, y, &pp, &mut fm);
+            pp[j] = orig;
+            for i in 0..n {
+                jac[i][j] = (fp[i] - fm[i]) / (2.0 * h);
+            }
+        }
+    }
+}
+
+/// Integrator choice for forward sensitivity equations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensitivitySolver {
+    Rk45,
+    Esdirk4,
+    Lsoda,
+}
+
+/// Solution of state + forward sensitivities.
+#[derive(Debug, Clone)]
+pub struct OdeSensitivitySolution {
+    /// Time grid.
+    pub t: Vec<f64>,
+    /// State trajectory `y[k][i]`.
+    pub y: Vec<Vec<f64>>,
+    /// Sensitivities `sens[k][i][p] = ∂y_i/∂p` at time index `k`.
+    pub sens: Vec<Vec<Vec<f64>>>,
+}
+
+struct AugmentedSensitivitySystem<'a, S: ParamOdeSystem> {
+    sys: &'a S,
+    params: &'a [f64],
+    n: usize,
+    np: usize,
+}
+
+impl<S: ParamOdeSystem> OdeSystem for AugmentedSensitivitySystem<'_, S> {
+    fn ndim(&self) -> usize {
+        self.n + self.n * self.np
+    }
+
+    fn rhs(&self, t: f64, y: &[f64], dydt: &mut [f64]) {
+        let n = self.n;
+        let np = self.np;
+        let state = &y[..n];
+        let state_dot = &mut dydt[..n];
+        self.sys.rhs_param(t, state, self.params, state_dot);
+
+        let mut jy = vec![vec![0.0; n]; n];
+        let mut jp = vec![vec![0.0; np]; n];
+        self.sys.jacobian_y(t, state, self.params, &mut jy);
+        self.sys.jacobian_params(t, state, self.params, &mut jp);
+
+        for p in 0..np {
+            for i in 0..n {
+                let mut v = jp[i][p];
+                for j in 0..n {
+                    let s_jp = y[n + p * n + j];
+                    v += jy[i][j] * s_jp;
+                }
+                dydt[n + p * n + i] = v;
+            }
+        }
+    }
+}
+
+/// Solve forward sensitivity equations by augmenting the ODE state.
+pub fn forward_sensitivity_solve<S: ParamOdeSystem>(
+    sys: &S,
+    params: &[f64],
+    y0: &[f64],
+    t0: f64,
+    t1: f64,
+    opts: &OdeOptions,
+    solver: SensitivitySolver,
+) -> Result<OdeSensitivitySolution> {
+    let n = sys.ndim();
+    let np = sys.nparams();
+    if params.len() != np {
+        return Err(Error::Validation(format!(
+            "forward_sensitivity_solve: params.len()={} != nparams()={np}",
+            params.len()
+        )));
+    }
+    if y0.len() != n {
+        return Err(Error::Validation(format!(
+            "forward_sensitivity_solve: y0.len()={} != ndim()={n}",
+            y0.len()
+        )));
+    }
+
+    let mut y_aug0 = vec![0.0_f64; n + n * np];
+    y_aug0[..n].copy_from_slice(y0);
+
+    let aug = AugmentedSensitivitySystem { sys, params, n, np };
+    let sol = match solver {
+        SensitivitySolver::Rk45 => rk45(&aug, &y_aug0, t0, t1, opts)?,
+        SensitivitySolver::Esdirk4 => esdirk4(&aug, &y_aug0, t0, t1, opts)?,
+        SensitivitySolver::Lsoda => lsoda(&aug, &y_aug0, t0, t1, opts)?,
+    };
+
+    let mut y = Vec::with_capacity(sol.t.len());
+    let mut sens = Vec::with_capacity(sol.t.len());
+    for row in &sol.y {
+        y.push(row[..n].to_vec());
+        let mut s = vec![vec![0.0_f64; np]; n];
+        for p in 0..np {
+            for i in 0..n {
+                s[i][p] = row[n + p * n + i];
+            }
+        }
+        sens.push(s);
+    }
+
+    Ok(OdeSensitivitySolution { t: sol.t, y, sens })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -967,5 +1274,69 @@ mod tests {
         let y_es = sol_es.y.last().unwrap()[0];
 
         assert!((y_rk - y_es).abs() < 1e-6, "rk45={y_rk}, esdirk4={y_es} should agree");
+    }
+
+    #[test]
+    fn lsoda_exp_decay_agrees_with_analytic() {
+        let sys = ExpDecay { k: 1.1 };
+        let y0 = [2.5];
+        let opts = OdeOptions { rtol: 1e-8, atol: 1e-10, ..Default::default() };
+        let sol = lsoda(&sys, &y0, 0.0, 2.0, &opts).unwrap();
+        let y_final = sol.y.last().unwrap()[0];
+        let expected = y0[0] * (-1.1_f64 * 2.0).exp();
+        assert!((y_final - expected).abs() < 1e-5, "lsoda={y_final}, expected={expected}");
+    }
+
+    #[test]
+    fn lsoda_stiff_transit_chain_smoke() {
+        let sys = TransitChain { n_transit: 12, ktr: 80.0, ka: 1.0, ke: 0.1 };
+        let mut y0 = vec![0.0; 14];
+        y0[0] = 100.0;
+        let opts = OdeOptions { rtol: 1e-6, atol: 1e-9, ..Default::default() };
+        let sol = lsoda(&sys, &y0, 0.0, 24.0, &opts).unwrap();
+        let y_final = sol.y.last().unwrap();
+        assert!(y_final[13] > 0.0, "central should have drug");
+        assert!(y_final[0] < 0.1, "transit should be mostly depleted");
+    }
+
+    struct ExpDecayParam;
+    impl ParamOdeSystem for ExpDecayParam {
+        fn ndim(&self) -> usize {
+            1
+        }
+        fn nparams(&self) -> usize {
+            1
+        }
+        fn rhs_param(&self, _t: f64, y: &[f64], params: &[f64], dydt: &mut [f64]) {
+            dydt[0] = -params[0] * y[0];
+        }
+    }
+
+    #[test]
+    fn forward_sensitivity_exp_decay_matches_analytic() {
+        let sys = ExpDecayParam;
+        let params = [1.3];
+        let y0 = [2.0];
+        let t_end = 3.0;
+        let opts = OdeOptions { rtol: 1e-8, atol: 1e-10, ..Default::default() };
+        let sol = forward_sensitivity_solve(
+            &sys,
+            &params,
+            &y0,
+            0.0,
+            t_end,
+            &opts,
+            SensitivitySolver::Lsoda,
+        )
+        .unwrap();
+
+        let y_final = sol.y.last().unwrap()[0];
+        let s_final = sol.sens.last().unwrap()[0][0];
+
+        let y_expected = y0[0] * (-params[0] * t_end).exp();
+        let s_expected = -t_end * y_expected; // d/dk [y0 exp(-k t)] = -t y
+
+        assert!((y_final - y_expected).abs() < 1e-5, "state mismatch");
+        assert!((s_final - s_expected).abs() < 2e-4, "sensitivity mismatch");
     }
 }

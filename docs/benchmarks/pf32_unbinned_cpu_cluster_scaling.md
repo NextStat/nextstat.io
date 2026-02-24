@@ -94,7 +94,7 @@ Notes:
 - If one execute node is flaky or unreachable (common symptom: negotiator says “Successfully matched” but the job stays `Idle`), exclude it with `--condor-requirements`, e.g.:
 
 ```bash
-  --condor-requirements '(Machine != "nextstat-gex44")'
+  --condor-requirements '(Machine != "node-rtx4000")'
 ```
 
 Submit:
@@ -120,7 +120,7 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Shards: `74`
 - Threads per shard: `1`
-- Requirements: excluded `nextstat-gex44` (jobs were being matched to gex44 but not starting; likely claim/file-transfer/connectivity issue)
+- Requirements: excluded `node-rtx4000` (jobs were being matched to rtx4000 but not starting; likely claim/file-transfer/connectivity issue)
 
 Result:
 - Convergence: `10000/10000` converged, `0` errors
@@ -128,10 +128,10 @@ Result:
 - Throughput: `~40.2 toys/s`
 
 Artifacts (submit node):
-- run dir: `/home/actions-runner/nextstat_runs/pf32_full_2m10k_sh74_20260215T134329Z`
-- merged: `/home/actions-runner/nextstat_runs/pf32_full_2m10k_sh74_20260215T134329Z/merged.out.json`
+- run dir: `runs/pf32_full_2m10k_sh74_20260215T134329Z`
+- merged: `runs/pf32_full_2m10k_sh74_20260215T134329Z/merged.out.json`
 
-### Additional Snapshot: All Nodes (Including gex44)
+### Additional Snapshot: All Nodes (Including rtx4000)
 
 Run date: 2026-02-15
 
@@ -139,17 +139,17 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Shards: `74`
 - Threads per shard: `1`
-- Requirements: none (pool included `nextstat-bench`, `nextstat-coolify`, `nextstat-gex44`)
+- Requirements: none (pool included `nextstat-bench`, `nextstat-coolify`, `node-rtx4000`)
 
 Result:
 - Convergence: `10000/10000` converged, `0` errors
-- Host distribution: `nextstat-bench=58`, `nextstat-coolify=10`, `nextstat-gex44=6`
+- Host distribution: `nextstat-bench=58`, `nextstat-coolify=10`, `node-rtx4000=6`
 - Makespan (max shard elapsed): `344s`
 - Throughput: `~29.1 toys/s`
 
 Artifacts:
-- run dir: `/home/actions-runner/nextstat_runs/pf32_full_2m10k_sh74_allnodes_20260215T150040Z`
-- merged: `/home/actions-runner/nextstat_runs/pf32_full_2m10k_sh74_allnodes_20260215T150040Z/merged.out.json`
+- run dir: `runs/pf32_full_2m10k_sh74_allnodes_20260215T150040Z`
+- merged: `runs/pf32_full_2m10k_sh74_allnodes_20260215T150040Z/merged.out.json`
 
 Notes:
 - This run is **not** directly comparable to the earlier `249s` snapshot: it was executed later in the day and the tail was dominated by shards running on `nextstat-bench` (likely higher contention / different background load at the time of measurement).
@@ -200,6 +200,22 @@ python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
   --slurm-time 08:00:00
 ```
 
+Auto matrix from preflight cores (no manual `--shards-list`):
+
+```bash
+python3 scripts/farm/pf32_unbinned_shard_sweep.py render \
+  --scheduler htcondor \
+  --config /shared/nextstat/benchmarks/unbinned/specs/pf31_gauss_exp_2m.json \
+  --n-toys 10000 \
+  --seed 42 \
+  --threads 1 \
+  --nextstat-bin /shared/nextstat/target/release/nextstat \
+  --out-root /shared/nextstat_runs \
+  --preflight-json /shared/nextstat_runs/preflight.json \
+  --auto-shards-base physical \
+  --shard-factors 0.5,1.0,1.5,2.0,3.0
+```
+
 After jobs finish:
 
 ```bash
@@ -217,7 +233,10 @@ and automatically run collect+merge after each run directory finishes:
 python3 scripts/farm/pf32_unbinned_shard_sweep.py submit \
   --sweep-json /shared/nextstat_runs/pf32_hep_2m10k.sweep.json \
   --mode transfer \
-  --poll-s 10
+  --poll-s 10 \
+  --submit-retries 2 \
+  --retry-backoff-s 5 \
+  --continue-on-error
 ```
 
 ### Snapshot: HTCondor Shard Sweep (bench+coolify, transfer mode, 2GB)
@@ -228,19 +247,19 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Threads per shard: `1`
 - Submit file: `condor_job_transfer.sub` (execute nodes do not need a shared filesystem)
-- Requirements: excluded `nextstat-gex44` (bench+coolify only)
+- Requirements: excluded `node-rtx4000` (bench+coolify only)
 - `request_memory`: `2GB` (allows higher concurrency vs `4GB` which caps `nextstat-bench` at ~30 slots)
 
 Sweep:
-- sweep json: `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44.sweep.json`
+- sweep json: `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000.sweep.json`
 
 | Shards | Makespan | Throughput | Converged | Errors | Run dir |
 |---:|---:|---:|---:|---:|---|
-| 40 | 425s | 23.529 toys/s | 10000 | 0 | `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44_sh40` |
-| 74 | 359s | 27.855 toys/s | 10000 | 0 | `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44_sh74` |
-| 80 | 339s | 29.499 toys/s | 10000 | 0 | `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44_sh80` |
-| 120 | 250s | 40.000 toys/s | 10000 | 0 | `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44_sh120` |
-| 160 | 197s | 50.761 toys/s | 10000 | 0 | `/home/actions-runner/nextstat_runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nogex44_sh160` |
+| 40 | 425s | 23.529 toys/s | 10000 | 0 | `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000_sh40` |
+| 74 | 359s | 27.855 toys/s | 10000 | 0 | `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000_sh74` |
+| 80 | 339s | 29.499 toys/s | 10000 | 0 | `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000_sh80` |
+| 120 | 250s | 40.000 toys/s | 10000 | 0 | `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000_sh120` |
+| 160 | 197s | 50.761 toys/s | 10000 | 0 | `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000_sh160` |
 
 Interpretation:
 - On a heterogeneous pool (bench fast, coolify slower), **oversharding** can reduce the long tail and increase throughput: `160 shards` was best in this sweep.
@@ -260,11 +279,11 @@ Results:
 
 | Shards | Makespan | Throughput | Notes | Run dir |
 |---:|---:|---:|---|---|
-| 160 | 196s | 51.020 toys/s | rep1 | `/home/actions-runner/nextstat_runs/pf32_2m10k_rep1_sh160_20260215T163705Z` |
-| 160 | 328s | 30.488 toys/s | rep2 (likely external contention on bench) | `/home/actions-runner/nextstat_runs/pf32_2m10k_rep2_sh160_20260215T163705Z` |
-| 160 | 207s | 48.309 toys/s | rep3 | `/home/actions-runner/nextstat_runs/pf32_2m10k_rep3_sh160_20260215T163705Z` |
-| 200 | 160s | 62.500 toys/s | sweep | `/home/actions-runner/nextstat_runs/pf32_2m10k_sweep_sh200_20260215T163705Z` |
-| 240 | 142s | 70.423 toys/s | sweep (best in this mini-matrix) | `/home/actions-runner/nextstat_runs/pf32_2m10k_sweep_sh240_20260215T163705Z` |
+| 160 | 196s | 51.020 toys/s | rep1 | `runs/pf32_2m10k_rep1_sh160_20260215T163705Z` |
+| 160 | 328s | 30.488 toys/s | rep2 (likely external contention on bench) | `runs/pf32_2m10k_rep2_sh160_20260215T163705Z` |
+| 160 | 207s | 48.309 toys/s | rep3 | `runs/pf32_2m10k_rep3_sh160_20260215T163705Z` |
+| 200 | 160s | 62.500 toys/s | sweep | `runs/pf32_2m10k_sweep_sh200_20260215T163705Z` |
+| 240 | 142s | 70.423 toys/s | sweep (best in this mini-matrix) | `runs/pf32_2m10k_sweep_sh240_20260215T163705Z` |
 
 Interpretation:
 - For this 2-node pool (`64 + 10 = 74 CPUs`), shard counts around `~3x` total CPUs (`240`) improved throughput vs the earlier `<=160` sweep.

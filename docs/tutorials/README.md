@@ -59,4 +59,4 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 
 ## Release and quality gates
 
-- Release gates: `docs/tutorials/release-gates.md`
+- Release gates: internal document (not in public repo)

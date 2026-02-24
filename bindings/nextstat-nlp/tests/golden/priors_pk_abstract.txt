@@ -1,0 +1,6 @@
+Population pharmacokinetic analysis of Drug X in healthy volunteers (Smith et al., 2024).
+CL was estimated with a lognormal prior, mean 3.5 SD 1.2 L/h, based on previous Phase I data.
+V1 followed a normal distribution, mean 45.0 SD 12.0 L, constrained >0.
+ka was modeled as half-normal, mean 1.2 SD 0.4 1/h, support >0.
+Q intercompartmental clearance: normal, mean 8.0 SD 2.5 L/h.
+V2 peripheral volume: lognormal, mean 25.0 SD 8.0 L.

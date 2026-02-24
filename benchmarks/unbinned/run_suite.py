@@ -31,6 +31,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../scripts/benchmarks"))
+from _parse_utils import parse_json_stdout  # noqa: E402
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -166,7 +169,7 @@ def _fit_nextstat(spec_path: Path) -> Dict[str, Any]:
     wall_ms = _now_ms() - t0
     if proc.returncode != 0:
         raise RuntimeError(f"nextstat failed:\n{proc.stderr}\n{proc.stdout}")
-    out = json.loads(proc.stdout)
+    out = parse_json_stdout(proc.stdout)
     out["_wall_ms"] = wall_ms
     return out
 

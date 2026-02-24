@@ -15,7 +15,7 @@ This note records a direct `ns-root` vs ROOT decode comparison on the same host 
 `ns-root`:
 
 ```bash
-cd /root/nextstat.io
+cd $NEXTSTAT_ROOT
 NS_ROOT_RNTUPLE_PERF_CASES=/var/snap/root-framework/common/bench/rntuple_bench_large_primitive.root \
 NS_ROOT_RNTUPLE_PERF_ITERS=5 \
 NS_ROOT_RNTUPLE_PERF_MAX_AVG_MS=100000 \
@@ -45,7 +45,7 @@ Relative on this harness:
 
 ## Notes
 
-- ROOT was installed via snap and run from snap-accessible path (`/var/snap/root-framework/common/bench`) because strict confinement cannot read `/root/nextstat.io` directly.
+- ROOT was installed via snap and run from snap-accessible path (`/var/snap/root-framework/common/bench`) because strict confinement cannot read `$NEXTSTAT_ROOT` directly.
 - This benchmark is for a primitive-only large fixture. Mixed nested/variable large-layout stress decode coverage is now marked `verified` in `docs/references/rntuple-compatibility-matrix.md` (`tests/fixtures/rntuple_bench_large.root`).
 
 ## Mixed-Layout Verification Addendum (2026-02-16)

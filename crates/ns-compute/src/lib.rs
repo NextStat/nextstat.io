@@ -22,6 +22,8 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
+/// Build-time SHA-256 checksums for CUDA kernel sources (always available).
+pub mod checksums;
 pub mod cpu;
 /// Device-agnostic GPU accelerator abstraction (always available).
 pub mod gpu_accel;

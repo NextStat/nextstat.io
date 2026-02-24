@@ -1,0 +1,182 @@
+{
+  "environment": {
+    "python_version": "3.12.3",
+    "python_full": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+    "platform": "Linux-6.5.0-35-generic-x86_64-with-glibc2.39",
+    "system": "Linux",
+    "machine": "x86_64",
+    "node": "beeb3e6dd6df",
+    "cpu": "Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "gpus": [
+      {
+        "name": "Tesla V100-PCIE-16GB",
+        "driver": "580.95.05",
+        "compute_capability": "7.0",
+        "memory_mb": "16384",
+        "power_limit_w": "250.00",
+        "compute_mode": "Default"
+      }
+    ],
+    "cuda_toolkit": "Cuda compilation tools, release 13.0, V13.0.88",
+    "cuda_visible_devices": null,
+    "jax": {
+      "jax": "0.9.0.1",
+      "jaxlib": "0.9.0.1",
+      "backend": "gpu",
+      "device": "Tesla V100-PCIE-16GB",
+      "compilation_cache_dir": null
+    },
+    "nextstat_version": "0.9.6",
+    "packages": {
+      "blackjax": "1.3",
+      "arviz": "0.23.4",
+      "scipy": "1.17.0",
+      "numpy": "2.4.0"
+    }
+  },
+  "config": {
+    "n_chains_gpu": 4096,
+    "n_chains_cpu": 4,
+    "n_warmup": 500,
+    "n_samples": 1000,
+    "seed": 777,
+    "report_chains": 256,
+    "models": [
+      "std_normal_10d",
+      "eight_schools",
+      "glm_logistic"
+    ]
+  },
+  "results": [
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 1.554020468145609,
+      "wall_warm": 0.24383177699999997,
+      "min_ess": 159752.77129213774,
+      "max_rhat": 1.0061922774437562,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.001504163,
+        "warmup_s": 0.197082158,
+        "sampling_s": 0.24383177699999997
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 512000,
+      "ess_per_grad": 0.3120171314299565
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "std_normal_10d",
+      "wall_s": 13.582968866452575,
+      "wall_warm": 0.2253688545897603,
+      "min_ess": 17660.372844260288,
+      "max_rhat": 1.0132964515684055,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 2.875165329195604,
+      "tuned_n_steps": 1,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 9.981455262750387,
+      "cold_sampling_s": 3.6015136037021875,
+      "n_grad_evals": 256000,
+      "ess_per_grad": 0.06898583142289175
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "eight_schools",
+      "wall_s": 1.4327153833582997,
+      "wall_warm": 0.240660275,
+      "min_ess": 75681.76635144453,
+      "max_rhat": 1.00553995608449,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.000728886,
+        "warmup_s": 0.047941368000000005,
+        "sampling_s": 0.240660275
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.9,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.0985439666034434
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "eight_schools",
+      "wall_s": 11.875644044950604,
+      "wall_warm": 0.3723271507769823,
+      "min_ess": 28019.636703267603,
+      "max_rhat": 1.0079868759022037,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 0.9355394174942772,
+      "tuned_n_steps": 3,
+      "tuned_L": 3.1622776601683795,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 8.288514408282936,
+      "cold_sampling_s": 3.587129636667669,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.03648390195737969
+    },
+    {
+      "engine": "NS_LAPS_GPU",
+      "model": "glm_logistic",
+      "wall_s": 23.790776170790195,
+      "wall_warm": 9.25411056,
+      "min_ess": 89228.24185315016,
+      "max_rhat": 1.0086325184694143,
+      "quality_status": "ok",
+      "quality_failures": [],
+      "n_report_chains": 256,
+      "phase_times": {
+        "init_s": 0.001510606,
+        "warmup_s": 12.156976335,
+        "sampling_s": 9.25411056
+      },
+      "effective_n_warmup": 500,
+      "effective_target_accept": 0.95,
+      "effective_sync_interval": 50,
+      "effective_max_leapfrog": 8192,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_grad_evals": 768000,
+      "ess_per_grad": 0.11618260657962261
+    },
+    {
+      "engine": "BlackJAX_GPU",
+      "model": "glm_logistic",
+      "wall_s": 87.31001298408955,
+      "wall_warm": 74.69342312496156,
+      "min_ess": 39375.561029525146,
+      "max_rhat": 1.0054555880745626,
+      "n_chains": 4096,
+      "n_samples": 1000,
+      "n_report_chains": 256,
+      "tuned_step_size": 0.17986596561216606,
+      "tuned_n_steps": 25,
+      "tuned_L": 4.47213595499958,
+      "warmup_method": "blackjax.adjusted_mclmc_find_L_and_step_size",
+      "warmup_s": 10.159856939688325,
+      "cold_sampling_s": 77.15015604440123,
+      "n_grad_evals": 6400000,
+      "ess_per_grad": 0.006152431410863304
+    }
+  ]
+}
