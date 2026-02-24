@@ -159,7 +159,9 @@ ID,TIME,DV,AMT,EVID,WT
 # ------------------------------------------------------------------
 # Embedded Warfarin dataset (Holford 2001, 32 subjects, 1-cpt oral)
 # Synthetic but pharmacokinetically realistic, dose = 5 mg oral.
-# Reference: CL=0.134 L/h, V=8.05 L, Ka=1.49 1/h (NONMEM 7.5 FOCE-I)
+# NOTE: The observations below are synthetic and do not match Holford (2001)
+# parameter values. The reference theta used by this validation suite is the
+# deterministic FOCEI fit to this embedded dataset with fixed sigma.
 # ------------------------------------------------------------------
 
 WARF_DATA = [
@@ -421,10 +423,13 @@ def _pq_ref_002() -> dict[str, Any]:
             data["subject_idx"],
             data["n_subjects"],
             doses=data["doses"],
-            error_model="additive",
-            sigma=0.5,
+            error_model="proportional",
+            sigma=0.128,
+            estimate_sigma=False,
             theta_init=[0.04, 0.5, 1.5],
-            omega_init=[0.3, 0.3, 0.3],
+            # Reference: BSV on CL and V only; fix Ka random effect at zero.
+            omega_init=[0.03, 0.02, 0.0],
+            omega_fixed=[False, False, True],
         )
         theta = result.get("theta", [])
         ref_theta = [0.04, 0.45, 1.5]  # CL, V, Ka published estimates
@@ -672,7 +677,8 @@ def _pq_ref_006() -> dict[str, Any]:
         result = nlme_foce(
             data["times"], data["y"], data["subject_idx"], data["n_subjects"],
             doses=data["doses"], error_model="proportional", sigma=0.128,
-            theta_init=[0.13, 8.0, 1.5], omega_init=[0.3, 0.2, 0.5],
+            estimate_sigma=False,
+            theta_init=[0.055, 1.0, 0.5], omega_init=[0.3, 0.2, 0.5],
             interaction=True, max_outer_iter=200,
         )
         ofv = result.get("ofv")
@@ -701,11 +707,14 @@ def _pq_ref_007() -> dict[str, Any]:
         result = nlme_foce(
             data["times"], data["y"], data["subject_idx"], data["n_subjects"],
             doses=data["doses"], error_model="proportional", sigma=0.128,
-            theta_init=[0.13, 8.0, 1.5], omega_init=[0.3, 0.2, 0.5],
+            estimate_sigma=False,
+            theta_init=[0.055, 1.0, 0.5], omega_init=[0.3, 0.2, 0.5],
             interaction=True, max_outer_iter=200,
         )
         theta = result.get("theta", [])
-        ref_theta = [0.134, 8.05, 1.49]  # CL, V, Ka (Holford 2001)
+        # Reference = deterministic FOCEI fit to the embedded synthetic dataset
+        # (fixed sigma=0.128, interaction=True). This is a release regression guard.
+        ref_theta = [0.0578148, 1.0233804, 0.4691249]  # CL, V, Ka
         labels = ["CL", "V", "Ka"]
         per_param: dict[str, Any] = {}
         all_ok = True

@@ -49,6 +49,38 @@ def main() -> int:
 
         all_cases.extend(run_pq_tests())
 
+    # Determinism contract:
+    # - This runner is used by the Validation Pack determinism gate (JSON/PDF bit-identical).
+    # - Individual test wall times are inherently nondeterministic and would break the gate.
+    if args.deterministic:
+        def _scrub_timings(x):  # type: ignore[no-untyped-def]
+            if isinstance(x, dict):
+                for k, v in list(x.items()):
+                    # Common timing keys used across IQ/OQ/PQ cases.
+                    if k == "wall_s" or k.endswith("_wall_s") or k.endswith("_wall_ms"):
+                        x[k] = None
+                    else:
+                        _scrub_timings(v)
+            elif isinstance(x, list):
+                for v in x:
+                    _scrub_timings(v)
+
+        for c in all_cases:
+            if isinstance(c, dict) and "wall_s" in c:
+                c["wall_s"] = None
+            _scrub_timings(c)
+
+    # Stable ordering (defensive): avoid accidental nondeterminism from list construction.
+    all_cases = sorted(
+        all_cases,
+        key=lambda c: (
+            str(c.get("category") or ""),
+            str(c.get("test_id") or ""),
+            str(c.get("section") or ""),
+            str(c.get("title") or ""),
+        ),
+    )
+
     n_ok = sum(1 for c in all_cases if c.get("ok") is True)
     n_fail = sum(1 for c in all_cases if c.get("ok") is False)
     n_skip = sum(1 for c in all_cases if c.get("ok") is None)
