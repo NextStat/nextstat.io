@@ -80,6 +80,14 @@ BUILD_FEATURES="${3-}"
 : "${REPO:?missing REPO arg}"
 : "${VENV:?missing VENV arg}"
 
+echo "[nlp-remote] disk check..."
+df -h / | head -n 2 || true
+avail_k="$(df -Pk / | tail -n 1 | awk '{print $4}')"
+if [[ -n "$avail_k" && "$avail_k" -lt 2097152 ]]; then
+  echo "ERROR: Not enough free space on / (${avail_k}K available). Clean up the host and retry." >&2
+  exit 2
+fi
+
 rm -rf "$VENV"
 python3 -m venv --without-pip "$VENV"
 if [[ ! -x "$VENV/bin/pip" ]]; then
