@@ -23,13 +23,36 @@ class Gliner2OnnxBackend:
         self._providers = list(providers)
         self._num_threads = num_threads
 
+        # ONNX backend does not require torch; avoid noisy imports.
+        os.environ.setdefault("TRANSFORMERS_NO_TORCH", "1")
+        os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+        os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
+        # Hide advisory warnings (e.g. tokenizer regex notes) in production logs.
+        os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
         # Many CI / locked-down environments disallow writing to ~/.cache.
         # Use a writable temp cache unless the user explicitly configured HF_HOME.
         os.environ.setdefault("HF_HOME", os.path.join(tempfile.gettempdir(), "nextstat_hf"))
         os.environ.setdefault("HF_HUB_CACHE", os.path.join(os.environ["HF_HOME"], "hub"))
         os.environ.setdefault("XDG_CACHE_HOME", os.path.join(os.environ["HF_HOME"], "xdg_cache"))
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
         # Import after cache env vars are set (huggingface_hub reads them at import time).
+        try:
+            from huggingface_hub.utils import logging as hf_logging  # type: ignore
+
+            hf_logging.set_verbosity_error()
+        except Exception:
+            pass
+        try:
+            from transformers.utils import logging as tf_logging  # type: ignore
+
+            tf_logging.set_verbosity_error()
+        except Exception:
+            pass
+
         from gliner2_onnx import GLiNER2ONNXRuntime
 
         # gliner2-onnx (as of 0.1.1) does not accept ORT SessionOptions via

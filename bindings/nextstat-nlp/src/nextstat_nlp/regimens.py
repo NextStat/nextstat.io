@@ -23,7 +23,8 @@ _REGIMEN_SCHEMA: Dict[str, str] = {
     "route": "Administration route (IV, oral, SC, IM, topical, inhaled).",
     "frequency": "Dosing frequency (QD, BID, TID, QID, Q12H, Q8H, once, weekly).",
     "start_time": "When dosing begins (e.g., day 1, week 0).",
-    "duration": "Duration of dosing (e.g., 14 days, 6 weeks).",
+    "duration": "Course duration of dosing (e.g., 14 days, 6 weeks).",
+    "infusion_duration": "IV infusion duration (e.g., over 2 hours).",
     "occasion": "Dosing occasion or cycle number.",
 }
 
@@ -106,7 +107,7 @@ def _guess_freq_from_text(text: str) -> str:
     return ""
 
 
-def _guess_duration_from_text(text: str) -> Optional[float]:
+def _guess_infusion_duration_from_text(text: str) -> Optional[float]:
     # Try to pull the common infusion phrasing "over 2 hours".
     m = re.search(
         r"\bover\s+([0-9]+(?:\.[0-9]+)?)\s*(hours?|days?|weeks?|months?|years?)\b",
@@ -117,6 +118,102 @@ def _guess_duration_from_text(text: str) -> Optional[float]:
         # parse_time expects the numeric + unit chunk.
         return parse_time(f"{m.group(1)} {m.group(2)}")
     return None
+
+
+def _guess_duration_from_text(text: str) -> Optional[float]:
+    # Backward-compatible alias (tests/tools may import this).
+    return _guess_infusion_duration_from_text(text)
+
+
+def _freq_interval_days(freq: str) -> Optional[float]:
+    f = (freq or "").strip().upper()
+    if not f:
+        return None
+    if f in ("ONCE",):
+        return None
+    if f in ("QD", "Q24H"):
+        return 1.0
+    if f in ("BID", "Q12H"):
+        return 0.5
+    if f in ("TID", "Q8H"):
+        return 1.0 / 3.0
+    if f in ("QID", "Q6H"):
+        return 0.25
+    if f in ("WEEKLY", "QW"):
+        return 7.0
+    # QNh variants
+    m = re.match(r"^Q(\d{1,2})H$", f)
+    if m:
+        h = int(m.group(1))
+        if h > 0:
+            return h / 24.0
+    return None
+
+
+def to_nextstat_regimens(
+    records: Sequence[RegimenRecord],
+    *,
+    expand_frequency: bool = False,
+    default_course_days: Optional[float] = None,
+    max_events_per_subject: int = 512,
+) -> List[Dict[str, Any]]:
+    """Convert `RegimenRecord`s into nextstat `_core` `regimens` dictionaries.
+
+    Notes:
+    - `duration` is interpreted as *course duration* (days). It is NOT infusion duration.
+    - `infusion_duration` is mapped to nextstat event `duration` (days) for IV routes.
+    - If `expand_frequency=True`, repeated events are generated only if a course duration
+      is known (record.duration or default_course_days).
+    """
+    by_subj: Dict[str, List[RegimenRecord]] = {}
+    for r in records:
+        by_subj.setdefault(r.subject_id, []).append(r)
+
+    out: List[Dict[str, Any]] = []
+    for subj, rs in by_subj.items():
+        events: List[Dict[str, Any]] = []
+        meta: List[Dict[str, Any]] = []
+
+        for r in rs:
+            t0 = float(r.start_time or 0.0)
+            route = (r.route or "oral").strip() or "oral"
+            amount = float(r.dose or 0.0)
+            if amount <= 0:
+                continue
+
+            infusion_dur = float(r.infusion_duration or 0.0) if route.upper() == "IV" else 0.0
+
+            if expand_frequency:
+                course = r.duration if r.duration is not None else default_course_days
+                interval = _freq_interval_days(r.frequency)
+                if course is not None and interval is not None and interval > 0:
+                    t_end = t0 + float(course)
+                    t = t0
+                    k = 0
+                    while t <= t_end + 1e-12:
+                        events.append({"time": float(t), "amount": amount, "route": route, "duration": infusion_dur})
+                        k += 1
+                        if k >= max_events_per_subject:
+                            break
+                        t += interval
+                else:
+                    events.append({"time": t0, "amount": amount, "route": route, "duration": infusion_dur})
+            else:
+                events.append({"time": t0, "amount": amount, "route": route, "duration": infusion_dur})
+
+            meta.append({
+                "frequency": r.frequency,
+                "amount_units": r.amount_units,
+                "course_duration_days": r.duration,
+                "infusion_duration_days": r.infusion_duration,
+                "occasion_id": r.occasion_id,
+                "document_id": r.document_id,
+            })
+
+        if events:
+            out.append({"subject_id": subj, "events": events, "meta": meta})
+
+    return out
 
 
 def extract_regimens(
@@ -159,6 +256,7 @@ def extract_regimens(
         freq_spans = spans_by_label.get("frequency", [])
         start_spans = spans_by_label.get("start_time", [])
         dur_spans = spans_by_label.get("duration", [])
+        inf_dur_spans = spans_by_label.get("infusion_duration", [])
         occ_spans = spans_by_label.get("occasion", [])
 
         n_doses = max(len(dose_spans), 1)
@@ -187,9 +285,10 @@ def extract_regimens(
                 freq = _guess_freq_from_text(text) or freq
 
             start = parse_time(start_spans[idx].text) if idx < len(start_spans) else None
-            dur = parse_time(dur_spans[idx].text) if idx < len(dur_spans) else None
-            if dur is None:
-                dur = _guess_duration_from_text(text)
+            course_dur = parse_time(dur_spans[idx].text) if idx < len(dur_spans) else None
+            inf_dur = parse_time(inf_dur_spans[idx].text) if idx < len(inf_dur_spans) else None
+            if inf_dur is None:
+                inf_dur = _guess_infusion_duration_from_text(text)
             occ_val = parse_numeric(occ_spans[idx].text) if idx < len(occ_spans) else None
             occ_id = int(occ_val) if occ_val is not None else None
 
@@ -198,7 +297,8 @@ def extract_regimens(
                 dose=dose_val,
                 route=route,
                 start_time=start,
-                duration=dur,
+                duration=course_dur,
+                infusion_duration=inf_dur,
                 amount_units=units,
                 frequency=freq,
                 occasion_id=occ_id,

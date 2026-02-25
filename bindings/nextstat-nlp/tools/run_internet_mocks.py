@@ -22,6 +22,7 @@ import requests
 
 from nextstat_nlp import extract_regimens, extract_survival_records
 from nextstat_nlp.priors import extract_prior_candidates
+from nextstat_nlp.regimens import to_nextstat_regimens
 
 
 def _write_json(path: Path, obj: Any) -> None:
@@ -185,41 +186,31 @@ def _summarize_priors(cands: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _to_nextstat_regimens(regimens_json: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Convert RegimenTable JSON into nextstat-style `regimens` dicts.
+    # Keep compatibility for the script: rehydrate minimal RegimenRecord-like dicts.
+    # We rely on the library converter for the correct semantics (course vs infusion duration).
+    from nextstat_nlp.schemas import RegimenRecord
 
-    This is intentionally a minimal mapping:
-    - Frequency is preserved as metadata but not expanded into repeated events.
-    - If start_time is missing, we assume time=0.
-    - If route is missing, we keep it as "oral" (common default).
-    """
-    out: List[Dict[str, Any]] = []
+    recs = []
     for r in regimens_json.get("records") or []:
-        t0 = float(r.get("start_time") or 0.0)
-        route = (r.get("route") or "oral").strip() or "oral"
-        duration = float(r.get("duration") or 0.0)
-        amount = float(r.get("dose") or 0.0)
-        if amount <= 0:
+        if not isinstance(r, dict):
             continue
-        out.append(
-            {
-                "subject_id": r.get("subject_id"),
-                "events": [
-                    {
-                        "time": t0,
-                        "amount": amount,
-                        "route": route,
-                        "duration": duration,
-                        # Leave bioavailability unset here; nextstat can infer defaults per route.
-                    }
-                ],
-                "meta": {
-                    "frequency": r.get("frequency"),
-                    "amount_units": r.get("amount_units"),
-                    "document_id": r.get("document_id"),
-                },
-            }
+        recs.append(
+            RegimenRecord(
+                subject_id=str(r.get("subject_id") or ""),
+                dose=float(r.get("dose") or 0.0),
+                route=str(r.get("route") or ""),
+                start_time=float(r["start_time"]) if r.get("start_time") is not None else None,
+                duration=float(r["duration"]) if r.get("duration") is not None else None,
+                infusion_duration=float(r["infusion_duration"]) if r.get("infusion_duration") is not None else None,
+                amount_units=str(r.get("amount_units") or "mg"),
+                frequency=str(r.get("frequency") or ""),
+                occasion_id=int(r["occasion_id"]) if r.get("occasion_id") is not None else None,
+                spans=[],  # not needed for conversion
+                document_id=str(r.get("document_id")) if r.get("document_id") is not None else None,
+                text_hash=str(r.get("text_hash")) if r.get("text_hash") is not None else None,
+            )
         )
-    return out
+    return to_nextstat_regimens(recs, expand_frequency=False)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -233,6 +224,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         type=Path,
         default=None,
         help="Optional pre-fetched sources.json (list[dict]) to avoid network calls and make reruns reproducible.",
+    )
+    ap.add_argument(
+        "--expand-frequency",
+        action="store_true",
+        help="If set, also write nextstat_regimens_expanded.json by expanding frequency across the course duration.",
+    )
+    ap.add_argument(
+        "--default-course-days",
+        type=float,
+        default=None,
+        help="Used only with --expand-frequency when a record has no course duration.",
     )
     ap.add_argument("--openfda", nargs="*", default=["WARFARIN", "PHENOBARBITAL", "THEOPHYLLINE"])
     ap.add_argument("--ctgov", nargs="*", default=["NCT01275781", "NCT00964353"])
@@ -337,6 +339,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "n_survival_texts": len(survival_texts),
             "n_prior_texts": len(prior_texts),
         },
+        "nextstat_regimens_export": {
+            "expand_frequency": bool(args.expand_frequency),
+            "default_course_days": args.default_course_days,
+        },
         "regimens": _summarize_regimens(reg_j.get("records") or []),
         "survival": _summarize_survival(surv_j.get("records") or []),
         "priors": _summarize_priors(pri_j.get("candidates") or []),
@@ -348,6 +354,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _write_json(out_dir / "survival.json", surv_j)
     _write_json(out_dir / "priors.json", pri_j)
     _write_json(out_dir / "nextstat_regimens.json", _to_nextstat_regimens(reg_j))
+    if args.expand_frequency:
+        # Expanded schedule is optional because it is a heuristic without an explicit trial timeline.
+        from nextstat_nlp.schemas import RegimenRecord
+        from nextstat_nlp.regimens import to_nextstat_regimens
+
+        recs = []
+        for r in reg_j.get("records") or []:
+            if not isinstance(r, dict):
+                continue
+            recs.append(
+                RegimenRecord(
+                    subject_id=str(r.get("subject_id") or ""),
+                    dose=float(r.get("dose") or 0.0),
+                    route=str(r.get("route") or ""),
+                    start_time=float(r["start_time"]) if r.get("start_time") is not None else None,
+                    duration=float(r["duration"]) if r.get("duration") is not None else None,
+                    infusion_duration=float(r["infusion_duration"]) if r.get("infusion_duration") is not None else None,
+                    amount_units=str(r.get("amount_units") or "mg"),
+                    frequency=str(r.get("frequency") or ""),
+                    occasion_id=int(r["occasion_id"]) if r.get("occasion_id") is not None else None,
+                    spans=[],
+                    document_id=str(r.get("document_id")) if r.get("document_id") is not None else None,
+                    text_hash=str(r.get("text_hash")) if r.get("text_hash") is not None else None,
+                )
+            )
+        _write_json(
+            out_dir / "nextstat_regimens_expanded.json",
+            to_nextstat_regimens(
+                recs,
+                expand_frequency=True,
+                default_course_days=args.default_course_days,
+            ),
+        )
 
     # Convenience: show survival arrays ready for modeling.
     time, event, X, features = surv.to_design_matrix()

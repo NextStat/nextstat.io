@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nextstat_nlp.regimens import _canonicalize_units, _guess_duration_from_text, _guess_freq_from_text, _guess_route_from_text
+from nextstat_nlp.regimens import _canonicalize_units, _guess_infusion_duration_from_text, _guess_freq_from_text, _guess_route_from_text
 
 
 def test_guess_route_iv_infusion() -> None:
@@ -25,7 +25,7 @@ def test_guess_freq_bid() -> None:
 
 def test_guess_duration_over_hours() -> None:
     txt = "1000 mg intravenous over 2 hours"
-    dur = _guess_duration_from_text(txt)
+    dur = _guess_infusion_duration_from_text(txt)
     assert dur is not None
     # parse_time returns days; 2 hours = 2/24 days
     assert abs(dur - (2.0 / 24.0)) < 1e-6

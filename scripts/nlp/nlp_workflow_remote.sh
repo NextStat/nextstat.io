@@ -81,7 +81,12 @@ BUILD_FEATURES="${3-}"
 : "${VENV:?missing VENV arg}"
 
 rm -rf "$VENV"
-python3 -m venv "$VENV"
+python3 -m venv --without-pip "$VENV"
+if [[ ! -x "$VENV/bin/pip" ]]; then
+  # Some minimal images ship python3 without ensurepip.
+  curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+  "$VENV/bin/python" /tmp/get-pip.py >/dev/null
+fi
 "$VENV/bin/python" -m pip install -U pip wheel setuptools >/dev/null
 
 # Build tooling (PEP 668 safe).
@@ -90,6 +95,13 @@ python3 -m venv "$VENV"
 cd "$REPO/bindings/ns-py"
 export VIRTUAL_ENV="$VENV"
 export PATH="$VENV/bin:$PATH"
+
+# Some ephemeral hosts occasionally crash `ld.lld` during large shared-library links.
+# Prefer bfd + single-job builds for stability; this workflow is not performance-sensitive.
+if command -v ld.bfd >/dev/null 2>&1; then
+  export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=bfd"
+fi
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 
 if [[ -n "$BUILD_FEATURES" ]]; then
   # If building with CUDA on older GPUs (e.g. V100 sm_70), prefer CUDA 12.x if present.
