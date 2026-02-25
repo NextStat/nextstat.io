@@ -151,6 +151,25 @@ python benchmarks/bench_extraction.py --backend heuristic --n-iter 100
 #   python benchmarks/bench_extraction.py --backend mlx --n-iter 50
 ```
 
+## End-to-End Workflow Demo (to NextStat)
+
+This demo fetches small public snippets, extracts regimens + survival records via
+`nextstat-nlp`, then runs a tiny NextStat fit (CoxPH + 1-subject NLME synthetic):
+
+```bash
+python tools/demo_pharma_to_nextstat.py --backend onnx --out-dir /tmp/ns_nlp_demo
+```
+
+## Reproducible Workflow Matrix (3x)
+
+Fetch internet snippets once, then re-run the pipelines 3 times offline to verify
+bit-exact determinism of the extraction outputs:
+
+```bash
+python tools/run_workflow_matrix.py --backends heuristic onnx --n-repeats 3 --out-dir /tmp/ns_nlp_matrix
+cat /tmp/ns_nlp_matrix/matrix_summary.json
+```
+
 ## Architecture
 
 ```

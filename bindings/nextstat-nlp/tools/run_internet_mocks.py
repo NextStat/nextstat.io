@@ -228,6 +228,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--backend", choices=["onnx", "gliner2", "heuristic", "mlx"], default="onnx")
     ap.add_argument("--num-threads", type=int, default=4, help="ONNX Runtime threads (backend=onnx)")
     ap.add_argument("--providers", nargs="*", default=None, help="ONNX Runtime providers (backend=onnx)")
+    ap.add_argument(
+        "--sources-json",
+        type=Path,
+        default=None,
+        help="Optional pre-fetched sources.json (list[dict]) to avoid network calls and make reruns reproducible.",
+    )
     ap.add_argument("--openfda", nargs="*", default=["WARFARIN", "PHENOBARBITAL", "THEOPHYLLINE"])
     ap.add_argument("--ctgov", nargs="*", default=["NCT01275781", "NCT00964353"])
     args = ap.parse_args(list(argv) if argv is not None else None)
@@ -237,37 +243,44 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     sources: List[Dict[str, Any]] = []
 
-    # --- Internet snippets: OpenFDA labels ---
-    for g in args.openfda:
-        try:
-            text, meta = _fetch_openfda_dosage(g)
-        except Exception as e:
-            sources.append({"kind": "openfda", "id": g, "error": str(e)})
-            continue
-        norm = _normalize_snippet(text)
-        sources.append({
-            "kind": "openfda",
-            "id": g,
-            "text": norm,
-            "regimen_text": _extract_regimen_snippet(norm),
-            "meta": meta,
-        })
+    if args.sources_json is not None:
+        raw = json.loads(args.sources_json.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise SystemExit("--sources-json must be a list of dicts (sources.json)")
+        # Trust file contents; keep this script a thin runner.
+        sources = [s for s in raw if isinstance(s, dict)]
+    else:
+        # --- Internet snippets: OpenFDA labels ---
+        for g in args.openfda:
+            try:
+                text, meta = _fetch_openfda_dosage(g)
+            except Exception as e:
+                sources.append({"kind": "openfda", "id": g, "error": str(e)})
+                continue
+            norm = _normalize_snippet(text)
+            sources.append({
+                "kind": "openfda",
+                "id": g,
+                "text": norm,
+                "regimen_text": _extract_regimen_snippet(norm),
+                "meta": meta,
+            })
 
-    # --- Internet snippets: ClinicalTrials.gov registry ---
-    for nct in args.ctgov:
-        try:
-            text, meta = _fetch_ctgov_interventions(nct)
-        except Exception as e:
-            sources.append({"kind": "ctgov", "id": nct, "error": str(e)})
-            continue
-        norm = _normalize_snippet(text)
-        sources.append({
-            "kind": "ctgov",
-            "id": nct,
-            "text": norm,
-            "regimen_text": _extract_regimen_snippet(norm),
-            "meta": meta,
-        })
+        # --- Internet snippets: ClinicalTrials.gov registry ---
+        for nct in args.ctgov:
+            try:
+                text, meta = _fetch_ctgov_interventions(nct)
+            except Exception as e:
+                sources.append({"kind": "ctgov", "id": nct, "error": str(e)})
+                continue
+            norm = _normalize_snippet(text)
+            sources.append({
+                "kind": "ctgov",
+                "id": nct,
+                "text": norm,
+                "regimen_text": _extract_regimen_snippet(norm),
+                "meta": meta,
+            })
 
     # --- Synthetic snippets for survival/priors (per-record format) ---
     survival_texts = _synthetic_survival_mocks()
