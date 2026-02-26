@@ -102,7 +102,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Download wheel artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextstat-wheel-linux-py3.13
           path: wheel/
@@ -155,7 +155,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Download wheel artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextstat-wheel-linux-py3.13
           path: wheel/
