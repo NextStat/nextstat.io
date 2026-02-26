@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload wheel artifact (for validation-pack job)
         if: matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextstat-wheel-linux-py${{ matrix.python-version }}
           path: bindings/ns-py/target/wheels/*.whl
@@ -126,7 +126,7 @@ jobs:
         run: pytest -q tests/python/test_adoption_playbook_report_smoke.py
 
       - name: Upload Adoption Playbook smoke report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: adoption-playbook-smoke-report
           path: tmp/reports/adoption_playbook_smoke_report.json
@@ -341,13 +341,13 @@ jobs:
             --meta baseline_found="${baseline_found}"
 
       - name: Upload Apex2 report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apex2-report-ubuntu-py3.13
           path: artifacts/*.json
 
       - name: Upload unified validation report artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: validation-report-ubuntu-py3.13
           path: |
@@ -360,7 +360,7 @@ jobs:
 
       - name: Upload validation pack determinism artifacts (debug)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: validation-report-determinism-ubuntu-py3.13
           path: |

@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload backend parity reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unbinned-toy-parity-${{ matrix.backend }}
           path: artifacts/parity/*.json
@@ -144,7 +144,7 @@ jobs:
           PY
 
       - name: Upload matrix parity report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unbinned-toy-parity-matrix-report
           path: artifacts/unbinned_toy_parity_matrix_report.json
