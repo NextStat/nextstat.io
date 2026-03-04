@@ -361,7 +361,9 @@ jobs:
             echo "::error::No .whl found under dist/"
             exit 1
           fi
-          pip install "${WHEEL}"
+          # --no-deps: nextstat-cli is not yet on PyPI at this stage;
+          # the standalone CLI binary is downloaded separately above.
+          pip install --no-deps "${WHEEL}"
           pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9" "jsonschema>=4.0"
 
       - name: Render validation pack (JSON + PDF)
