@@ -13,8 +13,8 @@
     "target_accept": 0.8
   },
   "dataset": {
-    "id": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
-    "path": "/data/nextstat/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "id": "/data/benchmark-data/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "path": "/data/benchmark-data/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
     "sha256": "e87594b9a23cc580a53a9d0b42df10218132bb8cd2401edf1cfdf020ad1d715d"
   },
   "deterministic": false,

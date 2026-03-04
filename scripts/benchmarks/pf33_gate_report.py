@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write a strict PF3.3 benchmark gate report (numbers-only table).
 
-Protocol: /.claude/benchmark-protocol.md
+Protocol: numbers-only benchmark gate report
 
 Inputs:
   - run_root produced by scripts/benchmarks/pf31_publication_matrix.sh

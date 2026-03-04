@@ -68,8 +68,8 @@ Host analytical CUDA modes are now explicit and labeled in artifacts:
 ```bash
 PF31_HOST=88.198.23.172 \
 PF31_KEY=~/.ssh/rundesk_hetzner \
-PF31_BIN=/root/nextstat.io/target/release/nextstat \
-PF31_SPEC=/root/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
+PF31_BIN=/workspace/nextstat.io/target/release/nextstat \
+PF31_SPEC=/workspace/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
 PF31_TOYS=10000,100000 \
 PF31_SHARDS=2,4,8 \
 PF31_HOST_FIT_MODES=host,native \

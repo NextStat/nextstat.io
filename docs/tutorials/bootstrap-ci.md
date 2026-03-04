@@ -119,7 +119,7 @@ Every BCa CI output includes diagnostic fields that help assess interval quality
 
 ## 7. Benchmark Results
 
-Benchmarks run on **nextstat-bench** (AMD EPYC 7502P, 64 threads). Full reproducible commands and artifacts in `docs/benchmarks/bca-hep-churn-ci-methods.md`.
+Benchmarks run on **epyc-node** (AMD EPYC 7502P, 64 threads). Full reproducible commands and artifacts in `docs/benchmarks/bca-hep-churn-ci-methods.md`.
 
 ### HEP Toy-Summary CI
 

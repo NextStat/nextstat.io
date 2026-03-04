@@ -6,7 +6,7 @@
     "summary_ci_level": 0.68,
     "summary_ci_bootstrap": 600,
     "threads": 32,
-    "fixture_root": "/root/nextstat-bca-run-20260216/tests/fixtures/simple_tree.root",
+    "fixture_root": "fixtures/simple_tree.root",
     "nextstat_bin": "/root/.nextstat-cargo-target/release/nextstat"
   },
   "percentile": {

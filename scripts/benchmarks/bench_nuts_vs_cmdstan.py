@@ -174,7 +174,7 @@ def run_cmdstan(
     try:
         _ = cmdstan_path()
     except Exception:
-        local_root = Path(".internal/cmdstan")
+        local_root = Path("vendor/cmdstan")
         candidates = sorted(local_root.glob("cmdstan-*"))
         if candidates:
             set_cmdstan_path(str(candidates[-1].resolve()))

@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] — 2026-03-04
+
+### Added
+
+- **ns-cli-py package** — standalone `nextstat` CLI Python package (`bindings/ns-cli-py`) with `pyproject.toml` and `__main__.py` entry point.
+- **nextstat-nlp remote workflow runner** — `scripts/nlp/nlp_workflow_remote.sh` for reproducible NLP pipeline verification on remote hosts (ONNX cache, regimen export, backend cache, internet mocks).
+- **nextstat-nlp `--skip-nextstat-demo`** — flag to skip demo pipeline in automated runs; `--quiet` mode for suppressing verbose output.
+- **nextstat-nlp regimen fallback tests** — `tests/test_regimens_fallback.py` for graceful degradation when backend unavailable.
+
+### Fixed
+
+- **Validation-pack pharma determinism** — PQ references stabilized for reproducible cross-run validation.
+- **pip extras** — added missing `[all]` extra, documented all pip install extras in README and quickstart.
+
+### Changed
+
+- **Python 3.11+ requirement** — documented minimum Python version in installation guide.
+- **Benchmark artifact sanitization** — replaced internal hostnames and server paths with generic placeholders in all public benchmark docs and JSON artifacts.
+
 ## [0.9.7] — 2026-02-24
 
 ### Added
@@ -91,16 +110,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **Benchmark binary selection hardening** — BCa benchmark scripts now accept `--nextstat-bin` and prioritize `release` artifacts in auto-discovery to avoid accidental stale-binary runs on remote stands.
 - **HEP BCa diagnostic enrichment** — HEP benchmark summaries now include CI-center bias metrics (`median_center_minus_poi_true`, `mean_center_minus_poi_true`) for correct interpretation of inclusion rates.
 - **HEP dataset-level BCa calibration benchmark (BCA-14)** — added `scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py` with per-run observed data regeneration, bootstrap CI comparison (percentile vs BCa), and baseline artifact `bench_results/hep_dataset_bootstrap_ci_2026-02-16/summary.json`. Added smoke regression `tests/python/test_bca_hep_dataset_bootstrap_ci_smoke.py`.
-- **BCA-14 nextstat-bench full-matrix snapshot** — provisioned benchmark runtime on `nextstat-bench` (ROOT + Python deps), built native Linux `nextstat`, and published adult-run summary artifact `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_full/summary.json` (`runs=32`, `n_bootstrap=1500`, `threads=56`). Coverage is `0.96875` for both percentile and BCa in both HEP scenarios, with `fallback_count=0`.
-- **BCA-14 nextstat-bench long-run calibration snapshot** — published extended matrix artifact `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_longrun/summary.json` (`runs=128`, `n_bootstrap=1500`, `threads=56`). Coverage remained high (`0.97656` mid-POI for both methods; boundary scenario `0.96875` percentile vs `0.97656` BCa), BCa remained fallback-free and slightly narrower.
+- **BCA-14 epyc-node full-matrix snapshot** — provisioned benchmark runtime on `epyc-node` (ROOT + Python deps), built native Linux `nextstat`, and published adult-run summary artifact `bench_results/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_full/summary.json` (`runs=32`, `n_bootstrap=1500`, `threads=56`). Coverage is `0.96875` for both percentile and BCa in both HEP scenarios, with `fallback_count=0`.
+- **BCA-14 epyc-node long-run calibration snapshot** — published extended matrix artifact `bench_results/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_longrun/summary.json` (`runs=128`, `n_bootstrap=1500`, `threads=56`). Coverage remained high (`0.97656` mid-POI for both methods; boundary scenario `0.96875` percentile vs `0.97656` BCa), BCa remained fallback-free and slightly narrower.
 - **Churn benchmark coverage diagnostics + dataset-level mode** — `scripts/benchmarks/bench_churn_bootstrap_ci_methods.py` now supports:
   - `--use-default-truth` (coverage fields in summary: `coverage_vs_true_hr`, `coverage_hits`, `coverage_total`)
   - `--regenerate-data-per-run` (frequentist dataset-level calibration)
   - generator controls (`--n-cohorts`, `--max-time`, `--treatment-fraction`)
   - per-coefficient aggregates (`per_coefficient` coverage/mean point/mean width).
-- **Churn nextstat-bench dataset-level calibration snapshots** — published:
-  - `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat30/summary.json`
-  - `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat00/summary.json`
+- **Churn epyc-node dataset-level calibration snapshots** — published:
+  - `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat30/summary.json`
+  - `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat00/summary.json`
   using `runs=128`, `n_customers=4000`, `n_bootstrap=800`, `n_jackknife=240`. Coverage is near nominal in both methods (treat=0.3: percentile `0.9453`, BCa `0.9512`; treat=0.0: both `0.9297`), all with zero fallbacks.
 - **Apex2 nightly churn benchmark switched to dataset-level calibration default (BCA-20)** — `.github/workflows/apex2-nightly-slow.yml` now runs churn BCa benchmark with `--regenerate-data-per-run --use-default-truth` and pinned generator controls (`--n-cohorts 48 --max-time 12 --treatment-fraction 0.3`) so nightly coverage reflects dataset-level calibration instead of fixed-dataset conditional diagnostics.
 - **Rootless HEP dataset generator path (BCA-15)** — `scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py` now supports `--root-writer auto|uproot|root-cli` and defaults to rootless `uproot` when available (with `root` CLI fallback). Smoke coverage in `tests/python/test_bca_hep_dataset_bootstrap_ci_smoke.py` now accepts either backend and skips only when both are unavailable.
@@ -267,7 +286,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Ve
 - **GEX44 CB/DCB CUDA scale snapshot (2026-02-13)** — added CrystalBall/DoubleCrystalBall 10k-event toy matrix artifacts and summary at `benchmarks/unbinned/artifacts/2026-02-13/gex44_cuda_opt1_scale_20260213T091410Z/summary_cb_dcb_scale.json`. Measured 100% convergence for all listed runs (1k and 10k toys): CB CUDA (`cuda_gpu_native`) ~15-17x faster than CPU; DCB CUDA host path already ~28-33x faster than CPU, and explicit `--gpu-native` further improves DCB throughput by ~12% (1k toys) to ~56% (10k toys) vs DCB CUDA host mode.
 - **PF3.1-OPT4 sharding estimation fix** — auto-shard VRAM estimation for Poisson toys now uses the expected yield at the toy generation point (sum of yield expressions) rather than the observed dataset size, preventing under-sharding on large-yield studies (e.g. O(2M) events/toy with O(10k) toys). Added `YieldExpr::value()` public helper for tooling.
 - **PF3.1 benchmark harness mode split (`host` vs `native`)** — `scripts/benchmarks/pf31_remote_matrix.sh` now supports `PF31_HOST_FIT_MODES` (default `host,native`) and emits explicit host lockstep (`..._host_t...`) and explicit `--gpu-native` (`..._native_t...`) cases for analytical CUDA toy fits. `summary.json` rows now include `fit_mode` classification (`cpu|host|native|host_sharded|device_sharded`) to avoid manual post-processing when comparing DCB host/native routes.
-- **PF3.3 unbinned CPU vs CUDA gate matrix** — added `benchmarks/unbinned/matrices/pf33_gate_v1.json`, new 100k-events/toy specs (`benchmarks/unbinned/specs/pf33_*_100k.json`), and strict report writer `scripts/benchmarks/pf33_gate_report.py` emitting the mandatory numbers-only table format from `.claude/benchmark-protocol.md`.
+- **PF3.3 unbinned CPU vs CUDA gate matrix** — added `benchmarks/unbinned/matrices/pf33_gate_v1.json`, new 100k-events/toy specs (`benchmarks/unbinned/specs/pf33_*_100k.json`), and strict report writer `scripts/benchmarks/pf33_gate_report.py` emitting the mandatory numbers-only table format per the benchmark protocol.
 - **PF3.3 unbinned runtime policy gate (`--gpu auto`)** — `unbinned-fit-toys` and `unbinned-hypotest-toys` now accept `--gpu auto` to policy-select CPU vs CUDA based on model topology and estimated events/toy, and log the decision reason. `--gpu auto` rejects backend-specific knobs (`--gpu-devices/--gpu-shards/--gpu-sample-toys/--gpu-native`) to keep behavior explicit; use `--gpu cuda|metal` for overrides.
 - **PF3.1 large-scale multi-GPU snapshot (4x A40, 2026-02-13)** — added artifact `benchmarks/unbinned/artifacts/2026-02-13/pf31_2m10k_multigpu_20260213T125921Z/summary.json` for `2M events/toy × 10k toys` (Gauss+Exp). All successful runs converged 100% (`n_error=0`). Measured wall-times: `cuda_device_sharded` 1GPU(sh8)=210.78s, 2GPU(sh8)=106.72s, 4GPU(sh16)=58.79s (scaling ~1.97x and ~3.58x vs 1GPU). `cuda_gpu_native_sharded` 1GPU=479.09s, 2GPU=238.42s, 4GPU=121.49s (scaling ~2.01x and ~3.94x vs 1GPU), but slower absolute throughput than device-sharded on this workload.
 - **PF3.1 large-shard guardrail finding (u32 event-offset overflow)** — on the same 4x A40 run, single-GPU `cuda_device_sharded` with `--gpu-shards 4` failed fast with `Validation error: total toy events overflow u32` (`total_events=4295980781`, `n_toys=2500` per shard). Using more shards (`--gpu-shards 8`) resolves the overflow; follow-up bug task opened in BMCP for 64-bit offsets/guardrail policy.

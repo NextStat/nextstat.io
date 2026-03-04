@@ -103,7 +103,10 @@ class RegimenRecord:
     dose: float
     route: str  # "IV", "oral", "SC", "IM", "topical"
     start_time: Optional[float] = None  # in days
-    duration: Optional[float] = None    # in days
+    # Course duration in days (e.g., "for 14 days"). This is *not* infusion duration.
+    duration: Optional[float] = None
+    # Infusion duration in days (e.g., "over 2 hours" -> 2/24). Used for IV infusion events.
+    infusion_duration: Optional[float] = None
     amount_units: str = "mg"
     frequency: str = ""     # "QD", "BID", "TID", "Q12H", etc.
     occasion_id: Optional[int] = None

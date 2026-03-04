@@ -55,18 +55,25 @@ ns-env\Scripts\activate.bat
 pip install nextstat
 ```
 
-This downloads a pre-compiled wheel (~15 MB) and installs it. No Rust compiler needed.
+This downloads the Python library (~15 MB) and the CLI binary (~20 MB) and installs
+both. No Rust compiler needed. The `nextstat` command is immediately available:
+
+```bash
+nextstat version          # CLI binary
+python -m nextstat version  # alternative invocation
+```
 
 #### 1c. Verify the installation
 
 ```bash
 python3 -c "import nextstat; print(nextstat.__version__)"
+nextstat version
 ```
 
 Expected output:
 
 ```
-0.9.5
+0.9.7
 ```
 
 #### 1d. Install optional extras
@@ -167,6 +174,25 @@ build from source (see above).
 
 Try `pip3` instead of `pip`. On some systems, `pip` is only available inside a virtual
 environment. Create one first (Step 1a above).
+
+**"nextstat: command not found" after `pip install nextstat`**
+
+The CLI binary is installed into your virtualenv's `bin/` directory. Make sure
+the virtualenv is activated. With pyenv:
+
+```bash
+# Ensure the shims directory is on PATH
+eval "$(pyenv init -)"
+pyenv rehash
+nextstat version
+```
+
+If using a plain venv, verify activation:
+
+```bash
+which python        # should point to your venv
+which nextstat      # should be in the same venv bin/
+```
 
 **"error: linker 'cc' not found" (building from source)**
 

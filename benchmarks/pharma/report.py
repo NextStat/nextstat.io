@@ -24,7 +24,7 @@ from typing import Any, Optional
 # Parity checks
 # ---------------------------------------------------------------------------
 
-# Regulatory-grade defaults from .internal/docs/pharma.md section 7.4.1:
+# Regulatory-grade defaults (pharma parity thresholds):
 # - relative parameter difference < 0.1%
 # - RSE within 10%
 THETA_RTOL = 0.001

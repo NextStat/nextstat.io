@@ -61,8 +61,11 @@ env/
 .vscode/
 *.code-workspace
 
-# Claude (all agent configs are internal)
+# AI agent configs (internal)
 .claude/
+.windsurf/
+.cursor/
+.aider/
 
 # IntelliJ
 *.iml

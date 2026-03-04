@@ -7,7 +7,7 @@ import subprocess, json, time, os
 
 from _parse_utils import parse_json_stdout
 
-BIN = "/root/nextstat.io/target/release/nextstat"
+BIN = "/workspace/nextstat.io/target/release/nextstat"
 SPEC = "/tmp/pf31_bench/spec.json"
 OUTDIR = "/tmp/pf31_bench/results"
 os.makedirs(OUTDIR, exist_ok=True)

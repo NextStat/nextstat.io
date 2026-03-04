@@ -2,7 +2,7 @@
 
 Every benchmark script MUST call `collect_environment()` and store the result
 in the JSON artifact under the `"environment"` key. This is non-negotiable
-for reproducibility (see .claude/benchmark-protocol.md §6b).
+for reproducibility.
 
 Usage:
     from scripts.bench_env import collect_environment

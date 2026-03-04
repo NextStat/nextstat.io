@@ -195,7 +195,7 @@ PF31_THREADS=20 \
 bash scripts/benchmarks/pf31_publication_matrix.sh
 ```
 
-Strict report writer (numbers-only table format per `.claude/benchmark-protocol.md`):
+Strict report writer (numbers-only table format per the benchmark protocol):
 
 ```bash
 python3 scripts/benchmarks/pf33_gate_report.py \

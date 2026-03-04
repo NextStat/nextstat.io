@@ -5,7 +5,7 @@
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "system": "Linux",
     "machine": "x86_64",
-    "node": "nextstat-bench",
+    "node": "epyc-node",
     "cpu": "AMD EPYC 7502P 32-Core Processor",
     "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
     "nextstat_version": "0.9.6",

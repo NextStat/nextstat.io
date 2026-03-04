@@ -31,7 +31,7 @@ def find_binary():
     """Find nextstat binary."""
     candidates = [
         os.path.join(os.path.dirname(__file__), "../../target/release/nextstat"),
-        "/root/nextstat.io/target/release/nextstat",
+        "/workspace/nextstat.io/target/release/nextstat",
         "nextstat",
     ]
     for c in candidates:

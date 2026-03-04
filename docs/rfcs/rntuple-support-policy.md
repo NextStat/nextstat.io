@@ -75,7 +75,7 @@ Gate evidence references:
 - Compatibility + correctness rows: `docs/references/rntuple-compatibility-matrix.md`
 - Rollout scope/limits + migration notes: `docs/references/rntuple-rollout-v1.md`
 - Stable perf gate command/path: `make rntuple-perf-gate` and `.github/workflows/rust-tests.yml`
-- Host-level throughput evidence (`ns-root` vs ROOT on `nextstat-bench`): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
+- Host-level throughput evidence (`ns-root` vs ROOT on `epyc-node`): `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`
 - Mixed-layout regression evidence: `crates/ns-root/tests/rntuple_discovery.rs` (`large_mixed_layout_fixture_decodes_all_cluster_groups`) and compatibility row for `tests/fixtures/rntuple_bench_large.root` marked `verified`.
 
 ## Consequences

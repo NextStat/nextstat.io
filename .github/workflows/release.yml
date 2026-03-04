@@ -39,6 +39,24 @@ jobs:
           fi
           echo "Version $CARGO_VER matches tag v$TAG"
 
+          # Validate Python package versions match the tag
+          for toml in bindings/ns-py/pyproject.toml bindings/ns-cli-py/pyproject.toml; do
+            PY_VER=$(grep '^version' "$toml" | head -1 | sed 's/.*"\(.*\)"/\1/')
+            if [ "$TAG" != "$PY_VER" ]; then
+              echo "::error::Tag v$TAG does not match $toml version $PY_VER"
+              exit 1
+            fi
+            echo "$toml version $PY_VER matches tag v$TAG"
+          done
+
+          # Validate nextstat-cli pin in ns-py matches the tag
+          CLI_PIN=$(grep 'nextstat-cli==' bindings/ns-py/pyproject.toml | sed 's/.*==\(.*\)".*/\1/')
+          if [ "$TAG" != "$CLI_PIN" ]; then
+            echo "::error::nextstat-cli pin ($CLI_PIN) in ns-py/pyproject.toml does not match tag v$TAG"
+            exit 1
+          fi
+          echo "nextstat-cli pin $CLI_PIN matches tag v$TAG"
+
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -170,7 +188,68 @@ jobs:
           name: sdist
           path: bindings/ns-py/dist/*.tar.gz
 
-  # ── CLI binaries ─────────────────────────────────────────────
+  # ── CLI Python wheels (maturin bindings=bin) ─────────────────
+  # Produces py3-none-{platform} wheels — one per platform, no per-Python builds.
+  cli-wheels:
+    name: CLI wheel (${{ matrix.target }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build CLI wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/ns-cli-py
+          target: ${{ matrix.target }}
+          command: build
+          args: --release --out dist
+          manylinux: "2_17"
+
+      - name: Upload CLI wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-wheels-${{ matrix.target }}
+          path: bindings/ns-cli-py/dist/*.whl
+
+  # ── CLI source distribution ────────────────────────────────
+  cli-sdist:
+    name: CLI source distribution
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build CLI sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/ns-cli-py
+          command: sdist
+          args: --out dist
+
+      - name: Upload CLI sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-sdist
+          path: bindings/ns-cli-py/dist/*.tar.gz
+
+  # ── CLI binaries (standalone, for GitHub Release) ───────────
   cli:
     name: CLI (${{ matrix.target }})
     needs: [test]
@@ -392,7 +471,7 @@ jobs:
   # ── GitHub Release ───────────────────────────────────────────
   github-release:
     name: GitHub Release
-    needs: [wheels, cli, sdist, whitepaper, validation-pack]
+    needs: [wheels, cli, sdist, cli-wheels, cli-sdist, whitepaper, validation-pack]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -442,16 +521,59 @@ jobs:
             dist/**/validation_pack_manifest.sha256.bin
             dist/**/snapshot_index.json
 
-  # ── PyPI publish (Trusted Publisher — no token needed) ───────
-  pypi-publish:
-    name: Publish to PyPI
+  # ── PyPI publish: nextstat-cli (must land first) ─────────────
+  pypi-publish-cli:
+    name: Publish nextstat-cli to PyPI
     needs: [github-release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi-cli
+    permissions:
+      id-token: write
+    steps:
+      - name: Download CLI wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Download CLI sdist
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-sdist
+          path: dist
+
+      - name: Publish nextstat-cli to PyPI (Trusted Publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  # ── PyPI publish: nextstat (depends on nextstat-cli) ────────
+  pypi-publish:
+    name: Publish nextstat to PyPI
+    needs: [github-release, pypi-publish-cli]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
     steps:
+      - name: Wait for nextstat-cli to propagate on PyPI
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "Waiting for nextstat-cli==$TAG to appear on PyPI..."
+          for i in $(seq 1 30); do
+            if pip index versions nextstat-cli 2>/dev/null | grep -q "$TAG"; then
+              echo "nextstat-cli==$TAG is available on PyPI"
+              exit 0
+            fi
+            echo "Attempt $i/30 — not yet available, waiting 10s..."
+            sleep 10
+          done
+          echo "::warning::nextstat-cli==$TAG not found after 5 min — publishing nextstat anyway"
+
       - name: Download wheels
         uses: actions/download-artifact@v4
         with:
@@ -465,7 +587,7 @@ jobs:
           name: sdist
           path: dist
 
-      - name: Publish to PyPI (Trusted Publisher)
+      - name: Publish nextstat to PyPI (Trusted Publisher)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/

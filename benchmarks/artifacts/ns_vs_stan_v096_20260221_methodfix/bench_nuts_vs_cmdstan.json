@@ -44,7 +44,7 @@
     },
     "nextstat_version": "0.9.6",
     "cmdstan": {
-      "path": "/workspace/nextstat.io/.internal/cmdstan/cmdstan-2.38.0"
+      "path": "cmdstan-2.38.0"
     }
   },
   "summary": {

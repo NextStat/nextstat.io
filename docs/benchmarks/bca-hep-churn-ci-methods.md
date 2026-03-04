@@ -206,14 +206,14 @@ Rationale: keep the repository slim while preserving the machine-readable summar
 
 Host profile:
 
-- `nextstat-bench` (`AMD EPYC 7502P`, `64` CPU threads, no CUDA required for these BCa paths)
+- `epyc-node` (`AMD EPYC 7502P`, `64` CPU threads, no CUDA required for these BCa paths)
 
 Artifacts kept in repo (summary-only policy):
 
-- `bench_results/unbinned_summary_ci_nextstat_bench_2026-02-16/summary.json`
-- `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16/summary.json`
-- `bench_results/bca_skew_calibration_nextstat_bench_2026-02-16/summary.json`
-- `bench_results/bca_ci_gate_report_nextstat_bench_2026-02-16/summary.json`
+- `bench_results/unbinned_summary_ci_epyc_node_2026-02-16/summary.json`
+- `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16/summary.json`
+- `bench_results/bca_skew_calibration_epyc_node_2026-02-16/summary.json`
+- `bench_results/bca_ci_gate_report_epyc_node_2026-02-16/summary.json`
 
 ### Main matrix (adult parameters)
 
@@ -246,14 +246,14 @@ python scripts/benchmarks/bench_churn_bootstrap_ci_methods.py \
   --seed0 9100 \
   --use-default-truth \
   --nextstat-bin /opt/nextstat_src_min_2026-02-16/target/release/nextstat \
-  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_longrun
+  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_epyc_node_2026-02-16_longrun
 ```
 
 Artifact (summary-only policy):
 
-- `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_longrun/summary.json`
+- `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16_longrun/summary.json`
 
-Results (`nextstat-bench`, 2026-02-16 long-run):
+Results (`epyc-node`, 2026-02-16 long-run):
 
 | Method | Coverage vs true HR | Wilson 95% CI for coverage | Median wall (s) | Mean interval width | Fallback total |
 |---|---:|---:|---:|---:|---:|
@@ -265,7 +265,7 @@ Notes:
 - Coverage in this mode is **conditional on one fixed observed dataset** (bootstrap seeds vary, dataset does not). Treat this as diagnostic stress-test, not as frequentist calibration.
 - BCa stayed fallback-free (`fallback_total=0`) and slightly narrower on average.
 
-### Churn dataset-level calibration (`nextstat-bench`)
+### Churn dataset-level calibration (`epyc-node`)
 
 Command (default generator with treatment):
 
@@ -283,7 +283,7 @@ python scripts/benchmarks/bench_churn_bootstrap_ci_methods.py \
   --use-default-truth \
   --regenerate-data-per-run \
   --nextstat-bin /opt/nextstat_src_min_2026-02-16/target/release/nextstat \
-  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat30
+  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat30
 ```
 
 Command (no-treatment identifiability control):
@@ -302,15 +302,15 @@ python scripts/benchmarks/bench_churn_bootstrap_ci_methods.py \
   --use-default-truth \
   --regenerate-data-per-run \
   --nextstat-bin /opt/nextstat_src_min_2026-02-16/target/release/nextstat \
-  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat00
+  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat00
 ```
 
 Artifacts (summary-only policy):
 
-- `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat30/summary.json`
-- `bench_results/churn_bootstrap_ci_methods_nextstat_bench_2026-02-16_datasetlevel_treat00/summary.json`
+- `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat30/summary.json`
+- `bench_results/churn_bootstrap_ci_methods_epyc_node_2026-02-16_datasetlevel_treat00/summary.json`
 
-Results (`nextstat-bench`, 2026-02-16 dataset-level):
+Results (`epyc-node`, 2026-02-16 dataset-level):
 
 | Scenario | Method | Coverage vs true HR | Wilson 95% CI | Median wall (s) | Mean width | Fallback total |
 |---|---|---:|---:|---:|---:|---:|
@@ -378,7 +378,7 @@ Results (2026-02-16 baseline):
 | `gauss_mu_boundary_low` | percentile | 0.917 | 6.4825 | 0.0165 | +0.3230 |
 | `gauss_mu_boundary_low` | bca | 0.917 | 6.2299 | 0.0165 | +0.6848 |
 
-Command (`nextstat-bench` adult rerun):
+Command (`epyc-node` adult rerun):
 
 ```bash
 python scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py \
@@ -391,14 +391,14 @@ python scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py \
   --threads 56 \
   --root-writer auto \
   --nextstat-bin /opt/nextstat_src_min_2026-02-16/target/release/nextstat \
-  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_full
+  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_full
 ```
 
 Artifact (summary-only policy):
 
-- `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_full/summary.json`
+- `bench_results/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_full/summary.json`
 
-Results (`nextstat-bench`, 2026-02-16):
+Results (`epyc-node`, 2026-02-16):
 
 | Scenario | Method | Coverage vs true POI | Median width | Median wall total (s) | Median center minus true |
 |---|---|---:|---:|---:|---:|
@@ -407,7 +407,7 @@ Results (`nextstat-bench`, 2026-02-16):
 | `gauss_mu_boundary_low` | percentile | 0.969 | 5.9231 | 0.0559 | -0.1950 |
 | `gauss_mu_boundary_low` | bca | 0.969 | 5.9007 | 0.0559 | -0.0362 |
 
-Command (`nextstat-bench` long-run calibration):
+Command (`epyc-node` long-run calibration):
 
 ```bash
 python scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py \
@@ -420,14 +420,14 @@ python scripts/benchmarks/bench_hep_dataset_bootstrap_ci.py \
   --threads 56 \
   --root-writer auto \
   --nextstat-bin /opt/nextstat_src_min_2026-02-16/target/release/nextstat \
-  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_longrun
+  --out-dir /opt/nextstat_src_min_2026-02-16/bench_out/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_longrun
 ```
 
 Artifact (summary-only policy):
 
-- `bench_results/hep_dataset_bootstrap_ci_nextstat_bench_2026-02-16_longrun/summary.json`
+- `bench_results/hep_dataset_bootstrap_ci_epyc_node_2026-02-16_longrun/summary.json`
 
-Results (`nextstat-bench`, 2026-02-16 long-run):
+Results (`epyc-node`, 2026-02-16 long-run):
 
 | Scenario | Method | Coverage vs true POI | Wilson 95% CI for coverage | Median width | Median wall total (s) |
 |---|---|---:|---:|---:|---:|
@@ -439,5 +439,5 @@ Results (`nextstat-bench`, 2026-02-16 long-run):
 Notes:
 
 - This benchmark is dataset-level (new observed data each run), unlike `summary.mean_ci` diagnostics from fixed-spec toy summaries.
-- In both baseline and `nextstat-bench` runs BCa was effective in all runs (`fallback_count=0`).
+- In both baseline and `epyc-node` runs BCa was effective in all runs (`fallback_count=0`).
 - Rootless writer is available (`--root-writer auto|uproot`) with `root` CLI fallback (`--root-writer root-cli`).

@@ -92,7 +92,7 @@ def bench_nextstat(data: dict, n_runs: int, tmp_dir: Path = None) -> list[float]
 
     # Fallback: CLI path.
     if tmp_dir is None:
-        tmp_dir = Path("/tmp/nextstat_bench")
+        tmp_dir = Path("/tmp/ns_bench")
         tmp_dir.mkdir(exist_ok=True)
 
     nextstat_bin = _find_nextstat_binary()

@@ -58,6 +58,8 @@ cargo add ns-core ns-inference ns-compute
 
 ### Install (Python)
 
+> **Requires Python 3.11+.** macOS ships with Python 3.9 via Xcode CLI Tools — upgrade with `brew install python@3.13` before installing.
+
 ```bash
 pip install nextstat
 ```
@@ -449,7 +451,7 @@ Compare current HEAD vs the latest recorded baseline (writes `tmp/baseline_compa
 make apex2-baseline-compare
 ```
 
-Pre-release gate runbook: `.internal/docs/internal/release-gates.md`.
+Pre-release gate runbook: see CONTRIBUTING.md § Release Checklist.
 
 ## Documentation
 

@@ -94,7 +94,7 @@ Notes:
 - If one execute node is flaky or unreachable (common symptom: negotiator says “Successfully matched” but the job stays `Idle`), exclude it with `--condor-requirements`, e.g.:
 
 ```bash
-  --condor-requirements '(Machine != "node-rtx4000")'
+  --condor-requirements '(Machine != "gpu-node")'
 ```
 
 Submit:
@@ -120,7 +120,7 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Shards: `74`
 - Threads per shard: `1`
-- Requirements: excluded `node-rtx4000` (jobs were being matched to rtx4000 but not starting; likely claim/file-transfer/connectivity issue)
+- Requirements: excluded `gpu-node` (jobs were being matched to rtx4000 but not starting; likely claim/file-transfer/connectivity issue)
 
 Result:
 - Convergence: `10000/10000` converged, `0` errors
@@ -139,11 +139,11 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Shards: `74`
 - Threads per shard: `1`
-- Requirements: none (pool included `nextstat-bench`, `nextstat-coolify`, `node-rtx4000`)
+- Requirements: none (pool included `epyc-node`, `ci-node`, `gpu-node`)
 
 Result:
 - Convergence: `10000/10000` converged, `0` errors
-- Host distribution: `nextstat-bench=58`, `nextstat-coolify=10`, `node-rtx4000=6`
+- Host distribution: `epyc-node=58`, `ci-node=10`, `gpu-node=6`
 - Makespan (max shard elapsed): `344s`
 - Throughput: `~29.1 toys/s`
 
@@ -152,7 +152,7 @@ Artifacts:
 - merged: `runs/pf32_full_2m10k_sh74_allnodes_20260215T150040Z/merged.out.json`
 
 Notes:
-- This run is **not** directly comparable to the earlier `249s` snapshot: it was executed later in the day and the tail was dominated by shards running on `nextstat-bench` (likely higher contention / different background load at the time of measurement).
+- This run is **not** directly comparable to the earlier `249s` snapshot: it was executed later in the day and the tail was dominated by shards running on `epyc-node` (likely higher contention / different background load at the time of measurement).
 
 ## Option C: SSH multi-host farm (no scheduler)
 
@@ -247,8 +247,8 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Threads per shard: `1`
 - Submit file: `condor_job_transfer.sub` (execute nodes do not need a shared filesystem)
-- Requirements: excluded `node-rtx4000` (bench+coolify only)
-- `request_memory`: `2GB` (allows higher concurrency vs `4GB` which caps `nextstat-bench` at ~30 slots)
+- Requirements: excluded `gpu-node` (bench+coolify only)
+- `request_memory`: `2GB` (allows higher concurrency vs `4GB` which caps `epyc-node` at ~30 slots)
 
 Sweep:
 - sweep json: `runs/pf32_2m10k_shard_sweep_20260215T152638Z_transfer2gb_nortx4000.sweep.json`
@@ -272,7 +272,7 @@ Run date: 2026-02-15
 - Scheduler: HTCondor
 - Threads per shard: `1`
 - Submit file: `condor_job_transfer.sub`
-- Requirements: `(Machine == "nextstat-bench") || (Machine == "nextstat-coolify")`
+- Requirements: `(Machine == "epyc-node") || (Machine == "ci-node")`
 - `request_memory`: `2GB`
 
 Results:
@@ -293,7 +293,7 @@ Interpretation:
 
 Run date: 2026-02-15
 
-- Requirements: `(Machine == "nextstat-bench") || (Machine == "nextstat-coolify")`
+- Requirements: `(Machine == "epyc-node") || (Machine == "ci-node")`
 - Submit file: `condor_job_transfer.sub`
 - `request_memory`: `2GB`, `threads=1`, `n_toys=10000`, `seed=42`
 
@@ -306,4 +306,4 @@ Aggregates (3 runs each):
 
 Interpretation:
 - `shards=200` is very stable in this dataset and pool configuration.
-- `shards=240` provides higher median throughput, but is somewhat more sensitive to contention/long-tail on `nextstat-bench`.
+- `shards=240` provides higher median throughput, but is somewhat more sensitive to contention/long-tail on `epyc-node`.

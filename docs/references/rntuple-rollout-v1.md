@@ -61,7 +61,7 @@ Current CI coverage includes:
 - command: `make rntuple-perf-gate`;
 - optional mixed-layout release gate: `make rntuple-perf-gate-large-mixed`;
 - CI wiring: `.github/workflows/rust-tests.yml`.
-- benchmark note (host-level comparison): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`.
+- benchmark note (host-level comparison): `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`.
 
 Thresholds for the performance gate are tunable with:
 

@@ -8,7 +8,7 @@ For a step-by-step “first snapshot” runbook, see: [First Public Benchmark Sn
 
 For publication-grade unbinned GPU/CPU matrix execution, see: [Unbinned GPU Publication Runbook (PF3.1)](/docs/benchmarks/unbinned-publication-runbook).
 
-For RNTuple native decode comparison on `nextstat-bench` (`ns-root` vs ROOT, 2026-02-16), see: [RNTuple Decode Benchmark (nextstat-bench, 2026-02-16)](/docs/benchmarks/rntuple-nextstat-bench-2026-02-16). For local reproducible reruns use `make rntuple-root-vs-nsroot`.
+For RNTuple native decode comparison on `epyc-node` (`ns-root` vs ROOT, 2026-02-16), see: [RNTuple Decode Benchmark (epyc-node, 2026-02-16)](/docs/benchmarks/rntuple-epyc-node-2026-02-16). For local reproducible reruns use `make rntuple-root-vs-nsroot`.
 
 Suite runbooks: [HEP](/docs/benchmarks/suites/hep) · [Pharma](/docs/benchmarks/suites/pharma) · [Bayesian](/docs/benchmarks/suites/bayesian) · [ML](/docs/benchmarks/suites/ml) · [Time Series](/docs/benchmarks/suites/timeseries) · [Econometrics](/docs/benchmarks/suites/econometrics)
 

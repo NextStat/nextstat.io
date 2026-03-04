@@ -82,6 +82,10 @@ for r in table.records:
 # 102: 250.0 mg oral BID
 ```
 
+Notes:
+- `RegimenRecord.duration` is *course duration* (e.g. "for 14 days").
+- `RegimenRecord.infusion_duration` is *infusion duration* (e.g. "over 2 hours" -> `2/24` days).
+
 ## Backends
 
 | Backend | Install | Model download | Use case |
@@ -149,6 +153,45 @@ python benchmarks/bench_extraction.py --backend heuristic --n-iter 100
 # On macOS (Apple Silicon), MLX/Metal backend:
 #   export NEXTSTAT_GLINER2_MLX_CLI=/path/to/gliner2_mlx_cli
 #   python benchmarks/bench_extraction.py --backend mlx --n-iter 50
+```
+
+## End-to-End Workflow Demo (to NextStat)
+
+This demo fetches small public snippets, extracts regimens + survival records via
+`nextstat-nlp`, then runs a tiny NextStat fit (CoxPH + 1-subject NLME synthetic):
+
+```bash
+python tools/demo_pharma_to_nextstat.py --backend onnx --out-dir /tmp/ns_nlp_demo
+```
+
+## Reproducible Workflow Matrix (3x)
+
+Fetch internet snippets once, then re-run the pipelines 3 times offline to verify
+bit-exact determinism of the extraction outputs:
+
+```bash
+python tools/run_workflow_matrix.py --backends heuristic onnx --n-repeats 3 --out-dir /tmp/ns_nlp_matrix
+cat /tmp/ns_nlp_matrix/matrix_summary.json
+```
+
+If you don't have `nextstat` installed, you can still validate the extraction and
+determinism by skipping the downstream consumer smoke:
+
+```bash
+python tools/run_workflow_matrix.py --backends heuristic onnx --n-repeats 3 --skip-nextstat-demo
+```
+
+## Exporting Regimens to NextStat
+
+If you want to pass extracted regimens into `nextstat._core.nlme_foce`, you can convert
+records into the `_core` `regimens=[{events:[...]}]` shape:
+
+```python
+from nextstat_nlp.regimens import extract_regimens, to_nextstat_regimens
+
+table = extract_regimens(["1000 mg IV infusion over 2 hours, QD dosing for 14 days."], backend="onnx")
+regimens_min = to_nextstat_regimens(table.records)
+regimens_expanded = to_nextstat_regimens(table.records, expand_frequency=True, default_course_days=14.0)
 ```
 
 ## Architecture

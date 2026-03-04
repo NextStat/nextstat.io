@@ -9,7 +9,7 @@ Strategy:
 """
 import subprocess, json, time, os, sys, multiprocessing
 
-BIN = "/root/nextstat.io/target/release/nextstat"
+BIN = "/workspace/nextstat.io/target/release/nextstat"
 SPEC = "/tmp/pf31_real/spec.json"
 OUTDIR = "/tmp/pf31_real/results"
 os.makedirs(OUTDIR, exist_ok=True)

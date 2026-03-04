@@ -148,7 +148,7 @@ NS_ROOT_RNTUPLE_PERF_MIN_SUITES_PER_SEC=200
 
 The large mixed-layout stress fixture (20 cluster groups, 2M entries) is available as an optional release gate: `make rntuple-perf-gate-large-mixed`.
 
-Benchmark comparison against ROOT's own RNTuple reader: `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`.
+Benchmark comparison against ROOT's own RNTuple reader: `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`.
 
 ## Related Documents
 
@@ -156,4 +156,4 @@ Benchmark comparison against ROOT's own RNTuple reader: `docs/benchmarks/rntuple
 - Compatibility matrix: `docs/references/rntuple-compatibility-matrix.md`
 - Rollout notes: `docs/references/rntuple-rollout-v1.md`
 - Rust API reference: `docs/references/rust-api.md`
-- Benchmark: `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
+- Benchmark: `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`

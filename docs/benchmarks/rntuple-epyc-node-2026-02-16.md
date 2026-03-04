@@ -1,10 +1,10 @@
-# RNTuple Decode Benchmark (nextstat-bench, 2026-02-16)
+# RNTuple Decode Benchmark (epyc-node, 2026-02-16)
 
 This note records a direct `ns-root` vs ROOT decode comparison on the same host for a large RNTuple fixture.
 
 ## Environment
 
-- Host: `nextstat-bench` (`64` vCPU, Ubuntu `24.04.3`)
+- Host: `epyc-node` (`64` vCPU, Ubuntu `24.04.3`)
 - Date: `2026-02-16`
 - ROOT runtime: snap `root-framework v6-36-04`
 - Fixture: `tests/fixtures/rntuple_bench_large_primitive.root`
@@ -101,4 +101,4 @@ Relative on this host:
 
 - `ns-root` is about **3.75x faster** than ROOT.
 
-This local rerun is not directly comparable to `nextstat-bench` due to different hardware/runtime.
+This local rerun is not directly comparable to `epyc-node` due to different hardware/runtime.

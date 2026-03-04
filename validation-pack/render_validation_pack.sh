@@ -249,7 +249,10 @@ if [[ "$skip_pharma_validation" == "0" ]]; then
       pharma_cmd+=(--deterministic)
     fi
     set +e
-    PYTHONPATH="$repo_root/tests:$repo_root/bindings/ns-py/python${PYTHONPATH:+:$PYTHONPATH}" "${pharma_cmd[@]}"
+    # IMPORTANT: run against the installed `nextstat` wheel, not the repo's
+    # `bindings/ns-py/python` sources. This avoids accidentally importing a stale
+    # in-tree `nextstat/_core*.so` and makes CI reflect the published artifact.
+    PYTHONPATH="$repo_root/tests${PYTHONPATH:+:$PYTHONPATH}" "${pharma_cmd[@]}"
     pharma_rc=$?
     set -e
     if [[ "$pharma_rc" != "0" ]]; then

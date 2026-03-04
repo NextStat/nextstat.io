@@ -59,7 +59,12 @@ cargo add ns-core ns-inference ns-compute
 ### Install (Python)
 
 ```bash
-pip install nextstat
+pip install nextstat              # library + CLI binary
+nextstat version                  # CLI works immediately
+pip install "nextstat[bayes]"     # + ArviZ, emcee, xarray
+pip install "nextstat[viz]"       # + matplotlib
+pip install "nextstat[torch]"     # + PyTorch
+pip install "nextstat[all]"       # everything
 ```
 
 ### Build From Source
@@ -399,7 +404,7 @@ Compare current HEAD vs the latest recorded baseline (writes `tmp/baseline_compa
 make apex2-baseline-compare
 ```
 
-Pre-release gate runbook: `.internal/docs/internal/release-gates.md`.
+Pre-release gate runbook: see CONTRIBUTING.md § Release Checklist.
 
 ## Documentation
 

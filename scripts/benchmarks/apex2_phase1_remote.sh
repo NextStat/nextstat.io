@@ -10,18 +10,18 @@ set -euo pipefail
 # - syncs artifacts back locally
 #
 # Usage:
-#   APEX2_HOST=nextstat-bench bash scripts/benchmarks/apex2_phase1_remote.sh
+#   APEX2_HOST=epyc-node bash scripts/benchmarks/apex2_phase1_remote.sh
 #
 # Optional overrides:
 #   APEX2_HOST
-#   APEX2_REMOTE_REPO (default: /root/nextstat.io)
+#   APEX2_REMOTE_REPO (default: /workspace/nextstat.io)
 #   APEX2_REMOTE_OUT_ROOT (default: /tmp/apex2_phase1_<STAMP>_<host>)
 #   APEX2_LOCAL_OUT_ROOT (default: benchmarks/artifacts/apex2_phase1_<STAMP>/<host>)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-APEX2_HOST="${APEX2_HOST:-nextstat-bench}"
-APEX2_REMOTE_REPO="${APEX2_REMOTE_REPO:-/root/nextstat.io}"
+APEX2_HOST="${APEX2_HOST:-epyc-node}"
+APEX2_REMOTE_REPO="${APEX2_REMOTE_REPO:-/workspace/nextstat.io}"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REMOTE_OUT="${APEX2_REMOTE_OUT_ROOT:-/tmp/apex2_phase1_${STAMP}_${APEX2_HOST}}"

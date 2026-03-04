@@ -9,7 +9,7 @@ Environment:
 - Platform: Linux 6.5.0-35-generic (x86_64)
 - Git commit: None
 - NextStat: 0.9.6
-- CmdStan path: /workspace/nextstat.io/.internal/cmdstan/cmdstan-2.38.0
+- CmdStan path: vendor/cmdstan/cmdstan-2.38.0
 
 Target parity:
 - Eight Schools: non-centered in both engines

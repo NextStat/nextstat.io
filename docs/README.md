@@ -21,8 +21,8 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 - RNTuple effort estimate (minimal/converter/full): `docs/references/rntuple-minimal-reader-estimate.md`
 - RNTuple compatibility matrix (verified rows + CI gates): `docs/references/rntuple-compatibility-matrix.md`
 - RNTuple rollout/migration notes (v1 scope + limits): `docs/references/rntuple-rollout-v1.md`
-- RNTuple benchmark note (`nextstat-bench`, `ns-root` vs ROOT): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
-- RNTuple mixed-layout verification addendum (`2,000,000` entries, release perf-gate): `docs/benchmarks/rntuple-nextstat-bench-2026-02-16.md`
+- RNTuple benchmark note (`epyc-node`, `ns-root` vs ROOT): `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`
+- RNTuple mixed-layout verification addendum (`2,000,000` entries, release perf-gate): `docs/benchmarks/rntuple-epyc-node-2026-02-16.md`
 - RNTuple reproducible comparison harness (`make rntuple-root-vs-nsroot`): `scripts/benchmarks/run_rntuple_root_vs_nsroot.sh`
 
 ## Demos
