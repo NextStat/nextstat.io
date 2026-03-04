@@ -31,7 +31,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "nextstat-cli==0.9.7",
+    "nextstat-cli==0.9.8",
 ]
 
 [project.optional-dependencies]
