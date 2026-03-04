@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] — 2026-03-04
+
+### Fixed
+
+- **viz PNG/PDF rendering** — `render_to_file()` for PNG and PDF formats was silently broken since 0.9.8: the `png` and `pdf` features of `ns-viz-render` were not propagated through the `native-render` feature gate in `ns-py` and `ns-cli`, causing `#[cfg(feature)]` guards to compile out all raster/PDF code paths. SVG output was unaffected.
+
 ## [0.9.8] — 2026-03-04
 
 ### Added

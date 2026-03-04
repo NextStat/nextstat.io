@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "nextstat-cli"
-version = "0.9.8"
+version = "0.9.9"
 description = "NextStat CLI — statistical fitting, hypothesis testing, and reporting."
 readme = "README.md"
 requires-python = ">=3.11"
