@@ -38,7 +38,7 @@ serde_json = { workspace = true }
 
 [features]
 default = ["native-render"]
-native-render = ["dep:ns-viz-render"]
+native-render = ["dep:ns-viz-render", "ns-viz-render/png", "ns-viz-render/pdf"]
 accelerate = ["ns-inference/accelerate", "ns-translate/accelerate", "ns-compute/accelerate"]
 cuda = ["ns-inference/cuda", "ns-translate/cuda", "ns-compute/cuda"]
 metal = ["ns-inference/metal", "ns-translate/metal", "ns-compute/metal"]
