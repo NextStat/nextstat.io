@@ -61,7 +61,7 @@ log = "0.4"
 env_logger = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 
 # Numerical computing
 ndarray = { version = "0.17", features = ["serde"] }
@@ -83,15 +83,15 @@ proptest = "1.10"
 criterion = { version = "0.8", features = ["html_reports"] }
 
 # MCMC / sampling (Phase 3, optional)
-rand = "0.9"
-rand_distr = "0.5"
+rand = "0.10"
+rand_distr = "0.6"
 json-patch = "4.1.0"
 sha2 = "0.10"
 
 # Arrow / Parquet
-arrow = { version = "57.3", default-features = false, features = ["ffi", "ipc"] }
+arrow = { version = "58.0", default-features = false, features = ["ffi", "ipc"] }
 csv = "1.3"
-parquet = { version = "57.3", default-features = false, features = ["arrow", "zstd", "snap"] }
+parquet = { version = "58.0", default-features = false, features = ["arrow", "zstd", "snap"] }
 
 # Python bindings
 pyo3 = { version = "0.28", features = ["extension-module"] }
@@ -108,11 +108,11 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 # autodiff dependencies will be added later
 
 # Neural density estimation (Phase 3 - Optional)
-ort = { version = "2.0.0-rc.11", default-features = false, features = ["std"] }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std"] }
 
 # GPU backends (Phase 2C - Optional)
 cudarc = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "cublas", "std", "dynamic-loading", "cuda-12040"] }
-metal = "0.30"
+metal = "0.33"
 objc = "0.2"
 block = "0.1"
 
